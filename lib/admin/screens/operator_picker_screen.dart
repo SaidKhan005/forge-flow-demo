@@ -1,4 +1,4 @@
-// Phase 11A.3a follow-up — Operator + location picker.
+﻿// Phase 11A.3a follow-up - Operator + location picker.
 //
 // The Corpus admin "Graph candidates" tab needs a real
 // (operator_id, location_id) target before it can commit graph
@@ -8,7 +8,7 @@
 // over the existing [OperatorLocationAdminGateway]; pop with the
 // resolved pair on confirm, null on cancel.
 //
-// Caching is in-memory only — keyed by admin UID — so the next
+// Caching is in-memory only - keyed by admin UID - so the next
 // picker open inside the same session pre-selects the most-
 // recently-confirmed pair. Durable cookie / shared-prefs
 // persistence is intentionally out of scope; that lands in a
@@ -23,6 +23,8 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 
@@ -58,7 +60,7 @@ class OperatorPickerScreen extends StatelessWidget {
   /// test path).
   final String? adminUid;
 
-  // In-memory only by design — durable persistence is a future
+  // In-memory only by design - durable persistence is a future
   // slice. The map outlives the screen instance so subsequent
   // opens can hydrate from it.
   static final Map<String, OperatorPickerResult> _cache =
@@ -276,12 +278,12 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'No customers yet',
+                  'No operators yet',
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Add a customer before applying relationship decisions.',
+                  'Add an operator before applying relationship decisions.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 16),
@@ -319,7 +321,7 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Pick the customer and location for approved relationship decisions. Selection is remembered '
+              'Pick the operator and location for approved relationship decisions. Selection is remembered '
               'for the rest of this admin session.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
@@ -329,7 +331,7 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Customer',
+                    'Operator',
                     style: AppTextStyles.mono11(color: AppColors.textMuted),
                   ),
                   const SizedBox(height: 6),
@@ -337,7 +339,7 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
                     key: const Key('admin_operator_picker_operator_dropdown'),
                     value: _selectedOperatorId,
                     isExpanded: true,
-                    hint: const Text('Select customer'),
+                    hint: const Text('Select operator'),
                     items: <DropdownMenuItem<String>>[
                       for (final b in _operators)
                         DropdownMenuItem<String>(
@@ -386,10 +388,7 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
                 FilledButton.icon(
                   key: const Key('admin_operator_picker_confirm'),
                   onPressed: canConfirm ? _onConfirm : null,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.sunset,
-                    foregroundColor: AppColors.backgroundSurface,
-                  ),
+                  style: AdminButtonStyles.primary,
                   icon: const Icon(Icons.check, size: 16),
                   label: const Text('Use selection'),
                 ),

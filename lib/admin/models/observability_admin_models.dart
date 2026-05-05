@@ -1,4 +1,4 @@
-// Phase 11A.6 — Observability dashboard models.
+// Phase 11A.6 - Observability dashboard models.
 //
 // Typed parsers for the proxy `/v1/admin/observability` envelope. The
 // envelope assembles cost-telemetry, latency/error/cap-event,
@@ -72,7 +72,7 @@ String observabilityWindowKey(ObservabilityWindow window) {
 
 /// One row of the cost-telemetry breakdown, fully axed per phase doc
 /// lines 356-359. All ID axes are nullable because the proxy may
-/// aggregate at any subset of them — for example, a row with
+/// aggregate at any subset of them - for example, a row with
 /// `staff_id = null` and `workflow_id = null` represents the
 /// per-(operator, location, usage_class, query_class) total. The
 /// screen renders the most-specific rows first.
@@ -149,8 +149,7 @@ class CacheHitRateEntry {
     return CacheHitRateEntry(
       queryClass: (json['query_class'] as String?) ?? '',
       hitRate: _parseDouble(json['hit_rate']) ?? 0.0,
-      yellowThreshold:
-          _parseDouble(json['yellow_threshold']) ?? 0.30,
+      yellowThreshold: _parseDouble(json['yellow_threshold']) ?? 0.30,
       redThreshold: _parseDouble(json['red_threshold']) ?? 0.10,
     );
   }
@@ -184,8 +183,7 @@ class ModelMixEntry {
       queryClass: (json['query_class'] as String?) ?? '',
       haikuShare: _parseDouble(json['haiku_share']) ?? 0.0,
       sonnetShare: _parseDouble(json['sonnet_share']) ?? 0.0,
-      sonnetShareCeiling:
-          _parseDouble(json['sonnet_share_ceiling']) ?? 0.40,
+      sonnetShareCeiling: _parseDouble(json['sonnet_share_ceiling']) ?? 0.40,
     );
   }
 }
@@ -260,7 +258,7 @@ class TopExpensiveEntry {
 /// could not resolve produces `null` rather than collapsing to the
 /// envelope `as_of`. Treating a null `last_active_at` as "0 days
 /// silent" would mask a never-active operator, so this surface
-/// preserves the unknown state and renders it as `NEVER ACTIVE` —
+/// preserves the unknown state and renders it as `NEVER ACTIVE` -
 /// which is at-least as dormant as the 30-day threshold for the
 /// precompute-skip lever.
 ///
@@ -296,8 +294,7 @@ class OperatorDormancyEntry {
   /// True when the producer never reported a `last_active_at` for
   /// this operator. Renders as `NEVER ACTIVE · DORMANT` and is
   /// always considered dormant for the precompute-skip lever.
-  bool get neverActive =>
-      lastActiveAt == null && daysSilentOverride == null;
+  bool get neverActive => lastActiveAt == null && daysSilentOverride == null;
 
   /// Days silent: prefers a producer-supplied override; otherwise
   /// derives from `asOf - lastActiveAt`. Returns null when neither
@@ -328,7 +325,7 @@ class OperatorDormancyEntry {
     return OperatorDormancyEntry(
       operatorId: (json['operator_id'] as String?) ?? '',
       businessName: (json['business_name'] as String?) ?? '(unnamed)',
-      // Preserve null — DO NOT default to asOf, which would mask a
+      // Preserve null - DO NOT default to asOf, which would mask a
       // never-active operator as "0 days silent".
       lastActiveAt: _parseUtc(json['last_active_at']),
       asOf: asOf,
@@ -451,13 +448,10 @@ class GraphObservability {
     return GraphObservability(
       approvedNodeCount: _parseInt(json['approved_node_count']) ?? 0,
       approvedEdgeCount: _parseInt(json['approved_edge_count']) ?? 0,
-      inferredApprovedCount:
-          _parseInt(json['inferred_approved_count']) ?? 0,
-      rejectedCandidateCount:
-          _parseInt(json['rejected_candidate_count']) ?? 0,
+      inferredApprovedCount: _parseInt(json['inferred_approved_count']) ?? 0,
+      rejectedCandidateCount: _parseInt(json['rejected_candidate_count']) ?? 0,
       isolatedNodeCount: _parseInt(json['isolated_node_count']) ?? 0,
-      projectionAgeSeconds:
-          _parseInt(json['projection_age_seconds']) ?? 0,
+      projectionAgeSeconds: _parseInt(json['projection_age_seconds']) ?? 0,
       traversalP95Ms: _parseInt(json['traversal_p95_ms']) ?? 0,
     );
   }
@@ -533,9 +527,9 @@ class CloudRunInstanceMetric {
 /// the first launch run). The screen renders an empty-state caption
 /// per section instead of a generic skeleton.
 ///
-/// Cost telemetry is the only large list — its server-side bound is
+/// Cost telemetry is the only large list - its server-side bound is
 /// surfaced via [costTelemetryTotalCount] and [costTelemetryTruncated]
-/// so the UI can render a "showing N of M (truncated — refine
+/// so the UI can render a "showing N of M (truncated - refine
 /// filter)" hint and a virtualized list. Every other list is small by
 /// construction (per-query_class hit rates, per-tier margins,
 /// dormancy is one row per operator, etc.).
@@ -595,8 +589,7 @@ class ObservabilityEnvelope {
 
   Iterable<TopExpensiveEntry> topExpensiveForWindow(
     ObservabilityWindow window,
-  ) =>
-      topExpensive.where((e) => e.window == window);
+  ) => topExpensive.where((e) => e.window == window);
 
   Iterable<OperatorDormancyEntry> get dormantOperators =>
       dormancy.where((d) => d.isDormant);
@@ -613,7 +606,7 @@ class ObservabilityEnvelope {
     ];
     final costTelemetryMeta =
         (json['cost_telemetry_meta'] as Map?)?.cast<String, Object?>() ??
-            const <String, Object?>{};
+        const <String, Object?>{};
     final declaredTotal = _parseInt(costTelemetryMeta['total_count']);
     final declaredTruncated = costTelemetryMeta['truncated'] is bool
         ? costTelemetryMeta['truncated'] as bool
@@ -629,7 +622,8 @@ class ObservabilityEnvelope {
       // When the proxy supplies an explicit `truncated`, trust it;
       // otherwise infer truncation by comparing list length to the
       // hard cap.
-      costTelemetryTruncated: declaredTruncated ??
+      costTelemetryTruncated:
+          declaredTruncated ??
           (costTelemetry.length >= kObservabilityCostTelemetryLimit),
       costTelemetryQueryClassFilter:
           costTelemetryMeta['query_class_filter'] as String?,
@@ -656,10 +650,7 @@ class ObservabilityEnvelope {
       dormancy: <OperatorDormancyEntry>[
         for (final entry in (json['dormancy'] as List?) ?? const [])
           if (entry is Map)
-            OperatorDormancyEntry.fromJson(
-              entry.cast<String, Object?>(),
-              asOf,
-            ),
+            OperatorDormancyEntry.fromJson(entry.cast<String, Object?>(), asOf),
       ],
       margins: <MarginEstimateEntry>[
         for (final entry in (json['margins'] as List?) ?? const [])

@@ -1,4 +1,4 @@
-// Phase 11A.2 — Pricing tier admin value objects.
+﻿// Phase 11A.2 - Pricing tier admin value objects.
 //
 // Carries the operator + usage_caps shape the admin pricing screen
 // needs to render and edit. Mirrors the `usage_caps` Postgres columns
@@ -28,6 +28,7 @@ class PricingOperatorBundle {
     required this.subscriptionTier,
     required this.preferredCurrency,
     required this.primaryLocationId,
+    this.primaryLocationName,
     required this.suspended,
     required this.caps,
   });
@@ -37,6 +38,7 @@ class PricingOperatorBundle {
   final String subscriptionTier;
   final String preferredCurrency;
   final String? primaryLocationId;
+  final String? primaryLocationName;
   final bool suspended;
   final List<UsageCapRow> caps;
 
@@ -49,6 +51,7 @@ class PricingOperatorBundle {
       subscriptionTier: operator['subscription_tier']! as String,
       preferredCurrency: operator['preferred_currency']! as String,
       primaryLocationId: operator['primary_location_id'] as String?,
+      primaryLocationName: operator['primary_location_name'] as String?,
       suspended: (operator['suspended'] as bool?) ?? false,
       caps: <UsageCapRow>[
         for (final c in caps)
@@ -212,9 +215,7 @@ class ApplyTierTemplateCommand {
   /// template apply + one audit row.
   final String idempotencyKey;
 
-  Map<String, Object?> toJson() => <String, Object?>{
-    'tier_key': tierKey,
-  };
+  Map<String, Object?> toJson() => <String, Object?>{'tier_key': tierKey};
 }
 
 /// One pre-defined cap row inside a tier template.

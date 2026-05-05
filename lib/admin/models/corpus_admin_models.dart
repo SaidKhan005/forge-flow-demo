@@ -1,4 +1,4 @@
-// Phase 11A.3a — Corpus admin value objects.
+// Phase 11A.3a - Corpus admin value objects.
 //
 // Carries the corpus snapshot the admin Corpus screen needs to render
 // + commit + rollback. Mirrors the post-11A.3a Postgres shape:
@@ -117,9 +117,7 @@ class ChunkPreview {
 
   static ChunkPreview fromJson(Map<String, Object?> json) {
     final raw = json['heading_path'];
-    final heading = <String>[
-      if (raw is List) ...raw.whereType<String>(),
-    ];
+    final heading = <String>[if (raw is List) ...raw.whereType<String>()];
     return ChunkPreview(
       chunkId: json['chunk_id']! as String,
       docId: json['doc_id']! as String,
@@ -275,7 +273,7 @@ const Set<String> kCorpusUploadAcceptedContentTypes = <String>{
   'application/octet-stream',
 };
 
-// ─── Phase 11A.3b — Graphify candidate review ────────────────────────
+// ─── Phase 11A.3b - Graphify candidate review ────────────────────────
 //
 // Models for the new `Graph candidates` tab on the Corpus Admin
 // screen. The flow is:
@@ -377,7 +375,7 @@ class GraphCandidate {
   final String? sourceFile;
   final String? sourceRef;
 
-  /// Body payload — properties JSONB on canonical insert, or full
+  /// Body payload - properties JSONB on canonical insert, or full
   /// audit payload on rejection. The screen surfaces the
   /// `label` field here (Graphify's display label) when present so
   /// the admin sees something meaningful in the list view.
@@ -414,24 +412,25 @@ class GraphCandidate {
       sourceRef: json['source_ref'] as String?,
       fromNodeKey: json['from_node_key'] as String?,
       toNodeKey: json['to_node_key'] as String?,
-      payload: ((json['payload'] as Map?)?.cast<String, Object?>()) ??
+      payload:
+          ((json['payload'] as Map?)?.cast<String, Object?>()) ??
           const <String, Object?>{},
     );
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'candidate_id': candidateId,
-        'kind': kind.name,
-        'candidate_key': candidateKey,
-        'candidate_type': candidateType,
-        'label': label.wireValue,
-        if (confidenceScore != null) 'confidence_score': confidenceScore,
-        if (sourceFile != null) 'source_file': sourceFile,
-        if (sourceRef != null) 'source_ref': sourceRef,
-        if (fromNodeKey != null) 'from_node_key': fromNodeKey,
-        if (toNodeKey != null) 'to_node_key': toNodeKey,
-        'payload': payload,
-      };
+    'candidate_id': candidateId,
+    'kind': kind.name,
+    'candidate_key': candidateKey,
+    'candidate_type': candidateType,
+    'label': label.wireValue,
+    if (confidenceScore != null) 'confidence_score': confidenceScore,
+    if (sourceFile != null) 'source_file': sourceFile,
+    if (sourceRef != null) 'source_ref': sourceRef,
+    if (fromNodeKey != null) 'from_node_key': fromNodeKey,
+    if (toNodeKey != null) 'to_node_key': toNodeKey,
+    'payload': payload,
+  };
 }
 
 /// The diff the proxy returns from `GET /v1/admin/corpus/graph-
@@ -524,18 +523,18 @@ class ApprovalDecision {
   final String? reason;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'candidate_id': candidateId,
-        'kind': kind.name,
-        if (editedPayload != null) 'edited_payload': editedPayload,
-        if (editedCandidateType != null)
-          'edited_candidate_type': editedCandidateType,
-        if (reason != null) 'reason': reason,
-      };
+    'candidate_id': candidateId,
+    'kind': kind.name,
+    if (editedPayload != null) 'edited_payload': editedPayload,
+    if (editedCandidateType != null)
+      'edited_candidate_type': editedCandidateType,
+    if (reason != null) 'reason': reason,
+  };
 }
 
 /// Top-level batch commit command. The admin queues decisions in the
 /// screen's tray and submits the whole batch atomically. Carries the
-/// (operator, location) the approved candidates land in — super_admin
+/// (operator, location) the approved candidates land in - super_admin
 /// is cross-tenant so the destination is an explicit per-batch choice
 /// (the proxy route's `target_operator_id` / `target_location_id`
 /// body fields).
@@ -554,12 +553,10 @@ class BatchCommitCommand {
   final List<ApprovalDecision> decisions;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'target_operator_id': targetOperatorId,
-        'target_location_id': targetLocationId,
-        'decisions': <Map<String, Object?>>[
-          for (final d in decisions) d.toJson(),
-        ],
-      };
+    'target_operator_id': targetOperatorId,
+    'target_location_id': targetLocationId,
+    'decisions': <Map<String, Object?>>[for (final d in decisions) d.toJson()],
+  };
 }
 
 /// Result returned by the proxy after a successful batch commit.
@@ -575,8 +572,7 @@ class BatchCommitResult {
   final int approvedEdgeCount;
   final int rejectedCount;
 
-  int get totalCount =>
-      approvedNodeCount + approvedEdgeCount + rejectedCount;
+  int get totalCount => approvedNodeCount + approvedEdgeCount + rejectedCount;
 
   static BatchCommitResult fromJson(Map<String, Object?> json) {
     return BatchCommitResult(

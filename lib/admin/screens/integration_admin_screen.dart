@@ -1,4 +1,4 @@
-// Phase 11A.4 — Integration management admin screen.
+﻿// Phase 11A.4 - Integration management admin screen.
 //
 // F&F internal Integrations surface. Reads the masked-display
 // ledger via [IntegrationAdminGateway] and renders one row per
@@ -8,7 +8,7 @@
 //
 // Phase 9.8 extension: SendGrid joins the rotatable provider lanes
 // alongside the existing four. The lane lights up automatically
-// because the screen iterates `ProviderKeyKind.values` — adding
+// because the screen iterates `ProviderKeyKind.values` - adding
 // `sendgrid` to the enum at `lib/admin/models/integration_admin_models.dart`
 // is the only change needed for the visual surface. The rotate
 // flow reuses the shared `RotateKeyCommand` pattern so no per-kind
@@ -32,10 +32,14 @@
 // and renders a read-only banner; the proxy enforces the same gate
 // server-side.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
+import '../admin_human_labels.dart';
 import '../models/integration_admin_models.dart';
 import '../services/integration_admin_gateway.dart';
 
@@ -49,7 +53,7 @@ class IntegrationAdminScreen extends StatefulWidget {
 
   final IntegrationAdminGateway gateway;
 
-  /// When false, the screen hides every rotate affordance — used for
+  /// When false, the screen hides every rotate affordance - used for
   /// the `ff_support` walkthrough path. The proxy enforces the same
   /// gate server-side; this flag keeps the UI honest about it.
   final bool editingEnabled;
@@ -73,7 +77,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
   int _idempotencyCounter = 0;
 
   /// Mints a fresh idempotency key per rotation submit so the proxy
-  /// dedups in `admin_request_idempotency` — a network-timeout retry
+  /// dedups in `admin_request_idempotency` - a network-timeout retry
   /// collapses to one KMS write + one audit row.
   String _nextIdempotencyKey() {
     final factory = widget.idempotencyKeyFactory;
@@ -120,10 +124,9 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => _ConfirmDialog(
-        title: 'Rotate ${kind.displayName} key?',
+        title: 'Replace ${kind.displayName} key?',
         message:
-            'A confirmation row will be written to the audit log. The new '
-            'secret value is shown once in a follow-up modal. After you close it, this screen only shows the hidden key preview.',
+            'This change is logged. The new key is shown once; after you close it, only the saved preview remains.',
         confirmLabel: 'Continue',
       ),
     );
@@ -171,20 +174,32 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
         keyKind: kind,
         plaintextValue: result!.plaintextValue,
         onCopied: _onPlaintextCopied,
+        onCopyFailed: _onPlaintextCopyFailed,
       ),
     );
+  }
+
+  void _showSnackBar(String message) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    try {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {
+      // Some isolated widget harnesses mount the screen without a Scaffold.
+      // Browser/runtime copy failures should still be contained.
+    }
   }
 
   void _onPlaintextCopied(ProviderKeyKind kind) {
     // Audit-on-copy lands as a separate slice (the proxy does not
     // expose the audit-write endpoint outside rotation). Surface a
-    // SnackBar so the operator knows the copy event happened — the
+    // SnackBar so the operator knows the copy event happened - the
     // real audit hook plugs in here once the audit endpoint lands.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Copied ${kind.displayName} secret value to clipboard.'),
-      ),
-    );
+    _showSnackBar('Copied ${kind.displayName} key to clipboard.');
+  }
+
+  void _onPlaintextCopyFailed(ProviderKeyKind kind) {
+    _showSnackBar('Could not copy ${kind.displayName} key.');
   }
 
   @override
@@ -248,10 +263,9 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Service keys',
-                  style: AppTextStyles.mono15(
+                  'Service access',
+                  style: AppTextStyles.sectionTitle(
                     color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -272,10 +286,9 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Connected services',
-                  style: AppTextStyles.mono15(
+                  'Vendor integrations',
+                  style: AppTextStyles.sectionTitle(
                     color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -283,7 +296,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Text(
-                      'No connected providers are configured yet. This will appear in a future connected-services release.',
+                      'Integration status will appear here after providers are connected.',
                       style: AppTextStyles.body13(
                         color: AppColors.textSecondary,
                       ),
@@ -300,10 +313,9 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Other services',
-                  style: AppTextStyles.mono15(
+                  'Shared services',
+                  style: AppTextStyles.sectionTitle(
                     color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -340,7 +352,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Rotate service keys safely and check whether connected providers are ready. Secret values are shown once, then hidden.',
+          'Check integration status and manage service keys. New keys show once, then stay hidden.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -367,8 +379,8 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View only: rotating service keys requires platform admin access.',
-              style: AppTextStyles.mono11(color: AppColors.textSecondary),
+              'View only: ecosystem admin access is required to manage service keys.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
           ),
         ],
@@ -417,29 +429,28 @@ class _ProviderKeyTile extends StatelessWidget {
               children: [
                 Text(
                   kind.displayName,
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w600,
-                  ),
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   hasRow
-                      ? 'Hidden value: ${row!.maskedValue}'
-                      : 'No active key yet. Rotate to add one.',
+                      ? 'Saved key: ${row!.maskedValue}'
+                      : 'No saved key yet. Use Replace key to add one.',
                   key: Key('admin_integrations_masked_${kind.wireName}'),
-                  style: AppTextStyles.mono11(color: AppColors.textSecondary),
+                  style: hasRow
+                      ? AppTextStyles.mono11(color: AppColors.textSecondary)
+                      : AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 if (hasRow) ...[
                   const SizedBox(height: 2),
                   Text(
-                    'Rotated by ${row!.updatedBy ?? row!.createdBy ?? 'Unknown'} '
-                    'at ${row!.rotatedAt.toUtc().toIso8601String()}',
+                    'Last changed by ${row!.updatedBy ?? row!.createdBy ?? 'Unknown'} '
+                    'at ${adminHumanDateTime(row!.rotatedAt)}',
                     style: AppTextStyles.mono8(color: AppColors.textMuted),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Secret location: ${row!.kmsSecretName}',
+                    'Secure storage ID: ${row!.kmsSecretName}',
                     style: AppTextStyles.mono8(color: AppColors.textMuted),
                   ),
                 ],
@@ -449,10 +460,7 @@ class _ProviderKeyTile extends StatelessWidget {
           if (editingEnabled)
             FilledButton.icon(
               key: Key('admin_integrations_rotate_${kind.wireName}'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.sunset,
-                foregroundColor: AppColors.backgroundSurface,
-              ),
+              style: AdminButtonStyles.primary,
               onPressed: rotating ? null : onRotate,
               icon: rotating
                   ? const SizedBox(
@@ -464,7 +472,7 @@ class _ProviderKeyTile extends StatelessWidget {
                       ),
                     )
                   : const Icon(Icons.refresh, size: 14),
-              label: const Text('Rotate'),
+              label: const Text('Replace key'),
             ),
         ],
       ),
@@ -501,15 +509,12 @@ class _StatusRowTile extends StatelessWidget {
               children: [
                 Text(
                   status.displayName,
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w600,
-                  ),
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   status.detailMessage,
-                  style: AppTextStyles.mono11(color: AppColors.textSecondary),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -523,7 +528,7 @@ class _StatusRowTile extends StatelessWidget {
             ),
             child: Text(
               status.statusLabel,
-              style: AppTextStyles.mono8(color: AppColors.textMuted),
+              style: AppTextStyles.chipLabel(color: AppColors.textMuted),
             ),
           ),
         ],
@@ -564,7 +569,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
       key: const Key('admin_integrations_rotate_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Rotate ${widget.keyKind.displayName}',
+        'Replace ${widget.keyKind.displayName} key',
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
       content: SizedBox(
@@ -576,7 +581,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Paste the new secret value. Only the hidden preview and secure storage location are saved.',
+                'Paste the new key. Only the saved preview and secure storage location are kept.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 12),
@@ -586,7 +591,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
                 obscureText: _obscured,
                 autofocus: true,
                 decoration: InputDecoration(
-                  labelText: 'New secret value',
+                  labelText: 'New key',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(6),
                     borderSide: const BorderSide(
@@ -609,7 +614,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
                     return 'Required';
                   }
                   if (value.trim().length < 9) {
-                    return 'Secret value must be at least 9 characters.';
+                    return 'Key must be at least 9 characters.';
                   }
                   return null;
                 },
@@ -626,10 +631,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
         ),
         FilledButton(
           key: const Key('admin_integrations_rotate_submit_button'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           onPressed: () {
             if (!(_formKey.currentState?.validate() ?? false)) return;
             Navigator.of(context).pop(
@@ -640,7 +642,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
               ),
             );
           },
-          child: const Text('Rotate'),
+          child: const Text('Save key'),
         ),
       ],
     );
@@ -652,11 +654,13 @@ class _OneTimeRevealDialog extends StatefulWidget {
     required this.keyKind,
     required this.plaintextValue,
     required this.onCopied,
+    required this.onCopyFailed,
   });
 
   final ProviderKeyKind keyKind;
   final String plaintextValue;
   final void Function(ProviderKeyKind) onCopied;
+  final void Function(ProviderKeyKind) onCopyFailed;
 
   @override
   State<_OneTimeRevealDialog> createState() => _OneTimeRevealDialogState();
@@ -665,13 +669,30 @@ class _OneTimeRevealDialog extends StatefulWidget {
 class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
   bool _copied = false;
 
+  Future<void> _copyPlaintext() async {
+    if (kIsWeb) {
+      widget.onCopyFailed(widget.keyKind);
+      return;
+    }
+    try {
+      await Clipboard.setData(ClipboardData(text: widget.plaintextValue));
+    } catch (_) {
+      if (!mounted) return;
+      widget.onCopyFailed(widget.keyKind);
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _copied = true);
+    widget.onCopied(widget.keyKind);
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       key: const Key('admin_integrations_reveal_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        '${widget.keyKind.displayName} rotated',
+        '${widget.keyKind.displayName} key saved',
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
       content: SizedBox(
@@ -681,7 +702,7 @@ class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This is the only time the secret value is shown. Store it now because the hidden grid cannot reveal it again.',
+              'This is the only time this key is shown. Store it now; the console cannot reveal it again.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
@@ -703,18 +724,8 @@ class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
               children: [
                 FilledButton.icon(
                   key: const Key('admin_integrations_reveal_copy_button'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.sunset,
-                    foregroundColor: AppColors.backgroundSurface,
-                  ),
-                  onPressed: () async {
-                    await Clipboard.setData(
-                      ClipboardData(text: widget.plaintextValue),
-                    );
-                    if (!mounted) return;
-                    setState(() => _copied = true);
-                    widget.onCopied(widget.keyKind);
-                  },
+                  style: AdminButtonStyles.primary,
+                  onPressed: _copyPlaintext,
                   icon: Icon(
                     _copied ? Icons.check : Icons.content_copy,
                     size: 14,
@@ -811,10 +822,7 @@ class _ConfirmDialog extends StatelessWidget {
         ),
         FilledButton(
           key: const Key('admin_integrations_confirm_ok'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           onPressed: () => Navigator.of(context).pop(true),
           child: Text(confirmLabel),
         ),

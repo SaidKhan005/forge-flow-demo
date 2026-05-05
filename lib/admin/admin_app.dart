@@ -1,4 +1,4 @@
-// Phase 11A.0 — Admin MaterialApp.
+﻿// Phase 11A.0 - Admin MaterialApp.
 //
 // Top-level Flutter Web app for the F&F Operations Console. Wraps
 // the AdminAuthGate so the entire surface area lives behind the
@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
+import 'admin_button_styles.dart';
 import 'admin_routes.dart';
 import 'admin_shell.dart';
 
@@ -39,7 +40,7 @@ class _AdminConsoleAppState extends State<AdminConsoleApp> {
     return MaterialApp(
       title: 'Forge & Flow Admin Console',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.themeData,
+      theme: AdminButtonStyles.applyTo(AppTheme.themeData),
       home: AdminAuthGate(
         source: widget.authSource,
         adminShellBuilder: (context, session) => AdminShell(

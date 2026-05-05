@@ -1,4 +1,4 @@
-// Phase 11A.1 — Operator + location admin screen.
+﻿// Phase 11A.1 - Operator + location admin screen.
 //
 // Admin-side CRUD on operators (`operators` table) and their
 // locations (`locations` table). Supports onboarding a new operator
@@ -15,10 +15,13 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
+import '../../utils/iana_timezones.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
-// Phase 8.0 — vendor connections mount (per-location admin sub-route).
+// Phase 8.0 - vendor connections mount (per-location admin sub-route).
 // Append-only addition; the existing Edit / Remove / Make-primary
 // affordances stay untouched.
 import 'vendor_connections/vendor_connections_admin_mount.dart';
@@ -28,9 +31,11 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     super.key,
     required this.gateway,
     this.idempotencyKeyFactory,
+    this.onOpenSupportLogs,
   });
 
   final OperatorLocationAdminGateway gateway;
+  final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
 
   /// Factory for the idempotency key the gateway attaches to each
   /// mutating call. Production binds this to a UUID-shaped generator;
@@ -149,21 +154,15 @@ class _OperatorLocationAdminScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             AdminPageHeader(
-              title: 'Customers',
+              title: 'Operators',
               subtitle:
-                  'Create customer accounts, manage locations, and pause or restore access when needed.',
+                  'Add operators, manage their locations, and pause access when needed.',
               trailing: FilledButton.icon(
                 key: const Key('admin_operators_new_button'),
                 onPressed: _openOnboardingDialog,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
+                style: AdminButtonStyles.primary,
                 icon: const Icon(Icons.add, size: 16),
-                label: const Text('New customer'),
+                label: const Text('New operator'),
               ),
             ),
             const SizedBox(height: 14),
@@ -211,12 +210,12 @@ class _OperatorLocationAdminScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'No customers yet',
+                  'No operators yet',
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Select "New customer" to create the first account, primary location, and admin assignment.',
+                  'Use "New operator" to add the operator, primary location, and first admin user.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
@@ -226,6 +225,8 @@ class _OperatorLocationAdminScreenState
       );
     }
     return AdminMasterDetailLayout(
+      masterWidth: 300,
+      compactMasterHeight: 240,
       master: _OperatorList(
         bundles: _bundles,
         selectedOperatorId: _selectedOperatorId,
@@ -242,6 +243,7 @@ class _OperatorLocationAdminScreenState
               onEditLocation: _openEditLocationDialog,
               onRemoveLocation: _removeLocation,
               onSetPrimary: _setPrimaryLocation,
+              onOpenSupportLogs: widget.onOpenSupportLogs,
             ),
     );
   }
@@ -360,7 +362,7 @@ class _OperatorLocationAdminScreenState
   }
 }
 
-class _OperatorList extends StatelessWidget {
+class _OperatorList extends StatefulWidget {
   const _OperatorList({
     required this.bundles,
     required this.selectedOperatorId,
@@ -372,7 +374,39 @@ class _OperatorList extends StatelessWidget {
   final ValueChanged<String> onSelect;
 
   @override
+  State<_OperatorList> createState() => _OperatorListState();
+}
+
+class _OperatorListState extends State<_OperatorList> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  bool _matches(OperatorAdminBundle bundle, String query) {
+    if (query.isEmpty) return true;
+    final operator = bundle.operator;
+    final haystack = <String>[
+      operator.businessName,
+      operator.ownerEmail,
+      operator.subscriptionTier,
+      operator.preferredCurrency,
+      for (final location in bundle.locations) location.name,
+      for (final location in bundle.locations) location.timezone,
+    ].join(' ').toLowerCase();
+    return haystack.contains(query);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final query = _search.text.trim().toLowerCase();
+    final filtered = widget.bundles
+        .where((bundle) => _matches(bundle, query))
+        .toList(growable: false);
+
     return Container(
       key: const Key('admin_operators_list'),
       decoration: BoxDecoration(
@@ -380,71 +414,174 @@ class _OperatorList extends StatelessWidget {
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: bundles.length,
-        separatorBuilder: (_, __) => Container(
-          height: 1,
-          color: AppColors.borderSubtle.withValues(alpha: 0.4),
-        ),
-        itemBuilder: (context, index) {
-          final bundle = bundles[index];
-          final selected = bundle.operator.operatorId == selectedOperatorId;
-          return Material(
-            color: selected
-                ? AppColors.sunset.withValues(alpha: 0.10)
-                : Colors.transparent,
-            child: InkWell(
-              key: Key('admin_operator_row_${bundle.operator.operatorId}'),
-              onTap: () => onSelect(bundle.operator.operatorId),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            bundle.operator.businessName,
-                            style: AppTextStyles.mono14(
-                              color: AppColors.textPrimary,
-                              weight: FontWeight.w600,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+              child: TextField(
+                key: const Key('admin_operators_search_field'),
+                controller: _search,
+                onChanged: (_) => setState(() {}),
+                style: AppTextStyles.body14(color: AppColors.textPrimary),
+                decoration: InputDecoration(
+                  hintText: 'Search operators',
+                  hintStyle: AppTextStyles.body13(color: AppColors.textMuted),
+                  prefixIcon: const Icon(
+                    Icons.search,
+                    size: 18,
+                    color: AppColors.textMuted,
+                  ),
+                  suffixIcon: query.isEmpty
+                      ? null
+                      : IconButton(
+                          key: const Key('admin_operators_search_clear'),
+                          tooltip: 'Clear search',
+                          icon: const Icon(Icons.close, size: 16),
+                          color: AppColors.textMuted,
+                          onPressed: () {
+                            _search.clear();
+                            setState(() {});
+                          },
                         ),
-                        if (bundle.operator.isSuspended)
-                          _StatusPill(
-                            label: 'suspended',
-                            color: AppColors.negative,
-                          ),
-                      ],
+                  isDense: true,
+                  filled: true,
+                  fillColor: AppColors.backgroundSurface,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(
+                      color: AppColors.borderSubtle,
+                      width: 1,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      bundle.operator.ownerEmail,
-                      style: AppTextStyles.mono11(
-                        color: AppColors.textSecondary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(
+                      color: AppColors.borderSubtle,
+                      width: 1,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${bundle.operator.subscriptionTier} '
-                      '- ${bundle.locations.length} location'
-                      '${bundle.locations.length == 1 ? '' : 's'}',
-                      style: AppTextStyles.mono8(color: AppColors.textMuted),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(
+                      color: AppColors.sunset,
+                      width: 1.5,
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          );
-        },
+            Expanded(
+              child: filtered.isEmpty
+                  ? Center(
+                      key: const Key('admin_operators_no_matches'),
+                      child: Text(
+                        'No operators match',
+                        style: AppTextStyles.body13(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final bundle = filtered[index];
+                        final selected =
+                            bundle.operator.operatorId ==
+                            widget.selectedOperatorId;
+                        return _OperatorTile(
+                          key: Key(
+                            'admin_operator_row_${bundle.operator.operatorId}',
+                          ),
+                          bundle: bundle,
+                          selected: selected,
+                          onSelect: () =>
+                              widget.onSelect(bundle.operator.operatorId),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OperatorTile extends StatelessWidget {
+  const _OperatorTile({
+    super.key,
+    required this.bundle,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final OperatorAdminBundle bundle;
+  final bool selected;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final operator = bundle.operator;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Material(
+        color: selected
+            ? AppColors.sunset.withValues(alpha: 0.09)
+            : AppColors.backgroundSurface,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          onTap: onSelect,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: selected ? AppColors.sunset : AppColors.borderSubtle,
+                width: selected ? 1.4 : 1,
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    operator.businessName,
+                    style: AppTextStyles.sectionTitle(
+                      color: AppColors.textPrimary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
+                ),
+                if (!selected) ...[
+                  const SizedBox(width: 12),
+                  OutlinedButton(
+                    key: Key('admin_operator_manage_${operator.operatorId}'),
+                    onPressed: onSelect,
+                    style: AdminButtonStyles.secondary(
+                      minWidth: 132,
+                      minHeight: 42,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                    ),
+                    child: const Text('Click to manage'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -460,6 +597,7 @@ class _OperatorDetail extends StatelessWidget {
     required this.onEditLocation,
     required this.onRemoveLocation,
     required this.onSetPrimary,
+    required this.onOpenSupportLogs,
   });
 
   final OperatorAdminBundle bundle;
@@ -470,6 +608,7 @@ class _OperatorDetail extends StatelessWidget {
   final ValueChanged<LocationAdminRecord> onEditLocation;
   final ValueChanged<LocationAdminRecord> onRemoveLocation;
   final void Function(OperatorAdminBundle, LocationAdminRecord) onSetPrimary;
+  final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
 
   @override
   Widget build(BuildContext context) {
@@ -502,19 +641,24 @@ class _OperatorDetail extends StatelessWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 AdminDetailRow(
                   label: 'Owner email',
                   value: operator.ownerEmail,
                 ),
-                AdminDetailRow(label: 'Plan', value: operator.subscriptionTier),
+                AdminDetailRow(
+                  key: const Key('admin_operator_ai_plan_detail_row'),
+                  label: 'Forge & Flow AI plan',
+                  value: operator.subscriptionTier,
+                  muted: true,
+                ),
                 AdminDetailRow(
                   label: 'Currency',
                   value: operator.preferredCurrency,
                 ),
                 AdminDetailRow(
-                  label: 'Main location',
-                  value: bundle.primaryLocation?.name ?? 'No main location',
+                  label: 'Primary location',
+                  value: bundle.primaryLocation?.name ?? 'No primary location',
                 ),
                 const SizedBox(height: 14),
                 Wrap(
@@ -525,7 +669,17 @@ class _OperatorDetail extends StatelessWidget {
                       key: const Key('admin_operator_edit_button'),
                       onPressed: () => onEditOperator(bundle),
                       icon: const Icon(Icons.edit_outlined, size: 14),
-                      label: const Text('Edit customer'),
+                      label: const Text('Edit operator'),
+                    ),
+                    OutlinedButton.icon(
+                      key: Key(
+                        'admin_operator_support_logs_${operator.operatorId}',
+                      ),
+                      onPressed: onOpenSupportLogs == null
+                          ? null
+                          : () => onOpenSupportLogs!(operator.operatorId, null),
+                      icon: const Icon(Icons.bug_report_outlined, size: 14),
+                      label: const Text('View logs'),
                     ),
                     if (operator.isSuspended)
                       OutlinedButton.icon(
@@ -540,60 +694,63 @@ class _OperatorDetail extends StatelessWidget {
                         onPressed: () => onSuspend(bundle),
                         icon: const Icon(Icons.pause_outlined, size: 14),
                         label: const Text('Suspend'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.negative,
-                          side: const BorderSide(
-                            color: AppColors.negative,
-                            width: 1,
-                          ),
-                        ),
+                        style: AdminButtonStyles.dangerSecondary(),
                       ),
                   ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          AdminCard(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    Text(
-                      'Restaurant locations',
-                      style: AppTextStyles.mono15(
-                        color: AppColors.textPrimary,
-                        weight: FontWeight.w700,
+          const SizedBox(height: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 250),
+            child: AdminCard(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      Text(
+                        'Locations',
+                        style: AppTextStyles.sectionTitle(
+                          color: AppColors.textPrimary,
+                        ),
                       ),
-                    ),
-                    OutlinedButton.icon(
-                      key: const Key('admin_operator_add_location_button'),
-                      onPressed: () => onAddLocation(bundle),
-                      icon: const Icon(Icons.add, size: 14),
-                      label: const Text('Add location'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ...bundle.locations.map(
-                  (location) => _LocationRow(
-                    key: Key('admin_location_row_${location.locationId}'),
-                    location: location,
-                    isPrimary:
-                        bundle.operator.primaryLocationId ==
-                        location.locationId,
-                    onEdit: () => onEditLocation(location),
-                    onRemove: () => onRemoveLocation(location),
-                    onMakePrimary: () => onSetPrimary(bundle, location),
+                      OutlinedButton.icon(
+                        key: const Key('admin_operator_add_location_button'),
+                        onPressed: () => onAddLocation(bundle),
+                        icon: const Icon(Icons.add, size: 14),
+                        label: const Text('Add location'),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 18),
+                  ...bundle.locations.map(
+                    (location) => _LocationRow(
+                      key: Key('admin_location_row_${location.locationId}'),
+                      location: location,
+                      muted: operator.isSuspended,
+                      isPrimary:
+                          bundle.operator.primaryLocationId ==
+                          location.locationId,
+                      onEdit: () => onEditLocation(location),
+                      onRemove: () => onRemoveLocation(location),
+                      onMakePrimary: () => onSetPrimary(bundle, location),
+                      onOpenSupportLogs: onOpenSupportLogs == null
+                          ? null
+                          : () => onOpenSupportLogs!(
+                              operator.operatorId,
+                              location.locationId,
+                            ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -606,10 +763,95 @@ class _LocationRow extends StatelessWidget {
   const _LocationRow({
     super.key,
     required this.location,
+    required this.muted,
     required this.isPrimary,
     required this.onEdit,
     required this.onRemove,
     required this.onMakePrimary,
+    required this.onOpenSupportLogs,
+  });
+
+  final LocationAdminRecord location;
+  final bool muted;
+  final bool isPrimary;
+  final VoidCallback onEdit;
+  final VoidCallback onRemove;
+  final VoidCallback onMakePrimary;
+  final VoidCallback? onOpenSupportLogs;
+
+  @override
+  Widget build(BuildContext context) {
+    final rolloverHour = location.businessDayRolloverHour ?? 0;
+    final summary = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            Text(
+              location.name,
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (isPrimary)
+              _StatusPill(label: 'primary location', color: AppColors.peacock),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '${location.timezone} - business day starts ${rolloverHour.toString().padLeft(2, '0')}:00',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+    final actions = _LocationActionWrap(
+      location: location,
+      isPrimary: isPrimary,
+      onEdit: onEdit,
+      onRemove: onRemove,
+      onMakePrimary: onMakePrimary,
+      onOpenSupportLogs: onOpenSupportLogs,
+    );
+
+    return Opacity(
+      key: Key('admin_location_suspended_fade_${location.locationId}'),
+      opacity: muted ? 0.52 : 1,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 620) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [summary, const SizedBox(height: 10), actions],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: summary),
+                const SizedBox(width: 18),
+                Flexible(child: actions),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _LocationActionWrap extends StatelessWidget {
+  const _LocationActionWrap({
+    required this.location,
+    required this.isPrimary,
+    required this.onEdit,
+    required this.onRemove,
+    required this.onMakePrimary,
+    required this.onOpenSupportLogs,
   });
 
   final LocationAdminRecord location;
@@ -617,88 +859,132 @@ class _LocationRow extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onRemove;
   final VoidCallback onMakePrimary;
+  final VoidCallback? onOpenSupportLogs;
 
   @override
   Widget build(BuildContext context) {
-    final rolloverHour = location.businessDayRolloverHour ?? 0;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    Text(
-                      location.name,
-                      style: AppTextStyles.mono14(
-                        color: AppColors.textPrimary,
-                        weight: FontWeight.w600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (isPrimary)
-                      _StatusPill(label: 'main', color: AppColors.peacock),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${location.timezone} - business day starts ${rolloverHour.toString().padLeft(2, '0')}:00',
-                  style: AppTextStyles.mono11(color: AppColors.textSecondary),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (!isPrimary)
+          _LocationActionButton(
+            buttonKey: Key(
+              'admin_location_make_primary_${location.locationId}',
             ),
+            label: 'Make primary location',
+            icon: Icons.star_outline,
+            tooltip: 'Make primary location',
+            minWidth: 172,
+            onPressed: onMakePrimary,
           ),
-          if (!isPrimary)
-            IconButton(
-              key: Key('admin_location_make_primary_${location.locationId}'),
-              tooltip: 'Make main location',
-              onPressed: onMakePrimary,
-              icon: const Icon(Icons.star_outline, size: 16),
+        _LocationActionButton(
+          buttonKey: Key('admin_location_support_logs_${location.locationId}'),
+          label: 'View logs',
+          icon: Icons.bug_report_outlined,
+          tooltip: 'View logs for this location',
+          minWidth: 116,
+          onPressed: onOpenSupportLogs,
+        ),
+        _LocationActionButton(
+          buttonKey: Key('admin_location_edit_${location.locationId}'),
+          label: 'Edit',
+          icon: Icons.edit_outlined,
+          tooltip: 'Edit location',
+          minWidth: 90,
+          onPressed: onEdit,
+        ),
+        Builder(
+          builder: (subContext) => _LocationActionButton(
+            buttonKey: Key(
+              'admin_location_vendor_connections_${location.locationId}',
             ),
-          IconButton(
-            key: Key('admin_location_edit_${location.locationId}'),
-            tooltip: 'Edit location',
-            onPressed: onEdit,
-            icon: const Icon(Icons.edit_outlined, size: 16),
-          ),
-          // Phase 8.0 — vendor connections sub-route for this
-          // (operator_id, location_id). Append-only; the existing
-          // Make-primary / Edit / Remove buttons stay untouched.
-          Builder(
-            builder: (subContext) => IconButton(
-              key: Key(
-                'admin_location_vendor_connections_${location.locationId}',
-              ),
-              tooltip: 'Vendor connections',
-              onPressed: () {
-                Navigator.of(subContext).push(
-                  MaterialPageRoute<void>(
-                    settings: const RouteSettings(name: '/vendor-connections'),
-                    builder: (_) => VendorConnectionsAdminMount(
-                      operatorId: location.operatorId,
-                      locationId: location.locationId,
-                    ),
+            label: 'Manage integrations',
+            icon: Icons.link,
+            tooltip: 'Manage integrations',
+            minWidth: 172,
+            emphasized: true,
+            onPressed: () {
+              Navigator.of(subContext).push(
+                MaterialPageRoute<void>(
+                  settings: const RouteSettings(name: '/vendor-connections'),
+                  builder: (_) => VendorConnectionsAdminMount(
+                    operatorId: location.operatorId,
+                    locationId: location.locationId,
+                    locationName: location.name,
                   ),
-                );
-              },
-              icon: const Icon(Icons.link, size: 16),
-            ),
+                ),
+              );
+            },
           ),
-          IconButton(
-            key: Key('admin_location_remove_${location.locationId}'),
-            tooltip: 'Remove location',
-            onPressed: isPrimary ? null : onRemove,
-            icon: const Icon(Icons.delete_outline, size: 16),
-          ),
-        ],
+        ),
+        _LocationActionButton(
+          buttonKey: Key('admin_location_remove_${location.locationId}'),
+          label: 'Remove',
+          icon: Icons.delete_outline,
+          tooltip: 'Remove location',
+          minWidth: 108,
+          destructive: true,
+          onPressed: isPrimary ? null : onRemove,
+        ),
+      ],
+    );
+  }
+}
+
+class _LocationActionButton extends StatelessWidget {
+  const _LocationActionButton({
+    required this.buttonKey,
+    required this.label,
+    required this.icon,
+    required this.tooltip,
+    required this.minWidth,
+    required this.onPressed,
+    this.emphasized = false,
+    this.destructive = false,
+  });
+
+  final Key buttonKey;
+  final String label;
+  final IconData icon;
+  final String tooltip;
+  final double minWidth;
+  final VoidCallback? onPressed;
+  final bool emphasized;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final activeColor = destructive
+        ? AppColors.negative
+        : emphasized
+        ? AppColors.sunsetDark
+        : AppColors.textPrimary;
+    final borderColor = enabled
+        ? (destructive
+              ? AppColors.negative
+              : emphasized
+              ? AppColors.sunset
+              : AppColors.borderSubtle)
+        : AppColors.borderSubtle;
+
+    return Tooltip(
+      message: tooltip,
+      child: OutlinedButton.icon(
+        key: buttonKey,
+        onPressed: onPressed,
+        style: AdminButtonStyles.secondary(
+          foregroundColor: activeColor,
+          borderColor: borderColor,
+          minWidth: minWidth,
+          emphasized: emphasized,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        ),
+        icon: Icon(icon, size: 15),
+        label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
       ),
     );
   }
@@ -719,7 +1005,7 @@ class _StatusPill extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(label, style: AppTextStyles.mono8(color: color)),
+      child: Text(label, style: AppTextStyles.chipLabel(color: color)),
     );
   }
 }
@@ -764,7 +1050,7 @@ class _OnboardOperatorDialog extends StatefulWidget {
   const _OnboardOperatorDialog({required this.idempotencyKey});
 
   /// Per-action idempotency key minted by the screen and threaded
-  /// down so the proxy dedups on retries — see `_nextIdempotencyKey`
+  /// down so the proxy dedups on retries - see `_nextIdempotencyKey`
   /// in `_OperatorLocationAdminScreenState`.
   final String idempotencyKey;
 
@@ -778,8 +1064,8 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
   final _ownerEmail = TextEditingController();
   final _adminEmail = TextEditingController();
   final _locationName = TextEditingController();
-  final _locationTimezone = TextEditingController(text: 'America/Toronto');
-  String _subscriptionTier = 'launch';
+  String _locationTimezone = 'America/Toronto';
+  final String _subscriptionTier = 'launch';
   String _preferredCurrency = 'CAD';
   int _rolloverHour = 4;
 
@@ -789,7 +1075,6 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
     _ownerEmail.dispose();
     _adminEmail.dispose();
     _locationName.dispose();
-    _locationTimezone.dispose();
     super.dispose();
   }
 
@@ -802,7 +1087,7 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
         subscriptionTier: _subscriptionTier,
         preferredCurrency: _preferredCurrency,
         primaryLocationName: _locationName.text.trim(),
-        primaryLocationTimezone: _locationTimezone.text.trim(),
+        primaryLocationTimezone: _locationTimezone,
         primaryLocationRolloverHour: _rolloverHour,
         adminUserEmail: _adminEmail.text.trim(),
         idempotencyKey: widget.idempotencyKey,
@@ -851,10 +1136,7 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
                   validator: _requiredValidator,
                 ),
                 const SizedBox(height: 12),
-                _SubscriptionTierDropdown(
-                  value: _subscriptionTier,
-                  onChanged: (v) => setState(() => _subscriptionTier = v),
-                ),
+                _SubscriptionTierDropdown(value: _subscriptionTier),
                 const SizedBox(height: 12),
                 _CurrencyDropdown(
                   value: _preferredCurrency,
@@ -863,7 +1145,7 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
                 const SizedBox(height: 16),
                 Text(
                   'Primary location',
-                  style: AppTextStyles.mono11(color: AppColors.textMuted),
+                  style: AppTextStyles.uiLabel(color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 6),
                 _DialogField(
@@ -873,11 +1155,10 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
                   validator: _requiredValidator,
                 ),
                 const SizedBox(height: 12),
-                _DialogField(
+                _TimezoneDropdown(
                   fieldKey: const Key('admin_onboard_location_timezone'),
-                  controller: _locationTimezone,
-                  label: 'IANA timezone (e.g. America/Toronto)',
-                  validator: _timezoneValidator,
+                  value: _locationTimezone,
+                  onChanged: (v) => setState(() => _locationTimezone = v),
                 ),
                 const SizedBox(height: 12),
                 _RolloverHourDropdown(
@@ -898,10 +1179,7 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
         FilledButton(
           key: const Key('admin_onboard_submit_button'),
           onPressed: _submit,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           child: const Text('Onboard operator'),
         ),
       ],
@@ -1001,10 +1279,7 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
                   validator: _requiredValidator,
                 ),
                 const SizedBox(height: 12),
-                _SubscriptionTierDropdown(
-                  value: _subscriptionTier,
-                  onChanged: (v) => setState(() => _subscriptionTier = v),
-                ),
+                _SubscriptionTierDropdown(value: _subscriptionTier),
                 const SizedBox(height: 12),
                 _CurrencyDropdown(
                   value: _preferredCurrency,
@@ -1030,10 +1305,7 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
         FilledButton(
           key: const Key('admin_edit_submit_button'),
           onPressed: _submit,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           child: const Text('Save'),
         ),
       ],
@@ -1060,7 +1332,7 @@ class _LocationDialog extends StatefulWidget {
 
 class _LocationDialogState extends State<_LocationDialog> {
   late final TextEditingController _name;
-  late final TextEditingController _timezone;
+  late String _timezone;
   late int _rolloverHour;
   final _formKey = GlobalKey<FormState>();
 
@@ -1068,16 +1340,13 @@ class _LocationDialogState extends State<_LocationDialog> {
   void initState() {
     super.initState();
     _name = TextEditingController(text: widget.existing?.name ?? '');
-    _timezone = TextEditingController(
-      text: widget.existing?.timezone ?? 'America/Toronto',
-    );
+    _timezone = widget.existing?.timezone ?? 'America/Toronto';
     _rolloverHour = widget.existing?.businessDayRolloverHour ?? 4;
   }
 
   @override
   void dispose() {
     _name.dispose();
-    _timezone.dispose();
     super.dispose();
   }
 
@@ -1088,7 +1357,7 @@ class _LocationDialogState extends State<_LocationDialog> {
         LocationCreateCommand(
           operatorId: widget.operatorId,
           name: _name.text.trim(),
-          timezone: _timezone.text.trim(),
+          timezone: _timezone,
           businessDayRolloverHour: _rolloverHour,
           idempotencyKey: widget.idempotencyKey,
         ),
@@ -1098,7 +1367,7 @@ class _LocationDialogState extends State<_LocationDialog> {
         LocationPatchCommand(
           locationId: widget.existing!.locationId,
           name: _name.text.trim(),
-          timezone: _timezone.text.trim(),
+          timezone: _timezone,
           businessDayRolloverHour: _rolloverHour,
           idempotencyKey: widget.idempotencyKey,
         ),
@@ -1133,11 +1402,10 @@ class _LocationDialogState extends State<_LocationDialog> {
                 validator: _requiredValidator,
               ),
               const SizedBox(height: 12),
-              _DialogField(
+              _TimezoneDropdown(
                 fieldKey: const Key('admin_location_timezone_field'),
-                controller: _timezone,
-                label: 'IANA timezone',
-                validator: _timezoneValidator,
+                value: _timezone,
+                onChanged: (v) => setState(() => _timezone = v),
               ),
               const SizedBox(height: 12),
               _RolloverHourDropdown(
@@ -1157,10 +1425,7 @@ class _LocationDialogState extends State<_LocationDialog> {
         FilledButton(
           key: const Key('admin_location_submit_button'),
           onPressed: _submit,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           child: Text(isEdit ? 'Save' : 'Add'),
         ),
       ],
@@ -1204,10 +1469,7 @@ class _ConfirmDialog extends StatelessWidget {
         FilledButton(
           key: const Key('admin_confirm_confirm_button'),
           onPressed: () => Navigator.of(context).pop(true),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.negative,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.danger,
           child: Text(confirmLabel),
         ),
       ],
@@ -1244,8 +1506,8 @@ class _DialogField extends StatelessWidget {
       style: AppTextStyles.body14(color: AppColors.textPrimary),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
-        floatingLabelStyle: AppTextStyles.mono11(color: AppColors.sunsetDark),
+        labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
+        floatingLabelStyle: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
         filled: true,
         fillColor: AppColors.backgroundSurface,
         contentPadding: const EdgeInsets.symmetric(
@@ -1264,13 +1526,9 @@ class _DialogField extends StatelessWidget {
 }
 
 class _SubscriptionTierDropdown extends StatelessWidget {
-  const _SubscriptionTierDropdown({
-    required this.value,
-    required this.onChanged,
-  });
+  const _SubscriptionTierDropdown({required this.value});
 
   final String value;
-  final ValueChanged<String> onChanged;
 
   static const List<String> _tiers = <String>[
     'launch',
@@ -1284,24 +1542,32 @@ class _SubscriptionTierDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      key: const Key('admin_subscription_tier_dropdown'),
-      initialValue: value,
-      decoration: InputDecoration(
-        labelText: 'Subscription tier',
-        labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _StatusPill(label: 'Coming soon', color: AppColors.peacockDark),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<String>(
+          key: const Key('admin_subscription_tier_dropdown'),
+          initialValue: value,
+          decoration: InputDecoration(
+            labelText: 'Forge & Flow AI plan',
+            labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(
+                color: AppColors.borderSubtle,
+                width: 1,
+              ),
+            ),
+          ),
+          items: <DropdownMenuItem<String>>[
+            for (final tier in _tiers)
+              DropdownMenuItem<String>(value: tier, child: Text(tier)),
+          ],
+          onChanged: null,
         ),
-      ),
-      items: <DropdownMenuItem<String>>[
-        for (final tier in _tiers)
-          DropdownMenuItem<String>(value: tier, child: Text(tier)),
       ],
-      onChanged: (v) {
-        if (v != null) onChanged(v);
-      },
     );
   }
 }
@@ -1327,7 +1593,7 @@ class _CurrencyDropdown extends StatelessWidget {
       initialValue: value,
       decoration: InputDecoration(
         labelText: 'Preferred currency',
-        labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
+        labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
           borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
@@ -1340,6 +1606,277 @@ class _CurrencyDropdown extends StatelessWidget {
       onChanged: (v) {
         if (v != null) onChanged(v);
       },
+    );
+  }
+}
+
+class _TimezoneDropdown extends StatelessWidget {
+  const _TimezoneDropdown({
+    required this.fieldKey,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final Key fieldKey;
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  static const List<String> _priorityTimezones = <String>[
+    'America/Toronto',
+    'America/Vancouver',
+    'America/St_Johns',
+    'America/Halifax',
+    'America/New_York',
+    'America/Chicago',
+    'America/Winnipeg',
+    'America/Regina',
+    'America/Denver',
+    'America/Edmonton',
+    'America/Phoenix',
+    'America/Los_Angeles',
+    'America/Anchorage',
+    'Pacific/Honolulu',
+    'UTC',
+  ];
+
+  List<String> _options() {
+    final names = ianaTimezoneNames();
+    final seen = <String>{};
+    final ordered = <String>[];
+
+    void add(String timezone) {
+      if (seen.add(timezone)) ordered.add(timezone);
+    }
+
+    if (!names.contains(value)) add(value);
+    for (final timezone in _priorityTimezones) {
+      if (names.contains(timezone) || timezone == value) add(timezone);
+    }
+    for (final timezone in names) {
+      add(timezone);
+    }
+    return ordered;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FormField<String>(
+      initialValue: value,
+      validator: _timezoneValidator,
+      builder: (field) {
+        return InkWell(
+          key: fieldKey,
+          borderRadius: BorderRadius.circular(6),
+          onTap: () async {
+            final selected = await showDialog<String>(
+              context: context,
+              builder: (_) => _TimezonePickerDialog(
+                options: _options(),
+                selectedTimezone: value,
+              ),
+            );
+            if (selected == null || !context.mounted) return;
+            field.didChange(selected);
+            onChanged(selected);
+          },
+          child: InputDecorator(
+            decoration: InputDecoration(
+              labelText: 'IANA timezone',
+              labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
+              errorText: field.errorText,
+              suffixIcon: const Icon(
+                Icons.search,
+                size: 18,
+                color: AppColors.textMuted,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(
+                  color: AppColors.borderSubtle,
+                  width: 1,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(
+                  color: AppColors.borderSubtle,
+                  width: 1,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(
+                  color: AppColors.sunset,
+                  width: 1.5,
+                ),
+              ),
+            ),
+            child: Text(
+              value,
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TimezonePickerDialog extends StatefulWidget {
+  const _TimezonePickerDialog({
+    required this.options,
+    required this.selectedTimezone,
+  });
+
+  final List<String> options;
+  final String selectedTimezone;
+
+  @override
+  State<_TimezonePickerDialog> createState() => _TimezonePickerDialogState();
+}
+
+class _TimezonePickerDialogState extends State<_TimezonePickerDialog> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  List<String> _filteredOptions() {
+    final query = _search.text.trim().toLowerCase();
+    if (query.isEmpty) return widget.options;
+    return widget.options
+        .where((timezone) => timezone.toLowerCase().contains(query))
+        .toList(growable: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _filteredOptions();
+    return AlertDialog(
+      key: const Key('admin_timezone_picker_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      title: Text(
+        'Select IANA timezone',
+        style: AppTextStyles.display20(color: AppColors.textPrimary),
+      ),
+      content: SizedBox(
+        width: 420,
+        height: 430,
+        child: Column(
+          children: [
+            TextField(
+              key: const Key('admin_timezone_search_field'),
+              controller: _search,
+              autofocus: true,
+              onChanged: (_) => setState(() {}),
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                hintText: 'Search timezones',
+                hintStyle: AppTextStyles.body13(color: AppColors.textMuted),
+                prefixIcon: const Icon(
+                  Icons.search,
+                  size: 18,
+                  color: AppColors.textMuted,
+                ),
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: const BorderSide(
+                    color: AppColors.borderSubtle,
+                    width: 1,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: const BorderSide(
+                    color: AppColors.borderSubtle,
+                    width: 1,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: const BorderSide(
+                    color: AppColors.sunset,
+                    width: 1.5,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: filtered.isEmpty
+                  ? Center(
+                      key: const Key('admin_timezone_no_matches'),
+                      child: Text(
+                        'No timezones match',
+                        style: AppTextStyles.body13(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, __) => Container(
+                        height: 1,
+                        color: AppColors.borderSubtle.withValues(alpha: 0.4),
+                      ),
+                      itemBuilder: (context, index) {
+                        final timezone = filtered[index];
+                        final selected = timezone == widget.selectedTimezone;
+                        return Material(
+                          color: selected
+                              ? AppColors.sunset.withValues(alpha: 0.10)
+                              : Colors.transparent,
+                          child: InkWell(
+                            key: Key('admin_timezone_option_$timezone'),
+                            onTap: () => Navigator.of(context).pop(timezone),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      timezone,
+                                      key: Key(
+                                        'admin_timezone_option_text_$timezone',
+                                      ),
+                                      style: AppTextStyles.body14(
+                                        color: AppColors.textPrimary,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (selected)
+                                    const Icon(
+                                      Icons.check,
+                                      size: 16,
+                                      color: AppColors.sunsetDark,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const Key('admin_timezone_cancel_button'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
     );
   }
 }
@@ -1357,7 +1894,7 @@ class _RolloverHourDropdown extends StatelessWidget {
       initialValue: value,
       decoration: InputDecoration(
         labelText: 'Business-day rollover hour (0-23)',
-        labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
+        labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
           borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
@@ -1395,7 +1932,7 @@ class _PrimaryLocationDropdown extends StatelessWidget {
       initialValue: value,
       decoration: InputDecoration(
         labelText: 'Primary location',
-        labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
+        labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
           borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),

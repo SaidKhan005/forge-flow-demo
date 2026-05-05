@@ -9973,8 +9973,10 @@ Future<void> routeRequest(
               path: path,
               gateway: debugConsoleAdminGateway,
               actorUserId: actor.userId,
-              includeFullContent:
-                  _callerHasAnyRole(actor, kFfDebugConsoleFullContentRoles),
+              includeFullContent: _callerHasAnyRole(
+                actor,
+                kFfDebugConsoleFullContentRoles,
+              ),
             );
           } catch (error, stackTrace) {
             if (_maybeWriteDependencyTimeout(response, error)) return;
@@ -9994,8 +9996,7 @@ Future<void> routeRequest(
             );
             _writeJson(response, 503, <String, Object?>{
               'error': 'debug_console_admin_unavailable',
-              'message':
-                  'debug console operation is unavailable; please retry',
+              'message': 'debug console operation is unavailable; please retry',
             });
           }
           return;
@@ -10057,8 +10058,7 @@ Future<void> routeRequest(
             );
             _writeJson(response, 503, <String, Object?>{
               'error': 'observability_admin_unavailable',
-              'message':
-                  'observability operation is unavailable; please retry',
+              'message': 'observability operation is unavailable; please retry',
             });
           }
           return;
@@ -10130,6 +10130,13 @@ Future<void> routeRequest(
           } catch (error, stackTrace) {
             if (_maybeWriteDependencyTimeout(response, error)) return;
             if (error is _AdminInputError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is AuthOperationRejected) {
               _writeJson(response, error.statusCode, <String, Object?>{
                 'error': error.code,
                 'message': error.message,

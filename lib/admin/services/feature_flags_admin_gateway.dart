@@ -1,19 +1,19 @@
-// Phase 11A.7 — Feature flags admin gateway.
+﻿// Phase 11A.7 - Feature flags admin gateway.
 //
 // Translates the screen's commands into proxy
 // `/v1/admin/feature-flags/*` HTTP calls. The admin Flutter client
 // never holds a Postgres connection string and never reaches the
-// database directly — every read/write flows through the F&F admin
+// database directly - every read/write flows through the F&F admin
 // proxy.
 //
 // Two implementations ship in this slice:
 //
-//   * [HttpFeatureFlagsAdminGateway] — production. GET/POST against
+//   * [HttpFeatureFlagsAdminGateway] - production. GET/POST against
 //     the proxy with the signed-in admin's bearer token. The toggle
 //     POST carries an `Idempotency-Key` header so retries collapse to
 //     one ledger row + one audit row.
 //
-//   * [InMemoryFeatureFlagsAdminGateway] — demo + widget tests.
+//   * [InMemoryFeatureFlagsAdminGateway] - demo + widget tests.
 //     Mutates an in-memory list so the screen runs end-to-end in
 //     `kDemoMode` without a backend. Validation rules mirror the
 //     proxy: unknown flag_id → 404, idempotency-key reuse → cached
@@ -162,7 +162,7 @@ class HttpFeatureFlagsAdminGateway implements FeatureFlagsAdminGateway {
 }
 
 /// In-memory gateway used by the demo walkthrough and widget tests.
-/// Persists nothing across runs — every construction starts from
+/// Persists nothing across runs - every construction starts from
 /// [seed]. Validation rules mirror the proxy:
 ///
 ///   * Unknown `flag_id` → 404 `unknown_flag`.

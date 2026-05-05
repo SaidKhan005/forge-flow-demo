@@ -1,21 +1,21 @@
-// Phase 11A.6 — Observability admin gateway.
+// Phase 11A.6 - Observability admin gateway.
 //
 // The admin Flutter client never holds a Postgres connection or
-// Cloud Run admin credentials directly — every read flows through the
+// Cloud Run admin credentials directly - every read flows through the
 // F&F admin proxy. This gateway returns the cost-telemetry,
 // dormancy, margin, cap-event, graph, latency, and Cloud Run surfaces
 // the 11A.6 dashboard renders.
 //
 // Two implementations ship in this slice:
 //
-//   * [HttpObservabilityAdminGateway] — production. GET against the
+//   * [HttpObservabilityAdminGateway] - production. GET against the
 //     proxy with the signed-in admin's bearer token. The aggregate
 //     endpoint is documented in the phase doc as
 //     `/v1/admin/observability`; if the proxy has not yet landed it,
 //     production wires the in-memory gateway as a fallback so the
 //     route paints something instead of throwing.
 //
-//   * [InMemoryObservabilityAdminGateway] — demo + widget tests.
+//   * [InMemoryObservabilityAdminGateway] - demo + widget tests.
 //     Returns a deterministic envelope keyed by the demo identities
 //     used elsewhere in the admin shell so the click path runs
 //     end-to-end without a backend.
@@ -104,8 +104,10 @@ class HttpObservabilityAdminGateway implements ObservabilityAdminGateway {
     ObservabilityFetchRequest request = const ObservabilityFetchRequest(),
   ]) async {
     final token = await bearerTokenProvider();
-    final clampedLimit = request.costTelemetryLimit
-        .clamp(1, kObservabilityCostTelemetryLimit);
+    final clampedLimit = request.costTelemetryLimit.clamp(
+      1,
+      kObservabilityCostTelemetryLimit,
+    );
     final query = <String, String>{
       'cost_telemetry_limit': '$clampedLimit',
       if (request.queryClassFilter != null &&
@@ -166,8 +168,7 @@ class HttpObservabilityAdminGateway implements ObservabilityAdminGateway {
 /// `cost_telemetry_meta.truncated` reflect the in-memory pre-clamp
 /// length so screen tests can assert the truncation hint without
 /// hitting a live proxy.
-class InMemoryObservabilityAdminGateway
-    implements ObservabilityAdminGateway {
+class InMemoryObservabilityAdminGateway implements ObservabilityAdminGateway {
   InMemoryObservabilityAdminGateway({
     required Map<String, Object?> envelope,
     Exception? errorOnFetch,
@@ -180,10 +181,7 @@ class InMemoryObservabilityAdminGateway
   /// Replace the seeded envelope for the next [fetch] call. Used by
   /// the screen widget test to assert manual refresh consumes the new
   /// envelope.
-  void setEnvelope(
-    Map<String, Object?> envelope, {
-    Exception? errorOnFetch,
-  }) {
+  void setEnvelope(Map<String, Object?> envelope, {Exception? errorOnFetch}) {
     _envelope = envelope;
     _errorOnFetch = errorOnFetch;
   }
@@ -194,12 +192,14 @@ class InMemoryObservabilityAdminGateway
   ]) async {
     final err = _errorOnFetch;
     if (err != null) throw err;
-    final clampedLimit = request.costTelemetryLimit
-        .clamp(1, kObservabilityCostTelemetryLimit);
+    final clampedLimit = request.costTelemetryLimit.clamp(
+      1,
+      kObservabilityCostTelemetryLimit,
+    );
     final base = Map<String, Object?>.from(_envelope);
     final rawRows =
         (base['cost_telemetry'] as List?)?.cast<Map<String, Object?>>() ??
-            const <Map<String, Object?>>[];
+        const <Map<String, Object?>>[];
     Iterable<Map<String, Object?>> filtered = rawRows;
     final filter = request.queryClassFilter;
     if (filter != null && filter.isNotEmpty) {
@@ -223,12 +223,11 @@ class InMemoryObservabilityAdminGateway
 /// gateway is mounted. Mirrors the demo operators from the rest of
 /// the admin shell so the click path is consistent across tabs:
 ///
-///   * `Demo Diner Co.` (launch tier) — active operator with a
+///   * `Demo Diner Co.` (launch tier) - active operator with a
 ///     non-trivial cost row, healthy margin, and a recent cap event.
-///   * `Sunset Cafe Group` (pilot tier) — dormant 32+ days so the
+///   * `Sunset Cafe Group` (pilot tier) - dormant 32+ days so the
 ///     30-day flag trips, modest cost, underwater margin row.
-const Map<String, Object?> kObservabilityAdminDemoEnvelope =
-    <String, Object?>{
+const Map<String, Object?> kObservabilityAdminDemoEnvelope = <String, Object?>{
   'as_of': '2026-05-03T12:00:00.000Z',
   'contract': 'admin_observability.v1',
   'schema_version': 1,

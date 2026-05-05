@@ -100,6 +100,10 @@ void main() {
     expect(find.byKey(const Key('admin_health_tab_retrieval')), findsOneWidget);
     expect(find.byKey(const Key('admin_health_tab_proxy')), findsOneWidget);
     expect(find.byKey(const Key('admin_health_tab_infra')), findsOneWidget);
+    expect(find.byKey(const Key('admin_health_priority_key')), findsOneWidget);
+    expect(find.text('Critical'), findsOneWidget);
+    expect(find.text('Important'), findsWidgets);
+    expect(find.text('Info'), findsWidgets);
     expect(find.byKey(const Key('admin_health_dependencies')), findsOneWidget);
     // All three dependency probes are rendered.
     expect(
@@ -186,6 +190,18 @@ void main() {
     await runHealthCheck(tester);
 
     expect(find.byKey(const Key('admin_health_tier1_banner')), findsOneWidget);
+    expect(
+      find.text(
+        'Critical checks are failing. Fix the cause before relying on this environment.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'Critical system checks are failing. Review them before shipping.',
+      ),
+      findsNothing,
+    );
     // The 503 banner stays absent — tier-1 failure is metric-level,
     // not dependency-level.
     expect(
@@ -255,6 +271,8 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(find.text('Important: Check'), findsOneWidget);
+    expect(find.text('Important: Review'), findsNothing);
   });
 
   testWidgets('manual refresh re-fetches the envelope', (tester) async {

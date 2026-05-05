@@ -1,4 +1,4 @@
-// Phase 11A.UX.health (F.1) — Typed parsers for the proxy /health envelope.
+// Phase 11A.UX.health (F.1) - Typed parsers for the proxy /health envelope.
 //
 // The proxy `/health` route ships a stable JSON envelope contracted by
 // `docs/contracts/proxy_health_contract.md`:
@@ -15,7 +15,7 @@
 //     "warnings": [...]
 //   }
 //
-// The envelope MUST NOT carry tenant or operator identifiers — the
+// The envelope MUST NOT carry tenant or operator identifiers - the
 // admin Health surface is platform-wide and the contract is explicit
 // about the absence of those identifiers. Parsing keeps that property:
 // these models surface only the fields the contract declares.
@@ -73,7 +73,7 @@ class HealthDependency {
 }
 
 /// Single metric tile in the Health surface. `tier` is read from
-/// `metadata.tier` per the proxy contract — tier-1 producers drive
+/// `metadata.tier` per the proxy contract - tier-1 producers drive
 /// the red top-banner; tier-2 producers drive yellow tile chips;
 /// tier-3 producers drive grey informational chips.
 @immutable
@@ -112,11 +112,11 @@ class HealthMetric {
       status == HealthSeverity.red || status == HealthSeverity.yellow;
 
   /// String form of [value] suitable for tile rendering. Falls through
-  /// to `'—'` when the metric has not been populated yet (`null`) and
+  /// to `'-'` when the metric has not been populated yet (`null`) and
   /// to JSON-ish for maps/lists so parsing problems surface visibly.
   String get displayValue {
     final v = value;
-    if (v == null) return '—';
+    if (v == null) return '-';
     if (v is num) return v.toString();
     if (v is bool) return v ? 'true' : 'false';
     if (v is String) return v;
@@ -136,7 +136,7 @@ class HealthMetric {
   factory HealthMetric.fromJson(String key, Map<String, Object?> json) {
     final metadata =
         (json['metadata'] as Map?)?.cast<String, Object?>() ??
-            const <String, Object?>{};
+        const <String, Object?>{};
     return HealthMetric(
       key: key,
       status: parseHealthSeverity(json['status']),
@@ -147,7 +147,8 @@ class HealthMetric {
       value: json['value'],
       source: json['source'] as String?,
       observedAt: _parseUtc(json['observed_at']),
-      thresholds: (json['thresholds'] as Map?)?.cast<String, Object?>() ??
+      thresholds:
+          (json['thresholds'] as Map?)?.cast<String, Object?>() ??
           const <String, Object?>{},
       metadata: metadata,
     );
@@ -173,7 +174,10 @@ class HealthSurface {
     return HealthSurface(
       name: name,
       status: parseHealthSeverity(json['status']),
-      metricKeys: <String>[for (final m in raw) if (m is String) m],
+      metricKeys: <String>[
+        for (final m in raw)
+          if (m is String) m,
+      ],
       owner: (json['owner'] as String?) ?? '',
     );
   }
@@ -182,7 +186,7 @@ class HealthSurface {
 /// Whole `/health` envelope as the admin screen needs it.
 ///
 /// [dependenciesUnavailable] is `true` when the gateway saw an HTTP
-/// 503 — the screen renders a top-of-page red "Dependencies
+/// 503 - the screen renders a top-of-page red "Dependencies
 /// unavailable" banner regardless of which dependency probe was the
 /// failure (and the `metrics`/`surfaces` maps may still have data the
 /// proxy assembled before the failing dependency tipped the response
@@ -240,10 +244,12 @@ class HealthEnvelope {
   }) {
     final depsRaw =
         (json['dependencies'] as Map?)?.cast<String, Object?>() ??
-            const <String, Object?>{};
-    final surfRaw = (json['surfaces'] as Map?)?.cast<String, Object?>() ??
         const <String, Object?>{};
-    final metricsRaw = (json['metrics'] as Map?)?.cast<String, Object?>() ??
+    final surfRaw =
+        (json['surfaces'] as Map?)?.cast<String, Object?>() ??
+        const <String, Object?>{};
+    final metricsRaw =
+        (json['metrics'] as Map?)?.cast<String, Object?>() ??
         const <String, Object?>{};
     return HealthEnvelope(
       status: (json['status'] as String?) ?? 'unknown',

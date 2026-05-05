@@ -16,6 +16,7 @@ class TeamInviteCreateCommand {
     required this.scopeType,
     this.targetLocationId,
     this.targetOrgUnitId,
+    this.operatorOwnerBootstrap = false,
   });
 
   final String actorUserId;
@@ -26,6 +27,14 @@ class TeamInviteCreateCommand {
   final String scopeType;
   final String? targetLocationId;
   final String? targetOrgUnitId;
+
+  /// Internal F&F admin-console bootstrap path only.
+  ///
+  /// When a brand-new operator is being created, the global admin actor cannot
+  /// already have an operator-wide grant inside that new tenant. The
+  /// operator/location admin route verifies the global admin role before using
+  /// this flag for the first operator-owner invite.
+  final bool operatorOwnerBootstrap;
 }
 
 class TeamInviteCreated {
@@ -797,16 +806,7 @@ class AuthAllSessionsRevoked {
 /// Coarse grouping the Audit Log filter chips use. Keeps the UX
 /// stable even as new low-level event_type strings land — anything
 /// not in the recognised set falls into [AuthEventKind.other].
-enum AuthEventKind {
-  signIn,
-  password,
-  mfa,
-  role,
-  session,
-  invite,
-  user,
-  other,
-}
+enum AuthEventKind { signIn, password, mfa, role, session, invite, user, other }
 
 class AuthEventListEntry {
   const AuthEventListEntry({
@@ -879,10 +879,7 @@ class AuthEventListCommand {
 }
 
 class AuthEventsListed {
-  const AuthEventsListed({
-    required this.entries,
-    required this.hasMore,
-  });
+  const AuthEventsListed({required this.entries, required this.hasMore});
 
   final List<AuthEventListEntry> entries;
   final bool hasMore;
@@ -1135,9 +1132,7 @@ abstract class AuthOperationsGateway {
   );
 
   // Phase 9.UX.6 — self-service Audit Log surface.
-  Future<AuthEventsListed> listAuthEventsForActor(
-    AuthEventListCommand command,
-  );
+  Future<AuthEventsListed> listAuthEventsForActor(AuthEventListCommand command);
 }
 
 class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {

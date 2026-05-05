@@ -1,16 +1,16 @@
-// Phase 11A.5 — Debug console admin surface (per-operator request log).
+﻿// Phase 11A.5 - Debug console admin surface (per-operator request log).
 //
 // Read-only operator-facing console for the proxy `proxy_requests`
 // projection. Three tabs reflect the launch-slice scope and the two
 // future plug-ins:
 //
-//   * Request log — live filterable / searchable view of recent
+//   * Request log - live filterable / searchable view of recent
 //                   proxy requests. Meta-only by default; expand-row
 //                   reveals the full content payload only when the
 //                   operator's `feature_flags` opt-in is on AND the
 //                   actor holds `super_admin`.
-//   * Graph debug — stub for 11A.3.x. Shows the 501-style banner.
-//   * MFA diagnostics — stub for 9.UX.1a. Shows the 501-style banner.
+//   * Graph debug - stub for 11A.3.x. Shows the 501-style banner.
+//   * MFA diagnostics - stub for 9.UX.1a. Shows the 501-style banner.
 //
 // Live-tail is OFF by default. When toggled on, the screen polls
 // `tailRecent` every [kDebugConsoleTailPollInterval] seconds and
@@ -21,16 +21,16 @@
 //   * `super_admin` lands with `editingEnabled = true`. Full-content
 //     reveal is gated by the operator's `feature_flags` opt-in row.
 //   * `ff_support` lands with `editingEnabled = false`. The diff
-//     renders read-only meta — full content stays hidden even when
+//     renders read-only meta - full content stays hidden even when
 //     the opt-in is on. The graphify walkthrough establishes this
 //     as the cross-surface convention; the proxy `/health` contract
 //     bans raw payloads from public health, and the same posture
 //     extends here so a less-privileged role cannot reveal
-//     customer-visible content.
+//     operator-visible content.
 //
 // The screen is performance-disciplined per
 // `docs/contracts/slice_runtime_acceptance_contract.md`:
-//   * cheap initial render — a manual fetch button surfaces the first
+//   * cheap initial render - a manual fetch button surfaces the first
 //     request-log page rather than auto-polling on mount;
 //   * the live-tail toggle is opt-in and does not stack in-flight
 //     requests;
@@ -42,6 +42,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
+import '../admin_human_labels.dart';
 import '../models/debug_console_admin_models.dart';
 import '../services/debug_console_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
@@ -55,6 +58,7 @@ class DebugConsoleAdminScreen extends StatefulWidget {
     super.key,
     required this.gateway,
     this.editingEnabled = true,
+    this.initialFilter = const RequestLogFilter(),
     this.tailPollInterval = kDebugConsoleTailPollInterval,
     @visibleForTesting this.now,
   });
@@ -62,9 +66,13 @@ class DebugConsoleAdminScreen extends StatefulWidget {
   final DebugConsoleAdminGateway gateway;
 
   /// `true` when the signed-in actor is `super_admin`. Drives the
-  /// expand-row full-content reveal — `false` (ff_support) hides the
+  /// expand-row full-content reveal - `false` (ff_support) hides the
   /// expand affordance entirely so the meta view is the only path.
   final bool editingEnabled;
+
+  /// Optional route seed used by contextual actions elsewhere in the
+  /// admin console. Empty keeps the manual Refresh-first behavior.
+  final RequestLogFilter initialFilter;
 
   /// Cadence for live-tail polling. Production uses
   /// [kDebugConsoleTailPollInterval]; tests pin a synthetic value.
@@ -91,7 +99,9 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
   List<RequestLogEntry> _entries = const <RequestLogEntry>[];
   List<FullContentOptIn> _optIns = const <FullContentOptIn>[];
 
-  RequestLogFilter _filter = const RequestLogFilter();
+  late RequestLogFilter _filter;
+  RequestLogFilter? _serverFilter;
+  bool _refreshQueued = false;
   final TextEditingController _searchController = TextEditingController();
   final Set<String> _expanded = <String>{};
 
@@ -104,7 +114,11 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
   @override
   void initState() {
     super.initState();
+    _filter = widget.initialFilter;
     _tabs = TabController(length: 3, vsync: this);
+    if (!widget.initialFilter.isEmpty) {
+      unawaited(_refresh());
+    }
   }
 
   @override
@@ -123,7 +137,11 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
   }
 
   Future<void> _refresh() async {
-    if (_refreshing) return;
+    if (_refreshing) {
+      _refreshQueued = true;
+      return;
+    }
+    final requestFilter = _filter;
     setState(() {
       _refreshing = true;
       if (_entries.isEmpty) _initialLoading = true;
@@ -131,13 +149,14 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     });
     try {
       final results = await Future.wait(<Future<Object>>[
-        widget.gateway.listRequests(_filter),
+        widget.gateway.listRequests(requestFilter),
         widget.gateway.listFullContentOptIns(),
       ]);
       if (!mounted) return;
       setState(() {
         _entries = results[0] as List<RequestLogEntry>;
         _optIns = results[1] as List<FullContentOptIn>;
+        _serverFilter = requestFilter;
         _initialLoading = false;
         _loadError = null;
         _lastRefreshed = _clockNow();
@@ -159,6 +178,13 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     } finally {
       if (mounted) {
         setState(() => _refreshing = false);
+        final loadedFilter = _serverFilter;
+        final needsCurrentFilter =
+            loadedFilter == null || !_filterCovers(loadedFilter, _filter);
+        if (_refreshQueued || needsCurrentFilter) {
+          _refreshQueued = false;
+          unawaited(_refresh());
+        }
       } else {
         _refreshing = false;
       }
@@ -169,7 +195,10 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     setState(() {
       _filter = next;
     });
-    if (_entries.isNotEmpty) {
+    final loadedFilter = _serverFilter;
+    if (_entries.isNotEmpty &&
+        loadedFilter != null &&
+        _filterCovers(loadedFilter, next)) {
       // Re-narrowing client-side first; refresh on demand if the
       // operator wants a fresh window.
       return;
@@ -179,9 +208,26 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
 
   void _onSearchChanged(String value) {
     final next = value.trim();
-    setState(() {
-      _filter = _filter.copyWith(searchText: next.isEmpty ? null : next);
-    });
+    _onFilterChanged(_filter.copyWith(searchText: next.isEmpty ? null : next));
+  }
+
+  bool _filterCovers(RequestLogFilter loaded, RequestLogFilter requested) {
+    return _stringAxisCovers(loaded.operatorId, requested.operatorId) &&
+        _stringAxisCovers(loaded.locationId, requested.locationId) &&
+        _stringAxisCovers(loaded.usageClass, requested.usageClass) &&
+        _valueAxisCovers(loaded.status, requested.status) &&
+        _valueAxisCovers(loaded.timeWindow, requested.timeWindow) &&
+        _stringAxisCovers(loaded.searchText, requested.searchText);
+  }
+
+  bool _stringAxisCovers(String? loaded, String? requested) {
+    final loadedValue = loaded?.trim();
+    if (loadedValue == null || loadedValue.isEmpty) return true;
+    return loadedValue == requested?.trim();
+  }
+
+  bool _valueAxisCovers<T>(T? loaded, T? requested) {
+    return loaded == null || loaded == requested;
   }
 
   void _toggleLiveTail(bool enabled) {
@@ -278,11 +324,11 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
                 ),
                 Tab(
                   key: Key('admin_debug_console_tab_$_kGraphDebugTab'),
-                  text: 'Graph help',
+                  text: 'Relationship help',
                 ),
                 Tab(
                   key: Key('admin_debug_console_tab_$_kMfaDiagnosticsTab'),
-                  text: 'Sign-in help',
+                  text: 'Account help',
                 ),
               ],
             ),
@@ -316,15 +362,17 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
                   ),
                   const _StubTab(
                     key: Key('admin_debug_console_stub_$_kGraphDebugTab'),
-                    title: 'Graph help',
+                    title: 'Relationship help',
+                    badge: 'Coming soon',
                     body:
-                        'Relationship troubleshooting will let support inspect an approved item, nearby relationships, the shortest approved path, and whether a relationship was found directly, suggested by the system, edited, or rejected.',
+                        'Relationship diagnostics are not wired here yet. Use Corpus > Relationship review for the current review workflow.',
                   ),
                   const _StubTab(
                     key: Key('admin_debug_console_stub_$_kMfaDiagnosticsTab'),
-                    title: 'Sign-in help',
+                    title: 'Account help',
+                    badge: 'Coming soon',
                     body:
-                        'Sign-in support will show authenticator apps, pending removal requests, notification status, and account drift checks. Repair actions will use safe backend routes.',
+                        'Account diagnostics are not wired here yet. This tab will cover authenticator apps, pending removal requests, notifications, and account mismatch checks.',
                   ),
                 ],
               ),
@@ -354,7 +402,7 @@ class _Header extends StatelessWidget {
     return AdminPageHeader(
       title: 'Support logs',
       subtitle:
-          'Search recent customer requests, filter by outcome, and inspect support-safe details. Full message content stays protected unless the customer has opted in.',
+          'Translate recent backend requests into support-safe details. Filter with exact IDs when you need a precise lookup.',
       compactBreakpoint: 640,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 320),
@@ -380,7 +428,7 @@ class _Header extends StatelessWidget {
                     'Support view only',
                     style: AppTextStyles.mono10(
                       color: AppColors.warning,
-                    ).copyWith(fontWeight: FontWeight.w600),
+                    ).copyWith(fontWeight: FontWeight.w700),
                   ),
                 ),
               ),
@@ -400,8 +448,7 @@ class _Header extends StatelessWidget {
             Text(
               lastRefreshed == null
                   ? 'Last checked: -'
-                  : 'Last checked: '
-                        '${lastRefreshed!.toUtc().toIso8601String()}',
+                  : 'Last checked: ${adminHumanDateTime(lastRefreshed!)}',
               key: const Key('admin_debug_console_last_refreshed'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -547,7 +594,7 @@ class _FilterBar extends StatelessWidget {
             decoration: const InputDecoration(
               isDense: true,
               prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Search by request ID or retry key',
+              hintText: 'Search by request or retry ID',
               border: OutlineInputBorder(),
             ),
           ),
@@ -570,7 +617,7 @@ class _FilterBar extends StatelessWidget {
                 keyName: const Key('admin_debug_console_filter_operator'),
                 label: 'Operator',
                 value: filter.operatorId,
-                hint: 'Customer ID',
+                hint: 'Type an operator ID, or open this view from Operators',
                 onChanged: (next) =>
                     onFilterChanged(filter.copyWith(operatorId: next)),
               ),
@@ -578,19 +625,32 @@ class _FilterBar extends StatelessWidget {
                 keyName: const Key('admin_debug_console_filter_location'),
                 label: 'Location',
                 value: filter.locationId,
-                hint: 'Location ID',
+                hint: 'Type a location ID, or open this view from a location',
                 onChanged: (next) =>
                     onFilterChanged(filter.copyWith(locationId: next)),
               ),
               _StringFilterChip(
                 keyName: const Key('admin_debug_console_filter_usage_class'),
-                label: 'Use case',
+                label: 'Request use case ID',
                 value: filter.usageClass,
-                hint: 'advisor_qa, coach_qa, ...',
+                hint: 'advisor_qa, coach_qa, wf_pl',
                 onChanged: (next) =>
                     onFilterChanged(filter.copyWith(usageClass: next)),
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Tip: choose View logs from an operator or location to fill the exact filters automatically.',
+            style: AppTextStyles.body12(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          _RequestUseCaseKey(
+            selectedUsageClass: filter.usageClass,
+            onSelected: (usageClass) {
+              final next = filter.usageClass == usageClass ? null : usageClass;
+              onFilterChanged(filter.copyWith(usageClass: next));
+            },
           ),
         ],
       ),
@@ -608,7 +668,7 @@ class _StatusFilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final label = value == null
         ? 'Status: any'
-        : 'Status: ${requestLogStatusLabel(value!)}';
+        : 'Status: ${_statusLabel(value!)}';
     return PopupMenuButton<RequestLogStatus?>(
       key: const Key('admin_debug_console_filter_status'),
       tooltip: 'Filter by status',
@@ -617,15 +677,15 @@ class _StatusFilterChip extends StatelessWidget {
         const PopupMenuItem<RequestLogStatus?>(value: null, child: Text('Any')),
         const PopupMenuItem<RequestLogStatus?>(
           value: RequestLogStatus.success,
-          child: Text('success'),
+          child: Text('Success'),
         ),
         const PopupMenuItem<RequestLogStatus?>(
           value: RequestLogStatus.error,
-          child: Text('error'),
+          child: Text('Error'),
         ),
         const PopupMenuItem<RequestLogStatus?>(
           value: RequestLogStatus.timeout,
-          child: Text('timeout'),
+          child: Text('Timeout'),
         ),
       ],
       child: _ChipShell(label: label, active: value != null),
@@ -786,7 +846,100 @@ class _ChipShell extends StatelessWidget {
         label,
         style: AppTextStyles.mono11(
           color: active ? AppColors.sunsetDark : AppColors.textPrimary,
-        ).copyWith(fontWeight: FontWeight.w600),
+        ).copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _RequestUseCaseKey extends StatelessWidget {
+  const _RequestUseCaseKey({
+    required this.selectedUsageClass,
+    required this.onSelected,
+  });
+
+  final String? selectedUsageClass;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_debug_console_use_case_key'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Request use case ID key',
+            style: AppTextStyles.body13(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: <Widget>[
+              for (final useCase in adminRequestUseCases)
+                _KeyChip(
+                  label: useCase.label,
+                  id: useCase.id,
+                  description: useCase.description,
+                  active: selectedUsageClass == useCase.id,
+                  onPressed: () => onSelected(useCase.id),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KeyChip extends StatelessWidget {
+  const _KeyChip({
+    required this.label,
+    required this.id,
+    required this.description,
+    required this.active,
+    required this.onPressed,
+  });
+
+  final String label;
+  final String id;
+  final String description;
+  final bool active;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: active
+          ? 'Clear $label filter'
+          : 'Filter support logs to $description',
+      child: OutlinedButton(
+        key: Key('admin_debug_console_use_case_filter_$id'),
+        onPressed: onPressed,
+        style: AdminButtonStyles.filter(active: active),
+        child: Text.rich(
+          TextSpan(
+            text: label,
+            children: <InlineSpan>[
+              TextSpan(
+                text: '  $id',
+                style: AppTextStyles.mono10(
+                  color: active ? AppColors.sunsetDark : AppColors.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -824,10 +977,9 @@ class _LiveTailRow extends StatelessWidget {
           Expanded(
             child: Text(
               liveTailOn
-                  ? 'Live polling on. Checking latest requests every 5s.'
-                  : 'Live-tail off (default). Toggle on to poll the '
-                        'latest requests every 5s.',
-              style: AppTextStyles.mono11(color: AppColors.textPrimary),
+                  ? 'Live refresh on. Checking for new requests every 5 seconds.'
+                  : 'Live refresh off. Turn it on to check for new requests every 5 seconds.',
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
             ),
           ),
           const SizedBox(width: 8),
@@ -908,12 +1060,25 @@ class _RequestRow extends StatelessWidget {
                   ),
                   Expanded(
                     flex: 2,
-                    child: Text(
-                      entry.usageClass,
-                      style: AppTextStyles.mono10(
-                        color: AppColors.textSecondary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          adminRequestUseCaseLabel(entry.usageClass),
+                          style: AppTextStyles.body12(
+                            color: AppColors.textPrimary,
+                          ).copyWith(fontWeight: FontWeight.w700),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          entry.usageClass,
+                          style: AppTextStyles.mono8(
+                            color: AppColors.textMuted,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                   ),
                   Container(
@@ -927,7 +1092,7 @@ class _RequestRow extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      requestLogStatusLabel(entry.status),
+                      _statusLabel(entry.status),
                       style: AppTextStyles.mono10(
                         color: statusColor,
                       ).copyWith(fontWeight: FontWeight.w700),
@@ -952,14 +1117,18 @@ class _RequestRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  _MetaRow(label: 'Customer ID', value: entry.operatorId),
+                  _MetaRow(label: 'Operator ID', value: entry.operatorId),
                   _MetaRow(
                     label: 'Location ID',
                     value: entry.locationId ?? 'Unknown',
                   ),
                   _MetaRow(
+                    label: 'Request use case',
+                    value: adminRequestUseCaseLabelWithId(entry.usageClass),
+                  ),
+                  _MetaRow(
                     label: 'Started',
-                    value: entry.startedAt.toUtc().toIso8601String(),
+                    value: adminHumanDateTime(entry.startedAt),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -1022,7 +1191,7 @@ class _MetaRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           SizedBox(
-            width: 110,
+            width: 130,
             child: Text(
               label,
               style: AppTextStyles.mono10(
@@ -1100,14 +1269,10 @@ class _FullContentLockedBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reason = !editingEnabled
-        ? 'View-only role (ff_support) cannot reveal full content. '
-              'Sign in as super_admin to debug payloads.'
+        ? 'This support role cannot reveal full request content. Use ecosystem admin access to view it.'
         : !optInOn
-        ? "This operator's full-content opt-in is OFF. Toggle "
-              '"$kDebugConsoleFullContentFlagName" on the Feature '
-              'Flags admin surface to reveal payloads.'
-        : 'Proxy did not project a full content payload for this '
-              'request.';
+        ? 'This operator has not allowed full request content. Enable the full-content opt-in in Launch controls to view it.'
+        : 'Full request content was not saved for this request.';
     return Container(
       key: const Key('admin_debug_console_full_content_locked'),
       padding: const EdgeInsets.all(10),
@@ -1124,7 +1289,7 @@ class _FullContentLockedBlock extends StatelessWidget {
           Expanded(
             child: Text(
               reason,
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
+              style: AppTextStyles.body13(color: AppColors.textMuted),
             ),
           ),
         ],
@@ -1134,9 +1299,15 @@ class _FullContentLockedBlock extends StatelessWidget {
 }
 
 class _StubTab extends StatelessWidget {
-  const _StubTab({super.key, required this.title, required this.body});
+  const _StubTab({
+    super.key,
+    required this.title,
+    required this.badge,
+    required this.body,
+  });
 
   final String title;
+  final String badge;
   final String body;
 
   @override
@@ -1155,18 +1326,39 @@ class _StubTab extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: <Widget>[
                   const Icon(
                     Icons.hourglass_empty,
                     size: 16,
                     color: AppColors.textMuted,
                   ),
-                  const SizedBox(width: 8),
                   Text(
                     title,
                     style: AppTextStyles.display20(
                       color: AppColors.textPrimary,
+                    ),
+                  ),
+                  Container(
+                    key: Key(
+                      'admin_debug_console_stub_badge_'
+                      '${title.toLowerCase().replaceAll(' ', '_')}',
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.14),
+                      border: Border.all(color: AppColors.warning, width: 1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      badge,
+                      style: AppTextStyles.chipLabel(color: AppColors.warning),
                     ),
                   ),
                 ],
@@ -1221,22 +1413,15 @@ class _EmptyState extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 filterIsEmpty
-                    ? 'The console fetches a bounded window of recent '
-                          'requests on demand to keep the page cheap. '
-                          'Press Refresh to load the latest page.'
-                    : 'Adjust or clear the filter chips above. The '
-                          'launch surface fetches a bounded window per '
-                          'refresh to stay performance-disciplined.',
+                    ? 'Press Refresh to load the latest requests.'
+                    : 'Adjust or clear the filters above, then refresh.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 14),
               FilledButton.icon(
                 key: const Key('admin_debug_console_empty_refresh_button'),
                 onPressed: refreshing ? null : () => onRunRefresh(),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                ),
+                style: AdminButtonStyles.primary,
                 icon: const Icon(Icons.refresh, size: 16),
                 label: const Text('Refresh'),
               ),
@@ -1282,6 +1467,11 @@ Color _statusColor(RequestLogStatus status) {
     case RequestLogStatus.unknown:
       return AppColors.neutral;
   }
+}
+
+String _statusLabel(RequestLogStatus status) {
+  final label = requestLogStatusLabel(status);
+  return label.substring(0, 1).toUpperCase() + label.substring(1);
 }
 
 String _formatMap(Map<String, Object?> map) {

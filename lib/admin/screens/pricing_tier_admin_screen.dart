@@ -1,4 +1,4 @@
-// Phase 11A.2 — Pricing tier admin screen.
+﻿// Phase 11A.2 - Pricing tier admin screen.
 //
 // Admin-side editor over `usage_caps` per (operator, location,
 // usage_class, staff_id?, workflow_id?) plus subscription tier on
@@ -26,6 +26,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
+import '../admin_human_labels.dart';
 import '../models/pricing_tier_admin_models.dart';
 import '../services/pricing_tier_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
@@ -40,7 +43,7 @@ class PricingTierAdminScreen extends StatefulWidget {
 
   final PricingTierAdminGateway gateway;
 
-  /// When false, the screen hides every mutate affordance — used for
+  /// When false, the screen hides every mutate affordance - used for
   /// the `ff_support` walkthrough path. The proxy enforces the same
   /// gate server-side; this flag keeps the UI honest about it.
   final bool editingEnabled;
@@ -158,7 +161,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
             const AdminPageHeader(
               title: 'Plans and limits',
               subtitle:
-                  'Set each customer plan and the spending limits that keep advisor usage predictable.',
+                  'Review each operator\'s Forge & Flow AI plan and the limits that keep advisor spend predictable.',
             ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)
@@ -207,12 +210,12 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'No customers on file',
+                  'No operators on file',
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Create a customer first, then return here to choose a plan and usage limits.',
+                  'Create an operator first, then return here to review the AI plan and usage limits.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
@@ -249,11 +252,11 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       builder: (_) => _ConfirmDialog(
         title: 'Apply ${template.displayName} template?',
         message:
-            'Sets subscription tier to ${template.subscriptionTier} and '
-            'replaces ${template.caps.length} cap row'
+            'Sets the Forge & Flow AI plan to ${template.subscriptionTier} and '
+            'replaces ${template.caps.length} usage limit'
             '${template.caps.length == 1 ? '' : 's'} '
-            'on ${bundle.businessName}. Existing rows for the same '
-            'usage class will be overwritten; other rows are preserved.',
+            'on ${bundle.businessName}. Existing limits for the same '
+            'use case are overwritten; other limits are preserved.',
         confirmLabel: 'Apply',
       ),
     );
@@ -284,7 +287,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
           idempotencyKey: key,
         ),
       );
-    }, successHint: 'Subscription tier set to $newTier.');
+    }, successHint: 'Forge & Flow AI plan set to $newTier.');
   }
 
   Future<void> _onEditCap(PricingOperatorBundle bundle, UsageCapRow row) async {
@@ -338,7 +341,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View only: pricing edits require platform admin access.',
+              'View only: pricing edits require ecosystem admin access.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
@@ -403,7 +406,7 @@ class _OperatorList extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Plan: ${bundle.subscriptionTier}',
+                      'Forge & Flow AI plan: ${bundle.subscriptionTier}',
                       style: AppTextStyles.mono11(
                         color: AppColors.textSecondary,
                       ),
@@ -460,19 +463,22 @@ class _OperatorPricingDetail extends StatelessWidget {
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 10),
-                AdminDetailRow(label: 'Plan', value: bundle.subscriptionTier),
+                AdminDetailRow(
+                  label: 'Forge & Flow AI plan',
+                  value: bundle.subscriptionTier,
+                ),
                 AdminDetailRow(
                   label: 'Currency',
                   value: bundle.preferredCurrency,
                 ),
                 AdminDetailRow(
-                  label: 'Main location',
-                  value: bundle.primaryLocationId ?? 'No main location',
+                  label: 'Primary location',
+                  value: _primaryLocationLabel(bundle),
                 ),
                 if (editingEnabled) ...[
                   const SizedBox(height: 14),
                   Text(
-                    'Tier templates',
+                    'Plan presets',
                     style: AppTextStyles.mono14(
                       color: AppColors.textPrimary,
                       weight: FontWeight.w700,
@@ -529,7 +535,7 @@ class _OperatorPricingDetail extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text(
-                      'No usage limits yet. Apply a plan template or add a limit individually.',
+                      'No usage limits yet. Start with a plan preset or add one limit.',
                       style: AppTextStyles.body13(
                         color: AppColors.textSecondary,
                       ),
@@ -551,6 +557,12 @@ class _OperatorPricingDetail extends StatelessWidget {
       ),
     );
   }
+}
+
+String _primaryLocationLabel(PricingOperatorBundle bundle) {
+  final name = bundle.primaryLocationName?.trim();
+  if (name != null && name.isNotEmpty) return name;
+  return bundle.primaryLocationId ?? 'No primary location';
 }
 
 class _UsageCapRowTile extends StatelessWidget {
@@ -618,7 +630,7 @@ class _UsageCapRowTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   'Updated by ${row.updatedBy ?? 'Unknown'} - '
-                  '${row.updatedAt.toUtc().toIso8601String()}',
+                  '${adminHumanDateTime(row.updatedAt)}',
                   style: AppTextStyles.mono8(color: AppColors.textMuted),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -715,12 +727,12 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: Text(
-                      'This customer needs a main location before you can edit usage limits.',
+                      'This operator needs a primary location before you can edit usage limits.',
                       style: AppTextStyles.mono11(color: AppColors.negative),
                     ),
                   ),
                 _LabelledField(
-                  label: 'Use case key',
+                  label: 'Use case ID',
                   controller: _usageClass,
                   fieldKey: const Key('admin_pricing_cap_usage_class'),
                   validator: _requiredValidator,
@@ -782,10 +794,7 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
         ),
         FilledButton(
           key: const Key('admin_pricing_cap_submit_button'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           onPressed: () {
             if (!(_formKey.currentState?.validate() ?? false)) return;
             final locationId =
@@ -922,10 +931,7 @@ class _ConfirmDialog extends StatelessWidget {
         ),
         FilledButton(
           key: const Key('admin_pricing_confirm_ok'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           onPressed: () => Navigator.of(context).pop(true),
           child: Text(confirmLabel),
         ),

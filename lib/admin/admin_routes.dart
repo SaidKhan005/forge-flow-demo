@@ -1,10 +1,8 @@
-// Phase 11A.0 - Admin route table.
+﻿// Phase 11A.0 - Admin route table.
 //
-// The admin console is a multi-surface back-office. 11A.0 lights up
-// the empty Home route only; later 11A.x slices fill in the rest.
-// Keeping the route catalog in a single typed list lets the shell
-// nav render placeholders for the surfaces that aren't online yet
-// without scattering `if (slice >= X)` flags across the UI.
+// The admin console is a multi-surface back-office. Keeping the route
+// catalog in a single typed list lets the shell nav render live
+// surfaces without scattering `if (slice >= X)` flags across the UI.
 //
 // 11A.1 - the Operators route flips from placeholder to live; its
 // builder reads the [OperatorLocationAdminGateway] from
@@ -17,12 +15,13 @@
 import 'package:flutter/material.dart';
 
 import 'admin_auth_gate.dart';
+import 'admin_route_handoff.dart';
 import 'models/corpus_admin_models.dart';
+import 'models/debug_console_admin_models.dart';
 import 'models/feature_flags_admin_models.dart';
 import 'models/integration_admin_models.dart';
 import 'models/operator_location_admin_models.dart';
 import 'models/pricing_tier_admin_models.dart';
-import 'screens/admin_home_screen.dart';
 import 'screens/corpus_admin_screen.dart';
 import 'screens/debug_console_admin_screen.dart';
 import 'screens/feature_flags_admin_screen.dart';
@@ -49,6 +48,7 @@ class AdminRoute {
     required this.title,
     required this.path,
     required this.icon,
+    required this.section,
     required this.builder,
     this.subtitle,
     this.placeholder = false,
@@ -68,6 +68,9 @@ class AdminRoute {
   /// Material icon shown in the side nav.
   final IconData icon;
 
+  /// High-level side-nav category.
+  final AdminRouteSection section;
+
   /// Optional one-line description for the empty-state body when the
   /// route is opened ahead of its slice landing.
   final String? subtitle;
@@ -84,9 +87,7 @@ class AdminRoute {
   final Widget Function(BuildContext context) builder;
 }
 
-/// Canonical admin home route ID. Tests + the shell key off this so
-/// renaming the title can't accidentally drop the home surface.
-const String kAdminHomeRouteId = 'home';
+enum AdminRouteSection { ai, operations, serviceSetup, systemMonitoring }
 
 /// Canonical Operators route ID (11A.1).
 const String kAdminOperatorsRouteId = 'operators';
@@ -117,34 +118,22 @@ const String kAdminObservabilityRouteId = 'observability';
 
 /// Canonical operator-picker route ID (11A.3a follow-up). The picker
 /// is reached via Navigator.push from the Corpus admin "Pick operator"
-/// button — it is intentionally NOT in [kAdminRoutes] (no side-nav
+/// button - it is intentionally NOT in [kAdminRoutes] (no side-nav
 /// item) because its purpose is "internal helper of the Corpus
 /// surface," not a standalone admin destination. The constant exists
 /// so audit logs and route observers have a stable name to refer to
 /// the modal target.
 const String kAdminOperatorPickerRouteId = 'operator-picker';
 
-/// The admin route table. Order is the side-nav order. 11A.1 promotes
-/// `operators` from placeholder to live; the rest are deliberately
-/// marked `placeholder` so the surface area is visible to operators
-/// walking the shell without leaking incomplete UX.
+/// The admin route table. Order is the side-nav order.
 const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   AdminRoute(
-    id: kAdminHomeRouteId,
-    title: 'Overview',
-    path: '/',
-    icon: Icons.home_outlined,
-    subtitle:
-        'Start here for customer setup, pricing, content, support, and system checks.',
-    builder: _buildHome,
-  ),
-  AdminRoute(
     id: kAdminOperatorsRouteId,
-    title: 'Customers',
+    title: 'Operators',
     path: '/operators',
     icon: Icons.business_outlined,
-    subtitle:
-        'Create customer accounts, manage locations, and pause or restore access.',
+    section: AdminRouteSection.operations,
+    subtitle: 'Add operators, manage locations, and pause access when needed.',
     builder: _buildOperators,
   ),
   AdminRoute(
@@ -152,8 +141,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Plans and limits',
     path: '/pricing',
     icon: Icons.tune_outlined,
-    subtitle:
-        'Set plan templates and spending limits for each customer and location.',
+    section: AdminRouteSection.ai,
+    subtitle: 'Review AI plans and set usage limits by operator and location.',
     builder: _buildPricing,
   ),
   AdminRoute(
@@ -161,7 +150,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Knowledge base',
     path: '/corpus',
     icon: Icons.menu_book_outlined,
-    subtitle: 'Review and publish the knowledge content the advisor uses.',
+    section: AdminRouteSection.ai,
+    subtitle: 'Upload, review, publish, and restore advisor knowledge content.',
     builder: _buildCorpus,
   ),
   AdminRoute(
@@ -169,7 +159,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Connected services',
     path: '/integrations',
     icon: Icons.extension_outlined,
-    subtitle: 'Check connected services and rotate provider keys safely.',
+    section: AdminRouteSection.serviceSetup,
+    subtitle: 'Check provider status and rotate service keys safely.',
     builder: _buildIntegrations,
   ),
   AdminRoute(
@@ -177,8 +168,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'System health',
     path: '/health',
     icon: Icons.monitor_heart_outlined,
-    subtitle:
-        'Run a manual backend health check before investigating live issues.',
+    section: AdminRouteSection.systemMonitoring,
+    subtitle: 'Run a read-only system check before investigating live issues.',
     builder: _buildHealth,
   ),
   AdminRoute(
@@ -186,7 +177,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Launch controls',
     path: '/feature-flags',
     icon: Icons.flag_outlined,
-    subtitle: 'Turn staged features on or off without a new deploy.',
+    section: AdminRouteSection.serviceSetup,
+    subtitle: 'Control staged features without shipping a new build.',
     builder: _buildFeatureFlags,
   ),
   AdminRoute(
@@ -194,8 +186,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Support logs',
     path: '/debug',
     icon: Icons.bug_report_outlined,
+    section: AdminRouteSection.systemMonitoring,
     subtitle:
-        'Search recent customer requests and inspect support-safe details.',
+        'Search recent operator requests and inspect support-safe details.',
     builder: _buildDebugConsole,
   ),
   AdminRoute(
@@ -203,24 +196,39 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'System metrics',
     path: '/observability',
     icon: Icons.insights_outlined,
+    section: AdminRouteSection.systemMonitoring,
     subtitle:
-        'Review costs, usage limits, customer activity, graph health, and hosting signals.',
+        'Review cost, usage limits, operator activity, graph health, and hosting.',
     builder: _buildObservability,
   ),
 ];
 
-Widget _buildHome(BuildContext context) => const AdminHomeScreen();
-
 Widget _buildOperators(BuildContext context) {
   final gateway = AdminConsoleServicesScope.operatorLocationGatewayOf(context);
-  return OperatorLocationAdminScreen(gateway: gateway);
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  return OperatorLocationAdminScreen(
+    gateway: gateway,
+    onOpenSupportLogs: handoff == null
+        ? null
+        : (operatorId, locationId) {
+            handoff.onSelectRoute(
+              AdminRouteIntent(
+                routeId: kAdminDebugConsoleRouteId,
+                supportLogFilter: AdminSupportLogFilterIntent(
+                  operatorId: operatorId,
+                  locationId: locationId,
+                ),
+              ),
+            );
+          },
+  );
 }
 
 Widget _buildPricing(BuildContext context) {
   final gateway = AdminConsoleServicesScope.pricingTierGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   if (source == null) {
-    // No source wired (typical widget-test path) — default to live
+    // No source wired (typical widget-test path) - default to live
     // edit affordances. Production wires `source` from main_admin so
     // `ff_support` lands on the read-only branch below.
     return PricingTierAdminScreen(gateway: gateway);
@@ -237,14 +245,14 @@ Widget _buildPricing(BuildContext context) {
   );
 }
 
-/// Phase 11A.3b — demo-mode tenant the Graph candidates tab targets
+/// Phase 11A.3b - demo-mode tenant the Graph candidates tab targets
 /// when the in-memory demo gateway is mounted. The IDs match the
 /// kDemoMode tenant seed in [_defaultDemoGateway] below so the
 /// 11A.3b walkthrough writes against the same demo operator the
 /// rest of the admin shell reads.
 ///
 /// Live mode (HTTP gateway) deliberately leaves both null until the
-/// operator-picker slice ships — the screen disables the Graph
+/// operator-picker slice ships - the screen disables the Graph
 /// candidates commit button with a banner in that case so a
 /// super_admin cannot accidentally write graph approvals against
 /// the demo IDs (which do not exist as real tenants in production).
@@ -286,7 +294,7 @@ Widget _buildCorpus(BuildContext context) {
   }
 
   if (source == null) {
-    // No source wired (test path) — default to live edit affordances.
+    // No source wired (test path) - default to live edit affordances.
     return CorpusAdminScreen(
       gateway: gateway,
       targetOperatorId: demoTargetOperatorId,
@@ -331,7 +339,7 @@ Widget _buildIntegrations(BuildContext context) {
 }
 
 Widget _buildHealth(BuildContext context) {
-  // F.1 — read-only for both `super_admin` and `ff_support`. The
+  // F.1 - read-only for both `super_admin` and `ff_support`. The
   // gateway is the only injection point; there is no editingEnabled
   // flag because the surface has no mutate affordances.
   final gateway = AdminConsoleServicesScope.healthGatewayOf(context);
@@ -339,7 +347,7 @@ Widget _buildHealth(BuildContext context) {
 }
 
 Widget _buildObservability(BuildContext context) {
-  // 11A.6 — read-only surface. Same admit posture as Health: both
+  // 11A.6 - read-only surface. Same admit posture as Health: both
   // `super_admin` and `ff_support` see the full cost-telemetry +
   // dormancy + margin + cap-event + graph + Cloud Run dashboard.
   // No editingEnabled flag because there are no mutate affordances.
@@ -366,14 +374,22 @@ Widget _buildFeatureFlags(BuildContext context) {
 }
 
 Widget _buildDebugConsole(BuildContext context) {
-  // 11A.5 — full-content reveal is gated on `super_admin`. `ff_support`
+  // 11A.5 - full-content reveal is gated on `super_admin`. `ff_support`
   // lands on the read-only meta view (no expand-to-full-content
   // affordance); the diff still renders so support can audit recent
   // request meta.
   final gateway = AdminConsoleServicesScope.debugConsoleGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  final supportLogFilter = AdminRouteHandoff.maybeOf(context)?.supportLogFilter;
+  final initialFilter = RequestLogFilter(
+    operatorId: supportLogFilter?.operatorId,
+    locationId: supportLogFilter?.locationId,
+  );
   if (source == null) {
-    return DebugConsoleAdminScreen(gateway: gateway);
+    return DebugConsoleAdminScreen(
+      gateway: gateway,
+      initialFilter: initialFilter,
+    );
   }
   return StreamBuilder<AdminAuthState>(
     stream: source.stream,
@@ -382,7 +398,11 @@ Widget _buildDebugConsole(BuildContext context) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
       final canEdit = session != null && session.roles.contains('super_admin');
-      return DebugConsoleAdminScreen(gateway: gateway, editingEnabled: canEdit);
+      return DebugConsoleAdminScreen(
+        gateway: gateway,
+        editingEnabled: canEdit,
+        initialFilter: initialFilter,
+      );
     },
   );
 }
@@ -429,47 +449,47 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// fabricating a live gateway.
   final OperatorLocationAdminGateway? operatorLocationGateway;
 
-  /// Phase 11A.2 — pricing tier admin gateway. Optional so existing
+  /// Phase 11A.2 - pricing tier admin gateway. Optional so existing
   /// production wiring can light it up incrementally; the default
   /// fallback is a seeded in-memory demo gateway shared with the
   /// walkthrough.
   final PricingTierAdminGateway? pricingTierGateway;
 
-  /// Phase 11A.3a — corpus admin gateway. Optional for the same
+  /// Phase 11A.3a - corpus admin gateway. Optional for the same
   /// incremental-wiring reason. Default fallback is the seeded
   /// in-memory corpus demo gateway shared with the 11A.3a walkthrough.
   final CorpusAdminGateway? corpusAdminGateway;
 
-  /// Phase 11A.4 — integration management admin gateway. Optional;
+  /// Phase 11A.4 - integration management admin gateway. Optional;
   /// the default fallback is a seeded in-memory gateway sharing the
   /// `kDemoMode` walkthrough fixtures.
   final IntegrationAdminGateway? integrationGateway;
 
-  /// Phase 11A.UX.health (F.1) — proxy `/health` envelope gateway.
+  /// Phase 11A.UX.health (F.1) - proxy `/health` envelope gateway.
   /// Optional; the default fallback is the seeded in-memory demo
   /// envelope shared with the F.1 walkthrough.
   final HealthAdminGateway? healthGateway;
 
-  /// Phase 11A.6 — observability dashboard gateway. Optional; the
+  /// Phase 11A.6 - observability dashboard gateway. Optional; the
   /// default fallback is the seeded in-memory demo envelope so the
   /// 11A.6 walkthrough renders without the Cloud Run admin proxy.
-  /// The /health envelope is intentionally NOT consumed here — that
+  /// The /health envelope is intentionally NOT consumed here - that
   /// surface lives behind [healthGateway] / the Health route.
   final ObservabilityAdminGateway? observabilityGateway;
 
-  /// Phase 11A.7 — feature flags admin gateway. Optional; the default
+  /// Phase 11A.7 - feature flags admin gateway. Optional; the default
   /// fallback is a seeded in-memory gateway with the launch flag
   /// catalog so the walkthrough exercises the toggle / DANGER paths
   /// without hitting Postgres.
   final FeatureFlagsAdminGateway? featureFlagsGateway;
 
-  /// Phase 11A.5 — debug console admin gateway. Optional; the default
+  /// Phase 11A.5 - debug console admin gateway. Optional; the default
   /// fallback is a seeded in-memory gateway with the per-operator
   /// request log demo so the walkthrough exercises filters, search,
   /// live-tail, and the full-content opt-in paths without a backend.
   final DebugConsoleAdminGateway? debugConsoleGateway;
 
-  /// Phase 11A.2 — admin auth source. Optional for the same
+  /// Phase 11A.2 - admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
   /// compute `editingEnabled` from the signed-in session's roles
   /// (only `super_admin` may mutate caps; `ff_support` lands on the
@@ -632,6 +652,7 @@ final PricingTierAdminGateway _defaultPricingDemoGateway =
           subscriptionTier: 'launch',
           preferredCurrency: 'CAD',
           primaryLocationId: '00000000-0000-4000-8000-0000000000a1',
+          primaryLocationName: 'Toronto Yorkville',
           suspended: false,
           caps: <UsageCapRow>[],
         ),
@@ -641,6 +662,7 @@ final PricingTierAdminGateway _defaultPricingDemoGateway =
           subscriptionTier: 'pilot',
           preferredCurrency: 'USD',
           primaryLocationId: '00000000-0000-4000-8000-0000000000b1',
+          primaryLocationName: 'Brooklyn Williamsburg',
           suspended: false,
           caps: <UsageCapRow>[
             UsageCapRow(
@@ -820,10 +842,10 @@ final ObservabilityAdminGateway _defaultObservabilityDemoGateway =
 /// destructive-confirmation paths end-to-end. Mirrors the rows
 /// landed by the launch migrations:
 ///
-///   * `audit_logs_cutover_enabled` (destructive) — B.2 cutover flag.
-///   * `kms_real_provider_<kind>_enabled` (destructive) — per-lane
+///   * `audit_logs_cutover_enabled` (destructive) - B.2 cutover flag.
+///   * `kms_real_provider_<kind>_enabled` (destructive) - per-lane
 ///     KMS rollout gates.
-///   * `advisor_enabled` (standard) — example launch flag for the
+///   * `advisor_enabled` (standard) - example launch flag for the
 ///     advisor surface.
 final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
     InMemoryFeatureFlagsAdminGateway(
@@ -837,8 +859,8 @@ final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
           enabled: true,
           kind: kFeatureFlagKindDestructive,
           description:
-              'B.2 fan-out gate: routes auth events into the hash-chained '
-              'audit_logs chain. Toggle off only as a one-shot rollback.',
+              'Routes sign-in and admin changes into the permanent audit log. '
+              'Turn off only for a rollback.',
           updatedBy: 'demo-super-admin',
           createdAt: DateTime.utc(2026, 5, 1, 10, 0),
           updatedAt: DateTime.utc(2026, 5, 1, 10, 0),
@@ -851,8 +873,8 @@ final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
           enabled: false,
           kind: kFeatureFlagKindDestructive,
           description:
-              '11A.4c per-lane KMS rollout gate. Off = stub provider; '
-              'on = GCP Secret Manager + Cloud Run revision push.',
+              'Uses secure cloud storage for Anthropic service keys instead '
+              'of demo storage.',
           updatedBy: 'demo-super-admin',
           createdAt: DateTime.utc(2026, 5, 2, 2, 0),
           updatedAt: DateTime.utc(2026, 5, 2, 2, 0),
@@ -864,7 +886,9 @@ final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
           locationId: null,
           enabled: false,
           kind: kFeatureFlagKindDestructive,
-          description: '11A.4c per-lane KMS rollout gate (Voyage embeddings).',
+          description:
+              'Uses secure cloud storage for Voyage service keys instead of '
+              'demo storage.',
           updatedBy: 'demo-super-admin',
           createdAt: DateTime.utc(2026, 5, 2, 2, 0),
           updatedAt: DateTime.utc(2026, 5, 2, 2, 0),
@@ -877,8 +901,8 @@ final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
           enabled: true,
           kind: kFeatureFlagKindStandard,
           description:
-              '11b advisor surface kill switch. Off = advisor returns '
-              "501 'feature_unavailable' across the app.",
+              'Controls whether the advisor experience is available in the '
+              'app.',
           updatedBy: 'demo-super-admin',
           createdAt: DateTime.utc(2026, 5, 1, 10, 0),
           updatedAt: DateTime.utc(2026, 5, 1, 10, 0),

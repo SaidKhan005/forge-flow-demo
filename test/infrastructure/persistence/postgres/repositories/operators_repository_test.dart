@@ -18,13 +18,13 @@
 //         row with its existing suspended_at, not now().
 //       - reactivateOperator: SET suspended_at = NULL.
 //
-//   * `onboardOperatorAtomically` — three statements in one
+//   * `onboardOperatorAtomically` — four statements in one
 //     `withSystem` transaction so a partial failure rolls back. The
 //     ordering is load-bearing because of the composite-FK chain
 //     `operators.primary_location_id → locations(operator_id,
 //     location_id)`: the operator must insert first (no
-//     primary_location_id), then the location, then the operator
-//     UPDATE writes the primary_location_id pointer.
+//     primary_location_id), then the root org_unit, then the location,
+//     then the operator UPDATE writes the primary_location_id pointer.
 //
 //   * `insertOperator` / `updateOperator` / `findById` / `listOperators`
 //     parameter shape and null-row handling.
@@ -41,6 +41,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transa
 const String _opA = '11111111-1111-1111-1111-111111111111';
 const String _opB = '44444444-4444-4444-4444-444444444444';
 const String _locA = '22222222-2222-2222-2222-222222222222';
+const String _ouRoot = '33333333-3333-3333-3333-333333333333';
 
 DateTime _instant(int hour) => DateTime.utc(2026, 4, 30, hour);
 
@@ -68,65 +69,63 @@ PostgresRow _operatorRow({
 
 void main() {
   group('OperatorsRepository.listOperators (cross-tenant admin sweep)', () {
-    test(
-      'uses withSystem (forge_admin BYPASSRLS) and the SQL has NO '
-      'operator_id predicate — every operator returned, ordered by '
-      'business_name',
-      () async {
-        final pool = _OperatorsPool(
-          listRows: <PostgresRow>[
-            _operatorRow(operatorId: _opA, businessName: 'Acme'),
-            _operatorRow(operatorId: _opB, businessName: 'Zenith'),
-          ],
-        );
-        final repo = OperatorsRepository(TenantTransactionWrapper(pool));
-        final rows = await repo.listOperators(
-          adminReason: 'admin.operators.list',
-        );
-        expect(rows, hasLength(2));
-        expect(rows[0].operatorId, equals(_opA));
-        expect(rows[1].operatorId, equals(_opB));
+    test('uses withSystem (forge_admin BYPASSRLS) and the SQL has NO '
+        'operator_id predicate — every operator returned, ordered by '
+        'business_name', () async {
+      final pool = _OperatorsPool(
+        listRows: <PostgresRow>[
+          _operatorRow(operatorId: _opA, businessName: 'Acme'),
+          _operatorRow(operatorId: _opB, businessName: 'Zenith'),
+        ],
+      );
+      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+      final rows = await repo.listOperators(
+        adminReason: 'admin.operators.list',
+      );
+      expect(rows, hasLength(2));
+      expect(rows[0].operatorId, equals(_opA));
+      expect(rows[1].operatorId, equals(_opB));
 
-        // SET LOCAL bypass marker carries the canonical "system:<reason>"
-        // shape — audit triggers can identify the admin path.
-        final tx = pool.transactions.single;
-        final auditCfg = tx.parameters.firstWhere(
-          (p) => p['value'] is String &&
-              (p['value']! as String).startsWith('system:'),
-        );
-        expect(auditCfg['value'], equals('system:admin.operators.list'));
+      // SET LOCAL bypass marker carries the canonical "system:<reason>"
+      // shape — audit triggers can identify the admin path.
+      final tx = pool.transactions.single;
+      final auditCfg = tx.parameters.firstWhere(
+        (p) =>
+            p['value'] is String &&
+            (p['value']! as String).startsWith('system:'),
+      );
+      expect(auditCfg['value'], equals('system:admin.operators.list'));
 
-        // forge_admin elevation runs before the SELECT.
-        expect(
-          tx.executedSql.where((s) => s.contains('set local role forge_admin')),
-          hasLength(1),
-        );
-        // No tenant SET LOCAL — withSystem skips operator_id /
-        // location_id GUCs.
-        expect(
-          tx.executedSql.where((s) => s.contains("'app.operator_id'")),
-          isEmpty,
-          reason:
-              'withSystem must not set tenant GUCs — that would shadow '
-              'BYPASSRLS and break cross-tenant queries',
-        );
+      // forge_admin elevation runs before the SELECT.
+      expect(
+        tx.executedSql.where((s) => s.contains('set local role forge_admin')),
+        hasLength(1),
+      );
+      // No tenant SET LOCAL — withSystem skips operator_id /
+      // location_id GUCs.
+      expect(
+        tx.executedSql.where((s) => s.contains("'app.operator_id'")),
+        isEmpty,
+        reason:
+            'withSystem must not set tenant GUCs — that would shadow '
+            'BYPASSRLS and break cross-tenant queries',
+      );
 
-        // Cross-tenant SELECT shape.
-        final selectSql = tx.executedSql
-            .firstWhere((s) => s.contains('from operators'));
-        expect(selectSql, contains('order by business_name asc'));
-        expect(
-          selectSql,
-          isNot(contains('where')),
-          reason: 'cross-tenant sweep — no operator_id filter',
-        );
+      // Cross-tenant SELECT shape.
+      final selectSql = tx.executedSql.firstWhere(
+        (s) => s.contains('from operators'),
+      );
+      expect(selectSql, contains('order by business_name asc'));
+      expect(
+        selectSql,
+        isNot(contains('where')),
+        reason: 'cross-tenant sweep — no operator_id filter',
+      );
 
-        expect(tx.commitCount, equals(1));
-      },
-    );
+      expect(tx.commitCount, equals(1));
+    });
 
-    test('rejects an empty adminReason at the wrapper boundary',
-        () async {
+    test('rejects an empty adminReason at the wrapper boundary', () async {
       final pool = _OperatorsPool(listRows: const <PostgresRow>[]);
       final repo = OperatorsRepository(TenantTransactionWrapper(pool));
       Object? thrown;
@@ -175,97 +174,98 @@ void main() {
   });
 
   group('OperatorsRepository.insertOperator', () {
+    test('binds business_name / owner_email / subscription_tier / '
+        'preferred_currency and returns the inserted row', () async {
+      final pool = _OperatorsPool(
+        insertedOperatorRows: <PostgresRow>[
+          _operatorRow(operatorId: _opA, businessName: 'New Op'),
+        ],
+      );
+      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+      final row = await repo.insertOperator(
+        businessName: 'New Op',
+        ownerEmail: 'new@example.com',
+        subscriptionTier: 'starter',
+        preferredCurrency: 'CAD',
+        adminReason: 'admin.operators.create',
+      );
+      expect(row.operatorId, equals(_opA));
+      expect(row.businessName, equals('New Op'));
+
+      final tx = pool.transactions.single;
+      final insertParams = tx.parameters.firstWhere(
+        (p) => p['business_name'] == 'New Op',
+      );
+      expect(insertParams['owner_email'], equals('new@example.com'));
+      expect(insertParams['subscription_tier'], equals('starter'));
+      expect(insertParams['preferred_currency'], equals('CAD'));
+    });
+
     test(
-      'binds business_name / owner_email / subscription_tier / '
-      'preferred_currency and returns the inserted row',
+      'throws StateError when INSERT … RETURNING produces no rows',
       () async {
         final pool = _OperatorsPool(
-          insertedOperatorRows: <PostgresRow>[
-            _operatorRow(operatorId: _opA, businessName: 'New Op'),
-          ],
+          insertedOperatorRows: const <PostgresRow>[],
         );
         final repo = OperatorsRepository(TenantTransactionWrapper(pool));
-        final row = await repo.insertOperator(
-          businessName: 'New Op',
-          ownerEmail: 'new@example.com',
-          subscriptionTier: 'starter',
-          preferredCurrency: 'CAD',
-          adminReason: 'admin.operators.create',
+        await expectLater(
+          repo.insertOperator(
+            businessName: 'X',
+            ownerEmail: 'x@example.com',
+            subscriptionTier: 'pro',
+            preferredCurrency: 'USD',
+            adminReason: 'admin.operators.create',
+          ),
+          throwsStateError,
         );
-        expect(row.operatorId, equals(_opA));
-        expect(row.businessName, equals('New Op'));
-
-        final tx = pool.transactions.single;
-        final insertParams = tx.parameters.firstWhere(
-          (p) => p['business_name'] == 'New Op',
-        );
-        expect(insertParams['owner_email'], equals('new@example.com'));
-        expect(insertParams['subscription_tier'], equals('starter'));
-        expect(insertParams['preferred_currency'], equals('CAD'));
       },
     );
-
-    test('throws StateError when INSERT … RETURNING produces no rows',
-        () async {
-      final pool = _OperatorsPool(insertedOperatorRows: const <PostgresRow>[]);
-      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
-      await expectLater(
-        repo.insertOperator(
-          businessName: 'X',
-          ownerEmail: 'x@example.com',
-          subscriptionTier: 'pro',
-          preferredCurrency: 'USD',
-          adminReason: 'admin.operators.create',
-        ),
-        throwsStateError,
-      );
-    });
   });
 
   group('OperatorsRepository.updateOperator (coalesce pattern)', () {
-    test(
-      'all fields null: SQL still issues UPDATE with all coalesce '
-      'expressions; the row is rewritten only with `updated_at = now()` '
-      '(every other column resolves back to itself)',
-      () async {
-        final pool = _OperatorsPool(
-          updatedOperatorRows: <PostgresRow>[
-            _operatorRow(operatorId: _opA),
-          ],
-        );
-        final repo = OperatorsRepository(TenantTransactionWrapper(pool));
-        final row = await repo.updateOperator(
-          operatorId: _opA,
-          adminReason: 'admin.operators.update',
-        );
-        expect(row, isNotNull);
-        expect(row!.operatorId, equals(_opA));
+    test('all fields null: SQL still issues UPDATE with all coalesce '
+        'expressions; the row is rewritten only with `updated_at = now()` '
+        '(every other column resolves back to itself)', () async {
+      final pool = _OperatorsPool(
+        updatedOperatorRows: <PostgresRow>[_operatorRow(operatorId: _opA)],
+      );
+      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+      final row = await repo.updateOperator(
+        operatorId: _opA,
+        adminReason: 'admin.operators.update',
+      );
+      expect(row, isNotNull);
+      expect(row!.operatorId, equals(_opA));
 
-        final tx = pool.transactions.single;
-        final updateSql = tx.executedSql
-            .firstWhere((s) => s.contains('update operators'));
-        expect(updateSql, contains('coalesce(@business_name, business_name)'));
-        expect(updateSql, contains('coalesce(@owner_email, owner_email)'));
-        expect(updateSql, contains(
-          'coalesce(@subscription_tier, subscription_tier)',
-        ));
-        expect(updateSql, contains(
-          'coalesce(@preferred_currency, preferred_currency)',
-        ));
-        expect(updateSql, contains(
-          'coalesce(@primary_location_id::uuid, primary_location_id)',
-        ));
-        expect(updateSql, contains('updated_at = now()'));
+      final tx = pool.transactions.single;
+      final updateSql = tx.executedSql.firstWhere(
+        (s) => s.contains('update operators'),
+      );
+      expect(updateSql, contains('coalesce(@business_name, business_name)'));
+      expect(updateSql, contains('coalesce(@owner_email, owner_email)'));
+      expect(
+        updateSql,
+        contains('coalesce(@subscription_tier, subscription_tier)'),
+      );
+      expect(
+        updateSql,
+        contains('coalesce(@preferred_currency, preferred_currency)'),
+      );
+      expect(
+        updateSql,
+        contains('coalesce(@primary_location_id::uuid, primary_location_id)'),
+      );
+      expect(updateSql, contains('updated_at = now()'));
 
-        final params = tx.parameters
-            .firstWhere((p) => p.containsKey('business_name'));
-        expect(params['business_name'], isNull);
-        expect(params['owner_email'], isNull);
-        expect(params['subscription_tier'], isNull);
-        expect(params['preferred_currency'], isNull);
-        expect(params['primary_location_id'], isNull);
-      },
-    );
+      final params = tx.parameters.firstWhere(
+        (p) => p.containsKey('business_name'),
+      );
+      expect(params['business_name'], isNull);
+      expect(params['owner_email'], isNull);
+      expect(params['subscription_tier'], isNull);
+      expect(params['preferred_currency'], isNull);
+      expect(params['primary_location_id'], isNull);
+    });
 
     test('returns null when the operator row does not exist', () async {
       final pool = _OperatorsPool(updatedOperatorRows: const <PostgresRow>[]);
@@ -279,32 +279,33 @@ void main() {
   });
 
   group('OperatorsRepository.suspendOperator (11A.1 — idempotent)', () {
-    test(
-      'UPDATE uses `coalesce(suspended_at, now())` so re-suspending a '
-      'paused operator preserves the original suspended_at',
-      () async {
-        final originallyPausedAt = _instant(8);
-        final pool = _OperatorsPool(
-          updatedOperatorRows: <PostgresRow>[
-            _operatorRow(operatorId: _opA, suspendedAt: originallyPausedAt),
-          ],
-        );
-        final repo = OperatorsRepository(TenantTransactionWrapper(pool));
-        final row = await repo.suspendOperator(
-          operatorId: _opA,
-          adminReason: 'admin.operators.suspend',
-        );
-        expect(row!.suspendedAt, equals(originallyPausedAt));
+    test('UPDATE uses `coalesce(suspended_at, now())` so re-suspending a '
+        'paused operator preserves the original suspended_at', () async {
+      final originallyPausedAt = _instant(8);
+      final pool = _OperatorsPool(
+        updatedOperatorRows: <PostgresRow>[
+          _operatorRow(operatorId: _opA, suspendedAt: originallyPausedAt),
+        ],
+      );
+      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+      final row = await repo.suspendOperator(
+        operatorId: _opA,
+        adminReason: 'admin.operators.suspend',
+      );
+      expect(row!.suspendedAt, equals(originallyPausedAt));
 
-        final tx = pool.transactions.single;
-        final updateSql = tx.executedSql
-            .firstWhere((s) => s.contains('update operators'));
-        // The idempotency guarantee lives in the SQL: COALESCE keeps
-        // the prior suspended_at if it's already set; only a NULL ->
-        // now() flip mutates the column.
-        expect(updateSql, contains('suspended_at = coalesce(suspended_at, now())'));
-      },
-    );
+      final tx = pool.transactions.single;
+      final updateSql = tx.executedSql.firstWhere(
+        (s) => s.contains('update operators'),
+      );
+      // The idempotency guarantee lives in the SQL: COALESCE keeps
+      // the prior suspended_at if it's already set; only a NULL ->
+      // now() flip mutates the column.
+      expect(
+        updateSql,
+        contains('suspended_at = coalesce(suspended_at, now())'),
+      );
+    });
 
     test('returns null when the operator does not exist', () async {
       final pool = _OperatorsPool(updatedOperatorRows: const <PostgresRow>[]);
@@ -318,40 +319,39 @@ void main() {
   });
 
   group('OperatorsRepository.reactivateOperator (11A.1)', () {
-    test(
-      'UPDATE explicitly sets suspended_at = null (not coalesce) so '
-      'a reactivation clears the column unconditionally',
-      () async {
-        final pool = _OperatorsPool(
-          updatedOperatorRows: <PostgresRow>[
-            _operatorRow(operatorId: _opA),
-          ],
-        );
-        final repo = OperatorsRepository(TenantTransactionWrapper(pool));
-        final row = await repo.reactivateOperator(
-          operatorId: _opA,
-          adminReason: 'admin.operators.reactivate',
-        );
-        expect(row, isNotNull);
-        expect(row!.suspendedAt, isNull);
+    test('UPDATE explicitly sets suspended_at = null (not coalesce) so '
+        'a reactivation clears the column unconditionally', () async {
+      final pool = _OperatorsPool(
+        updatedOperatorRows: <PostgresRow>[_operatorRow(operatorId: _opA)],
+      );
+      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+      final row = await repo.reactivateOperator(
+        operatorId: _opA,
+        adminReason: 'admin.operators.reactivate',
+      );
+      expect(row, isNotNull);
+      expect(row!.suspendedAt, isNull);
 
-        final tx = pool.transactions.single;
-        final updateSql = tx.executedSql
-            .firstWhere((s) => s.contains('update operators'));
-        expect(updateSql, contains('suspended_at = null'));
-      },
-    );
+      final tx = pool.transactions.single;
+      final updateSql = tx.executedSql.firstWhere(
+        (s) => s.contains('update operators'),
+      );
+      expect(updateSql, contains('suspended_at = null'));
+    });
   });
 
   group('OperatorsRepository.onboardOperatorAtomically', () {
     test(
-      'three statements in ONE withSystem transaction: insert operator '
-      '→ insert location → UPDATE operator with primary_location_id. '
-      'The cloud-foundation composite FK requires this exact ordering',
+      'four statements in ONE withSystem transaction: insert operator '
+      'then root org_unit, location, and primary_location_id update. '
+      'The hierarchy and cloud-foundation FKs require this exact ordering',
       () async {
         final pool = _OperatorsPool(
           onboardOperatorInsertRows: <PostgresRow>[
             <String, Object?>{'operator_id': _opA},
+          ],
+          onboardRootOrgUnitRows: <PostgresRow>[
+            <String, Object?>{'id': _ouRoot},
           ],
           onboardLocationRows: <PostgresRow>[
             <String, Object?>{
@@ -386,21 +386,38 @@ void main() {
         expect(result.location.locationId, equals(_locA));
         expect(result.location.timezone, equals('America/Toronto'));
 
-        // ONE transaction, three writes in load-bearing order.
+        // ONE transaction, four writes in load-bearing order.
         expect(pool.transactions, hasLength(1));
         final tx = pool.transactions.single;
         final dataStatements = tx.executedSql
             .where(
               (s) =>
                   s.contains('insert into operators') ||
+                  s.contains('insert into org_units') ||
                   s.contains('insert into locations') ||
                   s.contains('update operators set'),
             )
             .toList();
-        expect(dataStatements, hasLength(3));
+        expect(dataStatements, hasLength(4));
         expect(dataStatements[0], contains('insert into operators'));
-        expect(dataStatements[1], contains('insert into locations'));
-        expect(dataStatements[2], contains('update operators set'));
+        expect(dataStatements[1], contains('insert into org_units'));
+        expect(dataStatements[2], contains('insert into locations'));
+        expect(dataStatements[3], contains('update operators set'));
+        expect(dataStatements[1], contains('regexp_replace(@business_name'));
+        expect(dataStatements[2], contains('parent_org_unit_id'));
+        final rootParams = tx.parameters.firstWhere(
+          (p) =>
+              p.containsKey('operator_id') &&
+              p.containsKey('business_name') &&
+              !p.containsKey('subscription_tier'),
+        );
+        expect(rootParams['operator_id'], equals(_opA));
+        expect(rootParams['business_name'], equals('Onboard Co'));
+        final locationParams = tx.parameters.firstWhere(
+          (p) => p.containsKey('parent_org_unit_id') && p.containsKey('name'),
+        );
+        expect(locationParams['operator_id'], equals(_opA));
+        expect(locationParams['parent_org_unit_id'], equals(_ouRoot));
         // Final update binds primary_location_id with operator_id.
         final finalUpdateParams = tx.parameters.firstWhere(
           (p) =>
@@ -415,12 +432,44 @@ void main() {
       },
     );
 
+    test('when the operator INSERT returns no rows, throws StateError and '
+        'the transaction rolls back (location row never written)', () async {
+      final pool = _OperatorsPool(
+        onboardOperatorInsertRows: const <PostgresRow>[],
+      );
+      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+      await expectLater(
+        repo.onboardOperatorAtomically(
+          businessName: 'Failing Co',
+          ownerEmail: 'fail@onboard.example',
+          subscriptionTier: 'pro',
+          preferredCurrency: 'USD',
+          locationName: 'Main',
+          locationAddress: '123 Main St',
+          locationTimezone: 'America/Toronto',
+          locationRolloverHour: 4,
+          adminReason: 'admin.operators.onboard',
+        ),
+        throwsStateError,
+      );
+      // Wrapper rolled back; no location INSERT made it to the wire.
+      final tx = pool.transactions.single;
+      expect(
+        tx.executedSql.where((s) => s.contains('insert into locations')),
+        isEmpty,
+      );
+      expect(tx.rollbackCount, equals(1));
+    });
+
     test(
-      'when the operator INSERT returns no rows, throws StateError and '
-      'the transaction rolls back (location row never written)',
+      'when the root org-unit INSERT returns no rows, throws StateError '
+      'and the transaction rolls back (location row never written)',
       () async {
         final pool = _OperatorsPool(
-          onboardOperatorInsertRows: const <PostgresRow>[],
+          onboardOperatorInsertRows: <PostgresRow>[
+            <String, Object?>{'operator_id': _opA},
+          ],
+          onboardRootOrgUnitRows: const <PostgresRow>[],
         );
         final repo = OperatorsRepository(TenantTransactionWrapper(pool));
         await expectLater(
@@ -437,7 +486,6 @@ void main() {
           ),
           throwsStateError,
         );
-        // Wrapper rolled back; no location INSERT made it to the wire.
         final tx = pool.transactions.single;
         expect(
           tx.executedSql.where((s) => s.contains('insert into locations')),
@@ -454,6 +502,9 @@ void main() {
         final pool = _OperatorsPool(
           onboardOperatorInsertRows: <PostgresRow>[
             <String, Object?>{'operator_id': _opA},
+          ],
+          onboardRootOrgUnitRows: <PostgresRow>[
+            <String, Object?>{'id': _ouRoot},
           ],
           onboardLocationRows: const <PostgresRow>[],
         );
@@ -484,46 +535,46 @@ void main() {
       },
     );
 
-    test(
-      'when the final operator UPDATE returns no rows, throws '
-      'StateError (the operator row vanished mid-transaction — '
-      'shouldn\'t happen, but the guard surfaces the violation)',
-      () async {
-        final pool = _OperatorsPool(
-          onboardOperatorInsertRows: <PostgresRow>[
-            <String, Object?>{'operator_id': _opA},
-          ],
-          onboardLocationRows: <PostgresRow>[
-            <String, Object?>{
-              'location_id': _locA,
-              'operator_id': _opA,
-              'name': 'Main',
-              'address': '123 Main St',
-              'timezone': 'America/Toronto',
-              'business_day_rollover_hour': 4,
-              'created_at': _instant(10),
-              'updated_at': _instant(11),
-            },
-          ],
-          onboardFinalOperatorRows: const <PostgresRow>[],
-        );
-        final repo = OperatorsRepository(TenantTransactionWrapper(pool));
-        await expectLater(
-          repo.onboardOperatorAtomically(
-            businessName: 'Edge Co',
-            ownerEmail: 'edge@onboard.example',
-            subscriptionTier: 'pro',
-            preferredCurrency: 'USD',
-            locationName: 'Main',
-            locationAddress: '123 Main St',
-            locationTimezone: 'America/Toronto',
-            locationRolloverHour: 4,
-            adminReason: 'admin.operators.onboard',
-          ),
-          throwsStateError,
-        );
-      },
-    );
+    test('when the final operator UPDATE returns no rows, throws '
+        'StateError (the operator row vanished mid-transaction — '
+        'shouldn\'t happen, but the guard surfaces the violation)', () async {
+      final pool = _OperatorsPool(
+        onboardOperatorInsertRows: <PostgresRow>[
+          <String, Object?>{'operator_id': _opA},
+        ],
+        onboardRootOrgUnitRows: <PostgresRow>[
+          <String, Object?>{'id': _ouRoot},
+        ],
+        onboardLocationRows: <PostgresRow>[
+          <String, Object?>{
+            'location_id': _locA,
+            'operator_id': _opA,
+            'name': 'Main',
+            'address': '123 Main St',
+            'timezone': 'America/Toronto',
+            'business_day_rollover_hour': 4,
+            'created_at': _instant(10),
+            'updated_at': _instant(11),
+          },
+        ],
+        onboardFinalOperatorRows: const <PostgresRow>[],
+      );
+      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+      await expectLater(
+        repo.onboardOperatorAtomically(
+          businessName: 'Edge Co',
+          ownerEmail: 'edge@onboard.example',
+          subscriptionTier: 'pro',
+          preferredCurrency: 'USD',
+          locationName: 'Main',
+          locationAddress: '123 Main St',
+          locationTimezone: 'America/Toronto',
+          locationRolloverHour: 4,
+          adminReason: 'admin.operators.onboard',
+        ),
+        throwsStateError,
+      );
+    });
   });
 }
 
@@ -539,6 +590,7 @@ class _OperatorsPool implements PostgresPool {
     this.insertedOperatorRows = const <PostgresRow>[],
     this.updatedOperatorRows = const <PostgresRow>[],
     this.onboardOperatorInsertRows = const <PostgresRow>[],
+    this.onboardRootOrgUnitRows = const <PostgresRow>[],
     this.onboardLocationRows = const <PostgresRow>[],
     this.onboardFinalOperatorRows = const <PostgresRow>[],
   });
@@ -548,6 +600,7 @@ class _OperatorsPool implements PostgresPool {
   final List<PostgresRow> insertedOperatorRows;
   final List<PostgresRow> updatedOperatorRows;
   final List<PostgresRow> onboardOperatorInsertRows;
+  final List<PostgresRow> onboardRootOrgUnitRows;
   final List<PostgresRow> onboardLocationRows;
   final List<PostgresRow> onboardFinalOperatorRows;
 
@@ -561,6 +614,7 @@ class _OperatorsPool implements PostgresPool {
       insertedOperatorRows: insertedOperatorRows,
       updatedOperatorRows: updatedOperatorRows,
       onboardOperatorInsertRows: onboardOperatorInsertRows,
+      onboardRootOrgUnitRows: onboardRootOrgUnitRows,
       onboardLocationRows: onboardLocationRows,
       onboardFinalOperatorRows: onboardFinalOperatorRows,
     );
@@ -576,6 +630,7 @@ class _OperatorsTransaction extends PostgresTransaction {
     required this.insertedOperatorRows,
     required this.updatedOperatorRows,
     required this.onboardOperatorInsertRows,
+    required this.onboardRootOrgUnitRows,
     required this.onboardLocationRows,
     required this.onboardFinalOperatorRows,
   });
@@ -585,6 +640,7 @@ class _OperatorsTransaction extends PostgresTransaction {
   final List<PostgresRow> insertedOperatorRows;
   final List<PostgresRow> updatedOperatorRows;
   final List<PostgresRow> onboardOperatorInsertRows;
+  final List<PostgresRow> onboardRootOrgUnitRows;
   final List<PostgresRow> onboardLocationRows;
   final List<PostgresRow> onboardFinalOperatorRows;
 
@@ -605,6 +661,7 @@ class _OperatorsTransaction extends PostgresTransaction {
 
     final isOperatorInsert = sql.contains('insert into operators');
     final isOperatorUpdate = sql.contains('update operators set');
+    final isRootOrgUnitInsert = sql.contains('insert into org_units');
     final isLocationInsert = sql.contains('insert into locations');
 
     // Onboarding path: detected by the RETURNING shape — onboarding
@@ -612,14 +669,19 @@ class _OperatorsTransaction extends PostgresTransaction {
     // `insertOperator` returns the full row (`operator_id, business_name,
     // ...`). Both INSERTs share the same column list, so the
     // RETURNING list is the discriminator.
-    final isOnboardOperatorInsert = isOperatorInsert &&
+    final isOnboardOperatorInsert =
+        isOperatorInsert &&
         sql.contains('returning operator_id::text as operator_id') &&
         !sql.contains('as operator_id, business_name');
-    final isOnboardOperatorUpdate = isOperatorUpdate &&
+    final isOnboardOperatorUpdate =
+        isOperatorUpdate &&
         sql.contains('primary_location_id = @location_id::uuid');
 
     if (isOnboardOperatorInsert) {
       return onboardOperatorInsertRows;
+    }
+    if (isRootOrgUnitInsert) {
+      return onboardRootOrgUnitRows;
     }
     if (isLocationInsert) {
       return onboardLocationRows;

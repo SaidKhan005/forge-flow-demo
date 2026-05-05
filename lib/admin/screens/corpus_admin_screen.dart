@@ -1,4 +1,4 @@
-// Phase 11A.3a — Corpus admin screen.
+﻿// Phase 11A.3a - Corpus admin screen.
 //
 // Admin-side editor over the `corpus_versions` ledger plus the
 // per-chunk `version_id` / `superseded_at` pointers. Replaces the
@@ -29,6 +29,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
+import '../admin_human_labels.dart';
 import '../models/corpus_admin_models.dart';
 import '../services/corpus_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
@@ -42,7 +45,7 @@ import 'operator_picker_screen.dart';
 typedef CorpusUploadPicker =
     Future<UploadCommand?> Function(BuildContext context);
 
-/// Phase 11A.3a follow-up — opens [OperatorPickerScreen] (or a stub
+/// Phase 11A.3a follow-up - opens [OperatorPickerScreen] (or a stub
 /// in tests) and resolves to the picked (operator, location) pair, or
 /// null if the admin cancels. Wired by `admin_routes.dart`'s
 /// `_buildCorpus`; tests can pass a deterministic stub.
@@ -76,10 +79,10 @@ class CorpusAdminScreen extends StatefulWidget {
   /// deterministic.
   final String Function()? idempotencyKeyGenerator;
 
-  /// Phase 11A.3b — destination (operator, location) for approved
+  /// Phase 11A.3b - destination (operator, location) for approved
   /// graph candidates. Super_admin is cross-tenant, so the Graph
   /// candidates commit must name an operator explicitly. The screen
-  /// itself does NOT default these — the host wiring in
+  /// itself does NOT default these - the host wiring in
   /// [lib/admin/admin_routes.dart] picks the targets explicitly:
   /// the demo path passes the kDemoMode tenant seed; the live path
   /// leaves them null until the admin uses the "Pick operator"
@@ -89,7 +92,7 @@ class CorpusAdminScreen extends StatefulWidget {
   final String? targetOperatorId;
   final String? targetLocationId;
 
-  /// Phase 11A.3a follow-up — opens the operator picker modal. When
+  /// Phase 11A.3a follow-up - opens the operator picker modal. When
   /// the admin confirms a pair, the screen state takes over the
   /// effective target so the commit button enables. Null disables
   /// the picker affordance (pre-follow-up tests; the banner still
@@ -112,10 +115,10 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
   bool _busy = false;
   int _idempotencyCounter = 0;
 
-  // Phase 11A.3a follow-up — once the admin confirms a pair through
+  // Phase 11A.3a follow-up - once the admin confirms a pair through
   // the operator picker, these override [widget.targetOperatorId] /
   // [widget.targetLocationId] for the rest of the admin session. They
-  // are intentionally session-scoped (not durable) — durable
+  // are intentionally session-scoped (not durable) - durable
   // persistence is a future slice.
   String? _pickedOperatorId;
   String? _pickedLocationId;
@@ -354,7 +357,7 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                   ),
                   Tab(
                     key: Key('admin_corpus_graph_candidates_tab'),
-                    text: 'Graph review',
+                    text: 'Relationship review',
                   ),
                 ],
               ),
@@ -482,7 +485,7 @@ class _VersionsTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Upload the first methodology file to create the advisor knowledge base.',
+                  'Upload a markdown file to create the first advisor knowledge version.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 if (editingEnabled) ...[
@@ -490,10 +493,7 @@ class _VersionsTab extends StatelessWidget {
                   FilledButton.icon(
                     key: const Key('admin_corpus_first_upload_button'),
                     onPressed: busy ? null : onUploadPressed,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.sunset,
-                      foregroundColor: AppColors.backgroundSurface,
-                    ),
+                    style: AdminButtonStyles.primary,
                     icon: const Icon(Icons.upload_file_outlined, size: 16),
                     label: const Text('Upload markdown'),
                   ),
@@ -582,7 +582,7 @@ class _LazyGraphCandidatesTabState extends State<_LazyGraphCandidatesTab> {
   }
 }
 
-// ─── Phase 11A.3b — Graphify candidate review tab ────────────────────
+// ─── Phase 11A.3b - Graphify candidate review tab ────────────────────
 
 class _GraphCandidatesTab extends StatefulWidget {
   const _GraphCandidatesTab({
@@ -607,12 +607,12 @@ class _GraphCandidatesTab extends StatefulWidget {
   final String? targetOperatorId;
   final String? targetLocationId;
 
-  /// Phase 11A.3a follow-up — opens the operator picker. Null when
+  /// Phase 11A.3a follow-up - opens the operator picker. Null when
   /// the host did not wire a picker (legacy test path); the banner
   /// still renders, the button stays disabled.
   final VoidCallback? onPickOperator;
 
-  /// "Business name — Location name" for the actively-picked target,
+  /// "Business name - Location name" for the actively-picked target,
   /// when the admin resolved it through the picker this session.
   /// Null when no pick has occurred yet (or the target came from a
   /// host-supplied default).
@@ -914,10 +914,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                 ? FilledButton.icon(
                     key: const Key('admin_corpus_graph_bulk_approve_extracted'),
                     onPressed: _busy ? null : _bulkApproveExtracted,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.sunset,
-                      foregroundColor: AppColors.backgroundSurface,
-                    ),
+                    style: AdminButtonStyles.primary,
                     icon: const Icon(Icons.done_all, size: 16),
                     label: const Text('Bulk approve all'),
                   )
@@ -989,10 +986,10 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Choose the customer and location before applying '
+                          'Choose the operator and location before applying '
                           'relationship decisions. This keeps approvals '
-                          'attached to the right workspace for the rest of '
-                          'this session.',
+                          'attached to the right operator workspace for this '
+                          'session.',
                           style: AppTextStyles.body13(
                             color: AppColors.textSecondary,
                           ),
@@ -1008,12 +1005,9 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                       onPressed: (widget.onPickOperator == null || _busy)
                           ? null
                           : widget.onPickOperator,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.sunset,
-                        foregroundColor: AppColors.backgroundSurface,
-                      ),
+                      style: AdminButtonStyles.primary,
                       icon: const Icon(Icons.swap_horiz, size: 16),
-                      label: const Text('Choose customer'),
+                      label: const Text('Choose operator'),
                     ),
                   ),
                 ],
@@ -1069,10 +1063,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                       (!_hasQueuedDecisions || _busy || !widget.hasTarget)
                       ? null
                       : _onCommitBatch,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.sunset,
-                    foregroundColor: AppColors.backgroundSurface,
-                  ),
+                  style: AdminButtonStyles.primary,
                   icon: const Icon(Icons.check_circle_outline, size: 16),
                   label: Text(
                     'Apply decisions (${_approveQueue.length + _rejectQueue.length + _editQueue.length} '
@@ -1122,11 +1113,11 @@ class _GraphCandidateMetaCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           _DetailRow(label: 'Review scope', value: diff.graphScope),
-          _DetailRow(label: 'Relationship version', value: diff.graphVersion),
-          _DetailRow(label: 'Review tool version', value: diff.graphifyVersion),
+          _DetailRow(label: 'Relationship set', value: diff.graphVersion),
+          _DetailRow(label: 'Review engine', value: diff.graphifyVersion),
           if (diff.graphifySourceCommit != null)
             _DetailRow(
-              label: 'Source revision',
+              label: 'Source version',
               value: diff.graphifySourceCommit!,
             ),
           _DetailRow(label: 'Total suggestions', value: '${diff.totalCount}'),
@@ -1171,7 +1162,7 @@ class _GraphCandidateSection extends StatelessWidget {
 
   /// Spec line 249: AMBIGUOUS relationships are debug-only until
   /// edited. The AMBIGUOUS section passes `allowApprove: false` so
-  /// the row never renders an Approve button — only Edit + Reject.
+  /// the row never renders an Approve button - only Edit + Reject.
   /// EXTRACTED + INFERRED keep `allowApprove: true`.
   final bool allowApprove;
   final Widget? trailing;
@@ -1361,11 +1352,8 @@ class _GraphCandidateRow extends StatelessWidget {
                       '${candidate.candidateId}',
                     ),
                     onPressed: busy ? null : onApprove,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: queuedForApprove
-                          ? AppColors.positive
-                          : AppColors.positive.withValues(alpha: 0.85),
-                      foregroundColor: AppColors.backgroundSurface,
+                    style: AdminButtonStyles.approval(
+                      selected: queuedForApprove,
                     ),
                     icon: Icon(
                       queuedForApprove ? Icons.check : Icons.check_outlined,
@@ -1379,14 +1367,7 @@ class _GraphCandidateRow extends StatelessWidget {
                     '${candidate.candidateId}',
                   ),
                   onPressed: busy ? null : onReject,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.negative,
-                    side: BorderSide(
-                      color: queuedForReject
-                          ? AppColors.negative
-                          : AppColors.negative.withValues(alpha: 0.6),
-                    ),
-                  ),
+                  style: AdminButtonStyles.reject(selected: queuedForReject),
                   icon: Icon(
                     queuedForReject ? Icons.close : Icons.close_outlined,
                     size: 14,
@@ -1607,10 +1588,7 @@ class _GraphCandidateEditDialogState extends State<_GraphCandidateEditDialog> {
         ),
         FilledButton(
           key: const Key('admin_corpus_graph_candidates_edit_dialog_submit'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           onPressed: () {
             final editedType = _typeController.text.trim();
             final reason = _reasonController.text.trim();
@@ -1618,7 +1596,7 @@ class _GraphCandidateEditDialogState extends State<_GraphCandidateEditDialog> {
             // decision that arrives without an `edited_payload`
             // (`missing_edited_payload` 400). The launch slice does
             // not yet expose a per-property edit form, so we forward
-            // the original candidate payload verbatim — the
+            // the original candidate payload verbatim - the
             // structural change the admin made is only the
             // `edited_candidate_type`. This keeps the wire contract
             // satisfied and lets a follow-up slice add full payload
@@ -1697,7 +1675,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Manage the advisor content your team can search. Upload new files, review changes, and restore earlier versions when needed.',
+          'Upload advisor knowledge, review changes, publish approved content, and restore earlier versions.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -1724,7 +1702,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View only: uploads, approvals, and restores require platform admin access.',
+              'View only: uploads, approvals, and restores require ecosystem admin access.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
@@ -1771,10 +1749,7 @@ class _VersionList extends StatelessWidget {
               child: FilledButton.icon(
                 key: const Key('admin_corpus_upload_button'),
                 onPressed: busy ? null : onUploadPressed,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                ),
+                style: AdminButtonStyles.primary,
                 icon: const Icon(Icons.upload_file_outlined, size: 16),
                 label: const Text('Upload markdown'),
               ),
@@ -1838,7 +1813,7 @@ class _VersionList extends StatelessWidget {
                           Text(
                             '${v.chunkCount} content piece'
                             '${v.chunkCount == 1 ? '' : 's'} - '
-                            'created ${_iso(v.createdAt)}',
+                            'created ${adminHumanDateTime(v.createdAt)}',
                             style: AppTextStyles.mono8(
                               color: AppColors.textMuted,
                             ),
@@ -1928,7 +1903,10 @@ class _VersionDetail extends StatelessWidget {
                   label: 'Status',
                   value: version.isCurrent ? 'Current' : 'Superseded',
                 ),
-                _DetailRow(label: 'Created', value: _iso(version.createdAt)),
+                _DetailRow(
+                  label: 'Created',
+                  value: adminHumanDateTime(version.createdAt),
+                ),
                 _DetailRow(
                   label: 'Created by',
                   value: version.createdBy ?? 'Unknown',
@@ -2056,10 +2034,7 @@ class _StagedDiffCard extends StatelessWidget {
               FilledButton(
                 key: const Key('admin_corpus_commit_button'),
                 onPressed: busy ? null : onCommit,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                ),
+                style: AdminButtonStyles.primary,
                 child: const Text('Publish content'),
               ),
               OutlinedButton(
@@ -2336,10 +2311,7 @@ class _ConfirmDialog extends StatelessWidget {
         ),
         FilledButton(
           key: const Key('admin_corpus_confirm_ok'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           onPressed: () => Navigator.of(context).pop(true),
           child: Text(confirmLabel),
         ),
@@ -2352,8 +2324,6 @@ String _shortVersion(String versionId) {
   if (versionId.length <= 8) return versionId;
   return versionId.substring(0, 8);
 }
-
-String _iso(DateTime when) => when.toUtc().toIso8601String();
 
 String _friendlyCandidateType(String type) {
   final parts = type
@@ -2383,7 +2353,7 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
         '## Daypart\n\n'
         'Daypart guidance lives alongside whole-day truth.\n\n'
         '## Operator review\n\n'
-        'Customers should review advisor content changes before publishing.\n',
+        'Operators should review advisor content changes before publishing.\n',
   );
   final fileNameController = TextEditingController(text: 'methodology_seed.md');
   final result = await showDialog<UploadCommand>(
@@ -2429,10 +2399,7 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
           ),
           FilledButton(
             key: const Key('admin_corpus_demo_picker_submit'),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.sunset,
-              foregroundColor: AppColors.backgroundSurface,
-            ),
+            style: AdminButtonStyles.primary,
             onPressed: () {
               final fileName = fileNameController.text.trim();
               final body = controller.text;

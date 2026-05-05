@@ -1,4 +1,4 @@
-// Phase 11A.UX.health (F.1) — Gateway for the proxy /health envelope.
+﻿// Phase 11A.UX.health (F.1) - Gateway for the proxy /health envelope.
 //
 // The proxy `/health` route is public unauthenticated per
 // `docs/contracts/proxy_health_contract.md`, so the HTTP gateway does
@@ -186,7 +186,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'status': 'green',
       'metrics': <String>[
         'event_outbox_undelivered_count',
-        // Phase 10a.2 — DLQ depth alongside the live undelivered metric.
+        // Phase 10a.2 - DLQ depth alongside the live undelivered metric.
         'event_outbox_dlq_depth',
       ],
       'owner': 'Phase 10a',
@@ -198,7 +198,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
     },
   },
   'metrics': <String, Object?>{
-    // ── Tier 1 — infrastructure / dependencies ──────────────────
+    // ── Tier 1 - infrastructure / dependencies ──────────────────
     'audit_chain_lag_seconds': <String, Object?>{
       'status': 'green',
       'value': 12,
@@ -304,7 +304,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'observed_at': '2026-05-01T12:00:00.000Z',
       'metadata': <String, Object?>{'tier': 1},
     },
-    // ── Tier 2 — production hardening ──────────────────────────
+    // ── Tier 2 - production hardening ──────────────────────────
     'graph_node_count': <String, Object?>{
       'status': 'green',
       'value': 1245,
@@ -436,7 +436,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'thresholds': <String, Object?>{'yellow': 60, 'red': 300},
       'metadata': <String, Object?>{'tier': 2},
     },
-    // Phase 10a.2 — DLQ depth metric (F&F-internal /health surface;
+    // Phase 10a.2 - DLQ depth metric (F&F-internal /health surface;
     // no operator-facing tile per lean cut 2).
     'event_outbox_dlq_depth': <String, Object?>{
       'status': 'green',
@@ -494,7 +494,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'thresholds': <String, Object?>{'yellow': 1, 'red': 100},
       'metadata': <String, Object?>{'tier': 2},
     },
-    // ── Tier 3 — ops observability ─────────────────────────────
+    // ── Tier 3 - ops observability ─────────────────────────────
     'prompt_cache_hit_rate': <String, Object?>{
       'status': 'green',
       'value': 0.62,

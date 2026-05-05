@@ -1,4 +1,4 @@
-// Phase 11A.4 — Integration management value objects.
+﻿// Phase 11A.4 - Integration management value objects.
 //
 // Value objects backing the F&F Operations Console "Integrations"
 // surface: provider key rotation (Anthropic, Voyage, Azure DB) plus
@@ -24,7 +24,7 @@ enum ProviderKeyKind {
   voyage('voyage', 'Voyage embeddings'),
   azureDb('azure_db', 'Azure DB superuser'),
   gemini('gemini', 'Gemini API'),
-  // Phase 9.8 — SendGrid joins the rotatable provider lanes alongside
+  // Phase 9.8 - SendGrid joins the rotatable provider lanes alongside
   // Anthropic / Voyage / Azure DB / Gemini. The wire name + display
   // name follow the established pattern; the ledger is backed by
   // public.email_credentials (separate table because the SendGrid
@@ -67,7 +67,7 @@ class ProviderKeyRow {
   final String maskedValue;
 
   /// Opaque KMS pointer (e.g. `kms://stub/<uuid>`). The admin
-  /// console renders this as a debug-only tag — the operator never
+  /// console renders this as a debug-only tag - the operator never
   /// uses it directly.
   final String kmsSecretName;
 
@@ -184,7 +184,7 @@ class RotateKeyResult {
   final ProviderKeyRow row;
 
   /// One-time plaintext echo. Empty string when the proxy returned
-  /// only a masked row (defensive — the proxy contract requires
+  /// only a masked row (defensive - the proxy contract requires
   /// plaintext on a rotate response, but we treat the absence as a
   /// hard failure rather than silently surfacing nothing).
   final String plaintextValue;

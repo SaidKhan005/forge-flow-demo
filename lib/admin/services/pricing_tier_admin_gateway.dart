@@ -1,18 +1,18 @@
-// Phase 11A.2 — Pricing tier admin gateway.
+﻿// Phase 11A.2 - Pricing tier admin gateway.
 //
 // Translates the pricing screen's commands into proxy
 // `/v1/admin/pricing/*` HTTP calls. The admin Flutter client never
 // holds a Postgres connection string and never reaches the database
-// directly — every read/write flows through the F&F admin proxy.
+// directly - every read/write flows through the F&F admin proxy.
 //
 // Two implementations ship in this slice:
 //
-//   * [HttpPricingTierAdminGateway] — production. GET/PATCH/PUT/POST
+//   * [HttpPricingTierAdminGateway] - production. GET/PATCH/PUT/POST
 //     against the proxy with the signed-in admin's bearer token. The
 //     bearer source is injected so production can hand it the
 //     Firebase ID token stream while tests can pin a fixed value.
 //
-//   * [InMemoryPricingTierAdminGateway] — demo + widget tests. Mutates
+//   * [InMemoryPricingTierAdminGateway] - demo + widget tests. Mutates
 //     an in-memory collection so the admin screen can run end-to-end
 //     in `kDemoMode` without a backend.
 //
@@ -193,7 +193,7 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
 }
 
 /// In-memory gateway used by the demo walkthrough and widget tests.
-/// Persists nothing across runs — every construction starts from
+/// Persists nothing across runs - every construction starts from
 /// [seed]. Validation rules mirror the proxy:
 ///
 ///   * `subscription_tier` must be one of the locked template keys.
@@ -220,7 +220,7 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
   final Map<String, _MutableBundle> _bundles;
 
   /// Per-key cache so a retried mutation on the in-memory gateway
-  /// returns the prior result instead of mutating again — mirrors the
+  /// returns the prior result instead of mutating again - mirrors the
   /// proxy's `admin_request_idempotency` backstop.
   final Map<String, Object> _idempotentResults = <String, Object>{};
 
@@ -423,6 +423,7 @@ class _MutableBundle {
     required this.subscriptionTier,
     required this.preferredCurrency,
     required this.primaryLocationId,
+    required this.primaryLocationName,
     required this.suspended,
     required List<UsageCapRow> caps,
     required this.updatedAt,
@@ -435,6 +436,7 @@ class _MutableBundle {
       subscriptionTier: bundle.subscriptionTier,
       preferredCurrency: bundle.preferredCurrency,
       primaryLocationId: bundle.primaryLocationId,
+      primaryLocationName: bundle.primaryLocationName,
       suspended: bundle.suspended,
       caps: bundle.caps,
       updatedAt: DateTime.now().toUtc(),
@@ -446,6 +448,7 @@ class _MutableBundle {
   String subscriptionTier;
   final String preferredCurrency;
   final String? primaryLocationId;
+  final String? primaryLocationName;
   final bool suspended;
   final List<UsageCapRow> caps;
   DateTime updatedAt;
@@ -456,6 +459,7 @@ class _MutableBundle {
     subscriptionTier: subscriptionTier,
     preferredCurrency: preferredCurrency,
     primaryLocationId: primaryLocationId,
+    primaryLocationName: primaryLocationName,
     suspended: suspended,
     caps: List<UsageCapRow>.unmodifiable(caps),
   );

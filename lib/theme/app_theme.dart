@@ -62,192 +62,264 @@ class AppTextStyles {
   static TextStyle _sans(TextStyle style) =>
       _isWidgetTestBinding ? style : GoogleFonts.ibmPlexSans(textStyle: style);
   // ── Display — Playfair Display ────────────────────────────────────────────
-  static TextStyle display36({Color? color}) => _playfair(TextStyle(
-        fontSize: 36,
-        fontWeight: FontWeight.w700,
-        color: color ?? AppColors.textPrimary,
-        height: 1.1,
-      ));
+  static TextStyle display36({Color? color}) => _playfair(
+    TextStyle(
+      fontSize: 36,
+      fontWeight: FontWeight.w700,
+      color: color ?? AppColors.textPrimary,
+      height: 1.1,
+    ),
+  );
 
-  static TextStyle display28({Color? color}) => _playfair(TextStyle(
-        fontSize: 28,
-        fontWeight: FontWeight.w600,
-        color: color ?? AppColors.textPrimary,
-        height: 1.2,
-      ));
+  static TextStyle display28({Color? color}) => _playfair(
+    TextStyle(
+      fontSize: 28,
+      fontWeight: FontWeight.w600,
+      color: color ?? AppColors.textPrimary,
+      height: 1.2,
+    ),
+  );
 
-  static TextStyle display20({Color? color}) => _playfair(TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-        color: color ?? AppColors.textPrimary,
-        height: 1.3,
-      ));
+  static TextStyle display20({Color? color}) => _playfair(
+    TextStyle(
+      fontSize: 20,
+      fontWeight: FontWeight.w600,
+      color: color ?? AppColors.textPrimary,
+      height: 1.3,
+    ),
+  );
 
-  static TextStyle display16({Color? color}) => _playfair(TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        color: color ?? AppColors.textPrimary,
-      ));
+  static TextStyle display16({Color? color}) => _playfair(
+    TextStyle(
+      fontSize: 16,
+      fontWeight: FontWeight.w600,
+      color: color ?? AppColors.textPrimary,
+    ),
+  );
 
   // ── Mono — IBM Plex Mono ──────────────────────────────────────────────────
-  static TextStyle mono28({Color? color, FontWeight? weight}) =>
-      _mono(TextStyle(
-        fontSize: 28,
-        fontWeight: weight ?? FontWeight.w700,
-        color: color ?? AppColors.textPrimary,
-        height: 1.1,
-      ));
+  static TextStyle mono28({Color? color, FontWeight? weight}) => _mono(
+    TextStyle(
+      fontSize: 28,
+      fontWeight: weight ?? FontWeight.w700,
+      color: color ?? AppColors.textPrimary,
+      height: 1.1,
+    ),
+  );
 
-  static TextStyle mono22({Color? color}) => _mono(TextStyle(
-        fontSize: 22,
-        fontWeight: FontWeight.w500,
-        color: color ?? AppColors.textPrimary,
-      ));
+  static TextStyle mono22({Color? color}) => _mono(
+    TextStyle(
+      fontSize: 22,
+      fontWeight: FontWeight.w500,
+      color: color ?? AppColors.textPrimary,
+    ),
+  );
 
-  static TextStyle mono20({Color? color, FontWeight? weight}) =>
-      _mono(TextStyle(
-        fontSize: 20,
-        fontWeight: weight ?? FontWeight.w700,
-        color: color ?? AppColors.textPrimary,
-      ));
+  static TextStyle mono20({Color? color, FontWeight? weight}) => _mono(
+    TextStyle(
+      fontSize: 20,
+      fontWeight: weight ?? FontWeight.w700,
+      color: color ?? AppColors.textPrimary,
+    ),
+  );
 
-  static TextStyle mono16({Color? color}) => _mono(TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w500,
-        color: color ?? AppColors.textPrimary,
-      ));
+  static TextStyle mono16({Color? color}) => _mono(
+    TextStyle(
+      fontSize: 16,
+      fontWeight: FontWeight.w500,
+      color: color ?? AppColors.textPrimary,
+    ),
+  );
 
-  static TextStyle mono15({Color? color, FontWeight? weight}) =>
-      _mono(TextStyle(
-        fontSize: 15,
-        fontWeight: weight ?? FontWeight.w500,
-        color: color ?? AppColors.textPrimary,
-      ));
+  static TextStyle mono15({Color? color, FontWeight? weight}) => _mono(
+    TextStyle(
+      fontSize: 15,
+      fontWeight: weight ?? FontWeight.w500,
+      color: color ?? AppColors.textPrimary,
+    ),
+  );
 
-  static TextStyle mono14({Color? color, FontWeight? weight}) =>
-      _mono(TextStyle(
-        fontSize: 14,
-        fontWeight: weight ?? FontWeight.w400,
-        color: color ?? AppColors.textPrimary,
-        height: 1.4,
-      ));
+  static TextStyle mono14({Color? color, FontWeight? weight}) => _mono(
+    TextStyle(
+      fontSize: 14,
+      fontWeight: weight ?? FontWeight.w400,
+      color: color ?? AppColors.textPrimary,
+      height: 1.4,
+    ),
+  );
 
-  static TextStyle mono12({Color? color, FontWeight? weight}) =>
-      _mono(TextStyle(
-        fontSize: 12,
-        fontWeight: weight ?? FontWeight.w400,
-        color: color ?? AppColors.textPrimary,
-        height: 1.4,
-      ));
+  static TextStyle mono12({Color? color, FontWeight? weight}) => _mono(
+    TextStyle(
+      fontSize: 12,
+      fontWeight: weight ?? FontWeight.w400,
+      color: color ?? AppColors.textPrimary,
+      height: 1.4,
+    ),
+  );
 
-  static TextStyle mono11({Color? color}) => _mono(TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-        letterSpacing: 0.6,
-        color: color ?? AppColors.textMuted,
-      ));
+  static TextStyle mono11({Color? color}) => _mono(
+    TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w500,
+      letterSpacing: 0,
+      color: color ?? AppColors.textMuted,
+    ),
+  );
 
-  static TextStyle mono10({Color? color}) => _mono(TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w400,
-        color: color ?? AppColors.textSecondary,
-        height: 1.4,
-      ));
+  static TextStyle mono10({Color? color}) => _mono(
+    TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w400,
+      color: color ?? AppColors.textSecondary,
+      height: 1.4,
+    ),
+  );
 
-  static TextStyle mono8({Color? color}) => _mono(TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
-        letterSpacing: 1.0,
-        color: color ?? AppColors.textSecondary,
-      ));
+  static TextStyle mono8({Color? color}) => _mono(
+    TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w500,
+      letterSpacing: 0,
+      color: color ?? AppColors.textSecondary,
+    ),
+  );
 
-  static TextStyle mono7({Color? color}) => _mono(TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
-        letterSpacing: 0.6,
-        color: color ?? AppColors.textSecondary,
-      ));
+  static TextStyle mono7({Color? color}) => _mono(
+    TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w500,
+      letterSpacing: 0,
+      color: color ?? AppColors.textSecondary,
+    ),
+  );
 
   // ── Body — IBM Plex Sans ──────────────────────────────────────────────────
-  static TextStyle body15({Color? color, FontStyle? style}) =>
-      _sans(TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w400,
-        color: color ?? AppColors.textPrimary,
-        height: 1.5,
-        fontStyle: style,
-      ));
+  static TextStyle body15({Color? color, FontStyle? style}) => _sans(
+    TextStyle(
+      fontSize: 15,
+      fontWeight: FontWeight.w400,
+      color: color ?? AppColors.textPrimary,
+      height: 1.5,
+      fontStyle: style,
+    ),
+  );
 
-  static TextStyle body14({Color? color, FontStyle? style}) =>
-      _sans(TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: color ?? AppColors.textPrimary,
-        fontStyle: style,
-      ));
+  static TextStyle body14({Color? color, FontStyle? style}) => _sans(
+    TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+      color: color ?? AppColors.textPrimary,
+      fontStyle: style,
+    ),
+  );
 
-  static TextStyle body13({Color? color, FontStyle? style}) =>
-      _sans(TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w400,
-        color: color ?? AppColors.textPrimary,
-        height: 1.6,
-        fontStyle: style,
-      ));
+  static TextStyle body13({Color? color, FontStyle? style}) => _sans(
+    TextStyle(
+      fontSize: 13,
+      fontWeight: FontWeight.w400,
+      color: color ?? AppColors.textPrimary,
+      height: 1.6,
+      fontStyle: style,
+    ),
+  );
 
-  static TextStyle body12({Color? color, FontStyle? style}) =>
-      _sans(TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w400,
-        color: color ?? AppColors.textSecondary,
-        fontStyle: style ?? FontStyle.italic,
-      ));
+  static TextStyle body12({Color? color, FontStyle? style}) => _sans(
+    TextStyle(
+      fontSize: 13,
+      fontWeight: FontWeight.w400,
+      color: color ?? AppColors.textSecondary,
+      fontStyle: style ?? FontStyle.italic,
+    ),
+  );
 
-  static TextStyle body11({Color? color, FontStyle? style}) =>
-      _sans(TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w400,
-        color: color ?? AppColors.textSecondary,
-        fontStyle: style ?? FontStyle.italic,
-      ));
+  static TextStyle body11({Color? color, FontStyle? style}) => _sans(
+    TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w400,
+      color: color ?? AppColors.textSecondary,
+      fontStyle: style ?? FontStyle.italic,
+    ),
+  );
+
+  static TextStyle pageTitle({Color? color}) => _sans(
+    TextStyle(
+      fontSize: 28,
+      fontWeight: FontWeight.w700,
+      color: color ?? AppColors.textPrimary,
+      height: 1.18,
+    ),
+  );
+
+  static TextStyle sectionTitle({Color? color}) => _sans(
+    TextStyle(
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+      color: color ?? AppColors.textPrimary,
+      height: 1.35,
+    ),
+  );
+
+  static TextStyle uiLabel({
+    Color? color,
+    FontWeight? weight,
+    FontStyle? style,
+  }) => _sans(
+    TextStyle(
+      fontSize: 12,
+      fontWeight: weight ?? FontWeight.w700,
+      color: color ?? AppColors.textMuted,
+      height: 1.25,
+      fontStyle: style,
+    ),
+  );
+
+  static TextStyle chipLabel({Color? color}) => _sans(
+    TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w700,
+      color: color ?? AppColors.textSecondary,
+      height: 1.2,
+    ),
+  );
 }
 
 class AppTheme {
   static ThemeData get themeData => ThemeData(
-        brightness: Brightness.light,
-        scaffoldBackgroundColor: AppColors.backgroundDeep,
-        colorScheme: const ColorScheme.light(
-          surface: AppColors.backgroundMid,
-          primary: AppColors.sunsetDark,
-          onPrimary: AppColors.backgroundSurface,
-          onSurface: AppColors.textPrimary,
-        ),
-        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          backgroundColor: AppColors.backgroundSurface,
-          selectedItemColor: AppColors.sunsetDark,
-          unselectedItemColor: AppColors.textMuted,
-          type: BottomNavigationBarType.fixed,
-          elevation: 0,
-          showSelectedLabels: true,
-          showUnselectedLabels: true,
-          selectedLabelStyle:
-              TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          unselectedLabelStyle:
-              TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
-        ),
-        dividerColor: AppColors.borderSubtle,
-        cardColor: AppColors.backgroundSurface,
-        textTheme: AppTextStyles._isWidgetTestBinding
-            ? const TextTheme(
-                bodyMedium: TextStyle(color: AppColors.textPrimary),
-                bodySmall: TextStyle(color: AppColors.textSecondary),
-              )
-            : GoogleFonts.ibmPlexSansTextTheme(
-                const TextTheme(
-                  bodyMedium: TextStyle(color: AppColors.textPrimary),
-                  bodySmall: TextStyle(color: AppColors.textSecondary),
-                ),
-              ),
-        useMaterial3: true,
-      );
+    brightness: Brightness.light,
+    scaffoldBackgroundColor: AppColors.backgroundDeep,
+    colorScheme: const ColorScheme.light(
+      surface: AppColors.backgroundMid,
+      primary: AppColors.sunsetDark,
+      onPrimary: AppColors.backgroundSurface,
+      onSurface: AppColors.textPrimary,
+    ),
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      backgroundColor: AppColors.backgroundSurface,
+      selectedItemColor: AppColors.sunsetDark,
+      unselectedItemColor: AppColors.textMuted,
+      type: BottomNavigationBarType.fixed,
+      elevation: 0,
+      showSelectedLabels: true,
+      showUnselectedLabels: true,
+      selectedLabelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      unselectedLabelStyle: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+      ),
+    ),
+    dividerColor: AppColors.borderSubtle,
+    cardColor: AppColors.backgroundSurface,
+    textTheme: AppTextStyles._isWidgetTestBinding
+        ? const TextTheme(
+            bodyMedium: TextStyle(color: AppColors.textPrimary),
+            bodySmall: TextStyle(color: AppColors.textSecondary),
+          )
+        : GoogleFonts.ibmPlexSansTextTheme(
+            const TextTheme(
+              bodyMedium: TextStyle(color: AppColors.textPrimary),
+              bodySmall: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+    useMaterial3: true,
+  );
 }

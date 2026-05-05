@@ -125,106 +125,182 @@ void main() {
       },
     );
 
-    test(
-      'moveLocationToOrgUnit refuses location-scoped actor',
-      () async {
-        final pool = _OrgUnitsPool(
-          userRoleRows: <PostgresRow>[
-            <String, Object?>{
-              'user_role_id': '99999999-9999-9999-9999-999999999999',
-              'user_id': _validUserId,
-              'role_id': '88888888-8888-8888-8888-888888888888',
-              'operator_id': _validOpId,
-              'scope_type': 'location',
-              'location_id': _validLocId,
-              'org_unit_id': null,
-              'effective_location_ids': <String>[_validLocId],
-              'valid_from': DateTime.utc(2026, 4, 1),
-              'valid_until': null,
-              'granted_by': _validUserId,
-              'revoked_at': null,
-              'revoked_by': null,
-              'reason': null,
-              'created_at': DateTime.utc(2026, 4, 1),
-              'updated_at': DateTime.utc(2026, 4, 1),
-            },
-          ],
-        );
-        final gateway = _gatewayWithPool(pool);
-
-        AuthOperationRejected? captured;
-        try {
-          await gateway.moveLocationToOrgUnit(
-            const TeamLocationOrgUnitMoveCommand(
-              actorUserId: _validUserId,
-              operatorId: _validOpId,
-              locationId: _validLocId,
-              targetLocationId: _validTargetLocationId,
-              parentOrgUnitId: _validParentId,
-            ),
-          );
-        } on AuthOperationRejected catch (error) {
-          captured = error;
-        }
-
-        expect(captured, isNotNull);
-        expect(captured!.code, equals('target_scope_required'));
-        // No UPDATE on locations should have run.
-        expect(
-          pool.transactions.any(
-            (tx) => tx.executedSql.any(
-              (sql) => sql.contains('update locations'),
-            ),
-          ),
-          isFalse,
-        );
-      },
-    );
-
-    test(
-      'createOrgUnit allows operator-wide actor whose role carries '
-      'team.roles.assign',
-      () async {
-        final pool = _OrgUnitsPool(
-          userRoleRows: <PostgresRow>[
-            <String, Object?>{
-              'user_role_id': '99999999-9999-9999-9999-999999999999',
-              'user_id': _validUserId,
-              'role_id': '88888888-8888-8888-8888-888888888888',
-              'operator_id': _validOpId,
-              'scope_type': 'operator_wide',
-              'location_id': null,
-              'org_unit_id': null,
-              'effective_location_ids': const <String>[],
-              'valid_from': DateTime.utc(2026, 4, 1),
-              'valid_until': null,
-              'granted_by': _validUserId,
-              'revoked_at': null,
-              'revoked_by': null,
-              'reason': null,
-              'created_at': DateTime.utc(2026, 4, 1),
-              'updated_at': DateTime.utc(2026, 4, 1),
-            },
-          ],
-          rolePermissionsByRole: <String, List<PostgresRow>>{
-            '88888888-8888-8888-8888-888888888888': <PostgresRow>[
-              <String, Object?>{
-                'role_id': '88888888-8888-8888-8888-888888888888',
-                'permission_key': 'team.roles.assign',
-                'effect': 'allow',
-                'created_at': DateTime.utc(2026, 4, 1),
-                'updated_at': DateTime.utc(2026, 4, 1),
-              },
-            ],
+    test('moveLocationToOrgUnit refuses location-scoped actor', () async {
+      final pool = _OrgUnitsPool(
+        userRoleRows: <PostgresRow>[
+          <String, Object?>{
+            'user_role_id': '99999999-9999-9999-9999-999999999999',
+            'user_id': _validUserId,
+            'role_id': '88888888-8888-8888-8888-888888888888',
+            'operator_id': _validOpId,
+            'scope_type': 'location',
+            'location_id': _validLocId,
+            'org_unit_id': null,
+            'effective_location_ids': <String>[_validLocId],
+            'valid_from': DateTime.utc(2026, 4, 1),
+            'valid_until': null,
+            'granted_by': _validUserId,
+            'revoked_at': null,
+            'revoked_by': null,
+            'reason': null,
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
           },
-          parentRows: <PostgresRow>[
-            <String, Object?>{'path': 'acme', 'depth': 1},
-          ],
-          createChildId: '77777777-7777-7777-7777-777777777777',
-        );
-        final gateway = _gatewayWithPool(pool);
+        ],
+      );
+      final gateway = _gatewayWithPool(pool);
 
-        final result = await gateway.createOrgUnit(
+      AuthOperationRejected? captured;
+      try {
+        await gateway.moveLocationToOrgUnit(
+          const TeamLocationOrgUnitMoveCommand(
+            actorUserId: _validUserId,
+            operatorId: _validOpId,
+            locationId: _validLocId,
+            targetLocationId: _validTargetLocationId,
+            parentOrgUnitId: _validParentId,
+          ),
+        );
+      } on AuthOperationRejected catch (error) {
+        captured = error;
+      }
+
+      expect(captured, isNotNull);
+      expect(captured!.code, equals('target_scope_required'));
+      // No UPDATE on locations should have run.
+      expect(
+        pool.transactions.any(
+          (tx) => tx.executedSql.any((sql) => sql.contains('update locations')),
+        ),
+        isFalse,
+      );
+    });
+
+    test('createOrgUnit allows operator-wide actor whose role carries '
+        'team.roles.assign', () async {
+      final pool = _OrgUnitsPool(
+        userRoleRows: <PostgresRow>[
+          <String, Object?>{
+            'user_role_id': '99999999-9999-9999-9999-999999999999',
+            'user_id': _validUserId,
+            'role_id': '88888888-8888-8888-8888-888888888888',
+            'operator_id': _validOpId,
+            'scope_type': 'operator_wide',
+            'location_id': null,
+            'org_unit_id': null,
+            'effective_location_ids': const <String>[],
+            'valid_from': DateTime.utc(2026, 4, 1),
+            'valid_until': null,
+            'granted_by': _validUserId,
+            'revoked_at': null,
+            'revoked_by': null,
+            'reason': null,
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+        ],
+        rolePermissionsByRole: <String, List<PostgresRow>>{
+          '88888888-8888-8888-8888-888888888888': <PostgresRow>[
+            <String, Object?>{
+              'role_id': '88888888-8888-8888-8888-888888888888',
+              'permission_key': 'team.roles.assign',
+              'effect': 'allow',
+              'created_at': DateTime.utc(2026, 4, 1),
+              'updated_at': DateTime.utc(2026, 4, 1),
+            },
+          ],
+        },
+        parentRows: <PostgresRow>[
+          <String, Object?>{'path': 'acme', 'depth': 1},
+        ],
+        createChildId: '77777777-7777-7777-7777-777777777777',
+      );
+      final gateway = _gatewayWithPool(pool);
+
+      final result = await gateway.createOrgUnit(
+        const TeamOrgUnitCreateCommand(
+          actorUserId: _validUserId,
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          parentOrgUnitId: _validParentId,
+          unitType: 'region',
+          label: 'east',
+          name: 'East',
+        ),
+      );
+
+      expect(result.orgUnitId, equals('77777777-7777-7777-7777-777777777777'));
+    });
+
+    test('createOrgUnit refuses mixed-scope actor whose operator-wide role '
+        'lacks team.roles.assign', () async {
+      // Mixed-scope: operator-wide STAFF (no `team.roles.assign`) +
+      // location-scoped MANAGER (has `team.roles.assign`). The proxy
+      // permission gate would pass because the manager role allows
+      // the key, but the hierarchy gate must fail because no
+      // operator-wide role carries the permission.
+      const operatorWideRoleId = 'a1111111-1111-4111-8111-111111111111';
+      const managerRoleId = 'b2222222-2222-4222-8222-222222222222';
+      final pool = _OrgUnitsPool(
+        userRoleRows: <PostgresRow>[
+          <String, Object?>{
+            'user_role_id': '99999999-9999-9999-9999-999999999999',
+            'user_id': _validUserId,
+            'role_id': operatorWideRoleId,
+            'operator_id': _validOpId,
+            'scope_type': 'operator_wide',
+            'location_id': null,
+            'org_unit_id': null,
+            'effective_location_ids': const <String>[],
+            'valid_from': DateTime.utc(2026, 4, 1),
+            'valid_until': null,
+            'granted_by': _validUserId,
+            'revoked_at': null,
+            'revoked_by': null,
+            'reason': null,
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+          <String, Object?>{
+            'user_role_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'user_id': _validUserId,
+            'role_id': managerRoleId,
+            'operator_id': _validOpId,
+            'scope_type': 'location',
+            'location_id': _validLocId,
+            'org_unit_id': null,
+            'effective_location_ids': <String>[_validLocId],
+            'valid_from': DateTime.utc(2026, 4, 1),
+            'valid_until': null,
+            'granted_by': _validUserId,
+            'revoked_at': null,
+            'revoked_by': null,
+            'reason': null,
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+        ],
+        rolePermissionsByRole: <String, List<PostgresRow>>{
+          // Operator-wide staff role: no `team.roles.assign`.
+          operatorWideRoleId: const <PostgresRow>[],
+          // Location-scoped manager role: HAS `team.roles.assign`,
+          // but it must not satisfy the operator-wide gate.
+          managerRoleId: <PostgresRow>[
+            <String, Object?>{
+              'role_id': managerRoleId,
+              'permission_key': 'team.roles.assign',
+              'effect': 'allow',
+              'created_at': DateTime.utc(2026, 4, 1),
+              'updated_at': DateTime.utc(2026, 4, 1),
+            },
+          ],
+        },
+      );
+      final gateway = _gatewayWithPool(pool);
+
+      AuthOperationRejected? captured;
+      try {
+        await gateway.createOrgUnit(
           const TeamOrgUnitCreateCommand(
             actorUserId: _validUserId,
             operatorId: _validOpId,
@@ -235,101 +311,14 @@ void main() {
             name: 'East',
           ),
         );
+      } on AuthOperationRejected catch (error) {
+        captured = error;
+      }
 
-        expect(result.orgUnitId, equals('77777777-7777-7777-7777-777777777777'));
-      },
-    );
-
-    test(
-      'createOrgUnit refuses mixed-scope actor whose operator-wide role '
-      'lacks team.roles.assign',
-      () async {
-        // Mixed-scope: operator-wide STAFF (no `team.roles.assign`) +
-        // location-scoped MANAGER (has `team.roles.assign`). The proxy
-        // permission gate would pass because the manager role allows
-        // the key, but the hierarchy gate must fail because no
-        // operator-wide role carries the permission.
-        const operatorWideRoleId = 'a1111111-1111-4111-8111-111111111111';
-        const managerRoleId = 'b2222222-2222-4222-8222-222222222222';
-        final pool = _OrgUnitsPool(
-          userRoleRows: <PostgresRow>[
-            <String, Object?>{
-              'user_role_id': '99999999-9999-9999-9999-999999999999',
-              'user_id': _validUserId,
-              'role_id': operatorWideRoleId,
-              'operator_id': _validOpId,
-              'scope_type': 'operator_wide',
-              'location_id': null,
-              'org_unit_id': null,
-              'effective_location_ids': const <String>[],
-              'valid_from': DateTime.utc(2026, 4, 1),
-              'valid_until': null,
-              'granted_by': _validUserId,
-              'revoked_at': null,
-              'revoked_by': null,
-              'reason': null,
-              'created_at': DateTime.utc(2026, 4, 1),
-              'updated_at': DateTime.utc(2026, 4, 1),
-            },
-            <String, Object?>{
-              'user_role_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-              'user_id': _validUserId,
-              'role_id': managerRoleId,
-              'operator_id': _validOpId,
-              'scope_type': 'location',
-              'location_id': _validLocId,
-              'org_unit_id': null,
-              'effective_location_ids': <String>[_validLocId],
-              'valid_from': DateTime.utc(2026, 4, 1),
-              'valid_until': null,
-              'granted_by': _validUserId,
-              'revoked_at': null,
-              'revoked_by': null,
-              'reason': null,
-              'created_at': DateTime.utc(2026, 4, 1),
-              'updated_at': DateTime.utc(2026, 4, 1),
-            },
-          ],
-          rolePermissionsByRole: <String, List<PostgresRow>>{
-            // Operator-wide staff role: no `team.roles.assign`.
-            operatorWideRoleId: const <PostgresRow>[],
-            // Location-scoped manager role: HAS `team.roles.assign`,
-            // but it must not satisfy the operator-wide gate.
-            managerRoleId: <PostgresRow>[
-              <String, Object?>{
-                'role_id': managerRoleId,
-                'permission_key': 'team.roles.assign',
-                'effect': 'allow',
-                'created_at': DateTime.utc(2026, 4, 1),
-                'updated_at': DateTime.utc(2026, 4, 1),
-              },
-            ],
-          },
-        );
-        final gateway = _gatewayWithPool(pool);
-
-        AuthOperationRejected? captured;
-        try {
-          await gateway.createOrgUnit(
-            const TeamOrgUnitCreateCommand(
-              actorUserId: _validUserId,
-              operatorId: _validOpId,
-              locationId: _validLocId,
-              parentOrgUnitId: _validParentId,
-              unitType: 'region',
-              label: 'east',
-              name: 'East',
-            ),
-          );
-        } on AuthOperationRejected catch (error) {
-          captured = error;
-        }
-
-        expect(captured, isNotNull);
-        expect(captured!.code, equals('target_scope_required'));
-        expect(captured.message, contains('team.roles.assign'));
-      },
-    );
+      expect(captured, isNotNull);
+      expect(captured!.code, equals('target_scope_required'));
+      expect(captured.message, contains('team.roles.assign'));
+    });
 
     test(
       'createInvite refuses location-scoped actor for org-unit scope',
@@ -400,338 +389,369 @@ void main() {
       },
     );
 
-    test(
-      'createInvite for org-unit scope refuses mixed-scope actor whose '
-      'operator-wide role lacks team.users.invite',
-      () async {
-        // Mixed-scope: operator-wide STAFF (no `team.users.invite`) +
-        // location-scoped MANAGER (has `team.users.invite`). Without
-        // the per-permission gate the actor would fall into the
-        // "any operator-wide grant" path and be allowed to broaden
-        // invite scope past their assigned location.
-        const operatorWideRoleId = 'a1111111-1111-4111-8111-111111111111';
-        const managerRoleId = 'b2222222-2222-4222-8222-222222222222';
-        final pool = _OrgUnitsPool(
-          userRoleRows: <PostgresRow>[
+    test('createInvite for org-unit scope refuses mixed-scope actor whose '
+        'operator-wide role lacks team.users.invite', () async {
+      // Mixed-scope: operator-wide STAFF (no `team.users.invite`) +
+      // location-scoped MANAGER (has `team.users.invite`). Without
+      // the per-permission gate the actor would fall into the
+      // "any operator-wide grant" path and be allowed to broaden
+      // invite scope past their assigned location.
+      const operatorWideRoleId = 'a1111111-1111-4111-8111-111111111111';
+      const managerRoleId = 'b2222222-2222-4222-8222-222222222222';
+      final pool = _OrgUnitsPool(
+        userRoleRows: <PostgresRow>[
+          <String, Object?>{
+            'user_role_id': '99999999-9999-9999-9999-999999999999',
+            'user_id': _validUserId,
+            'role_id': operatorWideRoleId,
+            'operator_id': _validOpId,
+            'scope_type': 'operator_wide',
+            'location_id': null,
+            'org_unit_id': null,
+            'effective_location_ids': const <String>[],
+            'valid_from': DateTime.utc(2026, 4, 1),
+            'valid_until': null,
+            'granted_by': _validUserId,
+            'revoked_at': null,
+            'revoked_by': null,
+            'reason': null,
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+          <String, Object?>{
+            'user_role_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'user_id': _validUserId,
+            'role_id': managerRoleId,
+            'operator_id': _validOpId,
+            'scope_type': 'location',
+            'location_id': _validLocId,
+            'org_unit_id': null,
+            'effective_location_ids': <String>[_validLocId],
+            'valid_from': DateTime.utc(2026, 4, 1),
+            'valid_until': null,
+            'granted_by': _validUserId,
+            'revoked_at': null,
+            'revoked_by': null,
+            'reason': null,
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+        ],
+        rolePermissionsByRole: <String, List<PostgresRow>>{
+          operatorWideRoleId: const <PostgresRow>[],
+          managerRoleId: <PostgresRow>[
             <String, Object?>{
-              'user_role_id': '99999999-9999-9999-9999-999999999999',
-              'user_id': _validUserId,
-              'role_id': operatorWideRoleId,
-              'operator_id': _validOpId,
-              'scope_type': 'operator_wide',
-              'location_id': null,
-              'org_unit_id': null,
-              'effective_location_ids': const <String>[],
-              'valid_from': DateTime.utc(2026, 4, 1),
-              'valid_until': null,
-              'granted_by': _validUserId,
-              'revoked_at': null,
-              'revoked_by': null,
-              'reason': null,
-              'created_at': DateTime.utc(2026, 4, 1),
-              'updated_at': DateTime.utc(2026, 4, 1),
-            },
-            <String, Object?>{
-              'user_role_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-              'user_id': _validUserId,
               'role_id': managerRoleId,
-              'operator_id': _validOpId,
-              'scope_type': 'location',
-              'location_id': _validLocId,
-              'org_unit_id': null,
-              'effective_location_ids': <String>[_validLocId],
-              'valid_from': DateTime.utc(2026, 4, 1),
-              'valid_until': null,
-              'granted_by': _validUserId,
-              'revoked_at': null,
-              'revoked_by': null,
-              'reason': null,
+              'permission_key': 'team.users.invite',
+              'effect': 'allow',
               'created_at': DateTime.utc(2026, 4, 1),
               'updated_at': DateTime.utc(2026, 4, 1),
             },
           ],
-          rolePermissionsByRole: <String, List<PostgresRow>>{
-            operatorWideRoleId: const <PostgresRow>[],
-            managerRoleId: <PostgresRow>[
-              <String, Object?>{
-                'role_id': managerRoleId,
-                'permission_key': 'team.users.invite',
-                'effect': 'allow',
-                'created_at': DateTime.utc(2026, 4, 1),
-                'updated_at': DateTime.utc(2026, 4, 1),
-              },
-            ],
-          },
+        },
+      );
+      final gateway = _gatewayWithPool(pool);
+
+      AuthOperationRejected? captured;
+      try {
+        await gateway.createInvite(
+          const TeamInviteCreateCommand(
+            actorUserId: _validUserId,
+            operatorId: _validOpId,
+            locationId: _validLocId,
+            email: 'regional@example.test',
+            roleId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            scopeType: 'org_unit',
+            targetOrgUnitId: _validParentId,
+          ),
+        );
+      } on AuthOperationRejected catch (error) {
+        captured = error;
+      }
+
+      expect(captured, isNotNull);
+      expect(captured!.code, equals('target_scope_required'));
+      expect(captured.message, contains('team.users.invite'));
+    });
+
+    test(
+      'createInvite lets operator owner bootstrap skip target grant gate',
+      () async {
+        const ownerRoleId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+        final pool = _OrgUnitsPool(
+          roleRows: <PostgresRow>[
+            <String, Object?>{'role_id': ownerRoleId},
+          ],
         );
         final gateway = _gatewayWithPool(pool);
 
-        AuthOperationRejected? captured;
+        AuthOperationRejected? rejected;
+        FirebaseAdminAuthError? firebaseError;
         try {
           await gateway.createInvite(
             const TeamInviteCreateCommand(
               actorUserId: _validUserId,
               operatorId: _validOpId,
               locationId: _validLocId,
-              email: 'regional@example.test',
-              roleId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-              scopeType: 'org_unit',
-              targetOrgUnitId: _validParentId,
+              email: 'owner@example.test',
+              roleId: 'operator_owner',
+              scopeType: 'operator_wide',
+              operatorOwnerBootstrap: true,
             ),
           );
         } on AuthOperationRejected catch (error) {
-          captured = error;
+          rejected = error;
+        } on FirebaseAdminAuthError catch (error) {
+          firebaseError = error;
         }
 
-        expect(captured, isNotNull);
-        expect(captured!.code, equals('target_scope_required'));
-        expect(captured.message, contains('team.users.invite'));
+        expect(rejected, isNull);
+        expect(firebaseError, isNotNull);
+        expect(firebaseError!.code, equals('firebase_admin_not_configured'));
+        final sql = pool.transactions
+            .expand((tx) => tx.executedSql)
+            .join('\n')
+            .toLowerCase();
+        expect(sql, isNot(contains('from user_roles')));
+        expect(sql, isNot(contains('from role_permissions')));
       },
     );
 
-    test(
-      'listOrgHierarchy still filters when actor has a weak operator-wide '
-      'role plus a stronger location-scoped role',
-      () async {
-        // Mixed-scope: operator-wide STAFF (no `team.users.view`) +
-        // location-scoped MANAGER (has `team.users.view`). The proxy
-        // permission gate passes because the manager role allows the
-        // key, but the listing must NOT show the full tree — only
-        // the assigned location's branch.
-        const operatorWideRoleId = 'a1111111-1111-4111-8111-111111111111';
-        const managerRoleId = 'b2222222-2222-4222-8222-222222222222';
-        const eastUnitId = 'd0000001-0000-4000-8000-000000000001';
-        const westUnitId = 'd0000002-0000-4000-8000-000000000002';
-        final pool = _OrgUnitsPool(
-          userRoleRows: <PostgresRow>[
+    test('listOrgHierarchy still filters when actor has a weak operator-wide '
+        'role plus a stronger location-scoped role', () async {
+      // Mixed-scope: operator-wide STAFF (no `team.users.view`) +
+      // location-scoped MANAGER (has `team.users.view`). The proxy
+      // permission gate passes because the manager role allows the
+      // key, but the listing must NOT show the full tree — only
+      // the assigned location's branch.
+      const operatorWideRoleId = 'a1111111-1111-4111-8111-111111111111';
+      const managerRoleId = 'b2222222-2222-4222-8222-222222222222';
+      const eastUnitId = 'd0000001-0000-4000-8000-000000000001';
+      const westUnitId = 'd0000002-0000-4000-8000-000000000002';
+      final pool = _OrgUnitsPool(
+        userRoleRows: <PostgresRow>[
+          <String, Object?>{
+            'user_role_id': '99999999-9999-9999-9999-999999999999',
+            'user_id': _validUserId,
+            'role_id': operatorWideRoleId,
+            'operator_id': _validOpId,
+            'scope_type': 'operator_wide',
+            'location_id': null,
+            'org_unit_id': null,
+            'effective_location_ids': const <String>[],
+            'valid_from': DateTime.utc(2026, 4, 1),
+            'valid_until': null,
+            'granted_by': _validUserId,
+            'revoked_at': null,
+            'revoked_by': null,
+            'reason': null,
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+          <String, Object?>{
+            'user_role_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'user_id': _validUserId,
+            'role_id': managerRoleId,
+            'operator_id': _validOpId,
+            'scope_type': 'location',
+            'location_id': _validLocId,
+            'org_unit_id': null,
+            'effective_location_ids': <String>[_validLocId],
+            'valid_from': DateTime.utc(2026, 4, 1),
+            'valid_until': null,
+            'granted_by': _validUserId,
+            'revoked_at': null,
+            'revoked_by': null,
+            'reason': null,
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+        ],
+        rolePermissionsByRole: <String, List<PostgresRow>>{
+          // Operator-wide staff role does NOT carry team.users.view.
+          operatorWideRoleId: const <PostgresRow>[],
+          // Location-scoped manager role HAS team.users.view, but
+          // it must not unlock the full tree.
+          managerRoleId: <PostgresRow>[
             <String, Object?>{
-              'user_role_id': '99999999-9999-9999-9999-999999999999',
-              'user_id': _validUserId,
-              'role_id': operatorWideRoleId,
-              'operator_id': _validOpId,
-              'scope_type': 'operator_wide',
-              'location_id': null,
-              'org_unit_id': null,
-              'effective_location_ids': const <String>[],
-              'valid_from': DateTime.utc(2026, 4, 1),
-              'valid_until': null,
-              'granted_by': _validUserId,
-              'revoked_at': null,
-              'revoked_by': null,
-              'reason': null,
-              'created_at': DateTime.utc(2026, 4, 1),
-              'updated_at': DateTime.utc(2026, 4, 1),
-            },
-            <String, Object?>{
-              'user_role_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-              'user_id': _validUserId,
               'role_id': managerRoleId,
-              'operator_id': _validOpId,
-              'scope_type': 'location',
-              'location_id': _validLocId,
-              'org_unit_id': null,
-              'effective_location_ids': <String>[_validLocId],
-              'valid_from': DateTime.utc(2026, 4, 1),
-              'valid_until': null,
-              'granted_by': _validUserId,
-              'revoked_at': null,
-              'revoked_by': null,
-              'reason': null,
+              'permission_key': 'team.users.view',
+              'effect': 'allow',
               'created_at': DateTime.utc(2026, 4, 1),
               'updated_at': DateTime.utc(2026, 4, 1),
             },
           ],
-          rolePermissionsByRole: <String, List<PostgresRow>>{
-            // Operator-wide staff role does NOT carry team.users.view.
-            operatorWideRoleId: const <PostgresRow>[],
-            // Location-scoped manager role HAS team.users.view, but
-            // it must not unlock the full tree.
-            managerRoleId: <PostgresRow>[
-              <String, Object?>{
-                'role_id': managerRoleId,
-                'permission_key': 'team.users.view',
-                'effect': 'allow',
-                'created_at': DateTime.utc(2026, 4, 1),
-                'updated_at': DateTime.utc(2026, 4, 1),
-              },
-            ],
+        },
+        orgUnitRows: <PostgresRow>[
+          <String, Object?>{
+            'id': 'd0000000-0000-4000-8000-000000000000',
+            'operator_id': _validOpId,
+            'parent_id': null,
+            'unit_type': 'corp',
+            'path': 'acme',
+            'name': 'ACME',
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
           },
-          orgUnitRows: <PostgresRow>[
-            <String, Object?>{
-              'id': 'd0000000-0000-4000-8000-000000000000',
-              'operator_id': _validOpId,
-              'parent_id': null,
-              'unit_type': 'corp',
-              'path': 'acme',
-              'name': 'ACME',
-              'created_at': DateTime.utc(2026, 4, 1),
-              'updated_at': DateTime.utc(2026, 4, 1),
-            },
-            <String, Object?>{
-              'id': eastUnitId,
-              'operator_id': _validOpId,
-              'parent_id': 'd0000000-0000-4000-8000-000000000000',
-              'unit_type': 'region',
-              'path': 'acme.east',
-              'name': 'East',
-              'created_at': DateTime.utc(2026, 4, 1),
-              'updated_at': DateTime.utc(2026, 4, 1),
-            },
-            <String, Object?>{
-              'id': westUnitId,
-              'operator_id': _validOpId,
-              'parent_id': 'd0000000-0000-4000-8000-000000000000',
-              'unit_type': 'region',
-              'path': 'acme.west',
-              'name': 'West',
-              'created_at': DateTime.utc(2026, 4, 1),
-              'updated_at': DateTime.utc(2026, 4, 1),
-            },
-          ],
-          locationRows: <PostgresRow>[
-            <String, Object?>{
-              'location_id': _validLocId,
-              'operator_id': _validOpId,
-              'parent_org_unit_id': eastUnitId,
-              'org_unit_path': 'acme.east',
-              'name': 'Downtown',
-            },
-            <String, Object?>{
-              'location_id': _validTargetLocationId,
-              'operator_id': _validOpId,
-              'parent_org_unit_id': westUnitId,
-              'org_unit_path': 'acme.west',
-              'name': 'Plaza',
-            },
-          ],
-        );
-        final gateway = _gatewayWithPool(pool);
+          <String, Object?>{
+            'id': eastUnitId,
+            'operator_id': _validOpId,
+            'parent_id': 'd0000000-0000-4000-8000-000000000000',
+            'unit_type': 'region',
+            'path': 'acme.east',
+            'name': 'East',
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+          <String, Object?>{
+            'id': westUnitId,
+            'operator_id': _validOpId,
+            'parent_id': 'd0000000-0000-4000-8000-000000000000',
+            'unit_type': 'region',
+            'path': 'acme.west',
+            'name': 'West',
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+        ],
+        locationRows: <PostgresRow>[
+          <String, Object?>{
+            'location_id': _validLocId,
+            'operator_id': _validOpId,
+            'parent_org_unit_id': eastUnitId,
+            'org_unit_path': 'acme.east',
+            'name': 'Downtown',
+          },
+          <String, Object?>{
+            'location_id': _validTargetLocationId,
+            'operator_id': _validOpId,
+            'parent_org_unit_id': westUnitId,
+            'org_unit_path': 'acme.west',
+            'name': 'Plaza',
+          },
+        ],
+      );
+      final gateway = _gatewayWithPool(pool);
 
-        final listed = await gateway.listOrgHierarchy(
-          const TeamOrgHierarchyListCommand(
-            actorUserId: _validUserId,
-            operatorId: _validOpId,
-            locationId: _validLocId,
-          ),
-        );
+      final listed = await gateway.listOrgHierarchy(
+        const TeamOrgHierarchyListCommand(
+          actorUserId: _validUserId,
+          operatorId: _validOpId,
+          locationId: _validLocId,
+        ),
+      );
 
-        // Filtered result: only the East branch + downtown location.
-        final unitPaths = listed.orgUnits.map((u) => u.path).toSet();
-        final locationIds = listed.locations.map((l) => l.locationId).toSet();
-        expect(unitPaths, equals(<String>{'acme', 'acme.east'}));
-        expect(locationIds, equals(<String>{_validLocId}));
-      },
-    );
+      // Filtered result: only the East branch + downtown location.
+      final unitPaths = listed.orgUnits.map((u) => u.path).toSet();
+      final locationIds = listed.locations.map((l) => l.locationId).toSet();
+      expect(unitPaths, equals(<String>{'acme', 'acme.east'}));
+      expect(locationIds, equals(<String>{_validLocId}));
+    });
 
-    test(
-      'listOrgHierarchy returns the full tree for an operator-wide actor '
-      'whose role carries team.users.view',
-      () async {
-        const ownerRoleId = 'c3333333-3333-4333-8333-333333333333';
-        const eastUnitId = 'd0000001-0000-4000-8000-000000000001';
-        const westUnitId = 'd0000002-0000-4000-8000-000000000002';
-        final pool = _OrgUnitsPool(
-          userRoleRows: <PostgresRow>[
+    test('listOrgHierarchy returns the full tree for an operator-wide actor '
+        'whose role carries team.users.view', () async {
+      const ownerRoleId = 'c3333333-3333-4333-8333-333333333333';
+      const eastUnitId = 'd0000001-0000-4000-8000-000000000001';
+      const westUnitId = 'd0000002-0000-4000-8000-000000000002';
+      final pool = _OrgUnitsPool(
+        userRoleRows: <PostgresRow>[
+          <String, Object?>{
+            'user_role_id': '99999999-9999-9999-9999-999999999999',
+            'user_id': _validUserId,
+            'role_id': ownerRoleId,
+            'operator_id': _validOpId,
+            'scope_type': 'operator_wide',
+            'location_id': null,
+            'org_unit_id': null,
+            'effective_location_ids': const <String>[],
+            'valid_from': DateTime.utc(2026, 4, 1),
+            'valid_until': null,
+            'granted_by': _validUserId,
+            'revoked_at': null,
+            'revoked_by': null,
+            'reason': null,
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+        ],
+        rolePermissionsByRole: <String, List<PostgresRow>>{
+          ownerRoleId: <PostgresRow>[
             <String, Object?>{
-              'user_role_id': '99999999-9999-9999-9999-999999999999',
-              'user_id': _validUserId,
               'role_id': ownerRoleId,
-              'operator_id': _validOpId,
-              'scope_type': 'operator_wide',
-              'location_id': null,
-              'org_unit_id': null,
-              'effective_location_ids': const <String>[],
-              'valid_from': DateTime.utc(2026, 4, 1),
-              'valid_until': null,
-              'granted_by': _validUserId,
-              'revoked_at': null,
-              'revoked_by': null,
-              'reason': null,
+              'permission_key': 'team.users.view',
+              'effect': 'allow',
               'created_at': DateTime.utc(2026, 4, 1),
               'updated_at': DateTime.utc(2026, 4, 1),
             },
           ],
-          rolePermissionsByRole: <String, List<PostgresRow>>{
-            ownerRoleId: <PostgresRow>[
-              <String, Object?>{
-                'role_id': ownerRoleId,
-                'permission_key': 'team.users.view',
-                'effect': 'allow',
-                'created_at': DateTime.utc(2026, 4, 1),
-                'updated_at': DateTime.utc(2026, 4, 1),
-              },
-            ],
+        },
+        orgUnitRows: <PostgresRow>[
+          <String, Object?>{
+            'id': 'd0000000-0000-4000-8000-000000000000',
+            'operator_id': _validOpId,
+            'parent_id': null,
+            'unit_type': 'corp',
+            'path': 'acme',
+            'name': 'ACME',
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
           },
-          orgUnitRows: <PostgresRow>[
-            <String, Object?>{
-              'id': 'd0000000-0000-4000-8000-000000000000',
-              'operator_id': _validOpId,
-              'parent_id': null,
-              'unit_type': 'corp',
-              'path': 'acme',
-              'name': 'ACME',
-              'created_at': DateTime.utc(2026, 4, 1),
-              'updated_at': DateTime.utc(2026, 4, 1),
-            },
-            <String, Object?>{
-              'id': eastUnitId,
-              'operator_id': _validOpId,
-              'parent_id': 'd0000000-0000-4000-8000-000000000000',
-              'unit_type': 'region',
-              'path': 'acme.east',
-              'name': 'East',
-              'created_at': DateTime.utc(2026, 4, 1),
-              'updated_at': DateTime.utc(2026, 4, 1),
-            },
-            <String, Object?>{
-              'id': westUnitId,
-              'operator_id': _validOpId,
-              'parent_id': 'd0000000-0000-4000-8000-000000000000',
-              'unit_type': 'region',
-              'path': 'acme.west',
-              'name': 'West',
-              'created_at': DateTime.utc(2026, 4, 1),
-              'updated_at': DateTime.utc(2026, 4, 1),
-            },
-          ],
-          locationRows: <PostgresRow>[
-            <String, Object?>{
-              'location_id': _validLocId,
-              'operator_id': _validOpId,
-              'parent_org_unit_id': eastUnitId,
-              'org_unit_path': 'acme.east',
-              'name': 'Downtown',
-            },
-            <String, Object?>{
-              'location_id': _validTargetLocationId,
-              'operator_id': _validOpId,
-              'parent_org_unit_id': westUnitId,
-              'org_unit_path': 'acme.west',
-              'name': 'Plaza',
-            },
-          ],
-        );
-        final gateway = _gatewayWithPool(pool);
+          <String, Object?>{
+            'id': eastUnitId,
+            'operator_id': _validOpId,
+            'parent_id': 'd0000000-0000-4000-8000-000000000000',
+            'unit_type': 'region',
+            'path': 'acme.east',
+            'name': 'East',
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+          <String, Object?>{
+            'id': westUnitId,
+            'operator_id': _validOpId,
+            'parent_id': 'd0000000-0000-4000-8000-000000000000',
+            'unit_type': 'region',
+            'path': 'acme.west',
+            'name': 'West',
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+        ],
+        locationRows: <PostgresRow>[
+          <String, Object?>{
+            'location_id': _validLocId,
+            'operator_id': _validOpId,
+            'parent_org_unit_id': eastUnitId,
+            'org_unit_path': 'acme.east',
+            'name': 'Downtown',
+          },
+          <String, Object?>{
+            'location_id': _validTargetLocationId,
+            'operator_id': _validOpId,
+            'parent_org_unit_id': westUnitId,
+            'org_unit_path': 'acme.west',
+            'name': 'Plaza',
+          },
+        ],
+      );
+      final gateway = _gatewayWithPool(pool);
 
-        final listed = await gateway.listOrgHierarchy(
-          const TeamOrgHierarchyListCommand(
-            actorUserId: _validUserId,
-            operatorId: _validOpId,
-            locationId: _validLocId,
-          ),
-        );
+      final listed = await gateway.listOrgHierarchy(
+        const TeamOrgHierarchyListCommand(
+          actorUserId: _validUserId,
+          operatorId: _validOpId,
+          locationId: _validLocId,
+        ),
+      );
 
-        final unitPaths = listed.orgUnits.map((u) => u.path).toSet();
-        final locationIds = listed.locations.map((l) => l.locationId).toSet();
-        expect(
-          unitPaths,
-          equals(<String>{'acme', 'acme.east', 'acme.west'}),
-        );
-        expect(
-          locationIds,
-          equals(<String>{_validLocId, _validTargetLocationId}),
-        );
-      },
-    );
+      final unitPaths = listed.orgUnits.map((u) => u.path).toSet();
+      final locationIds = listed.locations.map((l) => l.locationId).toSet();
+      expect(unitPaths, equals(<String>{'acme', 'acme.east', 'acme.west'}));
+      expect(
+        locationIds,
+        equals(<String>{_validLocId, _validTargetLocationId}),
+      );
+    });
 
     test(
       'listOrgHierarchy filters down to assigned locations and ancestor units '
@@ -910,6 +930,7 @@ class _OrgUnitsPool implements PostgresPool {
     this.userRoleRows = const <PostgresRow>[],
     this.rolePermissionsByRole = const <String, List<PostgresRow>>{},
     this.orgUnitRows = const <PostgresRow>[],
+    this.roleRows = const <PostgresRow>[],
     this.updateAffectedRows = 1,
     this.createChildId,
   });
@@ -919,6 +940,7 @@ class _OrgUnitsPool implements PostgresPool {
   final List<PostgresRow> userRoleRows;
   final Map<String, List<PostgresRow>> rolePermissionsByRole;
   final List<PostgresRow> orgUnitRows;
+  final List<PostgresRow> roleRows;
   final int updateAffectedRows;
   final String? createChildId;
 
@@ -932,6 +954,7 @@ class _OrgUnitsPool implements PostgresPool {
       userRoleRows: userRoleRows,
       rolePermissionsByRole: rolePermissionsByRole,
       orgUnitRows: orgUnitRows,
+      roleRows: roleRows,
       updateAffectedRows: updateAffectedRows,
       createChildId: createChildId,
     );
@@ -961,6 +984,7 @@ class _OrgUnitsTransaction extends PostgresTransaction {
     required this.userRoleRows,
     required this.rolePermissionsByRole,
     required this.orgUnitRows,
+    required this.roleRows,
     required this.updateAffectedRows,
     required this.createChildId,
   });
@@ -970,6 +994,7 @@ class _OrgUnitsTransaction extends PostgresTransaction {
   final List<PostgresRow> userRoleRows;
   final Map<String, List<PostgresRow>> rolePermissionsByRole;
   final List<PostgresRow> orgUnitRows;
+  final List<PostgresRow> roleRows;
   final int updateAffectedRows;
   final String? createChildId;
   final List<String> executedSql = <String>[];
@@ -989,8 +1014,7 @@ class _OrgUnitsTransaction extends PostgresTransaction {
       return parentRows;
     }
     if (sql.contains('select 1 from org_units')) return parentRows;
-    if (sql.contains('insert into org_units') &&
-        sql.contains('returning id')) {
+    if (sql.contains('insert into org_units') && sql.contains('returning id')) {
       final id = createChildId;
       if (id == null) return <PostgresRow>[];
       return <PostgresRow>[
@@ -1003,6 +1027,7 @@ class _OrgUnitsTransaction extends PostgresTransaction {
       if (roleId == null) return <PostgresRow>[];
       return rolePermissionsByRole[roleId] ?? const <PostgresRow>[];
     }
+    if (sql.contains('from roles')) return roleRows;
     if (sql.contains('from user_roles')) return userRoleRows;
     if (sql.contains('insert into auth_events_audit')) {
       // Audit repo expects a returning row; the actual id is opaque

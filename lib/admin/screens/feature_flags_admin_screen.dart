@@ -1,16 +1,16 @@
-// Phase 11A.7 — Feature flags admin screen.
+﻿// Phase 11A.7 - Feature flags admin screen.
 //
 // Replaces the 11A.0 placeholder. F&F internal-only surface that
 // lists every row in the `public.feature_flags` catalog and lets a
 // `super_admin` toggle them. `ff_support` lands on the read-only
-// branch — toggle buttons are disabled and the proxy enforces the
+// branch - toggle buttons are disabled and the proxy enforces the
 // same gate server-side.
 //
 // Destructive flag UX:
 //
 //   * Each row marked `kind = 'destructive'` (audit-logs cutover, KMS
 //     rollout lanes, etc.) renders a DANGER chip.
-//   * Toggling a destructive flag forces a confirm-by-typing dialog —
+//   * Toggling a destructive flag forces a confirm-by-typing dialog -
 //     the operator must enter the exact `flag_name` before the
 //     gateway POST fires. Standard flags toggle on a single click +
 //     SnackBar.
@@ -30,6 +30,9 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
+import '../admin_human_labels.dart';
 import '../models/feature_flags_admin_models.dart';
 import '../services/feature_flags_admin_gateway.dart';
 
@@ -43,7 +46,7 @@ class FeatureFlagsAdminScreen extends StatefulWidget {
 
   final FeatureFlagsAdminGateway gateway;
 
-  /// When false, the screen hides every toggle affordance — used for
+  /// When false, the screen hides every toggle affordance - used for
   /// the `ff_support` walkthrough path. The proxy enforces the same
   /// gate server-side; this flag keeps the UI honest about it.
   final bool editingEnabled;
@@ -214,7 +217,7 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'No staged feature controls are available yet. Add them during the release setup before using this page.',
+                  'Add staged feature controls during release setup before using this page.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
@@ -256,7 +259,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Turn staged features on or off without a deploy. Sensitive changes require typed confirmation and are always audited.',
+          'Turn staged features on or off. High-impact changes need typed confirmation and are logged.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -283,7 +286,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View-only: changing launch controls requires platform admin access.',
+              'View only: ecosystem admin access is required to change launch controls.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
@@ -390,20 +393,17 @@ class _FeatureFlagTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Key: ${row.flagName}',
+                  'Control ID: ${row.flagName}',
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 4),
-                if (row.description != null && row.description!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      row.description!,
-                      style: AppTextStyles.body13(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    _friendlyFlagDescription(row.flagName, row.description),
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
+                ),
                 Text(
                   'Status: ${row.enabled ? 'On' : 'Off'}',
                   key: Key('admin_feature_flag_value_${row.flagId}'),
@@ -417,7 +417,7 @@ class _FeatureFlagTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   'Last changed by ${row.updatedBy ?? 'unknown'} on '
-                  '${row.updatedAt.toUtc().toIso8601String()}',
+                  '${adminHumanDateTime(row.updatedAt)}',
                   style: AppTextStyles.mono8(color: AppColors.textMuted),
                 ),
               ],
@@ -428,14 +428,7 @@ class _FeatureFlagTile extends StatelessWidget {
             FilledButton.tonal(
               key: Key('admin_feature_flag_toggle_${row.flagId}'),
               onPressed: toggling ? null : onToggle,
-              style: FilledButton.styleFrom(
-                backgroundColor: row.isDestructive
-                    ? AppColors.negative.withValues(alpha: 0.15)
-                    : AppColors.sunset.withValues(alpha: 0.15),
-                foregroundColor: row.isDestructive
-                    ? AppColors.negative
-                    : AppColors.sunsetDark,
-              ),
+              style: AdminButtonStyles.tonal(destructive: row.isDestructive),
               child: toggling
                   ? const SizedBox(
                       width: 14,
@@ -534,7 +527,7 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This control can affect production behavior, audit routing, secret rollout, or emergency shutoff. Type the exact key to continue:',
+              'This can affect live behavior, service keys, or emergency shutoff. Type the control ID to continue:',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 8),
@@ -573,10 +566,7 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
         ),
         FilledButton(
           key: const Key('admin_feature_flag_danger_confirm'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.negative,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.danger,
           onPressed: _matches ? () => Navigator.of(context).pop(true) : null,
           child: const Text('Update'),
         ),
@@ -588,8 +578,8 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
 String _friendlyFlagName(String flagName) {
   return switch (flagName) {
     'audit_logs_cutover_enabled' => 'Audit log routing',
-    'kms_real_provider_anthropic_enabled' => 'Anthropic secret manager rollout',
-    'kms_real_provider_voyage_enabled' => 'Voyage secret manager rollout',
+    'kms_real_provider_anthropic_enabled' => 'Anthropic key storage',
+    'kms_real_provider_voyage_enabled' => 'Voyage key storage',
     'advisor_enabled' => 'Advisor access',
     _ =>
       flagName
@@ -603,6 +593,23 @@ String _friendlyFlagName(String flagName) {
   };
 }
 
+String _friendlyFlagDescription(String flagName, String? fallback) {
+  return switch (flagName) {
+    'audit_logs_cutover_enabled' =>
+      'Routes sign-in and admin changes into the permanent audit log. Turn off only for a rollback.',
+    'kms_real_provider_anthropic_enabled' =>
+      'Uses secure cloud storage for Anthropic service keys instead of demo storage.',
+    'kms_real_provider_voyage_enabled' =>
+      'Uses secure cloud storage for Voyage service keys instead of demo storage.',
+    'advisor_enabled' =>
+      'Controls whether the advisor experience is available in the app.',
+    _ =>
+      (fallback == null || fallback.trim().isEmpty)
+          ? 'Controls a staged release setting.'
+          : fallback.trim(),
+  };
+}
+
 String _friendlyFlagKind(String kind) {
   return switch (kind) {
     kFeatureFlagKindDestructive => 'Sensitive',
@@ -613,8 +620,8 @@ String _friendlyFlagKind(String kind) {
 
 String _friendlyScope(String scope) {
   return switch (scope.toLowerCase()) {
-    'global' => 'All customers',
-    'operator' => 'Customer',
+    'global' => 'All operators',
+    'operator' => 'Operator',
     'location' => 'Location',
     _ => scope.replaceAll('_', ' '),
   };

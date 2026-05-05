@@ -57,12 +57,22 @@ Debug Console live Browser Use QA on 2026-05-03 added
 `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 after staging proved `forge_admin` lacked explicit `SELECT` on
 `proxy_requests` for read-only request-log inspection. The grant is applied
-and verified on staging; it remains the only pending Production1 migration
-before Debug Console request-log inspection can be called production-ready.
+and verified on staging; it remains pending Production1 before Debug Console
+request-log inspection can be called production-ready.
 Until that Production1 apply and direct grant verification land, `11A.5`
 request-log inspection remains staging-ready only; the admin UI/runtime work
 is accepted, but the production database privilege is deliberately not marked
 ready.
+
+Staging admin live Browser Use QA on 2026-05-04 then found the same grant class
+for `11A.1` operator/location admin writes: list/read routes worked, but edit
+operator returned Postgres `42501 permission denied for table operators`.
+`202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql` grants
+the `forge_admin` DML privileges those admin-pool repositories already use. It
+was applied and Browser Use verified on staging the same day: operator edit and
+location edit both returned live 200s. Until the same file is applied and
+directly verified on Production1, operator/location admin writes are
+staging-ready only.
 
 Operational runbooks added from the 2026-05-03 live staging console smoke:
 provider credential/KMS rollout is owned by

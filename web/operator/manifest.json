@@ -1,11 +1,11 @@
-{
-    "name": "Forge & Flow — Operator Web Console",
+﻿{
+    "name": "Forge & Flow - Operator Web Console",
     "short_name": "F&F",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#F8EDE6",
     "theme_color": "#CC7A3E",
-    "description": "Forge & Flow Operator Web Console — account, vendor connections, and onboarding for your business.",
+    "description": "Forge & Flow Operator Web Console - account, vendor connections, and onboarding for your business.",
     "orientation": "any",
     "prefer_related_applications": false,
     "icons": [

@@ -1,4 +1,4 @@
-// Phase 11A.0 — Admin auth gate.
+﻿// Phase 11A.0 - Admin auth gate.
 //
 // The admin console is F&F-internal back-office. Only Firebase users
 // whose ID token carries a `super_admin` or `ff_support` role claim
@@ -7,18 +7,18 @@
 //
 // Two auth sources ship with this slice:
 //
-//   * [FirebaseAdminAuthSource] — production. Wraps the shared
+//   * [FirebaseAdminAuthSource] - production. Wraps the shared
 //     `FirebaseAuthClient` adapter and reads custom claims from the
 //     returned credential. Phase 11A.x slices wire the Firebase web
 //     init step against the production admin project; the source is a
 //     thin adapter so that wiring is additive rather than
 //     restructuring this gate.
-//   * [DemoAdminAuthSource] — tests + the kDemoMode walkthrough. Lets
+//   * [DemoAdminAuthSource] - tests + the kDemoMode walkthrough. Lets
 //     a widget exercise both the admit path (super_admin / ff_support)
 //     and the fail-closed path (any other role list, or signed-out)
 //     without touching live Firebase Authentication.
 //
-// The gate widget itself is auth-source agnostic — it watches a
+// The gate widget itself is auth-source agnostic - it watches a
 // [Stream] of [AdminAuthState] and renders one of the auth surfaces
 // (loading / unauthenticated / MFA challenge / forbidden / admin shell). The same
 // shape works for both production and demo.
@@ -38,12 +38,13 @@ import '../screens/auth/totp_challenge_view.dart';
 import '../services/auth/firebase_auth_client.dart';
 import '../services/auth/firebase_auth_client_sdk.dart';
 import '../theme/app_theme.dart';
+import 'admin_button_styles.dart';
 
 /// Roles that are admitted to the admin console. Mirrors the
 /// `_adminTierRoles` set in `lib/auth/mfa_policy.dart` for
 /// `super_admin` + `ff_support`. Operator roles
 /// (`operator_owner` / `operator_manager`) are explicitly NOT
-/// admitted here — the admin console is F&F-internal, not operator
+/// admitted here - the admin console is F&F-internal, not operator
 /// self-service.
 const Set<String> kAdminConsoleRoles = <String>{'super_admin', 'ff_support'};
 
@@ -196,7 +197,7 @@ class DemoAdminAuthSource implements AdminAuthSource {
       StreamController<AdminAuthState>.broadcast();
   AdminAuthState _state;
 
-  /// Demo registry — matches against the email submitted on the
+  /// Demo registry - matches against the email submitted on the
   /// sign-in card. Keeps the walkthrough deterministic without
   /// shipping live credentials.
   static const Map<String, AdminAuthSession> _demoUsers =
@@ -603,7 +604,7 @@ class _AdminMfaChallengeScreenState extends State<_AdminMfaChallengeScreen> {
   Future<void> _requestHelp() async {
     setState(() {
       _helpMessage =
-          'Contact the F&F platform admin for a factor reset or recovery review.';
+          'Contact the F&F ecosystem admin for a factor reset or recovery review.';
     });
   }
 
@@ -703,7 +704,7 @@ class _AdminSignInScreenState extends State<_AdminSignInScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _AdminBrandMark(subtitle: 'Operations Console'),
+                    const _AdminBrandMark(subtitle: 'Admin Console'),
                     const SizedBox(height: 28),
                     _AdminSignInCard(
                       key: const Key('admin_signin_card'),
@@ -951,19 +952,7 @@ class _SignInButton extends StatelessWidget {
       child: FilledButton(
         key: const Key('admin_signin_submit'),
         onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: AppColors.sunset,
-          foregroundColor: AppColors.backgroundSurface,
-          disabledBackgroundColor: AppColors.sunset.withValues(alpha: 0.55),
-          disabledForegroundColor: AppColors.backgroundSurface.withValues(
-            alpha: 0.85,
-          ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-          textStyle: AppTextStyles.mono14(
-            color: AppColors.backgroundSurface,
-            weight: FontWeight.w600,
-          ),
-        ),
+        style: AdminButtonStyles.primary,
         child: submitting
             ? const SizedBox(
                 height: 18,
@@ -1067,7 +1056,7 @@ class _AdminForbiddenScreen extends StatelessWidget {
                         'Signed in as ${session.email.isEmpty ? session.uid : session.email}, '
                         'but your account does not carry an admin role claim '
                         '(${kAdminConsoleRoles.join(' / ')}). The Forge & Flow '
-                        'Operations Console is internal F&F access only.',
+                        'Admin Console is internal F&F access only.',
                         style: AppTextStyles.body13(
                           color: AppColors.textSecondary,
                         ),
@@ -1078,16 +1067,7 @@ class _AdminForbiddenScreen extends StatelessWidget {
                         child: OutlinedButton(
                           key: const Key('admin_forbidden_signout'),
                           onPressed: () => source.signOut(),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.sunsetDark,
-                            side: const BorderSide(
-                              color: AppColors.sunsetDark,
-                              width: 1,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ),
+                          style: AdminButtonStyles.secondary(),
                           child: const Text('Sign out'),
                         ),
                       ),

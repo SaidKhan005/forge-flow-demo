@@ -1,4 +1,4 @@
-// Phase 8.0 — F&F Ops Console host shell for the shared Vendor
+﻿// Phase 8.0 - F&F Ops Console host shell for the shared Vendor
 // Connections widget tree.
 //
 // Hosts `VendorConnectionsWidget` (lib/integrations/ui/vendor_connections/)
@@ -19,12 +19,14 @@ class VendorConnectionsAdminMount extends StatelessWidget {
     super.key,
     required this.operatorId,
     required this.locationId,
+    required this.locationName,
     this.gateway,
     this.canMutate = true,
   });
 
   final String operatorId;
   final String locationId;
+  final String locationName;
 
   /// Production wires the HTTP gateway above the auth gate; demo +
   /// widget tests inject a seeded in-memory gateway.
@@ -38,12 +40,11 @@ class VendorConnectionsAdminMount extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('admin_vendor_connections_screen'),
-      appBar: AppBar(
-        title: const Text('Vendor connections'),
-      ),
+      appBar: AppBar(title: const Text('Vendor integrations')),
       body: VendorConnectionsWidget(
         operatorId: operatorId,
         locationId: locationId,
+        locationNameOverride: locationName,
         gateway: gateway,
         canMutate: canMutate,
       ),

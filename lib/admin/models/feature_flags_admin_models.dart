@@ -1,4 +1,4 @@
-// Phase 11A.7 — Feature flags admin value objects.
+// Phase 11A.7 - Feature flags admin value objects.
 //
 // Carries the `feature_flags` row shape the admin Feature Flags screen
 // needs to render and toggle, plus the toggle command. Mirrors the
@@ -88,17 +88,17 @@ class FeatureFlagAdminRow {
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'flag_id': flagId,
-        'flag_name': flagName,
-        'operator_id': operatorId,
-        'location_id': locationId,
-        'enabled': enabled,
-        'kind': kind,
-        'description': description,
-        'updated_by': updatedBy,
-        'created_at': createdAt.toUtc().toIso8601String(),
-        'updated_at': updatedAt.toUtc().toIso8601String(),
-      };
+    'flag_id': flagId,
+    'flag_name': flagName,
+    'operator_id': operatorId,
+    'location_id': locationId,
+    'enabled': enabled,
+    'kind': kind,
+    'description': description,
+    'updated_by': updatedBy,
+    'created_at': createdAt.toUtc().toIso8601String(),
+    'updated_at': updatedAt.toUtc().toIso8601String(),
+  };
 }
 
 /// Toggle command for `POST /v1/admin/feature-flags/toggle`. The proxy
@@ -122,7 +122,7 @@ class FeatureFlagToggleCommand {
   final String idempotencyKey;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'flag_id': flagId,
-        'enabled': enabled,
-      };
+    'flag_id': flagId,
+    'enabled': enabled,
+  };
 }
