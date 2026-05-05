@@ -17,11 +17,8 @@ class TierChangeRequestsCard extends StatelessWidget {
 
   final List<TierChangeRequest> requests;
   final bool editingEnabled;
-  final void Function(
-    TierChangeRequest request,
-    TierChangeRequestStatus newStatus,
-  )
-  onResolve;
+  final void Function(TierChangeRequest request, TierChangeRequestStatus newStatus)
+      onResolve;
 
   @override
   Widget build(BuildContext context) {
@@ -47,8 +44,10 @@ class TierChangeRequestsCard extends StatelessWidget {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: requests.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(color: AppColors.borderSubtle, height: 16),
+                separatorBuilder: (_, __) => const Divider(
+                  color: AppColors.borderSubtle,
+                  height: 16,
+                ),
                 itemBuilder: (context, index) => _RequestRow(
                   request: requests[index],
                   editingEnabled: editingEnabled,
@@ -71,11 +70,8 @@ class _RequestRow extends StatelessWidget {
 
   final TierChangeRequest request;
   final bool editingEnabled;
-  final void Function(
-    TierChangeRequest request,
-    TierChangeRequestStatus newStatus,
-  )
-  onResolve;
+  final void Function(TierChangeRequest request, TierChangeRequestStatus newStatus)
+      onResolve;
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +101,7 @@ class _RequestRow extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Reason: ${request.operatorNote.isEmpty ? '-' : request.operatorNote}',
+            'Reason: ${request.operatorNote.isEmpty ? '—' : request.operatorNote}',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 4),
@@ -120,27 +116,21 @@ class _RequestRow extends StatelessWidget {
               runSpacing: 8,
               children: [
                 FilledButton(
-                  key: Key(
-                    'admin_tier_change_request_approve_${request.requestId}',
-                  ),
+                  key: Key('admin_tier_change_request_approve_${request.requestId}'),
                   style: AdminButtonStyles.approval(selected: false),
                   onPressed: () =>
                       onResolve(request, TierChangeRequestStatus.approved),
                   child: const Text('Approve'),
                 ),
                 OutlinedButton(
-                  key: Key(
-                    'admin_tier_change_request_deny_${request.requestId}',
-                  ),
+                  key: Key('admin_tier_change_request_deny_${request.requestId}'),
                   style: AdminButtonStyles.reject(selected: false),
                   onPressed: () =>
                       onResolve(request, TierChangeRequestStatus.denied),
                   child: const Text('Deny'),
                 ),
                 OutlinedButton(
-                  key: Key(
-                    'admin_tier_change_request_negotiate_${request.requestId}',
-                  ),
+                  key: Key('admin_tier_change_request_negotiate_${request.requestId}'),
                   style: AdminButtonStyles.secondary(
                     minWidth: 140,
                     minHeight: 36,
@@ -195,7 +185,10 @@ class _StatusBadge extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(status.wire, style: AppTextStyles.chipLabel(color: fg)),
+      child: Text(
+        status.wire,
+        style: AppTextStyles.chipLabel(color: fg),
+      ),
     );
   }
 }

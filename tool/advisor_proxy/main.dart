@@ -462,14 +462,12 @@ Future<void> main(List<String> args) async {
   // touching the rest of main.dart.
   final adminEmailRouter = buildProductionAdminEmailRouter(
     apiKey: Platform.environment['SENDGRID_API_KEY'] ?? '',
-    fromAddress:
-        Platform.environment['EMAIL_FROM_ADDRESS'] ??
+    fromAddress: Platform.environment['EMAIL_FROM_ADDRESS'] ??
         'noreply@mail.forgeflow.app',
-    fromDisplayName:
-        Platform.environment['EMAIL_FROM_DISPLAY_NAME'] ?? 'Forge & Flow',
+    fromDisplayName: Platform.environment['EMAIL_FROM_DISPLAY_NAME'] ??
+        'Forge & Flow',
     defaultRecipientEmail: Platform.environment['EMAIL_TEST_RECIPIENT'],
-    sandboxMode:
-        (Platform.environment['SENDGRID_SANDBOX_MODE'] ?? '')
+    sandboxMode: (Platform.environment['SENDGRID_SANDBOX_MODE'] ?? '')
             .trim()
             .toLowerCase() ==
         'true',
@@ -479,8 +477,7 @@ Future<void> main(List<String> args) async {
     'startup.email_router',
     fields: <String, Object?>{
       'mounted': adminEmailRouter != null,
-      'sandbox_mode':
-          (Platform.environment['SENDGRID_SANDBOX_MODE'] ?? '')
+      'sandbox_mode': (Platform.environment['SENDGRID_SANDBOX_MODE'] ?? '')
               .trim()
               .toLowerCase() ==
           'true',
@@ -525,7 +522,6 @@ Future<void> main(List<String> args) async {
       'mfa_recovery_request': 'postgres_event_outbox',
       'operator_location_admin': 'postgres',
       'pricing_tier_admin': 'postgres',
-      'data_accuracy_admin': 'postgres',
       'corpus_admin': 'postgres',
       'integration_admin': 'postgres_kms_stub',
       'feature_flags_admin': 'postgres',
@@ -609,8 +605,6 @@ Future<void> main(List<String> args) async {
             operatorLocationAdminGateway:
                 productionBindings.operatorLocationAdminGateway,
             pricingTierAdminGateway: productionBindings.pricingTierAdminGateway,
-            dataAccuracyAdminGateway:
-                productionBindings.dataAccuracyAdminGateway,
             corpusAdminGateway: productionBindings.corpusAdminGateway,
             graphCandidatesGateway: productionBindings.graphCandidatesGateway,
             integrationAdminGateway: productionBindings.integrationAdminGateway,
@@ -789,7 +783,11 @@ void _logRealtimeBridgeEvent(RealtimeBridgeLogEvent event) {
         fields: fields,
       );
     case RealtimeBridgeLogKind.deadLettered:
-      log(LogSeverity.warning, 'realtime.bridge.dead_lettered', fields: fields);
+      log(
+        LogSeverity.warning,
+        'realtime.bridge.dead_lettered',
+        fields: fields,
+      );
     case RealtimeBridgeLogKind.deadLetterMoveFailed:
       log(
         LogSeverity.warning,

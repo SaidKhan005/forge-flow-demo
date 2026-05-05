@@ -50,7 +50,7 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
       marginColor = AppColors.textMuted;
     }
     final marginPctText = rollup.marginFraction == null
-        ? '-'
+        ? '—'
         : '${(rollup.marginFraction! * 100).toStringAsFixed(1)}%';
     final totalCost = rollup.totalMonthlyVendorCostCents;
 
@@ -134,54 +134,42 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
                   ],
                   rows: <DataRow>[
                     for (final entry in rollup.perTier)
-                      DataRow(
-                        cells: <DataCell>[
-                          DataCell(
-                            Text(
-                              entry.tierKey.wire,
-                              style: AppTextStyles.mono12(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
+                      DataRow(cells: <DataCell>[
+                        DataCell(Text(
+                          entry.tierKey.wire,
+                          style: AppTextStyles.mono12(
+                            color: AppColors.textPrimary,
                           ),
-                          DataCell(
-                            Text(
-                              '${entry.assignmentCount}',
-                              style: AppTextStyles.mono12(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
+                        )),
+                        DataCell(Text(
+                          '${entry.assignmentCount}',
+                          style: AppTextStyles.mono12(
+                            color: AppColors.textPrimary,
                           ),
-                          DataCell(
-                            Text(
-                              formatCents(entry.totalMonthlyPriceCents),
-                              style: AppTextStyles.mono12(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
+                        )),
+                        DataCell(Text(
+                          formatCents(entry.totalMonthlyPriceCents),
+                          style: AppTextStyles.mono12(
+                            color: AppColors.textPrimary,
                           ),
-                          DataCell(
-                            Text(
-                              formatCents(entry.totalMonthlyVendorCostCents),
-                              style: AppTextStyles.mono12(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
+                        )),
+                        DataCell(Text(
+                          formatCents(entry.totalMonthlyVendorCostCents),
+                          style: AppTextStyles.mono12(
+                            color: AppColors.textPrimary,
                           ),
-                          DataCell(
-                            Text(
-                              formatCents(entry.marginCents),
-                              style: AppTextStyles.mono14(
-                                color: entry.marginCents > 0
-                                    ? AppColors.positive
-                                    : (entry.marginCents < 0
-                                          ? AppColors.negative
-                                          : AppColors.textMuted),
-                              ),
-                            ),
+                        )),
+                        DataCell(Text(
+                          formatCents(entry.marginCents),
+                          style: AppTextStyles.mono14(
+                            color: entry.marginCents > 0
+                                ? AppColors.positive
+                                : (entry.marginCents < 0
+                                    ? AppColors.negative
+                                    : AppColors.textMuted),
                           ),
-                        ],
-                      ),
+                        )),
+                      ]),
                   ],
                 ),
               ),
@@ -207,42 +195,33 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
                   ],
                   rows: <DataRow>[
                     for (final entry in rollup.perVendor)
-                      DataRow(
-                        cells: <DataCell>[
-                          DataCell(
-                            Text(
-                              entry.vendorId == kUnallocatedVendorId
-                                  ? kUnallocatedVendorDisplayName
-                                  : (kPollOnlyVendorDisplayNames[entry
-                                            .vendorId] ??
-                                        entry.vendorId),
-                              style: AppTextStyles.body13(
-                                color: entry.vendorId == kUnallocatedVendorId
-                                    ? AppColors.textMuted
-                                    : AppColors.textPrimary,
-                              ),
-                            ),
+                      DataRow(cells: <DataCell>[
+                        DataCell(Text(
+                          entry.vendorId == kUnallocatedVendorId
+                              ? kUnallocatedVendorDisplayName
+                              : (kPollOnlyVendorDisplayNames[entry.vendorId] ??
+                                  entry.vendorId),
+                          style: AppTextStyles.body13(
+                            color: entry.vendorId == kUnallocatedVendorId
+                                ? AppColors.textMuted
+                                : AppColors.textPrimary,
                           ),
-                          DataCell(
-                            Text(
-                              formatCents(entry.totalMonthlyVendorCostCents),
-                              style: AppTextStyles.mono12(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
+                        )),
+                        DataCell(Text(
+                          formatCents(entry.totalMonthlyVendorCostCents),
+                          style: AppTextStyles.mono12(
+                            color: AppColors.textPrimary,
                           ),
-                          DataCell(
-                            Text(
-                              totalCost <= 0
-                                  ? '-'
-                                  : '${(entry.totalMonthlyVendorCostCents * 100 / totalCost).toStringAsFixed(1)}%',
-                              style: AppTextStyles.mono12(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
+                        )),
+                        DataCell(Text(
+                          totalCost <= 0
+                              ? '—'
+                              : '${(entry.totalMonthlyVendorCostCents * 100 / totalCost).toStringAsFixed(1)}%',
+                          style: AppTextStyles.mono12(
+                            color: AppColors.textPrimary,
                           ),
-                        ],
-                      ),
+                        )),
+                      ]),
                   ],
                 ),
               ),
@@ -271,9 +250,15 @@ class _Metric extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: AppTextStyles.uiLabel(color: AppColors.textMuted)),
+          Text(
+            label,
+            style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+          ),
           const SizedBox(height: 4),
-          Text(value, style: AppTextStyles.display20(color: color)),
+          Text(
+            value,
+            style: AppTextStyles.display20(color: color),
+          ),
         ],
       ),
     );

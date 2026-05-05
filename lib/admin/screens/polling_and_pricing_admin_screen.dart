@@ -1,4 +1,4 @@
-// Phase 8 spine-bridge Lane .C - F&F Ops Console "Polling & Pricing" tab.
+// Phase 8 spine-bridge Lane .C — F&F Ops Console "Polling & Pricing" tab.
 //
 // Tab 2 of the per-location data accuracy admin surface. F&F-internal:
 // operators NEVER see this surface. Carries the F&F-controlled tier
@@ -15,12 +15,10 @@ import 'package:flutter/services.dart';
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
-import '../admin_route_handoff.dart';
 import '../services/data_accuracy_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
 import '../widgets/data_accuracy_audit_history_panel.dart';
 import '../widgets/margin_rollup_card.dart';
-import '../widgets/operator_location_scope_banner.dart';
 import '../widgets/per_location_tier_assignment_table.dart';
 import '../widgets/per_vendor_cadence_editor.dart';
 import '../widgets/plain_english_explainer_card.dart';
@@ -34,13 +32,11 @@ class PollingAndPricingAdminScreen extends StatefulWidget {
     required this.gateway,
     required this.actorUserId,
     this.editingEnabled = true,
-    this.initialScope,
   });
 
   final DataAccuracyAdminGateway gateway;
   final String actorUserId;
   final bool editingEnabled;
-  final AdminOperatorLocationScopeIntent? initialScope;
 
   @override
   State<PollingAndPricingAdminScreen> createState() =>
@@ -53,7 +49,8 @@ class _PollingAndPricingAdminScreenState
   String? _loadError;
   String? _actionError;
   List<TierDefinition> _definitions = const <TierDefinition>[];
-  List<TierAssignmentAdminRow> _assignments = const <TierAssignmentAdminRow>[];
+  List<TierAssignmentAdminRow> _assignments =
+      const <TierAssignmentAdminRow>[];
   TierMarginRollup _rollup = const TierMarginRollup(
     totalMonthlyPriceCents: 0,
     totalMonthlyVendorCostCents: 0,
@@ -68,20 +65,11 @@ class _PollingAndPricingAdminScreenState
   String? _marginBandFilter;
   String? _locationCountFilter;
   String _operatorNameFilter = '';
-  late AdminOperatorLocationScopeIntent? _scope = widget.initialScope;
 
   @override
   void initState() {
     super.initState();
     _refresh();
-  }
-
-  @override
-  void didUpdateWidget(covariant PollingAndPricingAdminScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.initialScope != oldWidget.initialScope) {
-      _scope = widget.initialScope;
-    }
   }
 
   Future<void> _refresh() async {
@@ -133,87 +121,40 @@ class _PollingAndPricingAdminScreenState
         ifAbsent: () => 1,
       );
     }
-    return _assignments
-        .where((row) {
-          // The tier filter applies only to rows with an assignment.
-          // Unassigned rows (assignment == null) are filtered out when
-          // a specific tier is selected; they pass when "All tiers" is
-          // selected.
-          if (_tierFilter != null) {
-            if (row.assignment == null) return false;
-            if (row.assignment!.tierKey != _tierFilter) return false;
-          }
-          final scope = _scope;
-          if (scope != null &&
-              !scope.matches(
-                operatorId: row.operatorRef.operatorId,
-                locationId: row.operatorRef.locationId,
-              )) {
-            return false;
-          }
-          final band = _marginBandFilter;
-          if (band != null) {
-            // Margin band only meaningful for assigned rows; unassigned
-            // rows are filtered out when a band is selected.
-            if (row.assignment == null) return false;
-            final margin = row.assignment!.netMarginCents ?? 0;
-            if (band == 'positive' && margin <= 0) return false;
-            if (band == 'break_even' && margin != 0) return false;
-            if (band == 'negative' && margin >= 0) return false;
-          }
-          final loc = _locationCountFilter;
-          if (loc != null) {
-            final count =
-                perOperatorLocationCount[row.operatorRef.operatorId] ?? 0;
-            if (loc == 'single' && count != 1) return false;
-            if (loc == 'multi' && count < 2) return false;
-          }
-          final query = _operatorNameFilter.trim().toLowerCase();
-          if (query.isNotEmpty &&
-              !row.operatorRef.businessName.toLowerCase().contains(query) &&
-              !row.operatorRef.locationName.toLowerCase().contains(query)) {
-            return false;
-          }
-          return true;
-        })
-        .toList(growable: false);
-  }
-
-  List<TierChangeRequest> get _visibleChangeRequests {
-    final scope = _scope;
-    if (scope == null) return _changeRequests;
-    return _changeRequests
-        .where(
-          (request) => scope.matches(
-            operatorId: request.operatorRef.operatorId,
-            locationId: request.operatorRef.locationId,
-          ),
-        )
-        .toList(growable: false);
-  }
-
-  List<DataAccuracyAdminAuditEvent> get _visibleTierAuditEvents {
-    final scope = _scope;
-    if (scope == null) return _tierAuditEvents;
-    return _tierAuditEvents
-        .where(
-          (event) => scope.matches(
-            operatorId: event.operatorId,
-            locationId: event.locationId,
-          ),
-        )
-        .toList(growable: false);
-  }
-
-  TierMarginRollup get _visibleRollup {
-    final hasLocalFilter =
-        _scope != null ||
-        _tierFilter != null ||
-        _marginBandFilter != null ||
-        _locationCountFilter != null ||
-        _operatorNameFilter.trim().isNotEmpty;
-    if (!hasLocalFilter) return _rollup;
-    return _buildRollupFromRows(_filteredAssignments);
+    return _assignments.where((row) {
+      // The tier filter applies only to rows with an assignment.
+      // Unassigned rows (assignment == null) are filtered out when
+      // a specific tier is selected; they pass when "All tiers" is
+      // selected.
+      if (_tierFilter != null) {
+        if (row.assignment == null) return false;
+        if (row.assignment!.tierKey != _tierFilter) return false;
+      }
+      final band = _marginBandFilter;
+      if (band != null) {
+        // Margin band only meaningful for assigned rows; unassigned
+        // rows are filtered out when a band is selected.
+        if (row.assignment == null) return false;
+        final margin = row.assignment!.netMarginCents ?? 0;
+        if (band == 'positive' && margin <= 0) return false;
+        if (band == 'break_even' && margin != 0) return false;
+        if (band == 'negative' && margin >= 0) return false;
+      }
+      final loc = _locationCountFilter;
+      if (loc != null) {
+        final count =
+            perOperatorLocationCount[row.operatorRef.operatorId] ?? 0;
+        if (loc == 'single' && count != 1) return false;
+        if (loc == 'multi' && count < 2) return false;
+      }
+      final query = _operatorNameFilter.trim().toLowerCase();
+      if (query.isNotEmpty &&
+          !row.operatorRef.businessName.toLowerCase().contains(query) &&
+          !row.operatorRef.locationName.toLowerCase().contains(query)) {
+        return false;
+      }
+      return true;
+    }).toList(growable: false);
   }
 
   Future<void> _onEditDefinition(TierDefinition definition) async {
@@ -247,8 +188,7 @@ class _PollingAndPricingAdminScreenState
     if (!widget.editingEnabled) return;
     final result = await showDialog<_TierAssignmentDraft>(
       context: context,
-      builder: (_) =>
-          _TierAssignmentDialog(row: row, definitions: _definitions),
+      builder: (_) => _TierAssignmentDialog(row: row, definitions: _definitions),
     );
     if (result == null) return;
     setState(() => _actionError = null);
@@ -379,12 +319,6 @@ class _PollingAndPricingAdminScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          if (_scope != null)
-            OperatorLocationScopeBanner(
-              scope: _scope!,
-              surfaceName: 'polling and pricing',
-              onClear: () => setState(() => _scope = null),
-            ),
           const PlainEnglishExplainerCard(),
           const SizedBox(height: 16),
           TierDefinitionsCard(
@@ -412,18 +346,18 @@ class _PollingAndPricingAdminScreenState
           ),
           const SizedBox(height: 16),
           MarginRollupCard(
-            rollup: _visibleRollup,
+            rollup: _rollup,
             canExportCsv: widget.editingEnabled,
             onExportCsv: _onExportCsv,
           ),
           const SizedBox(height: 16),
           TierChangeRequestsCard(
-            requests: _visibleChangeRequests,
+            requests: _changeRequests,
             editingEnabled: widget.editingEnabled,
             onResolve: _onResolveChangeRequest,
           ),
           const SizedBox(height: 16),
-          // Card 5 (Audit history) per contract - every tier
+          // Card 5 (Audit history) per contract — every tier
           // definition edit, tier assignment, change-request
           // resolution, and CSV export the F&F admin runs lands here
           // with prior → new diff display + actor + timestamp + reason
@@ -431,100 +365,13 @@ class _PollingAndPricingAdminScreenState
           // accuracy overrides do not leak in.
           DataAccuracyAuditHistoryPanel(
             key: const Key('admin_polling_pricing_audit_panel'),
-            events: _visibleTierAuditEvents,
+            events: _tierAuditEvents,
             title: 'Audit history',
             emptyText: 'No tier changes recorded yet.',
           ),
         ],
       ),
     );
-  }
-
-  TierMarginRollup _buildRollupFromRows(List<TierAssignmentAdminRow> rows) {
-    final perTier = <PollingTierKey, _MutableTierMargin>{};
-    final perVendor = <String, int>{};
-    var totalPrice = 0;
-    var totalCost = 0;
-
-    for (final row in rows) {
-      final assignment = row.assignment;
-      if (assignment == null) continue;
-      final definition = _definitionFor(assignment.tierKey);
-      final price =
-          assignment.monthlyPriceCents ??
-          definition?.defaultMonthlyPriceCents ??
-          0;
-      final cost =
-          assignment.vendorApiCostEstimateCentsMonthly ??
-          definition?.vendorApiCostEstimateCentsMonthly ??
-          0;
-      totalPrice += price;
-      totalCost += cost;
-      perTier
-          .putIfAbsent(assignment.tierKey, () => _MutableTierMargin())
-          .add(price: price, cost: cost);
-
-      final vendors = assignment.pollingCadencePerVendorSeconds.keys.toList();
-      if (vendors.isEmpty) {
-        perVendor.update(
-          kUnallocatedVendorId,
-          (value) => value + cost,
-          ifAbsent: () => cost,
-        );
-      } else {
-        final perVendorCost = cost ~/ vendors.length;
-        var remainder = cost - (perVendorCost * vendors.length);
-        for (final vendor in vendors) {
-          final share = perVendorCost + (remainder > 0 ? 1 : 0);
-          if (remainder > 0) remainder -= 1;
-          perVendor.update(
-            vendor,
-            (value) => value + share,
-            ifAbsent: () => share,
-          );
-        }
-      }
-    }
-
-    return TierMarginRollup(
-      totalMonthlyPriceCents: totalPrice,
-      totalMonthlyVendorCostCents: totalCost,
-      perTier: <TierMarginPerTier>[
-        for (final entry in perTier.entries)
-          TierMarginPerTier(
-            tierKey: entry.key,
-            assignmentCount: entry.value.count,
-            totalMonthlyPriceCents: entry.value.price,
-            totalMonthlyVendorCostCents: entry.value.cost,
-          ),
-      ],
-      perVendor: <TierMarginPerVendor>[
-        for (final entry in perVendor.entries)
-          TierMarginPerVendor(
-            vendorId: entry.key,
-            totalMonthlyVendorCostCents: entry.value,
-          ),
-      ],
-    );
-  }
-
-  TierDefinition? _definitionFor(PollingTierKey tierKey) {
-    for (final definition in _definitions) {
-      if (definition.tierKey == tierKey) return definition;
-    }
-    return null;
-  }
-}
-
-class _MutableTierMargin {
-  int count = 0;
-  int price = 0;
-  int cost = 0;
-
-  void add({required int price, required int cost}) {
-    count += 1;
-    this.price += price;
-    this.cost += cost;
   }
 }
 
@@ -575,7 +422,7 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
     text: widget.row.assignment?.vendorApiCostEstimateCentsMonthly == null
         ? ''
         : (widget.row.assignment!.vendorApiCostEstimateCentsMonthly! / 100)
-              .toStringAsFixed(2),
+            .toStringAsFixed(2),
   );
   late final TextEditingController _notes = TextEditingController(
     text: widget.row.adminNotes ?? '',
@@ -605,7 +452,7 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
       key: const Key('admin_tier_assignment_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Assign tier - ${widget.row.operatorRef.businessName} '
+        'Assign tier — ${widget.row.operatorRef.businessName} '
         '/ ${widget.row.operatorRef.locationName}',
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
@@ -639,7 +486,8 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
               if (_tierKey == PollingTierKey.custom)
                 PerVendorCadenceEditor(
                   initialCadence: _customCadence,
-                  onChanged: (next) => setState(() => _customCadence = next),
+                  onChanged: (next) =>
+                      setState(() => _customCadence = next),
                 ),
               const SizedBox(height: 12),
               TextField(
@@ -650,9 +498,8 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
                   hintText: 'Leave blank to use tier default',
                   border: OutlineInputBorder(),
                 ),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -663,9 +510,8 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
                   hintText: 'Leave blank to use tier default',
                   border: OutlineInputBorder(),
                 ),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -713,9 +559,8 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
                     ? Map<String, int>.from(_customCadence)
                     : null,
                 monthlyPriceCentsOverride: _parseCents(_price.text),
-                vendorApiCostEstimateCentsMonthlyOverride: _parseCents(
-                  _cost.text,
-                ),
+                vendorApiCostEstimateCentsMonthlyOverride:
+                    _parseCents(_cost.text),
                 adminNotes: _notes.text.trim().isEmpty
                     ? null
                     : _notes.text.trim(),

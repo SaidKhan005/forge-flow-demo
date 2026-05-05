@@ -1,4 +1,4 @@
-// Phase 11A.0 - Admin route table.
+﻿// Phase 11A.0 - Admin route table.
 //
 // The admin console is a multi-surface back-office. Keeping the route
 // catalog in a single typed list lets the shell nav render live
@@ -55,7 +55,6 @@ class AdminRoute {
     required this.section,
     required this.builder,
     this.subtitle,
-    this.badge,
     this.placeholder = false,
   });
 
@@ -80,9 +79,6 @@ class AdminRoute {
   /// route is opened ahead of its slice landing.
   final String? subtitle;
 
-  /// Optional short nav chip for route-level status.
-  final String? badge;
-
   /// True when the route is a placeholder for a slice that hasn't
   /// landed yet. The shell renders a "coming in 11A.x" empty state
   /// instead of [builder] so the nav structure is visible from
@@ -95,7 +91,7 @@ class AdminRoute {
   final Widget Function(BuildContext context) builder;
 }
 
-enum AdminRouteSection { ai, operations, serviceSetup, systemMonitoring }
+enum AdminRouteSection { ai, operations, serviceSetup, systemMonitoring, dataAccuracy }
 
 /// Canonical Operators route ID (11A.1).
 const String kAdminOperatorsRouteId = 'operators';
@@ -124,10 +120,10 @@ const String kAdminDebugConsoleRouteId = 'debug';
 /// by [kAdminHealthRouteId] and is intentionally a different route.
 const String kAdminObservabilityRouteId = 'observability';
 
-/// Phase 8 spine-bridge Lane .C - Data Accuracy admin tab (Tab 1).
+/// Phase 8 spine-bridge Lane .C — Data Accuracy admin tab (Tab 1).
 const String kAdminDataAccuracyRouteId = 'data-accuracy';
 
-/// Phase 8 spine-bridge Lane .C - Polling & Pricing admin tab (Tab 2).
+/// Phase 8 spine-bridge Lane .C — Polling & Pricing admin tab (Tab 2).
 const String kAdminPollingPricingRouteId = 'polling-pricing';
 
 /// Canonical operator-picker route ID (11A.3a follow-up). The picker
@@ -215,27 +211,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
         'Review cost, usage limits, operator activity, graph health, and hosting.',
     builder: _buildObservability,
   ),
-  AdminRoute(
-    id: kAdminDataAccuracyRouteId,
-    title: 'Data accuracy',
-    path: '/data-accuracy',
-    icon: Icons.fact_check_outlined,
-    section: AdminRouteSection.operations,
-    badge: 'Work in progress',
-    subtitle: 'Inspect and override per-location covers and wage source.',
-    builder: _buildDataAccuracy,
-  ),
-  AdminRoute(
-    id: kAdminPollingPricingRouteId,
-    title: 'Polling & pricing',
-    path: '/polling-pricing',
-    icon: Icons.payments_outlined,
-    section: AdminRouteSection.operations,
-    badge: 'Work in progress',
-    subtitle:
-        'Set tier definitions, per-location assignments, and review margin.',
-    builder: _buildPollingPricing,
-  ),
+  AdminRoute(id: kAdminDataAccuracyRouteId, title: 'Data accuracy', path: '/data-accuracy', icon: Icons.fact_check_outlined, section: AdminRouteSection.dataAccuracy, subtitle: 'Inspect and override per-location covers and wage source.', builder: _buildDataAccuracy),
+  AdminRoute(id: kAdminPollingPricingRouteId, title: 'Polling & pricing', path: '/polling-pricing', icon: Icons.payments_outlined, section: AdminRouteSection.dataAccuracy, subtitle: 'Set tier definitions, per-location assignments, and review margin.', builder: _buildPollingPricing),
 ];
 
 Widget _buildOperators(BuildContext context) {
@@ -253,26 +230,6 @@ Widget _buildOperators(BuildContext context) {
                   operatorId: operatorId,
                   locationId: locationId,
                 ),
-              ),
-            );
-          },
-    onOpenDataAccuracy: handoff == null
-        ? null
-        : (scope) {
-            handoff.onSelectRoute(
-              AdminRouteIntent(
-                routeId: kAdminDataAccuracyRouteId,
-                operatorLocationScope: scope,
-              ),
-            );
-          },
-    onOpenPollingPricing: handoff == null
-        ? null
-        : (scope) {
-            handoff.onSelectRoute(
-              AdminRouteIntent(
-                routeId: kAdminPollingPricingRouteId,
-                operatorLocationScope: scope,
               ),
             );
           },
@@ -431,12 +388,10 @@ Widget _buildFeatureFlags(BuildContext context) {
 Widget _buildDataAccuracy(BuildContext context) {
   final gateway = AdminConsoleServicesScope.dataAccuracyAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  final scope = AdminRouteHandoff.maybeOf(context)?.operatorLocationScope;
   if (source == null) {
     return PerLocationDataAccuracyScreen(
       gateway: gateway,
       actorUserId: 'demo-super-admin',
-      initialScope: scope,
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -450,7 +405,6 @@ Widget _buildDataAccuracy(BuildContext context) {
         gateway: gateway,
         actorUserId: session?.uid ?? 'unknown',
         editingEnabled: canEdit,
-        initialScope: scope,
       );
     },
   );
@@ -459,12 +413,10 @@ Widget _buildDataAccuracy(BuildContext context) {
 Widget _buildPollingPricing(BuildContext context) {
   final gateway = AdminConsoleServicesScope.dataAccuracyAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  final scope = AdminRouteHandoff.maybeOf(context)?.operatorLocationScope;
   if (source == null) {
     return PollingAndPricingAdminScreen(
       gateway: gateway,
       actorUserId: 'demo-super-admin',
-      initialScope: scope,
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -478,7 +430,6 @@ Widget _buildPollingPricing(BuildContext context) {
         gateway: gateway,
         actorUserId: session?.uid ?? 'unknown',
         editingEnabled: canEdit,
-        initialScope: scope,
       );
     },
   );

@@ -33,7 +33,6 @@ import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
 import 'admin/services/corpus_admin_gateway.dart';
-import 'admin/services/data_accuracy_admin_gateway.dart';
 import 'admin/services/debug_console_admin_gateway.dart';
 import 'admin/services/feature_flags_admin_gateway.dart';
 import 'admin/services/health_admin_gateway.dart';
@@ -84,9 +83,6 @@ Future<void> main() async {
     final pricingGateway = gateway == null
         ? null
         : _resolvePricingTierAdminGateway(authBinding.authClient);
-    final dataAccuracyGateway = gateway == null
-        ? null
-        : _resolveDataAccuracyAdminGateway(authBinding.authClient);
     final corpusGateway = gateway == null
         ? null
         : _resolveCorpusAdminGateway(authBinding.authClient);
@@ -114,7 +110,6 @@ Future<void> main() async {
       AdminConsoleServicesScope(
         operatorLocationGateway: gateway,
         pricingTierGateway: pricingGateway,
-        dataAccuracyAdminGateway: dataAccuracyGateway,
         corpusAdminGateway: corpusGateway,
         integrationGateway: integrationGateway,
         healthGateway: healthGateway,
@@ -199,25 +194,6 @@ PricingTierAdminGateway? _resolvePricingTierAdminGateway(
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpPricingTierAdminGateway(
-    baseUri: baseUri,
-    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
-  );
-}
-
-/// Phase 8 spine-bridge .C — Data Accuracy + Polling & Pricing live
-/// gateway. Uses the same admin proxy base URI as the existing admin
-/// surfaces. Demo mode returns null and `admin_routes.dart` supplies
-/// the seeded in-memory walkthrough gateway.
-DataAccuracyAdminGateway? _resolveDataAccuracyAdminGateway(
-  FirebaseAuthClient? authClient,
-) {
-  if (_kAdminDemoAuth) return null;
-  final liveAuthClient = _requireLiveAuthClient(authClient);
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) return null;
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
-  return HttpDataAccuracyAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );

@@ -1,4 +1,4 @@
-// Phase 11A.0 - Admin shell.
+﻿// Phase 11A.0 - Admin shell.
 //
 // Branded scaffold that wraps the admin route surface. Renders a
 // fixed left-side nav (icon + label) for desktop / wide web layouts
@@ -39,7 +39,6 @@ class AdminShell extends StatefulWidget {
 class _AdminShellState extends State<AdminShell> {
   late String _selectedRouteId;
   AdminSupportLogFilterIntent? _supportLogFilter;
-  AdminOperatorLocationScopeIntent? _operatorLocationScope;
 
   @override
   void initState() {
@@ -65,20 +64,13 @@ class _AdminShellState extends State<AdminShell> {
     final nextSupportLogFilter = nextRouteId == kAdminDebugConsoleRouteId
         ? intent.supportLogFilter
         : null;
-    final nextOperatorLocationScope =
-        nextRouteId == kAdminDataAccuracyRouteId ||
-            nextRouteId == kAdminPollingPricingRouteId
-        ? intent.operatorLocationScope
-        : null;
     if (nextRouteId == _selectedRouteId &&
-        nextSupportLogFilter == _supportLogFilter &&
-        nextOperatorLocationScope == _operatorLocationScope) {
+        nextSupportLogFilter == _supportLogFilter) {
       return;
     }
     setState(() {
       _selectedRouteId = nextRouteId;
       _supportLogFilter = nextSupportLogFilter;
-      _operatorLocationScope = nextOperatorLocationScope;
     });
   }
 
@@ -111,13 +103,11 @@ class _AdminShellState extends State<AdminShell> {
                     child: AdminRouteHandoff(
                       selectedRouteId: _selectedRouteId,
                       supportLogFilter: _supportLogFilter,
-                      operatorLocationScope: _operatorLocationScope,
                       onSelectRoute: _selectIntent,
                       child: _AdminBody(
                         key: ValueKey(
                           'admin-body-${_currentRoute.id}-'
-                          '${_supportLogFilter?.cacheKey ?? 'none'}-'
-                          '${_operatorLocationScope?.cacheKey ?? 'all'}',
+                          '${_supportLogFilter?.cacheKey ?? 'none'}',
                         ),
                         route: _currentRoute,
                       ),
@@ -297,6 +287,10 @@ class _AdminSideNav extends StatelessWidget {
       section: AdminRouteSection.serviceSetup,
       label: 'Service setup',
     ),
+    _NavSectionMeta(
+      section: AdminRouteSection.dataAccuracy,
+      label: 'Data accuracy',
+    ),
   ];
 
   @override
@@ -450,25 +444,13 @@ class _NavItem extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        route.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.body14(
-                          color: selected
-                              ? AppColors.textPrimary
-                              : AppColors.textSecondary,
-                        ),
-                      ),
-                      if (route.badge != null) ...[
-                        const SizedBox(height: 4),
-                        _NavRouteBadge(routeId: route.id, label: route.badge!),
-                      ],
-                    ],
+                  child: Text(
+                    route.title,
+                    style: AppTextStyles.body14(
+                      color: selected
+                          ? AppColors.textPrimary
+                          : AppColors.textSecondary,
+                    ),
                   ),
                 ),
                 if (route.placeholder)
@@ -480,35 +462,6 @@ class _NavItem extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _NavRouteBadge extends StatelessWidget {
-  const _NavRouteBadge({required this.routeId, required this.label});
-
-  final String routeId;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: Key('admin_nav_item_badge_$routeId'),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.peacock.withValues(alpha: 0.10),
-        border: Border.all(
-          color: AppColors.peacock.withValues(alpha: 0.35),
-          width: 1,
-        ),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: AppTextStyles.chipLabel(color: AppColors.peacockDark),
       ),
     );
   }

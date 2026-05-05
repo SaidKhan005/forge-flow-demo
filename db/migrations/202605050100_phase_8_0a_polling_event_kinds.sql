@@ -38,45 +38,34 @@
 -- constraints, so the gap was invisible until a Postgres-backed sink
 -- ran the path.
 --
--- The CHECK constraint is dropped + recreated in a single transaction
--- when `connector_sync_log` exists. Some staging databases may carry
--- the Data Accuracy admin tables before the broader integration
--- framework table has been applied; in that partial-schema case this
--- migration is a no-op instead of blocking the independent admin
--- surface rollout. When the integration framework migration is present,
--- the constraint is still repaired in place. No rows in
--- `connector_sync_log` carry the new values yet, so the recreate is a
--- structural-only change — no data migration needed.
+-- The CHECK constraint is dropped + recreated in a single transaction.
+-- No rows in `connector_sync_log` carry the new values yet, so the
+-- recreate is a structural-only change — no data migration needed.
 
 begin;
 
-do $$
-begin
-  if to_regclass('public.connector_sync_log') is not null then
-    alter table public.connector_sync_log
-      drop constraint if exists connector_sync_log_event_kind_check;
+alter table public.connector_sync_log
+  drop constraint if exists connector_sync_log_event_kind_check;
 
-    alter table public.connector_sync_log
-      add constraint connector_sync_log_event_kind_check
-      check (event_kind in (
-        'poll_success',
-        'poll_error',
-        'webhook_received',
-        'webhook_rejected',
-        'auth_refresh',
-        'auth_refresh_failed',
-        'rate_limit_retry',
-        'connect',
-        'disconnect',
-        'test_connection',
-        'sanity_drop',
-        'vendor_not_registered',
-        'tier_assignment_missing',
-        'cadence_clamped',
-        'custom_tier_vendor_unset',
-        'tier_assignment_lookup_failed'
-      ));
-  end if;
-end $$;
+alter table public.connector_sync_log
+  add constraint connector_sync_log_event_kind_check
+  check (event_kind in (
+    'poll_success',
+    'poll_error',
+    'webhook_received',
+    'webhook_rejected',
+    'auth_refresh',
+    'auth_refresh_failed',
+    'rate_limit_retry',
+    'connect',
+    'disconnect',
+    'test_connection',
+    'sanity_drop',
+    'vendor_not_registered',
+    'tier_assignment_missing',
+    'cadence_clamped',
+    'custom_tier_vendor_unset',
+    'tier_assignment_lookup_failed'
+  ));
 
 commit;

@@ -1,4 +1,4 @@
-// Phase 8 spine-bridge Lane .C - F&F Ops Console "Data Accuracy" tab.
+// Phase 8 spine-bridge Lane .C — F&F Ops Console "Data Accuracy" tab.
 //
 // Tab 1 of the per-location data accuracy admin surface. Operator
 // picks covers source per daypart + wage source on their own web
@@ -9,7 +9,7 @@
 // Authority: docs/contracts/data_accuracy_settings_contract.md,
 // "Tab 1: Data Accuracy (per-location overrides)" section.
 //
-// Symmetric with [PollingAndPricingAdminScreen] (Tab 2) - both ride
+// Symmetric with [PollingAndPricingAdminScreen] (Tab 2) — both ride
 // the [DataAccuracyAdminGateway] so the demo + production wiring are
 // identical. Edit affordances gate on `editingEnabled` (which mirrors
 // the 11A pattern: super_admin → editable; ff_support → read-only).
@@ -18,12 +18,10 @@ import 'package:flutter/material.dart';
 
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../theme/app_theme.dart';
-import '../admin_route_handoff.dart';
 import '../admin_button_styles.dart';
 import '../services/data_accuracy_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
 import '../widgets/data_accuracy_audit_history_panel.dart';
-import '../widgets/operator_location_scope_banner.dart';
 import '../widgets/per_location_data_accuracy_table.dart';
 
 class PerLocationDataAccuracyScreen extends StatefulWidget {
@@ -32,16 +30,14 @@ class PerLocationDataAccuracyScreen extends StatefulWidget {
     required this.gateway,
     required this.actorUserId,
     this.editingEnabled = true,
-    this.initialScope,
   });
 
   final DataAccuracyAdminGateway gateway;
   final String actorUserId;
-  final AdminOperatorLocationScopeIntent? initialScope;
 
   /// Mirror of the pricing screen pattern: when false, the screen
   /// hides every mutate affordance. The gateway is the second line of
-  /// defence - it throws [DataAccuracyAdminForbiddenException] if a
+  /// defence — it throws [DataAccuracyAdminForbiddenException] if a
   /// non-forge-admin caller tries to mutate.
   final bool editingEnabled;
 
@@ -58,20 +54,11 @@ class _PerLocationDataAccuracyScreenState
   List<DataAccuracyAdminRow> _rows = const <DataAccuracyAdminRow>[];
   List<DataAccuracyAdminAuditEvent> _auditEvents =
       const <DataAccuracyAdminAuditEvent>[];
-  late AdminOperatorLocationScopeIntent? _scope = widget.initialScope;
 
   @override
   void initState() {
     super.initState();
     _refresh();
-  }
-
-  @override
-  void didUpdateWidget(covariant PerLocationDataAccuracyScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.initialScope != oldWidget.initialScope) {
-      _scope = widget.initialScope;
-    }
   }
 
   Future<void> _refresh() async {
@@ -168,32 +155,6 @@ class _PerLocationDataAccuracyScreenState
     );
   }
 
-  List<DataAccuracyAdminRow> get _visibleRows {
-    final scope = _scope;
-    if (scope == null) return _rows;
-    return _rows
-        .where(
-          (row) => scope.matches(
-            operatorId: row.operatorRef.operatorId,
-            locationId: row.operatorRef.locationId,
-          ),
-        )
-        .toList(growable: false);
-  }
-
-  List<DataAccuracyAdminAuditEvent> get _visibleAuditEvents {
-    final scope = _scope;
-    if (scope == null) return _auditEvents;
-    return _auditEvents
-        .where(
-          (event) => scope.matches(
-            operatorId: event.operatorId,
-            locationId: event.locationId,
-          ),
-        )
-        .toList(growable: false);
-  }
-
   Widget _buildBody() {
     if (_loading) {
       return const Center(
@@ -218,19 +179,13 @@ class _PerLocationDataAccuracyScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_scope != null)
-            OperatorLocationScopeBanner(
-              scope: _scope!,
-              surfaceName: 'data accuracy',
-              onClear: () => setState(() => _scope = null),
-            ),
           PerLocationDataAccuracyTable(
-            rows: _visibleRows,
+            rows: _rows,
             editingEnabled: widget.editingEnabled,
             onEditRow: _onEditRow,
           ),
           const SizedBox(height: 16),
-          DataAccuracyAuditHistoryPanel(events: _visibleAuditEvents),
+          DataAccuracyAuditHistoryPanel(events: _auditEvents),
         ],
       ),
     );
@@ -283,7 +238,7 @@ class _DataAccuracyOverrideDialogState
       key: const Key('admin_data_accuracy_override_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Override data accuracy: ${widget.initial.operatorRef.businessName} '
+        'Override data accuracy — ${widget.initial.operatorRef.businessName} '
         '/ ${widget.initial.operatorRef.locationName}',
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
@@ -295,19 +250,19 @@ class _DataAccuracyOverrideDialogState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               _CoversSourceField(
-                label: 'Covers source - lunch',
+                label: 'Covers source — lunch',
                 fieldKey: const Key('admin_data_accuracy_lunch'),
                 value: _lunch,
                 onChanged: (v) => setState(() => _lunch = v),
               ),
               _CoversSourceField(
-                label: 'Covers source - dinner',
+                label: 'Covers source — dinner',
                 fieldKey: const Key('admin_data_accuracy_dinner'),
                 value: _dinner,
                 onChanged: (v) => setState(() => _dinner = v),
               ),
               _CoversSourceField(
-                label: 'Covers source - late night',
+                label: 'Covers source — late night',
                 fieldKey: const Key('admin_data_accuracy_late_night'),
                 value: _lateNight,
                 onChanged: (v) => setState(() => _lateNight = v),
@@ -396,7 +351,7 @@ class _CoversSourceField extends StatelessWidget {
                   .map(
                     (c) => DropdownMenuItem<CoversSource>(
                       value: c,
-                      child: Text(_coversSourceLabel(c)),
+                      child: Text(c.wire),
                     ),
                   )
                   .toList(growable: false),
@@ -438,7 +393,7 @@ class _WageSourceField extends StatelessWidget {
                   .map(
                     (s) => DropdownMenuItem<WageSource>(
                       value: s,
-                      child: Text(_wageSourceLabel(s)),
+                      child: Text(s.wire),
                     ),
                   )
                   .toList(growable: false),
@@ -450,26 +405,6 @@ class _WageSourceField extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-String _coversSourceLabel(CoversSource source) {
-  switch (source) {
-    case CoversSource.vendor:
-      return 'Vendor feed';
-    case CoversSource.forecast:
-      return 'Forecast';
-    case CoversSource.manual:
-      return 'Manual entry';
-  }
-}
-
-String _wageSourceLabel(WageSource source) {
-  switch (source) {
-    case WageSource.vendor:
-      return 'Vendor wage data';
-    case WageSource.manualMix:
-      return 'Manual mix';
   }
 }
 
