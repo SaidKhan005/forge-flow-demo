@@ -297,6 +297,32 @@ class MockIntegrationReplaySeed {
         forecastCovers * basePPA,
         _targetSPLH,
       );
+      // 7.58.4: round-trip the lever id through `determineLever` against
+      // the same row inputs so the projected record matches what the
+      // engine would say. Wages match target; the wage axis cannot fire.
+      // The empty-candidate fallback (`covers_down`) — and any axis that
+      // does fire on the daypart PPA offset — is engine truth, not a
+      // hand-coded sentinel. The non-closed `on_model` sentinel remains
+      // the property of `CurrentWeekState.shiftRecordFromSnapshot`
+      // (open snapshots), per the phase 7.58 contract Output Cardinality.
+      final projectedLever = LaborModel.determineLever(
+        actualCovers: forecastCovers,
+        forecastCovers: forecastCovers,
+        avgCPLH: _targetCPLH,
+        avgPPA: basePPA,
+        targetCPLH: _targetCPLH,
+        targetPPA: _targetPPA,
+        avgSPLH: _targetSPLH,
+        targetSPLH: _targetSPLH,
+        avgFohBlendedWage: _fohWage,
+        targetFohWage: _fohWage,
+        avgBohBlendedWage: _bohWage,
+        targetBohWage: _bohWage,
+        scheduledFohHours: foh,
+        modelFohHours: foh,
+        scheduledBohHours: boh,
+        modelBohHours: boh,
+      );
       return ShiftRecord(
         weekId: weekId,
         dayLabel: day,
@@ -311,7 +337,7 @@ class MockIntegrationReplaySeed {
         fohHours: foh,
         bohHours: boh,
         theoreticalLaborPct: _theoreticalLaborPct,
-        primaryLever: 'ON_MODEL',
+        primaryLever: projectedLever.toUpperCase(),
         sourceSystem: sourceSystem,
       );
     }
@@ -336,6 +362,15 @@ class MockIntegrationReplaySeed {
     final cplh = fohHours > 0 ? covers / fohHours : _targetCPLH;
     final splh = bohHours > 0 ? sales / bohHours : _targetSPLH;
 
+    // 7.58.4 / F-3: pass the full axis set (covers + ppa + cplh + splh +
+    // wages + hours-flex) so the per-shift seed lever matches what
+    // `ShiftFactBuilder.fromClosedShiftInput` would emit for the same
+    // inputs. Seed wages match target by construction (sales-side actuals
+    // are scaled, not wages), so the wage axis stays quiet — but it is
+    // now passed so the round-trip test pins fixture parity with the
+    // live producer.
+    final modelFoh = LaborModel.modelFohHours(covers, _targetCPLH);
+    final modelBoh = LaborModel.modelBohHoursFromSales(sales, _targetSPLH);
     final lever = LaborModel.determineLever(
       actualCovers: covers,
       forecastCovers: forecastCovers,
@@ -345,6 +380,14 @@ class MockIntegrationReplaySeed {
       targetPPA: _targetPPA,
       avgSPLH: splh,
       targetSPLH: _targetSPLH,
+      avgFohBlendedWage: _fohWage,
+      targetFohWage: _fohWage,
+      avgBohBlendedWage: _bohWage,
+      targetBohWage: _bohWage,
+      scheduledFohHours: fohHours,
+      modelFohHours: modelFoh,
+      scheduledBohHours: bohHours,
+      modelBohHours: modelBoh,
     );
 
     return ShiftRecord(
@@ -407,6 +450,22 @@ class MockIntegrationReplaySeed {
     );
 
     final avgSPLH = totalBoh > 0 ? totalSales / totalBoh : _targetSPLH;
+    // 7.58.4 / F-3: include wages + hours-flex so the seed-derived
+    // weekly lever mirrors `ShiftService._buildWeekRecord` (which feeds
+    // the same axis set into `determineLever` at close time). Demo
+    // wages match target — wage axis stays quiet — but the call shape
+    // now matches the live producer for round-trip parity.
+    final wkFohLaborDollar =
+        shifts.fold<double>(0, (s, r) => s + r.fohLaborDollar);
+    final wkBohLaborDollar =
+        shifts.fold<double>(0, (s, r) => s + r.bohLaborDollar);
+    final wkBlendedFohWage =
+        totalFoh > 0 ? wkFohLaborDollar / totalFoh : _fohWage;
+    final wkBlendedBohWage =
+        totalBoh > 0 ? wkBohLaborDollar / totalBoh : _bohWage;
+    final wkModelFoh = LaborModel.modelFohHours(totalCovers, _targetCPLH);
+    final wkModelBoh =
+        LaborModel.modelBohHoursFromSales(totalSales, _targetSPLH);
     final lever = LaborModel.determineLever(
       actualCovers: totalCovers,
       forecastCovers: forecastCovers,
@@ -416,6 +475,14 @@ class MockIntegrationReplaySeed {
       targetPPA: _targetPPA,
       avgSPLH: avgSPLH,
       targetSPLH: _targetSPLH,
+      avgFohBlendedWage: wkBlendedFohWage,
+      targetFohWage: _fohWage,
+      avgBohBlendedWage: wkBlendedBohWage,
+      targetBohWage: _bohWage,
+      scheduledFohHours: totalFoh,
+      modelFohHours: wkModelFoh,
+      scheduledBohHours: totalBoh,
+      modelBohHours: wkModelBoh,
     );
 
     // ── Frozen Dollar Impact windows (7.55q.10) ────────────────────────

@@ -1,6 +1,9 @@
+import '../data/app_defaults.dart';
 import '../models/history_pattern_record.dart';
 import '../models/shift_record.dart';
 import '../models/week_record.dart';
+import '../services/labor_model.dart';
+import 'demo_fixture_data.dart';
 
 // ─── Demo seed data ────────────────────────────────────────────────────────────
 // Current week: 2026-W13 (Mon Mar 23 – Sun Mar 29)
@@ -23,8 +26,148 @@ import '../models/week_record.dart';
 // cplh per shift = covers/fohHours · splh = covers×ppa/bohHours
 
 class DemoData {
+  // ── 7.58.4 lever round-trip helpers ─────────────────────────────────────
+  // Every demo fixture row must reproduce its `primaryLever` /
+  // `primaryLeverId` when re-fed through `LaborModel.determineLever`. The
+  // hand-coded literals below stay in place for reviewer narrative, but
+  // they are overwritten at list-build time by these helpers so the
+  // engine — not the fixture author — owns the persisted id.
+  // See `docs/contracts/phase_7_58_primary_driver_contract.md` (Single
+  // Source of Truth) and `docs/phases/phase_7_58/phase_7_58_primary_driver_audit_plan.md`
+  // Sub-Slice Family `.4`.
+
+  static String _engineLeverForShift(ShiftRecord s) {
+    return LaborModel.determineLever(
+      actualCovers: s.covers,
+      forecastCovers: s.forecastCovers,
+      avgCPLH: s.cplh,
+      avgPPA: s.ppa,
+      targetCPLH: BaselineData.derivedTargetCPLH,
+      targetPPA: BaselineData.derivedTargetPPA,
+      avgSPLH: s.splh,
+      targetSPLH: BaselineData.derivedTargetSPLH,
+    );
+  }
+
+  static String _engineLeverForWeek(WeekRecord w) {
+    final avgSPLH = w.totalBohHours > 0
+        ? (w.avgPPA * w.totalCovers) / w.totalBohHours
+        : 0.0;
+    // 7.58.4: matches the axis set already pinned by
+    // `lever_logic_test.dart` Demo weekHistory round-trip
+    // (covers + ppa + cplh + splh + wages). Hours-flex is intentionally
+    // omitted here: each demo `WeekRecord` is shaped to teach a single
+    // dominant lever (one of the 12 enumerated in the
+    // "12 lever types" test), and the closed weeks where actual
+    // FOH/BOH hours align with the cplh/splh story would otherwise
+    // re-classify as `foh_hours_over` / `_under` once hours-flex enters
+    // the candidate set. The contract has no rule requiring producers
+    // to feed every axis; it requires that whatever subset they feed
+    // round-trips the same way for fixture and engine.
+    return LaborModel.determineLever(
+      actualCovers: w.totalCovers,
+      forecastCovers: w.forecastCovers,
+      avgCPLH: w.avgCPLH,
+      avgPPA: w.avgPPA,
+      targetCPLH: BaselineData.derivedTargetCPLH,
+      targetPPA: BaselineData.derivedTargetPPA,
+      avgSPLH: avgSPLH,
+      targetSPLH: BaselineData.derivedTargetSPLH,
+      avgFohBlendedWage: w.blendedFohWage,
+      targetFohWage: MeridianConfig.fohWage,
+      avgBohBlendedWage: w.blendedBohWage,
+      targetBohWage: MeridianConfig.bohWage,
+    );
+  }
+
+  static ShiftRecord _withDerivedLever(ShiftRecord s) {
+    return ShiftRecord(
+      id: s.id,
+      restaurantId: s.restaurantId,
+      weekId: s.weekId,
+      dayLabel: s.dayLabel,
+      daypart: s.daypart,
+      status: s.status,
+      covers: s.covers,
+      forecastCovers: s.forecastCovers,
+      ppa: s.ppa,
+      cplh: s.cplh,
+      splh: s.splh,
+      fohHours: s.fohHours,
+      bohHours: s.bohHours,
+      theoreticalLaborPct: s.theoreticalLaborPct,
+      primaryLever: _engineLeverForShift(s).toUpperCase(),
+      scheduledFohHours: s.scheduledFohHours,
+      scheduledBohHours: s.scheduledBohHours,
+      storedFohLaborDollar: s.storedFohLaborDollar,
+      storedBohLaborDollar: s.storedBohLaborDollar,
+      storedFohLaborPct: s.storedFohLaborPct,
+      storedBohLaborPct: s.storedBohLaborPct,
+      storedTotalLaborPct: s.storedTotalLaborPct,
+      storedBlendedWage: s.storedBlendedWage,
+      targetProfileId: s.targetProfileId,
+      targetProfileVersionId: s.targetProfileVersionId,
+      targetSourceType: s.targetSourceType,
+      targetCPLH: s.targetCPLH,
+      targetSPLH: s.targetSPLH,
+      targetPPA: s.targetPPA,
+      targetFohWage: s.targetFohWage,
+      targetBohWage: s.targetBohWage,
+      opzFloorCPLH: s.opzFloorCPLH,
+      opzCeilingCPLH: s.opzCeilingCPLH,
+      theoreticalFohLaborPct: s.theoreticalFohLaborPct,
+      theoreticalBohLaborPct: s.theoreticalBohLaborPct,
+      snapshotBlendedWage: s.snapshotBlendedWage,
+      planForecastSales: s.planForecastSales,
+      businessDate: s.businessDate,
+      sourceSystem: s.sourceSystem,
+      sourceShiftId: s.sourceShiftId,
+    );
+  }
+
+  static WeekRecord _withDerivedWeekLever(WeekRecord w) {
+    return WeekRecord(
+      id: w.id,
+      restaurantId: w.restaurantId,
+      weekId: w.weekId,
+      weekLabel: w.weekLabel,
+      totalCovers: w.totalCovers,
+      forecastCovers: w.forecastCovers,
+      totalFohHours: w.totalFohHours,
+      totalBohHours: w.totalBohHours,
+      avgPPA: w.avgPPA,
+      avgCPLH: w.avgCPLH,
+      theoreticalLaborPct: w.theoreticalLaborPct,
+      actualLaborPct: w.actualLaborPct,
+      dollarGap: w.dollarGap,
+      primaryLeverId: _engineLeverForWeek(w),
+      shiftsCompleted: w.shiftsCompleted,
+      blendedFohWage: w.blendedFohWage,
+      blendedBohWage: w.blendedBohWage,
+      hasStoredBlendedWageTruth: w.hasStoredBlendedWageTruth,
+      targetSourceType: w.targetSourceType,
+      targetCPLH: w.targetCPLH,
+      targetSPLH: w.targetSPLH,
+      targetPPA: w.targetPPA,
+      targetFohWage: w.targetFohWage,
+      targetBohWage: w.targetBohWage,
+      theoreticalFohLaborPct: w.theoreticalFohLaborPct,
+      theoreticalBohLaborPct: w.theoreticalBohLaborPct,
+      lockedRequiredFohHours: w.lockedRequiredFohHours,
+      lockedRequiredBohHours: w.lockedRequiredBohHours,
+      monthDollarImpact: w.monthDollarImpact,
+      sixtyDayDollarImpact: w.sixtyDayDollarImpact,
+      closedAt: w.closedAt,
+      targetCalibrationWindowStart: w.targetCalibrationWindowStart,
+      targetCalibrationWindowEnd: w.targetCalibrationWindowEnd,
+    );
+  }
+
   // ── Current-week shifts (14 total: 9 closed + 5 projected) ──────────────
-  static final List<ShiftRecord> currentWeekShifts = [
+  static final List<ShiftRecord> currentWeekShifts =
+      List<ShiftRecord>.unmodifiable(_rawCurrentWeekShifts.map(_withDerivedLever));
+
+  static final List<ShiftRecord> _rawCurrentWeekShifts = [
 
     // ── Monday ──────────────────────────────────────────────────────────────
     // Mon Lunch: 154 vs 180 (−14%). Hours hold; CPLH 4.28.
@@ -164,7 +307,10 @@ class DemoData {
   //                  bohHours = round(covers × avgPPA / avgSPLH)
   // When rates are at target, actual hours = model hours → dollarGap = 0.
 
-  static final List<WeekRecord> weekHistory = [
+  static final List<WeekRecord> weekHistory =
+      List<WeekRecord>.unmodifiable(_rawWeekHistory.map(_withDerivedWeekLever));
+
+  static final List<WeekRecord> _rawWeekHistory = [
 
     // ── W12 — covers_down: volume −4% vs plan, rates on target ──────────────
     // fohHours = round(1152/4.58) = 252 · bohHours = round(1152×41.79/180.07) = 267
@@ -405,7 +551,12 @@ class DemoData {
 
   /// Teaching shifts — the original hand-authored shifts with specific levers.
   /// These are preserved byte-identical; fill shifts are generated around them.
-  static final List<ShiftRecord> _teachingShifts = [
+  /// 7.58.4: each row is round-tripped through `LaborModel.determineLever`
+  /// at build time so the persisted lever id matches engine truth.
+  static final List<ShiftRecord> _teachingShifts =
+      List<ShiftRecord>.unmodifiable(_rawTeachingShifts.map(_withDerivedLever));
+
+  static final List<ShiftRecord> _rawTeachingShifts = [
     // ── W12 — Mar 17 ─────────────────────────────────────────────────────────
     ShiftRecord(weekId: '2026-W12', dayLabel: 'Tue', daypart: 'dinner', status: 'closed',
         covers: 178, forecastCovers: 200, ppa: 42.00, cplh: 3.90, splh: 172.0,
@@ -560,6 +711,26 @@ class DemoData {
 
       final cplh = foh > 0 ? covers / foh : weekTarget.avgCPLH;
       final splh = boh > 0 ? (covers * fillPPA) / boh : 180.0;
+      final ppa = double.parse(fillPPA.toStringAsFixed(2));
+      final cplhRounded = double.parse(cplh.toStringAsFixed(2));
+      final splhRounded = double.parse(splh.toStringAsFixed(2));
+
+      // 7.58.4: round-trip the fill shift's lever through
+      // `determineLever` so the engine — not the hand-coded `'ON_MODEL'`
+      // sentinel — owns the persisted id. Fill shifts hit the
+      // empty-candidate fallback when actuals match forecast at target
+      // rates; the engine semantics for that case are out of scope for
+      // this slice (see Finding F-2).
+      final fillLever = LaborModel.determineLever(
+        actualCovers: covers,
+        forecastCovers: covers,
+        avgCPLH: cplhRounded,
+        avgPPA: ppa,
+        targetCPLH: BaselineData.derivedTargetCPLH,
+        targetPPA: BaselineData.derivedTargetPPA,
+        avgSPLH: splhRounded,
+        targetSPLH: BaselineData.derivedTargetSPLH,
+      );
 
       fillShifts.add(ShiftRecord(
         weekId: weekId,
@@ -568,12 +739,12 @@ class DemoData {
         status: 'closed',
         covers: covers,
         forecastCovers: covers,
-        ppa: double.parse(fillPPA.toStringAsFixed(2)),
-        cplh: double.parse(cplh.toStringAsFixed(2)),
-        splh: double.parse(splh.toStringAsFixed(2)),
+        ppa: ppa,
+        cplh: cplhRounded,
+        splh: splhRounded,
         fohHours: foh,
         bohHours: boh,
-        primaryLever: 'ON_MODEL',
+        primaryLever: fillLever.toUpperCase(),
       ));
     }
 

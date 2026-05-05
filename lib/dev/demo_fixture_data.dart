@@ -71,10 +71,16 @@ class ShiftSnapshot {
   static const String opzStatus = 'below';
   static const String opzSubLabel = 'Covers are light. Watch the door.';
 
-  // ── Runtime active lever (Prompt 7.11) ──────────────────────────────────
+  // ── Runtime active lever (Prompt 7.11; 7.58.4 axis-set parity) ──────────
   // Uses the same lever-detection model as WTD/History to determine
   // which metric is the primary driver of this shift's variance.
-
+  //
+  // 7.58.4 / F-3: passes the full axis set (covers + ppa + cplh + splh +
+  // wages + hours-flex) so this fixture row's lever mirrors what
+  // `ShiftFactBuilder` and `ShiftDashboardReadModel.buildWholeDay` would
+  // emit for the same inputs. Demo blended wages equal target — the wage
+  // family stays quiet — but the call shape is now pinned to the
+  // producer-side contract.
   static String get primaryLeverId => LaborModel.determineLever(
         actualCovers: actualCovers,
         forecastCovers: shiftForecastCovers,
@@ -84,6 +90,14 @@ class ShiftSnapshot {
         targetPPA: BaselineData.derivedTargetPPA,
         avgSPLH: actualSPLH,
         targetSPLH: BaselineData.derivedTargetSPLH,
+        avgFohBlendedWage: MeridianConfig.fohWage,
+        targetFohWage: MeridianConfig.fohWage,
+        avgBohBlendedWage: MeridianConfig.bohWage,
+        targetBohWage: MeridianConfig.bohWage,
+        scheduledFohHours: scheduledFohHours,
+        modelFohHours: modelFohHours,
+        scheduledBohHours: scheduledBohHours,
+        modelBohHours: modelBohHours,
       );
 
   // 7.61.3 / F-3: resolve through `LeverCards.lookup` per R-CONS-1 +

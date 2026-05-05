@@ -86,6 +86,26 @@ class StaticShiftDataSource implements ShiftDataSource {
     final avgCPLH = totalFohHours > 0 ? totalCovers / totalFohHours : 0.0;
     final avgSPLH = totalBohHours > 0 ? totalSales / totalBohHours : 0.0;
 
+    // 7.58.4 / F-3: pass the full axis set so the replay-seed WTD lever
+    // mirrors `ShiftService.getWeekToDate` (which feeds wages + hours-flex
+    // into `determineLever`). Skipping these axes here meant the
+    // replay-backed StaticShiftDataSource and the live SQLite path could
+    // disagree on a primary driver for the same fixture week.
+    final totalFohLaborDollar =
+        closed.fold<double>(0, (s, r) => s + r.fohLaborDollar);
+    final totalBohLaborDollar =
+        closed.fold<double>(0, (s, r) => s + r.bohLaborDollar);
+    final blendedFohWage = totalFohHours > 0
+        ? totalFohLaborDollar / totalFohHours
+        : MeridianConfig.fohWage;
+    final blendedBohWage = totalBohHours > 0
+        ? totalBohLaborDollar / totalBohHours
+        : MeridianConfig.bohWage;
+    final wtdModelFoh =
+        LaborModel.modelFohHours(totalCovers, BaselineData.derivedTargetCPLH);
+    final wtdModelBoh = LaborModel.modelBohHoursFromSales(
+        totalSales, BaselineData.derivedTargetSPLH);
+
     final primaryLeverId = LaborModel.determineLever(
       actualCovers: totalCovers,
       forecastCovers: wtdForecastCovers,
@@ -95,6 +115,14 @@ class StaticShiftDataSource implements ShiftDataSource {
       targetPPA: BaselineData.derivedTargetPPA,
       avgSPLH: avgSPLH,
       targetSPLH: BaselineData.derivedTargetSPLH,
+      avgFohBlendedWage: blendedFohWage,
+      targetFohWage: MeridianConfig.fohWage,
+      avgBohBlendedWage: blendedBohWage,
+      targetBohWage: MeridianConfig.bohWage,
+      scheduledFohHours: totalFohHours,
+      modelFohHours: wtdModelFoh,
+      scheduledBohHours: totalBohHours,
+      modelBohHours: wtdModelBoh,
     );
 
     return WeekData(
