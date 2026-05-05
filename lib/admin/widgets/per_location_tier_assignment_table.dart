@@ -69,8 +69,9 @@ class _PerLocationTierAssignmentTableState
   @override
   void initState() {
     super.initState();
-    _opNameController =
-        TextEditingController(text: widget.operatorNameFilter ?? '');
+    _opNameController = TextEditingController(
+      text: widget.operatorNameFilter ?? '',
+    );
   }
 
   @override
@@ -89,17 +90,6 @@ class _PerLocationTierAssignmentTableState
     super.dispose();
   }
 
-  void _toggleSort(_SortColumn column) {
-    setState(() {
-      if (_sortColumn == column) {
-        _ascending = !_ascending;
-      } else {
-        _sortColumn = column;
-        _ascending = true;
-      }
-    });
-  }
-
   int _compare(TierAssignmentAdminRow a, TierAssignmentAdminRow b) {
     int cmp;
     switch (_sortColumn) {
@@ -111,7 +101,7 @@ class _PerLocationTierAssignmentTableState
         break;
       case _SortColumn.tier:
         // Unassigned rows sort last in ascending order, first in
-        // descending — null is "no tier" and is the empty value.
+        // descending - null is "no tier" and is the empty value.
         final aTier = a.assignment?.tierKey.wire ?? '~unassigned';
         final bTier = b.assignment?.tierKey.wire ?? '~unassigned';
         cmp = aTier.compareTo(bTier);
@@ -130,16 +120,19 @@ class _PerLocationTierAssignmentTableState
         }
         break;
       case _SortColumn.priceOverride:
-        cmp = (a.assignment?.monthlyPriceCents ?? 0)
-            .compareTo(b.assignment?.monthlyPriceCents ?? 0);
+        cmp = (a.assignment?.monthlyPriceCents ?? 0).compareTo(
+          b.assignment?.monthlyPriceCents ?? 0,
+        );
         break;
       case _SortColumn.costOverride:
-        cmp = (a.assignment?.vendorApiCostEstimateCentsMonthly ?? 0)
-            .compareTo(b.assignment?.vendorApiCostEstimateCentsMonthly ?? 0);
+        cmp = (a.assignment?.vendorApiCostEstimateCentsMonthly ?? 0).compareTo(
+          b.assignment?.vendorApiCostEstimateCentsMonthly ?? 0,
+        );
         break;
       case _SortColumn.netMargin:
-        cmp = (a.assignment?.netMarginCents ?? 0)
-            .compareTo(b.assignment?.netMarginCents ?? 0);
+        cmp = (a.assignment?.netMarginCents ?? 0).compareTo(
+          b.assignment?.netMarginCents ?? 0,
+        );
         break;
     }
     return _ascending ? cmp : -cmp;
@@ -160,6 +153,11 @@ class _PerLocationTierAssignmentTableState
               'Tier assignments',
               style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
             ),
+            const SizedBox(height: 6),
+            Text(
+              'Use filters to narrow operator locations. Each row keeps tier, cadence, pricing, margin, and notes together.',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
             const SizedBox(height: 12),
             _FilterBar(
               tierFilter: widget.tierFilter,
@@ -172,56 +170,40 @@ class _PerLocationTierAssignmentTableState
               onOperatorNameChanged: widget.onOperatorNameFilterChanged,
             ),
             const SizedBox(height: 12),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                sortColumnIndex: _sortColumn.index,
-                sortAscending: _ascending,
-                columns: <DataColumn>[
-                  DataColumn(
-                    label: const Text('Operator'),
-                    onSort: (_, __) => _toggleSort(_SortColumn.operator),
-                  ),
-                  DataColumn(
-                    label: const Text('Location'),
-                    onSort: (_, __) => _toggleSort(_SortColumn.location),
-                  ),
-                  DataColumn(
-                    label: const Text('Tier'),
-                    onSort: (_, __) => _toggleSort(_SortColumn.tier),
-                  ),
-                  DataColumn(
-                    label: const Text('Active since'),
-                    onSort: (_, __) => _toggleSort(_SortColumn.activeSince),
-                  ),
-                  const DataColumn(label: Text('Custom cadences')),
-                  DataColumn(
-                    label: const Text('Price override (USD/month)'),
-                    onSort: (_, __) => _toggleSort(_SortColumn.priceOverride),
-                  ),
-                  DataColumn(
-                    label: const Text('Cost basis override (USD/month)'),
-                    onSort: (_, __) => _toggleSort(_SortColumn.costOverride),
-                  ),
-                  DataColumn(
-                    label: const Text('Net margin'),
-                    onSort: (_, __) => _toggleSort(_SortColumn.netMargin),
-                  ),
-                  const DataColumn(label: Text('Notes')),
-                  const DataColumn(label: Text('Action')),
-                ],
-                rows: <DataRow>[
-                  for (final row in sorted) _buildRow(row),
+            _AssignmentToolbar(
+              count: sorted.length,
+              sortColumn: _sortColumn,
+              ascending: _ascending,
+              onSortChanged: (column) => setState(() {
+                _sortColumn = column;
+                _ascending = true;
+              }),
+              onDirectionPressed: () =>
+                  setState(() => _ascending = !_ascending),
+            ),
+            const SizedBox(height: 10),
+            if (sorted.isEmpty)
+              Text(
+                'No tier assignments match this view.',
+                style: AppTextStyles.body13(color: AppColors.textMuted),
+              )
+            else
+              Column(
+                children: [
+                  for (var i = 0; i < sorted.length; i++) ...[
+                    _buildRow(sorted[i]),
+                    if (i != sorted.length - 1)
+                      const Divider(color: AppColors.borderSubtle, height: 14),
+                  ],
                 ],
               ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  DataRow _buildRow(TierAssignmentAdminRow row) {
+  Widget _buildRow(TierAssignmentAdminRow row) {
     final assignment = row.assignment;
     final margin = assignment?.netMarginCents;
     final Color marginColor;
@@ -233,90 +215,318 @@ class _PerLocationTierAssignmentTableState
       marginColor = AppColors.negative;
     }
     final priceLabel = assignment?.monthlyPriceCents == null
-        ? '—'
+        ? '-'
         : formatCents(assignment!.monthlyPriceCents!);
     final costLabel = assignment?.vendorApiCostEstimateCentsMonthly == null
-        ? '—'
+        ? '-'
         : formatCents(assignment!.vendorApiCostEstimateCentsMonthly!);
-    final marginLabel = margin == null ? '—' : formatCents(margin);
+    final marginLabel = margin == null ? '-' : formatCents(margin);
     final cadences = assignment?.pollingCadencePerVendorSeconds;
     final cadenceLabel = (cadences == null || cadences.isEmpty)
-        ? '—'
+        ? '-'
         : '${cadences.length} vendor(s) set';
     final notes = row.adminNotes ?? '';
     final notesLabel = notes.length > 30 ? '${notes.substring(0, 30)}…' : notes;
-    final tierLabel = assignment?.tierKey.wire ?? '—';
+    final tierLabel = assignment?.tierKey == null
+        ? '-'
+        : _tierLabel(assignment!.tierKey);
     final activeSinceLabel = assignment == null
-        ? '—'
+        ? '-'
         : adminHumanDateTime(assignment.effectiveAt);
-    // Contract Card 2 action label: "Assign / Update" — render as
+    // Contract Card 2 action label: "Assign / Update" - render as
     // "Assign" for never-assigned rows, "Update" for rows already
     // carrying a current assignment. The button key stays stable so
     // tests can target either state with the same finder.
     final actionLabel = assignment == null ? 'Assign' : 'Update';
+    final cadenceTooltip = cadences == null || cadences.isEmpty
+        ? 'Using the tier default cadence'
+        : cadences.entries
+              .map(
+                (entry) =>
+                    '${kPollOnlyVendorDisplayNames[entry.key] ?? entry.key}: '
+                    '${entry.value}s',
+              )
+              .join(', ');
 
-    return DataRow(
+    final facts = <_AssignmentFact>[
+      _AssignmentFact('Tier', tierLabel),
+      _AssignmentFact('Active since', activeSinceLabel),
+      _AssignmentFact('Cadence', cadenceLabel, tooltip: cadenceTooltip),
+      _AssignmentFact('Price', priceLabel),
+      _AssignmentFact('Cost basis', costLabel),
+      _AssignmentFact('Net margin', marginLabel, valueColor: marginColor),
+    ];
+    final action = widget.editingEnabled
+        ? OutlinedButton.icon(
+            key: Key(
+              'admin_tier_assignment_assign_'
+              '${row.operatorRef.operatorId}_${row.operatorRef.locationId}',
+            ),
+            style: AdminButtonStyles.secondary(minWidth: 96, minHeight: 36),
+            onPressed: () => widget.onAssign(row),
+            icon: const Icon(Icons.edit_outlined, size: 14),
+            label: Text(actionLabel),
+          )
+        : Text(
+            'Read-only',
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          );
+
+    return Container(
       key: ValueKey<String>(
         'admin_tier_assignment_row_'
         '${row.operatorRef.operatorId}_'
         '${row.operatorRef.locationId}',
       ),
-      cells: <DataCell>[
-        DataCell(Text(
-          row.operatorRef.businessName,
-          style: AppTextStyles.body13(color: AppColors.textPrimary),
-        )),
-        DataCell(Text(
-          row.operatorRef.locationName,
-          style: AppTextStyles.body13(color: AppColors.textPrimary),
-        )),
-        DataCell(Text(
-          tierLabel,
-          style: AppTextStyles.mono12(color: AppColors.textPrimary),
-        )),
-        DataCell(Text(
-          activeSinceLabel,
-          style: AppTextStyles.mono11(color: AppColors.textMuted),
-        )),
-        DataCell(Text(
-          cadenceLabel,
-          style: AppTextStyles.mono12(color: AppColors.textPrimary),
-        )),
-        DataCell(Text(
-          priceLabel,
-          style: AppTextStyles.mono12(color: AppColors.textPrimary),
-        )),
-        DataCell(Text(
-          costLabel,
-          style: AppTextStyles.mono12(color: AppColors.textPrimary),
-        )),
-        DataCell(Text(
-          marginLabel,
-          style: AppTextStyles.mono14(color: marginColor),
-        )),
-        DataCell(Text(
-          notesLabel.isEmpty ? '—' : notesLabel,
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 900;
+          final identity = _AssignmentIdentity(row: row);
+          final factWrap = _AssignmentFactWrap(facts: facts);
+          final notesBlock = _NotesBlock(notesLabel: notesLabel);
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                identity,
+                const SizedBox(height: 10),
+                factWrap,
+                const SizedBox(height: 8),
+                notesBlock,
+                const SizedBox(height: 10),
+                action,
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 3, child: identity),
+              const SizedBox(width: 14),
+              Expanded(flex: 7, child: factWrap),
+              const SizedBox(width: 14),
+              Expanded(flex: 2, child: notesBlock),
+              const SizedBox(width: 14),
+              action,
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+String _tierLabel(PollingTierKey tier) {
+  switch (tier) {
+    case PollingTierKey.standard:
+      return 'Standard';
+    case PollingTierKey.premium:
+      return 'Premium';
+    case PollingTierKey.custom:
+      return 'Custom';
+  }
+}
+
+class _AssignmentToolbar extends StatelessWidget {
+  const _AssignmentToolbar({
+    required this.count,
+    required this.sortColumn,
+    required this.ascending,
+    required this.onSortChanged,
+    required this.onDirectionPressed,
+  });
+
+  final int count;
+  final _SortColumn sortColumn;
+  final bool ascending;
+  final ValueChanged<_SortColumn> onSortChanged;
+  final VoidCallback onDirectionPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(
+          '$count ${count == 1 ? 'location' : 'locations'}',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
-        )),
-        DataCell(
-          widget.editingEnabled
-              ? OutlinedButton(
-                  key: Key(
-                    'admin_tier_assignment_assign_'
-                    '${row.operatorRef.operatorId}_'
-                    '${row.operatorRef.locationId}',
-                  ),
-                  style: AdminButtonStyles.secondary(
-                    minWidth: 80,
-                    minHeight: 32,
-                  ),
-                  onPressed: () => widget.onAssign(row),
-                  child: Text(actionLabel),
-                )
-              : Text(
-                  'Read-only',
-                  style: AppTextStyles.body12(color: AppColors.textMuted),
+        ),
+        SizedBox(
+          width: 220,
+          child: DropdownButtonFormField<_SortColumn>(
+            key: const Key('admin_tier_assignment_sort_dropdown'),
+            initialValue: sortColumn,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Sort by',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            items: <DropdownMenuItem<_SortColumn>>[
+              for (final column in _SortColumn.values)
+                DropdownMenuItem<_SortColumn>(
+                  value: column,
+                  child: Text(_sortColumnLabel(column)),
                 ),
+            ],
+            onChanged: (value) {
+              if (value != null) onSortChanged(value);
+            },
+          ),
+        ),
+        Tooltip(
+          message: ascending ? 'Sort descending' : 'Sort ascending',
+          child: IconButton.outlined(
+            key: const Key('admin_tier_assignment_sort_direction'),
+            onPressed: onDirectionPressed,
+            icon: Icon(
+              ascending
+                  ? Icons.arrow_upward_outlined
+                  : Icons.arrow_downward_outlined,
+              size: 18,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static String _sortColumnLabel(_SortColumn column) {
+    switch (column) {
+      case _SortColumn.operator:
+        return 'Operator';
+      case _SortColumn.location:
+        return 'Location';
+      case _SortColumn.tier:
+        return 'Tier';
+      case _SortColumn.activeSince:
+        return 'Active since';
+      case _SortColumn.priceOverride:
+        return 'Price';
+      case _SortColumn.costOverride:
+        return 'Cost basis';
+      case _SortColumn.netMargin:
+        return 'Net margin';
+    }
+  }
+}
+
+class _AssignmentIdentity extends StatelessWidget {
+  const _AssignmentIdentity({required this.row});
+
+  final TierAssignmentAdminRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          row.operatorRef.businessName,
+          style: AppTextStyles.body14(color: AppColors.textPrimary),
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          row.operatorRef.locationName,
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+}
+
+class _AssignmentFact {
+  const _AssignmentFact(
+    this.label,
+    this.value, {
+    this.valueColor,
+    this.tooltip,
+  });
+
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final String? tooltip;
+}
+
+class _AssignmentFactWrap extends StatelessWidget {
+  const _AssignmentFactWrap({required this.facts});
+
+  final List<_AssignmentFact> facts;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [for (final fact in facts) _AssignmentFactPill(fact: fact)],
+    );
+  }
+}
+
+class _AssignmentFactPill extends StatelessWidget {
+  const _AssignmentFactPill({required this.fact});
+
+  final _AssignmentFact fact;
+
+  @override
+  Widget build(BuildContext context) {
+    final pill = Container(
+      constraints: const BoxConstraints(minWidth: 110, maxWidth: 172),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid.withValues(alpha: 0.8),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            fact.label,
+            style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            fact.value,
+            style: AppTextStyles.body13(
+              color: fact.valueColor ?? AppColors.textPrimary,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+    final tooltip = fact.tooltip;
+    if (tooltip == null || tooltip.isEmpty) return pill;
+    return Tooltip(message: tooltip, child: pill);
+  }
+}
+
+class _NotesBlock extends StatelessWidget {
+  const _NotesBlock({required this.notesLabel});
+
+  final String notesLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Notes', style: AppTextStyles.uiLabel(color: AppColors.textMuted)),
+        const SizedBox(height: 2),
+        Text(
+          notesLabel.isEmpty ? '-' : notesLabel,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
     );
@@ -370,7 +580,7 @@ class _FilterBar extends StatelessWidget {
               for (final tier in PollingTierKey.values)
                 DropdownMenuItem<PollingTierKey?>(
                   value: tier,
-                  child: Text(tier.wire),
+                  child: Text(_tierLabel(tier)),
                 ),
             ],
             onChanged: onTierChanged,
@@ -406,28 +616,28 @@ class _FilterBar extends StatelessWidget {
           ),
         ),
         SizedBox(
-          width: 260,
+          width: 280,
           child: DropdownButtonFormField<LocationCountFilter?>(
             key: const Key('admin_location_count_dropdown'),
             initialValue: locationCountFilter,
             isExpanded: true,
             decoration: const InputDecoration(
-              labelText: 'Location count',
+              labelText: 'Operator location count',
               isDense: true,
               border: OutlineInputBorder(),
             ),
             items: const <DropdownMenuItem<LocationCountFilter?>>[
               DropdownMenuItem<LocationCountFilter?>(
                 value: null,
-                child: Text('All operators'),
+                child: Text('All location counts'),
               ),
               DropdownMenuItem<LocationCountFilter?>(
                 value: 'single',
-                child: Text('Single-location'),
+                child: Text('Single-location operators'),
               ),
               DropdownMenuItem<LocationCountFilter?>(
                 value: 'multi',
-                child: Text('Multi-location'),
+                child: Text('Multi-location operators'),
               ),
             ],
             onChanged: onLocationCountChanged,
