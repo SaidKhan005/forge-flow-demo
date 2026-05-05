@@ -234,3 +234,74 @@ ones that bind:
   contract does not turn the lever id into an automatic action.
 - **HP #10** — `7.58.UX.*` sub-slices ship with each backend slice
   per the plan doc's Frontend Exposure section.
+
+## Depth Surfaces (2026-05-05 addendum — Phase 7.58 depth wave)
+
+Authority for the depth wave is `docs/phases/phase_7_58/phase_7_58_depth_wave_plan.md`
+plus `docs/Knowledge_graph_docs/Bold By Design.md` chapters 2 / 5 / 8 / 9 /
+10 / 11 / 12 and `docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md`
+chapters 6 / 7 / 8 / 9. The depth wave does not change this contract's
+Single Source of Truth, Decision Logic, Output Cardinality, or
+Presentation Split rules. It pins three new posture rules that govern
+how Bold by Design + Jim Taylor depth surfaces inside existing chrome.
+
+### Tab ownership (no crossover)
+
+Each operator-facing surface owns one piece of depth. No concept
+renders on more than one tab in the depth wave.
+
+| Surface | Owns |
+|---|---|
+| `lib/widgets/dollar_impact_card.dart` (Variance > This Week + Week Detail) | "Best Possible / Actual / Closable Gap" framing — `theoreticalLaborPct` named as the math floor it has always been. |
+| `lib/widgets/lever_card.dart` `_DollarAttributionSection` (Variance > This Week + Week Detail) | OPZ-aware row adornment — when an axis crossed `opzCeilingCPLH`, the row reads `+$N axis : team was stretched`. |
+| `lib/screens/shift_dashboard.dart` OPZ tile | OPZ position (live), CPLH × SPLH 3×3 matrix grid, joint diagnosis sub-label when the two axes disagree. |
+| `lib/screens/variance/variance_learn_tab.dart` `_LeakSnapshotCard` + carousel | Coverage denominator caption (`Repeated 6 of last 12 Tue Lunches`). When the cross-axis analyzer surfaces a recurring pair, the carousel swaps its data source from `LeverCards` to `CrossAxisPairs` (same 4-card shape, different input). |
+| `lib/screens/variance/variance_history_tab.dart` | Unchanged. History is the evidence trail; depth lives elsewhere. |
+
+Surfaces NOT named above (`week_history_tile.dart`, `variance_week_projection_read_service.dart`, `baseline_manager_*`, `_LeverBadge`) are unchanged in this wave.
+
+### Cross-axis pair catalog
+
+A sibling catalog `lib/data/cross_axis_pair_catalog.dart` parallels
+`LeverCards` in shape. Each entry is a `CrossAxisPairData` with the
+same field set (`metric` / `whatHappened` / `whatToDo` /
+`teachingNote` / `shortLabel` / `isFavorable`). The 16-card single-axis
+catalog stays the source of truth for all single-axis surfaces;
+cross-axis catalog activates ONLY when the analyzer detects a
+recurring CPLH × SPLH pair pattern in `HistoryPatternRecord` set.
+
+Locked catalog entries (Jim Taylor Ch. 7 + Bold by Design ch. 10):
+
+- `cplh_below_splh_above` — "FORECAST WAS LOW. TEAM EXECUTED."
+- `cplh_on_splh_below` — "KITCHEN SLOWED. DINING ROOM HELD."
+- `cplh_above_splh_below` — "TEAM RAN LEAN. KITCHEN SLOWED."
+- `both_below` — "DEMAND WAS SOFT."
+
+The catalog is closed at this size for V1; new pair entries land via
+contract revision PR (same gate as `LeverCards`).
+
+### Em dash ban (operator-facing copy)
+
+The depth wave introduces no em dashes (`—`, U+2014) in any
+operator-facing string literal. Use period, colon, or middot. Lint
+test pins the rule across the new catalog + the changed renderer
+files.
+
+### Walkthrough specificity
+
+Every depth-wave walkthrough is at the click-path bar set by
+`docs/_walkthroughs/7.58.UX.5.md` per `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
+"Walkthrough Specificity". Each walkthrough names the demo seed
+shift, the rendered widgets, and the named values the test pins.
+
+### Hard gates the depth wave inherits
+
+- **Single Source of Truth** — `LaborModel.determineLever` and
+  `LaborModel.attributeDollarImpactByAxis` are not modified. The
+  cross-axis analyzer reads `HistoryPatternRecord.leverId` (which
+  came from `determineLever`) and pairs them; it does not re-derive a
+  driver.
+- **Concern A** (`target_profile_version_id` immutability) is not
+  affected. Closed-shift history stays frozen.
+- **Layer 6** (forecast is F&F-computed) is not affected. The
+  cross-axis catalog never emits a vendor-derived forecast.
