@@ -90,10 +90,9 @@ class PollingTierStatusCard extends StatelessWidget {
       icon: Icons.schedule_outlined,
       title: 'Your data freshness tier',
       headerExplainer:
-          'Some vendors push updates to F&F in real time (webhooks); '
-          'others, F&F asks them on a schedule. Your tier sets that '
-          'schedule. F&F handles the price and cost — your bill shows '
-          'the tier, not the per-vendor cost.',
+          'F&F sets polling frequency at the tier level. Faster cadence '
+          'is available on premium / custom plans — request a change '
+          'and we will reach out.',
       child: status == null
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),

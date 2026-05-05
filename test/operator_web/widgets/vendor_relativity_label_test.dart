@@ -114,8 +114,17 @@ void main() {
   });
 
   group('composeVendorRelativityLines — wage (acceptance item H)', () {
-    test('QuickBooks Time (perEmployeeWithDollars) — copy mentions '
-        'per-employee dollars', () {
+    // Wage class mappings come from
+    // `lib/services/integration/labor_wage_source_class.dart` (Lane .2's
+    // 2026-05-05 binding sidecar). Per the corrections:
+    //   * QBT + 7shifts -> perEmployeeWithRates (rate × duration).
+    //   * Humanity + Agendrix -> perPositionWithRates.
+    //   * ADP + Push Operations -> hoursOnly.
+    // No Wave B vendor currently qualifies as perEmployeeWithDollars.
+
+    test(
+        'QuickBooks Time (perEmployeeWithRates) — copy mentions '
+        'per-employee hourly rates and rate × duration', () {
       final lines = composeVendorRelativityLines(
         VendorRelativitySetting.wage,
         _bundle(labor: 'quickbooks_time'),
@@ -123,9 +132,9 @@ void main() {
       expect(_anyLineContains(lines, 'QuickBooks Time'), isTrue,
           reason: 'expected QuickBooks Time mentioned, got $lines');
       expect(
-        _anyLineContains(lines, 'per-employee labor dollars'),
+        _anyLineContains(lines, 'per-employee hourly rates'),
         isTrue,
-        reason: 'expected per-employee labor dollars copy, got $lines',
+        reason: 'expected per-employee hourly rates copy, got $lines',
       );
     });
 
@@ -143,15 +152,11 @@ void main() {
     });
 
     test(
-        'Toast (hoursOnly) connected as labor (synthetic) — copy mentions '
-        'target wage substitution from TargetCycle', () {
-      // Static facts key Toast as wageClass.hoursOnly. Wiring it as the
-      // labor row is synthetic (Toast is a POS in real life) but it
-      // exercises the hoursOnly branch which any hours-only labor
-      // vendor would hit.
+        'ADP (hoursOnly) — copy mentions target wage substitution from '
+        'TargetCycle', () {
       final lines = composeVendorRelativityLines(
         VendorRelativitySetting.wage,
-        _bundle(labor: 'toast'),
+        _bundle(labor: 'adp'),
       );
       final hasTargetWage = _anyLineContains(lines, 'target wage');
       final hasTargetCycle = _anyLineContains(lines, 'TargetCycle');
@@ -160,6 +165,25 @@ void main() {
         isTrue,
         reason: 'expected hoursOnly branch to mention target wage or '
             'TargetCycle; got $lines',
+      );
+    });
+
+    test(
+        'Unknown labor vendor (toast as synthetic labor) — copy falls back '
+        'to generic, names the V1 roster, no specific class branch', () {
+      // Toast is not in the LaborWageSourceClass sidecar (it is a POS
+      // adapter). Wiring it as the labor row exercises the
+      // null-wage-class fallback branch.
+      final lines = composeVendorRelativityLines(
+        VendorRelativitySetting.wage,
+        _bundle(labor: 'toast'),
+      );
+      expect(_anyLineContains(lines, 'Toast'), isTrue,
+          reason: 'expected Toast display name in fallback copy, got $lines');
+      expect(
+        _anyLineContains(lines, 'QuickBooks Time'),
+        isTrue,
+        reason: 'expected fallback copy to name the V1 roster, got $lines',
       );
     });
   });

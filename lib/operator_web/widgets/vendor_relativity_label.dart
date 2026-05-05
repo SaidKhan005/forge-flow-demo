@@ -1,11 +1,10 @@
 // Phase 8 spine-bridge Lane .B — Vendor relativity label.
 //
 // Renders the per-card "this setting applies when..." copy that names
-// which connected vendors the setting affects, plus the V1 list of
-// vendors that REQUIRE it (vendor doesn't expose that field).
+// which connected vendors the setting affects.
 //
 // Authority: docs/contracts/data_accuracy_settings_contract.md
-// "Vendor relativity rules" section.
+// "Vendor relativity rules" + "Wage source resolution" sections.
 //
 // The label is dynamic: it reads the operator's currently-connected
 // POS / labor / reservation vendor from the supplied
@@ -14,16 +13,23 @@
 // reads "Toast exposes covers directly..." With Square connected,
 // "Square does not expose covers directly..."
 //
-// Static per-vendor facts live in this file as a const lookup —
-// `coversFieldExposed`, `wageClass`, polling-only-ness — sourced from
-// each vendor's `api_consumed.md` reference doc + the contract's
-// vendor relativity table. There is no live registry in the codebase
-// today, so this lookup is the seam; it's a single edit when a new
-// vendor lands.
+// Wage class lookup goes through Lane .2's
+// `lib/services/integration/labor_wage_source_class.dart` — the
+// 2026-05-05-binding sidecar — so this widget never disagrees with
+// the aggregator on what wage path a connected labor vendor takes.
+// Per the 2026-05-05 corrections, no Wave B vendor currently
+// qualifies as `perEmployeeWithDollars`; QBT/7shifts run at
+// `perEmployeeWithRates` (rate × duration), Humanity/Agendrix at
+// `perPositionWithRates`, ADP/Push at `hoursOnly`.
+//
+// Covers exposure + poll-only-ness live as small const sets in this
+// file because there is no central capability registry yet. Keep them
+// in sync with each vendor's `api_consumed.md` reference doc.
 
 import 'package:flutter/material.dart';
 
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
+import '../../services/integration/labor_wage_source_class.dart';
 import '../../theme/app_theme.dart';
 
 enum VendorRelativitySetting { covers, wage, polling }
@@ -98,6 +104,20 @@ List<String> _composeLines(
   }
 }
 
+// ─── Covers ────────────────────────────────────────────────────────
+
+/// POS vendor IDs whose adapters declare `coversFieldExposed = false`.
+/// Anchored to each vendor's `api_consumed.md`; matches the contract's
+/// "Vendor relativity rules" row for `Covers source = manual`.
+const Set<String> kPosVendorsWithoutCovers = <String>{'square', 'clover'};
+
+/// Whether a connected POS vendor exposes covers as a first-class
+/// field. Returns `true` for unknown vendor ids (assume exposed) so a
+/// new POS adapter doesn't accidentally trigger walk-in / historical-
+/// seed cards on the operator's screen before the lookup is updated.
+bool posVendorExposesCovers(String vendorId) =>
+    !kPosVendorsWithoutCovers.contains(vendorId);
+
 List<String> _composeCoversLines(VendorConnectionsBundle? bundle) {
   final pos = bundle?.posConnection;
   if (pos == null) {
@@ -106,14 +126,8 @@ List<String> _composeCoversLines(VendorConnectionsBundle? bundle) {
       'POS systems that do not expose covers at V1: Square, Clover.',
     ];
   }
-  final fact = _kVendorFacts[pos.vendorId];
-  if (fact == null) {
-    return <String>[
-      'Your POS (${pos.displayName}) is connected. This setting only matters when your POS does not expose covers.',
-      'POS systems that do not expose covers at V1: Square, Clover.',
-    ];
-  }
-  if (fact.coversFieldExposed) {
+  final coversNotExposed = kPosVendorsWithoutCovers.contains(pos.vendorId);
+  if (!coversNotExposed) {
     return <String>[
       '${pos.displayName} exposes covers directly. This setting only kicks in if you switch to a POS that does not (Square, Clover).',
       'You can still pick "manual" for a daypart to type your own numbers; F&F will use those instead of what ${pos.displayName} reports.',
@@ -125,39 +139,59 @@ List<String> _composeCoversLines(VendorConnectionsBundle? bundle) {
   ];
 }
 
+// ─── Wage ──────────────────────────────────────────────────────────
+
 List<String> _composeWageLines(VendorConnectionsBundle? bundle) {
   final labor = bundle?.laborConnection;
   if (labor == null) {
     return <String>[
-      'This setting applies when your scheduling system does not expose per-shift dollars.',
-      'Scheduling systems that do not expose dollars at V1: QuickBooks Time, Humanity, Agendrix.',
+      'This setting applies when your labor vendor does not expose per-shift dollars.',
+      'Scheduling systems that do not expose dollars at V1: QuickBooks Time, 7shifts, Humanity, Agendrix, ADP Workforce Now, Push Operations.',
     ];
   }
-  final fact = _kVendorFacts[labor.vendorId];
-  if (fact == null) {
+  final wageClass = laborWageSourceClassFor(labor.vendorId);
+  if (wageClass == null) {
     return <String>[
-      'Your scheduling system (${labor.displayName}) is connected.',
-      'Scheduling systems that do not expose dollars at V1: QuickBooks Time, Humanity, Agendrix.',
+      'Your labor vendor (${labor.displayName}) is connected. This setting controls how F&F resolves labor dollars when the vendor does not expose them directly.',
+      'Scheduling systems that do not expose dollars at V1: QuickBooks Time, 7shifts, Humanity, Agendrix, ADP Workforce Now, Push Operations.',
     ];
   }
-  switch (fact.wageClass) {
-    case _WageClass.perEmployeeWithDollars:
+  switch (wageClass) {
+    case LaborWageSourceClass.perEmployeeWithDollars:
       return <String>[
         '${labor.displayName} reports per-employee labor dollars. F&F uses those directly when you choose "Use vendor".',
-        'Switch to "Use my manual mix" if you want F&F to ignore vendor dollars and use the wage editor mix instead.',
+        'Switch to "Use my manual wage mix" if you want F&F to ignore vendor dollars and use the wage editor mix instead.',
       ];
-    case _WageClass.perPositionWithRates:
+    case LaborWageSourceClass.perEmployeeWithRates:
+      return <String>[
+        '${labor.displayName} reports per-employee hourly rates, not per-shift dollars. When you choose "Use vendor", F&F multiplies each punch\'s duration by the employee\'s rate.',
+        'Switch to "Use my manual wage mix" if your vendor rates are out of date and you would rather F&F use your wage editor mix.',
+      ];
+    case LaborWageSourceClass.perPositionWithRates:
       return <String>[
         '${labor.displayName} reports per-position pay rates, not per-employee dollars. F&F multiplies those by scheduled hours when you choose "Use vendor".',
         'This is what the wage model needs — your wage editor\'s role rows reflect what your scheduler reports.',
       ];
-    case _WageClass.hoursOnly:
+    case LaborWageSourceClass.hoursOnly:
       return <String>[
         '${labor.displayName} does not expose dollars or rates. F&F substitutes target wage × hours from your TargetCycle when you choose "Use vendor".',
-        'Switch to "Use my manual mix" to use your wage editor mix instead — usually more accurate when you have not set targets yet.',
+        'Switch to "Use my manual wage mix" to use your wage editor mix instead — usually more accurate when you have not set targets yet.',
       ];
   }
 }
+
+// ─── Polling ───────────────────────────────────────────────────────
+
+/// Vendor IDs whose adapters declare `webhookSupport == pollOnly`.
+/// Anchored to the contract's "Transport-bounded live-ness" row +
+/// each vendor's `api_consumed.md`.
+const Set<String> _kPollOnlyVendors = <String>{
+  'oracle_micros_simphony',
+  'quickbooks_time',
+  'humanity',
+  'agendrix',
+  'push_operations',
+};
 
 List<String> _composePollingLines(VendorConnectionsBundle? bundle) {
   // Polling cadence applies only to poll-only vendors. Webhook
@@ -167,22 +201,22 @@ List<String> _composePollingLines(VendorConnectionsBundle? bundle) {
   final pos = bundle?.posConnection;
   final labor = bundle?.laborConnection;
   final pollOnlyConnected = <String>[
-    if (pos != null && _kVendorFacts[pos.vendorId]?.pollOnly == true)
+    if (pos != null && _kPollOnlyVendors.contains(pos.vendorId))
       pos.displayName,
-    if (labor != null && _kVendorFacts[labor.vendorId]?.pollOnly == true)
+    if (labor != null && _kPollOnlyVendors.contains(labor.vendorId))
       labor.displayName,
   ];
   final webhookConnected = <String>[
-    if (pos != null && _kVendorFacts[pos.vendorId]?.pollOnly == false)
+    if (pos != null && !_kPollOnlyVendors.contains(pos.vendorId))
       pos.displayName,
-    if (labor != null && _kVendorFacts[labor.vendorId]?.pollOnly == false)
+    if (labor != null && !_kPollOnlyVendors.contains(labor.vendorId))
       labor.displayName,
   ];
 
   if (pollOnlyConnected.isEmpty && webhookConnected.isEmpty) {
     return <String>[
       'Polling cadence applies to vendors that do not push real-time webhooks (currently: Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations).',
-      'Your webhook vendors update in real time regardless of this setting.',
+      'Your webhook vendors update in real time regardless of this tier.',
     ];
   }
   final lines = <String>[];
@@ -201,118 +235,3 @@ List<String> _composePollingLines(VendorConnectionsBundle? bundle) {
   );
   return lines;
 }
-
-// ─── Static vendor facts (V1 lookup) ────────────────────────────────
-//
-// Not a substitute for capability profiles — when a runtime registry
-// lands (Wave D), this table retires. For V1 the shape mirrors the
-// contract's "Vendor relativity rules" table verbatim. New vendors
-// added here must match each vendor's `api_consumed.md` reference doc.
-
-enum _WageClass { perEmployeeWithDollars, perPositionWithRates, hoursOnly }
-
-class _VendorFacts {
-  const _VendorFacts({
-    required this.coversFieldExposed,
-    required this.wageClass,
-    required this.pollOnly,
-  });
-
-  final bool coversFieldExposed;
-  final _WageClass wageClass;
-  final bool pollOnly;
-}
-
-const Map<String, _VendorFacts> _kVendorFacts = <String, _VendorFacts>{
-  // POS — covers exposure varies; not relevant for wage class.
-  'toast': _VendorFacts(
-    coversFieldExposed: true,
-    wageClass: _WageClass.hoursOnly,
-    pollOnly: false,
-  ),
-  'square': _VendorFacts(
-    coversFieldExposed: false,
-    wageClass: _WageClass.hoursOnly,
-    pollOnly: false,
-  ),
-  'clover': _VendorFacts(
-    coversFieldExposed: false,
-    wageClass: _WageClass.hoursOnly,
-    pollOnly: false,
-  ),
-  'lightspeed_lsk': _VendorFacts(
-    coversFieldExposed: true,
-    wageClass: _WageClass.hoursOnly,
-    pollOnly: false,
-  ),
-  'revel': _VendorFacts(
-    coversFieldExposed: true,
-    wageClass: _WageClass.hoursOnly,
-    pollOnly: false,
-  ),
-  'aloha_ncr_voyix': _VendorFacts(
-    coversFieldExposed: true,
-    wageClass: _WageClass.hoursOnly,
-    pollOnly: false,
-  ),
-  'oracle_micros_simphony': _VendorFacts(
-    coversFieldExposed: true,
-    wageClass: _WageClass.hoursOnly,
-    pollOnly: true,
-  ),
-
-  // Labor — wage class lookup matters; covers exposure does not.
-  '7shifts': _VendorFacts(
-    coversFieldExposed: false,
-    wageClass: _WageClass.perEmployeeWithDollars,
-    pollOnly: false,
-  ),
-  'quickbooks_time': _VendorFacts(
-    coversFieldExposed: false,
-    wageClass: _WageClass.perEmployeeWithDollars,
-    pollOnly: true,
-  ),
-  'adp_workforce_now': _VendorFacts(
-    coversFieldExposed: false,
-    wageClass: _WageClass.perEmployeeWithDollars,
-    pollOnly: false,
-  ),
-  'humanity': _VendorFacts(
-    coversFieldExposed: false,
-    wageClass: _WageClass.perPositionWithRates,
-    pollOnly: true,
-  ),
-  'agendrix': _VendorFacts(
-    coversFieldExposed: false,
-    wageClass: _WageClass.perPositionWithRates,
-    pollOnly: true,
-  ),
-  'push_operations': _VendorFacts(
-    coversFieldExposed: false,
-    wageClass: _WageClass.perEmployeeWithDollars,
-    pollOnly: true,
-  ),
-
-  // Reservations — neither covers-relevant nor wage-relevant; included
-  // for completeness.
-  'libro': _VendorFacts(
-    coversFieldExposed: true,
-    wageClass: _WageClass.hoursOnly,
-    pollOnly: false,
-  ),
-  'opentable': _VendorFacts(
-    coversFieldExposed: true,
-    wageClass: _WageClass.hoursOnly,
-    pollOnly: false,
-  ),
-  'sevenrooms': _VendorFacts(
-    coversFieldExposed: true,
-    wageClass: _WageClass.hoursOnly,
-    pollOnly: false,
-  ),
-  'tock': _VendorFacts(
-    coversFieldExposed: true,
-    wageClass: _WageClass.hoursOnly,
-    pollOnly: false,
-  ),
-};

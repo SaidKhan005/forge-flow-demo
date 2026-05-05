@@ -152,7 +152,8 @@ void main() {
     (tester) async {
       await sizeViewport(tester, const Size(1024, 800));
 
-      // QuickBooks Time → per-employee labor dollars.
+      // QuickBooks Time → perEmployeeWithRates per Lane .2's
+      // 2026-05-05 binding sidecar (rate × duration).
       await tester.pumpWidget(
         wrap(
           WageSourceToggle(
@@ -165,7 +166,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(anyTextContains('QuickBooks Time'), isTrue);
-      expect(anyTextContains('per-employee labor dollars'), isTrue);
+      expect(anyTextContains('per-employee hourly rates'), isTrue);
 
       // Humanity → per-position pay rates.
       await tester.pumpWidget(

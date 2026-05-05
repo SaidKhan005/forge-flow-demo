@@ -53,7 +53,7 @@ class WageSourceToggle extends StatelessWidget {
           _RadioRow(
             rowKey: const Key('wage_source_radio_vendor'),
             selected: value == WageSource.vendor,
-            label: 'Use vendor',
+            label: 'Use labor vendor\'s reported wages and dollars when available',
             body:
                 'Read labor dollars from your scheduling system when it '
                 'reports them. F&F falls back to target wage × hours when '
@@ -65,7 +65,7 @@ class WageSourceToggle extends StatelessWidget {
           _RadioRow(
             rowKey: const Key('wage_source_radio_manual_mix'),
             selected: value == WageSource.manualMix,
-            label: 'Use my manual mix',
+            label: 'Use my manual wage mix from Settings (the same rates the wage generator uses)',
             body:
                 'Always use the wage editor mix you set up in F&F. F&F '
                 'multiplies your role-by-role rates by actual hours, '

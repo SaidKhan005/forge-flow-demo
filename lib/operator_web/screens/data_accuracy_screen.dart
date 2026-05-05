@@ -38,12 +38,14 @@ import '../widgets/covers_manual_entry_card.dart';
 import '../widgets/covers_source_toggle.dart';
 import '../widgets/data_accuracy_explainer_card.dart';
 import '../widgets/polling_tier_status_card.dart';
+import '../widgets/vendor_relativity_label.dart';
 import '../widgets/wage_source_toggle.dart';
 import '../widgets/walk_in_handling_card.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
+import '../../services/integration/polling_tier_presets.dart';
 import '../../theme/app_theme.dart';
 
 /// Roles permitted to edit data accuracy from the operator-web
@@ -57,28 +59,20 @@ const Set<String> kOperatorWebDataAccuracyAdmittedRoles = <String>{
 
 /// Default polling tier surfaced when nothing else is wired in. Lane
 /// .A's `ForgeFlowPollingTierRepository` lands the live read in the
-/// follow-up `.live` slice.
+/// follow-up `.live` slice; until then the screen renders the
+/// canonical Standard tier cadences from
+/// `lib/services/integration/polling_tier_presets.dart` (Lane `.0a`)
+/// filtered to whichever poll-only vendors the operator has
+/// connected.
 PollingTierStatus _kDefaultStandardTier(VendorConnectionsBundle? bundle) {
-  // Reference cadences for the Standard tier per the contract.
-  const Map<String, int> standardCadences = <String, int>{
-    'oracle_micros_simphony': 300,
-    'quickbooks_time': 300,
-    'humanity': 300,
-    'agendrix': 300,
-    'push_operations': 300,
-  };
-  // Filter to vendors the operator has actually connected so the
-  // operator-facing list doesn't promise schedules for vendors that
-  // aren't wired up yet. The full reference list still drives the
-  // F&F admin tier definitions surface (Lane .C).
   final connectedPollOnly = <String, int>{};
   final pos = bundle?.posConnection;
   final labor = bundle?.laborConnection;
-  if (pos != null && standardCadences.containsKey(pos.vendorId)) {
-    connectedPollOnly[pos.vendorId] = standardCadences[pos.vendorId]!;
+  if (pos != null && kStandardTierPresets.containsKey(pos.vendorId)) {
+    connectedPollOnly[pos.vendorId] = kStandardTierPresets[pos.vendorId]!;
   }
-  if (labor != null && standardCadences.containsKey(labor.vendorId)) {
-    connectedPollOnly[labor.vendorId] = standardCadences[labor.vendorId]!;
+  if (labor != null && kStandardTierPresets.containsKey(labor.vendorId)) {
+    connectedPollOnly[labor.vendorId] = kStandardTierPresets[labor.vendorId]!;
   }
   return PollingTierStatus(
     tier: PollingTierLabel.standard,
@@ -87,18 +81,6 @@ PollingTierStatus _kDefaultStandardTier(VendorConnectionsBundle? bundle) {
     perVendorCadenceSeconds: connectedPollOnly,
   );
 }
-
-/// Maps a connected POS vendor id to whether it exposes covers as a
-/// first-class field. Anchored to per-vendor `api_consumed.md` docs.
-const Map<String, bool> _kPosCoversFieldExposed = <String, bool>{
-  'toast': true,
-  'square': false,
-  'clover': false,
-  'lightspeed_lsk': true,
-  'revel': true,
-  'aloha_ncr_voyix': true,
-  'oracle_micros_simphony': true,
-};
 
 /// Today's business date in restaurant-local. The screen takes a
 /// fixed string for testability — production wires
@@ -329,7 +311,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   bool get _posExposesCovers {
     final pos = _bundle?.posConnection;
     if (pos == null) return true; // assume exposed when no POS yet.
-    return _kPosCoversFieldExposed[pos.vendorId] ?? true;
+    return posVendorExposesCovers(pos.vendorId);
   }
 
   bool get _hasReservationConnection => _bundle?.reservationConnection != null;
