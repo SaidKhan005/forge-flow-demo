@@ -1,4 +1,4 @@
-﻿// Phase 11A.1 - Operator + location admin screen.
+// Phase 11A.1 - Operator + location admin screen.
 //
 // Admin-side CRUD on operators (`operators` table) and their
 // locations (`locations` table). Supports onboarding a new operator
@@ -379,6 +379,21 @@ class _OperatorList extends StatefulWidget {
 
 class _OperatorListState extends State<_OperatorList> {
   final _search = TextEditingController();
+  late List<_SearchableOperatorBundle> _searchIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchIndex = _buildSearchIndex(widget.bundles);
+  }
+
+  @override
+  void didUpdateWidget(covariant _OperatorList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bundles != widget.bundles) {
+      _searchIndex = _buildSearchIndex(widget.bundles);
+    }
+  }
 
   @override
   void dispose() {
@@ -386,25 +401,20 @@ class _OperatorListState extends State<_OperatorList> {
     super.dispose();
   }
 
-  bool _matches(OperatorAdminBundle bundle, String query) {
-    if (query.isEmpty) return true;
-    final operator = bundle.operator;
-    final haystack = <String>[
-      operator.businessName,
-      operator.ownerEmail,
-      operator.subscriptionTier,
-      operator.preferredCurrency,
-      for (final location in bundle.locations) location.name,
-      for (final location in bundle.locations) location.timezone,
-    ].join(' ').toLowerCase();
-    return haystack.contains(query);
+  List<_SearchableOperatorBundle> _buildSearchIndex(
+    List<OperatorAdminBundle> bundles,
+  ) {
+    return <_SearchableOperatorBundle>[
+      for (final bundle in bundles) _SearchableOperatorBundle(bundle),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
     final query = _search.text.trim().toLowerCase();
-    final filtered = widget.bundles
-        .where((bundle) => _matches(bundle, query))
+    final filtered = _searchIndex
+        .where((entry) => entry.matches(query))
+        .map((entry) => entry.bundle)
         .toList(growable: false);
 
     return Container(
@@ -511,6 +521,28 @@ class _OperatorListState extends State<_OperatorList> {
         ),
       ),
     );
+  }
+}
+
+class _SearchableOperatorBundle {
+  _SearchableOperatorBundle(this.bundle)
+    : searchableText = _buildSearchableText(bundle);
+
+  final OperatorAdminBundle bundle;
+  final String searchableText;
+
+  bool matches(String query) => query.isEmpty || searchableText.contains(query);
+
+  static String _buildSearchableText(OperatorAdminBundle bundle) {
+    final operator = bundle.operator;
+    return <String>[
+      operator.businessName,
+      operator.ownerEmail,
+      operator.subscriptionTier,
+      operator.preferredCurrency,
+      for (final location in bundle.locations) location.name,
+      for (final location in bundle.locations) location.timezone,
+    ].join(' ').toLowerCase();
   }
 }
 
