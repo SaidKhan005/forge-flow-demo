@@ -35,10 +35,12 @@ import 'screens/operator_picker_screen.dart';
 import 'screens/per_location_data_accuracy_screen.dart';
 import 'screens/polling_and_pricing_admin_screen.dart';
 import 'screens/pricing_tier_admin_screen.dart';
+import 'screens/roles_hierarchy_sessions_admin_screen.dart';
 import 'services/corpus_admin_gateway.dart';
 import 'services/data_accuracy_admin_gateway.dart';
 import 'services/debug_console_admin_gateway.dart';
 import 'services/demo_members_admin_gateway.dart';
+import 'services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'services/feature_flags_admin_gateway.dart';
 import 'services/health_admin_gateway.dart';
 import 'services/integration_admin_gateway.dart';
@@ -46,6 +48,7 @@ import 'services/members_admin_gateway.dart';
 import 'services/observability_admin_gateway.dart';
 import 'services/operator_location_admin_gateway.dart';
 import 'services/pricing_tier_admin_gateway.dart';
+import 'services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../domain/models/forge_flow_polling_tier_assignment.dart';
 
 /// One entry in the admin route catalog.
@@ -139,6 +142,13 @@ const String kAdminPollingPricingRouteId = 'polling-pricing';
 /// an operator, and lands on the members table scoped to the chosen
 /// operator.
 const String kAdminMembersRouteId = 'members';
+
+/// Phase 11A.13 - cross-operator Roles + Hierarchy + Sessions inspect
+/// surface. Mounted after the operator picker; same pattern as
+/// `kAdminMembersRouteId` — the F&F admin opens this route, picks an
+/// operator, and lands on a three-tab screen scoped to that operator.
+const String kAdminRolesHierarchySessionsRouteId =
+    'roles-hierarchy-sessions';
 
 /// Canonical operator-picker route ID (11A.3a follow-up; reused by
 /// 11A.12). The picker is reached via Navigator.push from any host
@@ -258,6 +268,17 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     subtitle:
         'Pick an operator, then review members, invites, and admin actions.',
     builder: _buildMembers,
+  ),
+  AdminRoute(
+    id: kAdminRolesHierarchySessionsRouteId,
+    title: 'Roles, hierarchy, and sessions',
+    path: '/admin/roles-hierarchy-sessions',
+    icon: Icons.account_tree_outlined,
+    section: AdminRouteSection.operations,
+    subtitle:
+        'Pick an operator, then inspect the role catalog, org-unit '
+        'hierarchy, and active sessions.',
+    builder: _buildRolesHierarchySessions,
   ),
 ];
 
@@ -692,6 +713,181 @@ class _MembersAdminRouteShellState extends State<_MembersAdminRouteShell> {
   }
 }
 
+Widget _buildRolesHierarchySessions(BuildContext context) {
+  final gateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+
+  Future<OperatorPickerResult?> openPicker(
+    BuildContext routeContext,
+    String? adminUid,
+  ) {
+    return Navigator.of(routeContext).push<OperatorPickerResult?>(
+      MaterialPageRoute<OperatorPickerResult?>(
+        settings: const RouteSettings(
+          name: '/admin/roles-hierarchy-sessions/operator-picker',
+        ),
+        builder: (_) =>
+            OperatorPickerScreen(gateway: operatorGateway, adminUid: adminUid),
+      ),
+    );
+  }
+
+  if (source == null) {
+    return _RolesHierarchySessionsRouteShell(
+      gateway: gateway,
+      actorUserId: 'demo-super-admin',
+      editingEnabled: true,
+      // Demo / test path: leave seeded-role edit disabled. Production
+      // wires `canEditSeededRoles` from MFA-required admin claims.
+      canEditSeededRoles: false,
+      adminUid: null,
+      openPicker: openPicker,
+    );
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
+      // `admin.roles.edit_seeded` is MFA-required per the parity
+      // contract § "Seeded roles" line 104. The MFA-asserted claim
+      // is not plumbed through `AdminAuthSession` yet (no
+      // `permissions` / `auth_time_fresh` field on the session
+      // record). Default to false so we never expose the seeded-edit
+      // affordance without a verified MFA claim — production lights
+      // this up by passing `canEditSeededRoles: true` from a future
+      // session-claim resolver. The proxy stays authoritative
+      // regardless and rejects the call without an MFA-fresh token.
+      const canEditSeeded = false;
+      return _RolesHierarchySessionsRouteShell(
+        gateway: gateway,
+        actorUserId: session?.uid ?? 'unknown',
+        editingEnabled: canEdit,
+        canEditSeededRoles: canEditSeeded,
+        adminUid: session?.uid,
+        openPicker: openPicker,
+      );
+    },
+  );
+}
+
+class _RolesHierarchySessionsRouteShell extends StatefulWidget {
+  const _RolesHierarchySessionsRouteShell({
+    required this.gateway,
+    required this.actorUserId,
+    required this.editingEnabled,
+    required this.canEditSeededRoles,
+    required this.adminUid,
+    required this.openPicker,
+  });
+
+  final RolesHierarchySessionsAdminGateway gateway;
+  final String actorUserId;
+  final bool editingEnabled;
+  final bool canEditSeededRoles;
+  final String? adminUid;
+  final Future<OperatorPickerResult?> Function(
+    BuildContext context,
+    String? adminUid,
+  ) openPicker;
+
+  @override
+  State<_RolesHierarchySessionsRouteShell> createState() =>
+      _RolesHierarchySessionsRouteShellState();
+}
+
+class _RolesHierarchySessionsRouteShellState
+    extends State<_RolesHierarchySessionsRouteShell> {
+  OperatorPickerResult? _picked;
+  bool _pickerInflight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _picked != null) return;
+      _openPicker();
+    });
+  }
+
+  Future<void> _openPicker() async {
+    if (_pickerInflight) return;
+    _pickerInflight = true;
+    try {
+      final result = await widget.openPicker(context, widget.adminUid);
+      if (!mounted) return;
+      if (result != null) {
+        setState(() => _picked = result);
+      } else {
+        setState(() {});
+      }
+    } finally {
+      _pickerInflight = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final picked = _picked;
+    if (picked == null) {
+      return Container(
+        key: const Key('admin_rhs_no_operator_state'),
+        color: AppColors.backgroundDeep,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Pick an operator',
+                    style: AppTextStyles.display20(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Roles, hierarchy, and sessions are scoped to one '
+                    'operator at a time. Pick the operator you are helping.',
+                    style: AppTextStyles.body13(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    key: const Key('admin_rhs_open_picker'),
+                    onPressed: _openPicker,
+                    icon: const Icon(Icons.business_outlined, size: 16),
+                    label: const Text('Pick operator'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return RolesHierarchySessionsAdminScreen(
+      key: ValueKey<String>('rhs-${picked.operatorId}'),
+      gateway: widget.gateway,
+      actorUserId: widget.actorUserId,
+      pickedOperator: picked,
+      editingEnabled: widget.editingEnabled,
+      canEditSeededRoles: widget.canEditSeededRoles,
+      onChangeOperator: _openPicker,
+    );
+  }
+}
+
 Widget _buildDebugConsole(BuildContext context) {
   // 11A.5 - full-content reveal is gated on `super_admin`. `ff_support`
   // lands on the read-only meta view (no expand-to-full-content
@@ -744,6 +940,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.debugConsoleGateway,
     this.dataAccuracyAdminGateway,
     this.membersAdminGateway,
+    this.rolesHierarchySessionsAdminGateway,
     this.adminAuthSource,
   });
 
@@ -821,6 +1018,11 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// used by the kDemoMode walkthrough.
   final MembersAdminGateway? membersAdminGateway;
 
+  /// Phase 11A.13 - Roles + Hierarchy + Sessions inspect admin
+  /// gateway. Optional; the default fallback is the seeded in-memory
+  /// gateway used by the kDemoMode walkthrough.
+  final RolesHierarchySessionsAdminGateway? rolesHierarchySessionsAdminGateway;
+
   /// Phase 11A.2 - admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
   /// compute `editingEnabled` from the signed-in session's roles
@@ -895,6 +1097,14 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.membersAdminGateway ?? _defaultMembersAdminDemoGateway;
   }
 
+  static RolesHierarchySessionsAdminGateway
+  rolesHierarchySessionsAdminGatewayOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.rolesHierarchySessionsAdminGateway ??
+        _defaultRolesHierarchySessionsAdminDemoGateway;
+  }
+
   static AdminAuthSource? adminAuthSourceOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
@@ -913,6 +1123,8 @@ class AdminConsoleServicesScope extends InheritedWidget {
       debugConsoleGateway != oldWidget.debugConsoleGateway ||
       dataAccuracyAdminGateway != oldWidget.dataAccuracyAdminGateway ||
       membersAdminGateway != oldWidget.membersAdminGateway ||
+      rolesHierarchySessionsAdminGateway !=
+          oldWidget.rolesHierarchySessionsAdminGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
 
@@ -1330,4 +1542,17 @@ final MembersAdminGateway _defaultMembersAdminDemoGateway =
     InMemoryMembersAdminGateway(
       membersByOperator: kDemoMembersByOperator(),
       invitesByOperator: kDemoInvitesByOperator(),
+    );
+
+/// Phase 11A.13 - Roles + Hierarchy + Sessions demo gateway. Reuses
+/// the operators on the Members demo so the walkthrough can hop
+/// straight from the Members surface into Roles / Hierarchy /
+/// Sessions for the same operator.
+final RolesHierarchySessionsAdminGateway
+_defaultRolesHierarchySessionsAdminDemoGateway =
+    InMemoryRolesHierarchySessionsAdminGateway(
+      rolesByOperator: kDemoRolesByOperator(),
+      orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+      locationsByOperator: kDemoHierarchyLocationsByOperator(),
+      sessionsByOperator: kDemoSessionsByOperator(),
     );

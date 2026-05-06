@@ -2,6 +2,7 @@ import 'forge_flow_app.dart';
 import 'forge_flow_bootstrap.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_realtime_subscription_watermark_store.dart';
 import 'services/auth/firebase_auth_runtime_bindings.dart';
+import 'services/mobile_push/firebase_mobile_push_runtime.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/realtime/web_socket_channel_realtime_transport.dart';
 
@@ -39,6 +40,17 @@ Future<void> main() async {
             watermarkStore:
                 SqliteRealtimeSubscriptionWatermarkStore.instance,
           );
+    final mobilePushNotifications = createFirebaseMobilePushNotificationService(
+      tokenGateway: bindings.mobilePushTokenGateway,
+      appVariant: const String.fromEnvironment(
+        'FORGE_FLOW_APP_VARIANT',
+        defaultValue: 'forgeflow',
+      ),
+      appEnvironment: const String.fromEnvironment(
+        'FORGE_FLOW_APP_ENVIRONMENT',
+        defaultValue: 'staging',
+      ),
+    );
     await bootstrapAndRunApp(
       ForgeFlowApp(
         requireAuth: true,
@@ -55,6 +67,7 @@ Future<void> main() async {
       secureSessionStorage: bindings.secureSessionStorage,
       authSessionLedgerWriter: bindings.authSessionLedgerWriter,
       realtimeSubscription: realtimeSubscription,
+      mobilePushNotifications: mobilePushNotifications,
     );
     return;
   }

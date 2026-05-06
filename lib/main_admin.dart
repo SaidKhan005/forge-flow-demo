@@ -42,6 +42,7 @@ import 'admin/services/members_admin_gateway.dart';
 import 'admin/services/observability_admin_gateway.dart';
 import 'admin/services/operator_location_admin_gateway.dart';
 import 'admin/services/pricing_tier_admin_gateway.dart';
+import 'admin/services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'services/auth/firebase_auth_client.dart';
 import 'services/auth/firebase_auth_client_sdk.dart';
 import 'services/auth/timeout_firebase_auth_client.dart';
@@ -107,6 +108,9 @@ Future<void> main() async {
     final membersAdminGateway = gateway == null
         ? null
         : _resolveMembersAdminGateway(authBinding.authClient);
+    final rolesHierarchySessionsAdminGateway = gateway == null
+        ? null
+        : _resolveRolesHierarchySessionsAdminGateway(authBinding.authClient);
     final adminApp = AdminConsoleApp(authSource: source);
     // Always wrap with `AdminConsoleServicesScope` so the Pricing /
     // Corpus / Integrations / Feature Flags routes can read
@@ -126,6 +130,8 @@ Future<void> main() async {
         featureFlagsGateway: featureFlagsGateway,
         debugConsoleGateway: debugConsoleGateway,
         membersAdminGateway: membersAdminGateway,
+        rolesHierarchySessionsAdminGateway:
+            rolesHierarchySessionsAdminGateway,
         adminAuthSource: source,
         child: adminApp,
       ),
@@ -351,6 +357,25 @@ MembersAdminGateway? _resolveMembersAdminGateway(
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpMembersAdminGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+  );
+}
+
+/// Phase 11A.13 - Roles + Hierarchy + Sessions admin gateway. Lives
+/// on the same admin proxy base URI as the other admin surfaces; demo
+/// mode falls back to the seeded in-memory gateway in
+/// `admin_routes.dart`.
+RolesHierarchySessionsAdminGateway? _resolveRolesHierarchySessionsAdminGateway(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpRolesHierarchySessionsAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );

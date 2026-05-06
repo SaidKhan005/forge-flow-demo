@@ -20,6 +20,7 @@ import '../mfa/mfa_operations_gateway.dart';
 import '../mfa/proxy_mfa_operations_gateway.dart';
 import '../mfa/mfa_recovery_request_gateway.dart';
 import '../mfa/proxy_mfa_recovery_request_gateway.dart';
+import '../mobile_push/mobile_push_notification_service.dart';
 import '../secure_session_storage.dart';
 import 'account_info_gateway.dart';
 import 'auth_operations_gateway.dart';
@@ -54,6 +55,7 @@ class FirebaseAuthRuntimeBindings {
     this.mfaRecoveryRequestGateway,
     this.passwordResetGateway,
     this.passwordResetDeepLinkSource,
+    this.mobilePushTokenGateway,
   });
 
   final AuthLoginService authLoginService;
@@ -72,6 +74,7 @@ class FirebaseAuthRuntimeBindings {
   final MfaOperationsGateway? mfaOperationsGateway;
   final MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
   final PasswordResetGateway? passwordResetGateway;
+  final MobilePushTokenGateway? mobilePushTokenGateway;
 
   /// 9.UX.7 — incoming-URI source forwarded to the unauthenticated
   /// shell so `forgeflow://reset-password?oobCode=...` reaches the
@@ -127,6 +130,7 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
   MfaOperationsGateway? mfaOperationsGateway;
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
   PasswordResetGateway? passwordResetGateway;
+  MobilePushTokenGateway? mobilePushTokenGateway;
   if (proxyBaseUri != null) {
     ledgerWriter = ProxyAuthSessionLedgerWriter(
       proxyBaseUri: proxyBaseUri,
@@ -174,6 +178,11 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
       proxyBaseUri: proxyBaseUri,
       httpClient: DartIoProxyAuthOperationsHttpClient(),
     );
+    mobilePushTokenGateway = ProxyMobilePushTokenGateway(
+      proxyBaseUri: proxyBaseUri,
+      idTokenProvider: authClient.currentIdToken,
+      httpClient: DartIoProxyHttpJsonClient(),
+    );
   }
   // Phase 9.UX.7: bind the deep-link source for both demo and live
   // builds so `forgeflow://reset-password?oobCode=...` lands on the
@@ -199,5 +208,6 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
     mfaRecoveryRequestGateway: mfaRecoveryRequestGateway,
     passwordResetGateway: passwordResetGateway,
     passwordResetDeepLinkSource: deepLinkSource,
+    mobilePushTokenGateway: mobilePushTokenGateway,
   );
 }
