@@ -48,17 +48,26 @@ class DemoTeamLocationFixture {
   final String orgUnitId;
 }
 
-/// Region grouping (11W.3 walks the tree as East Region containing
-/// Downtown + North Loop, West Region containing Riverside).
+/// Region grouping (11W.3 walks the tree as the corp root `Demo Bistro`
+/// containing East Region (Downtown + North Loop) and West Region
+/// (Riverside)). `unitType` matches the catalog the mobile reference
+/// renders (`corp`, `region`, `district`, `location_group`); `path`
+/// mirrors the Postgres `ltree` shape Phase 9 ships so the gateway
+/// projection produces the same `TeamOrgUnitEntry.path` shape the
+/// mobile widget already understands.
 class DemoTeamOrgUnitFixture {
   const DemoTeamOrgUnitFixture({
     required this.orgUnitId,
     required this.name,
+    required this.unitType,
+    required this.path,
     this.parentOrgUnitId,
   });
 
   final String orgUnitId;
   final String name;
+  final String unitType;
+  final String path;
   final String? parentOrgUnitId;
 }
 
@@ -81,10 +90,32 @@ const List<DemoTeamLocationFixture> kDemoTeamLocationsFixture =
   ),
 ];
 
+/// Org-unit tree fixture. 11W.3 renders the corp root + two regions;
+/// 11W.1 surfaces the regions only (corp root is the implicit owner
+/// label). New entries should keep `path` consistent with the
+/// `parentOrgUnitId` chain so the gateway projection lines up.
 const List<DemoTeamOrgUnitFixture> kDemoTeamOrgUnitsFixture =
     <DemoTeamOrgUnitFixture>[
-  DemoTeamOrgUnitFixture(orgUnitId: 'demo-org-east', name: 'East Region'),
-  DemoTeamOrgUnitFixture(orgUnitId: 'demo-org-west', name: 'West Region'),
+  DemoTeamOrgUnitFixture(
+    orgUnitId: 'demo-org-root',
+    name: 'Demo Bistro',
+    unitType: 'corp',
+    path: 'demo_bistro',
+  ),
+  DemoTeamOrgUnitFixture(
+    orgUnitId: 'demo-org-east',
+    name: 'East Region',
+    unitType: 'region',
+    path: 'demo_bistro.east_region',
+    parentOrgUnitId: 'demo-org-root',
+  ),
+  DemoTeamOrgUnitFixture(
+    orgUnitId: 'demo-org-west',
+    name: 'West Region',
+    unitType: 'region',
+    path: 'demo_bistro.west_region',
+    parentOrgUnitId: 'demo-org-root',
+  ),
 ];
 
 /// Seeded role catalog the parity slices project from. 11W.2 will
@@ -321,6 +352,44 @@ TeamUserListEntry teamUserEntryFromFixture(DemoTeamUserFixture fixture) {
     lastActiveAt: fixture.lastActiveAtIso == null
         ? null
         : DateTime.parse(fixture.lastActiveAtIso!).toUtc(),
+  );
+}
+
+/// Project an org-unit fixture into the gateway's [TeamOrgUnitEntry]
+/// shape so the demo + live hierarchy gateways share one row contract.
+/// 11W.3 consumes this; 11W.1 (Members) does not — it reads the
+/// fixture struct directly for its location dropdown labels.
+TeamOrgUnitEntry teamOrgUnitEntryFromFixture(DemoTeamOrgUnitFixture fixture) {
+  return TeamOrgUnitEntry(
+    orgUnitId: fixture.orgUnitId,
+    parentOrgUnitId: fixture.parentOrgUnitId,
+    unitType: fixture.unitType,
+    path: fixture.path,
+    label: fixture.name,
+  );
+}
+
+/// Project a location fixture into the gateway's [TeamOrgLocationEntry]
+/// shape. Resolves the parent org-unit's `path` from the org-unit
+/// fixture set so the projection matches the live proxy payload shape.
+TeamOrgLocationEntry teamOrgLocationEntryFromFixture(
+  DemoTeamLocationFixture fixture, {
+  List<DemoTeamOrgUnitFixture> orgUnits = kDemoTeamOrgUnitsFixture,
+}) {
+  final parent = orgUnits.firstWhere(
+    (unit) => unit.orgUnitId == fixture.orgUnitId,
+    orElse: () => const DemoTeamOrgUnitFixture(
+      orgUnitId: '',
+      name: '',
+      unitType: 'region',
+      path: '',
+    ),
+  );
+  return TeamOrgLocationEntry(
+    locationId: fixture.locationId,
+    parentOrgUnitId: fixture.orgUnitId,
+    orgUnitPath: parent.path,
+    label: fixture.name,
   );
 }
 
