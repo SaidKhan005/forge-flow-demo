@@ -240,6 +240,115 @@ class BusinessTimingProfilesRepository extends OperatorScopedRepository {
     }, reason: adminReason);
   }
 
+  /// Loads one profile by id, scoped to the caller's operator.
+  /// Returns null when the id is unknown to this operator. Used by
+  /// the operator-web PATCH/POST handlers as a precondition check
+  /// before a write so a missing-profile request returns 404 instead
+  /// of cascading into a confusing audit/insert path.
+  Future<BusinessTimingProfileRow?> loadProfileById({
+    required String operatorId,
+    required String locationId,
+    required String profileId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<BusinessTimingProfileRow?>(ctx, (exec) {
+      return _fetchProfileById(
+        exec,
+        operatorId: operatorId,
+        profileId: profileId,
+      );
+    });
+  }
+
+  /// Updates an existing profile's editable fields. Returns the row
+  /// after the update, or null when [profileId] is not found.
+  Future<BusinessTimingProfileRow?> updateProfile({
+    required String operatorId,
+    required String locationId,
+    required String profileId,
+    required String businessDayStartLocalTime,
+    required int weekStartDay,
+    required String effectiveFromBusinessDate,
+    required String? actorUserId,
+    String actorKind = 'operator_user',
+    required String reason,
+    String? idempotencyKey,
+    Map<String, Object?> metadata = const <String, Object?>{},
+    String? displayName,
+    bool clearDisplayName = false,
+  }) {
+    _validateAuditReason(reason);
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<BusinessTimingProfileRow?>(ctx, (exec) async {
+      final before = await _fetchProfileById(
+        exec,
+        operatorId: operatorId,
+        profileId: profileId,
+      );
+      if (before == null) return null;
+      final params = <String, Object?>{
+        'operator_id': operatorId,
+        'profile_id': profileId,
+        'business_day_start_local_time': businessDayStartLocalTime,
+        'week_start_day': weekStartDay,
+        'effective_from_business_date': effectiveFromBusinessDate,
+        'updated_by': actorUserId,
+      };
+      final setClauses = <String>[
+        'business_day_start_local_time = @business_day_start_local_time::time',
+        'week_start_day = @week_start_day',
+        'effective_from_business_date = @effective_from_business_date::date',
+        'updated_by = @updated_by::uuid',
+      ];
+      if (clearDisplayName) {
+        setClauses.add('display_name = null');
+      } else if (displayName != null) {
+        setClauses.add('display_name = @display_name');
+        params['display_name'] = displayName;
+      }
+      await exec.execute(
+        'update public.business_timing_profiles '
+        '   set ${setClauses.join(', ')} '
+        ' where operator_id = @operator_id::uuid '
+        '   and profile_id = @profile_id::uuid',
+        parameters: params,
+      );
+      final after = await _fetchProfileById(
+        exec,
+        operatorId: operatorId,
+        profileId: profileId,
+      );
+      if (after == null) {
+        throw StateError('business timing profile vanished during update');
+      }
+      await _insertAuditEvent(
+        exec,
+        operatorId: operatorId,
+        profileId: profileId,
+        scopeType: after.scopeType,
+        scopeId: after.scopeId,
+        eventType: 'profile_updated',
+        actorKind: actorKind,
+        actorUserId: actorUserId,
+        reason: reason,
+        idempotencyKey: idempotencyKey,
+        beforeSnapshot: before.toJson(),
+        afterSnapshot: after.toJson(),
+        metadata: metadata,
+      );
+      return after;
+    });
+  }
+
   /// Replaces the whole service-period override set for an existing profile.
   /// An empty list clears the override so resolver inheritance can fall through
   /// to the next higher profile.

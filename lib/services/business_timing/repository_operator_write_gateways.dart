@@ -1,0 +1,259 @@
+// Phase 11W.7 / Wave A2 - repository-backed implementations of the
+// operator-scoped write gateways the proxy router consumes.
+//
+// Production wiring:
+//   * RepositoryOperatorAccountWriteGateway -> OperatorAccountRepository
+//     -> public.operators
+//   * RepositoryOperatorBusinessTimingWriteGateway ->
+//     BusinessTimingProfilesRepository -> public.business_timing_*
+//
+// The proxy router (`OperatorWriteRouter` in
+// tool/advisor_proxy/operator_routes.dart) keeps the HTTP envelope
+// shape and the audit log; these gateways do the SQL and re-shape
+// the resulting rows into the wire records the router writes.
+
+import '../../infrastructure/persistence/postgres/repositories/business_timing_profiles_repository.dart';
+import '../../infrastructure/persistence/postgres/repositories/operator_account_repository.dart';
+import 'business_timing_profile_validator.dart';
+import 'operator_write_contracts.dart';
+
+class RepositoryOperatorAccountWriteGateway
+    implements OperatorAccountWriteGateway {
+  RepositoryOperatorAccountWriteGateway({
+    required OperatorAccountRepository repository,
+  }) : _repository = repository;
+
+  final OperatorAccountRepository _repository;
+
+  @override
+  Future<OperatorAccountRecord> patchAccount({
+    required String operatorId,
+    required String actorUserId,
+    required String idempotencyKey,
+    required ValidatedOperatorAccountPatch patch,
+    required String adminReason,
+  }) async {
+    final row = await _repository.patch(
+      operatorId: operatorId,
+      // operators is identity-only; locationId is the SET LOCAL
+      // sentinel and is not used by the operators table itself.
+      locationId: operatorId,
+      columnFields: patch.fields,
+      userId: actorUserId,
+    );
+    if (row == null) {
+      throw const OperatorWriteRejected(
+        code: 'operator_not_found',
+        message: 'operator row was not found',
+        statusCode: 404,
+      );
+    }
+    return OperatorAccountRecord(
+      operatorId: row.operatorId,
+      businessName: row.businessName,
+      logoUrl: row.logoUrl,
+      currencyCode: row.currencyCode,
+      localeTag: row.localeTag,
+      weekStartDay: row.weekStartDay,
+      rolloverHour: row.rolloverHour,
+      updatedAt: row.updatedAt,
+    );
+  }
+}
+
+class RepositoryOperatorBusinessTimingWriteGateway
+    implements OperatorBusinessTimingWriteGateway {
+  RepositoryOperatorBusinessTimingWriteGateway({
+    required BusinessTimingProfilesRepository repository,
+  }) : _repository = repository;
+
+  final BusinessTimingProfilesRepository _repository;
+
+  @override
+  Future<OperatorBusinessTimingProfileRecord> createProfile({
+    required String operatorId,
+    required String actorUserId,
+    required String idempotencyKey,
+    required ValidatedBusinessTimingProfile validated,
+    required String adminReason,
+  }) async {
+    // The repository requires a locationId for tenant context; for
+    // operator-scope writes there is no location, so pass operatorId
+    // as a sentinel that satisfies the SET LOCAL contract without
+    // narrowing RLS for cross-location reads.
+    final row = await _repository.createProfile(
+      operatorId: operatorId,
+      locationId: operatorId,
+      scopeType: validated.scopeKind,
+      scopeId: validated.scopeId,
+      businessDayStartLocalTime: validated.businessDayStartLocal,
+      weekStartDay: validated.weekStartDayInt,
+      // Default close authority for operator-web first-time profile
+      // creation. Future surfaces can extend the validator to accept
+      // this on the wire.
+      closeAuthority: 'vendor_finalization',
+      effectiveFromBusinessDate: validated.effectiveAtBusinessDate,
+      actorUserId: actorUserId,
+      reason: adminReason,
+      idempotencyKey: idempotencyKey,
+      servicePeriods: <BusinessTimingServicePeriodWrite>[
+        for (var i = 0; i < validated.servicePeriods.length; i++)
+          _toServicePeriodWrite(validated.servicePeriods[i], i + 1),
+      ],
+    );
+    return _toRecord(row);
+  }
+
+  @override
+  Future<OperatorBusinessTimingProfileRecord?> loadProfile({
+    required String operatorId,
+    required String profileId,
+  }) async {
+    final row = await _repository.loadProfileById(
+      operatorId: operatorId,
+      locationId: operatorId,
+      profileId: profileId,
+    );
+    if (row == null) return null;
+    return _toRecord(row);
+  }
+
+  @override
+  Future<OperatorBusinessTimingProfileRecord> updateProfile({
+    required String operatorId,
+    required String actorUserId,
+    required String idempotencyKey,
+    required String profileId,
+    required ValidatedBusinessTimingProfile validated,
+    required String adminReason,
+  }) async {
+    final row = await _repository.updateProfile(
+      operatorId: operatorId,
+      locationId: operatorId,
+      profileId: profileId,
+      businessDayStartLocalTime: validated.businessDayStartLocal,
+      weekStartDay: validated.weekStartDayInt,
+      effectiveFromBusinessDate: validated.effectiveAtBusinessDate,
+      actorUserId: actorUserId,
+      reason: adminReason,
+      idempotencyKey: idempotencyKey,
+    );
+    if (row == null) {
+      throw const OperatorWriteRejected(
+        code: 'profile_not_found',
+        message: 'business timing profile was not found',
+        statusCode: 404,
+      );
+    }
+    // Replace the whole period set if the validator produced one.
+    final replaced = await _repository.replaceServicePeriods(
+      operatorId: operatorId,
+      locationId: operatorId,
+      profileId: profileId,
+      servicePeriods: <BusinessTimingServicePeriodWrite>[
+        for (var i = 0; i < validated.servicePeriods.length; i++)
+          _toServicePeriodWrite(validated.servicePeriods[i], i + 1),
+      ],
+      actorUserId: actorUserId,
+      reason: adminReason,
+      idempotencyKey: idempotencyKey,
+    );
+    return _toRecord(replaced ?? row);
+  }
+
+  @override
+  Future<OperatorBusinessTimingProfileRecord> replaceServicePeriodSet({
+    required String operatorId,
+    required String actorUserId,
+    required String idempotencyKey,
+    required String profileId,
+    required List<ValidatedServicePeriod> mergedSet,
+    required String eventKind,
+    required Map<String, Object?> auditPayload,
+    required String adminReason,
+  }) async {
+    final row = await _repository.replaceServicePeriods(
+      operatorId: operatorId,
+      locationId: operatorId,
+      profileId: profileId,
+      servicePeriods: <BusinessTimingServicePeriodWrite>[
+        for (var i = 0; i < mergedSet.length; i++)
+          _toServicePeriodWrite(mergedSet[i], i + 1),
+      ],
+      actorUserId: actorUserId,
+      reason: adminReason,
+      idempotencyKey: idempotencyKey,
+      metadata: auditPayload,
+    );
+    if (row == null) {
+      throw const OperatorWriteRejected(
+        code: 'profile_not_found',
+        message: 'business timing profile was not found',
+        statusCode: 404,
+      );
+    }
+    return _toRecord(row);
+  }
+
+  BusinessTimingServicePeriodWrite _toServicePeriodWrite(
+    ValidatedServicePeriod period,
+    int sortOrder,
+  ) {
+    return BusinessTimingServicePeriodWrite(
+      servicePeriodKey: period.key,
+      label: period.label,
+      shortLabel: '',
+      sortOrder: sortOrder,
+      startLocalTime: period.startLocal,
+      endLocalTime: period.endLocal,
+      rollsPastMidnight: period.rollsPastMidnight,
+      applicableWeekdays: const <int>[1, 2, 3, 4, 5, 6, 7],
+    );
+  }
+
+  OperatorBusinessTimingProfileRecord _toRecord(
+    BusinessTimingProfileRow row,
+  ) {
+    return OperatorBusinessTimingProfileRecord(
+      profileId: row.profileId,
+      scopeKind: row.scopeType,
+      scopeId: row.scopeId,
+      effectiveAtBusinessDate: row.effectiveFromBusinessDate,
+      ianaTimezone: row.locationTimezone ?? 'UTC',
+      weekStartDay: _weekStartIntToString(row.weekStartDay),
+      businessDayStartLocal: row.businessDayStartLocalTime,
+      servicePeriods: <OperatorBusinessTimingServicePeriodRecord>[
+        for (final period in row.servicePeriods)
+          OperatorBusinessTimingServicePeriodRecord(
+            key: period.servicePeriodKey,
+            label: period.label,
+            startLocal: period.startLocalTime,
+            endLocal: period.endLocalTime,
+            rollsPastMidnight: period.rollsPastMidnight,
+          ),
+      ],
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    );
+  }
+
+  String _weekStartIntToString(int day) {
+    switch (day) {
+      case 1:
+        return 'monday';
+      case 2:
+        return 'tuesday';
+      case 3:
+        return 'wednesday';
+      case 4:
+        return 'thursday';
+      case 5:
+        return 'friday';
+      case 6:
+        return 'saturday';
+      case 7:
+        return 'sunday';
+    }
+    return 'monday';
+  }
+}
