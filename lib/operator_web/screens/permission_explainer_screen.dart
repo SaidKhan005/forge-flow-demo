@@ -20,6 +20,8 @@
 //   * db/migrations/202604280014_phase_9_0sigma_h2_audit_privacy_role.sql
 //   * db/migrations/202604300002_phase_9_mfa_hardening_launch_roles.sql
 //   * db/migrations/202605040000_phase_8_0_integration_framework.sql
+//   * db/migrations/202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql
+//   * db/migrations/202605061600_phase_11W_5_team_audit_log_export_key.sql
 //
 // Adding a new permission key requires updating the migration, the
 // catalog doc, `lib/auth/permission_keys.dart`, and this file's
@@ -160,7 +162,7 @@ const Map<String, String> kPermissionExplainerDescriptions =
           'provenance row capturing reader, reason, target, and records-read '
           'count. MFA required.',
 
-  // team.* (13)
+  // team.* (14)
   'team.users.view': "View the operator's user list.",
   'team.users.invite': 'Create invites for users in own operator.',
   'team.users.deactivate': 'Suspend a user in own operator.',
@@ -175,6 +177,8 @@ const Map<String, String> kPermissionExplainerDescriptions =
   'team.roles.assign': 'Grant role to user within own operator.',
   'team.roles.revoke': 'Revoke role from user within own operator.',
   'team.audit_log.view': 'View audit log scoped to own operator.',
+  'team.audit_log.export':
+      'View and export team audit log entries (CSV).',
   'team.session.force_logout':
       "Force-logout a user's sessions within own operator.",
 

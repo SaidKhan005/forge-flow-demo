@@ -40,10 +40,10 @@ the constants without seeding it, the test catches that.
 
 The catalog carries 84 keys across 7 categories in the core catalog
 (81 original + 2 admin keys added after baseline +
-`admin.users.reset_mfa_factors` added in 11A.14). The 13 `team.*` keys
-added across 9.0a and the MFA hardening slice live in their own section
-below; the Phase 8.0 single `integrations.configure` key adds a 9th
-category. The running total across all 9 categories is 98 keys.
+`admin.users.reset_mfa_factors` added in 11A.14). The 14 `team.*` keys
+added across 9.0a, the MFA hardening slice, and 11W.5 live in their own
+section below; the Phase 8.0 single `integrations.configure` key adds a
+9th category. The running total across all 9 categories is 99 keys.
 
 ### `product.*` (2)
 
@@ -153,7 +153,7 @@ also not by the 9.0 foundation seed.
 | `admin.service_principal.issue_token` | Issue short-lived service-principal JWTs for automation identities. MFA required. | yes |
 | `admin.audit_privacy.read` | Read raw advisor conversation content (encrypted columns) under the audit-privacy access path. Every call writes an `audit_logs` provenance row capturing reader, reason, target, and records-read count. MFA required. | yes |
 
-### `team.*` (13)
+### `team.*` (14)
 
 Operator self-service team management. Distinct from `admin.*` —
 `team.*` keys gate the operator-facing Settings → Team UX (lands in
@@ -162,10 +162,12 @@ without touching F&F-side admin paths.
 
 Added 2026-04-27 by the 9.0a multi-location scale-flow extensions
 slice, with `team.users.reset_mfa` added by the 2026-04-30 MFA
-hardening migration. None require MFA at the catalog level; the launch
-tier avoids mandatory MFA enforcement for admin-tier accounts until
-post-launch stability. The reset-MFA routes still require fresh sign-in
-through route logic because removing a second factor is sensitive.
+hardening migration and `team.audit_log.export` added by the 2026-05-06
+11W.5 catalog reconciliation slice. None require MFA at the catalog
+level; the launch tier avoids mandatory MFA enforcement for admin-tier
+accounts until post-launch stability. The reset-MFA routes still
+require fresh sign-in through route logic because removing a second
+factor is sensitive.
 
 | Key | Description | MFA |
 |---|---|---|
@@ -181,21 +183,26 @@ through route logic because removing a second factor is sensitive.
 | `team.roles.assign` | Grant role to user within own operator. | — |
 | `team.roles.revoke` | Revoke role from user within own operator. | — |
 | `team.audit_log.view` | View audit log scoped to own operator. | — |
+| `team.audit_log.export` | View and export team audit log entries (CSV). | — |
 | `team.session.force_logout` | Force-logout a user's sessions within own operator. | — |
 
 Baseline grants seeded by 9.0a:
 
 - `super_admin` gets every key in the catalog. The 9.0 seed grants all
   original keys, and the 9.0a audit-fix migration grants the later `team.*`
-  keys. The MFA hardening migration grants `team.users.reset_mfa`.
+  keys. The MFA hardening migration grants `team.users.reset_mfa`. The
+  11W.5 reconciliation migration grants `team.audit_log.export`.
 - `operator_owner` gets ALL `team.*` keys, including
-  `team.users.reset_mfa`.
+  `team.users.reset_mfa` and `team.audit_log.export`.
+- `operator_admin` (when seeded) gets `team.audit_log.export` so the
+  Operator Web Audit Log CSV export action carries an honest gate.
 - `operator_manager` gets the manager-tier subset:
   `team.users.view`, `team.users.invite`, `team.users.reactivate`,
   `team.users.reset_password`, `team.roles.view`,
   `team.roles.assign`, `team.roles.revoke`, `team.audit_log.view`,
   `team.session.force_logout`. Manager **cannot** create custom roles,
-  soft-delete users, or reset MFA by default (locked).
+  soft-delete users, reset MFA, or export audit logs by default
+  (locked); pulling a full audit trail to CSV is a senior-role action.
 - `operator_supervisor` and `operator_staff` get nothing in
   `team.*`.
 
