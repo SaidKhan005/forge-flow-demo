@@ -573,6 +573,28 @@ class TargetProfileVersionPostgresRow {
   final double theoreticalLaborPct;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'target_profile_version_id': targetProfileVersionId,
+    'operator_id': operatorId,
+    'location_id': locationId,
+    'target_profile_id': targetProfileId,
+    'restaurant_id': restaurantId,
+    'target_cycle_id': targetCycleId,
+    'source_type': sourceType,
+    'target_cplh': targetCplh,
+    'target_splh': targetSplh,
+    'target_ppa': targetPpa,
+    'foh_wage': fohWage,
+    'boh_wage': bohWage,
+    'opz_floor_cplh': opzFloorCplh,
+    'opz_ceiling_cplh': opzCeilingCplh,
+    'theoretical_foh_labor_pct': theoreticalFohLaborPct,
+    'theoretical_boh_labor_pct': theoreticalBohLaborPct,
+    'theoretical_labor_pct': theoreticalLaborPct,
+    'created_at': createdAt.toUtc().toIso8601String(),
+    'updated_at': updatedAt.toUtc().toIso8601String(),
+  };
 }
 
 ActiveTargetProfilePostgresRow _profileRowFromMap(PostgresRow row) {

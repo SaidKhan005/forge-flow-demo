@@ -117,9 +117,13 @@ export 'star_target_routes.dart'
         SelectedStarTargetRouteAction,
         SelectedStarTargetRouteMatch,
         SelectedStarTargetRouteResult,
+        SelectedStarTargetRouteResource,
         SelectedStarTargetRouter,
+        activeTargetProfilesResource,
         selectedStarShiftDecisionsResource,
-        selectedStarWritePermissionKey;
+        selectedStarWritePermissionKey,
+        targetCyclesResource,
+        targetProfileVersionsResource;
 
 /// Default in-memory idempotency cache shared by the password
 /// change / reset request / reset confirm routes when the route
@@ -11420,14 +11424,14 @@ Future<void> routeRequest(
           if (!scope.roles.any(kOperatorWriteRoles.contains)) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'forbidden',
-              'message':
-                  'operator owner or operator admin role is required',
+              'message': 'operator owner or operator admin role is required',
               'required_roles': kOperatorWriteRoles.toList(),
             });
             return;
           }
-          final operatorIdemKey =
-              request.headers.value('Idempotency-Key')?.trim();
+          final operatorIdemKey = request.headers
+              .value('Idempotency-Key')
+              ?.trim();
           if (operatorIdemKey == null || operatorIdemKey.isEmpty) {
             _writeJson(response, 400, <String, Object?>{
               'error': 'idempotency_key_missing',
@@ -11474,8 +11478,7 @@ Future<void> routeRequest(
             );
             _writeJson(response, 503, <String, Object?>{
               'error': 'operator_write_unavailable',
-              'message':
-                  'operator write is unavailable; please retry',
+              'message': 'operator write is unavailable; please retry',
             });
           }
           return;

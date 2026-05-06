@@ -5,7 +5,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/active_target_profile_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/selected_star_shift_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/target_cycle_repository.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 
 import '../../tool/advisor_proxy/advisor_proxy.dart';
@@ -14,9 +16,10 @@ const String _operatorId = '11111111-1111-1111-1111-111111111111';
 const String _locationId = '22222222-2222-2222-2222-222222222222';
 const String _userId = '33333333-3333-3333-3333-333333333333';
 const String _restaurantId = 'demo_restaurant';
+const String _baseOperatorLocationPath =
+    '/v1/operators/$_operatorId/locations/$_locationId';
 const String _basePath =
-    '/v1/operators/$_operatorId/locations/$_locationId/'
-    '$selectedStarShiftDecisionsResource';
+    '$_baseOperatorLocationPath/$selectedStarShiftDecisionsResource';
 
 Map<String, Object?> _selectBody({
   String recordKey = '2026-W19|Wednesday|dinner',
@@ -378,6 +381,117 @@ void main() {
       });
     });
 
+    test('read returns target-cycle and profile mirrors for sync', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          ctx.gateway.targetCycleRows = <TargetCyclePostgresRow>[
+            _targetCycleRow(updatedAt: DateTime.utc(2026, 5, 6, 18, 2)),
+          ];
+          ctx.gateway.activeProfileRows = <ActiveTargetProfilePostgresRow>[
+            _activeProfileRow(updatedAt: DateTime.utc(2026, 5, 6, 18, 3)),
+          ];
+          ctx.gateway.targetProfileVersionRows =
+              <TargetProfileVersionPostgresRow>[
+                _targetProfileVersionRow(
+                  updatedAt: DateTime.utc(2026, 5, 6, 18, 4),
+                ),
+              ];
+
+          final cycleResponse = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '$_baseOperatorLocationPath/$targetCyclesResource'
+              '?modified_since=2026-05-06T18:00:00Z&page_size=10',
+            ),
+          );
+          final profileResponse = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '$_baseOperatorLocationPath/$activeTargetProfilesResource'
+              '?modified_since=2026-05-06T18:00:00Z&page_size=11',
+            ),
+          );
+          final versionResponse = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '$_baseOperatorLocationPath/$targetProfileVersionsResource'
+              '?modified_since=2026-05-06T18:00:00Z&page_size=12',
+            ),
+          );
+
+          expect(cycleResponse.statusCode, equals(200));
+          expect(profileResponse.statusCode, equals(200));
+          expect(versionResponse.statusCode, equals(200));
+          expect(ctx.permissionGuard.contexts, isEmpty);
+          expect(ctx.gateway.targetCycleCalls.single.limit, equals(10));
+          expect(ctx.gateway.activeProfileCalls.single.limit, equals(11));
+          expect(
+            ctx.gateway.targetProfileVersionCalls.single.limit,
+            equals(12),
+          );
+
+          final cycleBody =
+              jsonDecode(cycleResponse.body) as Map<String, Object?>;
+          final cycles = cycleBody[targetCyclesResource] as List<dynamic>;
+          expect((cycles.single as Map<String, Object?>)['cycle_id'], _cycleId);
+          expect(cycleBody['next_cursor'], equals('2026-05-06T18:02:00.000Z'));
+
+          final profileBody =
+              jsonDecode(profileResponse.body) as Map<String, Object?>;
+          final profiles =
+              profileBody[activeTargetProfilesResource] as List<dynamic>;
+          expect(
+            (profiles.single as Map<String, Object?>)['target_cycle_id'],
+            _cycleId,
+          );
+          expect(
+            profileBody['next_cursor'],
+            equals('2026-05-06T18:03:00.000Z'),
+          );
+
+          final versionBody =
+              jsonDecode(versionResponse.body) as Map<String, Object?>;
+          final versions =
+              versionBody[targetProfileVersionsResource] as List<dynamic>;
+          expect(
+            (versions.single as Map<String, Object?>)['target_profile_id'],
+            _targetProfileId,
+          );
+          expect(
+            versionBody['next_cursor'],
+            equals('2026-05-06T18:04:00.000Z'),
+          );
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('read returns null cursor for an empty sync page', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '$_basePath?modified_since=2026-05-06T18:00:00Z&page_size=25',
+            ),
+          );
+
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['selected_star_shift_decisions'], isEmpty);
+          expect(body['next_cursor'], isNull);
+          expect(body['has_more'], isFalse);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test('read rejects caller scope mismatch', () async {
       await withRealHttp(() async {
         final ctx = await spinUp(
@@ -440,10 +554,21 @@ class _RecordingSelectedStarGateway implements SelectedStarTargetGateway {
       <SelectedStarShiftDecisionRow>[];
   List<SelectedStarShiftDecisionRow> currentRows =
       <SelectedStarShiftDecisionRow>[];
+  List<TargetCyclePostgresRow> targetCycleRows = <TargetCyclePostgresRow>[];
+  List<ActiveTargetProfilePostgresRow> activeProfileRows =
+      <ActiveTargetProfilePostgresRow>[];
+  List<TargetProfileVersionPostgresRow> targetProfileVersionRows =
+      <TargetProfileVersionPostgresRow>[];
   final List<({DateTime updatedAfter, int limit})> updatedSinceCalls =
       <({DateTime updatedAfter, int limit})>[];
   final List<({String restaurantId, int limit})> currentSelectionCalls =
       <({String restaurantId, int limit})>[];
+  final List<({DateTime updatedAfter, int limit})> targetCycleCalls =
+      <({DateTime updatedAfter, int limit})>[];
+  final List<({DateTime updatedAfter, int limit})> activeProfileCalls =
+      <({DateTime updatedAfter, int limit})>[];
+  final List<({DateTime updatedAfter, int limit})> targetProfileVersionCalls =
+      <({DateTime updatedAfter, int limit})>[];
 
   @override
   Future<SelectedStarShiftDecisionRow> recordDecision({
@@ -485,6 +610,44 @@ class _RecordingSelectedStarGateway implements SelectedStarTargetGateway {
   }) async {
     currentSelectionCalls.add((restaurantId: restaurantId, limit: limit));
     return currentRows;
+  }
+
+  @override
+  Future<List<TargetCyclePostgresRow>> listTargetCyclesUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit = 250,
+  }) async {
+    targetCycleCalls.add((updatedAfter: updatedAfter, limit: limit));
+    return targetCycleRows;
+  }
+
+  @override
+  Future<List<ActiveTargetProfilePostgresRow>>
+  listActiveTargetProfilesUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit = 250,
+  }) async {
+    activeProfileCalls.add((updatedAfter: updatedAfter, limit: limit));
+    return activeProfileRows;
+  }
+
+  @override
+  Future<List<TargetProfileVersionPostgresRow>>
+  listTargetProfileVersionsUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit = 250,
+  }) async {
+    targetProfileVersionCalls.add((updatedAfter: updatedAfter, limit: limit));
+    return targetProfileVersionRows;
   }
 }
 
@@ -534,6 +697,101 @@ SelectedStarShiftDecisionRow _row({
     idempotencyKey: idempotencyKey,
     requestHash: requestHash,
     metadata: const <String, Object?>{},
+    createdAt: DateTime.utc(2026, 5, 6, 18),
+    updatedAt: updatedAt ?? DateTime.utc(2026, 5, 6, 18),
+  );
+}
+
+const String _cycleId = '55555555-5555-5555-5555-555555555555';
+const String _targetProfileId = '66666666-6666-6666-6666-666666666666';
+const String _targetProfileVersionId = '77777777-7777-7777-7777-777777777777';
+
+TargetCyclePostgresRow _targetCycleRow({DateTime? updatedAt}) {
+  return TargetCyclePostgresRow(
+    cycleId: _cycleId,
+    operatorId: _operatorId,
+    locationId: _locationId,
+    restaurantId: _restaurantId,
+    source: 'recommended',
+    effectiveStart: '2026-05-04',
+    effectiveEnd: '2026-05-10',
+    calibrationWindowStart: '2026-04-20',
+    calibrationWindowEnd: '2026-05-03',
+    targetCplh: 12.0,
+    targetSplh: 152.0,
+    targetPpa: 42.5,
+    fohWage: 18.0,
+    bohWage: 20.0,
+    opzFloorCplh: 10.0,
+    opzCeilingCplh: 14.0,
+    managerOverrideUsed: false,
+    managerOverrideAt: null,
+    managerOverrideByUserId: null,
+    adminReplacedAt: null,
+    adminReplacedByUserId: null,
+    supersedesCycleId: null,
+    selectedShiftCount: 1,
+    selectedRecordKeys: const <String>['2026-W19|Wednesday|dinner'],
+    selectionDecisionIds: const <String>[
+      '44444444-4444-4444-4444-444444444444',
+    ],
+    replacementReason: null,
+    idempotencyKey: 'cycle-idem',
+    requestHash: 'cycle-hash',
+    createdBy: _userId,
+    createdAt: DateTime.utc(2026, 5, 6, 18),
+    updatedAt: updatedAt ?? DateTime.utc(2026, 5, 6, 18),
+    deactivatedAt: null,
+  );
+}
+
+ActiveTargetProfilePostgresRow _activeProfileRow({DateTime? updatedAt}) {
+  return ActiveTargetProfilePostgresRow(
+    targetProfileId: _targetProfileId,
+    operatorId: _operatorId,
+    locationId: _locationId,
+    restaurantId: _restaurantId,
+    targetCycleId: _cycleId,
+    targetProfileVersionId: _targetProfileVersionId,
+    sourceType: 'cycle_recommended',
+    targetCplh: 12.0,
+    targetSplh: 152.0,
+    targetPpa: 42.5,
+    fohWage: 18.0,
+    bohWage: 20.0,
+    opzFloorCplh: 10.0,
+    opzCeilingCplh: 14.0,
+    theoreticalFohLaborPct: 18.5,
+    theoreticalBohLaborPct: 8.25,
+    theoreticalLaborPct: 26.75,
+    builtAt: DateTime.utc(2026, 5, 6, 18, 1),
+    projectionSource: 'server_target_cycle_projection_service',
+    createdAt: DateTime.utc(2026, 5, 6, 18),
+    updatedAt: updatedAt ?? DateTime.utc(2026, 5, 6, 18),
+  );
+}
+
+TargetProfileVersionPostgresRow _targetProfileVersionRow({
+  DateTime? updatedAt,
+}) {
+  return TargetProfileVersionPostgresRow(
+    targetProfileVersionId: _targetProfileVersionId,
+    operatorId: _operatorId,
+    locationId: _locationId,
+    targetProfileId: _targetProfileId,
+    restaurantId: _restaurantId,
+    targetCycleId: _cycleId,
+    sourceType: 'cycle_recommended',
+    targetCplh: 12.0,
+    targetSplh: 152.0,
+    targetPpa: 42.5,
+    fohWage: 18.0,
+    bohWage: 20.0,
+    opzFloorCplh: 10.0,
+    opzCeilingCplh: 14.0,
+    theoreticalFohLaborPct: 18.5,
+    theoreticalBohLaborPct: 8.25,
+    theoreticalLaborPct: 26.75,
     createdAt: DateTime.utc(2026, 5, 6, 18),
     updatedAt: updatedAt ?? DateTime.utc(2026, 5, 6, 18),
   );

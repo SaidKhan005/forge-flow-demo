@@ -2,13 +2,18 @@
 //
 // Routes:
 //   GET  /v1/operators/:operator_id/locations/:location_id/selected_star_shift_decisions
+//   GET  /v1/operators/:operator_id/locations/:location_id/target_cycles
+//   GET  /v1/operators/:operator_id/locations/:location_id/active_target_profiles
+//   GET  /v1/operators/:operator_id/locations/:location_id/target_profile_versions
 //   POST /v1/operators/:operator_id/locations/:location_id/selected_star_shift_decisions/select
 //   POST /v1/operators/:operator_id/locations/:location_id/selected_star_shift_decisions/clear
 //
 // The route layer owns HTTP validation, request hashing, and idempotency
 // replay. The repository owns the selected-star decision row and audit row.
 
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/active_target_profile_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/selected_star_shift_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/target_cycle_repository.dart';
 
 import 'operator_routes.dart'
     show
@@ -18,6 +23,9 @@ import 'operator_routes.dart'
 
 const String selectedStarShiftDecisionsResource =
     'selected_star_shift_decisions';
+const String targetCyclesResource = 'target_cycles';
+const String activeTargetProfilesResource = 'active_target_profiles';
+const String targetProfileVersionsResource = 'target_profile_versions';
 
 const String selectedStarShiftDecisionsPathPrefix = '/v1/operators/';
 
@@ -50,12 +58,25 @@ class SelectedStarTargetRouter {
     final operatorId = Uri.decodeComponent(parts[0]);
     final locationId = Uri.decodeComponent(parts[2]);
     final resource = parts.sublist(3).join('/');
-    if (method == 'GET' && resource == selectedStarShiftDecisionsResource) {
-      return SelectedStarTargetRouteMatch(
-        operatorId: operatorId,
-        locationId: locationId,
-        action: SelectedStarTargetRouteAction.read,
-      );
+    if (method == 'GET') {
+      final routeResource = switch (resource) {
+        selectedStarShiftDecisionsResource =>
+          SelectedStarTargetRouteResource.selectedStarShiftDecisions,
+        targetCyclesResource => SelectedStarTargetRouteResource.targetCycles,
+        activeTargetProfilesResource =>
+          SelectedStarTargetRouteResource.activeTargetProfiles,
+        targetProfileVersionsResource =>
+          SelectedStarTargetRouteResource.targetProfileVersions,
+        _ => null,
+      };
+      if (routeResource != null) {
+        return SelectedStarTargetRouteMatch(
+          operatorId: operatorId,
+          locationId: locationId,
+          action: SelectedStarTargetRouteAction.read,
+          resource: routeResource,
+        );
+      }
     }
     if (method == 'POST' &&
         resource == '$selectedStarShiftDecisionsResource/select') {
@@ -63,6 +84,7 @@ class SelectedStarTargetRouter {
         operatorId: operatorId,
         locationId: locationId,
         action: SelectedStarTargetRouteAction.select,
+        resource: SelectedStarTargetRouteResource.selectedStarShiftDecisions,
       );
     }
     if (method == 'POST' &&
@@ -71,6 +93,7 @@ class SelectedStarTargetRouter {
         operatorId: operatorId,
         locationId: locationId,
         action: SelectedStarTargetRouteAction.clear,
+        resource: SelectedStarTargetRouteResource.selectedStarShiftDecisions,
       );
     }
     return null;
@@ -228,6 +251,16 @@ class SelectedStarTargetRouter {
     final limit = _limitFromQuery(queryParameters);
     final currentOnly = _boolQuery(queryParameters['current']);
     if (currentOnly) {
+      if (match.resource !=
+          SelectedStarTargetRouteResource.selectedStarShiftDecisions) {
+        return const SelectedStarTargetRouteResult(
+          statusCode: 400,
+          body: <String, Object?>{
+            'error': 'current_query_not_supported',
+            'message': 'current=true is only supported for selected stars',
+          },
+        );
+      }
       final restaurantId = _requiredQueryString(
         queryParameters,
         'restaurant_id',
@@ -241,9 +274,11 @@ class SelectedStarTargetRouter {
       );
       return _readResponse(
         match: match,
+        rowsKey: selectedStarShiftDecisionsResource,
         rows: rows,
         limit: limit,
-        nextCursorFallback: null,
+        rowUpdatedAt: (row) => row.updatedAt,
+        rowToJson: (row) => row.toJson(),
       );
     }
 
@@ -263,30 +298,85 @@ class SelectedStarTargetRouter {
         },
       );
     }
-    final rows = await _gateway.listUpdatedSince(
-      operatorId: match.operatorId,
-      locationId: match.locationId,
-      updatedAfter: updatedAfter,
-      userId: actorUserId,
-      limit: limit,
-    );
-    return _readResponse(
-      match: match,
-      rows: rows,
-      limit: limit,
-      nextCursorFallback: updatedAfter.toUtc().toIso8601String(),
-    );
+    switch (match.resource) {
+      case SelectedStarTargetRouteResource.selectedStarShiftDecisions:
+        final rows = await _gateway.listUpdatedSince(
+          operatorId: match.operatorId,
+          locationId: match.locationId,
+          updatedAfter: updatedAfter,
+          userId: actorUserId,
+          limit: limit,
+        );
+        return _readResponse<SelectedStarShiftDecisionRow>(
+          match: match,
+          rowsKey: selectedStarShiftDecisionsResource,
+          rows: rows,
+          limit: limit,
+          rowUpdatedAt: (row) => row.updatedAt,
+          rowToJson: (row) => row.toJson(),
+        );
+      case SelectedStarTargetRouteResource.targetCycles:
+        final rows = await _gateway.listTargetCyclesUpdatedSince(
+          operatorId: match.operatorId,
+          locationId: match.locationId,
+          updatedAfter: updatedAfter,
+          userId: actorUserId,
+          limit: limit,
+        );
+        return _readResponse<TargetCyclePostgresRow>(
+          match: match,
+          rowsKey: targetCyclesResource,
+          rows: rows,
+          limit: limit,
+          rowUpdatedAt: (row) => row.updatedAt,
+          rowToJson: (row) => row.toJson(),
+        );
+      case SelectedStarTargetRouteResource.activeTargetProfiles:
+        final rows = await _gateway.listActiveTargetProfilesUpdatedSince(
+          operatorId: match.operatorId,
+          locationId: match.locationId,
+          updatedAfter: updatedAfter,
+          userId: actorUserId,
+          limit: limit,
+        );
+        return _readResponse<ActiveTargetProfilePostgresRow>(
+          match: match,
+          rowsKey: activeTargetProfilesResource,
+          rows: rows,
+          limit: limit,
+          rowUpdatedAt: (row) => row.updatedAt,
+          rowToJson: (row) => row.toJson(),
+        );
+      case SelectedStarTargetRouteResource.targetProfileVersions:
+        final rows = await _gateway.listTargetProfileVersionsUpdatedSince(
+          operatorId: match.operatorId,
+          locationId: match.locationId,
+          updatedAfter: updatedAfter,
+          userId: actorUserId,
+          limit: limit,
+        );
+        return _readResponse<TargetProfileVersionPostgresRow>(
+          match: match,
+          rowsKey: targetProfileVersionsResource,
+          rows: rows,
+          limit: limit,
+          rowUpdatedAt: (row) => row.updatedAt,
+          rowToJson: (row) => row.toJson(),
+        );
+    }
   }
 
-  SelectedStarTargetRouteResult _readResponse({
+  SelectedStarTargetRouteResult _readResponse<T>({
     required SelectedStarTargetRouteMatch match,
-    required List<SelectedStarShiftDecisionRow> rows,
+    required String rowsKey,
+    required List<T> rows,
     required int limit,
-    required String? nextCursorFallback,
+    required DateTime Function(T row) rowUpdatedAt,
+    required Map<String, Object?> Function(T row) rowToJson,
   }) {
-    String? nextCursor = nextCursorFallback;
+    String? nextCursor;
     for (final row in rows) {
-      final value = row.updatedAt.toUtc().toIso8601String();
+      final value = rowUpdatedAt(row).toUtc().toIso8601String();
       if (nextCursor == null || value.compareTo(nextCursor) > 0) {
         nextCursor = value;
       }
@@ -296,9 +386,7 @@ class SelectedStarTargetRouter {
       body: <String, Object?>{
         'operator_id': match.operatorId,
         'location_id': match.locationId,
-        'selected_star_shift_decisions': <Map<String, Object?>>[
-          for (final row in rows) row.toJson(),
-        ],
+        rowsKey: <Map<String, Object?>>[for (final row in rows) rowToJson(row)],
         'next_cursor': nextCursor,
         'has_more': rows.length == limit,
       },
@@ -308,16 +396,25 @@ class SelectedStarTargetRouter {
 
 enum SelectedStarTargetRouteAction { read, select, clear }
 
+enum SelectedStarTargetRouteResource {
+  selectedStarShiftDecisions,
+  targetCycles,
+  activeTargetProfiles,
+  targetProfileVersions,
+}
+
 class SelectedStarTargetRouteMatch {
   const SelectedStarTargetRouteMatch({
     required this.operatorId,
     required this.locationId,
     required this.action,
+    required this.resource,
   });
 
   final String operatorId;
   final String locationId;
   final SelectedStarTargetRouteAction action;
+  final SelectedStarTargetRouteResource resource;
 }
 
 class SelectedStarTargetRouteResult {
@@ -351,12 +448,44 @@ abstract class SelectedStarTargetGateway {
     String? userId,
     int limit,
   });
+
+  Future<List<TargetCyclePostgresRow>> listTargetCyclesUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit,
+  });
+
+  Future<List<ActiveTargetProfilePostgresRow>>
+  listActiveTargetProfilesUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit,
+  });
+
+  Future<List<TargetProfileVersionPostgresRow>>
+  listTargetProfileVersionsUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit,
+  });
 }
 
 class RepositorySelectedStarTargetGateway implements SelectedStarTargetGateway {
-  RepositorySelectedStarTargetGateway({required this.repository});
+  RepositorySelectedStarTargetGateway({
+    required this.repository,
+    this.targetCycleRepository,
+    this.activeTargetProfileRepository,
+  });
 
   final SelectedStarShiftRepository repository;
+  final TargetCycleRepository? targetCycleRepository;
+  final ActiveTargetProfileRepository? activeTargetProfileRepository;
 
   @override
   Future<SelectedStarShiftDecisionRow> recordDecision({
@@ -395,6 +524,71 @@ class RepositorySelectedStarTargetGateway implements SelectedStarTargetGateway {
       operatorId: operatorId,
       locationId: locationId,
       restaurantId: restaurantId,
+      userId: userId,
+      limit: limit,
+    );
+  }
+
+  @override
+  Future<List<TargetCyclePostgresRow>> listTargetCyclesUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit = 250,
+  }) {
+    final repo = targetCycleRepository;
+    if (repo == null) {
+      throw StateError('TargetCycleRepository is not configured');
+    }
+    return repo.listUpdatedSince(
+      operatorId: operatorId,
+      locationId: locationId,
+      updatedAfter: updatedAfter,
+      userId: userId,
+      limit: limit,
+    );
+  }
+
+  @override
+  Future<List<ActiveTargetProfilePostgresRow>>
+  listActiveTargetProfilesUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit = 250,
+  }) {
+    final repo = activeTargetProfileRepository;
+    if (repo == null) {
+      throw StateError('ActiveTargetProfileRepository is not configured');
+    }
+    return repo.listUpdatedSince(
+      operatorId: operatorId,
+      locationId: locationId,
+      updatedAfter: updatedAfter,
+      userId: userId,
+      limit: limit,
+    );
+  }
+
+  @override
+  Future<List<TargetProfileVersionPostgresRow>>
+  listTargetProfileVersionsUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit = 250,
+  }) {
+    final repo = activeTargetProfileRepository;
+    if (repo == null) {
+      throw StateError('ActiveTargetProfileRepository is not configured');
+    }
+    return repo.listVersionsUpdatedSince(
+      operatorId: operatorId,
+      locationId: locationId,
+      updatedAfter: updatedAfter,
       userId: userId,
       limit: limit,
     );
