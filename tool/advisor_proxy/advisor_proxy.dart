@@ -5918,6 +5918,9 @@ const String adminAuthRolesPath = '/v1/admin/auth/roles';
 const String adminAuthRolePrefix = '$adminAuthRolesPath/';
 const String adminAuthRoleGrantsPath = '/v1/admin/auth/role-grants';
 const String adminAuthRoleGrantPrefix = '$adminAuthRoleGrantsPath/';
+const String adminAuthSessionsPath = '/v1/admin/auth/sessions';
+const String adminAuthSessionsPrefix = '$adminAuthSessionsPath/';
+const String adminAuthAuditLogPath = '/v1/admin/auth/audit-log';
 const String authTeamInvitesPath = '/v1/auth/team/invites';
 const String authTeamInvitePrefix = '$authTeamInvitesPath/';
 const String authTeamUsersPath = '/v1/auth/team/users';
@@ -8785,6 +8788,68 @@ Future<void> routeRequest(
               return;
             }
 
+            if (request.method == 'GET' &&
+                authOperationPath == adminAuthSessionsPath) {
+              if (!await requirePermission('team.users.view')) return;
+              final listed = await authOperationsGateway.listActiveSessions(
+                AuthActiveSessionsListCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'sessions': listed.sessions
+                    .map(
+                      (session) =>
+                          _authSessionSummaryToAdminJson(session, scope),
+                    )
+                    .toList(growable: false),
+              });
+              return;
+            }
+
+            if (request.method == 'GET' &&
+                authOperationPath == adminAuthAuditLogPath) {
+              if (!await requirePermission('team.users.view')) return;
+              final params = request.uri.queryParameters;
+              final rawLimit = int.tryParse(params['limit'] ?? '');
+              final rawCursor = int.tryParse(params['cursor'] ?? '');
+              final rawOffset = int.tryParse(params['offset'] ?? '');
+              final limit = rawLimit == null
+                  ? 200
+                  : (rawLimit < 1 ? 1 : (rawLimit > 200 ? 200 : rawLimit));
+              final offset = rawCursor ?? rawOffset ?? 0;
+              DateTime? parseUtc(String? raw) {
+                if (raw == null || raw.isEmpty) return null;
+                return DateTime.tryParse(raw)?.toUtc();
+              }
+
+              final listed = await authOperationsGateway.listAuthEventsForActor(
+                AuthEventListCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  limit: limit,
+                  offset: offset < 0 ? 0 : offset,
+                  eventKind: _authEventKindFromAdminAuditActions(
+                    params['actions'],
+                  ),
+                  from: parseUtc(params['from']),
+                  to: parseUtc(params['to']),
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'rows': listed.entries
+                    .map(
+                      (entry) => _authEventEntryToAdminAuditRow(entry, scope),
+                    )
+                    .toList(growable: false),
+                'next_cursor': listed.hasMore ? '${offset + limit}' : null,
+              });
+              return;
+            }
+
             if (request.method == 'POST' &&
                 authOperationPath == adminAuthRolesPath) {
               if (!await requirePermission('team.roles.create_custom')) return;
@@ -9035,6 +9100,50 @@ Future<void> routeRequest(
                       operatorId: scope.operatorId,
                       locationId: scope.locationId,
                       inviteId: inviteId,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'revoked': revoked.revoked,
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            if (request.method == 'POST' &&
+                authOperationPath.startsWith(adminAuthSessionsPrefix)) {
+              if (!await requirePermission('team.session.force_logout')) return;
+              final sessionId = _sessionRevokeIdFromPath(authOperationPath);
+              if (sessionId == null) {
+                _writeJson(response, 404, <String, Object?>{
+                  'error': 'not found',
+                  'method': request.method,
+                  'path': path,
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final targetUserId = _nonBlankString(body['user_id']);
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthSessionsPrefix$sessionId/revoke',
+                key: idempotencyKey,
+                compute: () async {
+                  final revoked = await authOperationsGateway.revokeSession(
+                    AuthSessionRevokeCommand(
+                      actorUserId: targetUserId ?? scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      sessionId: sessionId,
+                      reason:
+                          _nonBlankString(body['admin_reason']) ??
+                          _nonBlankString(body['reason']) ??
+                          'admin.session.force_logout',
                     ),
                   );
                   return CachedProxyResponse(
@@ -13559,6 +13668,12 @@ bool _isAdminAuthOperation(String path, String method) {
   if (method == 'GET' && authOperationPath == adminAuthUsersPath) {
     return true;
   }
+  if (method == 'GET' && authOperationPath == adminAuthSessionsPath) {
+    return true;
+  }
+  if (method == 'GET' && authOperationPath == adminAuthAuditLogPath) {
+    return true;
+  }
   if (method == 'GET' && authOperationPath == adminAuthInvitesPath) {
     return true;
   }
@@ -13570,6 +13685,10 @@ bool _isAdminAuthOperation(String path, String method) {
     return true;
   }
   if (method == 'POST' && authOperationPath.startsWith(adminAuthUsersPrefix)) {
+    return true;
+  }
+  if (method == 'POST' &&
+      authOperationPath.startsWith(adminAuthSessionsPrefix)) {
     return true;
   }
   if (method == 'POST' && authOperationPath == adminAuthRoleGrantsPath) {
@@ -13860,6 +13979,79 @@ Map<String, Object?> _authEventEntryToJson(AuthEventListEntry entry) {
   };
 }
 
+Map<String, Object?> _authEventEntryToAdminAuditRow(
+  AuthEventListEntry entry,
+  OperatorContext scope,
+) {
+  final occurredAt = entry.occurredAt.toUtc();
+  final adminReason = _nonBlankString(entry.payload['admin_reason']);
+  final actorKind = entry.eventType.startsWith('admin.') || adminReason != null
+      ? 'forge_admin'
+      : 'team_member';
+  return <String, Object?>{
+    'event_id': entry.eventId,
+    'action': entry.eventType,
+    'occurred_at': occurredAt.toIso8601String(),
+    'actor_user_id': scope.userId,
+    'actor_display_name': actorKind == 'forge_admin'
+        ? 'F&F admin'
+        : 'Team member',
+    'actor_email': '',
+    'actor_kind': actorKind,
+    'operator_id': scope.operatorId,
+    'target_kind': 'auth_event',
+    'target_id': entry.eventId,
+    'payload': <String, Object?>{
+      'event_kind': AuthEventLabels.wireKey(entry.eventKind),
+      'friendly_label': entry.friendlyLabel,
+      if (entry.subType != null) 'sub_type': entry.subType,
+      if (entry.ip != null) 'ip': entry.ip,
+      if (entry.userAgent != null) 'user_agent': entry.userAgent,
+      if (entry.geoCountry != null) 'geo_country': entry.geoCountry,
+      if (entry.scope != null) 'scope': entry.scope,
+      ...entry.payload,
+    },
+    'business_date': DateTime.utc(
+      occurredAt.year,
+      occurredAt.month,
+      occurredAt.day,
+    ).toIso8601String(),
+    'admin_reason': adminReason,
+    'row_hash': null,
+  };
+}
+
+AuthEventKind? _authEventKindFromAdminAuditActions(String? raw) {
+  final actions = (raw ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .where((value) => value.isNotEmpty)
+      .map(AuthEventLabels.fromWireKey)
+      .whereType<AuthEventKind>()
+      .toSet();
+  return actions.length == 1 ? actions.single : null;
+}
+
+Map<String, Object?> _authSessionSummaryToAdminJson(
+  AuthSessionSummary session,
+  OperatorContext scope,
+) {
+  final userLabel = scope.firebaseUid ?? scope.userId;
+  return <String, Object?>{
+    ..._authSessionSummaryToJson(session),
+    'user_id': scope.userId,
+    'user_display_name': userLabel,
+    'user_email': userLabel,
+    'last_active_at': session.lastSeenAt.toUtc().toIso8601String(),
+    'device_fingerprint':
+        session.deviceFingerprint ??
+        session.deviceLabel ??
+        session.userAgent ??
+        'Unknown device',
+    'ip_geo_city': session.geoCountry ?? session.ip ?? 'Unknown location',
+  };
+}
+
 Map<String, Object?> _authSessionSummaryToJson(AuthSessionSummary session) {
   return <String, Object?>{
     'session_id': session.sessionId,
@@ -13951,6 +14143,16 @@ _UserAction? _userActionFromPath(String path) {
     userId: Uri.decodeComponent(parts[0]),
     action: Uri.decodeComponent(parts[1]),
   );
+}
+
+String? _sessionRevokeIdFromPath(String path) {
+  if (!path.startsWith(adminAuthSessionsPrefix)) return null;
+  final rest = path.substring(adminAuthSessionsPrefix.length);
+  final parts = rest.split('/');
+  if (parts.length != 2 || parts[0].isEmpty || parts[1] != 'revoke') {
+    return null;
+  }
+  return Uri.decodeComponent(parts[0]);
 }
 
 class _UserAction {

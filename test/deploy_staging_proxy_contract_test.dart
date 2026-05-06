@@ -167,6 +167,11 @@ void main() {
       expect(script, isNot(contains('--set-env-vars \$envAssignments')));
     });
 
+    test('promotes source deploy traffic to the latest revision', () {
+      expect(script, contains('run services update-traffic'));
+      expect(script, contains(r'--to-latest'));
+    });
+
     test(
       'unions Firebase auth action hosts into the proxy CORS allow-list',
       () {
@@ -238,10 +243,7 @@ void main() {
     });
 
     test('prints cache-busted share URL with the admin origin intact', () {
-      expect(
-        script,
-        contains(r'${adminUrl}?cache_bust=preview-$safeName-'),
-      );
+      expect(script, contains(r'${adminUrl}?cache_bust=preview-$safeName-'));
       expect(
         script,
         isNot(contains(r'$adminUrl?cache_bust=preview-$safeName-')),
