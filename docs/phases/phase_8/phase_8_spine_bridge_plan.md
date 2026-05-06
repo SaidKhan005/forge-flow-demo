@@ -1,6 +1,6 @@
 # Phase 8 — Spine Bridge Plan
 
-Status: Sprint ACCEPT 2026-05-05 (11 sub-lanes + `.4` proof PASS 27/27); **sink-fanout running** as of 2026-05-06 — 1 of 14 lanes landed (`.1.AL` Aloha NCR Voyix `94ac00ac`); 13 lanes remain. Plus `8.business_date_denorm` ACCEPT 2026-05-06 (`c61c2ea7`).
+Status: Sprint ACCEPT 2026-05-05 (11 sub-lanes + `.4` proof PASS 27/27); **sink-fanout running** as of 2026-05-06 - 12 of 14 sink lanes landed; Oracle Simphony and OpenTable remain, plus `.7S.upgrade`. Plus `8.business_date_denorm` ACCEPT 2026-05-06 (`c61c2ea7`). Next mobile-core sprint planned: `8.first-connect-backfill-wire-in`.
 Updated: 2026-05-06
 Owner: Phase 8 / 8R / 8.S spine-bridge sprint + sink-fanout follow-up
 
@@ -101,10 +101,38 @@ OpenShiftSnapshotProjector -> `open_shift_snapshots` -> proxy pull -> mobile
 SQLite. Until that lane lands, any Shift service-period selector must render
 honest unavailable/demo/fallback states rather than implying a live vendor feed.
 
+## 2026-05-06 Next Sprint - First Connection Backfill Wire-In
+
+The live/closed truth component work landed, but the production trigger is not
+fully bound. `OpenShiftSnapshotProjector`,
+`CanonicalFactToClosedShiftInputAggregator`, and `PostgresShiftRecordWriter`
+exist and are tested, but real first-connection flow still needs a durable
+backfill job, connect enqueue, worker dispatch, and post-commit projector
+orchestrator.
+
+The next sprint is `8.first-connect-backfill-wire-in`, governed by:
+
+- `docs/contracts/mobile_core_first_connection_backfill_contract.md`
+- `docs/_execution/2026-05-06_mobile_core_first_connection_backfill_sprint_plan.md`
+
+It closes this path:
+
+```text
+admin connects vendor
+-> connector_connection persists
+-> first 60-day backfill work is enqueued
+-> worker claims work
+-> adapter.backfill writes canonical facts
+-> demo_mode_state flips after first committed row
+-> closed aggregator writes shift_records
+-> open projector writes open_shift_snapshots for current/open facts
+-> proxy/mobile sync pulls server truth
+```
+
 ## Out of scope (binding)
 
-- `OpenShiftSnapshot` / live in-progress canonical fact wiring →
-  follow-up sprint `8.spine-bridge-live`
+- First-connection backfill and live/closed production wire-in ->
+  follow-up sprint `8.first-connect-backfill-wire-in`
 - `ReservationBookSnapshot` mid-service updates → same follow-up
 - Wage editor "review/override" UX for per-position vendors →
   follow-up sprint `8.wage-editor-seed`
@@ -116,6 +144,10 @@ honest unavailable/demo/fallback states rather than implying a live vendor feed.
 ## Cross-references
 
 - Adapter registry merge → Lane `.0`
+- First-connection backfill sprint ->
+  `docs/_execution/2026-05-06_mobile_core_first_connection_backfill_sprint_plan.md`
+- First-connection backfill contract ->
+  `docs/contracts/mobile_core_first_connection_backfill_contract.md`
 - Sub-lane prompts → memory/handoff_prompt_next_wave_sprint.md
 - Wave B doctrine → memory/project_phase_8_engineer_all_17_doctrine.md
 - V1 lean cut 2 banned items → memory/project_v1_lean_cut_2_2026_05_03.md
