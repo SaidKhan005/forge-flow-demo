@@ -8989,16 +8989,30 @@ Future<void> routeRequest(
                 return;
               }
               if (!await requirePermission(permissionKey)) return;
+              final userActionRouteKey =
+                  '$adminAuthUsersPrefix${action.userId}/${action.action}';
               if (action.action == 'reset-password') {
-                await authOperationsGateway.requestPasswordReset(
-                  TeamPasswordResetCommand(
-                    actorUserId: scope.userId,
-                    operatorId: scope.operatorId,
-                    locationId: scope.locationId,
-                    targetUserId: action.userId,
-                  ),
+                final idempotencyKey = readIdempotencyKeyOrFail();
+                if (idempotencyKey == null) return;
+                final cached = await authOpsCache.runOrReplay(
+                  route: userActionRouteKey,
+                  key: idempotencyKey,
+                  compute: () async {
+                    await authOperationsGateway.requestPasswordReset(
+                      TeamPasswordResetCommand(
+                        actorUserId: scope.userId,
+                        operatorId: scope.operatorId,
+                        locationId: scope.locationId,
+                        targetUserId: action.userId,
+                      ),
+                    );
+                    return CachedProxyResponse(
+                      statusCode: 200,
+                      body: <String, Object?>{'ok': true},
+                    );
+                  },
                 );
-                _writeJson(response, 200, <String, Object?>{'ok': true});
+                _writeJson(response, cached.statusCode, cached.body);
                 return;
               }
               if (action.action == 'reset-mfa') {
@@ -9016,28 +9030,40 @@ Future<void> routeRequest(
                   requestedAt: clock().toUtc(),
                 );
                 if (!freshEnough) return;
-                final queued = await mfaOperationsGateway.revokeUserFactors(
-                  MfaRevokeUserFactorsCommand(
-                    actorUserId: scope.userId,
-                    operatorId: scope.operatorId,
-                    locationId: scope.locationId,
-                    targetUserId: action.userId,
-                    stepUpProofId: _freshAuthProofId(
-                      scope: scope,
-                      path: path,
-                      requestedAt: clock().toUtc(),
-                    ),
-                  ),
+                final idempotencyKey = readIdempotencyKeyOrFail();
+                if (idempotencyKey == null) return;
+                final cached = await authOpsCache.runOrReplay(
+                  route: userActionRouteKey,
+                  key: idempotencyKey,
+                  compute: () async {
+                    final queued = await mfaOperationsGateway.revokeUserFactors(
+                      MfaRevokeUserFactorsCommand(
+                        actorUserId: scope.userId,
+                        operatorId: scope.operatorId,
+                        locationId: scope.locationId,
+                        targetUserId: action.userId,
+                        stepUpProofId: _freshAuthProofId(
+                          scope: scope,
+                          path: path,
+                          requestedAt: clock().toUtc(),
+                        ),
+                      ),
+                    );
+                    return CachedProxyResponse(
+                      statusCode: 200,
+                      body: <String, Object?>{
+                        'ok': true,
+                        'requested_count': queued.requestedCount,
+                        'request_ids': queued.requestIds,
+                        if (queued.executeAfter != null)
+                          'execute_after': queued.executeAfter!
+                              .toUtc()
+                              .toIso8601String(),
+                      },
+                    );
+                  },
                 );
-                _writeJson(response, 200, <String, Object?>{
-                  'ok': true,
-                  'requested_count': queued.requestedCount,
-                  'request_ids': queued.requestIds,
-                  if (queued.executeAfter != null)
-                    'execute_after': queued.executeAfter!
-                        .toUtc()
-                        .toIso8601String(),
-                });
+                _writeJson(response, cached.statusCode, cached.body);
                 return;
               }
               if (action.action == 'cancel-mfa-removal') {
@@ -9057,44 +9083,70 @@ Future<void> routeRequest(
                   });
                   return;
                 }
-                final completed = await mfaOperationsGateway
-                    .cancelFactorRemoval(
-                      MfaCancelFactorRemovalCommand(
-                        actorUserId: scope.userId,
-                        operatorId: scope.operatorId,
-                        locationId: scope.locationId,
-                        targetUserId: action.userId,
-                        requestId: requestId,
-                      ),
+                final idempotencyKey = readIdempotencyKeyOrFail();
+                if (idempotencyKey == null) return;
+                final cached = await authOpsCache.runOrReplay(
+                  route: userActionRouteKey,
+                  key: idempotencyKey,
+                  compute: () async {
+                    final completed = await mfaOperationsGateway
+                        .cancelFactorRemoval(
+                          MfaCancelFactorRemovalCommand(
+                            actorUserId: scope.userId,
+                            operatorId: scope.operatorId,
+                            locationId: scope.locationId,
+                            targetUserId: action.userId,
+                            requestId: requestId,
+                          ),
+                        );
+                    return CachedProxyResponse(
+                      statusCode: 200,
+                      body: <String, Object?>{
+                        'ok': true,
+                        'cancelled': completed.cancelled,
+                      },
                     );
-                _writeJson(response, 200, <String, Object?>{
-                  'ok': true,
-                  'cancelled': completed.cancelled,
-                });
+                  },
+                );
+                _writeJson(response, cached.statusCode, cached.body);
                 return;
               }
 
-              final command = TeamUserStatusCommand(
-                actorUserId: scope.userId,
-                operatorId: scope.operatorId,
-                locationId: scope.locationId,
-                targetUserId: action.userId,
-                reason: _nonBlankString(body['reason']) ?? action.action,
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: userActionRouteKey,
+                key: idempotencyKey,
+                compute: () async {
+                  final command = TeamUserStatusCommand(
+                    actorUserId: scope.userId,
+                    operatorId: scope.operatorId,
+                    locationId: scope.locationId,
+                    targetUserId: action.userId,
+                    reason: _nonBlankString(body['reason']) ?? action.action,
+                  );
+                  final updated = switch (action.action) {
+                    'suspend' => await authOperationsGateway.suspendUser(
+                      command,
+                    ),
+                    'reactivate' => await authOperationsGateway.reactivateUser(
+                      command,
+                    ),
+                    'soft-delete' => await authOperationsGateway.softDeleteUser(
+                      command,
+                    ),
+                    _ => throw StateError('unreachable action'),
+                  };
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'updated': updated.updated,
+                    },
+                  );
+                },
               );
-              final updated = switch (action.action) {
-                'suspend' => await authOperationsGateway.suspendUser(command),
-                'reactivate' => await authOperationsGateway.reactivateUser(
-                  command,
-                ),
-                'soft-delete' => await authOperationsGateway.softDeleteUser(
-                  command,
-                ),
-                _ => throw StateError('unreachable action'),
-              };
-              _writeJson(response, 200, <String, Object?>{
-                'ok': true,
-                'updated': updated.updated,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
