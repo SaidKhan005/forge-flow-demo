@@ -408,6 +408,76 @@ Future<ProxyHealthMetric> eventOutboxRetentionLagProducer(
   });
 }
 
+// ─── Phase 10a.4 — bridge-lag tripwire producer ────────────────────
+//
+// Sister metric to `event_outbox_lag_seconds`. Where the existing
+// producer measures the AGE of the OLDEST UNDELIVERED row by
+// `created_at` (worst-case staleness across the table), this one
+// measures the seconds since the MOST RECENT pickup that has not
+// yet committed `delivered_at`. The two metrics catch different
+// failure modes:
+//
+//   * `event_outbox_lag_seconds` (created_at) — slow producer flush
+//     OR slow bridge: rises whenever rows pile up undelivered no
+//     matter where the slowness is.
+//   * `event_outbox_bridge_lag_seconds` (picked_up_at, this one) —
+//     bridge-side stuck-after-pickup: rises only when rows were
+//     claimed but not yet acknowledged by Pub/Sub.
+//
+// Q22 (Decision 33) thresholds bind both interpretations to the same
+// 60s / 300s pair; the single Q22 number is reported through both
+// producers so the tripwire evaluator can pick whichever the
+// admin/UX surface wants to surface and the producer envelope keeps
+// a single point of authority for the SQL semantics.
+//
+// SQL semantics: the prompt locks the body to
+// `EXTRACT(EPOCH FROM (now() - max(picked_up_at)))` over rows where
+// `delivered_at IS NULL`. A zero-row result and a NULL `max`
+// (every undelivered row still has `picked_up_at = NULL` waiting for
+// the bridge to claim) both project to lag = 0 — the green path —
+// because the bridge has nothing to be lagging on at that moment.
+// `event_outbox_lag_seconds` already covers the "rows piling up
+// unclaimed" case from the other angle.
+
+ProxyHealthMetric _eventOutboxBridgeLagTemplate() => const ProxyHealthMetric(
+  status: 'unknown',
+  value: null,
+  unit: 'seconds',
+  description:
+      'Seconds since the most recent event_outbox pickup that has not yet '
+      'committed delivered_at. Decision 33 fires yellow at 60s and red at '
+      '300s. Same Q22 lock as event_outbox_lag_seconds, different angle '
+      '(post-pickup bridge stall vs oldest-row staleness).',
+  source: 'event_outbox',
+  owner: 'Phase 10a',
+  thresholds: <String, Object?>{'yellow': 60, 'red': 300},
+  metadata: <String, Object?>{'tier': 2},
+);
+
+Future<ProxyHealthMetric> eventOutboxBridgeLagSecondsProducer(
+  ProxyHealthProducerContext context,
+) {
+  return runProducer(context, _eventOutboxBridgeLagTemplate, () async {
+    final rows = await context.runner.query(
+      'select extract(epoch from (now() - max(picked_up_at)))::double precision '
+      'as lag from public.event_outbox where delivered_at is null',
+    );
+    final raw = rows.isEmpty ? null : rows.first['lag'];
+    final lag = (raw as num?)?.toDouble() ?? 0.0;
+    return ProxyHealthMetric(
+      status: lag >= 300 ? 'red' : (lag >= 60 ? 'yellow' : 'green'),
+      value: lag,
+      unit: 'seconds',
+      description: _eventOutboxBridgeLagTemplate().description,
+      source: 'event_outbox',
+      owner: 'Phase 10a',
+      observedAt: context.now,
+      thresholds: _eventOutboxBridgeLagTemplate().thresholds,
+      metadata: const <String, Object?>{'tier': 2},
+    );
+  });
+}
+
 final Map<String, ProxyHealthProducer> outboxProducers =
     <String, ProxyHealthProducer>{
       'event_outbox_undelivered_count': eventOutboxUndeliveredCountProducer,
@@ -420,4 +490,7 @@ final Map<String, ProxyHealthProducer> outboxProducers =
       'event_outbox_retention_backlog': eventOutboxRetentionBacklogProducer,
       // Phase 10a.3 (layered) — retention sweep lag in hours.
       'event_outbox_retention_lag_hours': eventOutboxRetentionLagProducer,
+      // Phase 10a.4 — bridge-side post-pickup lag (sister metric).
+      'event_outbox_bridge_lag_seconds':
+          eventOutboxBridgeLagSecondsProducer,
     };

@@ -3521,6 +3521,21 @@ proxyHealthReservedMetrics = <String, ProxyHealthMetric>{
     thresholds: <String, Object?>{'yellow': 0.10, 'red': 0.25},
     metadata: <String, Object?>{'tier': 2},
   ),
+  // Phase 10a.4 — bridge-side post-pickup lag. Same Q22 thresholds as
+  // event_outbox_lag_seconds; SQL semantic differs (max(picked_up_at)
+  // vs min(created_at)) so the two metrics catch different stalls.
+  'event_outbox_bridge_lag_seconds': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description:
+        'Seconds since the most recent event_outbox pickup that has not '
+        'yet committed delivered_at (Decision 33).',
+    source: 'event_outbox',
+    owner: 'Phase 10a',
+    thresholds: <String, Object?>{'yellow': 60, 'red': 300},
+    metadata: <String, Object?>{'tier': 2},
+  ),
   'graph_node_count': ProxyHealthMetric(
     status: 'unknown',
     value: null,
@@ -3987,6 +4002,9 @@ const Map<String, ProxyHealthSurface> proxyHealthReservedSurfaces =
           'event_outbox_publish_error_rate',
           'event_outbox_dlq_depth',
           'notify_queue_usage_ratio',
+          // Phase 10a.4 — bridge-side post-pickup lag (sister metric to
+          // event_outbox_lag_seconds; both bound to the same Q22 lock).
+          'event_outbox_bridge_lag_seconds',
         ],
         owner: 'Phase 10a',
       ),
@@ -5826,6 +5844,15 @@ const String scopeSmokePath = '/v1/scope';
 const String usageSmokePath = '/v1/usage-smoke';
 const String advisorSmokePath = '/v1/advisor-smoke';
 
+// Phase 10a.4 — bridge tripwire status route. Read-only, platform-wide
+// aggregate (no tenant identifiers in payload), polled by the sync
+// badge every ~60s so the badge can shift to "Degraded" when ANY of
+// the four Q22 metrics fires red even while the WebSocket connection
+// is alive. Production wiring in `main.dart` runs the four producers
+// through the admin pool's `runAsSystem` (same pattern as
+// `_PostgresOperatorDiscoverer`) and packs them into the evaluator.
+const String realtimeTripwireStatusPath = '/v1/realtime/tripwire-status';
+
 // Phase 9 live-closeout - auth operations / permission snapshot routes.
 const String authAccountInfoPath = '/v1/auth/account';
 const String authPermissionsSnapshotPath = '/v1/auth/permissions/snapshot';
@@ -6566,6 +6593,42 @@ abstract class ObservabilityAdminProxyGateway {
   });
 }
 
+/// Phase 10a.4 — gateway for `/v1/realtime/tripwire-status`. The route
+/// is read-only, runs through `runAsSystem` because the four Q22
+/// metrics are platform-wide aggregates with no tenant identifiers,
+/// and is polled by the sync badge so the badge can shift to
+/// "Degraded" when ANY metric fires red even while the WebSocket
+/// connection itself is alive. Production wiring lives in
+/// `tool/advisor_proxy/main.dart`; tests inject a fake.
+abstract class RealtimeTripwireProxyGateway {
+  /// Returns the JSON envelope the route writes back. The shape is
+  /// stable wire contract:
+  ///
+  /// ```json
+  /// {
+  ///   "status": "green|yellow|red",
+  ///   "metrics": {
+  ///     "<metric_key>": {
+  ///       "value": <num|null>,
+  ///       "status": "green|yellow|red|unknown",
+  ///       "thresholds": {"yellow": <num>, "red": <num>}
+  ///     },
+  ///     ...
+  ///   },
+  ///   "breaches": [
+  ///     {"metric": "<key>", "value": <num>, "status": "yellow|red"},
+  ///     ...
+  ///   ],
+  ///   "checked_at": "<iso8601 utc>"
+  /// }
+  /// ```
+  ///
+  /// Sync badge consumers only need `status` to drive degraded; admin
+  /// observability consumers walk `metrics` to render one row per
+  /// metric. No tenant identifiers ever appear in the payload.
+  Future<Map<String, Object?>> fetch();
+}
+
 /// HARD-H — idempotency ledger for cross-tenant F&F admin routes.
 /// The Phase 9 `proxy_requests` table is per-tenant; admin routes
 /// driven by super_admin / ff_support actors have no operator scope
@@ -6887,6 +6950,11 @@ Future<void> routeRequest(
   // green. Production binds this to a `RealtimeReplayResolver` over
   // the publisher's recent-events ring buffer.
   RealtimeReplayFetcher? realtimeReplayFetcher,
+  // Phase 10a.4 — yellow/red tripwire status. Optional: when null,
+  // `/v1/realtime/tripwire-status` returns 503 so unauth probes still
+  // work and existing tests do not need to plumb a gateway through
+  // every call site.
+  RealtimeTripwireProxyGateway? realtimeTripwireGateway,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -7069,6 +7137,40 @@ Future<void> routeRequest(
             publisher: realtimePublisher,
             replayFetcher: realtimeReplayFetcher,
           );
+          return;
+        }
+
+        // Phase 10a.4 — bridge tripwire status. Read-only,
+        // platform-wide aggregate over the four Q22 metrics. The sync
+        // badge polls this every ~60s so it can shift to "Degraded"
+        // when ANY metric fires red while the WebSocket itself is
+        // still alive. No tenant identifiers in the response payload.
+        if (request.method == 'GET' && path == realtimeTripwireStatusPath) {
+          if (realtimeTripwireGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'realtime_tripwire_gateway_not_configured',
+              'message':
+                  'route requires a RealtimeTripwireProxyGateway to be installed',
+            });
+            return;
+          }
+          try {
+            final body = await realtimeTripwireGateway.fetch();
+            _writeJson(response, 200, body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'realtime_tripwire_status',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'realtime_tripwire_unavailable',
+              'message': 'tripwire status is unavailable; please retry',
+            });
+          }
           return;
         }
 
