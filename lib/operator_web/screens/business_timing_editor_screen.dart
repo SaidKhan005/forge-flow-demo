@@ -62,7 +62,12 @@ class _BusinessTimingEditorScreenState
   late TextEditingController _ianaTimezone;
   late TextEditingController _businessDayStartLocal;
   late DateTime _effectiveAt;
-  String _scopeKind = 'location';
+
+  /// Default to operator-scope: a brand-new operator typically has no
+  /// timing profile yet, and the first profile they write is the
+  /// operator default. Location overrides come later. Matches the
+  /// dropdown copy that labels operator scope as "(default)".
+  String _scopeKind = 'operator';
   String _weekStartDay = 'monday';
 
   bool _submitting = false;
@@ -104,12 +109,18 @@ class _BusinessTimingEditorScreenState
     _ianaTimezone = TextEditingController(
       text: existing?.ianaTimezone ?? 'America/Toronto',
     );
-    _businessDayStartLocal = TextEditingController(
-      text: existing?.businessDayStartLocal ??
-          (widget.session.rolloverHour != null
-              ? '${widget.session.rolloverHour!.toString().padLeft(2, '0')}:00'
-              : '04:00'),
-    );
+    final initialDayStart = existing?.businessDayStartLocal ??
+        (widget.session.rolloverHour != null
+            ? '${widget.session.rolloverHour!.toString().padLeft(2, '0')}:00'
+            : '04:00');
+    _businessDayStartLocal = TextEditingController(text: initialDayStart);
+    _businessDayStartLocal.addListener(_handleDayStartChanged);
+    // Seed the controller's day-start so the validator picks up rule
+    // 13 (business_day_start_inside_period) on the first paint.
+    Future<void>.microtask(() {
+      if (!mounted) return;
+      _periods.setBusinessDayStartLocal(initialDayStart);
+    });
     _effectiveAt = DateTime.now();
     if (existing != null) {
       _scopeKind = existing.scopeKind;
@@ -125,6 +136,7 @@ class _BusinessTimingEditorScreenState
     _periods.removeListener(_handleEditorChange);
     _periods.dispose();
     _ianaTimezone.dispose();
+    _businessDayStartLocal.removeListener(_handleDayStartChanged);
     _businessDayStartLocal.dispose();
     _successTimer?.cancel();
     super.dispose();
@@ -132,6 +144,11 @@ class _BusinessTimingEditorScreenState
 
   void _handleEditorChange() {
     if (mounted) setState(() {});
+  }
+
+  void _handleDayStartChanged() {
+    final value = _businessDayStartLocal.text.trim();
+    _periods.setBusinessDayStartLocal(value.isEmpty ? null : value);
   }
 
   bool get _hasGateway => widget.gateway != null;

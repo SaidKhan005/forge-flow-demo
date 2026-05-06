@@ -170,7 +170,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(gateway.creates, hasLength(1));
     final create = gateway.creates.single;
-    expect(create.scopeKind, 'location');
+    expect(create.scopeKind, 'operator');
     expect(create.weekStartDay, 'monday');
     expect(create.servicePeriods, isNotEmpty);
     expect(

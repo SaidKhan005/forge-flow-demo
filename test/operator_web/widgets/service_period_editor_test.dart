@@ -194,6 +194,68 @@ void main() {
         isTrue,
       );
     });
+
+    test('day-start inside period rejected with business_day_start_inside_period',
+        () {
+      final result = validateServicePeriods(
+        const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'lunch',
+            label: 'Lunch',
+            startLocal: '11:00',
+            endLocal: '15:00',
+          ),
+        ],
+        // Day starts at 12:00 which lands inside the lunch period.
+        businessDayStartLocal: '12:00',
+      );
+      expect(result.isValid, isFalse);
+      expect(
+        result.errors.any(
+          (e) => e.code == 'business_day_start_inside_period',
+        ),
+        isTrue,
+      );
+    });
+
+    test('day-start outside any period accepts the profile', () {
+      final result = validateServicePeriods(
+        const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'dinner',
+            label: 'Dinner',
+            startLocal: '17:00',
+            endLocal: '22:00',
+          ),
+        ],
+        // Day starts at 04:00, far outside dinner's 17:00 to 22:00.
+        businessDayStartLocal: '04:00',
+      );
+      expect(result.errors, isEmpty);
+      expect(result.isValid, isTrue);
+    });
+
+    test('day-start inside a past-midnight period also rejected', () {
+      final result = validateServicePeriods(
+        const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'late',
+            label: 'Late night',
+            startLocal: '22:00',
+            endLocal: '02:00',
+          ),
+        ],
+        // 01:00 is inside the rolling-past-midnight window 22:00 to 02:00.
+        businessDayStartLocal: '01:00',
+      );
+      expect(result.isValid, isFalse);
+      expect(
+        result.errors.any(
+          (e) => e.code == 'business_day_start_inside_period',
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('ServicePeriodEditor widget', () {

@@ -89,7 +89,17 @@ class ServicePeriodValidationError {
 
 /// Validates a draft set of service periods against the four binding
 /// rules. Pure function; safe to call from anywhere.
-ServicePeriodValidation validateServicePeriods(List<ServicePeriodDraft> draft) {
+///
+/// When [businessDayStartLocal] is supplied (HH:MM, quarter-hour), the
+/// validator additionally enforces business_timing_live_plan.md rule
+/// 13: the business day start must NOT fall inside any service
+/// period. Backend enforces the same rule and returns
+/// `business_day_start_inside_period`; surfacing it client-side gives
+/// the operator an inline error rather than a 400 round-trip.
+ServicePeriodValidation validateServicePeriods(
+  List<ServicePeriodDraft> draft, {
+  String? businessDayStartLocal,
+}) {
   final errors = <ServicePeriodValidationError>[];
   final warnings = <String>[];
 
@@ -235,6 +245,40 @@ ServicePeriodValidation validateServicePeriods(List<ServicePeriodDraft> draft) {
       '"${pastMidnight.first.label}" stretches past midnight. Make sure '
       'closing duties are scheduled for the right business date.',
     );
+  }
+
+  // Rule 13 from business_timing_live_plan.md: business day start
+  // cannot fall inside any service period. Surface client-side so the
+  // operator does not have to round-trip a 400 just to learn.
+  final dayStart = businessDayStartLocal == null
+      ? null
+      : _minutesOrNull(businessDayStartLocal);
+  if (dayStart != null) {
+    for (var i = 0; i < draft.length; i++) {
+      final p = draft[i];
+      if (!_isQuarterHour(p.startLocal) || !_isQuarterHour(p.endLocal)) {
+        continue;
+      }
+      final startMin = _minutesOrNull(p.startLocal);
+      final endMin = _minutesOrNull(p.endLocal);
+      if (startMin == null || endMin == null) continue;
+      final inside = p.rollsPastMidnight
+          ? (dayStart >= startMin || dayStart < endMin)
+          : (dayStart >= startMin && dayStart < endMin);
+      if (inside) {
+        errors.add(
+          ServicePeriodValidationError(
+            code: 'business_day_start_inside_period',
+            message:
+                'The business day start ($businessDayStartLocal) lands '
+                'inside "${p.label.isEmpty ? "service period ${i + 1}" : p.label}". '
+                'Move the day start outside that window or trim the period.',
+            periodIndex: i,
+          ),
+        );
+        break;
+      }
+    }
   }
 
   return ServicePeriodValidation(errors: errors, warnings: warnings);
@@ -678,14 +722,27 @@ class _ValidationBanner extends StatelessWidget {
 class ServicePeriodEditorController extends ChangeNotifier {
   ServicePeriodEditorController({
     required List<ServicePeriodDraft> initial,
-  }) : _periods = List<ServicePeriodDraft>.from(initial);
+    String? businessDayStartLocal,
+  })  : _periods = List<ServicePeriodDraft>.from(initial),
+        _businessDayStartLocal = businessDayStartLocal;
 
   List<ServicePeriodDraft> _periods;
+  String? _businessDayStartLocal;
 
   List<ServicePeriodDraft> get periods =>
       List<ServicePeriodDraft>.unmodifiable(_periods);
 
-  ServicePeriodValidation get validation => validateServicePeriods(_periods);
+  /// Optional business-day start that participates in rule 13
+  /// validation (business_day_start_inside_period). When the parent
+  /// screen owns this state, it should call [setBusinessDayStartLocal]
+  /// whenever the field changes so the validation banner stays in
+  /// sync.
+  String? get businessDayStartLocal => _businessDayStartLocal;
+
+  ServicePeriodValidation get validation => validateServicePeriods(
+        _periods,
+        businessDayStartLocal: _businessDayStartLocal,
+      );
 
   void updateAt(int index, ServicePeriodDraft next) {
     if (index < 0 || index >= _periods.length) return;
@@ -716,6 +773,14 @@ class ServicePeriodEditorController extends ChangeNotifier {
 
   void replaceAll(List<ServicePeriodDraft> next) {
     _periods = List<ServicePeriodDraft>.from(next);
+    notifyListeners();
+  }
+
+  /// Updates the business-day start used by rule-13 validation. Pass
+  /// null to clear the check (e.g. when the field is cleared).
+  void setBusinessDayStartLocal(String? next) {
+    if (_businessDayStartLocal == next) return;
+    _businessDayStartLocal = next;
     notifyListeners();
   }
 }

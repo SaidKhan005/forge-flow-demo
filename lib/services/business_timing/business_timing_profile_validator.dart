@@ -456,7 +456,23 @@ ValidatedServicePeriod _validateServicePeriodEntry(
   final end = _requireQuarterHour(body, 'endLocal', index: index);
   final startMinute = _quarterHourToMinute(start);
   final endMinute = _quarterHourToMinute(end);
-  final rolls = endMinute <= startMinute;
+  // Reject zero-length periods. start == end can either mean
+  // "instantaneous" (nonsense) or "24 hours straight" (forbidden by
+  // the four-rule contract: a single period covering 24h leaves no
+  // room for any other and contradicts business_day_start). The
+  // editor-side validator surfaces this with the matching code.
+  if (startMinute == endMinute) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_service_period_range',
+      message: 'service period start and end times cannot be equal',
+      path: '/servicePeriods/$index/endLocal',
+      extras: <String, Object?>{
+        'startLocal': start,
+        'endLocal': end,
+      },
+    );
+  }
+  final rolls = endMinute < startMinute;
   return ValidatedServicePeriod(
     key: key,
     label: label,
