@@ -1,0 +1,745 @@
+// Phase 11A.13 - Roles + Hierarchy + Sessions admin gateway tests.
+//
+// Three coverage groups, mirroring the 11A.12 Members gateway test
+// shape:
+//
+//   * `InMemoryRolesHierarchySessionsAdminGateway` - exercises the
+//     demo gateway's command/response shapes, the audit-row shape,
+//     the forge_admin gate, the admin_reason gate, the idempotency
+//     contract, and the cannot_revoke_self defence.
+//
+//   * Audit-action enum conformance to § "Audit-row shape" of the
+//     parity contract: identical canonical fact rows across
+//     self-service and admin paths, so the locked vocabulary stays
+//     in the `team.*` / `admin.session.*` family.
+//
+//   * `HttpRolesHierarchySessionsAdminGateway` - pins the wire format
+//     of the live gateway against a mocked `http.Client`: paths +
+//     payload + idempotency-key header + bearer token + 403 mapping.
+//
+// Authority: docs/contracts/team_roles_hierarchy_console_parity_contract.md.
+
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart' as http_testing;
+
+void main() {
+  group('InMemoryRolesHierarchySessionsAdminGateway list APIs', () {
+    test('listRoles returns seeded + custom roles for the picked operator',
+        () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+      );
+      final dinerRoles =
+          await gateway.listRoles(operatorId: kDemoDinerOperatorId);
+      final sunsetRoles =
+          await gateway.listRoles(operatorId: kDemoSunsetOperatorId);
+      expect(dinerRoles.where((r) => r.isSeeded), isNotEmpty);
+      expect(dinerRoles.where((r) => !r.isSeeded), isNotEmpty);
+      expect(
+        sunsetRoles.every((r) => r.isSeeded),
+        isTrue,
+        reason: 'sunset demo seed has no custom roles',
+      );
+    });
+
+    test('listOrgUnits returns the operator-scoped tree', () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+      );
+      final units =
+          await gateway.listOrgUnits(operatorId: kDemoDinerOperatorId);
+      final roots =
+          units.where((u) => u.parentOrgUnitId == null).toList();
+      expect(roots, hasLength(1));
+      expect(roots.single.name, equals('Demo Diner Co.'));
+      final children =
+          units.where((u) => u.parentOrgUnitId != null).toList();
+      expect(children.map((u) => u.name).toSet(),
+          equals(<String>{'East region', 'West region'}));
+    });
+
+    test('listSessions returns one row per auth_sessions row', () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        sessionsByOperator: kDemoSessionsByOperator(),
+      );
+      final sessions =
+          await gateway.listSessions(operatorId: kDemoDinerOperatorId);
+      expect(sessions, hasLength(3));
+      for (final s in sessions) {
+        expect(s.userEmail, isNotEmpty);
+        expect(s.deviceFingerprint, isNotEmpty);
+        expect(s.ipGeoCity, isNotEmpty);
+      }
+    });
+  });
+
+  group('forge_admin + admin_reason gates', () {
+    test('every mutation throws Forbidden when actorIsForgeAdmin is false',
+        () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+        locationsByOperator: kDemoHierarchyLocationsByOperator(),
+        sessionsByOperator: kDemoSessionsByOperator(),
+      );
+      await expectLater(
+        gateway.editSeededRole(
+          operatorId: kDemoDinerOperatorId,
+          roleId: 'role-seed-operator-owner',
+          permissionKeys: const <String>['team.users.view'],
+          idempotencyKey: 'k1',
+          actorUserId: 'demo-non-admin',
+          actorIsForgeAdmin: false,
+          adminReason: 'why',
+        ),
+        throwsA(isA<RolesHierarchySessionsForbiddenException>()),
+      );
+      await expectLater(
+        gateway.createCustomRole(
+          operatorId: kDemoDinerOperatorId,
+          roleKey: 'custom.test',
+          displayName: 'T',
+          description: '',
+          permissionKeys: const <String>[],
+          idempotencyKey: 'k2',
+          actorUserId: 'demo-non-admin',
+          actorIsForgeAdmin: false,
+          adminReason: 'why',
+        ),
+        throwsA(isA<RolesHierarchySessionsForbiddenException>()),
+      );
+      await expectLater(
+        gateway.deleteCustomRole(
+          operatorId: kDemoDinerOperatorId,
+          roleId: 'role-custom-floor-captain',
+          idempotencyKey: 'k3',
+          actorUserId: 'demo-non-admin',
+          actorIsForgeAdmin: false,
+          adminReason: 'why',
+        ),
+        throwsA(isA<RolesHierarchySessionsForbiddenException>()),
+      );
+      await expectLater(
+        gateway.moveOrgUnit(
+          operatorId: kDemoDinerOperatorId,
+          orgUnitId: kDemoDinerOrgUnitEast,
+          newParentOrgUnitId: kDemoDinerOrgUnitRoot,
+          idempotencyKey: 'k4',
+          actorUserId: 'demo-non-admin',
+          actorIsForgeAdmin: false,
+          adminReason: 'why',
+        ),
+        throwsA(isA<RolesHierarchySessionsForbiddenException>()),
+      );
+      await expectLater(
+        gateway.moveLocation(
+          operatorId: kDemoDinerOperatorId,
+          locationId: kDemoDinerLocationToronto,
+          newOrgUnitId: kDemoDinerOrgUnitWest,
+          idempotencyKey: 'k5',
+          actorUserId: 'demo-non-admin',
+          actorIsForgeAdmin: false,
+          adminReason: 'why',
+        ),
+        throwsA(isA<RolesHierarchySessionsForbiddenException>()),
+      );
+      await expectLater(
+        gateway.forceLogoutSession(
+          operatorId: kDemoDinerOperatorId,
+          sessionId: 'session-diner-owner-mobile',
+          userId: 'demo-user-diner-owner',
+          idempotencyKey: 'k6',
+          actorUserId: 'demo-non-admin',
+          actorIsForgeAdmin: false,
+          adminReason: 'why',
+        ),
+        throwsA(isA<RolesHierarchySessionsForbiddenException>()),
+      );
+      expect(gateway.capturedAuditEvents, isEmpty);
+    });
+
+    test('every mutation rejects empty admin_reason', () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+        locationsByOperator: kDemoHierarchyLocationsByOperator(),
+        sessionsByOperator: kDemoSessionsByOperator(),
+      );
+      for (final call in <Future<void> Function()>[
+        () => gateway.editSeededRole(
+              operatorId: kDemoDinerOperatorId,
+              roleId: 'role-seed-operator-owner',
+              permissionKeys: const <String>['team.users.view'],
+              idempotencyKey: 'k1',
+              actorUserId: 'demo-super-admin',
+              actorIsForgeAdmin: true,
+              adminReason: '   ',
+            ),
+        () => gateway.createCustomRole(
+              operatorId: kDemoDinerOperatorId,
+              roleKey: 'custom.x',
+              displayName: 'X',
+              description: '',
+              permissionKeys: const <String>[],
+              idempotencyKey: 'k2',
+              actorUserId: 'demo-super-admin',
+              actorIsForgeAdmin: true,
+              adminReason: '',
+            ),
+        () => gateway.moveOrgUnit(
+              operatorId: kDemoDinerOperatorId,
+              orgUnitId: kDemoDinerOrgUnitEast,
+              newParentOrgUnitId: kDemoDinerOrgUnitRoot,
+              idempotencyKey: 'k3',
+              actorUserId: 'demo-super-admin',
+              actorIsForgeAdmin: true,
+              adminReason: '',
+            ),
+        () => gateway.moveLocation(
+              operatorId: kDemoDinerOperatorId,
+              locationId: kDemoDinerLocationToronto,
+              newOrgUnitId: kDemoDinerOrgUnitWest,
+              idempotencyKey: 'k4',
+              actorUserId: 'demo-super-admin',
+              actorIsForgeAdmin: true,
+              adminReason: '',
+            ),
+        () => gateway.forceLogoutSession(
+              operatorId: kDemoDinerOperatorId,
+              sessionId: 'session-diner-owner-mobile',
+              userId: 'demo-user-diner-owner',
+              idempotencyKey: 'k5',
+              actorUserId: 'demo-super-admin',
+              actorIsForgeAdmin: true,
+              adminReason: '',
+            ),
+      ]) {
+        await expectLater(
+          call(),
+          throwsA(
+            isA<RolesHierarchySessionsGatewayError>().having(
+              (e) => e.errorCode,
+              'errorCode',
+              equals('admin_reason_required'),
+            ),
+          ),
+        );
+      }
+    });
+  });
+
+  group('audit-row shape (parity § Audit-row shape)', () {
+    test(
+      'every captured audit event carries forge_admin + locked action + admin_reason + business_date',
+      () async {
+        final clock = DateTime.utc(2026, 5, 5, 12, 30);
+        final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+          rolesByOperator: kDemoRolesByOperator(),
+          orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+          locationsByOperator: kDemoHierarchyLocationsByOperator(),
+          sessionsByOperator: kDemoSessionsByOperator(),
+          clock: () => clock,
+        );
+        await gateway.editSeededRole(
+          operatorId: kDemoDinerOperatorId,
+          roleId: 'role-seed-operator-supervisor',
+          permissionKeys: const <String>['team.users.view'],
+          idempotencyKey: 'k-edit',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'audit-edit',
+        );
+        await gateway.moveOrgUnit(
+          operatorId: kDemoDinerOperatorId,
+          orgUnitId: kDemoDinerOrgUnitEast,
+          newParentOrgUnitId: kDemoDinerOrgUnitWest,
+          idempotencyKey: 'k-move',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'reorg',
+        );
+        await gateway.forceLogoutSession(
+          operatorId: kDemoDinerOperatorId,
+          sessionId: 'session-diner-owner-mobile',
+          userId: 'demo-user-diner-owner',
+          idempotencyKey: 'k-revoke',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'walkthrough verification',
+        );
+        final actions =
+            gateway.capturedAuditEvents.map((e) => e.action).toList();
+        expect(
+          actions,
+          equals(<String>[
+            'team.roles.edit_seeded',
+            'team.org_unit.move',
+            'admin.session.force_logout',
+          ]),
+        );
+        for (final event in gateway.capturedAuditEvents) {
+          expect(event.actorKind, equals('forge_admin'));
+          expect(event.actorUserId, equals('demo-super-admin'));
+          expect(event.adminReason, isNotEmpty);
+          expect(event.businessDate, equals(DateTime.utc(2026, 5, 5)));
+          expect(event.operatorId, equals(kDemoDinerOperatorId));
+        }
+      },
+    );
+
+    test(
+      'create + delete custom role audit rows use the locked team.* enum',
+      () async {
+        final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+          rolesByOperator: kDemoRolesByOperator(),
+        );
+        final created = await gateway.createCustomRole(
+          operatorId: kDemoDinerOperatorId,
+          roleKey: 'custom.line_lead',
+          displayName: 'Line Lead',
+          description: 'Lead line cook',
+          permissionKeys: const <String>['team.users.view'],
+          idempotencyKey: 'k-create',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'support-onboarding',
+        );
+        await gateway.deleteCustomRole(
+          operatorId: kDemoDinerOperatorId,
+          roleId: created.roleId,
+          idempotencyKey: 'k-delete',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'cleanup',
+        );
+        expect(
+          gateway.capturedAuditEvents.map((e) => e.action),
+          equals(<String>[
+            'team.roles.create_custom',
+            'team.roles.delete_custom',
+          ]),
+        );
+      },
+    );
+
+    test('move location writes team.location.move action', () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        locationsByOperator: kDemoHierarchyLocationsByOperator(),
+      );
+      await gateway.moveLocation(
+        operatorId: kDemoDinerOperatorId,
+        locationId: kDemoDinerLocationToronto,
+        newOrgUnitId: kDemoDinerOrgUnitWest,
+        idempotencyKey: 'k-move-loc',
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'realignment',
+      );
+      expect(
+        gateway.capturedAuditEvents.single.action,
+        equals('team.location.move'),
+      );
+    });
+  });
+
+  group('idempotency', () {
+    test('idempotent retry on createCustomRole returns the same row',
+        () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+      );
+      const key = 'idem-create';
+      final first = await gateway.createCustomRole(
+        operatorId: kDemoDinerOperatorId,
+        roleKey: 'custom.first',
+        displayName: 'First',
+        description: '',
+        permissionKeys: const <String>[],
+        idempotencyKey: key,
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'r',
+      );
+      final second = await gateway.createCustomRole(
+        operatorId: kDemoDinerOperatorId,
+        roleKey: 'custom.second',
+        displayName: 'Second',
+        description: '',
+        permissionKeys: const <String>[],
+        idempotencyKey: key,
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'r',
+      );
+      expect(identical(first, second), isTrue);
+      expect(gateway.capturedAuditEvents, hasLength(1));
+    });
+
+    test('idempotent retry on forceLogoutSession does not double-audit',
+        () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        sessionsByOperator: kDemoSessionsByOperator(),
+      );
+      const key = 'idem-revoke';
+      await gateway.forceLogoutSession(
+        operatorId: kDemoDinerOperatorId,
+        sessionId: 'session-diner-owner-mobile',
+        userId: 'demo-user-diner-owner',
+        idempotencyKey: key,
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'r',
+      );
+      await gateway.forceLogoutSession(
+        operatorId: kDemoDinerOperatorId,
+        sessionId: 'session-diner-owner-mobile',
+        userId: 'demo-user-diner-owner',
+        idempotencyKey: key,
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'r',
+      );
+      expect(gateway.capturedAuditEvents, hasLength(1));
+    });
+  });
+
+  group('sessions: cannot revoke own admin session', () {
+    test(
+      'forceLogoutSession throws cannot_revoke_self when targeted user is the admin',
+      () async {
+        final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+          sessionsByOperator: kDemoSessionsByOperator(),
+        );
+        await expectLater(
+          gateway.forceLogoutSession(
+            operatorId: kDemoDinerOperatorId,
+            sessionId: 'session-diner-owner-mobile',
+            userId: 'demo-super-admin',
+            idempotencyKey: 'k-self',
+            actorUserId: 'demo-super-admin',
+            actorIsForgeAdmin: true,
+            adminReason: 'r',
+          ),
+          throwsA(
+            isA<RolesHierarchySessionsGatewayError>().having(
+              (e) => e.errorCode,
+              'errorCode',
+              equals('cannot_revoke_self'),
+            ),
+          ),
+        );
+        // No audit row written.
+        expect(gateway.capturedAuditEvents, isEmpty);
+      },
+    );
+  });
+
+  group('hierarchy validation', () {
+    test('moveOrgUnit rejects moving a unit under itself', () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+      );
+      await expectLater(
+        gateway.moveOrgUnit(
+          operatorId: kDemoDinerOperatorId,
+          orgUnitId: kDemoDinerOrgUnitEast,
+          newParentOrgUnitId: kDemoDinerOrgUnitEast,
+          idempotencyKey: 'k-cycle',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'r',
+        ),
+        throwsA(
+          isA<RolesHierarchySessionsGatewayError>()
+              .having((e) => e.errorCode, 'errorCode', equals('cycle_detected'))
+              .having((e) => e.message, 'message',
+                  equals(HierarchyValidationCopy.cycleDetected)),
+        ),
+      );
+    });
+
+    test('editSeededRole rejects a non-seeded role', () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+      );
+      await expectLater(
+        gateway.editSeededRole(
+          operatorId: kDemoDinerOperatorId,
+          roleId: 'role-custom-floor-captain',
+          permissionKeys: const <String>['team.users.view'],
+          idempotencyKey: 'k',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'r',
+        ),
+        throwsA(
+          isA<RolesHierarchySessionsGatewayError>().having(
+            (e) => e.errorCode,
+            'errorCode',
+            equals('not_seeded_role'),
+          ),
+        ),
+      );
+    });
+
+    test('deleteCustomRole rejects a seeded role', () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+      );
+      await expectLater(
+        gateway.deleteCustomRole(
+          operatorId: kDemoDinerOperatorId,
+          roleId: 'role-seed-operator-owner',
+          idempotencyKey: 'k',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'r',
+        ),
+        throwsA(
+          isA<RolesHierarchySessionsGatewayError>().having(
+            (e) => e.errorCode,
+            'errorCode',
+            equals('cannot_delete_seeded'),
+          ),
+        ),
+      );
+    });
+  });
+
+  group('HttpRolesHierarchySessionsAdminGateway wire format', () {
+    test(
+      'forceLogoutSession pins POST /v1/admin/auth/sessions/<id>/revoke + admin_reason + idempotency',
+      () async {
+        late http.Request captured;
+        final mock = http_testing.MockClient((http.Request request) async {
+          captured = request;
+          return http.Response('{}', 200);
+        });
+        final gateway = HttpRolesHierarchySessionsAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+        await gateway.forceLogoutSession(
+          operatorId: 'op-1',
+          sessionId: 'sess-1',
+          userId: 'user-1',
+          idempotencyKey: 'idem-1',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'walkthrough verification',
+        );
+        expect(captured.method, equals('POST'));
+        expect(
+          captured.url.path,
+          equals('/v1/admin/auth/sessions/sess-1/revoke'),
+        );
+        expect(captured.headers['Idempotency-Key'], equals('idem-1'));
+        expect(captured.headers['authorization'], equals('Bearer tok'));
+        final body = jsonDecode(captured.body) as Map<String, Object?>;
+        expect(body['operator_id'], equals('op-1'));
+        expect(body['user_id'], equals('user-1'));
+        expect(body['admin_reason'], equals('walkthrough verification'));
+      },
+    );
+
+    test('listSessions GET sends operator_id query parameter', () async {
+      late http.Request captured;
+      final mock = http_testing.MockClient((http.Request request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{'sessions': const <Object?>[]}),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpRolesHierarchySessionsAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+      await gateway.listSessions(operatorId: 'op-1');
+      expect(captured.method, equals('GET'));
+      expect(captured.url.path, equals('/v1/admin/auth/sessions'));
+      expect(captured.url.queryParameters['operator_id'], equals('op-1'));
+    });
+
+    test('createCustomRole POST pins payload + admin_reason', () async {
+      late http.Request captured;
+      final mock = http_testing.MockClient((http.Request request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'role': <String, Object?>{
+              'role_id': 'r1',
+              'role_key': 'custom.lead',
+              'display_name': 'Lead',
+              'description': '',
+              'is_seeded': false,
+              'permission_keys': <String>['team.users.view'],
+              'operator_id': 'op-1',
+            },
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpRolesHierarchySessionsAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+      await gateway.createCustomRole(
+        operatorId: 'op-1',
+        roleKey: 'custom.lead',
+        displayName: 'Lead',
+        description: '',
+        permissionKeys: const <String>['team.users.view'],
+        idempotencyKey: 'idem-1',
+        actorUserId: 'admin-1',
+        actorIsForgeAdmin: true,
+        adminReason: 'support',
+      );
+      expect(captured.url.path, equals('/v1/admin/auth/roles'));
+      final body = jsonDecode(captured.body) as Map<String, Object?>;
+      expect(body['operator_id'], equals('op-1'));
+      expect(body['role_key'], equals('custom.lead'));
+      expect(body['admin_reason'], equals('support'));
+      expect(body['permission_keys'], equals(<String>['team.users.view']));
+    });
+
+    test('non-forge-admin caller never reaches the network', () async {
+      var hits = 0;
+      final mock = http_testing.MockClient((http.Request request) async {
+        hits += 1;
+        return http.Response('', 500);
+      });
+      final gateway = HttpRolesHierarchySessionsAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+      await expectLater(
+        gateway.forceLogoutSession(
+          operatorId: 'op-1',
+          sessionId: 'sess-1',
+          userId: 'user-1',
+          idempotencyKey: 'idem-1',
+          actorUserId: 'non-admin',
+          actorIsForgeAdmin: false,
+          adminReason: 'r',
+        ),
+        throwsA(isA<RolesHierarchySessionsForbiddenException>()),
+      );
+      expect(hits, equals(0));
+    });
+
+    test('proxy 403 maps to Forbidden', () async {
+      final mock = http_testing.MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'error': 'permission_denied',
+            'message': 'forge_admin required',
+          }),
+          403,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpRolesHierarchySessionsAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+      await expectLater(
+        gateway.forceLogoutSession(
+          operatorId: 'op-1',
+          sessionId: 'sess-1',
+          userId: 'user-1',
+          idempotencyKey: 'idem-1',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'r',
+        ),
+        throwsA(isA<RolesHierarchySessionsForbiddenException>()),
+      );
+    });
+
+    test(
+      'proxy validation_failed/cannot_revoke_self preserves errorCode',
+      () async {
+        final mock = http_testing.MockClient((http.Request request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'error': 'cannot_revoke_self',
+              'message':
+                  'You cannot sign yourself out from this surface. '
+                  'Use admin sign-out instead.',
+            }),
+            400,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+        final gateway = HttpRolesHierarchySessionsAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+        await expectLater(
+          gateway.forceLogoutSession(
+            operatorId: 'op-1',
+            sessionId: 'sess-1',
+            userId: 'admin-1',
+            idempotencyKey: 'idem-1',
+            actorUserId: 'admin-1',
+            actorIsForgeAdmin: true,
+            adminReason: 'r',
+          ),
+          throwsA(
+            isA<RolesHierarchySessionsGatewayError>()
+                .having((e) => e.statusCode, 'statusCode', equals(400))
+                .having((e) => e.errorCode, 'errorCode',
+                    equals('cannot_revoke_self')),
+          ),
+        );
+      },
+    );
+  });
+
+  group('locked validation copy', () {
+    test('HierarchyValidationCopy strings match the parity contract', () {
+      expect(
+        HierarchyValidationCopy.orgUnitNameEmpty,
+        equals('Org unit name is required.'),
+      );
+      expect(
+        HierarchyValidationCopy.orgUnitNameDuplicate,
+        equals('An org unit with this name already exists in this group.'),
+      );
+      expect(
+        HierarchyValidationCopy.cycleDetected,
+        equals('Cannot move into a child of itself.'),
+      );
+    });
+
+    test('no operator-facing literal contains an em dash', () {
+      const literals = <String>[
+        HierarchyValidationCopy.orgUnitNameEmpty,
+        HierarchyValidationCopy.orgUnitNameDuplicate,
+        HierarchyValidationCopy.cycleDetected,
+        SessionsValidationCopy.cannotRevokeSelf,
+      ];
+      for (final label in literals) {
+        expect(label.contains('—'), isFalse, reason: label);
+      }
+      for (final label in kRoleDisplayNamesForAdmin.values) {
+        expect(label.contains('—'), isFalse, reason: label);
+      }
+    });
+  });
+}

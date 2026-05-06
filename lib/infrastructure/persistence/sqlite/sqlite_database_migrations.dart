@@ -141,6 +141,32 @@ Future<void> _migrateToV25(Database db) async {
   ''');
 }
 
+/// Phase 10a.5 — `realtime_subscription_watermark` per-device cache.
+///
+/// Holds the most recent `event_id` the client has seen on each
+/// `(operator_id, topic)` pair. The realtime subscription advances the
+/// row inside the same transaction that surfaces the event to the UI;
+/// on reconnect, the subscription picks the newest watermark across
+/// topics and forwards it as `?last_event_id=...` so the proxy route
+/// replays anything missed during the disconnect window. V1 watermark
+/// is per-device only — cross-device sync lands in Phase 10b.
+Future<void> _migrateToV26(Database db) async {
+  await _createTableIfNotExists(db, 'realtime_subscription_watermark', '''
+    CREATE TABLE realtime_subscription_watermark (
+      operator_id  TEXT NOT NULL,
+      topic        TEXT NOT NULL,
+      event_id     TEXT NOT NULL,
+      occurred_at  TEXT NOT NULL,
+      updated_at   TEXT NOT NULL,
+      PRIMARY KEY (operator_id, topic)
+    )
+  ''');
+  await db.execute('''
+    CREATE INDEX IF NOT EXISTS ix_realtime_subscription_watermark_recent
+    ON realtime_subscription_watermark(operator_id, occurred_at DESC)
+  ''');
+}
+
 Future<void> _migrateToV24(Database db) async {
   await db.execute('''
     UPDATE week_records

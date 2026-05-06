@@ -71,10 +71,13 @@ Do not re-open stale findings unless the repo regresses:
   live-admin E2E on 2026-05-04 also applied and verified
   `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql` for
   operator/location admin writes; those writes stay staging-ready only until
-  the grant is applied and verified on Production1. The Business Timing Live
-  slice adds `202605060000_phase_business_timing_live_schema.sql`; apply and
-  verify it on staging/review before claiming live business timing schema
-  parity, then carry it into the next Production1 batch.
+  the grant is applied and verified on Production1. The mobile push branch adds
+  `202605060000_mobile_push_notifications.sql` for encrypted FCM/APNs token
+  storage and push sidecar delivery state; that migration remains queued for
+  staging apply, connected-device proof, and later Production1 approval. The Business Timing Live slice adds
+  `202605060000_phase_business_timing_live_schema.sql`; apply and verify it on
+  staging/review before claiming live business timing schema parity, then carry
+  it into the next Production1 batch.
 
 ## Remaining Live-Closeout Gates
 
@@ -94,8 +97,8 @@ already-completed Production1 apply unless explicitly stated.
 | --- | --- | --- |
 | B33 usage/log reconciliation hardening | complete | Two-slot writer at `advisor_proxy.dart:2906`; `usage_logs_two_slot_rollup_uq` constraint flipped in `202604280006_c` |
 | B34 audit attribution contract clarification | complete | `docs/contracts/audit_attribution_contract.md` (Active authority) pins `actor_kind` discriminator + `text` vs `uuid` divergence |
-| B36 cross-tenant RLS isolation integration sweep | complete | `test/phase_9_0sigma_rls_isolation_sweep_test.dart` â€” passive-by-default 13-table sweep gated on `FORGE_FLOW_RUN_STAGING_RLS_SWEEP=true` |
-| B37 audit hash-chain verifier E2E test | complete | `test/phase_9_0sigma_f_audit_chain_e2e_test.dart` â€” 100 rows Ã— 3 ops Ã— 2 dates; `tool/audit_anchor/test/anchor_e2e_test.dart` covers anchor surface |
+| B36 cross-tenant RLS isolation integration sweep | complete | `test/phase_9_0sigma_rls_isolation_sweep_test.dart` ? passive-by-default 13-table sweep gated on `FORGE_FLOW_RUN_STAGING_RLS_SWEEP=true` |
+| B37 audit hash-chain verifier E2E test | complete | `test/phase_9_0sigma_f_audit_chain_e2e_test.dart` ? 100 rows ? 3 ops ? 2 dates; `tool/audit_anchor/test/anchor_e2e_test.dart` covers anchor surface |
 | B38 Tier-M rollup load test | partial | Synth seed at `tool/rollups_load_test/synth_seed.dart` + focused test landed; perf-gate execution still owed for `cutover.0b` launch blocker |
 | B39 recovery code attempt-store refactor | complete | `lib/infrastructure/persistence/postgres/repositories/user_scoped_repository.dart` base class; `RecoveryCodeAttemptStore` migrated |
 | B40 `202604280013` hotfix cross-link | complete | Cross-linked in `docs/contracts/audit_attribution_contract.md:19` |
@@ -117,18 +120,18 @@ surfaces these capabilities is tracked under the `9.UX.0-7` family plus
 the `9.UX.1a` hardening sub-slice in
 `phase_9_auth_plan.md` `Frontend Exposure` section. Mapping:
 
-- B17 role catalog CRUD â†’ `9.UX.2` (custom role editor, role catalog viewer)
-- B27 audit hash chain + B37 verifier â†’ `9.UX.6` (personal audit log viewer)
-- B48 password reset email-link parity â†’ `9.UX.7`
-- B49 MFA production hardening â†’ `9.UX.1a`
-- B50 auth notification delivery bridge â†’ Phase 10a bridge plus `9.UX.1a`
+- B17 role catalog CRUD ? `9.UX.2` (custom role editor, role catalog viewer)
+- B27 audit hash chain + B37 verifier ? `9.UX.6` (personal audit log viewer)
+- B48 password reset email-link parity ? `9.UX.7`
+- B49 MFA production hardening ? `9.UX.1a`
+- B50 auth notification delivery bridge ? Phase 10a bridge plus `9.UX.1a`
   copy gate
-- B41 service-principal JWT issuance â†’ no operator UX (admin-only;
+- B41 service-principal JWT issuance ? no operator UX (admin-only;
   surfaces in `11A.7-10` audit log review)
-- B42 / B44 / B45 / B47 health producers â†’ no operator UX (surface in
+- B42 / B44 / B45 / B47 health producers ? no operator UX (surface in
   `11A.6` observability dashboard; `11A.5` is the per-operator Debug Console
   request-log surface)
-- B46 advisor conversation encryption â†’ operator UX lands with `11b`
+- B46 advisor conversation encryption ? operator UX lands with `11b`
   Coach Chatbot, gated by audit-privacy permission
 
 Do not block a B-item's status on its consumer UX slice; the B-items are

@@ -19,6 +19,7 @@ import 'services/business_date_authority_service.dart';
 import 'services/sqlite_boundary_event_outbox.dart';
 import 'services/mfa/mfa_operations_gateway.dart';
 import 'services/mfa/mfa_recovery_request_gateway.dart';
+import 'services/mobile_push/mobile_push_notification_service.dart';
 import 'services/shift_data_source.dart';
 import 'services/team/team_scope_visibility_policy.dart';
 import 'state/active_target_profile_notifier.dart';
@@ -115,8 +116,10 @@ class ForgeFlowApp extends StatelessWidget {
         // SnackBar across every route. The subscription itself is
         // owned by the bootstrap layer (10a.UX.0); this widget
         // consumes it via Provider so both lanes share one socket.
-        home: _RealtimeProducerWiring(
-          child: _PeerEditToastShellHost(child: homeContent),
+        home: _MobilePushRouteIntentHost(
+          child: _RealtimeProducerWiring(
+            child: _PeerEditToastShellHost(child: homeContent),
+          ),
         ),
       ),
     );
@@ -128,6 +131,83 @@ class ForgeFlowApp extends StatelessWidget {
 /// [ForgeFlowScope] Provider. Splitting this out of `build` lets the
 /// MaterialApp `home` route stay readable and keeps the bus lookup
 /// inside the Provider tree.
+class _MobilePushRouteIntentHost extends StatefulWidget {
+  const _MobilePushRouteIntentHost({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_MobilePushRouteIntentHost> createState() =>
+      _MobilePushRouteIntentHostState();
+}
+
+class _MobilePushRouteIntentHostState
+    extends State<_MobilePushRouteIntentHost> {
+  StreamSubscription<MobilePushRouteIntent>? _subscription;
+  MobilePushRouteIntentSource? _source;
+  bool _openingNotifications = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final source = _resolveSource();
+    if (identical(source, _source)) return;
+    _subscription?.cancel();
+    _source = source;
+    if (source == null) return;
+    _subscription = source.intents.listen(_handleIntent);
+    for (final intent in source.takePendingIntents()) {
+      _handleIntent(intent);
+    }
+  }
+
+  MobilePushRouteIntentSource? _resolveSource() {
+    try {
+      return Provider.of<MobilePushRouteIntentSource>(context, listen: false);
+    } on ProviderNotFoundException {
+      return null;
+    }
+  }
+
+  void _handleIntent(MobilePushRouteIntent intent) {
+    if (!mounted) return;
+    if (intent.destination == MobilePushRouteDestination.notifications) {
+      _openNotificationsFromIntent();
+    }
+  }
+
+  void _openNotificationsFromIntent() {
+    if (_openingNotifications) return;
+    _openingNotifications = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        _openingNotifications = false;
+        return;
+      }
+      final route = MaterialPageRoute<void>(
+        settings: const RouteSettings(name: NotificationsScreen.routeName),
+        builder: (_) => const NotificationsScreen(),
+        fullscreenDialog: true,
+      );
+      unawaited(
+        Navigator.of(context).push<void>(route).whenComplete(() {
+          _openingNotifications = false;
+        }),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _subscription = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 class _PeerEditToastShellHost extends StatelessWidget {
   const _PeerEditToastShellHost({required this.child});
 
@@ -279,10 +359,7 @@ class _RealtimeProducerWiringState extends State<_RealtimeProducerWiring> {
 
   LastSyncedTimestampsNotifier? _resolveFreshnessNotifier() {
     try {
-      return Provider.of<LastSyncedTimestampsNotifier>(
-        context,
-        listen: false,
-      );
+      return Provider.of<LastSyncedTimestampsNotifier>(context, listen: false);
     } on ProviderNotFoundException {
       return null;
     }
@@ -1642,6 +1719,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void _openNotifications(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
+        settings: const RouteSettings(name: NotificationsScreen.routeName),
         builder: (_) => const NotificationsScreen(),
         fullscreenDialog: true,
       ),
@@ -1744,7 +1822,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // on shell mount.
     final bootstrapSubscription = _resolveRealtimeSubscription();
     final Stream<RealtimeConnectionState>? connectionStream =
-        bootstrapSubscription?.connectionState ?? widget.realtimeConnectionState;
+        bootstrapSubscription?.connectionState ??
+        widget.realtimeConnectionState;
     final RealtimeConnectionState initialState = bootstrapSubscription != null
         ? bootstrapSubscription.currentConnectionState
         : widget.realtimeInitialConnectionState;

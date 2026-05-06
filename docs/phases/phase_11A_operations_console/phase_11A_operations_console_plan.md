@@ -83,6 +83,13 @@ Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin
 reason; it must not become the operator's primary hierarchy editor.
 
+Mobile push notification work on 2026-05-06 adds
+`202605060000_mobile_push_notifications.sql` for encrypted FCM/APNs token
+storage and a durable mobile push sidecar queue. This is not an 11A UI surface,
+but it updates the shared migration cutoff watched by this plan. It remains
+staging/prod apply gated until the branch is deployed to staging and the
+connected-device popup proof passes.
+
 Operational runbooks added from the 2026-05-03 live staging console smoke:
 provider credential/KMS rollout is owned by
 `runbooks/admin_provider_credentials_kms_rollout_runbook.md`, and local

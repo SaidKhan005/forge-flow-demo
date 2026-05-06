@@ -27,6 +27,25 @@
 // [replayTruncated] and clears its cursor so the next reconnect does
 // not loop on the same stale id.
 //
+// Phase 10a.5 — durable watermark. The cursor is mirrored to a
+// per-device SQLite table (`realtime_subscription_watermark` keyed
+// `(operator_id, topic)`) through the [RealtimeSubscriptionWatermarkStore]
+// seam. On reconnect after a process restart, [setTenantContext] (or
+// the explicit [resume] entry point) hydrates the in-memory cursor
+// from the freshest watermark row for the operator so the very first
+// connect can resume against missed events instead of starting from
+// "first connect, no replay". Default store is a no-op so this file
+// stays free of `dart:io` / `sqflite` imports — concrete platform
+// stores live alongside the platform's other persistence helpers and
+// are injected at construction.
+//
+// Watermark write timing: the in-memory cursor advances synchronously
+// on every received frame; the durable upsert is unawaited (atomic
+// at the SQLite transaction level, but not synchronized with UI
+// dispatch). A crash between UI dispatch and persist would replay
+// the same event_id on the next reconnect; downstream consumers
+// dedupe on event_id per `event_outbox_contract.md`.
+//
 // Out of scope for this scaffold (Phase 10a follow-up):
 //   * jittered back-off
 //   * retry-attempt cap with hard "give up" on cumulative failure
@@ -90,10 +109,13 @@ class RealtimeSubscription {
     Duration initialBackoff = const Duration(seconds: 1),
     Duration maxBackoff = const Duration(seconds: 30),
     void Function(RealtimeSubscriptionLogEvent)? logger,
+    RealtimeSubscriptionWatermarkStore? watermarkStore,
   }) : _transport = transport,
        _initialBackoff = initialBackoff,
        _maxBackoff = maxBackoff,
-       _logger = logger ?? _noopLogger;
+       _logger = logger ?? _noopLogger,
+       _watermarkStore =
+           watermarkStore ?? const _NoopRealtimeSubscriptionWatermarkStore();
 
   /// Base URI of the proxy (e.g. `wss://proxy.forgeflow.app`). The
   /// `/v1/realtime` path is appended automatically.
@@ -103,6 +125,7 @@ class RealtimeSubscription {
   final Duration _initialBackoff;
   final Duration _maxBackoff;
   final void Function(RealtimeSubscriptionLogEvent) _logger;
+  final RealtimeSubscriptionWatermarkStore _watermarkStore;
 
   RealtimeTenantContext? _tenantContext;
   RealtimeChannel? _activeChannel;
@@ -164,6 +187,14 @@ class RealtimeSubscription {
   /// back-off curve so the new scope connects immediately. Safe to
   /// call repeatedly; each call cancels the in-flight connect/back-off
   /// and starts fresh.
+  ///
+  /// Phase 10a.5 — hydrate the in-memory cursor from the durable
+  /// watermark store BEFORE scheduling the connect so the very first
+  /// reconnect after a process restart resumes against missed events
+  /// instead of starting from "first connect, no replay". The store
+  /// read is best-effort: a thrown error keeps the cursor null and is
+  /// logged, never rethrown — the route falls back to live frames
+  /// only on the first connect, exactly the pre-10a.5 behavior.
   Future<void> setTenantContext(RealtimeTenantContext context) async {
     _tenantContext = context;
     _currentBackoff = Duration.zero;
@@ -171,13 +202,54 @@ class RealtimeSubscription {
     // The cursor belongs to the previous tenant scope and would be a
     // cross-tenant leak if forwarded to the new operator's first
     // connect. Reset to null so the new scope starts as "first
-    // connect, no replay".
+    // connect, no replay" — then hydrate from the store below.
     _lastEventId = null;
     await _teardownChannel();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     if (_disposed) return;
+    final hydratedGeneration = _generation;
+    try {
+      final hydrated = await _watermarkStore.readNewestForOperator(
+        context.operatorId,
+      );
+      if (hydratedGeneration != _generation || _disposed) {
+        // Tenant changed (or the subscription was disposed) while the
+        // hydrate read was in flight. The new generation owns its own
+        // hydrate; this result belongs to a discarded scope.
+        return;
+      }
+      if (hydrated != null) {
+        _lastEventId = hydrated.eventId;
+      }
+    } catch (error, stack) {
+      _logger(
+        RealtimeSubscriptionLogEvent.watermarkStoreFailed(
+          error: error,
+          stack: stack,
+        ),
+      );
+      if (hydratedGeneration != _generation || _disposed) return;
+    }
     unawaited(_connect());
+  }
+
+  /// Phase 10a.5 — re-establish the connection against the active
+  /// tenant context, re-hydrating the in-memory cursor from the
+  /// durable watermark. Equivalent to calling [setTenantContext]
+  /// with the current context — the hydrate path applies and the
+  /// upgrade URI carries `?last_event_id=<uuid>` when the watermark
+  /// store has a row for the operator. Idempotent; a no-op when no
+  /// tenant context is active or the subscription has been disposed.
+  ///
+  /// Use this from the consumer when the proxy URI changes, the
+  /// app cold-starts and rebuilds the subscription against an
+  /// existing operator session, or any other "please reconnect from
+  /// durable cursor" trigger that does not change the tenant scope.
+  Future<void> resume() async {
+    final context = _tenantContext;
+    if (context == null || _disposed) return;
+    await setTenantContext(context);
   }
 
   /// Drop the active tenant scope and tear down the channel without
@@ -317,7 +389,39 @@ class RealtimeSubscription {
         return;
       }
       final event = RealtimeEvent.fromJson(json);
+      // Phase 10a.5 — advance the in-memory cursor synchronously and
+      // schedule the durable upsert (atomic at the SQLite transaction
+      // level via `db.transaction(...)`). The upsert is unawaited so
+      // a slow disk write cannot stall UI dispatch; if the process
+      // crashes between dispatch and persist, the next reconnect
+      // resumes from the prior watermark and the proxy redelivers
+      // the duplicate event_id, which downstream consumers dedupe
+      // per `event_outbox_contract.md`. A failed upsert is logged
+      // via [RealtimeSubscriptionLogKind.watermarkStoreFailed] so a
+      // broken store cannot silently desync the cursor.
       _lastEventId = event.eventId;
+      final tenantContext = _tenantContext;
+      if (tenantContext != null &&
+          tenantContext.operatorId == event.operatorId) {
+        unawaited(
+          _watermarkStore
+              .upsert(
+                operatorId: event.operatorId,
+                topic: event.topic,
+                eventId: event.eventId,
+                occurredAt: event.occurredAt,
+                updatedAt: DateTime.now().toUtc(),
+              )
+              .catchError((Object error, StackTrace stack) {
+                _logger(
+                  RealtimeSubscriptionLogEvent.watermarkStoreFailed(
+                    error: error,
+                    stack: stack,
+                  ),
+                );
+              }),
+        );
+      }
       _eventsController.add(event);
     } catch (error, stack) {
       _logger(
@@ -447,6 +551,19 @@ class RealtimeSubscriptionLogEvent {
     stack: stack,
   );
 
+  /// Phase 10a.5 — durable watermark read or write failed. The
+  /// subscription continues with the in-memory cursor; the next
+  /// reconnect after a process restart simply starts as "first
+  /// connect, no replay" if the store cannot be reached.
+  factory RealtimeSubscriptionLogEvent.watermarkStoreFailed({
+    required Object error,
+    required StackTrace stack,
+  }) => RealtimeSubscriptionLogEvent._(
+    kind: RealtimeSubscriptionLogKind.watermarkStoreFailed,
+    error: error,
+    stack: stack,
+  );
+
   final RealtimeSubscriptionLogKind kind;
   final Object? error;
   final StackTrace? stack;
@@ -456,6 +573,87 @@ enum RealtimeSubscriptionLogKind {
   connectFailed,
   channelError,
   frameParseFailed,
+  watermarkStoreFailed,
+}
+
+/// Phase 10a.5 — durable per-device watermark store seam. Concrete
+/// platform stores (today: `SqliteRealtimeSubscriptionWatermarkStore`)
+/// live alongside the platform's other persistence helpers so this
+/// file stays free of `dart:io` / `sqflite` imports — the realtime
+/// subscription is consumed by both Flutter mobile entrypoints (which
+/// have SQLite) and any future web-friendly entrypoint that would
+/// inject a no-op store.
+///
+/// Contract:
+///   * [readNewestForOperator] returns the watermark with the latest
+///     `occurredAt` for the operator, or null when the operator has
+///     no rows. Used by [RealtimeSubscription.setTenantContext] to
+///     hydrate the in-memory cursor on the very first connect after
+///     a process restart.
+///   * [upsert] writes / overwrites the per-(operator, topic) row.
+///     Implementations MUST be transactional — a partial write that
+///     leaves the row pointing at an event the client never surfaced
+///     would create a "phantom missed window" on the next reconnect.
+///   * Implementations MUST scope every read AND write to the
+///     supplied `operatorId` (cross-operator leaks would be a
+///     per-tenant isolation violation).
+abstract class RealtimeSubscriptionWatermarkStore {
+  Future<RealtimeSubscriptionWatermark?> readNewestForOperator(
+    String operatorId,
+  );
+
+  Future<void> upsert({
+    required String operatorId,
+    required String topic,
+    required String eventId,
+    required DateTime occurredAt,
+    required DateTime updatedAt,
+  });
+}
+
+/// Per-device watermark row. The realtime subscription advances the
+/// row inside the same transaction that surfaces the event to the UI;
+/// concrete stores serialize the `DateTime` fields as ISO-8601 UTC
+/// strings (mirroring the `event_outbox.created_at` convention).
+class RealtimeSubscriptionWatermark {
+  const RealtimeSubscriptionWatermark({
+    required this.operatorId,
+    required this.topic,
+    required this.eventId,
+    required this.occurredAt,
+    required this.updatedAt,
+  });
+
+  final String operatorId;
+  final String topic;
+  final String eventId;
+  final DateTime occurredAt;
+  final DateTime updatedAt;
+}
+
+/// No-op default. Used when the consumer does not wire a durable
+/// store (today: tests + web-friendly entrypoints). Reading always
+/// returns null so the subscription falls back to "first connect, no
+/// replay" — the pre-10a.5 behavior is preserved exactly.
+class _NoopRealtimeSubscriptionWatermarkStore
+    implements RealtimeSubscriptionWatermarkStore {
+  const _NoopRealtimeSubscriptionWatermarkStore();
+
+  @override
+  Future<RealtimeSubscriptionWatermark?> readNewestForOperator(
+    String operatorId,
+  ) async => null;
+
+  @override
+  Future<void> upsert({
+    required String operatorId,
+    required String topic,
+    required String eventId,
+    required DateTime occurredAt,
+    required DateTime updatedAt,
+  }) async {
+    // Intentionally empty: no-op store has nowhere to write to.
+  }
 }
 
 void _noopLogger(RealtimeSubscriptionLogEvent event) {}

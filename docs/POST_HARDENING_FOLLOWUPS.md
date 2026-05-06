@@ -13,9 +13,10 @@ Open items below are the current remainder.
 
 ## P0 - Production1 Migration Apply Gap
 
-**3 migrations pending Production1/staging apply**:
-`202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` and
-`202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`, plus
+**4 migrations pending Production1/staging apply**:
+`202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`,
+`202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`,
+`202605060000_mobile_push_notifications.sql`, and
 `202605060000_phase_business_timing_live_schema.sql`.
 It restores read-only Debug Console request-log inspection by granting
 `forge_admin` explicit `SELECT` on `public.proxy_requests`. The migration
@@ -25,16 +26,18 @@ The operator/location admin grant restores `forge_admin` DML on
 `public.operators`, `public.locations`, and `public.operator_admins`; it was
 applied and Browser Use verified on staging on 2026-05-04 after operator and
 location edit routes returned live 200s.
-The business timing migration adds the canonical scoped timing profile tables
-and server-side `open_shift_snapshots` table; it is queued by the Business
-Timing Live slice and requires staging apply before review/runtime deploys can
-claim live schema parity.
+The mobile push migration adds encrypted FCM/APNs token storage plus a
+durable push delivery sidecar; it is code-ready, but still requires staging
+apply, connected-device proof, and explicit Production1 approval before it is
+described as production-ready. The business timing migration adds canonical
+scoped timing profile tables and server-side `open_shift_snapshots`; it requires
+staging/review apply before timing runtime surfaces can claim live schema parity.
 
-**Action:** include these files in the next staged/Production1 apply event under
+**Action:** include these files in the next Production1 apply event under
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until that apply
-and direct grant verification complete, Debug Console request-log inspection
-and operator/location admin writes are staging-ready only, and business timing
-live schema must not be described as review/staging-ready.
+and direct grant verification complete, Debug Console request-log inspection,
+operator/location admin writes, mobile OS push delivery, and business timing
+live schema are staging-ready only and must not be described as production-ready.
 
 ## P1 - Live Admin Operational Gates
 

@@ -69,6 +69,8 @@ dependencies:
   # Used by `lib/services/realtime/realtime_subscription.dart`; the
   # proxy server-side WebSocket uses dart:io directly.
   web_socket_channel: ^3.0.1
+  firebase_messaging: ^16.2.0
+  flutter_local_notifications: ^20.1.0
 
 dev_dependencies:
   flutter_test:

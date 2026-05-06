@@ -1,6 +1,6 @@
 # Phase 9 Production1 Migration Apply Runbook
 
-Updated: 2026-05-03.
+Updated: 2026-05-06.
 
 Purpose: govern and record Production1 migration applies. The second
 migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
@@ -49,11 +49,11 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (3 migrations; first two staging applied/verified,
-newest business-timing schema staging pending, Production1 pending):
+Pending follow-up scope (4 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
+- `db/migrations/202605060000_mobile_push_notifications.sql`
 - `db/migrations/202605060000_phase_business_timing_live_schema.sql`
 
 Out of scope:
@@ -64,7 +64,7 @@ Out of scope:
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
-  anything later than `202605060000`
+  anything later than `202605060000_phase_business_timing_live_schema.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
@@ -80,11 +80,16 @@ Current known post-cutoff staging additions:
   applied/verified on staging from 2026-05-04 live-admin E2E evidence, was not
   part of the 27-file Production1 apply, and belongs to the next Production1
   migration batch unless superseded by later staging additions.
+- `db/migrations/202605060000_mobile_push_notifications.sql` adds encrypted
+  mobile FCM/APNs token storage plus the durable push delivery sidecar queue.
+  It is code-ready in the mobile push branch and remains gated on staging
+  apply, connected-device proof, and explicit Production1 approval before any
+  production apply.
 - `db/migrations/202605060000_phase_business_timing_live_schema.sql` adds
-  scoped business-timing profiles, audited service-period overrides, and
-  server-side `open_shift_snapshots` rows for live Shift surfaces. It belongs
-  to the next staging/review apply before business timing live runtime proof,
-  and then to the next Production1 migration batch unless superseded.
+  business-timing profiles, audited service-period overrides, and server-side
+  `open_shift_snapshots`. It requires staging/review apply before business
+  timing runtime proof and then belongs in the next Production1 batch before
+  production timing/live-shift claims.
 
 Migration drift automation:
 
@@ -148,6 +153,7 @@ Current pending follow-up order:
 
 1. `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 2. `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
+3. `202605060000_mobile_push_notifications.sql`
 
 Dependency notes:
 
@@ -510,17 +516,23 @@ until the post-tuning monitor window is clean.
   applied and Browser Use verified on staging. Apply it to Production1 under
   the Live-Mutation Gate before calling operator/location admin writes
   production-ready.
+- `202605060000_mobile_push_notifications.sql` is code-ready for mobile push
+  token storage and durable push sidecar delivery state. Apply it to staging
+  first, complete connected-device proof, then include it in Production1 only
+  after explicit approval.
 - `202605060000_phase_business_timing_live_schema.sql` is queued by the
   Business Timing Live slice. Apply and verify it on staging before review
   runtime proof; then include it in the next Production1 apply batch before
   calling live business timing / open-shift snapshots production-ready.
 - One-shot apply plan once approved: confirm staging parity for the same files,
   confirm fresh backup/restore point, run analyzer/lints/focused tests, apply
-  the queued files to Production1, verify the `forge_admin` `proxy_requests`
-  `SELECT` privilege plus operator/location/admin-grant DML privileges and
-  business timing table/trigger/RLS presence directly, run RLS lint, update
-  this history and the production cutoff docs.
-  Do not perform production runtime setup as part of this database apply.
+  the approved files to Production1, verify the `forge_admin`
+  `proxy_requests` `SELECT` privilege plus operator/location/admin-grant DML
+  privileges directly, verify mobile push schema only after staging
+  device proof is complete, and verify business timing table/trigger/RLS
+  presence directly. Then run RLS lint, update this history and the
+  production cutoff docs. Do not perform production runtime setup as part of
+  this database apply.
 
 ## Apply Report Template
 
