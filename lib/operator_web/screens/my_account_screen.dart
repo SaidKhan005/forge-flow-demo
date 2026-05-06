@@ -395,22 +395,22 @@ class _ProfileSection extends StatelessWidget {
     final fields = <Widget>[
       _ProfileField(
         label: 'Display name',
-        value: session.displayName.isEmpty ? '—' : session.displayName,
+        value: session.displayName.isEmpty ? 'Not on file' : session.displayName,
       ),
       _ProfileField(
         label: 'Email',
-        value: session.email.isEmpty ? '—' : session.email,
+        value: session.email.isEmpty ? 'Not on file' : session.email,
       ),
       _ProfileField(
         label: 'Phone',
         value: (phone == null || phone.isEmpty) ? 'Not on file' : phone,
         helper:
             'Phone changes happen in the operator mobile app under '
-            'Settings → Account.',
+            'Settings, Account.',
       ),
       _ProfileField(
         label: 'Business',
-        value: session.businessName.isEmpty ? '—' : session.businessName,
+        value: session.businessName.isEmpty ? 'Not on file' : session.businessName,
       ),
     ];
     return _SectionCard(
@@ -551,7 +551,7 @@ class _PasswordSection extends StatelessWidget {
       headerExplainer:
           'A strong password is one of the simplest things you can do to '
           'keep your business data safe. Mix letters, numbers, and a '
-          'symbol — and don\'t reuse it from another site.',
+          'symbol, and don\'t reuse it from another site.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1125,7 +1125,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
               Text(
                 'A strong password is one of the simplest things you can do '
                 'to keep your business data safe. Mix letters, numbers, and '
-                'a symbol — and don\'t reuse it from another site.',
+                'a symbol, and don\'t reuse it from another site.',
                 style: AppTextStyles.body13(color: AppColors.textPrimary),
               ),
               const SizedBox(height: 14),

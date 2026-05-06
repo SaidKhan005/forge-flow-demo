@@ -114,11 +114,14 @@ Do not re-open stale findings unless the repo regresses:
   + timing-provenance migrations. Phase 8 mobile core then queues
   `202605061800_phase_8_first_connection_backfill_jobs.sql`, the additive
   operator-scoped durable first-connection backfill job table that later
-  connect/worker/status lanes consume. Phase 11W.7 then queues
-  `202605070000_phase_11W_7_operator_account_fields.sql`, additive operator
-  account identity/regional default fields and validation constraints for
-  Operator Web Account settings. Apply these on staging first, then carry
-  into the next Production1 batch. The current Production1 follow-up cutoff is
+  connect/worker/status lanes consume. Phase 11W.7 / Wave A2 then queues
+  `202605070000_phase_11W_7_operator_account_fields.sql`, which adds the
+  editable business-identity columns the operator-web `PATCH
+  /v1/operator/account` route writes (`logo_url`, `locale_tag`,
+  `week_start_day`, `rollover_hour`) plus format CHECK constraints and a
+  length CHECK on `business_name`. Additive + default-backed; RLS on
+  `public.operators` is unchanged. Apply on staging first, then carry into
+  the next Production1 batch. The current Production1 follow-up cutoff is
   therefore
   `202605070000_phase_11W_7_operator_account_fields.sql`.
 

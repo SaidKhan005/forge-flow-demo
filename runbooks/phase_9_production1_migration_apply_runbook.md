@@ -125,9 +125,12 @@ Current known post-cutoff staging additions:
   60-day mobile core backfill path. It is code-ready and remains
   staging/Production1 apply gated with the rest of the follow-up batch.
 - `db/migrations/202605070000_phase_11W_7_operator_account_fields.sql`
-  adds the operator-web Account settings identity/regional default fields on
-  `public.operators` plus validation constraints for logo URL, locale tag,
-  week start day, rollover hour, and business name length. It is additive and
+  adds the editable business-identity columns the operator-web Account
+  settings page (`PATCH /v1/operator/account`) writes: `logo_url`,
+  `locale_tag`, `week_start_day`, `rollover_hour`, plus format CHECK
+  constraints and a length CHECK on `business_name`. Additive +
+  default-backed; existing rows preserved. RLS unchanged (operators is
+  identity, already protected by per-operator policies). Code-ready and
   remains staging/Production1 apply gated with the rest of the follow-up
   batch.
 
@@ -618,10 +621,12 @@ until the post-tuning monitor window is clean.
   cache and no worker/connect/projection logic is enabled by this migration
   alone. Apply on staging first; carry into the next Production1 batch with
   the rest of the follow-up migrations.
-- `202605070000_phase_11W_7_operator_account_fields.sql` adds the
-  operator-web Account settings identity/regional default fields and
-  validation constraints on `public.operators`. Apply on staging first; carry
-  into the next Production1 batch with the rest of the follow-up migrations.
+- `202605070000_phase_11W_7_operator_account_fields.sql` adds the editable
+  business-identity columns (`logo_url`, `locale_tag`, `week_start_day`,
+  `rollover_hour`) plus format CHECKs the operator-web `PATCH
+  /v1/operator/account` route writes against. Additive + default-backed.
+  RLS unchanged (operators is identity-keyed and already protected). Apply
+  on staging first; carry into the next Production1 batch.
 - One-shot apply plan once approved: confirm staging parity for the same files,
   confirm fresh backup/restore point, run analyzer/lints/focused tests, apply
   the approved files to Production1, verify the `forge_admin`

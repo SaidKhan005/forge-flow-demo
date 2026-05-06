@@ -65,7 +65,7 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 | `10a` (closed for V1 2026-05-06) | `.0`/`.1`/`.2`/`.3`/`.4`/`.5` + `UX.0`/`UX.1` ACCEPT | `phase_10a/*` |
 | `9.5` | `.0` accepted; `.UX.*` paused (Barrio) | `phase_9_5/*` |
 | `11A` | foundation `0`–`7`/`UX.health` ACCEPT + cross-op parity `.12`/`.13`/`.14` ACCEPT 2026-05-06; `.8`/`.9`/`.10` not started | `phase_11A_operations_console/*` |
-| `11W` Operator Web Console | parity `.1`–`.6` ACCEPT 2026-05-06; `.0`/`.7`/`.8` queued for V1 launch | `phase_11W/*` |
+| `11W` Operator Web Console | parity `.1`–`.6` ACCEPT 2026-05-06; `.0`/`.7`/`.8` ACCEPT 2026-05-06 (A1 web shell `f5a94c08`, A2 Account + Business Timing `9a56cabf`, A3 Vendor Connections `075fde54`); live wiring fix `11W.7.live-wire` 2026-05-06 mixed `OperatorWebAccount/BusinessTimingWriteGatewayProvider` into `FirebaseOperatorWebAuthSource` so the editors are reachable from the live entry point | `phase_11W/*` |
 | `9.75` | paused (Barrio) | `phase_9_75/*` |
 | `8` (POS) | engineering-complete (PASS 2026-05-05 via `mobile-proof.v2`); Wave B `documented` for 7 adapters; lifecycle promotion via `phase_8_live_rollout` | `phase_8/*` + `vendor_master_list.md` |
 | `8R` (Reservations) | engineering-complete (PASS 2026-05-05 via `mobile-proof.v2`); Wave B `documented` for 4 adapters; lifecycle promotion via `phase_8_live_rollout` | `phase_8R/*` |

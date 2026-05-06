@@ -24,18 +24,20 @@ are external; engineering can run in parallel.
       namespace `forge-flow-production-*`. Spec:
       `docs/phases/phase_production_cutover/production1_staging_parity_baseline_2026-05-03.md`.
       _Effort: 5–7 days. Blocks: cutover.0._
-- [ ] **Apply 10 pending Postgres migrations to Production1/staging as scoped.**
+- [ ] **Apply 12 pending Postgres migrations to Production1/staging as scoped.**
       Full table in `docs/POST_HARDENING_FOLLOWUPS.md` "P0 - Production1
       Migration Apply Gap". Runbook:
       `runbooks/phase_9_production1_migration_apply_runbook.md`. First two
-      are already staging-applied (2026-05-03/-04); the remaining eight
+      are already staging-applied (2026-05-03/-04); the remaining ten
       (mobile_push, business_timing_live, 11A.14 MFA reset, index rekey,
       11W.5 audit_log_export, audit-anchor daily cron, timing provenance
-      shift_records, data accuracy keyed service-period settings) are
+      shift_records, data accuracy keyed service-period settings, first
+      connection backfill jobs, 11W.7 operator account write-fields) are
       code-ready and need staging apply before Production1.
       _Effort: 1–2 days. Blocks: production admin console writes, mobile
       OS push delivery, live timing runtime, audit log CSV export, keyed
-      Data Accuracy editor._
+      Data Accuracy editor, first-connection backfill orchestration,
+      operator-web Account editor writes._
 - [ ] **Escalate inbound T&Cs to lawyer.** Draft is in `docs/phases/phase_9_8/`.
       Set explicit deadlines: first pass 2026-05-10, final 2026-05-13. Without
       signed T&Cs there is no `tos_acceptances` row → `cutover.2` cannot run.
@@ -67,17 +69,26 @@ are external; engineering can run in parallel.
 
 ## 1 · Engineering critical path (2026-05-12 → ~2026-05-26)
 
-- [ ] **`11W.0` — Web shell + magic-link onboarding.** Brand theme + auth
-      gateway reuse from `lib/main_admin.dart` pattern. Thin HTTP client; no
-      offline storage.
-- [ ] **`11W.7` - Account / Business setup (minimal).** Operator + location
-      bootstrap forms. Reuse admin form patterns where safe, but all writes
-      must go through operator-scoped proxy routes, not `/v1/admin/*` gateways.
-      Business timing setup belongs here as the normal operator-owned editor;
-      F&F Admin remains support/internal override with audit reason.
-- [ ] **`11W.8` — Vendor Connections widget mount.** Mount the existing
-      vendor-connections widget tree (the same one `lib/main_admin.dart`
-      uses) inside the operator web shell.
+- [x] **`11W.0` — Web shell + magic-link onboarding (ACCEPT 2026-05-06, A1).**
+      `web_session_gateway` facade landed at `f5a94c08`; full shell + onboarding
+      pre-existed.
+- [x] **`11W.7` - Account / Business setup (ACCEPT 2026-05-06, A2).**
+      Operator-scoped routes `/v1/operator/account` + `/v1/operator/business-timing-profiles`
+      mounted in `tool/advisor_proxy/operator_routes.dart` with Idempotency-Key
+      validation + per-tenant RLS. Migration
+      `202605070000_phase_11W_7_operator_account_fields.sql` adds
+      `logo_url`/`locale_tag`/`week_start_day`/`rollover_hour`. Validator
+      parity confirmed against migration CHECKs (27 validator + 24 proxy
+      route + 27 my_account_screen + 4 firebase_auth_source tests pass).
+      `business_timing_editor_screen.dart` + `service_period_editor.dart`
+      ship in `lib/operator_web/`. Production audit sink writes real
+      `audit_logs` rows via `RepositoryOperator*WriteGateway`. Live wiring
+      fix `11W.7.live-wire` (this session) mixed
+      `OperatorWebAccount/BusinessTimingWriteGatewayProvider` into
+      `FirebaseOperatorWebAuthSource`.
+- [x] **`11W.8` — Vendor Connections widget mount (ACCEPT 2026-05-06, A3).**
+      `075fde54` — `OperatorWebVendorConnectionsResolver` + honest no-location
+      state.
 - [ ] **`8.spine-bridge-sink-fanout` (14 lanes).** File-disjoint, parallelizable.
       Each lane writes one vendor's canonical facts into Postgres tables
       (`cover_facts`, `labor_punches`, `reservation_facts`).

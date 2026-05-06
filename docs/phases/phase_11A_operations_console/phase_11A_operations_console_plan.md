@@ -119,13 +119,15 @@ again. Originally added under the `202605061700_…` basename (commit
 collision with the audit-anchor + timing-provenance migrations. Phase 8
 mobile core then added
 `202605061800_phase_8_first_connection_backfill_jobs.sql`, an additive
-server-side queue/claim seam for first-connection backfill jobs. That table is
-not an 11A surface, but it moved the shared cutoff watched by this plan.
-Phase 11W.7 also adds
-`202605070000_phase_11W_7_operator_account_fields.sql` for operator-web
-Account settings identity/regional defaults and validation constraints. It is
-not an 11A surface either, but it is now the shared cutoff watched by this
-plan.
+server-side queue/claim seam for first-connection backfill jobs; it is not
+an 11A surface but it moved the shared cutoff. Phase 11W.7 / Wave A2 then
+queues `202605070000_phase_11W_7_operator_account_fields.sql`, which adds
+the editable business-identity columns the operator-web `PATCH
+/v1/operator/account` route writes (`logo_url`, `locale_tag`,
+`week_start_day`, `rollover_hour`) plus format CHECK constraints and a
+`business_name` length CHECK. Additive + default-backed; RLS on
+`public.operators` is unchanged. That migration is not an 11A surface
+either, but it is now the shared cutoff watched by this plan.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin

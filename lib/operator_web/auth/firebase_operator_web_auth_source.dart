@@ -11,6 +11,8 @@ import '../account/operator_web_account_actions.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/operator_web_team_gateway_providers.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
+import '../services/web_account_gateway.dart';
+import '../services/web_business_timing_gateway.dart';
 import '../services/web_security_gateway.dart';
 import '../services/web_team_audit_log_gateway.dart';
 import '../services/web_team_hierarchy_gateway.dart';
@@ -24,6 +26,8 @@ class FirebaseOperatorWebAuthSource
         OperatorWebAuthSource,
         OperatorWebAccountActions,
         OperatorWebVendorConnectionsGatewayProvider,
+        OperatorWebAccountGatewayProvider,
+        OperatorWebBusinessTimingWriteGatewayProvider,
         OperatorWebTeamUsersGatewayProvider,
         OperatorWebTeamRolesGatewayProvider,
         OperatorWebTeamHierarchyGatewayProvider,
@@ -37,6 +41,14 @@ class FirebaseOperatorWebAuthSource
        _proxyClient = proxyClient,
        vendorConnectionsGateway = OperatorWebHttpVendorConnectionsGateway(
          proxyClient: proxyClient,
+         idTokenProvider: authClient.currentIdToken,
+       ),
+       accountGateway = HttpWebAccountGateway(
+         client: proxyClient,
+         idTokenProvider: authClient.currentIdToken,
+       ),
+       businessTimingWriteGateway = HttpWebBusinessTimingGateway(
+         client: proxyClient,
          idTokenProvider: authClient.currentIdToken,
        ),
        teamUsersGateway = WebTeamUsersGatewayLive(
@@ -78,6 +90,12 @@ class FirebaseOperatorWebAuthSource
 
   @override
   final OperatorWebHttpVendorConnectionsGateway vendorConnectionsGateway;
+
+  @override
+  final WebAccountGateway accountGateway;
+
+  @override
+  final WebBusinessTimingGateway businessTimingWriteGateway;
 
   @override
   final WebTeamUsersGateway teamUsersGateway;
