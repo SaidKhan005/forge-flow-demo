@@ -14,6 +14,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/services/realtime/outbox_tripwire_evaluator.dart';
 import 'package:forge_and_flow/services/realtime/realtime_subscription.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 import 'package:forge_and_flow/widgets/sync_state_badge.dart';
@@ -224,6 +225,106 @@ void main() {
       // don't shift on state change.
       expect(connectedSize.width, equals(reconnectingSize.width));
       expect(connectingSize.width, equals(reconnectingSize.width));
+    });
+
+    // ─── Phase 10a.4 — degraded branch ─────────────────────────────
+    //
+    // When the WebSocket is alive AND the tripwire stream reports
+    // red, the badge shifts to "Degraded" (amber) instead of the
+    // green "Live" pill. Yellow tripwires DO NOT trip the badge —
+    // yellow is "trending bad", red is "events being dropped".
+
+    testWidgets(
+      'shifts to Degraded when tripwire stream reports red while connected',
+      (tester) async {
+        final connectionController =
+            StreamController<RealtimeConnectionState>.broadcast();
+        final tripwireController =
+            StreamController<OutboxTripwireStatus>.broadcast();
+        addTearDown(connectionController.close);
+        addTearDown(tripwireController.close);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: RealtimeConnectionScope(
+                connectionStateStream: connectionController.stream,
+                initialState: RealtimeConnectionState.connected,
+                child: RealtimeTripwireScope(
+                  tripwireStatusStream: tripwireController.stream,
+                  initialStatus: OutboxTripwireStatus.red,
+                  child: const Center(child: SyncStateBadge()),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text('Degraded'), findsOneWidget);
+        expect(find.text('Live'), findsNothing);
+
+        // Tripwire recovers → pill returns to green Live.
+        tripwireController.add(OutboxTripwireStatus.green);
+        await tester.pumpAndSettle();
+        expect(find.text('Live'), findsOneWidget);
+        expect(find.text('Degraded'), findsNothing);
+      },
+    );
+
+    testWidgets('yellow tripwire does NOT shift the badge to Degraded',
+        (tester) async {
+      final connectionController =
+          StreamController<RealtimeConnectionState>.broadcast();
+      addTearDown(connectionController.close);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RealtimeConnectionScope(
+              connectionStateStream: connectionController.stream,
+              initialState: RealtimeConnectionState.connected,
+              child: const RealtimeTripwireScope(
+                tripwireStatusStream: null,
+                initialStatus: OutboxTripwireStatus.yellow,
+                child: Center(child: SyncStateBadge()),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Live'), findsOneWidget);
+      expect(find.text('Degraded'), findsNothing);
+    });
+
+    testWidgets('connecting/reconnecting still wins over red tripwire',
+        (tester) async {
+      // Mid-handshake the connection-state pill is the more urgent
+      // signal — operator sees "Connecting…" / "Reconnecting…", not
+      // "Degraded".
+      final connectionController =
+          StreamController<RealtimeConnectionState>.broadcast();
+      addTearDown(connectionController.close);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RealtimeConnectionScope(
+              connectionStateStream: connectionController.stream,
+              initialState: RealtimeConnectionState.reconnecting,
+              child: const RealtimeTripwireScope(
+                tripwireStatusStream: null,
+                initialStatus: OutboxTripwireStatus.red,
+                child: Center(child: SyncStateBadge()),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Reconnecting…'), findsOneWidget);
+      expect(find.text('Degraded'), findsNothing);
     });
   });
 }

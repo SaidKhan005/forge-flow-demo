@@ -29,11 +29,13 @@
 
 import 'package:flutter/material.dart';
 
+import '../../services/realtime/outbox_tripwire_evaluator.dart';
 import '../../theme/app_theme.dart';
 
 import '../admin_human_labels.dart';
 import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
+import '../services/realtime_tripwire_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_run_check_controls.dart';
 
@@ -56,10 +58,18 @@ class ObservabilityAdminScreen extends StatefulWidget {
   const ObservabilityAdminScreen({
     super.key,
     required this.gateway,
+    this.tripwireGateway,
     @visibleForTesting this.now,
   });
 
   final ObservabilityAdminGateway gateway;
+
+  /// Phase 10a.4 — optional gateway for the Realtime bridge tripwire
+  /// section. When wired, the manual run-check refreshes both the
+  /// observability envelope AND the tripwire status; the section
+  /// renders above the existing tabs. When null, the section is
+  /// hidden and existing tests stay green without modification.
+  final RealtimeTripwireAdminGateway? tripwireGateway;
 
   /// Test-only clock injection so the "Last refreshed" timestamp is
   /// deterministic. Production uses [DateTime.now].
@@ -82,6 +92,12 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
   String? _loadError;
   DateTime? _lastRefreshed;
   String? _activeQueryClassFilter;
+
+  // Phase 10a.4 — bridge tripwire state. Loads alongside the
+  // observability envelope when [widget.tripwireGateway] is wired;
+  // section renders above the tabs.
+  RealtimeTripwireSnapshot? _tripwires;
+  String? _tripwireError;
 
   DateTime _clockNow() => (widget.now ?? DateTime.now)();
 
@@ -123,6 +139,7 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
       _refreshing = true;
       if (_envelope == null) _loading = true;
       _loadError = null;
+      _tripwireError = null;
     });
     try {
       final filter = _queryClassFilterController.text.trim();
@@ -157,6 +174,27 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
         setState(() => _refreshing = false);
       } else {
         _refreshing = false;
+      }
+    }
+    // Phase 10a.4 — refresh the tripwire envelope after the main
+    // fetch settles. Failure here does not poison the rest of the
+    // screen; the section renders an inline error chip instead.
+    final tripwireGateway = widget.tripwireGateway;
+    if (tripwireGateway != null && mounted) {
+      try {
+        final snapshot = await tripwireGateway.fetch();
+        if (!mounted) return;
+        setState(() {
+          _tripwires = snapshot;
+          _tripwireError = null;
+        });
+      } on RealtimeTripwireAdminGatewayError catch (error) {
+        if (!mounted) return;
+        setState(() => _tripwireError = error.message);
+      } catch (error) {
+        if (!mounted) return;
+        setState(() =>
+            _tripwireError = 'Could not load bridge tripwires: $error');
       }
     }
   }
@@ -213,6 +251,13 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
         children: [
           _AsOfStrip(envelope: envelope),
           const SizedBox(height: 12),
+          if (widget.tripwireGateway != null) ...[
+            _BridgeTripwiresSection(
+              snapshot: _tripwires,
+              error: _tripwireError,
+            ),
+            const SizedBox(height: 12),
+          ],
           const _MetricsKey(),
           const SizedBox(height: 12),
           TabBar(
@@ -2349,5 +2394,261 @@ class _ErrorBanner extends StatelessWidget {
         style: AppTextStyles.mono11(color: AppColors.negative),
       ),
     );
+  }
+}
+
+// ─── Phase 10a.4 — Realtime bridge tripwires section ─────────────────
+//
+// Sits above the observability tabs and renders one row per Q22
+// metric (bridge lag, undelivered count, publish error rate, NOTIFY
+// queue usage) with the current value, the yellow/red thresholds,
+// and a status pill. The header pill shows the worst-wins severity
+// across all four rows. When the gateway returns an error the
+// section renders an inline message; the rest of the screen still
+// works.
+
+class _BridgeTripwiresSection extends StatelessWidget {
+  const _BridgeTripwiresSection({required this.snapshot, required this.error});
+
+  final RealtimeTripwireSnapshot? snapshot;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_observability_bridge_tripwires_section'),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Realtime bridge tripwires',
+                  style: AppTextStyles.display16(color: AppColors.textPrimary),
+                ),
+              ),
+              if (snapshot != null) _BridgeTripwirePill(status: snapshot!.status),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Yellow or red means the event_outbox bridge is degraded. The sync badge shifts to "Degraded" when any metric fires red.',
+            style: AppTextStyles.mono11(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 10),
+          if (error != null)
+            Text(
+              error!,
+              key: const Key('admin_observability_bridge_tripwires_error'),
+              style: AppTextStyles.mono11(color: AppColors.negative),
+            )
+          else if (snapshot == null)
+            Text(
+              'Loading...',
+              style: AppTextStyles.mono11(color: AppColors.textMuted),
+            )
+          else
+            Column(
+              children: [
+                for (final row in snapshot!.metrics)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: _BridgeTripwireRow(row: row),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BridgeTripwireRow extends StatelessWidget {
+  const _BridgeTripwireRow({required this.row});
+
+  final RealtimeTripwireMetricRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: Key('admin_observability_bridge_tripwire_row_${row.key}'),
+      children: [
+        SizedBox(
+          width: 180,
+          child: Text(
+            row.label,
+            style: AppTextStyles.mono11(color: AppColors.textPrimary),
+          ),
+        ),
+        SizedBox(
+          width: 110,
+          child: Text(
+            // Hyphen-minus, not em dash, per the slice-level
+            // "no em dash in admin-facing string literals" rule.
+            row.value == null ? '-' : _formatValue(row.metric, row.value!),
+            style: AppTextStyles.mono11(color: AppColors.textPrimary),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            'Yellow at ${_formatThreshold(row.metric, row.yellow)}, '
+            'red at ${_formatThreshold(row.metric, row.red)}',
+            style: AppTextStyles.mono10(color: AppColors.textMuted),
+          ),
+        ),
+        _BridgeTripwireRowPill(status: row.status),
+      ],
+    );
+  }
+
+  String _formatValue(OutboxTripwireMetric metric, num value) {
+    switch (metric) {
+      case OutboxTripwireMetric.bridgeLagSeconds:
+        return '${value.toStringAsFixed(0)} s';
+      case OutboxTripwireMetric.undeliveredCount:
+        return value.toInt().toString();
+      case OutboxTripwireMetric.publishErrorRate:
+      case OutboxTripwireMetric.notifyQueueUsage:
+        final pct = (value * 100).toStringAsFixed(2);
+        return '$pct %';
+    }
+  }
+
+  String _formatThreshold(OutboxTripwireMetric metric, num value) {
+    switch (metric) {
+      case OutboxTripwireMetric.bridgeLagSeconds:
+        return '${value.toStringAsFixed(0)} s';
+      case OutboxTripwireMetric.undeliveredCount:
+        return value.toInt().toString();
+      case OutboxTripwireMetric.publishErrorRate:
+      case OutboxTripwireMetric.notifyQueueUsage:
+        final pct = (value * 100).toStringAsFixed(2);
+        return '$pct %';
+    }
+  }
+}
+
+class _BridgeTripwirePill extends StatelessWidget {
+  const _BridgeTripwirePill({required this.status});
+
+  final OutboxTripwireStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _paletteFor(status);
+    return Container(
+      key: Key(
+        'admin_observability_bridge_tripwire_status_'
+        '${outboxTripwireStatusKey(status)}',
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: palette.background,
+        border: Border.all(color: palette.border, width: 1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        palette.label,
+        style: TextStyle(
+          color: palette.text,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+}
+
+class _BridgeTripwireRowPill extends StatelessWidget {
+  const _BridgeTripwireRowPill({required this.status});
+
+  final RealtimeTripwireRowStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _rowPaletteFor(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: palette.background,
+        border: Border.all(color: palette.border, width: 1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        palette.label,
+        style: TextStyle(
+          color: palette.text,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+}
+
+class _TripwirePalette {
+  const _TripwirePalette({
+    required this.label,
+    required this.text,
+    required this.background,
+    required this.border,
+  });
+
+  final String label;
+  final Color text;
+  final Color background;
+  final Color border;
+}
+
+_TripwirePalette _paletteFor(OutboxTripwireStatus status) {
+  switch (status) {
+    case OutboxTripwireStatus.green:
+      return const _TripwirePalette(
+        label: 'Green',
+        text: AppColors.positive,
+        background: Color(0x26256B29),
+        border: Color(0x66256B29),
+      );
+    case OutboxTripwireStatus.yellow:
+      return const _TripwirePalette(
+        label: 'Yellow',
+        text: AppColors.warning,
+        background: AppColors.warningBadgeBg,
+        border: Color(0x66997000),
+      );
+    case OutboxTripwireStatus.red:
+      return const _TripwirePalette(
+        label: 'Red',
+        text: AppColors.negative,
+        background: Color(0x26C62828),
+        border: Color(0x66C62828),
+      );
+  }
+}
+
+_TripwirePalette _rowPaletteFor(RealtimeTripwireRowStatus status) {
+  switch (status) {
+    case RealtimeTripwireRowStatus.green:
+      return _paletteFor(OutboxTripwireStatus.green);
+    case RealtimeTripwireRowStatus.yellow:
+      return _paletteFor(OutboxTripwireStatus.yellow);
+    case RealtimeTripwireRowStatus.red:
+      return _paletteFor(OutboxTripwireStatus.red);
+    case RealtimeTripwireRowStatus.unknown:
+      return const _TripwirePalette(
+        label: 'Unknown',
+        text: AppColors.textMuted,
+        background: AppColors.backgroundDeep,
+        border: AppColors.borderSubtle,
+      );
   }
 }
