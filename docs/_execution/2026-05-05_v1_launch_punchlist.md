@@ -182,24 +182,50 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
       OpenTable (reservation); plus `.7S.upgrade` 7shifts
       `/reports/hours_and_wages` adapter capability extension.
       File-disjoint; parallelizable.
+- [x] **`8.first-connect-backfill-wire-in` ACCEPT 2026-05-06 (PR #195,
+      `aa7a58d2`).** Lanes 0–5 closed: durable backfill job seam
+      (`93bfd85f`), connect enqueue (`11ea8e70`), worker dispatch
+      (`a53953c2`), canonical-fact post-commit projector (`4816b0a8`),
+      mobile/proxy backfill status (`3238002a`), proof harness +
+      walkthrough + closeout doc (`b120b430`). The production canonical-
+      fact write seam now invokes both `CanonicalFactToClosedShiftInputAggregator`
+      and `OpenShiftSnapshotProjector`, closing the dormancy gap from the
+      2026-05-06 5-agent audit. CI was blocked by the GitHub Actions
+      billing/spending-limit annotation, so the local proof gates
+      (analyzer + index-leading + RLS + Postgres-import + drift + cutoff
+      + `git diff --check` + 118-test focused suite) were the gating
+      evidence.
 - [~] **`8.spine-bridge-live` + closed timing provenance — components
-      landed, production wire-in PENDING.** Lane 0 schema (`9740488f`
+      landed; production wire-in CLOSED via `8.first-connect-backfill-wire-in`.**
+      Lane 0 schema (`9740488f`
       migration `202605061700_phase_8_timing_provenance_shift_records.sql`)
       + Lane 1 builder/writer (`da1484a0`) + Lane 2 V/H/L label resolver
       (`976e8d7e`) + Lane 3 `OpenShiftSnapshotProjector` (`c9a3de6b`) +
       Lane 4 mobile/proxy enrichment (`e3c196bf`) + Lane 5 proof doc
-      (`389704bf`) all merged with passing tests against fakes.
-      **2026-05-06 5-agent audit found
-      `CanonicalFactToClosedShiftInputAggregator` and
-      `OpenShiftSnapshotProjector` are dormant in production: no sink and
-      no event-outbox claimer invokes them; the production canonical-fact
-      write seam still emits closed `shift_records` without the timing
-      triplet, and `open_shift_snapshots` are only populated via the
-      payload harness.** Follow-up slice `8.live-and-closed-truth.wire-in`
-      will (a) wire the closed aggregator into the canonical close-shift
-      seam with a new `BusinessTimingProfileResolver`, and (b) wire the
-      projector into each sink's write Tx OR add an event-outbox claimer
-      worker.
+      (`389704bf`) merged 2026-05-06 with passing tests against fakes.
+      The earlier 5-agent dormancy audit finding (aggregator + projector
+      unwired in production) was resolved by the
+      `canonical_fact_post_commit_projector.dart` seam shipped in
+      Lane 3 of `8.first-connect-backfill-wire-in` (`4816b0a8`); the
+      production canonical-fact write seam now invokes both for completed
+      and current/open service periods. Live-half closeout audit lives in
+      `docs/_execution/2026-05-06_8_first_connection_backfill_proof.md`.
+      Both halves closed via Codex's `8.first-connect-backfill-wire-in`
+      sprint (`canonical_fact_post_commit_projector.dart`).
+- [ ] **`8.star-target-server-truth` PLANNED 2026-05-06 — next mobile
+      core sprint (Codex).** Moves selected star shifts, manager override
+      state, target cycles, and active target profiles from local-only/
+      mobile cache truth to server truth. Closes Doc 1 items 1–3 (server-
+      backed selected star shifts and manager override + server target
+      cycles and active target profiles). Lane 0 = decision schema +
+      Postgres repositories; Lanes 1–4 in parallel; Lane 5 proof harness.
+      Authority: `docs/contracts/mobile_core_star_target_truth_contract.md`,
+      `docs/_execution/2026-05-06_mobile_core_star_target_truth_sprint_plan.md`.
+- [ ] **Doc 1 remaining (queued post-`8.star-target-server-truth`):**
+      server weekly plan snapshots + forecast context · mobile business
+      scope selector + rollup truth · admin/web setting sync inventory ·
+      connected-device E2E + live provider proof + push proof + larger
+      pressure suite. Each requires its own sprint plan.
 - [ ] **Phase 11A.8/.9/.10 — operations console final slices.** Support
       audit, cross-operator reads, user impersonation — deferred post-launch
       unless escalated.
