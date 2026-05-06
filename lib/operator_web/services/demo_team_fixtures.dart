@@ -1441,3 +1441,128 @@ const List<DemoAuditLogEntryFixture> kDemoAuditLogEntriesFixture =
     createdAtIso: '2026-04-06T07:42:00Z',
   ),
 ];
+
+/// 11W.6 Security - the actor's own MFA factor inventory. Demo flavor
+/// pins the demo owner with one active TOTP factor so the walkthrough
+/// can exercise the revoke -> 24-hour delayed removal -> cancel flow
+/// without first running an enrollment. The walkthrough then enrolls
+/// a second factor to land on the contract's "enroll a TOTP factor"
+/// step.
+@immutable
+class DemoTeamMfaFactorFixture {
+  const DemoTeamMfaFactorFixture({
+    required this.factorId,
+    required this.factorType,
+    required this.enrolledAtIso,
+    required this.issuerLabel,
+    this.lastUsedAtIso,
+    this.canRevoke = true,
+  });
+
+  final String factorId;
+  final String factorType;
+  final String enrolledAtIso;
+  final String? lastUsedAtIso;
+  final String issuerLabel;
+  final bool canRevoke;
+}
+
+/// Stable id for the demo owner's existing TOTP factor. The
+/// walkthrough revokes this factor first to show the 24-hour
+/// delayed-removal posture.
+const String kDemoSecurityExistingFactorId = 'demo-security-totp-existing';
+
+const List<DemoTeamMfaFactorFixture> kDemoTeamMfaFactorsFixture =
+    <DemoTeamMfaFactorFixture>[
+  DemoTeamMfaFactorFixture(
+    factorId: kDemoSecurityExistingFactorId,
+    factorType: 'totp',
+    enrolledAtIso: '2026-04-12T16:00:00Z',
+    lastUsedAtIso: '2026-05-05T14:00:00Z',
+    issuerLabel: 'Forge & Flow',
+  ),
+];
+
+/// 11W.6 Security - login history fixture. Subset of the audit log
+/// the Security screen renders. Mix of `auth.signed_in`,
+/// `auth.password_changed`, and `auth.mfa_*` rows spanning the last
+/// 7 + 30 + 60 days so the walkthrough's "filter to last 7 days"
+/// step has rows on both sides of the cutoff.
+@immutable
+class DemoTeamLoginHistoryFixture {
+  const DemoTeamLoginHistoryFixture({
+    required this.eventId,
+    required this.eventType,
+    required this.occurredAtIso,
+    this.deviceLabel,
+    this.userAgent,
+    this.geoCity,
+    this.geoCountry,
+  });
+
+  final String eventId;
+  final String eventType;
+  final String occurredAtIso;
+  final String? deviceLabel;
+  final String? userAgent;
+  final String? geoCity;
+  final String? geoCountry;
+}
+
+const List<DemoTeamLoginHistoryFixture> kDemoTeamLoginHistoryFixture =
+    <DemoTeamLoginHistoryFixture>[
+  DemoTeamLoginHistoryFixture(
+    eventId: 'demo-history-signin-web-2026-05-05',
+    eventType: 'auth.signed_in',
+    occurredAtIso: '2026-05-05T14:00:00Z',
+    deviceLabel: 'Chrome on macOS',
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) Chrome/124.0',
+    geoCity: 'Toronto',
+    geoCountry: 'CA',
+  ),
+  DemoTeamLoginHistoryFixture(
+    eventId: 'demo-history-signin-mobile-2026-05-04',
+    eventType: 'auth.signed_in',
+    occurredAtIso: '2026-05-04T09:15:00Z',
+    deviceLabel: 'Forge and Flow on iPhone',
+    userAgent: 'ForgeAndFlow/1.0 (iPhone; iOS 18.1)',
+    geoCity: 'Toronto',
+    geoCountry: 'CA',
+  ),
+  DemoTeamLoginHistoryFixture(
+    eventId: 'demo-history-mfa-enroll-2026-04-12',
+    eventType: 'auth.mfa_totp_enrolled',
+    occurredAtIso: '2026-04-12T16:00:00Z',
+    deviceLabel: 'Chrome on macOS',
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) Chrome/124.0',
+    geoCity: 'Toronto',
+    geoCountry: 'CA',
+  ),
+  DemoTeamLoginHistoryFixture(
+    eventId: 'demo-history-password-changed-2026-04-10',
+    eventType: 'auth.password_changed',
+    occurredAtIso: '2026-04-10T11:32:00Z',
+    deviceLabel: 'Chrome on macOS',
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) Chrome/124.0',
+    geoCity: 'Toronto',
+    geoCountry: 'CA',
+  ),
+  DemoTeamLoginHistoryFixture(
+    eventId: 'demo-history-signin-web-2026-03-22',
+    eventType: 'auth.signed_in',
+    occurredAtIso: '2026-03-22T08:42:00Z',
+    deviceLabel: 'Chrome on macOS',
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) Chrome/124.0',
+    geoCity: 'Toronto',
+    geoCountry: 'CA',
+  ),
+  DemoTeamLoginHistoryFixture(
+    eventId: 'demo-history-session-revoked-2026-03-18',
+    eventType: 'auth.session_revoked',
+    occurredAtIso: '2026-03-18T19:45:00Z',
+    deviceLabel: 'Forge and Flow on iPad',
+    userAgent: 'ForgeAndFlow/1.0 (iPad; iOS 17.5)',
+    geoCity: 'Toronto',
+    geoCountry: 'CA',
+  ),
+];
