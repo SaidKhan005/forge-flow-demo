@@ -1,7 +1,7 @@
 // Phase 11W.live - web-safe Vendor Connections gateway.
 //
 // Production operator web must not silently fall back to the in-memory
-// fixture gateway. This adapter talks to the existing Phase 8 proxy routes
+// fixture gateway. This adapter talks to operator self-service auth routes
 // and lets the shared VendorConnectionsWidget render whatever the proxy
 // returns.
 
@@ -36,9 +36,7 @@ class OperatorWebHttpVendorConnectionsGateway
     required String operatorId,
     required String locationId,
   }) async {
-    final body = await _getJson(
-      '/v1/admin/operators/$operatorId/locations/$locationId/integrations',
-    );
+    final body = await _getJson('/v1/auth/locations/$locationId/integrations');
     return _bundleFromJson(
       body,
       operatorId: operatorId,
@@ -70,12 +68,11 @@ class OperatorWebHttpVendorConnectionsGateway
       ),
     );
     final path = entry.authMode == VendorAuthMode.keyPaste
-        ? '/v1/admin/integrations/$vendorId/connect-key'
-        : '/v1/admin/integrations/oauth/$vendorId/start';
+        ? '/v1/auth/integrations/$vendorId/connect-key'
+        : '/v1/auth/integrations/oauth/$vendorId/start';
     final body = await _postJson(
       path,
       body: <String, Object?>{
-        'operator_id': operatorId,
         'location_id': locationId,
         if (module != null && module.trim().isNotEmpty) 'module': module,
       },
@@ -104,11 +101,8 @@ class OperatorWebHttpVendorConnectionsGateway
     required String vendorId,
   }) async {
     final body = await _postJson(
-      '/v1/admin/integrations/$vendorId/test-connection',
-      body: <String, Object?>{
-        'operator_id': operatorId,
-        'location_id': locationId,
-      },
+      '/v1/auth/integrations/$vendorId/test-connection',
+      body: <String, Object?>{'location_id': locationId},
     );
     final fieldMapping = <String, String>{};
     final rawMapping = body['field_mapping'];
@@ -135,12 +129,8 @@ class OperatorWebHttpVendorConnectionsGateway
     required String reason,
   }) async {
     await _postJson(
-      '/v1/admin/integrations/$vendorId/disconnect',
-      body: <String, Object?>{
-        'operator_id': operatorId,
-        'location_id': locationId,
-        'reason': reason,
-      },
+      '/v1/auth/integrations/$vendorId/disconnect',
+      body: <String, Object?>{'location_id': locationId, 'reason': reason},
     );
   }
 
@@ -152,9 +142,8 @@ class OperatorWebHttpVendorConnectionsGateway
     int limit = 100,
   }) async {
     final body = await _getJson(
-      '/v1/admin/integrations/$vendorId/logs',
+      '/v1/auth/integrations/$vendorId/logs',
       queryParameters: <String, String>{
-        'operator_id': operatorId,
         'location_id': locationId,
         'limit': '$limit',
       },
