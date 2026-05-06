@@ -48,6 +48,69 @@ work that must land before live in-progress Shift is claimed:
 - Treat Operator Web as the normal timing editor and F&F Operations Console as
   audited support override only.
 
+### Phase 8 Lane 0 timing-provenance carry-forward (2026-05-06)
+
+Lane 0 (`db/migrations/202605061700_phase_8_timing_provenance_shift_records.sql`)
+landed the additive timing triplet on closed `shift_records` plus
+`business_timing_profile_version_id` on `open_shift_snapshots`. Lanes 1
+(writer/builder + aggregator), 2 (`ClosedTimingLabelResolver` wired into
+Variance/History/Learn read services), 3 (`OpenShiftSnapshotProjector`),
+and the live half of Lane 4 (`_openShiftSnapshotJson` mapper +
+SELECT now emit the triplet) all landed in commits
+`da1484a0`, `976e8d7e`, `c9a3de6b`, `e3c196bf`. Four follow-ups
+remain:
+
+- **Closed-row proxy gap is still open.** `_shiftRecordJson` and the
+  paired `fetchShiftRecords` SELECT in
+  `tool/advisor_proxy/proxy_bootstrap.dart:1224-1259` and
+  `:1483-1521` do NOT include
+  `business_timing_profile_id`,
+  `business_timing_profile_version_id`, or
+  `service_period_key`. Until that lands, every closed row pulled by the
+  mobile sync arrives with a null triplet, and Lane 2's
+  `ClosedTimingLabelResolver` falls back to mutable `daypart` for
+  display — i.e. Lane 2 is wired but inert on mobile. Mirror the
+  open-snapshot SELECT/mapper change that already landed for
+  `_openShiftSnapshotJson`.
+- **FK posture on closed `shift_records` may block profile mutation.** The
+  migration adds `shift_records_business_timing_profile_fk` and
+  `shift_records_business_timing_profile_version_fk` (both `NOT VALID`) with
+  default `ON DELETE NO ACTION`. The `core_app_architecture.md` "What never
+  rewrites" non-negotiable says closed historical truth must outlive profile
+  mutation. Default `NO ACTION` blocks any `business_timing_profiles` delete
+  the moment a closed row references the profile, which conflicts with the
+  Operator Web timing editor's expected lifecycle. Decide between
+  `ON DELETE SET NULL` (closed row degrades to legacy/null but survives) or
+  dropping the two FKs entirely. The matching FK on
+  `open_shift_snapshots_profile_version_fk` has the same posture and the
+  same decision applies. Refs:
+  `db/migrations/202605061700_phase_8_timing_provenance_shift_records.sql:39-77,
+  101-108`.
+- **Drop the version-equals-profile CHECKs before any future Phase 8R
+  divergence.** Lane 0 added
+  `shift_records_timing_version_profile_match_check` and
+  `open_shift_snapshots_timing_version_profile_match_check`
+  (`version_id IS NOT DISTINCT FROM profile_id`, both `NOT VALID`) as the
+  V1 enforcement of decision A. When Phase 8R introduces a real
+  `business_timing_profile_versions` table and code starts writing a
+  divergent `version_id`, both CHECKs must be dropped first; otherwise the
+  first divergent INSERT fails. Refs:
+  `db/migrations/202605061700_phase_8_timing_provenance_shift_records.sql:51-66,
+  113-129`.
+- **Three migrations now share the `202605061700_` timestamp prefix.**
+  `..._hardening_audit_anchor_daily_schedule.sql`,
+  `..._phase_8_data_accuracy_service_period_settings.sql`, and
+  `..._phase_8_timing_provenance_shift_records.sql` all landed in the
+  same timestamp slot (the data-accuracy one was added by `4655b484`
+  after the original two). The cutoff lint accepts them because it
+  sorts by full basename, but operationally one migration per
+  timestamp keeps deploy ordering deterministic. Renumber the
+  audit-anchor + data-accuracy entries on the next batch — the
+  timing-provenance basename is referenced from
+  `scripts/postgres_staging_setup.ps1` and
+  `docs/_walkthroughs/8.timing-provenance-closed.md` and is therefore
+  the most expensive one to rename.
+
 ## P2 - Test Coverage Gaps Remaining
 
 | Surface | LOC | Test files | Coverage |
