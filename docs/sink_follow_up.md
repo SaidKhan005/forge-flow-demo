@@ -91,3 +91,33 @@ Three open items left after the sink + test landed on
    promote the adapter from `documented` → `sandboxVerified`, and
    flag any field-mapping drift as bounded fixes inside the
    adapter (not slice rebuilds). Schedule directly after HM merges.
+
+---
+
+# Sink Follow-Up — `8.spine-bridge.1.SQ` (Square)
+
+Three open items left after the sink + test landed on
+`claude/bold-hertz-24c86a`:
+
+1. **CI verification of the sink suite.** The worktree environment
+   has no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `square_pos_postgres_sink_test.dart` suite, and the
+   `square_pos_adapter_test.dart` regression were not run locally.
+   CI must run all three before merge; any failures are bounded
+   fixes inside the two new files.
+
+2. **Adapter-side covers_source projection (Lane `.2`).** The sink
+   already hard-NULLs `covers` per the Square Order schema and
+   threads adapter-supplied `covers_source` through unchanged, but
+   `SquarePosAdapter._orderToCanonicalFact` still always emits
+   `covers_source: 'forecast_fallback'`. Lane `.2` should teach the
+   adapter to project `reservation_plus_walkin` / `manual_fallback`
+   when the surrounding signal warrants. This lane intentionally
+   left the adapter alone per the slice prompt.
+
+3. **Next sink-fanout lane.** The remaining INTEGRATE vendors in
+   the sink-fanout wave land in the same shape as `.AL` and `.SQ`:
+   bespoke + unified surface widening, idempotency partial UNIQUE
+   on `(operator_id, vendor_id, vendor_entity_id, vendor_modified_at)`,
+   demo-flip auto-evaluator on watermark advance. Schedule the
+   next lane directly after SQ merges.
