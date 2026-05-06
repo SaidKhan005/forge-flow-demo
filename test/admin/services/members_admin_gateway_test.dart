@@ -873,6 +873,69 @@ void main() {
       expect(rows.single.updatedAt.isUtc, isTrue);
     });
 
+    test('listMembers skips live proxy invite-only user rows', () async {
+      final mock = http_testing.MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'users': <Object?>[
+              <String, Object?>{
+                'user_id': 'u-invited',
+                'email': 'pending@op.test',
+                'display_name': 'Pending Member',
+                'role_id': 'operator_staff',
+                'status': 'invited',
+                'location_id': 'loc-1',
+                'location_label': '95 Water Street',
+                'mfa_enrolled': false,
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpMembersAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      final rows = await gateway.listMembers(operatorId: 'op-1');
+
+      expect(rows, isEmpty);
+    });
+
+    test('listMembers accepts users without a primary location', () async {
+      final mock = http_testing.MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'users': <Object?>[
+              <String, Object?>{
+                'user_id': 'u-unassigned',
+                'email': 'unassigned@op.test',
+                'display_name': 'Unassigned Member',
+                'role_id': 'operator_staff',
+                'status': 'active',
+                'mfa_enrolled': false,
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpMembersAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      final rows = await gateway.listMembers(operatorId: 'op-1');
+
+      expect(rows.single.primaryLocationId, isEmpty);
+      expect(rows.single.primaryLocationName, equals('Unassigned'));
+    });
+
     test('listInvites accepts the proxy auth invites payload shape', () async {
       final mock = http_testing.MockClient((http.Request request) async {
         return http.Response(
@@ -906,6 +969,35 @@ void main() {
       expect(rows.single.roleKey, equals('operator_manager'));
       expect(rows.single.primaryLocationName, equals('95 Water Street'));
       expect(rows.single.invitedAt, equals(DateTime.utc(2026, 5, 6, 14, 40)));
+    });
+
+    test('listInvites accepts invites without a primary location', () async {
+      final mock = http_testing.MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'invites': <Object?>[
+              <String, Object?>{
+                'invite_id': 'inv-unassigned',
+                'email': 'invitee@op.test',
+                'role_id': 'operator_staff',
+                'created_at': '2026-05-06T14:40:00Z',
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpMembersAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      final rows = await gateway.listInvites(operatorId: 'op-1');
+
+      expect(rows.single.primaryLocationId, isEmpty);
+      expect(rows.single.primaryLocationName, equals('Unassigned'));
     });
 
     test('non-forge-admin caller never reaches the network', () async {

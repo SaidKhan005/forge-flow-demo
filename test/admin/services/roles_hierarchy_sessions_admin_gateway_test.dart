@@ -570,6 +570,87 @@ void main() {
       expect(captured.url.queryParameters['operator_id'], equals('op-1'));
     });
 
+    test('read parsers accept live proxy label-oriented payloads', () async {
+      final mock = http_testing.MockClient((http.Request request) async {
+        final path = request.url.path;
+        if (path.endsWith('/roles')) {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'roles': <Object?>[
+                <String, Object?>{
+                  'role_id': 'operator_staff',
+                  'role_label': 'Operator staff',
+                  'is_seeded': true,
+                  'permission_keys': <String>['team.users.view'],
+                },
+              ],
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        }
+        if (path.endsWith('/org-units') &&
+            request.url.queryParameters['include'] == 'locations') {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'locations': <Object?>[
+                <String, Object?>{
+                  'location_id': 'loc-1',
+                  'location_label': '95 Water Street',
+                },
+              ],
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        }
+        if (path.endsWith('/org-units')) {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'org_units': <Object?>[
+                <String, Object?>{'org_unit_id': 'unit-1', 'label': 'Front'},
+              ],
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        }
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'sessions': <Object?>[
+              <String, Object?>{
+                'session_id': 'sess-1',
+                'user_id': 'u1',
+                'user_email': 'user@op.test',
+                'last_active_at': '2026-05-06T15:00:00Z',
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpRolesHierarchySessionsAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      final roles = await gateway.listRoles(operatorId: 'op-1');
+      final units = await gateway.listOrgUnits(operatorId: 'op-1');
+      final locations =
+          await gateway.listHierarchyLocations(operatorId: 'op-1');
+      final sessions = await gateway.listSessions(operatorId: 'op-1');
+
+      expect(roles.single.roleKey, equals('operator_staff'));
+      expect(roles.single.displayName, equals('Operator staff'));
+      expect(units.single.name, equals('Front'));
+      expect(locations.single.name, equals('95 Water Street'));
+      expect(sessions.single.userDisplayName, equals('user@op.test'));
+      expect(sessions.single.deviceFingerprint, equals('Unknown device'));
+      expect(sessions.single.createdAt, equals(sessions.single.lastActiveAt));
+    });
+
     test('createCustomRole POST pins payload + admin_reason', () async {
       late http.Request captured;
       final mock = http_testing.MockClient((http.Request request) async {

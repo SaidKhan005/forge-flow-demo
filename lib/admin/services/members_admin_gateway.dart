@@ -391,7 +391,8 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
     final users = (body['users'] as List?) ?? const [];
     return <MemberAdminRow>[
       for (final user in users)
-        _memberRowFromJson((user as Map).cast<String, Object?>()),
+        if (user is Map && !_isInviteOnlyUserRow(user.cast<String, Object?>()))
+          _memberRowFromJson(user.cast<String, Object?>()),
     ];
   }
 
@@ -736,6 +737,14 @@ MemberAdminRow _memberRowFromJson(Map<String, Object?> json) {
       _optionalDateTime(json['last_active_at']) ??
       _optionalDateTime(json['updated_at']) ??
       DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  final primaryLocationId = _firstOptionalStringField(
+    json,
+    const <String>['primary_location_id', 'location_id'],
+  );
+  final primaryLocationName = _firstOptionalStringField(
+    json,
+    const <String>['primary_location_name', 'location_label'],
+  );
   return MemberAdminRow(
     userId: _stringField(json, 'user_id'),
     email: _stringField(json, 'email'),
@@ -745,14 +754,9 @@ MemberAdminRow _memberRowFromJson(Map<String, Object?> json) {
       'role_id',
       'role_label',
     ]),
-    primaryLocationId: _firstStringField(
-      json,
-      const <String>['primary_location_id', 'location_id'],
-    ),
-    primaryLocationName: _firstStringField(
-      json,
-      const <String>['primary_location_name', 'location_label'],
-    ),
+    primaryLocationId: primaryLocationId ?? '',
+    primaryLocationName:
+        primaryLocationName ?? primaryLocationId ?? 'Unassigned',
     status: MemberStatusWire.fromWire(_stringField(json, 'status')),
     mfaEnrolled: _boolField(json, 'mfa_enrolled'),
     lastActiveAt: timestamp,
@@ -764,11 +768,26 @@ MemberAdminRow _memberRowFromJson(Map<String, Object?> json) {
   );
 }
 
+bool _isInviteOnlyUserRow(Map<String, Object?> json) {
+  // The live preview auth proxy can include invited-but-not-accepted rows
+  // in the users envelope. The admin members contract keeps invited rows
+  // on the invites surface, so filter that duplicate state out here.
+  return _optionalString(json['status']) == 'invited';
+}
+
 MemberInviteRow _inviteRowFromJson(Map<String, Object?> json) {
   final invitedAt =
       _optionalDateTime(json['invited_at']) ??
       _optionalDateTime(json['created_at']) ??
       DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  final primaryLocationId = _firstOptionalStringField(
+    json,
+    const <String>['primary_location_id', 'location_id'],
+  );
+  final primaryLocationName = _firstOptionalStringField(
+    json,
+    const <String>['primary_location_name', 'location_label'],
+  );
   return MemberInviteRow(
     inviteId: _stringField(json, 'invite_id'),
     email: _stringField(json, 'email'),
@@ -779,14 +798,9 @@ MemberInviteRow _inviteRowFromJson(Map<String, Object?> json) {
       'role_id',
       'role_label',
     ]),
-    primaryLocationId: _firstStringField(
-      json,
-      const <String>['primary_location_id', 'location_id'],
-    ),
-    primaryLocationName: _firstStringField(
-      json,
-      const <String>['primary_location_name', 'location_label'],
-    ),
+    primaryLocationId: primaryLocationId ?? '',
+    primaryLocationName:
+        primaryLocationName ?? primaryLocationId ?? 'Unassigned',
     invitedAt: invitedAt,
     invitedBy: _optionalString(json['invited_by']) ?? '',
     orgUnitId: _optionalString(json['org_unit_id']),
@@ -807,11 +821,20 @@ String _stringField(Map<String, Object?> json, String key) {
 }
 
 String _firstStringField(Map<String, Object?> json, List<String> keys) {
+  final value = _firstOptionalStringField(json, keys);
+  if (value != null) return value;
+  throw StateError('missing string field ${keys.join('/')}');
+}
+
+String? _firstOptionalStringField(
+  Map<String, Object?> json,
+  List<String> keys,
+) {
   for (final key in keys) {
     final value = _optionalString(json[key]);
     if (value != null) return value;
   }
-  throw StateError('missing string field ${keys.join('/')}');
+  return null;
 }
 
 bool _boolField(Map<String, Object?> json, String key) {
