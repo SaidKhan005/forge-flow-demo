@@ -14,6 +14,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
 import 'admin_route_handoff.dart';
 import 'models/corpus_admin_models.dart';
@@ -27,6 +28,7 @@ import 'screens/debug_console_admin_screen.dart';
 import 'screens/feature_flags_admin_screen.dart';
 import 'screens/health_admin_screen.dart';
 import 'screens/integration_admin_screen.dart';
+import 'screens/members_admin_screen.dart';
 import 'screens/observability_admin_screen.dart';
 import 'screens/operator_location_admin_screen.dart';
 import 'screens/operator_picker_screen.dart';
@@ -36,9 +38,11 @@ import 'screens/pricing_tier_admin_screen.dart';
 import 'services/corpus_admin_gateway.dart';
 import 'services/data_accuracy_admin_gateway.dart';
 import 'services/debug_console_admin_gateway.dart';
+import 'services/demo_members_admin_gateway.dart';
 import 'services/feature_flags_admin_gateway.dart';
 import 'services/health_admin_gateway.dart';
 import 'services/integration_admin_gateway.dart';
+import 'services/members_admin_gateway.dart';
 import 'services/observability_admin_gateway.dart';
 import 'services/operator_location_admin_gateway.dart';
 import 'services/pricing_tier_admin_gateway.dart';
@@ -130,13 +134,22 @@ const String kAdminDataAccuracyRouteId = 'data-accuracy';
 /// Phase 8 spine-bridge Lane .C - Polling & Pricing admin tab (Tab 2).
 const String kAdminPollingPricingRouteId = 'polling-pricing';
 
-/// Canonical operator-picker route ID (11A.3a follow-up). The picker
-/// is reached via Navigator.push from the Corpus admin "Pick operator"
-/// button - it is intentionally NOT in [kAdminRoutes] (no side-nav
-/// item) because its purpose is "internal helper of the Corpus
-/// surface," not a standalone admin destination. The constant exists
-/// so audit logs and route observers have a stable name to refer to
-/// the modal target.
+/// Phase 11A.12 - cross-operator Members + Invites surface. Mounted
+/// after the operator picker; the F&F admin opens this route, picks
+/// an operator, and lands on the members table scoped to the chosen
+/// operator.
+const String kAdminMembersRouteId = 'members';
+
+/// Canonical operator-picker route ID (11A.3a follow-up; reused by
+/// 11A.12). The picker is reached via Navigator.push from any host
+/// screen that scopes to a single operator (Corpus admin's "Graph
+/// candidates" tab and the Members + Invites surface ship today;
+/// future operator-scoped admin surfaces will reuse the same path).
+/// It is intentionally NOT in [kAdminRoutes] (no side-nav item)
+/// because no admin destination "is" the picker — it is always a
+/// dependency of another surface. The constant exists so audit logs
+/// and route observers have a stable name to refer to the modal
+/// target.
 const String kAdminOperatorPickerRouteId = 'operator-picker';
 
 /// The admin route table. Order is the side-nav order.
@@ -235,6 +248,16 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     subtitle:
         'Set tier definitions, per-location assignments, and review margin.',
     builder: _buildPollingPricing,
+  ),
+  AdminRoute(
+    id: kAdminMembersRouteId,
+    title: 'Members',
+    path: '/admin/members',
+    icon: Icons.people_alt_outlined,
+    section: AdminRouteSection.operations,
+    subtitle:
+        'Pick an operator, then review members, invites, and admin actions.',
+    builder: _buildMembers,
   ),
 ];
 
@@ -502,6 +525,173 @@ Widget _buildPollingPricing(BuildContext context) {
   );
 }
 
+Widget _buildMembers(BuildContext context) {
+  final gateway = AdminConsoleServicesScope.membersAdminGatewayOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+
+  Future<OperatorPickerResult?> openPicker(
+    BuildContext routeContext,
+    String? adminUid,
+  ) {
+    return Navigator.of(routeContext).push<OperatorPickerResult?>(
+      MaterialPageRoute<OperatorPickerResult?>(
+        settings: const RouteSettings(name: '/admin/members/operator-picker'),
+        builder: (_) =>
+            OperatorPickerScreen(gateway: operatorGateway, adminUid: adminUid),
+      ),
+    );
+  }
+
+  if (source == null) {
+    // Test path: default to live edit affordances.
+    return _MembersAdminRouteShell(
+      gateway: gateway,
+      actorUserId: 'demo-super-admin',
+      editingEnabled: true,
+      adminUid: null,
+      openPicker: openPicker,
+    );
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
+      return _MembersAdminRouteShell(
+        gateway: gateway,
+        actorUserId: session?.uid ?? 'unknown',
+        editingEnabled: canEdit,
+        adminUid: session?.uid,
+        openPicker: openPicker,
+      );
+    },
+  );
+}
+
+class _MembersAdminRouteShell extends StatefulWidget {
+  const _MembersAdminRouteShell({
+    required this.gateway,
+    required this.actorUserId,
+    required this.editingEnabled,
+    required this.adminUid,
+    required this.openPicker,
+  });
+
+  final MembersAdminGateway gateway;
+  final String actorUserId;
+  final bool editingEnabled;
+  final String? adminUid;
+  final Future<OperatorPickerResult?> Function(
+    BuildContext context,
+    String? adminUid,
+  ) openPicker;
+
+  @override
+  State<_MembersAdminRouteShell> createState() =>
+      _MembersAdminRouteShellState();
+}
+
+class _MembersAdminRouteShellState extends State<_MembersAdminRouteShell> {
+  OperatorPickerResult? _picked;
+
+  /// Inflight guard. Set true while a picker push is awaiting; reset
+  /// when the navigator pops (with a result or a cancel). Prevents
+  /// double-pushes from a fast double-tap on the host's `Pick
+  /// operator` / `Change operator` buttons.
+  bool _pickerInflight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _picked != null) return;
+      _openPicker();
+    });
+  }
+
+  Future<void> _openPicker() async {
+    if (_pickerInflight) return;
+    _pickerInflight = true;
+    try {
+      final result = await widget.openPicker(context, widget.adminUid);
+      if (!mounted) return;
+      if (result != null) {
+        setState(() => _picked = result);
+      } else {
+        // Cancel: stay on the no-operator state. The user can re-
+        // open via the inline `Pick operator` button.
+        setState(() {});
+      }
+    } finally {
+      _pickerInflight = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final picked = _picked;
+    if (picked == null) {
+      return Container(
+        key: const Key('admin_members_no_operator_state'),
+        color: AppColors.backgroundDeep,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Pick an operator',
+                    style: AppTextStyles.display20(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Members and invites are scoped to one operator at a time. '
+                    'Pick the operator you are helping.',
+                    style: AppTextStyles.body13(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    key: const Key('admin_members_open_picker'),
+                    onPressed: _openPicker,
+                    icon: const Icon(Icons.business_outlined, size: 16),
+                    label: const Text('Pick operator'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    // Members surface is operator-scoped; keying on operatorId alone
+    // preserves the table state, filter chips, and scroll position
+    // when the user picks the same operator again with a different
+    // location (the picker carries a locationId, but the screen does
+    // not narrow on it).
+    return MembersAdminScreen(
+      key: ValueKey<String>('members-${picked.operatorId}'),
+      gateway: widget.gateway,
+      actorUserId: widget.actorUserId,
+      pickedOperator: picked,
+      editingEnabled: widget.editingEnabled,
+      onChangeOperator: _openPicker,
+    );
+  }
+}
+
 Widget _buildDebugConsole(BuildContext context) {
   // 11A.5 - full-content reveal is gated on `super_admin`. `ff_support`
   // lands on the read-only meta view (no expand-to-full-content
@@ -553,6 +743,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.featureFlagsGateway,
     this.debugConsoleGateway,
     this.dataAccuracyAdminGateway,
+    this.membersAdminGateway,
     this.adminAuthSource,
   });
 
@@ -625,6 +816,11 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// walkthrough.
   final DataAccuracyAdminGateway? dataAccuracyAdminGateway;
 
+  /// Phase 11A.12 - cross-operator Members + Invites admin gateway.
+  /// Optional; the default fallback is the seeded in-memory gateway
+  /// used by the kDemoMode walkthrough.
+  final MembersAdminGateway? membersAdminGateway;
+
   /// Phase 11A.2 - admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
   /// compute `editingEnabled` from the signed-in session's roles
@@ -693,6 +889,12 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.dataAccuracyAdminGateway ?? _defaultDataAccuracyDemoGateway;
   }
 
+  static MembersAdminGateway membersAdminGatewayOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.membersAdminGateway ?? _defaultMembersAdminDemoGateway;
+  }
+
   static AdminAuthSource? adminAuthSourceOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
@@ -710,6 +912,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
       featureFlagsGateway != oldWidget.featureFlagsGateway ||
       debugConsoleGateway != oldWidget.debugConsoleGateway ||
       dataAccuracyAdminGateway != oldWidget.dataAccuracyAdminGateway ||
+      membersAdminGateway != oldWidget.membersAdminGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
 
@@ -1116,4 +1319,15 @@ final DataAccuracyAdminGateway _defaultDataAccuracyDemoGateway =
           status: TierChangeRequestStatus.pending,
         ),
       ],
+    );
+
+/// Phase 11A.12 - cross-operator Members + Invites demo gateway.
+/// Seeded from `kDemoMembersByOperator` / `kDemoInvitesByOperator`
+/// (same demo identities the .C / 11A.1 walkthroughs use) so a F&F
+/// admin can sign in, pick an operator, and exercise filter chips +
+/// row actions + the invite flow without a live proxy.
+final MembersAdminGateway _defaultMembersAdminDemoGateway =
+    InMemoryMembersAdminGateway(
+      membersByOperator: kDemoMembersByOperator(),
+      invitesByOperator: kDemoInvitesByOperator(),
     );

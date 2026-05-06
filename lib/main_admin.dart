@@ -38,6 +38,7 @@ import 'admin/services/debug_console_admin_gateway.dart';
 import 'admin/services/feature_flags_admin_gateway.dart';
 import 'admin/services/health_admin_gateway.dart';
 import 'admin/services/integration_admin_gateway.dart';
+import 'admin/services/members_admin_gateway.dart';
 import 'admin/services/observability_admin_gateway.dart';
 import 'admin/services/operator_location_admin_gateway.dart';
 import 'admin/services/pricing_tier_admin_gateway.dart';
@@ -103,6 +104,9 @@ Future<void> main() async {
     final debugConsoleGateway = gateway == null
         ? null
         : _resolveDebugConsoleAdminGateway(authBinding.authClient);
+    final membersAdminGateway = gateway == null
+        ? null
+        : _resolveMembersAdminGateway(authBinding.authClient);
     final adminApp = AdminConsoleApp(authSource: source);
     // Always wrap with `AdminConsoleServicesScope` so the Pricing /
     // Corpus / Integrations / Feature Flags routes can read
@@ -121,6 +125,7 @@ Future<void> main() async {
         observabilityGateway: observabilityGateway,
         featureFlagsGateway: featureFlagsGateway,
         debugConsoleGateway: debugConsoleGateway,
+        membersAdminGateway: membersAdminGateway,
         adminAuthSource: source,
         child: adminApp,
       ),
@@ -327,6 +332,25 @@ DebugConsoleAdminGateway? _resolveDebugConsoleAdminGateway(
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpDebugConsoleAdminGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+  );
+}
+
+/// Phase 11A.12 - members + invites admin gateway. Same admin proxy
+/// base URI as the other admin surfaces; demo mode falls back to the
+/// seeded in-memory gateway in `admin_routes.dart` so the kDemoMode
+/// walkthrough works without a backend.
+MembersAdminGateway? _resolveMembersAdminGateway(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpMembersAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );
