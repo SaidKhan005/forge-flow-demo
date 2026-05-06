@@ -40,7 +40,10 @@ import 'package:flutter/material.dart';
 import 'operator_web/auth/firebase_operator_web_auth_source.dart';
 import 'operator_web/auth/operator_web_auth_source.dart';
 import 'operator_web/operator_web_app.dart';
+import 'operator_web/router/operator_web_router.dart';
+import 'operator_web/services/demo_team_users_gateway.dart';
 import 'operator_web/services/operator_web_proxy_client.dart';
+import 'operator_web/services/web_team_users_gateway.dart';
 import 'services/auth/firebase_auth_client_sdk.dart';
 import 'theme/app_theme.dart';
 
@@ -92,7 +95,13 @@ Future<void> main() async {
 
 Future<OperatorWebAuthSource> _resolveAuthSource() async {
   if (_kOperatorWebDemoAuth) {
-    return DemoOperatorWebAuthSource.atWelcome();
+    // Demo flavor: extend the demo auth source so the router can pick
+    // up an in-memory `DemoWebTeamUsersGateway` via the
+    // `OperatorWebTeamUsersGatewayProvider` mixin. Live flavor wires
+    // a `package:http` `WebTeamUsersGatewayLive` against the same
+    // proxy client in the `11W.1.live` follow-up (mirrors the
+    // gateway-follows-shell pattern Phase 11A used).
+    return _DemoOperatorWebAuthSourceWithMembers();
   }
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(options: kOperatorWebFirebaseOptions);
@@ -130,6 +139,22 @@ String? _parseMagicLinkToken() {
   } catch (_) {
     return null;
   }
+}
+
+/// Demo flavor wrapper that mixes [OperatorWebTeamUsersGatewayProvider]
+/// onto the demo auth source. The router reads the gateway off this
+/// interface so the Members surface shows the shared demo fixture
+/// data set during the walkthrough. Live mode binds the
+/// `WebTeamUsersGatewayLive` impl in `11W.1.live`.
+class _DemoOperatorWebAuthSourceWithMembers
+    extends DemoOperatorWebAuthSource
+    implements OperatorWebTeamUsersGatewayProvider {
+  _DemoOperatorWebAuthSourceWithMembers()
+      : teamUsersGateway = DemoWebTeamUsersGateway(),
+        super(initial: const OperatorWebNeedsToken());
+
+  @override
+  final WebTeamUsersGateway teamUsersGateway;
 }
 
 class _OperatorWebInitFailedApp extends StatelessWidget {
