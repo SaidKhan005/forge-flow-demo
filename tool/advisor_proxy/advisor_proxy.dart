@@ -75,6 +75,7 @@ import '../advisor_corpus/advisor_corpus.dart'
 import 'health_operation_budget.dart';
 import 'log.dart';
 import 'mobile_push_notifications.dart';
+import 'operator_routes.dart';
 import 'proxy_idempotency_cache.dart';
 import 'realtime_route.dart'
     show handleRealtimeUpgrade, RealtimeReplayFetcher, realtimeSubscribePath;
@@ -91,6 +92,23 @@ export 'log.dart'
         log,
         withProxyLogContext;
 export 'proxy_idempotency_cache.dart' show ProxyAuthIdempotencyCache;
+export 'operator_routes.dart'
+    show
+        OperatorWriteRouter,
+        OperatorAccountWriteGateway,
+        OperatorBusinessTimingWriteGateway,
+        OperatorWriteAuditSink,
+        OperatorWriteIdempotencyCache,
+        OperatorAccountRecord,
+        OperatorBusinessTimingProfileRecord,
+        OperatorBusinessTimingServicePeriodRecord,
+        OperatorWriteRejected,
+        kOperatorWriteRoles,
+        operatorAccountPatchPath,
+        operatorBusinessTimingProfilesPath,
+        operatorBusinessTimingProfilePrefix,
+        hashOperatorRequestBody,
+        readOperatorJsonBody;
 
 /// Default in-memory idempotency cache shared by the password
 /// change / reset request / reset confirm routes when the route
@@ -7064,6 +7082,11 @@ Future<void> routeRequest(
   // work and existing tests do not need to plumb a gateway through
   // every call site.
   RealtimeTripwireProxyGateway? realtimeTripwireGateway,
+  // Phase 11W.7 / Wave A2 - operator-scoped account + business-timing
+  // write router. Optional: when null, the five new routes return 503
+  // so existing tests do not need to plumb the router through every
+  // call site.
+  OperatorWriteRouter? operatorWriteRouter,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -11160,6 +11183,88 @@ Future<void> routeRequest(
               'error': 'operator_location_admin_unavailable',
               'message':
                   'operator/location admin operation is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Phase 11W.7 / Wave A2 - operator-scoped account + business-
+        // timing write router. Five operator-write routes that all
+        // share auth (operator owner / admin) + Idempotency-Key.
+        if (OperatorWriteRouter.matches(path, request.method)) {
+          if (operatorWriteRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'operator_write_router_not_configured',
+              'message':
+                  'route requires an OperatorWriteRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          if (!scope.roles.any(kOperatorWriteRoles.contains)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'forbidden',
+              'message':
+                  'operator owner or operator admin role is required',
+              'required_roles': kOperatorWriteRoles.toList(),
+            });
+            return;
+          }
+          final operatorIdemKey =
+              request.headers.value('Idempotency-Key')?.trim();
+          if (operatorIdemKey == null || operatorIdemKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_missing',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
+          if (operatorIdemKey.length > 200) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_too_long',
+              'message':
+                  'Idempotency-Key header must be 200 characters or fewer',
+            });
+            return;
+          }
+          final bodyResult = await readOperatorJsonBody(request);
+          if (bodyResult.errorStatus != null) {
+            _writeJson(
+              response,
+              bodyResult.errorStatus!,
+              bodyResult.errorBody!,
+            );
+            return;
+          }
+          try {
+            final result = await operatorWriteRouter.handle(
+              method: request.method,
+              path: path,
+              operatorId: scope.operatorId,
+              actorUserId: scope.userId,
+              actorKind: scope.actorKind,
+              idempotencyKey: operatorIdemKey,
+              body: bodyResult.body!,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'operator_write_router',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'operator_write_unavailable',
+              'message':
+                  'operator write is unavailable; please retry',
             });
           }
           return;

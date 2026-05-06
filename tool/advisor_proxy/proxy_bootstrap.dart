@@ -20,6 +20,9 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_login_attempts_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_account_repository.dart';
+import 'package:forge_and_flow/services/business_timing/production_operator_write_audit_sink.dart';
+import 'package:forge_and_flow/services/business_timing/repository_operator_write_gateways.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/feature_flags_repository.dart';
@@ -176,6 +179,7 @@ class ProxyProductionBindings {
     required this.authLockoutAuditSink,
     required this.mfaTotpRetryCounter,
     required this.passwordResetThrottleCounter,
+    required this.operatorWriteRouter,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -289,6 +293,15 @@ class ProxyProductionBindings {
   /// password-reset 24h cap (10 / 24h). Volatile across proxy
   /// restarts.
   final RollingWindowAttemptCounter passwordResetThrottleCounter;
+
+  /// Phase 11W.7 / Wave A2 - operator-scoped write router. Handles
+  /// the five `/v1/operator/...` business-timing + account routes
+  /// behind shared auth (operator owner / admin), Idempotency-Key
+  /// enforcement, and audit-log fan-out. Wired through
+  /// [RepositoryOperatorAccountWriteGateway] +
+  /// [RepositoryOperatorBusinessTimingWriteGateway] +
+  /// [ProductionOperatorWriteAuditSink].
+  final OperatorWriteRouter operatorWriteRouter;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -521,6 +534,33 @@ ProxyProductionBindings buildProxyProductionBindings(
           ),
         )
       : null;
+
+  // Phase 11W.7 / Wave A2 - operator-scoped write router. Wired
+  // through tenant-pool repositories so RLS + per-operator isolation
+  // hold; the audit sink fans out to the hash-chained audit_logs
+  // table inside the same tenant pool.
+  final operatorWriteRouter = OperatorWriteRouter(
+    accountGateway: RepositoryOperatorAccountWriteGateway(
+      repository: OperatorAccountRepository(tenantWrapper),
+    ),
+    businessTimingGateway: RepositoryOperatorBusinessTimingWriteGateway(
+      repository: BusinessTimingProfilesRepository(tenantWrapper),
+    ),
+    auditSink: ProductionOperatorWriteAuditSink(
+      tenantWrapper: tenantWrapper,
+      onError: (error, stackTrace) {
+        log(
+          LogSeverity.error,
+          'proxy.operator_write_audit_failed',
+          fields: <String, Object?>{
+            'error_type': error.runtimeType.toString(),
+            'error_message': error.toString(),
+            'stack_first_frame': firstStackFrame(stackTrace),
+          },
+        );
+      },
+    ),
+  );
 
   return ProxyProductionBindings(
     accountingStore: PostgresProxyAccountingStore(wrapper: tenantWrapper),
@@ -788,6 +828,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     passwordResetThrottleCounter: RollingWindowAttemptCounter(
       window: kAuthPasswordResetWindow,
     ),
+    operatorWriteRouter: operatorWriteRouter,
   );
 }
 

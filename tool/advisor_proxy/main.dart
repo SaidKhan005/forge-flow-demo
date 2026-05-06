@@ -740,6 +740,11 @@ Future<void> main(List<String> args) async {
             // walkthrough only); production runs the locked Q22
             // numbers.
             realtimeTripwireGateway: realtimeTripwireGateway,
+            // Phase 11W.7 / Wave A2 - operator-scoped write router
+            // for the five `/v1/operator/...` business-timing +
+            // account routes. Without this binding the routes return
+            // 503 operator_write_router_not_configured.
+            operatorWriteRouter: productionBindings.operatorWriteRouter,
           );
         } catch (error, stack) {
           log(
