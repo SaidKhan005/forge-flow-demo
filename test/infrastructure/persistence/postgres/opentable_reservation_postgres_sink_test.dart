@@ -452,10 +452,15 @@ void main() {
   });
 }
 
-// The literal `'seated_at'` token built up from concatenation so the
+// The literal `'seated_at'` token built up at runtime so the
 // banned-grep above does not flag this test file's own assertion text
-// when applied to the sink source.
-final String _seatedDartLiteral = "'" + 'seated_at' + "'";
+// when applied to the sink source. Using `String.fromCharCodes` (instead
+// of `+` concatenation) keeps the analyzer from rewriting the literal
+// back into a single token at parse time.
+final String _seatedDartLiteral =
+    String.fromCharCodes(<int>[0x27]) +
+    String.fromCharCodes('seated_at'.codeUnits) +
+    String.fromCharCodes(<int>[0x27]);
 
 // Column name keys used by the `_StoredReservation.asRow` projection;
 // expressed as constants here so the test can read them back without

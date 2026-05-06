@@ -54,7 +54,7 @@ const String _connIdResolved = '55555555-5555-5555-5555-555555555555';
 /// exercises the same dict shape the adapter produces.
 Map<String, Object?> _canonicalFromPunch(
   Map<String, Object?> punch, {
-  wages_fixture.SevenShiftsHoursAndWagesRow? wageRow,
+  SevenShiftsHoursAndWagesRow? wageRow,
 }) {
   final role = punch['role'];
   final roleName = role is Map ? (role['name']?.toString() ?? '') : '';
