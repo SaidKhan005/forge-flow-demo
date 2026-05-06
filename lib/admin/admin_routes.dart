@@ -32,13 +32,16 @@ import 'screens/members_admin_screen.dart';
 import 'screens/observability_admin_screen.dart';
 import 'screens/operator_location_admin_screen.dart';
 import 'screens/operator_picker_screen.dart';
+import 'screens/audited_support_actions_admin_screen.dart';
 import 'screens/per_location_data_accuracy_screen.dart';
 import 'screens/polling_and_pricing_admin_screen.dart';
 import 'screens/pricing_tier_admin_screen.dart';
 import 'screens/roles_hierarchy_sessions_admin_screen.dart';
+import 'services/audited_support_actions_admin_gateway.dart';
 import 'services/corpus_admin_gateway.dart';
 import 'services/data_accuracy_admin_gateway.dart';
 import 'services/debug_console_admin_gateway.dart';
+import 'services/demo_audited_support_actions_admin_gateway.dart';
 import 'services/demo_members_admin_gateway.dart';
 import 'services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'services/feature_flags_admin_gateway.dart';
@@ -149,6 +152,13 @@ const String kAdminMembersRouteId = 'members';
 /// operator, and lands on a three-tab screen scoped to that operator.
 const String kAdminRolesHierarchySessionsRouteId =
     'roles-hierarchy-sessions';
+
+/// Phase 11A.14 - cross-operator Audited support actions surface
+/// (audit log review + Reset MFA / password reset / paired-approval
+/// erasure). Mounted after the operator picker; same shell pattern
+/// as `kAdminMembersRouteId` and `kAdminRolesHierarchySessionsRouteId`.
+const String kAdminAuditedSupportActionsRouteId =
+    'audited-support-actions';
 
 /// Canonical operator-picker route ID (11A.3a follow-up; reused by
 /// 11A.12). The picker is reached via Navigator.push from any host
@@ -279,6 +289,18 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
         'Pick an operator, then inspect the role catalog, org-unit '
         'hierarchy, and active sessions.',
     builder: _buildRolesHierarchySessions,
+  ),
+  AdminRoute(
+    id: kAdminAuditedSupportActionsRouteId,
+    title: 'Audit log and support actions',
+    path: '/admin/audited-support-actions',
+    icon: Icons.history_outlined,
+    section: AdminRouteSection.operations,
+    subtitle:
+        'Pick an operator, then review the audit log and run support '
+        'actions like MFA reset, password reset, and paired-approval '
+        'erasure.',
+    builder: _buildAuditedSupportActions,
   ),
 ];
 
@@ -888,6 +910,192 @@ class _RolesHierarchySessionsRouteShellState
   }
 }
 
+Widget _buildAuditedSupportActions(BuildContext context) {
+  final gateway =
+      AdminConsoleServicesScope.auditedSupportActionsAdminGatewayOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+
+  Future<OperatorPickerResult?> openPicker(
+    BuildContext routeContext,
+    String? adminUid,
+  ) {
+    return Navigator.of(routeContext).push<OperatorPickerResult?>(
+      MaterialPageRoute<OperatorPickerResult?>(
+        settings: const RouteSettings(
+          name: '/admin/audited-support-actions/operator-picker',
+        ),
+        builder: (_) =>
+            OperatorPickerScreen(gateway: operatorGateway, adminUid: adminUid),
+      ),
+    );
+  }
+
+  if (source == null) {
+    return _AuditedSupportActionsRouteShell(
+      gateway: gateway,
+      actorUserId: 'demo-super-admin',
+      editingEnabled: true,
+      // Demo / test path: leave MFA-required affordances disabled.
+      // Production wires `canResetMfaFactors` / `canIssuePairedErasure`
+      // / `canExportAuditLog` from MFA-required admin claims.
+      canResetMfaFactors: false,
+      canIssuePairedErasure: false,
+      canExportAuditLog: false,
+      adminUid: null,
+      openPicker: openPicker,
+    );
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
+      // The MFA-asserted claim is not plumbed through `AdminAuthSession`
+      // yet (no `permissions` / `auth_time_fresh` field on the session
+      // record). Default to false so the screen never exposes the
+      // MFA-required affordances without a verified claim — production
+      // lights this up by passing the relevant flags from a future
+      // session-claim resolver. The proxy stays authoritative
+      // regardless and rejects the call without an MFA-fresh token.
+      const canResetMfa = false;
+      const canIssuePairedErasure = false;
+      const canExportAuditLog = false;
+      return _AuditedSupportActionsRouteShell(
+        gateway: gateway,
+        actorUserId: session?.uid ?? 'unknown',
+        editingEnabled: canEdit,
+        canResetMfaFactors: canResetMfa,
+        canIssuePairedErasure: canIssuePairedErasure,
+        canExportAuditLog: canExportAuditLog,
+        adminUid: session?.uid,
+        openPicker: openPicker,
+      );
+    },
+  );
+}
+
+class _AuditedSupportActionsRouteShell extends StatefulWidget {
+  const _AuditedSupportActionsRouteShell({
+    required this.gateway,
+    required this.actorUserId,
+    required this.editingEnabled,
+    required this.canResetMfaFactors,
+    required this.canIssuePairedErasure,
+    required this.canExportAuditLog,
+    required this.adminUid,
+    required this.openPicker,
+  });
+
+  final AuditedSupportActionsAdminGateway gateway;
+  final String actorUserId;
+  final bool editingEnabled;
+  final bool canResetMfaFactors;
+  final bool canIssuePairedErasure;
+  final bool canExportAuditLog;
+  final String? adminUid;
+  final Future<OperatorPickerResult?> Function(
+    BuildContext context,
+    String? adminUid,
+  ) openPicker;
+
+  @override
+  State<_AuditedSupportActionsRouteShell> createState() =>
+      _AuditedSupportActionsRouteShellState();
+}
+
+class _AuditedSupportActionsRouteShellState
+    extends State<_AuditedSupportActionsRouteShell> {
+  OperatorPickerResult? _picked;
+  bool _pickerInflight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _picked != null) return;
+      _openPicker();
+    });
+  }
+
+  Future<void> _openPicker() async {
+    if (_pickerInflight) return;
+    _pickerInflight = true;
+    try {
+      final result = await widget.openPicker(context, widget.adminUid);
+      if (!mounted) return;
+      if (result != null) {
+        setState(() => _picked = result);
+      } else {
+        setState(() {});
+      }
+    } finally {
+      _pickerInflight = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final picked = _picked;
+    if (picked == null) {
+      return Container(
+        key: const Key('admin_asa_no_operator_state'),
+        color: AppColors.backgroundDeep,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Pick an operator',
+                    style: AppTextStyles.display20(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'The audit log and support actions are scoped to one '
+                    'operator at a time. Pick the operator you are helping.',
+                    style: AppTextStyles.body13(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    key: const Key('admin_asa_open_picker'),
+                    onPressed: _openPicker,
+                    icon: const Icon(Icons.business_outlined, size: 16),
+                    label: const Text('Pick operator'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return AuditedSupportActionsAdminScreen(
+      key: ValueKey<String>('asa-${picked.operatorId}'),
+      gateway: widget.gateway,
+      actorUserId: widget.actorUserId,
+      pickedOperator: picked,
+      editingEnabled: widget.editingEnabled,
+      canResetMfaFactors: widget.canResetMfaFactors,
+      canIssuePairedErasure: widget.canIssuePairedErasure,
+      canExportAuditLog: widget.canExportAuditLog,
+      onChangeOperator: _openPicker,
+    );
+  }
+}
+
 Widget _buildDebugConsole(BuildContext context) {
   // 11A.5 - full-content reveal is gated on `super_admin`. `ff_support`
   // lands on the read-only meta view (no expand-to-full-content
@@ -941,6 +1149,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.dataAccuracyAdminGateway,
     this.membersAdminGateway,
     this.rolesHierarchySessionsAdminGateway,
+    this.auditedSupportActionsAdminGateway,
     this.adminAuthSource,
   });
 
@@ -1022,6 +1231,11 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// gateway. Optional; the default fallback is the seeded in-memory
   /// gateway used by the kDemoMode walkthrough.
   final RolesHierarchySessionsAdminGateway? rolesHierarchySessionsAdminGateway;
+
+  /// Phase 11A.14 - cross-operator Audited support actions admin
+  /// gateway. Optional; the default fallback is the seeded in-memory
+  /// gateway used by the kDemoMode walkthrough.
+  final AuditedSupportActionsAdminGateway? auditedSupportActionsAdminGateway;
 
   /// Phase 11A.2 - admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
@@ -1105,6 +1319,14 @@ class AdminConsoleServicesScope extends InheritedWidget {
         _defaultRolesHierarchySessionsAdminDemoGateway;
   }
 
+  static AuditedSupportActionsAdminGateway
+  auditedSupportActionsAdminGatewayOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.auditedSupportActionsAdminGateway ??
+        _defaultAuditedSupportActionsAdminDemoGateway;
+  }
+
   static AdminAuthSource? adminAuthSourceOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
@@ -1125,6 +1347,8 @@ class AdminConsoleServicesScope extends InheritedWidget {
       membersAdminGateway != oldWidget.membersAdminGateway ||
       rolesHierarchySessionsAdminGateway !=
           oldWidget.rolesHierarchySessionsAdminGateway ||
+      auditedSupportActionsAdminGateway !=
+          oldWidget.auditedSupportActionsAdminGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
 
@@ -1555,4 +1779,17 @@ _defaultRolesHierarchySessionsAdminDemoGateway =
       orgUnitsByOperator: kDemoOrgUnitsByOperator(),
       locationsByOperator: kDemoHierarchyLocationsByOperator(),
       sessionsByOperator: kDemoSessionsByOperator(),
+    );
+
+/// Phase 11A.14 - Audited support actions demo gateway. Seeded with
+/// the audit-log entries + members fixture from
+/// `kDemoAuditLogByOperator` / `kDemoSupportActionsMembersByOperator`
+/// so the walkthrough can hop straight from any prior 11W / 11A
+/// operator-scoped surface into the audit-log + support-actions
+/// surface for the same operator.
+final AuditedSupportActionsAdminGateway
+_defaultAuditedSupportActionsAdminDemoGateway =
+    InMemoryAuditedSupportActionsAdminGateway(
+      auditLogByOperator: kDemoAuditLogByOperator(),
+      membersByOperator: kDemoSupportActionsMembersByOperator(),
     );
