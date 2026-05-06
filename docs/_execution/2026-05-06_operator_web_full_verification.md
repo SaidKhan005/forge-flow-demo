@@ -111,3 +111,67 @@ Results:
 - The preview is backed by staging secrets, so live destructive writes remain deliberately constrained even with action-time approval.
 - The audit log narrow-width table still wraps densely; it is reachable and functional, but visual polish can be improved.
 - Browser Use screenshots contain the dedicated QA account display/email; no credentials are recorded in this note.
+
+## UX And Performance Enhancement Pass
+
+Date/time: 2026-05-06T19:32Z
+Source commits:
+
+- `cf32c8cf` - simplified operator-web setup/data/vendor copy and added stale async-load guards.
+- `deb46f84` - tightened responsive timing layout and shortened vendor/data-accuracy copy.
+
+Final preview deployment:
+
+| Surface | Service | URL | Revision | Traffic |
+| --- | --- | --- | --- | --- |
+| Operator web | `forge-flow-preview-backend-surface-additions-operator-web` | `https://forge-flow-preview-backend-surface-additions-oper-rf7nosnoka-pd.a.run.app` | `forge-flow-preview-backend-surface-additions-operator-00011-grb` | 100% |
+| Preview proxy | `forge-flow-preview-backend-surface-additions-proxy` | `https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app` | `forge-flow-preview-backend-surface-additions-proxy-00037-8tp` | 100% |
+
+Database mode: proxy still uses `forge-flow-staging-` Secret Manager values (`POSTGRES_URL`, `POSTGRES_ADMIN_URL`, Firebase, and service-principal secrets), so the preview remains staging-secret backed. No shared staging or production service was deployed.
+
+Framework results:
+
+- UX Adjustment Framework: pass. Business timing now says plainly that timing changes are preview-only, vendor connection CTAs use shorter parallel labels, Data Accuracy first-card copy consistently uses "Forge & Flow", and raw non-primary location ids are hidden behind "this location".
+- Performance Framework: pass. Vendor connections, business timing, and data accuracy now ignore stale async responses during quick route changes; vendor connections also refresh when the operator/location/gateway tuple changes. Baseline enforced perf wrote `build\perf_gate\operator_web_ux_perf_baseline.json` and missed the cold `admin_index_c1` p95 once. Final enforced perf passed and wrote `build\perf_gate\operator_web_ux_perf_final.json`.
+- Mobile Web Console E2E Framework: pass for browser-safe web flows. Browser Use exercised fresh cache-bust route switching across Account, Business setup, Members, Roles, Locations, Sessions, Audit log, Security, Vendor connections, and Data accuracy. Mobile push source was not touched, so the APK debug build gate was not required.
+
+Browser Use evidence:
+
+- Evidence root: `build\reports\operator_web_ux_perf_final_clean_20260506T1932Z`
+- Route screenshots: `00_fresh_load.png`, `01_account.png`, `02_business_setup.png`, `03_members.png`, `04_roles.png`, `05_locations.png`, `06_sessions.png`, `07_audit_log.png`, `08_security.png`, `09_vendor_connections.png`, `10_data_accuracy.png`
+- Button evidence: `11_business_edit_dialog.png`, `12_business_schedule_dialog.png`, `13_vendor_pos_picker.png`, `14_data_accuracy_manual_wage_selected.png`
+- Console logs: `console_logs_since_1932Z.json` contains zero new warn/error entries after the clean final tab opened. `console_logs_all.json` still contains one stale browser-runtime error timestamped before this final clean-tab run.
+
+Bugs or UX issues fixed in this pass:
+
+1. Business timing inherited-source pills wrapped into tall bubbles at the tested preview width. Fixed with a responsive column layout below 520 px.
+2. Vendor connection buttons used mixed labels (`Connect POS`, `Connect reservations vendor`, `Connect scheduling vendor`). Replaced with shorter parallel labels.
+3. Operator web could show raw fallback location ids on vendor/data/timing copy. Replaced the fallback with "this location" and passed the host label into the shared vendor widget.
+4. Repeated route switches could let stale async responses land after a newer operator/location read. Added generation guards to business timing, data accuracy, and vendor connections.
+
+Commands run for this pass:
+
+```powershell
+flutter analyze
+flutter test test\operator_web\screens\vendor_connections_screen_test.dart test\operator_web\screens\business_setup_screen_test.dart test\operator_web\screens\data_accuracy_screen_test.dart
+flutter test test\operator_web\screens\vendor_connections_screen_test.dart test\operator_web\screens\business_setup_screen_test.dart test\operator_web\screens\data_accuracy_screen_test.dart test\operator_web\widgets\wage_source_toggle_test.dart test\operator_web\widgets\covers_source_toggle_test.dart
+flutter test test\operator_web
+flutter test test\proxy\operator_auth_integrations_routes_test.dart
+flutter build web --release --target=lib\main_operator_web.dart --dart-define=OPERATOR_WEB_PROXY_BASE_URI=https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app --dart-define=OPERATOR_WEB_DEMO_AUTH=false --pwa-strategy=none
+dart run tool\perf_gate\staging_console_probe.dart --run --enforce-budgets --admin-url=https://forge-flow-preview-backend-surface-additions-oper-rf7nosnoka-pd.a.run.app --proxy-url=https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app --admin-revision=forge-flow-preview-backend-surface-additions-operator-00011-grb --proxy-revision=forge-flow-preview-backend-surface-additions-proxy-00037-8tp --label=operator-web-ux-perf-final --write-json=build\perf_gate\operator_web_ux_perf_final.json
+```
+
+Results:
+
+- `flutter analyze`: pass.
+- Focused operator-web widget tests: pass.
+- `flutter test test\operator_web`: pass, 266 tests.
+- `flutter test test\proxy\operator_auth_integrations_routes_test.dart`: pass, 3 tests.
+- Release operator web build: pass.
+- Final enforced performance probe: pass; JSON at `build\perf_gate\operator_web_ux_perf_final.json`.
+
+Residual risks for this pass:
+
+- The preview remains staging-secret backed. This pass did not perform destructive live writes.
+- Browser Use still relies on visual/coordinate interaction for the Flutter canvas because the DOM snapshot exposes only the accessibility bootstrap button.
+- Broader Data Accuracy copy still has older "F&F" wording in lower/cards not visible in the first viewport; this pass corrected the route subtitle and first source cards only.
