@@ -1,0 +1,641 @@
+// Phase 8 star/target truth - selected-star proxy routes.
+//
+// Routes:
+//   GET  /v1/operators/:operator_id/locations/:location_id/selected_star_shift_decisions
+//   POST /v1/operators/:operator_id/locations/:location_id/selected_star_shift_decisions/select
+//   POST /v1/operators/:operator_id/locations/:location_id/selected_star_shift_decisions/clear
+//
+// The route layer owns HTTP validation, request hashing, and idempotency
+// replay. The repository owns the selected-star decision row and audit row.
+
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/selected_star_shift_repository.dart';
+
+import 'operator_routes.dart'
+    show
+        OperatorWriteIdempotencyCache,
+        OperatorWriteRejected,
+        hashOperatorRequestBody;
+
+const String selectedStarShiftDecisionsResource =
+    'selected_star_shift_decisions';
+
+const String selectedStarShiftDecisionsPathPrefix = '/v1/operators/';
+
+const String selectedStarWritePermissionKey = 'forgeflow.baseline.override';
+
+class SelectedStarTargetRouter {
+  SelectedStarTargetRouter({
+    required SelectedStarTargetGateway gateway,
+    OperatorWriteIdempotencyCache? idempotencyCache,
+  }) : _gateway = gateway,
+       _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache();
+
+  static SelectedStarTargetRouter? _global;
+
+  static SelectedStarTargetRouter? get global => _global;
+
+  static void installGlobal(SelectedStarTargetRouter router) {
+    _global = router;
+  }
+
+  static void resetGlobalForTesting() {
+    _global = null;
+  }
+
+  static SelectedStarTargetRouteMatch? match(String path, String method) {
+    if (!path.startsWith(selectedStarShiftDecisionsPathPrefix)) return null;
+    final tail = path.substring(selectedStarShiftDecisionsPathPrefix.length);
+    final parts = tail.split('/');
+    if (parts.length < 4 || parts[1] != 'locations') return null;
+    final operatorId = Uri.decodeComponent(parts[0]);
+    final locationId = Uri.decodeComponent(parts[2]);
+    final resource = parts.sublist(3).join('/');
+    if (method == 'GET' && resource == selectedStarShiftDecisionsResource) {
+      return SelectedStarTargetRouteMatch(
+        operatorId: operatorId,
+        locationId: locationId,
+        action: SelectedStarTargetRouteAction.read,
+      );
+    }
+    if (method == 'POST' &&
+        resource == '$selectedStarShiftDecisionsResource/select') {
+      return SelectedStarTargetRouteMatch(
+        operatorId: operatorId,
+        locationId: locationId,
+        action: SelectedStarTargetRouteAction.select,
+      );
+    }
+    if (method == 'POST' &&
+        resource == '$selectedStarShiftDecisionsResource/clear') {
+      return SelectedStarTargetRouteMatch(
+        operatorId: operatorId,
+        locationId: locationId,
+        action: SelectedStarTargetRouteAction.clear,
+      );
+    }
+    return null;
+  }
+
+  final SelectedStarTargetGateway _gateway;
+  final OperatorWriteIdempotencyCache _idempotencyCache;
+
+  Future<SelectedStarTargetRouteResult> handle({
+    required SelectedStarTargetRouteMatch match,
+    required String method,
+    required String path,
+    required Map<String, String> queryParameters,
+    required String actorUserId,
+    required String actorKind,
+    String? idempotencyKey,
+    Map<String, Object?> body = const <String, Object?>{},
+  }) async {
+    try {
+      switch (match.action) {
+        case SelectedStarTargetRouteAction.read:
+          return _handleRead(
+            match: match,
+            queryParameters: queryParameters,
+            actorUserId: actorUserId,
+          );
+        case SelectedStarTargetRouteAction.select:
+        case SelectedStarTargetRouteAction.clear:
+          return _handleWrite(
+            match: match,
+            method: method,
+            path: path,
+            actorUserId: actorUserId,
+            actorKind: actorKind,
+            idempotencyKey: idempotencyKey,
+            body: body,
+          );
+      }
+    } on SelectedStarRouteRejected catch (rejected) {
+      return SelectedStarTargetRouteResult(
+        statusCode: rejected.statusCode,
+        body: <String, Object?>{
+          'error': rejected.code,
+          'message': rejected.message,
+        },
+      );
+    }
+  }
+
+  Future<SelectedStarTargetRouteResult> _handleWrite({
+    required SelectedStarTargetRouteMatch match,
+    required String method,
+    required String path,
+    required String actorUserId,
+    required String actorKind,
+    required String? idempotencyKey,
+    required Map<String, Object?> body,
+  }) async {
+    final key = idempotencyKey?.trim();
+    if (key == null || key.isEmpty) {
+      return const SelectedStarTargetRouteResult(
+        statusCode: 400,
+        body: <String, Object?>{
+          'error': 'idempotency_key_missing',
+          'message': 'Idempotency-Key header is required',
+        },
+      );
+    }
+    if (key.length > 200) {
+      return const SelectedStarTargetRouteResult(
+        statusCode: 400,
+        body: <String, Object?>{
+          'error': 'idempotency_key_too_long',
+          'message': 'Idempotency-Key header must be 200 characters or fewer',
+        },
+      );
+    }
+    final requestHash = hashOperatorRequestBody(<String, Object?>{
+      'method': method,
+      'path': path,
+      'body': body,
+    });
+    try {
+      final result = await _idempotencyCache.runOrReplay(
+        operatorId: match.operatorId,
+        route: '$method $path',
+        idempotencyKey: key,
+        requestBodyHash: requestHash,
+        compute: () async {
+          final decision = _decisionWriteFromBody(
+            match: match,
+            actorUserId: actorUserId,
+            actorKind: actorKind,
+            idempotencyKey: key,
+            requestHash: requestHash,
+            body: body,
+          );
+          final row = await _gateway.recordDecision(
+            decision: decision,
+            actorKind: _repositoryActorKind(actorKind),
+          );
+          if (row.requestHash != requestHash) {
+            return (
+              statusCode: 409,
+              body: const <String, Object?>{
+                'error': 'idempotency_key_conflict',
+                'message':
+                    'Idempotency-Key was reused with a different request hash',
+              },
+            );
+          }
+          return (
+            statusCode: 200,
+            body: <String, Object?>{'decision': row.toJson()},
+          );
+        },
+      );
+      return SelectedStarTargetRouteResult(
+        statusCode: result.statusCode,
+        body: result.body,
+      );
+    } on SelectedStarRouteRejected catch (rejected) {
+      return SelectedStarTargetRouteResult(
+        statusCode: rejected.statusCode,
+        body: <String, Object?>{
+          'error': rejected.code,
+          'message': rejected.message,
+        },
+      );
+    } on OperatorWriteRejected catch (rejected) {
+      return SelectedStarTargetRouteResult(
+        statusCode: rejected.statusCode,
+        body: <String, Object?>{
+          'error': rejected.code,
+          'message': rejected.message,
+          ...rejected.extras,
+        },
+      );
+    } on ArgumentError catch (error) {
+      return SelectedStarTargetRouteResult(
+        statusCode: 400,
+        body: <String, Object?>{
+          'error': 'invalid_selected_star_request',
+          'message': error.message?.toString() ?? error.toString(),
+        },
+      );
+    }
+  }
+
+  Future<SelectedStarTargetRouteResult> _handleRead({
+    required SelectedStarTargetRouteMatch match,
+    required Map<String, String> queryParameters,
+    required String actorUserId,
+  }) async {
+    final limit = _limitFromQuery(queryParameters);
+    final currentOnly = _boolQuery(queryParameters['current']);
+    if (currentOnly) {
+      final restaurantId = _requiredQueryString(
+        queryParameters,
+        'restaurant_id',
+      );
+      final rows = await _gateway.listCurrentSelections(
+        operatorId: match.operatorId,
+        locationId: match.locationId,
+        restaurantId: restaurantId,
+        userId: actorUserId,
+        limit: limit,
+      );
+      return _readResponse(
+        match: match,
+        rows: rows,
+        limit: limit,
+        nextCursorFallback: null,
+      );
+    }
+
+    final rawCursor =
+        _trimmed(queryParameters['modified_since']) ??
+        _trimmed(queryParameters['updated_since']) ??
+        _trimmed(queryParameters['cursor']);
+    final updatedAfter = rawCursor == null
+        ? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)
+        : DateTime.tryParse(rawCursor)?.toUtc();
+    if (updatedAfter == null) {
+      return const SelectedStarTargetRouteResult(
+        statusCode: 400,
+        body: <String, Object?>{
+          'error': 'invalid_modified_since',
+          'message': 'modified_since must be an ISO-8601 timestamp',
+        },
+      );
+    }
+    final rows = await _gateway.listUpdatedSince(
+      operatorId: match.operatorId,
+      locationId: match.locationId,
+      updatedAfter: updatedAfter,
+      userId: actorUserId,
+      limit: limit,
+    );
+    return _readResponse(
+      match: match,
+      rows: rows,
+      limit: limit,
+      nextCursorFallback: updatedAfter.toUtc().toIso8601String(),
+    );
+  }
+
+  SelectedStarTargetRouteResult _readResponse({
+    required SelectedStarTargetRouteMatch match,
+    required List<SelectedStarShiftDecisionRow> rows,
+    required int limit,
+    required String? nextCursorFallback,
+  }) {
+    String? nextCursor = nextCursorFallback;
+    for (final row in rows) {
+      final value = row.updatedAt.toUtc().toIso8601String();
+      if (nextCursor == null || value.compareTo(nextCursor) > 0) {
+        nextCursor = value;
+      }
+    }
+    return SelectedStarTargetRouteResult(
+      statusCode: 200,
+      body: <String, Object?>{
+        'operator_id': match.operatorId,
+        'location_id': match.locationId,
+        'selected_star_shift_decisions': <Map<String, Object?>>[
+          for (final row in rows) row.toJson(),
+        ],
+        'next_cursor': nextCursor,
+        'has_more': rows.length == limit,
+      },
+    );
+  }
+}
+
+enum SelectedStarTargetRouteAction { read, select, clear }
+
+class SelectedStarTargetRouteMatch {
+  const SelectedStarTargetRouteMatch({
+    required this.operatorId,
+    required this.locationId,
+    required this.action,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final SelectedStarTargetRouteAction action;
+}
+
+class SelectedStarTargetRouteResult {
+  const SelectedStarTargetRouteResult({
+    required this.statusCode,
+    required this.body,
+  });
+
+  final int statusCode;
+  final Map<String, Object?> body;
+}
+
+abstract class SelectedStarTargetGateway {
+  Future<SelectedStarShiftDecisionRow> recordDecision({
+    required SelectedStarShiftDecisionWrite decision,
+    required String actorKind,
+  });
+
+  Future<List<SelectedStarShiftDecisionRow>> listUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit,
+  });
+
+  Future<List<SelectedStarShiftDecisionRow>> listCurrentSelections({
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+    String? userId,
+    int limit,
+  });
+}
+
+class RepositorySelectedStarTargetGateway implements SelectedStarTargetGateway {
+  RepositorySelectedStarTargetGateway({required this.repository});
+
+  final SelectedStarShiftRepository repository;
+
+  @override
+  Future<SelectedStarShiftDecisionRow> recordDecision({
+    required SelectedStarShiftDecisionWrite decision,
+    required String actorKind,
+  }) {
+    return repository.recordDecision(decision: decision, actorKind: actorKind);
+  }
+
+  @override
+  Future<List<SelectedStarShiftDecisionRow>> listUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit = 250,
+  }) {
+    return repository.listUpdatedSince(
+      operatorId: operatorId,
+      locationId: locationId,
+      updatedAfter: updatedAfter,
+      userId: userId,
+      limit: limit,
+    );
+  }
+
+  @override
+  Future<List<SelectedStarShiftDecisionRow>> listCurrentSelections({
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+    String? userId,
+    int limit = 250,
+  }) {
+    return repository.listCurrentSelections(
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      userId: userId,
+      limit: limit,
+    );
+  }
+}
+
+class SelectedStarRouteRejected implements Exception {
+  const SelectedStarRouteRejected({
+    required this.code,
+    required this.message,
+    required this.statusCode,
+  });
+
+  final String code;
+  final String message;
+  final int statusCode;
+}
+
+SelectedStarShiftDecisionWrite _decisionWriteFromBody({
+  required SelectedStarTargetRouteMatch match,
+  required String actorUserId,
+  required String actorKind,
+  required String idempotencyKey,
+  required String requestHash,
+  required Map<String, Object?> body,
+}) {
+  if (body.containsKey('decision_type')) {
+    throw const SelectedStarRouteRejected(
+      code: 'decision_type_not_client_settable',
+      message: 'decision_type is derived from the route action',
+      statusCode: 400,
+    );
+  }
+  final source = _optionalString(body, 'decision_source') ?? 'manager';
+  if (source != 'manager' && source != 'admin') {
+    throw const SelectedStarRouteRejected(
+      code: 'invalid_decision_source',
+      message: 'decision_source must be manager or admin',
+      statusCode: 400,
+    );
+  }
+  if (source == 'admin' && _repositoryActorKind(actorKind) != 'forge_admin') {
+    throw const SelectedStarRouteRejected(
+      code: 'admin_decision_source_forbidden',
+      message: 'admin selected-star decisions require a forge admin actor',
+      statusCode: 403,
+    );
+  }
+  final isClear = match.action == SelectedStarTargetRouteAction.clear;
+  final decisionType = source == 'admin'
+      ? isClear
+            ? 'admin_cleared'
+            : 'admin_selected'
+      : isClear
+      ? 'manager_cleared'
+      : 'manager_selected';
+
+  return SelectedStarShiftDecisionWrite(
+    operatorId: match.operatorId,
+    locationId: match.locationId,
+    restaurantId: _requiredString(body, 'restaurant_id'),
+    recordKey: _requiredString(body, 'record_key'),
+    weekId: _requiredString(body, 'week_id'),
+    dayLabel: _requiredString(body, 'day_label'),
+    daypart: _requiredString(body, 'daypart'),
+    businessDate: _requiredDateString(body, 'business_date'),
+    servicePeriodKey: _optionalString(body, 'service_period_key'),
+    targetCycleId: _optionalString(body, 'target_cycle_id'),
+    decisionType: decisionType,
+    decisionSource: source,
+    actorUserId: actorUserId,
+    decidedAt: _optionalDateTime(body, 'decided_at'),
+    sourceSystem: _optionalString(body, 'source_system'),
+    sourceShiftId: _optionalString(body, 'source_shift_id'),
+    sourceShiftRecordId: _optionalString(body, 'source_shift_record_id'),
+    covers: _optionalInt(body, 'covers'),
+    cplh: _optionalDouble(body, 'cplh'),
+    splh: _optionalDouble(body, 'splh'),
+    ppa: _optionalDouble(body, 'ppa'),
+    primaryLeverId: _optionalString(body, 'primary_lever_id'),
+    actualLaborPct: _optionalDouble(body, 'actual_labor_pct'),
+    hasActualLaborPctTruth:
+        _optionalBool(body, 'has_actual_labor_pct_truth') ?? false,
+    recommendationReferenceId: _optionalString(
+      body,
+      'recommendation_reference_id',
+    ),
+    candidateSnapshot:
+        _optionalObject(body, 'candidate_snapshot') ??
+        const <String, Object?>{},
+    reason: _optionalString(body, 'reason'),
+    idempotencyKey: idempotencyKey,
+    requestHash: requestHash,
+    metadata: _optionalObject(body, 'metadata') ?? const <String, Object?>{},
+  );
+}
+
+int _limitFromQuery(Map<String, String> queryParameters) {
+  final raw =
+      _trimmed(queryParameters['page_size']) ??
+      _trimmed(queryParameters['limit']);
+  if (raw == null) return 200;
+  final parsed = int.tryParse(raw);
+  if (parsed == null || parsed <= 0 || parsed > 500) {
+    throw const SelectedStarRouteRejected(
+      code: 'invalid_page_size',
+      message: 'page_size must be a positive integer no greater than 500',
+      statusCode: 400,
+    );
+  }
+  return parsed;
+}
+
+String _requiredQueryString(Map<String, String> values, String key) {
+  final value = _trimmed(values[key]);
+  if (value == null) {
+    throw SelectedStarRouteRejected(
+      code: 'missing_$key',
+      message: '$key is required',
+      statusCode: 400,
+    );
+  }
+  return value;
+}
+
+String _requiredString(Map<String, Object?> body, String key) {
+  final value = _optionalString(body, key);
+  if (value == null) {
+    throw SelectedStarRouteRejected(
+      code: 'missing_$key',
+      message: '$key is required',
+      statusCode: 400,
+    );
+  }
+  return value;
+}
+
+String _requiredDateString(Map<String, Object?> body, String key) {
+  final value = _requiredString(body, key);
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value) ||
+      DateTime.tryParse('${value}T00:00:00Z') == null) {
+    throw SelectedStarRouteRejected(
+      code: 'invalid_$key',
+      message: '$key must be a YYYY-MM-DD date',
+      statusCode: 400,
+    );
+  }
+  return value;
+}
+
+String? _optionalString(Map<String, Object?> body, String key) {
+  final value = body[key];
+  if (value is String && value.trim().isNotEmpty) return value.trim();
+  return null;
+}
+
+DateTime? _optionalDateTime(Map<String, Object?> body, String key) {
+  final value = _optionalString(body, key);
+  if (value == null) return null;
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null) {
+    throw SelectedStarRouteRejected(
+      code: 'invalid_$key',
+      message: '$key must be an ISO-8601 timestamp',
+      statusCode: 400,
+    );
+  }
+  return parsed.toUtc();
+}
+
+int? _optionalInt(Map<String, Object?> body, String key) {
+  final value = body[key];
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num && value.roundToDouble() == value.toDouble()) {
+    return value.toInt();
+  }
+  throw SelectedStarRouteRejected(
+    code: 'invalid_$key',
+    message: '$key must be an integer',
+    statusCode: 400,
+  );
+}
+
+double? _optionalDouble(Map<String, Object?> body, String key) {
+  final value = body[key];
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  throw SelectedStarRouteRejected(
+    code: 'invalid_$key',
+    message: '$key must be a number',
+    statusCode: 400,
+  );
+}
+
+bool? _optionalBool(Map<String, Object?> body, String key) {
+  final value = body[key];
+  if (value == null) return null;
+  if (value is bool) return value;
+  throw SelectedStarRouteRejected(
+    code: 'invalid_$key',
+    message: '$key must be a boolean',
+    statusCode: 400,
+  );
+}
+
+Map<String, Object?>? _optionalObject(Map<String, Object?> body, String key) {
+  final value = body[key];
+  if (value == null) return null;
+  if (value is Map<String, Object?>) return value;
+  if (value is Map) {
+    return <String, Object?>{
+      for (final entry in value.entries) entry.key.toString(): entry.value,
+    };
+  }
+  throw SelectedStarRouteRejected(
+    code: 'invalid_$key',
+    message: '$key must be an object',
+    statusCode: 400,
+  );
+}
+
+bool _boolQuery(String? raw) {
+  final value = raw?.trim().toLowerCase();
+  return value == '1' || value == 'true' || value == 'yes';
+}
+
+String? _trimmed(String? value) {
+  if (value == null) return null;
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+String _repositoryActorKind(String actorKind) {
+  switch (actorKind) {
+    case 'service':
+    case 'system':
+      return 'system';
+    case 'forge_admin':
+      return 'forge_admin';
+    default:
+      return 'operator_user';
+  }
+}

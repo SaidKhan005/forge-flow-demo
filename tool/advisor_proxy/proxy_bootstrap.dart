@@ -38,6 +38,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/password_history_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/provider_credentials_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/selected_star_shift_repository.dart';
 import 'package:forge_and_flow/infrastructure/cloud_run/cloud_run_admin_client.dart';
 import 'package:forge_and_flow/infrastructure/kms/gcp_secret_manager_kms_provider.dart';
 import 'package:forge_and_flow/infrastructure/kms/kms_lane_router.dart';
@@ -567,6 +568,13 @@ ProxyProductionBindings buildProxyProductionBindings(
           },
         );
       },
+    ),
+  );
+  SelectedStarTargetRouter.installGlobal(
+    SelectedStarTargetRouter(
+      gateway: RepositorySelectedStarTargetGateway(
+        repository: SelectedStarShiftRepository(tenantWrapper),
+      ),
     ),
   );
 
