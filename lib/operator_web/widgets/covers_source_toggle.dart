@@ -68,9 +68,10 @@ class CoversSourceToggle extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             'Covers (number of guests served) drive the per-cover '
-            'metrics on your dashboard. Pick where F&F should read covers '
-            'from for each daypart. Different dayparts can use different '
-            'sources — for example, vendor at lunch and manual at dinner.',
+            'metrics on your dashboard. Pick where Forge & Flow should read '
+            'covers from for each daypart. Different dayparts can use '
+            'different sources - for example, vendor at lunch and manual at '
+            'dinner.',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 14),
@@ -195,9 +196,7 @@ class _ChoiceChip extends StatelessWidget {
               ? AppColors.sunset.withValues(alpha: 0.14)
               : AppColors.backgroundSurface,
           border: Border.all(
-            color: selected
-                ? AppColors.sunsetDark
-                : AppColors.borderSubtle,
+            color: selected ? AppColors.sunsetDark : AppColors.borderSubtle,
             width: 1,
           ),
           borderRadius: BorderRadius.circular(999),

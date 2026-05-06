@@ -45,19 +45,20 @@ class WageSourceToggle extends StatelessWidget {
       title: 'Where labor dollars come from',
       headerExplainer:
           'Labor dollars on your dashboard come from one of two places. '
-          'Pick where you want F&F to read them from. You can change this '
-          'any time without losing past data.',
+          'Pick where you want Forge & Flow to read them from. You can '
+          'change this any time without losing past data.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _RadioRow(
             rowKey: const Key('wage_source_radio_vendor'),
             selected: value == WageSource.vendor,
-            label: 'Use labor vendor\'s reported wages and dollars when available',
+            label:
+                'Use labor vendor\'s reported wages and dollars when available',
             body:
                 'Read labor dollars from your scheduling system when it '
-                'reports them. F&F falls back to target wage × hours when '
-                'the system does not expose dollars (we will tell you '
+                'reports them. Forge & Flow falls back to target wage x hours '
+                'when the system does not expose dollars (we will tell you '
                 'when that happens on the dashboard).',
             onTap: () => onChanged(WageSource.vendor),
           ),
@@ -65,12 +66,13 @@ class WageSourceToggle extends StatelessWidget {
           _RadioRow(
             rowKey: const Key('wage_source_radio_manual_mix'),
             selected: value == WageSource.manualMix,
-            label: 'Use my manual wage mix from Settings (the same rates the wage generator uses)',
+            label:
+                'Use my manual wage mix from Settings (the same rates the wage generator uses)',
             body:
-                'Always use the wage editor mix you set up in F&F. F&F '
-                'multiplies your role-by-role rates by actual hours, '
-                'ignoring whatever the scheduling system reports. Pick '
-                'this if your scheduling system\'s rates are out of date '
+                'Always use the wage editor mix you set up in Forge & Flow. '
+                'Forge & Flow multiplies your role-by-role rates by actual '
+                'hours, ignoring whatever the scheduling system reports. '
+                'Pick this if your scheduling system\'s rates are out of date '
                 'or if you have not yet built confidence in them.',
             onTap: () => onChanged(WageSource.manualMix),
           ),
@@ -201,16 +203,12 @@ class _RadioRow extends StatelessWidget {
                 children: [
                   Text(
                     label,
-                    style: AppTextStyles.body14(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.body14(color: AppColors.textPrimary),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     body,
-                    style: AppTextStyles.body13(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.body13(color: AppColors.textPrimary),
                   ),
                 ],
               ),

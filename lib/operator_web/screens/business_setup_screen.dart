@@ -487,39 +487,57 @@ class _EffectiveFieldRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final source = _TimingStatusPill(
+      label: field.inherited
+          ? 'Inherited from ${field.sourceLabel}'
+          : field.sourceLabel,
+      color: field.inherited ? AppColors.textMuted : AppColors.peacockDark,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              field.label,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              field.value,
-              style: AppTextStyles.body14(color: AppColors.textPrimary),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: _TimingStatusPill(
-                label: field.inherited
-                    ? 'Inherited from ${field.sourceLabel}'
-                    : field.sourceLabel,
-                color: field.inherited
-                    ? AppColors.textMuted
-                    : AppColors.peacockDark,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 520) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  field.label,
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  field.value,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 6),
+                source,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: Text(
+                  field.label,
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
               ),
-            ),
-          ),
-        ],
+              Expanded(
+                flex: 2,
+                child: Text(
+                  field.value,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Align(alignment: Alignment.centerLeft, child: source),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -504,11 +504,11 @@ class _EmptyState extends StatelessWidget {
   String _categoryActionLabel(VendorCategory category) {
     switch (category) {
       case VendorCategory.pos:
-        return 'Choose POS vendor';
+        return 'Choose POS';
       case VendorCategory.labor:
-        return 'Choose scheduling vendor';
+        return 'Choose scheduling';
       case VendorCategory.reservation:
-        return 'Choose reservations vendor';
+        return 'Choose reservations';
     }
   }
 }
