@@ -27,14 +27,17 @@ import 'package:flutter/material.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../account/operator_web_account_actions.dart';
+import '../services/demo_team_sessions_gateway.dart';
 import '../services/demo_team_users_gateway.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
+import '../services/web_team_sessions_gateway.dart';
 import '../services/web_team_users_gateway.dart';
 import '../screens/account_screen.dart';
 import '../screens/data_accuracy_screen.dart';
 import '../screens/members_screen.dart';
 import '../screens/mfa_enrollment_screen.dart';
 import '../screens/password_setup_screen.dart';
+import '../screens/sessions_screen.dart';
 import '../screens/sign_in_screen.dart';
 import '../screens/tos_accept_screen.dart';
 import '../screens/vendor_connections_screen.dart';
@@ -46,6 +49,7 @@ import '../../theme/app_theme.dart';
 /// links key off these.
 const String kOperatorWebNavAccount = 'account';
 const String kOperatorWebNavMembers = 'members';
+const String kOperatorWebNavSessions = 'sessions';
 const String kOperatorWebNavVendorConnections = 'vendor_connections';
 const String kOperatorWebNavDataAccuracy = 'data_accuracy';
 
@@ -56,6 +60,23 @@ const String kOperatorWebNavDataAccuracy = 'data_accuracy';
 /// `package:http` impl.
 abstract class OperatorWebTeamUsersGatewayProvider {
   WebTeamUsersGateway get teamUsersGateway;
+}
+
+/// Sentinel the operator-web shell stamps on the auth source when it
+/// can supply a [WebTeamSessionsGateway] for the Sessions surface.
+/// Demo auth source mixes this in with [DemoWebTeamSessionsGateway];
+/// `11W.4.live` will mix it in on the live source with the
+/// `package:http` impl. The provider also surfaces the actor's
+/// current session id so the screen can mark `(this session)` and
+/// short-circuit a self-revoke into `signOut()`.
+abstract class OperatorWebTeamSessionsGatewayProvider {
+  WebTeamSessionsGateway get teamSessionsGateway;
+
+  /// Stable id of the row representing the current operator-web
+  /// session. Null when the auth source has not surfaced one yet
+  /// (early bootstrap); the screen falls back to no chip + no
+  /// short-circuit in that case.
+  String? get currentSessionId;
 }
 
 /// Default nav surface the shell lands on after onboarding completes.
@@ -277,6 +298,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.group_outlined,
       ),
       OperatorWebNavItem(
+        id: kOperatorWebNavSessions,
+        title: 'Sessions',
+        icon: Icons.devices_outlined,
+      ),
+      OperatorWebNavItem(
         id: kOperatorWebNavVendorConnections,
         title: 'Vendor connections',
         icon: Icons.cable_outlined,
@@ -293,6 +319,14 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         body = MembersScreen(
           session: session,
           gateway: _teamUsersGateway,
+        );
+        break;
+      case kOperatorWebNavSessions:
+        body = SessionsScreen(
+          session: session,
+          gateway: _teamSessionsGateway,
+          currentSessionId: _currentSessionId,
+          onSignOut: widget.source.signOut,
         );
         break;
       case kOperatorWebNavVendorConnections:
@@ -347,6 +381,30 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   }
 
   DemoWebTeamUsersGateway? _routerOwnedDemoGateway;
+
+  WebTeamSessionsGateway get _teamSessionsGateway {
+    final source = widget.source;
+    if (source is OperatorWebTeamSessionsGatewayProvider) {
+      return (source as OperatorWebTeamSessionsGatewayProvider)
+          .teamSessionsGateway;
+    }
+    // Live source without a gateway mixin still gets a working
+    // surface for the slice walkthrough; the `11W.4.live` follow-up
+    // mixes the live HTTP gateway in via
+    // `OperatorWebTeamSessionsGatewayProvider`.
+    return _routerOwnedSessionsGateway ??= DemoWebTeamSessionsGateway();
+  }
+
+  DemoWebTeamSessionsGateway? _routerOwnedSessionsGateway;
+
+  String? get _currentSessionId {
+    final source = widget.source;
+    if (source is OperatorWebTeamSessionsGatewayProvider) {
+      return (source as OperatorWebTeamSessionsGatewayProvider)
+          .currentSessionId;
+    }
+    return null;
+  }
 }
 
 class _LoadingSplash extends StatelessWidget {
