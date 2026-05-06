@@ -156,3 +156,33 @@ Three open items left after the sink + test landed on
    call `upsertCoverFact` / `advanceWatermark` with an explicit
    `connectionId`. Schedule after `.TS` merges and before the next
    POS fanout sink.
+
+# Sink Follow-Up — `8.spine-bridge-sink-fanout.AG` (Agendrix)
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-AG`:
+
+1. **CI verification of the sink suite.** The worktree environment has
+   no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `agendrix_postgres_sink_test.dart` suite (Tests A–H), and the
+   `agendrix_labor_adapter_test.dart` regression were not run locally.
+   CI (subosito/flutter-action) must run all three before merge; any
+   failures are bounded fixes inside the two new files.
+
+2. **Adapter canonical-key alignment.** The sink translates the
+   Agendrix adapter's `employee_id` canonical-dict key into
+   `labor_punches.employee_source_id` at write time. Long-term the
+   adapter should emit `employee_source_id` directly so every labor
+   sink consumes one canonical key. `8.S.AG.live.sandbox` is the
+   right lane to retire the translation alongside the
+   sandbox-observed field-mapping diff; this slice intentionally left
+   the adapter alone per the slice prompt.
+
+3. **Wage-source upgrade path.** Agendrix is wage-class
+   `app_fallback` today — the documented Public API exposes
+   per-position pay only, so the sink binds `pay_rate = NULL` and
+   the aggregator falls back to the wage-authority service. If a
+   future Agendrix release exposes per-shift pay (mirroring the
+   7shifts `/reports/hours_and_wages` upgrade path), promote the
+   adapter to `perEmployeeWithRates` and drop the NULL bind in
+   favor of the vendor value.
