@@ -15,11 +15,19 @@ class BusinessSetupScreen extends StatefulWidget {
     required this.session,
     required this.locationId,
     this.gateway,
+    this.onEditTiming,
   });
 
   final OperatorWebSession session;
   final String locationId;
   final BusinessTimingGateway? gateway;
+
+  /// When non-null, the read view exposes an "Edit timing" button
+  /// that calls this callback. The router uses it to switch the
+  /// Business setup nav slot to the editor screen. When null (live
+  /// write gateway not provisioned), the read view shows the
+  /// existing safe-dialog placeholder.
+  final VoidCallback? onEditTiming;
 
   bool get _canEditTiming =>
       session.roles.any(kOperatorWebBusinessTimingEditRoles.contains) ||
@@ -196,7 +204,8 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
           if (widget._canEditTiming)
             _TimingEditControls(
               bundle: bundle,
-              onEdit: () => _showSafeTimingDialog('Edit timing'),
+              onEdit: widget.onEditTiming ??
+                  () => _showSafeTimingDialog('Edit timing'),
               onSchedule: () => _showSafeTimingDialog('Schedule timing'),
               onReset: bundle.hasLocationOverride
                   ? () => _showSafeTimingDialog('Reset timing')

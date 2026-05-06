@@ -182,6 +182,23 @@ class OperatorWebProxyClient {
     return response;
   }
 
+  Future<OperatorWebJsonResponse> patchJson(
+    String path, {
+    required String idToken,
+    Map<String, Object?> body = const <String, Object?>{},
+    Map<String, String>? queryParameters,
+  }) async {
+    final request = http.Request(
+      'PATCH',
+      _resolve(path, queryParameters: queryParameters),
+    );
+    _applyHeaders(request, idToken: idToken);
+    request.body = jsonEncode(body);
+    final response = await _send(request);
+    _throwIfUnsuccessful(response, path);
+    return response;
+  }
+
   Uri _resolve(String path, {Map<String, String>? queryParameters}) {
     final uri = baseUri.resolve(path);
     if (queryParameters == null || queryParameters.isEmpty) return uri;

@@ -14,6 +14,8 @@
 // Keep this file dependency-light: only the gateway interfaces these
 // providers expose. Concrete demo/live impls import from elsewhere.
 import 'business_timing_gateway.dart';
+import 'web_account_gateway.dart';
+import 'web_business_timing_gateway.dart';
 import 'web_security_gateway.dart';
 import 'web_team_audit_log_gateway.dart';
 import 'web_team_hierarchy_gateway.dart';
@@ -48,6 +50,24 @@ abstract class OperatorWebTeamUsersGatewayProvider {
 /// otherwise uses the read-only demo gateway.
 abstract class OperatorWebBusinessTimingGatewayProvider {
   BusinessTimingGateway get businessTimingGateway;
+}
+
+/// Sentinel the operator-web shell stamps on the auth source when it
+/// can supply a [WebAccountGateway] for the business-identity editor.
+/// Live wiring (the live Firebase source plus the proxy) implements
+/// this; demo / fixture sources may leave it absent so the screen
+/// renders honest read-only state.
+abstract class OperatorWebAccountGatewayProvider {
+  WebAccountGateway get accountGateway;
+}
+
+/// Sentinel the operator-web shell stamps on the auth source when it
+/// can supply a [WebBusinessTimingGateway] for the timing editor.
+/// Live wiring (the live Firebase source plus the proxy) implements
+/// this; demo / fixture sources may leave it absent so the editor
+/// renders the validation surface without a save target.
+abstract class OperatorWebBusinessTimingWriteGatewayProvider {
+  WebBusinessTimingGateway get businessTimingWriteGateway;
 }
 
 /// Sentinel the operator-web shell stamps on the auth source when it

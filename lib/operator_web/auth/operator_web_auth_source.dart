@@ -54,6 +54,11 @@ class OperatorWebSession {
     this.permissions = const <String>{},
     this.phone,
     this.mfaEnrolled = false,
+    this.logoUrl,
+    this.currencyCode,
+    this.localeTag,
+    this.weekStartDay,
+    this.rolloverHour,
   });
 
   /// Firebase user UID (or a synthetic id under demo mode).
@@ -68,8 +73,9 @@ class OperatorWebSession {
   /// Operator (tenant) the session belongs to.
   final String operatorId;
 
-  /// Display name of the operator's business — drives the welcome /
-  /// T&Cs copy ("Sign in for [Business Name]").
+  /// Display name of the operator's business. Drives the welcome /
+  /// T&Cs copy ("Sign in for [Business Name]") and the Account
+  /// screen's business identity field.
   final String businessName;
 
   /// Primary location id for the operator. Used to seed the default
@@ -90,16 +96,39 @@ class OperatorWebSession {
   final Set<String> permissions;
 
   /// Optional phone-on-file for the operator user. Null when the
-  /// proxy has no phone for the account; `11W.7` Account screen
+  /// proxy has no phone for the account; the My account screen
   /// renders "Not on file" with a copy pointer to the operator
   /// mobile app for edits. Read-only at V1 per the lean cut.
   final String? phone;
 
   /// Whether the operator has an active MFA factor enrolled. Drives
-  /// the `11W.7` Account screen's MFA section CTA: false → "Enroll
-  /// MFA"; true → "View backup codes". Mirrored from the proxy's
+  /// the My account screen's MFA section CTA: false then "Enroll
+  /// MFA"; true then "View backup codes". Mirrored from the proxy's
   /// `auth.users.mfa_enrolled` projection on the session payload.
   final bool mfaEnrolled;
+
+  /// Optional https URL for the operator's logo. Null when the
+  /// operator has not uploaded one. Surfaced on the Account screen
+  /// (business identity editor) and as the brand mark on the shell.
+  final String? logoUrl;
+
+  /// ISO 4217 currency code (e.g. `USD`, `CAD`, `EUR`). Null when
+  /// the proxy has not yet projected a value for this operator;
+  /// surfaces falls back to `USD` for display only.
+  final String? currencyCode;
+
+  /// BCP 47 locale tag (e.g. `en-US`, `fr-CA`). Null when the proxy
+  /// has not yet projected a value; UI defaults to `en-US`.
+  final String? localeTag;
+
+  /// Week-start day. One of: `monday`, `tuesday`, `wednesday`,
+  /// `thursday`, `friday`, `saturday`, `sunday`. Null when not yet
+  /// projected.
+  final String? weekStartDay;
+
+  /// Hour-of-day (0..23, restaurant local time) at which the
+  /// business day rolls over. Null when not yet projected.
+  final int? rolloverHour;
 }
 
 /// Onboarding stage the screen-router keys off. Linear progression
