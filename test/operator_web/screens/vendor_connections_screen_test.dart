@@ -401,6 +401,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
+        find.byKey(const Key('vendor_connections_picker_grid')),
+        findsOneWidget,
+      );
+      expect(find.text('7 available vendor options'), findsOneWidget);
+      expect(
+        find.byTooltip(
+          'Official Aloha (NCR Voyix) icon from developer.ncrvoyix.com',
+        ),
+        findsOneWidget,
+      );
+      expect(
         find.byKey(
           const Key('vendor_connections_picker_choice_aloha_ncr_voyix'),
         ),
@@ -421,6 +432,40 @@ void main() {
       );
       expect(continueButton.onPressed, isNull);
       expect(find.text('Not ready to connect'), findsOneWidget);
+      expect(
+        find.byKey(const Key('vendor_connections_picker_selected_panel')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('vendor picker card grid renders cleanly at tablet width', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(768, 1024));
+      await tester.pumpWidget(
+        wrap(
+          VendorConnectionsScreen(
+            session: adminSession,
+            locationId: adminSession.primaryLocationId,
+            gateway: InMemoryVendorConnectionsGateway(),
+          ),
+          size: const Size(768, 1024),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('vendor_connections_connect_pos')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('vendor_connections_picker_dialog')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('vendor_connections_picker_grid')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
     });
   });
 
