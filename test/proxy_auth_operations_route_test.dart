@@ -122,13 +122,16 @@ void main() {
             adminPermissionGuard: guard,
           );
           try {
-            final response = await harness
-                .postJson(adminAuthInvitesPath, <String, Object?>{
-                  'email': 'new.user@example.test',
-                  'role_id': 'operator_staff',
-                  'scope_type': 'location',
-                  'location_id': _locationId,
-                });
+            final response = await harness.postJson(
+              adminAuthInvitesPath,
+              <String, Object?>{
+                'email': 'new.user@example.test',
+                'role_id': 'operator_staff',
+                'scope_type': 'location',
+                'location_id': _locationId,
+              },
+              idempotencyKey: 'idem-invite-create-1',
+            );
 
             expect(response.statusCode, equals(201));
             expect(response.json['invite_id'], equals('invite-1'));
@@ -153,13 +156,16 @@ void main() {
           adminPermissionGuard: _RecordingAdminGuard(),
         );
         try {
-          final response = await harness
-              .postJson(adminAuthInvitesPath, <String, Object?>{
-                'email': 'regional.user@example.test',
-                'role_id': _roleId,
-                'scope_type': 'org_unit',
-                'org_unit_id': '55555555-5555-4555-8555-555555555555',
-              });
+          final response = await harness.postJson(
+            adminAuthInvitesPath,
+            <String, Object?>{
+              'email': 'regional.user@example.test',
+              'role_id': _roleId,
+              'scope_type': 'org_unit',
+              'org_unit_id': '55555555-5555-4555-8555-555555555555',
+            },
+            idempotencyKey: 'idem-invite-create-2',
+          );
 
           expect(response.statusCode, equals(201));
           final command = gateway.inviteCreates.single;
@@ -216,13 +222,16 @@ void main() {
             adminPermissionGuard: guard,
           );
           try {
-            final response = await harness
-                .postJson(adminAuthOrgUnitsPath, const <String, Object?>{
-                  'parent_org_unit_id': '66666666-6666-4666-8666-666666666666',
-                  'unit_type': 'region',
-                  'label': 'east',
-                  'name': 'East Region',
-                });
+            final response = await harness.postJson(
+              adminAuthOrgUnitsPath,
+              const <String, Object?>{
+                'parent_org_unit_id': '66666666-6666-4666-8666-666666666666',
+                'unit_type': 'region',
+                'label': 'east',
+                'name': 'East Region',
+              },
+              idempotencyKey: 'idem-org-unit-create-1',
+            );
 
             expect(response.statusCode, equals(201));
             expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
@@ -255,6 +264,7 @@ void main() {
               const <String, Object?>{
                 'parent_org_unit_id': '77777777-7777-4777-8777-777777777777',
               },
+              idempotencyKey: 'idem-location-move-1',
             );
 
             expect(response.statusCode, equals(200));
@@ -519,6 +529,7 @@ void main() {
                 },
               ],
             },
+            idempotencyKey: 'idem-role-create-1',
           );
 
           expect(response.statusCode, equals(201));
@@ -555,10 +566,12 @@ void main() {
                 },
               ],
             },
+            idempotencyKey: 'idem-role-patch-1',
           );
           final delete = await harness.deleteJson(
             '$adminAuthRolePrefix${Uri.encodeComponent(_roleId)}',
             const <String, Object?>{'reason': 'cleanup'},
+            idempotencyKey: 'idem-role-delete-1',
           );
 
           expect(patch.statusCode, equals(200));
@@ -1361,11 +1374,15 @@ class _RouteHarness {
 
   Future<_HttpJsonResponse> patchJson(
     String path,
-    Map<String, Object?> body,
-  ) async {
+    Map<String, Object?> body, {
+    String? idempotencyKey,
+  }) async {
     final request = await client.patchUrl(baseUri.resolve(path));
     request.headers.contentType = ContentType.json;
     request.headers.set(HttpHeaders.authorizationHeader, 'Bearer test-token');
+    if (idempotencyKey != null) {
+      request.headers.set('Idempotency-Key', idempotencyKey);
+    }
     final encoded = utf8.encode(jsonEncode(body));
     request.contentLength = encoded.length;
     request.add(encoded);
@@ -1375,11 +1392,15 @@ class _RouteHarness {
 
   Future<_HttpJsonResponse> deleteJson(
     String path,
-    Map<String, Object?> body,
-  ) async {
+    Map<String, Object?> body, {
+    String? idempotencyKey,
+  }) async {
     final request = await client.deleteUrl(baseUri.resolve(path));
     request.headers.contentType = ContentType.json;
     request.headers.set(HttpHeaders.authorizationHeader, 'Bearer test-token');
+    if (idempotencyKey != null) {
+      request.headers.set('Idempotency-Key', idempotencyKey);
+    }
     final encoded = utf8.encode(jsonEncode(body));
     request.contentLength = encoded.length;
     request.add(encoded);

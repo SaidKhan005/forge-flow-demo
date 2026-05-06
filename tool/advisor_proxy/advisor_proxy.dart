@@ -8669,6 +8669,27 @@ Future<void> routeRequest(
             return;
           }
 
+          // Phase 11A.10 / Hard Promise #7 — every proxy write is
+          // idempotent. Self-service Team write branches (role
+          // create/patch/delete, invite create/revoke, role-grant
+          // create/delete, org-unit create, location move) all
+          // require an `Idempotency-Key` header so a retry collapses
+          // to a single back-end mutation. Reads (`GET`) skip this
+          // check.
+          final authOpsCache =
+              authIdempotencyCache ?? _defaultAuthIdempotencyCache;
+          String? readIdempotencyKeyOrFail() {
+            final key = request.headers.value('Idempotency-Key')?.trim();
+            if (key == null || key.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'missing_idempotency_key',
+                'message': 'Idempotency-Key header is required',
+              });
+              return null;
+            }
+            return key;
+          }
+
           try {
             if (request.method == 'GET' &&
                 authOperationPath == adminAuthRolesPath) {
@@ -8715,21 +8736,33 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final created = await authOperationsGateway.createRole(
-                TeamRoleCreateCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  roleKey: roleKey,
-                  displayName: displayName,
-                  description: _stringValue(body['description']) ?? '',
-                  permissions: _rolePermissionUpdates(body['permissions']),
-                  reason: _nonBlankString(body['reason']),
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: adminAuthRolesPath,
+                key: idempotencyKey,
+                compute: () async {
+                  final created = await authOperationsGateway.createRole(
+                    TeamRoleCreateCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      roleKey: roleKey,
+                      displayName: displayName,
+                      description: _stringValue(body['description']) ?? '',
+                      permissions: _rolePermissionUpdates(body['permissions']),
+                      reason: _nonBlankString(body['reason']),
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 201,
+                    body: <String, Object?>{
+                      'role': _teamRoleToJson(created.role),
+                    },
+                  );
+                },
               );
-              _writeJson(response, 201, <String, Object?>{
-                'role': _teamRoleToJson(created.role),
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
@@ -8748,22 +8781,34 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final patched = await authOperationsGateway.patchRole(
-                TeamRolePatchCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  roleId: roleId,
-                  displayName: _stringValue(body['display_name']),
-                  description: _stringValue(body['description']),
-                  permissions: _rolePermissionUpdates(body['permissions']),
-                  reason: _nonBlankString(body['reason']),
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthRolePrefix$roleId',
+                key: idempotencyKey,
+                compute: () async {
+                  final patched = await authOperationsGateway.patchRole(
+                    TeamRolePatchCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      roleId: roleId,
+                      displayName: _stringValue(body['display_name']),
+                      description: _stringValue(body['description']),
+                      permissions: _rolePermissionUpdates(body['permissions']),
+                      reason: _nonBlankString(body['reason']),
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'role': _teamRoleToJson(patched.role),
+                      'bumped_users': patched.bumpedUsers,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 200, <String, Object?>{
-                'role': _teamRoleToJson(patched.role),
-                'bumped_users': patched.bumpedUsers,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
@@ -8782,19 +8827,31 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final deleted = await authOperationsGateway.deleteRole(
-                TeamRoleDeleteCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  roleId: roleId,
-                  reason: _nonBlankString(body['reason']),
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: 'DELETE $adminAuthRolePrefix$roleId',
+                key: idempotencyKey,
+                compute: () async {
+                  final deleted = await authOperationsGateway.deleteRole(
+                    TeamRoleDeleteCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      roleId: roleId,
+                      reason: _nonBlankString(body['reason']),
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'deleted': deleted.deleted,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 200, <String, Object?>{
-                'ok': true,
-                'deleted': deleted.deleted,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
@@ -8811,23 +8868,37 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final created = await authOperationsGateway.createInvite(
-                TeamInviteCreateCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  email: email,
-                  roleId: roleId,
-                  scopeType: scopeType,
-                  targetLocationId: _nonBlankString(body['location_id']),
-                  targetOrgUnitId: _nonBlankString(body['org_unit_id']),
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: adminAuthInvitesPath,
+                key: idempotencyKey,
+                compute: () async {
+                  final created = await authOperationsGateway.createInvite(
+                    TeamInviteCreateCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      email: email,
+                      roleId: roleId,
+                      scopeType: scopeType,
+                      targetLocationId: _nonBlankString(body['location_id']),
+                      targetOrgUnitId: _nonBlankString(body['org_unit_id']),
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 201,
+                    body: <String, Object?>{
+                      'invite_id': created.inviteId,
+                      'expires_at': created.expiresAt
+                          .toUtc()
+                          .toIso8601String(),
+                      if (created.userId != null) 'user_id': created.userId,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 201, <String, Object?>{
-                'invite_id': created.inviteId,
-                'expires_at': created.expiresAt.toUtc().toIso8601String(),
-                if (created.userId != null) 'user_id': created.userId,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
@@ -8862,18 +8933,30 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final revoked = await authOperationsGateway.revokeInvite(
-                TeamInviteRevokeCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  inviteId: inviteId,
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: 'DELETE $adminAuthInvitePrefix$inviteId',
+                key: idempotencyKey,
+                compute: () async {
+                  final revoked = await authOperationsGateway.revokeInvite(
+                    TeamInviteRevokeCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      inviteId: inviteId,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'revoked': revoked.revoked,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 200, <String, Object?>{
-                'ok': true,
-                'revoked': revoked.revoked,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
@@ -9028,22 +9111,34 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final created = await authOperationsGateway.createRoleGrant(
-                TeamRoleGrantCreateCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  targetUserId: targetUserId,
-                  roleId: roleId,
-                  scopeType: scopeType,
-                  targetLocationId: _nonBlankString(body['location_id']),
-                  targetOrgUnitId: _nonBlankString(body['org_unit_id']),
-                  reason: _nonBlankString(body['reason']),
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: adminAuthRoleGrantsPath,
+                key: idempotencyKey,
+                compute: () async {
+                  final created = await authOperationsGateway.createRoleGrant(
+                    TeamRoleGrantCreateCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      targetUserId: targetUserId,
+                      roleId: roleId,
+                      scopeType: scopeType,
+                      targetLocationId: _nonBlankString(body['location_id']),
+                      targetOrgUnitId: _nonBlankString(body['org_unit_id']),
+                      reason: _nonBlankString(body['reason']),
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 201,
+                    body: <String, Object?>{
+                      'user_role_id': created.userRoleId,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 201, <String, Object?>{
-                'user_role_id': created.userRoleId,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
@@ -9063,20 +9158,32 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final revoked = await authOperationsGateway.revokeRoleGrant(
-                TeamRoleGrantRevokeCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  userRoleId: userRoleId,
-                  targetUserId: targetUserId,
-                  reason: _nonBlankString(body['reason']),
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: 'DELETE $adminAuthRoleGrantPrefix$userRoleId',
+                key: idempotencyKey,
+                compute: () async {
+                  final revoked = await authOperationsGateway.revokeRoleGrant(
+                    TeamRoleGrantRevokeCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      userRoleId: userRoleId,
+                      targetUserId: targetUserId,
+                      reason: _nonBlankString(body['reason']),
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'revoked': revoked.revoked,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 200, <String, Object?>{
-                'ok': true,
-                'revoked': revoked.revoked,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
@@ -9121,20 +9228,32 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final created = await authOperationsGateway.createOrgUnit(
-                TeamOrgUnitCreateCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  parentOrgUnitId: parentOrgUnitId,
-                  unitType: unitType,
-                  label: label,
-                  name: name,
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: adminAuthOrgUnitsPath,
+                key: idempotencyKey,
+                compute: () async {
+                  final created = await authOperationsGateway.createOrgUnit(
+                    TeamOrgUnitCreateCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      parentOrgUnitId: parentOrgUnitId,
+                      unitType: unitType,
+                      label: label,
+                      name: name,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 201,
+                    body: <String, Object?>{
+                      'org_unit_id': created.orgUnitId,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 201, <String, Object?>{
-                'org_unit_id': created.orgUnitId,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
@@ -9156,19 +9275,33 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final moved = await authOperationsGateway.moveLocationToOrgUnit(
-                TeamLocationOrgUnitMoveCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  targetLocationId: targetLocationId,
-                  parentOrgUnitId: parentOrgUnitId,
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route:
+                    '$adminAuthLocationsPrefix$targetLocationId/org-unit',
+                key: idempotencyKey,
+                compute: () async {
+                  final moved = await authOperationsGateway
+                      .moveLocationToOrgUnit(
+                        TeamLocationOrgUnitMoveCommand(
+                          actorUserId: scope.userId,
+                          operatorId: scope.operatorId,
+                          locationId: scope.locationId,
+                          targetLocationId: targetLocationId,
+                          parentOrgUnitId: parentOrgUnitId,
+                        ),
+                      );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'moved': moved.moved,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 200, <String, Object?>{
-                'ok': true,
-                'moved': moved.moved,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
           } on MfaOperationRejected catch (error) {
