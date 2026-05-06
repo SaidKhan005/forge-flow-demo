@@ -20,7 +20,6 @@ import 'package:forge_and_flow/operator_web/auth/firebase_operator_web_auth_sour
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_proxy_client.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_team_gateway_providers.dart';
-import 'package:forge_and_flow/operator_web/services/operator_web_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/services/auth/firebase_auth_client.dart';
 
 void main() {

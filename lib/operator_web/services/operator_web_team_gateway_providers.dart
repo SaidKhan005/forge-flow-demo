@@ -21,6 +21,19 @@ import 'web_team_roles_gateway.dart';
 import 'web_team_sessions_gateway.dart';
 import 'web_team_users_gateway.dart';
 
+/// Re-export for the Phase 11W.8 / Wave A3 vendor-connections mount.
+/// Auth sources mix this provider in to surface the live HTTP gateway
+/// to [OperatorWebVendorConnectionsResolver]; demo sources omit the
+/// mixin and the resolver returns null so the shared widget falls
+/// back to its in-memory catalog. The provider class itself lives
+/// next to the live HTTP gateway implementation; the re-export keeps
+/// this file the single registration index for operator-web gateway
+/// providers.
+export 'operator_web_vendor_connections_gateway.dart'
+    show OperatorWebVendorConnectionsGatewayProvider;
+export 'operator_web_vendor_connections_resolver.dart'
+    show OperatorWebVendorConnectionsResolver;
+
 /// Sentinel the operator-web shell stamps on the auth source when it
 /// can supply a [WebTeamUsersGateway] for the Members surface. Demo
 /// auth source mixes this in with `DemoWebTeamUsersGateway`;
