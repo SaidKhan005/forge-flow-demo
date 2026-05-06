@@ -37,6 +37,8 @@ import '../services/demo_team_sessions_gateway.dart';
 import '../services/demo_team_users_gateway.dart';
 import '../services/operator_web_team_gateway_providers.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
+import '../services/web_account_gateway.dart';
+import '../services/web_business_timing_gateway.dart';
 import '../services/web_security_gateway.dart';
 import '../services/web_team_audit_log_gateway.dart';
 import '../services/web_team_hierarchy_gateway.dart';
@@ -46,6 +48,8 @@ import '../services/web_team_users_gateway.dart';
 import '../screens/account_screen.dart';
 import '../screens/audit_log_screen.dart';
 import '../screens/business_setup_screen.dart';
+import '../screens/business_timing_editor_screen.dart';
+import '../screens/my_account_screen.dart';
 import '../screens/custom_role_editor_screen.dart';
 import '../screens/data_accuracy_screen.dart';
 import '../screens/hierarchy_screen.dart';
@@ -65,8 +69,14 @@ import '../../theme/app_theme.dart';
 
 /// Stable nav ids for the post-onboarding shell. Tests and deep
 /// links key off these.
+///
+/// `account` is the business-identity surface (business name, logo,
+/// currency, locale, week-start, rollover hour). `my_account` is the
+/// operator-user surface (Profile, MFA, Password, T&Cs).
 const String kOperatorWebNavAccount = 'account';
+const String kOperatorWebNavMyAccount = 'my_account';
 const String kOperatorWebNavBusinessSetup = 'business_setup';
+const String kOperatorWebNavBusinessTimingEditor = 'business_timing_editor';
 const String kOperatorWebNavMembers = 'members';
 const String kOperatorWebNavRoles = 'roles';
 const String kOperatorWebNavLocations = 'locations';
@@ -137,6 +147,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   /// the gateway after a create / patch / delete.
   int _rolesListSeq = 0;
 
+  /// True when the Business setup nav slot should render the editor
+  /// instead of the read view. Set by tapping the Edit button on the
+  /// read view; cleared by the editor's back button.
+  bool _editingBusinessTiming = false;
+
   @override
   void initState() {
     super.initState();
@@ -194,6 +209,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       if (id != kOperatorWebNavRoles) {
         _rolesSubRoute = null;
         _rolesEditTarget = null;
+      }
+      // Switching away from Business setup exits the timing editor
+      // sub-view so the read view is what the operator sees on
+      // re-enter.
+      if (id != kOperatorWebNavBusinessSetup) {
+        _editingBusinessTiming = false;
       }
     });
   }
@@ -351,8 +372,13 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     final navItems = const <OperatorWebNavItem>[
       OperatorWebNavItem(
         id: kOperatorWebNavAccount,
-        title: 'Account',
+        title: 'Business account',
         icon: Icons.business_outlined,
+      ),
+      OperatorWebNavItem(
+        id: kOperatorWebNavMyAccount,
+        title: 'My account',
+        icon: Icons.person_outline,
       ),
       OperatorWebNavItem(
         id: kOperatorWebNavBusinessSetup,
@@ -402,12 +428,26 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     ];
     final Widget body;
     switch (_selectedNavId) {
+      case kOperatorWebNavMyAccount:
+        body = MyAccountScreen(session: session, actions: _accountActions);
+        break;
       case kOperatorWebNavBusinessSetup:
-        body = BusinessSetupScreen(
-          session: session,
-          locationId: session.primaryLocationId,
-          gateway: _businessTimingGateway,
-        );
+        if (_editingBusinessTiming) {
+          body = BusinessTimingEditorScreen(
+            session: session,
+            gateway: _webBusinessTimingGateway,
+            onClose: () => setState(() => _editingBusinessTiming = false),
+          );
+        } else {
+          body = BusinessSetupScreen(
+            session: session,
+            locationId: session.primaryLocationId,
+            gateway: _businessTimingGateway,
+            onEditTiming: _webBusinessTimingGateway != null
+                ? () => setState(() => _editingBusinessTiming = true)
+                : null,
+          );
+        }
         break;
       case kOperatorWebNavMembers:
         body = MembersScreen(
@@ -458,7 +498,10 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         );
         break;
       default:
-        body = AccountScreen(session: session, actions: _accountActions);
+        body = AccountScreen(
+          session: session,
+          gateway: _webAccountGateway,
+        );
     }
     return WebAppShell(
       session: session,
@@ -505,6 +548,17 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   OperatorWebAccountActions? get _accountActions =>
       widget.source is OperatorWebAccountActions
       ? widget.source as OperatorWebAccountActions
+      : null;
+
+  WebAccountGateway? get _webAccountGateway =>
+      widget.source is OperatorWebAccountGatewayProvider
+      ? (widget.source as OperatorWebAccountGatewayProvider).accountGateway
+      : null;
+
+  WebBusinessTimingGateway? get _webBusinessTimingGateway =>
+      widget.source is OperatorWebBusinessTimingWriteGatewayProvider
+      ? (widget.source as OperatorWebBusinessTimingWriteGatewayProvider)
+            .businessTimingWriteGateway
       : null;
 
   VendorConnectionsGateway? get _vendorConnectionsGateway =>
