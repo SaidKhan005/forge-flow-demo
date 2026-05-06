@@ -63,8 +63,8 @@ SELECT now emit the triplet) all landed in commits
 `da1484a0`, `976e8d7e`, `c9a3de6b`, `e3c196bf`. Four follow-ups
 remain:
 
-- **Closed-row proxy gap is still open.** `_shiftRecordJson` and the
-  paired `fetchShiftRecords` SELECT in
+- **[~] Closed-row proxy gap — IN FLIGHT (V1.A).** `_shiftRecordJson`
+  and the paired `fetchShiftRecords` SELECT in
   `tool/advisor_proxy/proxy_bootstrap.dart:1224-1259` and
   `:1483-1521` do NOT include
   `business_timing_profile_id`,
@@ -74,21 +74,23 @@ remain:
   `ClosedTimingLabelResolver` falls back to mutable `daypart` for
   display — i.e. Lane 2 is wired but inert on mobile. Mirror the
   open-snapshot SELECT/mapper change that already landed for
-  `_openShiftSnapshotJson`.
-- **FK posture on closed `shift_records` may block profile mutation.** The
+  `_openShiftSnapshotJson`. **In flight via V1.A
+  `8.closed-row-proxy-timing-provenance` per
+  `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md`.**
+- **[~] FK posture on closed `shift_records` — IN FLIGHT (V1.B).** The
   migration adds `shift_records_business_timing_profile_fk` and
   `shift_records_business_timing_profile_version_fk` (both `NOT VALID`) with
   default `ON DELETE NO ACTION`. The `core_app_architecture.md` "What never
   rewrites" non-negotiable says closed historical truth must outlive profile
   mutation. Default `NO ACTION` blocks any `business_timing_profiles` delete
   the moment a closed row references the profile, which conflicts with the
-  Operator Web timing editor's expected lifecycle. Decide between
-  `ON DELETE SET NULL` (closed row degrades to legacy/null but survives) or
-  dropping the two FKs entirely. The matching FK on
-  `open_shift_snapshots_profile_version_fk` has the same posture and the
-  same decision applies. Refs:
+  Operator Web timing editor's expected lifecycle. Decision: `ON DELETE
+  SET NULL` (closed row degrades to legacy/null but survives). The matching
+  FK on `open_shift_snapshots_profile_version_fk` gets the same treatment.
+  Refs:
   `db/migrations/202605061700_phase_8_timing_provenance_shift_records.sql:39-77,
-  101-108`.
+  101-108`. **In flight via V1.B `8.timing-provenance-fk-posture` per
+  `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md`.**
 - **Drop the version-equals-profile CHECKs before any future Phase 8R
   divergence.** Lane 0 added
   `shift_records_timing_version_profile_match_check` and

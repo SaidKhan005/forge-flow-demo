@@ -221,11 +221,41 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
       Postgres repositories; Lanes 1–4 in parallel; Lane 5 proof harness.
       Authority: `docs/contracts/mobile_core_star_target_truth_contract.md`,
       `docs/_execution/2026-05-06_mobile_core_star_target_truth_sprint_plan.md`.
-- [ ] **Doc 1 remaining (queued post-`8.star-target-server-truth`):**
-      server weekly plan snapshots + forecast context · mobile business
-      scope selector + rollup truth · admin/web setting sync inventory ·
-      connected-device E2E + live provider proof + push proof + larger
-      pressure suite. Each requires its own sprint plan.
+- [ ] **Claude V1 closure dispatch (2026-05-06) — seven lanes.**
+      Authority: `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md`.
+      Five lanes launched NOW (V1.A/B/E/F/G); two queued (V1.C/D) for
+      after Codex's `8.star-target-server-truth.Lane 0` / `Lane 3`.
+      - **V1.A `8.closed-row-proxy-timing-provenance`** — V1-blocking;
+        mirrors open-snapshot timing triplet onto closed-row proxy
+        SELECT/mapper so mobile actually consumes Lane 0's stored
+        provenance. Closes one P1 follow-up.
+      - **V1.B `8.timing-provenance-fk-posture`** — V1-blocking; flips
+        `shift_records` profile/version FKs to `ON DELETE SET NULL` so
+        Operator Web timing editor can replace profiles without
+        blocking on closed rows. Closes one P1 follow-up.
+      - **V1.C `8.weekly-plan-server-truth.lane0`** — Doc 1 item 4
+        Lane 0 only (additive Postgres schema + repos for
+        `weekly_plan_snapshots` + `forecast_context`); waits for
+        Codex Lane 0 to land. Authority:
+        `docs/contracts/mobile_core_weekly_plan_server_truth_contract.md`.
+      - **V1.D `8.mobile-scope-foundation`** — Doc 1 item 5 Lane 0
+        only (proxy `business_scopes` route + local active-scope
+        repo); waits for Codex Lane 3 to land. Authority:
+        `docs/contracts/mobile_core_business_scope_contract.md`.
+      - **V1.E `8.live.vendor-now-available-fanout`** — V1-blocking
+        prerequisite for any `*.live.prod` slice; ships email
+        template + dispatcher + fan-out worker.
+      - **V1.F `8.connector-backfill-jobs.test-coverage`** — chip-debt;
+        closes one row of "18 of 29 repositories without tests"
+        cohort.
+      - **V1.G `cutover.0.preflight-runbook-codification`** — operator-
+        unblock helper; codifies cutover.0 pre-flight as an
+        executable harness.
+- [ ] **Doc 1 remaining post-V1 (queued):** Item 6 admin/web setting
+      sync inventory · Item 7 connected-device E2E · Item 8 live
+      provider proof per vendor · Item 9 push proof · Item 10 larger
+      pressure suite (already on `cutover.0b`). Each requires its own
+      sprint plan; not V1-launch-blocking.
 - [ ] **Phase 11A.8/.9/.10 — operations console final slices.** Support
       audit, cross-operator reads, user impersonation — deferred post-launch
       unless escalated.

@@ -103,6 +103,13 @@ Two slices per vendor:
 - **`<vendor_id>.live.prod`** (~200 LOC + walkthrough)
   - Trigger: production credentials issued by partnership +
     `partnership_status.md` shows "Production credentials issued: Y".
+  - **Prerequisite (engineering):** V1.E
+    `8.live.vendor-now-available-fanout` must be ACCEPT before any
+    `*.live.prod` slice — that lane ships the email template
+    (`tool/advisor_proxy/email_templates/vendor_now_available.md`) and
+    the dispatcher worker that fans out one email per row in
+    `vendor_lifecycle_notification` on lifecycle promotion. Tracked in
+    `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md`.
   - Runs the adapter against production; fills prod section of
     `live_verification_checklist.md`.
   - Promotes lifecycle to `production_credentialed`.

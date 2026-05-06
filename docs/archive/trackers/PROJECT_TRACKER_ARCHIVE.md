@@ -576,6 +576,24 @@ The important carry-forward points were:
 - El Podio was still demo-backed
 - preview-role dimming was still visual-only and not real enforcement
 
+## Archived Phase Board (moved 2026-05-06)
+
+Retired from the active Phase Board once each phase reached ACCEPT/closed with
+no remaining work tracked under that label. Phase docs marked under
+`docs/archive/phases/` were retired per CLAUDE.md "Phase Doc Hygiene"; longer
+plans referenced under `docs/phases/**` remain available for the dependent
+lifecycle / fanout / cutover work that is still open in the active tracker.
+
+| Phase | Final state | Plan |
+| --- | --- | --- |
+| `7.58` | closed 2026-05-05 — advisor-depth-complete; all 5 depth-wave slices ACCEPT | `docs/archive/phases/phase_7_58/` |
+| `7.61` | closed — all 4 non-deferred slices accepted | `docs/archive/phases/phase_7_61/` |
+| `10.5` | closed — all 4 slices accepted | `docs/archive/phases/phase_10_5/` |
+| `10a` | closed for V1 2026-05-06 — `.0`/`.1`/`.2`/`.3`/`.4`/`.5` + `UX.0`/`UX.1` ACCEPT | `phase_10a/*` |
+| `8.spine-bridge` | ACCEPT 2026-05-05 — 11 sub-lanes + `.4` proof v2 PASS 27/27 | `phase_8/phase_8_spine_bridge_plan.md`, `docs/_execution/2026-05-05_8_integration_mobile_proof_v2_execution.md` |
+| `8.spine-bridge-live` | ACCEPT 2026-05-06 — `OpenShiftSnapshotProjector` + Lane 4 mobile/proxy enrichment + closed-timing provenance components landed; first-connect wire-in exercises the post-commit projector under fixture proof. Live provider/device proof remains future lifecycle/E2E work. | `phase_8/phase_8_spine_bridge_plan.md`, `phase_business_timing_live/business_timing_live_plan.md`, `docs/_execution/2026-05-06_8_live_and_closed_truth_proof_execution.md` |
+| `8.first-connect-backfill-wire-in` | ACCEPT 2026-05-06 — closes Doc 1 first-connection path under fixture proof: connect -> first backfill job -> adapter.backfill -> canonical facts -> closed rows/open snapshots -> proxy/mobile cache | `docs/contracts/mobile_core_first_connection_backfill_contract.md`, `docs/_execution/2026-05-06_mobile_core_first_connection_backfill_sprint_plan.md`, `docs/_execution/2026-05-06_8_first_connection_backfill_proof.md`, `docs/_walkthroughs/8.first-connect-backfill.md` |
+
 ## Completed Prompt History
 
 | Prompt | Objective | Status | Notes |
