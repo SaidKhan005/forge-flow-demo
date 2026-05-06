@@ -216,3 +216,34 @@ Three open items left after the sink + test landed on
    7shifts `/reports/hours_and_wages` upgrade path), promote the
    adapter to `perEmployeeWithRates` and drop the NULL bind in
    favor of the vendor value.
+
+---
+
+# Sink Follow-Up — `8.spine-bridge-sink-fanout.SR` (SevenRooms)
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-SR`:
+
+1. **CI verification of the sink suite.** The worktree environment has
+   no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `sevenrooms_reservation_postgres_sink_test.dart` suite (Tests A–H,
+   including G's CANCELLED → `cancelled_at` round-trip), and the
+   `sevenrooms_reservation_adapter_test.dart` regression were not run
+   locally. CI (subosito/flutter-action) must run all three before
+   merge; any failures are bounded fixes inside the two new files.
+
+2. **Bespoke gateway tenant widening.** `SevenRoomsReservationGateway.
+   updateWatermark` and `appendSyncLog` only carry `connectionId`, so
+   the sink resolves `(operator_id, location_id)` via a `withSystem`
+   lookup against `connector_connection` before the tenant-scoped
+   write. A future lane should widen those gateway methods to accept
+   the tenant tuple directly (matching Libro's shape) so the
+   per-call lookup + RLS-bypass round-trip drops out.
+
+3. **Worker dispatcher wiring.** The unified `CanonicalSink` view is
+   exposed via `asCanonicalSink({connectionIdResolver})` but no
+   integration sync worker dispatch currently routes SevenRooms
+   reservation facts through it — the Wave B adapter still writes
+   through the bespoke gateway only. The follow-up `8.spine-bridge.2`
+   aggregator lane wires the dispatcher and lights up the demo-flip
+   auto-evaluator on the unified surface.
