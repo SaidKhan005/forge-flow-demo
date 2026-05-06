@@ -5,11 +5,10 @@
 // Sessions) for the F&F admin to inspect and audit-edit role catalog,
 // org-unit hierarchy, and active sessions for the picked operator.
 //
-// Mounts in the admin shell at `/admin/roles-hierarchy-sessions` and
-// is reached AFTER the operator picker - the picker's
-// [OperatorPickerResult] is the screen's input. The route shell in
-// `admin_routes.dart` handles the picker hand-off identically to the
-// 11A.12 Members surface.
+// Mounts in the admin shell at `/admin/roles-hierarchy-sessions`.
+// The shell passes the shared Operations operator context when one
+// exists; the picker is only opened when the admin needs to choose
+// or change operator.
 //
 // Authority: docs/contracts/team_roles_hierarchy_console_parity_contract.md
 // "§ Roles + Permission Explainer (11W.2 + 11A.13 Roles tab)" +
@@ -84,6 +83,7 @@ class _RolesHierarchySessionsAdminScreenState
   List<OrgUnitAdminNode> _orgUnits = const <OrgUnitAdminNode>[];
   List<HierarchyLocationLeaf> _locations = const <HierarchyLocationLeaf>[];
   List<SessionAdminRow> _sessions = const <SessionAdminRow>[];
+  int _refreshGeneration = 0;
 
   int _idempotencyCounter = 0;
 
@@ -108,22 +108,24 @@ class _RolesHierarchySessionsAdminScreenState
   }
 
   Future<void> _refresh() async {
+    final generation = ++_refreshGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
       final operatorId = widget.pickedOperator.operatorId;
-      final roles = await widget.gateway.listRoles(operatorId: operatorId);
-      final orgUnits = await widget.gateway.listOrgUnits(
-        operatorId: operatorId,
-      );
-      final locations = await widget.gateway.listHierarchyLocations(
-        operatorId: operatorId,
-      );
-      final sessions = await widget.gateway.listSessions(
-        operatorId: operatorId,
-      );
+      final results = await Future.wait<Object>([
+        widget.gateway.listRoles(operatorId: operatorId),
+        widget.gateway.listOrgUnits(operatorId: operatorId),
+        widget.gateway.listHierarchyLocations(operatorId: operatorId),
+        widget.gateway.listSessions(operatorId: operatorId),
+      ]);
+      if (generation != _refreshGeneration) return;
+      final roles = results[0] as List<RoleAdminRow>;
+      final orgUnits = results[1] as List<OrgUnitAdminNode>;
+      final locations = results[2] as List<HierarchyLocationLeaf>;
+      final sessions = results[3] as List<SessionAdminRow>;
       if (!mounted) return;
       setState(() {
         _roles = roles;
@@ -212,9 +214,7 @@ class _RolesHierarchySessionsAdminScreenState
     final result = await showDialog<_CustomRoleDraft>(
       context: context,
       builder: (_) => _CreateCustomRoleDialog(
-        existingRoleKeys: <String>{
-          for (final r in _roles) r.roleKey,
-        },
+        existingRoleKeys: <String>{for (final r in _roles) r.roleKey},
       ),
     );
     if (result == null) return;
@@ -261,10 +261,7 @@ class _RolesHierarchySessionsAdminScreenState
     ];
     final result = await showDialog<_MoveOrgUnitResult>(
       context: context,
-      builder: (_) => _MoveOrgUnitDialog(
-        node: node,
-        candidates: candidates,
-      ),
+      builder: (_) => _MoveOrgUnitDialog(node: node, candidates: candidates),
     );
     if (result == null) return;
     await _runAndRefresh(
@@ -286,10 +283,7 @@ class _RolesHierarchySessionsAdminScreenState
     if (candidates.isEmpty) return;
     final result = await showDialog<_MoveLocationResult>(
       context: context,
-      builder: (_) => _MoveLocationDialog(
-        leaf: leaf,
-        candidates: candidates,
-      ),
+      builder: (_) => _MoveLocationDialog(leaf: leaf, candidates: candidates),
     );
     if (result == null) return;
     await _runAndRefresh(
@@ -359,9 +353,7 @@ class _RolesHierarchySessionsAdminScreenState
             ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)
-              const _ReadOnlyBanner(
-                key: Key('admin_rhs_readonly_banner'),
-              ),
+              const _ReadOnlyBanner(key: Key('admin_rhs_readonly_banner')),
             if (_actionError != null)
               _ErrorBanner(
                 key: const Key('admin_rhs_action_error'),
@@ -374,18 +366,9 @@ class _RolesHierarchySessionsAdminScreenState
               unselectedLabelColor: AppColors.textMuted,
               indicatorColor: AppColors.sunset,
               tabs: const <Widget>[
-                Tab(
-                  key: Key('admin_rhs_tab_roles'),
-                  text: 'Roles',
-                ),
-                Tab(
-                  key: Key('admin_rhs_tab_hierarchy'),
-                  text: 'Hierarchy',
-                ),
-                Tab(
-                  key: Key('admin_rhs_tab_sessions'),
-                  text: 'Sessions',
-                ),
+                Tab(key: Key('admin_rhs_tab_roles'), text: 'Roles'),
+                Tab(key: Key('admin_rhs_tab_hierarchy'), text: 'Hierarchy'),
+                Tab(key: Key('admin_rhs_tab_sessions'), text: 'Sessions'),
               ],
             ),
             const SizedBox(height: 12),
@@ -1048,9 +1031,7 @@ class _OrgUnitNodeRow extends StatelessWidget {
                     ),
                     if (editingEnabled)
                       OutlinedButton(
-                        key: Key(
-                          'admin_rhs_location_move_${loc.locationId}',
-                        ),
+                        key: Key('admin_rhs_location_move_${loc.locationId}'),
                         onPressed: () => onMoveLocation(loc),
                         style: AdminButtonStyles.secondary(),
                         child: const Text('Move'),
@@ -1386,8 +1367,7 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
               decoration: InputDecoration(
                 labelText: 'Reason',
                 border: const OutlineInputBorder(),
-                errorText:
-                    _violated ? 'Add a reason before continuing.' : null,
+                errorText: _violated ? 'Add a reason before continuing.' : null,
               ),
             ),
           ],
@@ -1458,9 +1438,9 @@ class _EditSeededRoleDialogState extends State<_EditSeededRoleDialog> {
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .toList(growable: false);
-    Navigator.of(context).pop(
-      _EditSeededRoleResult(permissionKeys: keys, adminReason: reason),
-    );
+    Navigator.of(
+      context,
+    ).pop(_EditSeededRoleResult(permissionKeys: keys, adminReason: reason));
   }
 
   @override
@@ -1503,8 +1483,7 @@ class _EditSeededRoleDialogState extends State<_EditSeededRoleDialog> {
               decoration: InputDecoration(
                 labelText: 'Reason',
                 border: const OutlineInputBorder(),
-                errorText:
-                    _violated ? 'Add a reason before continuing.' : null,
+                errorText: _violated ? 'Add a reason before continuing.' : null,
               ),
             ),
           ],
@@ -1577,13 +1556,14 @@ class _CreateCustomRoleDialogState extends State<_CreateCustomRoleDialog> {
     final roleKey = _roleKeyController.text.trim();
     final reason = _reasonController.text.trim();
     setState(() {
-      _displayNameError =
-          displayName.isEmpty ? 'Choose a name for this role.' : null;
+      _displayNameError = displayName.isEmpty
+          ? 'Choose a name for this role.'
+          : null;
       _roleKeyError = roleKey.isEmpty
           ? 'Choose a key for this role.'
           : widget.existingRoleKeys.contains(roleKey)
-              ? 'A role with this key already exists.'
-              : null;
+          ? 'A role with this key already exists.'
+          : null;
       _reasonError = reason.isEmpty ? 'Add a reason before continuing.' : null;
     });
     if (_displayNameError != null ||
@@ -1612,10 +1592,7 @@ class _CreateCustomRoleDialogState extends State<_CreateCustomRoleDialog> {
     return AlertDialog(
       key: const Key('admin_rhs_create_custom_role_dialog'),
       backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'New custom role',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
+      title: Text('New custom role', style: AdminButtonStyles.dialogTitleStyle),
       content: SizedBox(
         width: 520,
         child: Column(
@@ -1709,10 +1686,7 @@ class _MoveOrgUnitResult {
 }
 
 class _MoveOrgUnitDialog extends StatefulWidget {
-  const _MoveOrgUnitDialog({
-    required this.node,
-    required this.candidates,
-  });
+  const _MoveOrgUnitDialog({required this.node, required this.candidates});
 
   final OrgUnitAdminNode node;
   final List<OrgUnitAdminNode?> candidates;
@@ -1787,8 +1761,7 @@ class _MoveOrgUnitDialogState extends State<_MoveOrgUnitDialog> {
               decoration: InputDecoration(
                 labelText: 'Reason',
                 border: const OutlineInputBorder(),
-                errorText:
-                    _violated ? 'Add a reason before continuing.' : null,
+                errorText: _violated ? 'Add a reason before continuing.' : null,
               ),
             ),
           ],
@@ -1821,10 +1794,7 @@ class _MoveLocationResult {
 }
 
 class _MoveLocationDialog extends StatefulWidget {
-  const _MoveLocationDialog({
-    required this.leaf,
-    required this.candidates,
-  });
+  const _MoveLocationDialog({required this.leaf, required this.candidates});
 
   final HierarchyLocationLeaf leaf;
   final List<OrgUnitAdminNode> candidates;
@@ -1902,8 +1872,7 @@ class _MoveLocationDialogState extends State<_MoveLocationDialog> {
               decoration: InputDecoration(
                 labelText: 'Reason',
                 border: const OutlineInputBorder(),
-                errorText:
-                    _violated ? 'Add a reason before continuing.' : null,
+                errorText: _violated ? 'Add a reason before continuing.' : null,
               ),
             ),
           ],

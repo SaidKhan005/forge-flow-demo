@@ -17,15 +17,16 @@
 // `admin_reason`. Operator self-service (`11W.1`) does NOT expose
 // either action; the parity contract pins the asymmetry.
 //
-// The screen mounts in the admin shell at `/admin/members` and is
-// reached AFTER the operator picker - the picker's
-// [OperatorPickerResult] is the screen's input. F&F admin opens the
-// route, picks an operator, and lands on this surface scoped to the
-// chosen operator.
+// The screen mounts in the admin shell at `/admin/members`. The shell
+// passes the shared Operations operator context when one exists; the
+// picker is only opened when the admin needs to choose or change
+// operator.
 //
 // Authority: docs/contracts/team_roles_hierarchy_console_parity_contract.md
 // "§ Members + Invites (11W.1 + 11A.12)" + "§ Operator self-service
 // vs F&F admin path" + "§ Idempotency keys" + "§ Audit-row shape".
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -82,6 +83,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   String? _actionError;
   List<MemberAdminRow> _members = const <MemberAdminRow>[];
   List<MemberInviteRow> _invites = const <MemberInviteRow>[];
+  Timer? _searchDebounce;
+  int _refreshGeneration = 0;
 
   // Filter state. Mirrors the parity-contract filter set verbatim.
   MemberStatus? _statusFilter;
@@ -106,26 +109,38 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     _refresh();
   }
 
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
   Future<void> _refresh() async {
+    final generation = ++_refreshGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
-      final members = await widget.gateway.listMembers(
-        operatorId: widget.pickedOperator.operatorId,
-        status: _statusFilter,
-        roleKey: _roleFilter,
-        locationId: _locationFilter,
-        contextLocationId: widget.pickedOperator.locationId,
-        mfaEnrolled: _mfaEnrolledFilter,
-        search: _searchQuery,
-      );
-      final invites = await widget.gateway.listInvites(
-        operatorId: widget.pickedOperator.operatorId,
-        locationId: _locationFilter,
-        contextLocationId: widget.pickedOperator.locationId,
-      );
+      final results = await Future.wait<Object>([
+        widget.gateway.listMembers(
+          operatorId: widget.pickedOperator.operatorId,
+          status: _statusFilter,
+          roleKey: _roleFilter,
+          locationId: _locationFilter,
+          contextLocationId: widget.pickedOperator.locationId,
+          mfaEnrolled: _mfaEnrolledFilter,
+          search: _searchQuery,
+        ),
+        widget.gateway.listInvites(
+          operatorId: widget.pickedOperator.operatorId,
+          locationId: _locationFilter,
+          contextLocationId: widget.pickedOperator.locationId,
+        ),
+      ]);
+      if (generation != _refreshGeneration) return;
+      final members = results[0] as List<MemberAdminRow>;
+      final invites = results[1] as List<MemberInviteRow>;
       final visibleMembers = _applyLocalFilters(members);
       if (!mounted) return;
       setState(() {
@@ -152,6 +167,14 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         _loading = false;
       });
     }
+  }
+
+  void _refreshAfterSearchPause() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _refresh();
+    });
   }
 
   List<MemberAdminRow> _applyLocalFilters(List<MemberAdminRow> rows) {
@@ -478,7 +501,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
               },
               onSearchChanged: (v) {
                 setState(() => _searchQuery = v);
-                _refresh();
+                _refreshAfterSearchPause();
               },
             ),
             const SizedBox(height: 12),

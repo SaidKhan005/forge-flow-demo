@@ -35,6 +35,7 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     this.onOpenSupportLogs,
     this.onOpenDataAccuracy,
     this.onOpenPollingPricing,
+    this.onSelectOperatorScope,
     this.editingEnabled = true,
   });
 
@@ -42,6 +43,7 @@ class OperatorLocationAdminScreen extends StatefulWidget {
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
+  final ValueChanged<AdminOperatorLocationScopeIntent>? onSelectOperatorScope;
   final bool editingEnabled;
 
   /// Factory for the idempotency key the gateway attaches to each
@@ -91,6 +93,7 @@ class _OperatorLocationAdminScreenState
     try {
       final bundles = await widget.gateway.listOperators();
       if (!mounted) return;
+      OperatorAdminBundle? selectedAfterRefresh;
       setState(() {
         _bundles = bundles;
         _loading = false;
@@ -103,7 +106,9 @@ class _OperatorLocationAdminScreenState
         _selectedOperatorId ??= bundles.isEmpty
             ? null
             : bundles.first.operator.operatorId;
+        selectedAfterRefresh = _selected;
       });
+      _notifyOperatorScope(selectedAfterRefresh);
     } on OperatorLocationAdminGatewayError catch (error) {
       if (!mounted) return;
       setState(() {
@@ -117,6 +122,35 @@ class _OperatorLocationAdminScreenState
         _loading = false;
       });
     }
+  }
+
+  void _selectOperator(String id) {
+    OperatorAdminBundle? selected;
+    setState(() {
+      _selectedOperatorId = id;
+      selected = _selected;
+    });
+    _notifyOperatorScope(selected);
+  }
+
+  void _notifyOperatorScope(OperatorAdminBundle? bundle) {
+    final callback = widget.onSelectOperatorScope;
+    if (callback == null || bundle == null) return;
+    callback(_scopeForBundle(bundle));
+  }
+
+  AdminOperatorLocationScopeIntent _scopeForBundle(OperatorAdminBundle bundle) {
+    final primaryLocation = bundle.primaryLocation;
+    final fallbackLocation = bundle.locations.isEmpty
+        ? null
+        : bundle.locations.first;
+    final location = primaryLocation ?? fallbackLocation;
+    return AdminOperatorLocationScopeIntent(
+      operatorId: bundle.operator.operatorId,
+      operatorName: bundle.operator.businessName,
+      locationId: location?.locationId,
+      locationName: location?.name,
+    );
   }
 
   OperatorAdminBundle? get _selected {
@@ -241,7 +275,7 @@ class _OperatorLocationAdminScreenState
       master: _OperatorList(
         bundles: _bundles,
         selectedOperatorId: _selectedOperatorId,
-        onSelect: (id) => setState(() => _selectedOperatorId = id),
+        onSelect: _selectOperator,
       ),
       detail: _selected == null
           ? const SizedBox.shrink()

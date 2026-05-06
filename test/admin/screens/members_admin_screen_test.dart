@@ -175,6 +175,8 @@ void main() {
           );
           await tester.pumpAndSettle();
         }
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpAndSettle();
 
         // Final typed value matches and the table is filtered to the
         // single matching row.
@@ -226,6 +228,56 @@ void main() {
       expect(
         find.byKey(const Key('admin_members_row_demo-user-diner-owner')),
         findsNothing,
+      );
+    });
+
+    testWidgets('rapid search typing is debounced into one refresh', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = _CountingMembersGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.listMembersCalls, 1);
+
+      await tester.enterText(
+        find.byKey(const Key('admin_members_filter_search')),
+        'M',
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.enterText(
+        find.byKey(const Key('admin_members_filter_search')),
+        'Mi',
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.enterText(
+        find.byKey(const Key('admin_members_filter_search')),
+        'Mira',
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(gateway.listMembersCalls, 1);
+
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      expect(gateway.listMembersCalls, 2);
+      expect(gateway.searches.last, 'Mira');
+      expect(
+        find.byKey(const Key('admin_members_row_demo-user-diner-manager')),
+        findsOneWidget,
       );
     });
   });
@@ -712,5 +764,38 @@ class _UnfilteredMembersGateway extends InMemoryMembersAdminGateway {
     String? search,
   }) {
     return super.listMembers(operatorId: operatorId);
+  }
+}
+
+class _CountingMembersGateway extends InMemoryMembersAdminGateway {
+  _CountingMembersGateway({
+    required super.membersByOperator,
+    required super.invitesByOperator,
+  });
+
+  int listMembersCalls = 0;
+  final searches = <String?>[];
+
+  @override
+  Future<List<MemberAdminRow>> listMembers({
+    required String operatorId,
+    MemberStatus? status,
+    String? roleKey,
+    String? locationId,
+    String? contextLocationId,
+    bool? mfaEnrolled,
+    String? search,
+  }) {
+    listMembersCalls += 1;
+    searches.add(search);
+    return super.listMembers(
+      operatorId: operatorId,
+      status: status,
+      roleKey: roleKey,
+      locationId: locationId,
+      contextLocationId: contextLocationId,
+      mfaEnrolled: mfaEnrolled,
+      search: search,
+    );
   }
 }

@@ -66,10 +66,7 @@ class _AdminShellState extends State<AdminShell> {
         ? intent.supportLogFilter
         : null;
     final nextOperatorLocationScope =
-        nextRouteId == kAdminDataAccuracyRouteId ||
-            nextRouteId == kAdminPollingPricingRouteId
-        ? intent.operatorLocationScope
-        : null;
+        intent.operatorLocationScope ?? _operatorLocationScope;
     if (nextRouteId == _selectedRouteId &&
         nextSupportLogFilter == _supportLogFilter &&
         nextOperatorLocationScope == _operatorLocationScope) {
@@ -117,7 +114,7 @@ class _AdminShellState extends State<AdminShell> {
                         key: ValueKey(
                           'admin-body-${_currentRoute.id}-'
                           '${_supportLogFilter?.cacheKey ?? 'none'}-'
-                          '${_operatorLocationScope?.cacheKey ?? 'all'}',
+                          '${_routeUsesOperatorScope(_currentRoute.id) ? _operatorLocationScope?.cacheKey ?? 'all' : 'global'}',
                         ),
                         route: _currentRoute,
                       ),
@@ -131,6 +128,14 @@ class _AdminShellState extends State<AdminShell> {
       ),
     );
   }
+}
+
+bool _routeUsesOperatorScope(String routeId) {
+  return routeId == kAdminDataAccuracyRouteId ||
+      routeId == kAdminPollingPricingRouteId ||
+      routeId == kAdminMembersRouteId ||
+      routeId == kAdminRolesHierarchySessionsRouteId ||
+      routeId == kAdminAuditedSupportActionsRouteId;
 }
 
 class _AdminHeaderBar extends StatelessWidget {
