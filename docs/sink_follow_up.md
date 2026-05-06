@@ -26,6 +26,72 @@ Three open items left after the sink + test landed on
    UNIQUE, same demo-flip auto-evaluator. Schedule directly after
    AL merges.
 
+## `8.spine-bridge-sink-fanout.TC` (Tock) — open items
+
+Three open items left after the sink + test landed on
+`claude/great-lewin-3d493b`:
+
+1. **CI verification of the TC sink suite.** Same SDK-on-PATH gap as
+   `.AL`: `dart analyze`, the new `tock_reservation_postgres_sink_test.dart`
+   (tests A–H including the 2026-05-05 falsehood-correction grep that
+   rejects any literal `'seated_at'` Dart token outside the INSERT
+   column-name string), and the
+   `tock_reservation_adapter_test.dart` regression were not run
+   locally. CI must green all three before any downstream lane builds
+   on the TC sink.
+
+2. **Per-transition timestamp diff in `8R.TC.live.sandbox`.** The TC
+   sink writes `seated_at` and `cancelled_at` as SQL `null` literals
+   because Tock's public reservation reference (api version
+   `reservation_2026_05_03`) documents only `createdTimestamp`,
+   `lastUpdatedTimestamp`, and `serviceDateTimestamp`. The
+   `*.live.sandbox` slice must diff observed sandbox payloads against
+   `documentedPerTockReservation20260504`; if Tock actually emits
+   `arrived_at` / `seated_at` / `left_at` / `canceled_at`, the adapter
+   adopts them as a bounded fix and the sink switches the two columns
+   from `null`-literal to bound parameters (renaming the parameter
+   keys so the banned-grep stays satisfied).
+
+3. **Watermark resource alignment in the unified dispatcher.** The
+   sink defines `tockWatermarkResource = 'reservation.reservations'`
+   and the canonical view calls `persistWatermark(... resource:
+   tockWatermarkResource ...)` explicitly. The sync worker dispatcher
+   in `tool/integration_sync_worker/dispatch.dart` must thread the
+   same constant when it instantiates the TC sink's
+   `asCanonicalSink({connectionIdResolver})` view, otherwise
+   `connector_sync_watermark` rows fragment across two resource keys
+   on a single connection. Worth a focused dispatcher-side test once
+   the dispatcher slice picks this lane up.
+
+# Sink Follow-Up — `8.spine-bridge.1.HM` (Humanity TCP)
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-HM`:
+
+1. **CI verification of the sink suite.** The worktree environment
+   has no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `humanity_postgres_sink_test.dart` suite, and the
+   `humanity_labor_adapter_test.dart` regression were not run
+   locally. CI (subosito/flutter-action) must run all three before
+   merge; any failures are bounded fixes inside the two new files.
+
+2. **`HumanityWatermarkRow` connection-id widening.** The gateway
+   path `HumanityPostgresSink.writeWatermark` currently SELECTs
+   `connector_connection.connection_id` per call to bridge the
+   gap between the typed `HumanityGateway` shape (no connection
+   id) and the watermark table's `(connection_id, resource)`
+   UNIQUE. A future lane should widen `HumanityWatermarkRow` /
+   `HumanityGateway.writeWatermark` to carry `connection_id`
+   end-to-end and drop the per-write SELECT. This lane
+   intentionally left the adapter alone per the slice prompt.
+
+3. **`8.S.HM.live.sandbox` is unblocked.** With the canonical
+   sink on master, the live sandbox slice can diff documented vs
+   observed Humanity v1 responses against a real partner sandbox,
+   promote the adapter from `documented` → `sandboxVerified`, and
+   flag any field-mapping drift as bounded fixes inside the
+   adapter (not slice rebuilds). Schedule directly after HM merges.
+
 # Sink Follow-Up — `8.spine-bridge.1.PU` (Push Operations)
 
 Three open items left after the sink + test landed on

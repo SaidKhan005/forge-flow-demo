@@ -27,8 +27,8 @@
 //   - product.*       (2 keys)  product-access gates
 //   - forgeflow.*     (20 keys) Forge & Flow surfaces and actions
 //   - barrio.*        (12 keys) Barrio destinations and actions
-//   - admin.*         (27 keys) admin actions
-//   - team.*          (13 keys) operator-self-service team management
+//   - admin.*         (28 keys) admin actions
+//   - team.*          (14 keys) operator-self-service team management
 //                                (added 9.0a; consumed by 9.10 operator-
 //                                facing Settings → Team UX)
 //   - billing.*       (5 keys)  billing-related actions
@@ -36,11 +36,13 @@
 //   - integrations.*  (1 key)   Phase 8.0 vendor-connections category gate
 //   - workflow.*      (8 keys)  Phase 12 workflow capabilities (placeholder)
 //
-// Total: 97 keys (81 baseline + 13 team.* keys + 2 later admin
-// later admin keys added in 9.0Σ.h2/B41 + 1 integrations.configure
-// added in Phase 8.0). Some keys are flagged MFA-required via
-// PermissionKeys.requiresMfa; the migration mirrors that in the
-// permission_keys.requires_mfa column.
+// Total: 99 keys (81 baseline + 13 team.* keys + 2 later admin
+// keys added in 9.0Σ.h2/B41 + 1 integrations.configure added in
+// Phase 8.0 + 1 admin.users.reset_mfa_factors added in 11A.14 +
+// 1 team.audit_log.export added in 11W.5).
+// Some keys are flagged MFA-required via PermissionKeys.requiresMfa;
+// the migration mirrors that in the permission_keys.requires_mfa
+// column.
 
 /// Frozen permission key catalog. See file header for invariants.
 class PermissionKeys {
@@ -103,6 +105,11 @@ class PermissionKeys {
   static const String adminUsersSoftDelete = 'admin.users.soft_delete';
   static const String adminUsersErasePii = 'admin.users.erase_pii'; // MFA
   static const String adminUsersResetPassword = 'admin.users.reset_password';
+  // Added 11A.14 (2026-05-06). F&F admin support escalation: reset a
+  // member's MFA factors from the cross-operator Audited support
+  // actions surface. MFA required.
+  static const String adminUsersResetMfaFactors =
+      'admin.users.reset_mfa_factors'; // MFA
   static const String adminInvitesCreate = 'admin.invites.create';
   static const String adminInvitesRevoke = 'admin.invites.revoke';
   static const String adminRolesView = 'admin.roles.view';
@@ -130,7 +137,7 @@ class PermissionKeys {
   // conversation content is F&F-internal at launch.
   static const String adminAuditPrivacyRead = 'admin.audit_privacy.read'; // MFA
 
-  // ─── team.* (13) ──────────────────────────────────────────────────
+  // ─── team.* (14) ──────────────────────────────────────────────────
   // Added 9.0a (2026-04-27). Operator-self-service team management;
   // consumed by 9.10 Settings → Team UX. Distinct from admin.* which
   // gates F&F-side admin paths.
@@ -146,6 +153,12 @@ class PermissionKeys {
   static const String teamRolesAssign = 'team.roles.assign';
   static const String teamRolesRevoke = 'team.roles.revoke';
   static const String teamAuditLogView = 'team.audit_log.view';
+  // Added 11W.5 (2026-05-06). Operator Web Audit Log CSV export gate.
+  // Default-granted to operator_owner + operator_admin only — pulling
+  // a full audit trail to CSV is a senior-role action per the parity
+  // contract (audit log Permission gate cheat sheet). Manager-tier
+  // and below do NOT get the grant by default.
+  static const String teamAuditLogExport = 'team.audit_log.export';
   static const String teamSessionForceLogout = 'team.session.force_logout';
 
   // ─── billing.* (5) ────────────────────────────────────────────────
@@ -233,6 +246,7 @@ class PermissionKeys {
     adminUsersSoftDelete,
     adminUsersErasePii,
     adminUsersResetPassword,
+    adminUsersResetMfaFactors,
     adminInvitesCreate,
     adminInvitesRevoke,
     adminRolesView,
@@ -265,6 +279,7 @@ class PermissionKeys {
     teamRolesAssign,
     teamRolesRevoke,
     teamAuditLogView,
+    teamAuditLogExport,
     teamSessionForceLogout,
     billingInvoiceView,
     billingSubscriptionManage,
@@ -295,6 +310,7 @@ class PermissionKeys {
   /// Mirrored in the migration's `requires_mfa = true` rows.
   static const Set<String> requiresMfa = <String>{
     adminUsersErasePii,
+    adminUsersResetMfaFactors,
     adminRolesEditSeeded,
     adminPricingTierEdit,
     adminServicePrincipalIssueToken,

@@ -678,10 +678,15 @@ class _CategoryIcon extends StatelessWidget {
 }
 
 class _VendorLogo extends StatelessWidget {
-  const _VendorLogo({required this.vendorId, required this.displayName});
+  const _VendorLogo({
+    required this.vendorId,
+    required this.displayName,
+    this.size = 48,
+  });
 
   final String vendorId;
   final String displayName;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -692,8 +697,8 @@ class _VendorLogo extends StatelessWidget {
           ? '${brand.displayName} logo'
           : 'Official ${brand.displayName} icon from ${brand.sourceHost}',
       child: SizedBox(
-        width: 48,
-        height: 48,
+        width: size,
+        height: size,
         child: brand.iconUrl == null || !kIsWeb
             ? fallback
             : ClipRRect(
@@ -750,6 +755,22 @@ class _VendorBrand {
 
 _VendorBrand _vendorBrand(String vendorId, String displayName) {
   switch (vendorId) {
+    case 'aloha_ncr_voyix':
+      return const _VendorBrand(
+        displayName: 'Aloha (NCR Voyix)',
+        initials: 'NCR',
+        color: Color(0xFF004C97),
+        iconUrl: 'https://developer.ncrvoyix.com/favicon.ico',
+        sourceHost: 'developer.ncrvoyix.com',
+      );
+    case 'clover':
+      return const _VendorBrand(
+        displayName: 'Clover',
+        initials: 'Cl',
+        color: Color(0xFF00875A),
+        iconUrl: 'https://www.clover.com/favicon.ico',
+        sourceHost: 'clover.com',
+      );
     case 'lightspeed_lsk':
       return const _VendorBrand(
         displayName: 'Lightspeed',
@@ -758,20 +779,117 @@ _VendorBrand _vendorBrand(String vendorId, String displayName) {
         iconUrl: 'https://www.lightspeedhq.com/favicon.ico',
         sourceHost: 'lightspeedhq.com',
       );
+    case 'oracle_micros_simphony':
+      return const _VendorBrand(
+        displayName: 'Oracle MICROS Simphony',
+        initials: 'Or',
+        color: Color(0xFFC74634),
+        iconUrl: 'https://www.oracle.com/favicon.ico',
+        sourceHost: 'oracle.com',
+      );
+    case 'revel':
+      return const _VendorBrand(
+        displayName: 'Revel Systems',
+        initials: 'Rv',
+        color: Color(0xFF2B5C8A),
+        iconUrl: 'https://revelsystems.com/favicon.ico',
+        sourceHost: 'revelsystems.com',
+      );
+    case 'square':
+      return const _VendorBrand(
+        displayName: 'Square',
+        initials: 'Sq',
+        color: Color(0xFF111827),
+        iconUrl: 'https://squareup.com/favicon.ico',
+        sourceHost: 'squareup.com',
+      );
+    case 'toast':
+      return const _VendorBrand(
+        displayName: 'Toast',
+        initials: 'To',
+        color: Color(0xFFFF4F00),
+        iconUrl: 'https://www.toasttab.com/favicon.ico',
+        sourceHost: 'toasttab.com',
+      );
     case 'libro':
       return const _VendorBrand(
-        displayName: 'Libro',
+        displayName: 'Libro Reserve',
         initials: 'Li',
         color: Color(0xFF006C5B),
         iconUrl: 'https://librorez.com/favicon.ico',
         sourceHost: 'librorez.com',
+      );
+    case 'opentable':
+      return const _VendorBrand(
+        displayName: 'OpenTable',
+        initials: 'OT',
+        color: Color(0xFFDA3743),
+        iconUrl: 'https://www.opentable.com/favicon.ico',
+        sourceHost: 'opentable.com',
+      );
+    case 'sevenrooms':
+      return const _VendorBrand(
+        displayName: 'SevenRooms',
+        initials: '7R',
+        color: Color(0xFF25364A),
+        iconUrl: 'https://sevenrooms.com/favicon.ico',
+        sourceHost: 'sevenrooms.com',
+      );
+    case 'tock':
+      return const _VendorBrand(
+        displayName: 'Tock',
+        initials: 'Tk',
+        color: Color(0xFF1F2933),
+        iconUrl: 'https://www.exploretock.com/favicon.ico',
+        sourceHost: 'exploretock.com',
+      );
+    case 'adp':
+      return const _VendorBrand(
+        displayName: 'ADP Workforce Now / Workforce Manager',
+        initials: 'ADP',
+        color: Color(0xFFD0271D),
+        iconUrl: 'https://www.adp.com/favicon.ico',
+        sourceHost: 'adp.com',
+      );
+    case 'agendrix':
+      return const _VendorBrand(
+        displayName: 'Agendrix',
+        initials: 'Ag',
+        color: Color(0xFF246BFE),
+        iconUrl: 'https://www.agendrix.com/favicon.ico',
+        sourceHost: 'agendrix.com',
+      );
+    case 'humanity':
+      return const _VendorBrand(
+        displayName: 'Humanity',
+        initials: 'Hu',
+        color: Color(0xFF2463EB),
+        iconUrl: 'https://www.humanity.com/favicon.ico',
+        sourceHost: 'humanity.com',
+      );
+    case 'push_operations':
+      return const _VendorBrand(
+        displayName: 'Push Operations',
+        initials: 'Pu',
+        color: Color(0xFF22577A),
+        iconUrl: 'https://www.pushoperations.com/favicon.ico',
+        sourceHost: 'pushoperations.com',
       );
     case 'quickbooks_time':
       return const _VendorBrand(
         displayName: 'QuickBooks Time',
         initials: 'QB',
         color: Color(0xFF2CA01C),
+        iconUrl: 'https://www.intuit.com/favicon.ico',
         sourceHost: 'quickbooks.intuit.com',
+      );
+    case 'seven_shifts':
+      return const _VendorBrand(
+        displayName: '7shifts',
+        initials: '7s',
+        color: Color(0xFF2E6B4F),
+        iconUrl: 'https://www.7shifts.com/favicon.ico',
+        sourceHost: '7shifts.com',
       );
     default:
       final words = displayName
@@ -968,8 +1086,10 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final listMaxHeight = (MediaQuery.sizeOf(context).height * 0.40)
-        .clamp(220.0, 300.0)
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogWidth = (viewport.width - 48).clamp(280.0, 860.0).toDouble();
+    final dialogMaxHeight = (viewport.height * 0.76)
+        .clamp(320.0, 720.0)
         .toDouble();
     final selected = _picked == null
         ? null
@@ -978,11 +1098,19 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
         selected != null && _isConnectableLifecycle(selected.lifecycle);
     return AlertDialog(
       key: const Key('vendor_connections_picker_dialog'),
-      title: Text(_titleFor(widget.category)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
+      title: _VendorPickerTitle(
+        category: widget.category,
+        title: _titleFor(widget.category),
+        count: widget.entries.length,
+      ),
       content: SizedBox(
-        width: 460,
+        width: dialogWidth,
+        height: dialogMaxHeight,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
@@ -995,41 +1123,35 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
               'credentials are live.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
-            const SizedBox(height: 12),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: listMaxHeight),
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: widget.entries.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final entry = widget.entries[index];
-                  return _DialogChoiceTile(
-                    key: Key(
-                      'vendor_connections_picker_choice_${entry.vendorId}',
+            const SizedBox(height: 14),
+            Expanded(
+              child: SingleChildScrollView(
+                key: const Key('vendor_connections_picker_scroll_area'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    _VendorPickerGrid(
+                      entries: widget.entries,
+                      pickedVendorId: _picked,
+                      summaryFor: _vendorSummaryFor,
+                      tagsFor: _tagsFor,
+                      onPick: (entry) =>
+                          setState(() => _picked = entry.vendorId),
                     ),
-                    leading: _VendorLogo(
-                      vendorId: entry.vendorId,
-                      displayName: entry.displayName,
-                    ),
-                    title: entry.displayName,
-                    subtitle: _vendorSummaryFor(entry),
-                    tags: _tagsFor(entry),
-                    selected: entry.vendorId == _picked,
-                    onTap: () => setState(() => _picked = entry.vendorId),
-                  );
-                },
+                    if (selected != null) ...<Widget>[
+                      const SizedBox(height: 14),
+                      _SelectedVendorPanel(
+                        entry: selected,
+                        canContinue: canContinue,
+                        reason: canContinue
+                            ? _connectableReasonFor(selected)
+                            : _unavailableReasonFor(selected.lifecycle),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
-            if (selected != null && !canContinue) ...<Widget>[
-              const SizedBox(height: 12),
-              _DialogNotice(
-                icon: Icons.info_outline,
-                title: 'Not ready to connect',
-                body: _unavailableReasonFor(selected.lifecycle),
-                color: AppColors.warning,
-              ),
-            ],
           ],
         ),
       ),
@@ -1072,6 +1194,18 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
       case VendorLifecycle.productionCredentialed:
       case VendorLifecycle.liveWithOperators:
         return 'This vendor can be connected now.';
+    }
+  }
+
+  String _connectableReasonFor(VendorPickerEntry entry) {
+    switch (entry.lifecycle) {
+      case VendorLifecycle.productionCredentialed:
+        return '${entry.displayName} has production credentials ready for this connection flow.';
+      case VendorLifecycle.liveWithOperators:
+        return '${entry.displayName} is live with at least one operator and can be connected here.';
+      case VendorLifecycle.documented:
+      case VendorLifecycle.sandboxVerified:
+        return _unavailableReasonFor(entry.lifecycle);
     }
   }
 
@@ -1143,6 +1277,263 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
       case VendorAuthMode.oauthOrKeyPaste:
         return 'Sign-in or API key';
     }
+  }
+}
+
+class _VendorPickerTitle extends StatelessWidget {
+  const _VendorPickerTitle({
+    required this.category,
+    required this.title,
+    required this.count,
+  });
+
+  final VendorCategory category;
+  final String title;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        _CategoryIcon(category: category, size: 42),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(title),
+              const SizedBox(height: 3),
+              Text(
+                '$count available vendor options',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _VendorPickerGrid extends StatelessWidget {
+  const _VendorPickerGrid({
+    required this.entries,
+    required this.pickedVendorId,
+    required this.summaryFor,
+    required this.tagsFor,
+    required this.onPick,
+  });
+
+  final List<VendorPickerEntry> entries;
+  final String? pickedVendorId;
+  final String Function(VendorPickerEntry entry) summaryFor;
+  final List<String> Function(VendorPickerEntry entry) tagsFor;
+  final ValueChanged<VendorPickerEntry> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 680 ? 2 : 1;
+        const spacing = 10.0;
+        final width =
+            (constraints.maxWidth - (spacing * (columns - 1))) / columns;
+        return Wrap(
+          key: const Key('vendor_connections_picker_grid'),
+          spacing: spacing,
+          runSpacing: spacing,
+          children: <Widget>[
+            for (final entry in entries)
+              SizedBox(
+                width: width,
+                child: _VendorPickerCard(
+                  key: Key(
+                    'vendor_connections_picker_choice_${entry.vendorId}',
+                  ),
+                  entry: entry,
+                  subtitle: summaryFor(entry),
+                  tags: tagsFor(entry),
+                  selected: entry.vendorId == pickedVendorId,
+                  onTap: () => onPick(entry),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _VendorPickerCard extends StatelessWidget {
+  const _VendorPickerCard({
+    super.key,
+    required this.entry,
+    required this.subtitle,
+    required this.tags,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final VendorPickerEntry entry;
+  final String subtitle;
+  final List<String> tags;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = selected ? AppColors.sunset : AppColors.borderSubtle;
+    return Material(
+      color: selected
+          ? AppColors.sunset.withValues(alpha: 0.08)
+          : AppColors.backgroundSurface,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: borderColor, width: selected ? 1.4 : 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  _VendorLogo(
+                    vendorId: entry.vendorId,
+                    displayName: entry.displayName,
+                    size: 54,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          entry.displayName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.sectionTitle(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          _categoryLabel(entry.category),
+                          style: AppTextStyles.chipLabel(
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    selected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: selected
+                        ? AppColors.sunsetDark
+                        : AppColors.textMuted,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                subtitle,
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              if (tags.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: <Widget>[
+                    for (final tag in tags)
+                      _StatusChip(label: tag, color: _tagColor(tag)),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _categoryLabel(VendorCategory category) {
+    switch (category) {
+      case VendorCategory.pos:
+        return 'POS system';
+      case VendorCategory.labor:
+        return 'Scheduling and labor';
+      case VendorCategory.reservation:
+        return 'Reservations';
+    }
+  }
+
+  Color _tagColor(String tag) {
+    return tag == 'Coming soon' || tag == 'Sandbox verified'
+        ? AppColors.textMuted
+        : AppColors.peacockDark;
+  }
+}
+
+class _SelectedVendorPanel extends StatelessWidget {
+  const _SelectedVendorPanel({
+    required this.entry,
+    required this.canContinue,
+    required this.reason,
+  });
+
+  final VendorPickerEntry entry;
+  final bool canContinue;
+  final String reason;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = canContinue ? AppColors.positive : AppColors.warning;
+    return Container(
+      key: const Key('vendor_connections_picker_selected_panel'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        border: Border.all(color: color.withValues(alpha: 0.34)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _VendorLogo(
+            vendorId: entry.vendorId,
+            displayName: entry.displayName,
+            size: 44,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  canContinue ? 'Ready to continue' : 'Not ready to connect',
+                  style: AppTextStyles.sectionTitle(color: color),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  reason,
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1612,12 +2003,10 @@ class _SyncLogsDialog extends StatelessWidget {
 
 class _DialogChoiceTile extends StatelessWidget {
   const _DialogChoiceTile({
-    super.key,
     this.leading,
     required this.title,
     required this.subtitle,
     this.tags = const <String>[],
-    this.selected = false,
     required this.onTap,
   });
 
@@ -1625,18 +2014,14 @@ class _DialogChoiceTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final List<String> tags;
-  final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = selected ? AppColors.sunset : AppColors.borderSubtle;
     return Material(
-      color: selected
-          ? AppColors.sunset.withValues(alpha: 0.08)
-          : AppColors.backgroundSurface,
+      color: AppColors.backgroundSurface,
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: borderColor, width: selected ? 1.2 : 1),
+        side: const BorderSide(color: AppColors.borderSubtle),
         borderRadius: BorderRadius.circular(8),
       ),
       child: InkWell(
@@ -1690,10 +2075,7 @@ class _DialogChoiceTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(
-                selected ? Icons.radio_button_checked : Icons.radio_button_off,
-                color: selected ? AppColors.sunsetDark : AppColors.textMuted,
-              ),
+              const Icon(Icons.radio_button_off, color: AppColors.textMuted),
             ],
           ),
         ),

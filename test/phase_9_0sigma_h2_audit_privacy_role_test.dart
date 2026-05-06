@@ -228,9 +228,10 @@ void main() {
       expect(PermissionKeys.requiresMfa, contains('admin.audit_privacy.read'));
     });
 
-    test('PermissionKeys.all has 97 entries after Phase 8.0 '
-        'integrations.configure permission', () {
-      expect(PermissionKeys.all.length, equals(97));
+    test('PermissionKeys.all has 99 entries after the 11A.14 '
+        'admin.users.reset_mfa_factors and 11W.5 '
+        'team.audit_log.export catalog additions', () {
+      expect(PermissionKeys.all.length, equals(99));
     });
 
     test('the new key is NOT in the 9.0 foundation seed (it lives in '
@@ -244,8 +245,9 @@ void main() {
   });
 
   group('Phase 9.0Σ.h2 catalog contract doc sync', () {
-    test('admin section is now (27) — 25 original + 2 later admin keys', () {
-      expect(catalogContract, contains('### `admin.*` (27)'));
+    test('admin section is now (28) — 25 original + 2 later admin keys + '
+        '1 admin.users.reset_mfa_factors added in 11A.14', () {
+      expect(catalogContract, contains('### `admin.*` (28)'));
     });
 
     test('admin.audit_privacy.read row is documented with MFA = yes', () {

@@ -29,7 +29,7 @@ void main() {
 
     expect(
       find.text(
-        'MFA ERROR: MFA operations are not configured for this runtime.',
+        'Two-factor issue: MFA operations are not configured for this runtime.',
       ),
       findsOneWidget,
     );
@@ -200,7 +200,7 @@ void main() {
     expect(find.byKey(const Key('mfa_recovery_codes_row')), findsNothing);
     expect(
       find.text(
-        'MFA UPDATE: Authenticator app added. If you lose access, ask your restaurant admin to reset MFA.',
+        'Two-factor update: Authenticator app added. If you lose access, ask your restaurant admin to reset MFA.',
       ),
       findsOneWidget,
     );
@@ -284,7 +284,10 @@ void main() {
       find.byKey(const Key('mfa_revoke_button_totp-db-factor')),
       findsOneWidget,
     );
-    expect(find.widgetWithText(TextButton, 'Remove / reset'), findsOneWidget);
+    expect(
+      find.widgetWithText(TextButton, 'Remove authenticator app'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('stale auth action returns to sign-in without a widget error', (
@@ -337,7 +340,7 @@ void main() {
     await tester.tap(find.byKey(const Key('mfa_revoke_button_totp-db-factor')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('SECURITY CHECK REQUIRED'), findsOneWidget);
+    expect(find.textContaining('Security check required'), findsOneWidget);
     expect(find.byKey(const Key('mfa_sign_in_again_button')), findsOneWidget);
     expect(find.text('Sign in again'), findsOneWidget);
 

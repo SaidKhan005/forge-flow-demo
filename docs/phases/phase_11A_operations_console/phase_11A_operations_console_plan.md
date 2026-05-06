@@ -1,8 +1,8 @@
 # Phase 11A - F&F Operations Console
 
-Updated: 2026-05-05 (`11A.12`/`13`/`14` cross-operator parity un-deferred per `project_role_hierarchy_web_migration_sequencing.md`; sequenced after Phase 7 + Phase 10 close, in lockstep with `11W.1`–`11W.6`)
-Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`5`/`6`/`7`/`UX.health` accepted.
-Remaining: `11A.8`/`9`/`10` not started; `11A.12`/`13`/`14` un-deferred and queued behind Phase 7 + Phase 10 close.
+Updated: 2026-05-06
+Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`5`/`6`/`7`/`UX.health` accepted. **Cross-operator parity slices ACCEPT 2026-05-06**: `11A.12` Members + Invites admin parity (`f84424db`), `11A.13` Roles + Hierarchy + Sessions admin parity (`d26425b3`), `11A.14` cross-operator audit log + audited support actions (`bbc6e134`; ships new `admin.users.reset_mfa_factors` permission key, hash-chained audit row shape). 348 admin tests PASS. Audit follow-up `45bdd734` cleared remaining drift on authority docs.
+Remaining: `11A.8` (support audit), `11A.9` (cross-operator reads), `11A.10` (user impersonation) — not started; deferred post-launch unless escalated.
 Owner: F&F admin / operations lane
 
 ## Phase 9 Foundation Dependencies (status as of 2026-05-03)
@@ -78,6 +78,24 @@ The Business Timing Live slice adds
 and live `open_shift_snapshots`. That schema must be applied and verified in
 staging/review before console timing surfaces can be called live-schema-ready,
 then carried into the next Production1 apply before production claims.
+Phase 11A.14 adds
+`202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql`, an additive
+permission-key seed for the new `admin.users.reset_mfa_factors` key plus
+default grants for `super_admin`/`ff_support`; apply on staging before
+exercising the Reset-MFA admin path live, then carry into the next
+Production1 apply.
+The 2026-05-06 audit follow-up adds two additional migrations watched by this
+plan's cutoff sentinel:
+`202605061500_hardening_phase_8_email_index_leading_column_rekey.sql`
+CONCURRENTLY-rekeys five Phase 8 / Phase 9.8 fact-table indexes to lead with
+`operator_id` (preserves UNIQUE constraints + partial WHERE clauses), and
+`202605061600_phase_11W_5_team_audit_log_export_key.sql` seeds the
+`team.audit_log.export` permission key plus default grants for
+`operator_owner`/`operator_admin` so the 11W.5 audit-log export gate has
+catalog parity. Apply both on staging before claiming index hygiene parity or
+live audit-log export readiness, then carry into the next Production1 apply.
+The current Production1 follow-up cutoff is therefore
+`202605061600_phase_11W_5_team_audit_log_export_key.sql`.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin

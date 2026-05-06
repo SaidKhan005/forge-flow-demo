@@ -363,6 +363,11 @@ void main() {
   testWidgets(
     'admin shell with ff_support source renders corpus in read-only mode',
     (tester) async {
+      // Side nav grew with members/roles-hierarchy-sessions/audited-support-actions
+      // routes; expand the surface so the corpus nav item is on-screen and tappable.
+      await tester.binding.setSurfaceSize(const Size(1400, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
       final gateway = InMemoryCorpusAdminGateway(
         seed: <CorpusBundle>[
           seedBundle(
