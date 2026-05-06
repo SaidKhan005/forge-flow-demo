@@ -78,6 +78,7 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
   bool _loading = true;
   String? _error;
   VendorConnectionsBundle? _bundle;
+  int _loadGeneration = 0;
 
   VendorConnectionsGateway get _gateway =>
       widget.gateway ?? _defaultDemoGateway;
@@ -88,7 +89,18 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
     _refresh();
   }
 
+  @override
+  void didUpdateWidget(covariant VendorConnectionsWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.operatorId != widget.operatorId ||
+        oldWidget.locationId != widget.locationId ||
+        oldWidget.gateway != widget.gateway) {
+      _refresh();
+    }
+  }
+
   Future<void> _refresh() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -98,13 +110,13 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
         operatorId: widget.operatorId,
         locationId: widget.locationId,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _bundle = bundle;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = 'Could not load vendor connections: $error';
         _loading = false;
@@ -315,6 +327,16 @@ class _Header extends StatelessWidget {
 
   final String locationName;
 
+  String get _locationPhrase {
+    final trimmed = locationName.trim();
+    if (trimmed.isEmpty) return 'this location';
+    final lower = trimmed.toLowerCase();
+    if (lower.startsWith('location ') && trimmed.contains('-')) {
+      return 'this location';
+    }
+    return trimmed;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -336,7 +358,7 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Manage the services connected to $locationName. Forge & Flow reads data for reporting and forecasting; it does not push changes back to vendor systems.',
+            'Manage the services connected to $_locationPhrase. Forge & Flow reads data for reporting and forecasting; it does not push changes back to vendor systems.',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
         ],
@@ -465,7 +487,7 @@ class _EmptyState extends StatelessWidget {
                   key: Key('vendor_connections_connect_${category.name}'),
                   onPressed: onConnect,
                   icon: const Icon(Icons.link, size: 16),
-                  label: Text('Connect ${_categoryShortLabel(category)}'),
+                  label: Text(_categoryActionLabel(category)),
                 )
               else
                 Text(
@@ -479,14 +501,14 @@ class _EmptyState extends StatelessWidget {
     );
   }
 
-  String _categoryShortLabel(VendorCategory category) {
+  String _categoryActionLabel(VendorCategory category) {
     switch (category) {
       case VendorCategory.pos:
-        return 'POS';
+        return 'Choose POS vendor';
       case VendorCategory.labor:
-        return 'scheduling vendor';
+        return 'Choose scheduling vendor';
       case VendorCategory.reservation:
-        return 'reservations vendor';
+        return 'Choose reservations vendor';
     }
   }
 }

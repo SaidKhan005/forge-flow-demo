@@ -114,8 +114,8 @@ class VendorConnectionsScreen extends StatelessWidget {
       );
     }
     final locationLabel = locationId == session.primaryLocationId
-        ? '${session.primaryLocationName} (primary location)'
-        : 'location $locationId';
+        ? session.primaryLocationName
+        : 'this location';
     return SingleChildScrollView(
       key: const Key('operator_web_vendor_connections_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -140,7 +140,7 @@ class VendorConnectionsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Configuring connections for $locationLabel.',
+            'Manage the services connected to $locationLabel.',
             key: const Key('operator_web_vendor_connections_subtitle'),
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
@@ -155,6 +155,7 @@ class VendorConnectionsScreen extends StatelessWidget {
             child: VendorConnectionsWidget(
               operatorId: session.operatorId,
               locationId: locationId,
+              locationNameOverride: locationLabel,
               gateway: gateway,
               onConnectFlowStarted: gateway == null
                   ? null
