@@ -74,8 +74,13 @@ import '../advisor_corpus/advisor_corpus.dart'
     show CorpusManifest, defaultManifestPath;
 import 'health_operation_budget.dart';
 import 'log.dart';
+import 'mobile_push_notifications.dart';
 import 'proxy_idempotency_cache.dart';
-import 'realtime_route.dart' show handleRealtimeUpgrade, realtimeSubscribePath;
+import 'realtime_route.dart'
+    show
+        handleRealtimeUpgrade,
+        RealtimeReplayFetcher,
+        realtimeSubscribePath;
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
     show DependencyTimeoutException;
 export 'log.dart'
@@ -144,6 +149,12 @@ abstract class ProxySecretNames {
   /// cache → refusal on Anthropic failure.
   static const String geminiApiKey = 'GEMINI_API_KEY';
 
+  /// Server-side envelope key for encrypting mobile FCM/APNs device
+  /// tokens before persistence. Optional at boot; routes fail closed
+  /// with a 503 when the production binding cannot install the gateway.
+  static const String mobilePushTokenEnvelopeKey =
+      'MOBILE_PUSH_TOKEN_ENVELOPE_KEY';
+
   /// Required server-side secret names. The proxy refuses to start
   /// when any of these are missing or blank.
   static const List<String> required = <String>[
@@ -158,7 +169,10 @@ abstract class ProxySecretNames {
   /// Optional server-side secret names. Loaded into [ProxyConfig] when
   /// present; absence is not a startup error. Callers gate behavior on
   /// [ProxyConfig.hasSecretFor].
-  static const List<String> optional = <String>[geminiApiKey];
+  static const List<String> optional = <String>[
+    geminiApiKey,
+    mobilePushTokenEnvelopeKey,
+  ];
 }
 
 // ─── Non-secret config name registry (9.1) ───────────────────────────────────
@@ -5825,6 +5839,11 @@ const String authMfaFactorsListPath = '/v1/auth/mfa/factors/list';
 const String authMfaFactorsRevokePath = '/v1/auth/mfa/factors/revoke';
 const String authMfaFactorsRemovalCancelPath =
     '/v1/auth/mfa/factors/removal/cancel';
+const String authMobilePushTokenRegisterPath =
+    '/v1/auth/mobile/push-token/register';
+const String authMobilePushTokenRevokePath =
+    '/v1/auth/mobile/push-token/revoke';
+const String authMobilePushTestPath = '/v1/auth/mobile/push/test';
 const String adminAuthInvitesPath = '/v1/admin/auth/invites';
 const String adminAuthInvitePrefix = '$adminAuthInvitesPath/';
 const String adminAuthUsersPath = '/v1/admin/auth/users';
@@ -6832,6 +6851,8 @@ Future<void> routeRequest(
   ProxyAuthIdempotencyCache? authIdempotencyCache,
   MfaOperationsGateway? mfaOperationsGateway,
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
+  MobilePushTokenGateway? mobilePushTokenGateway,
+  MobilePushSelfTestGateway? mobilePushSelfTestGateway,
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
   PricingTierAdminProxyGateway? pricingTierAdminGateway,
   DataAccuracyAdminProxyGateway? dataAccuracyAdminGateway,
@@ -6860,6 +6881,12 @@ Future<void> routeRequest(
   // probes still work and existing tests do not need to plumb a
   // publisher through every routeRequest call site.
   InProcessRealtimePublisher? realtimePublisher,
+  // Phase 10a.5 — server-side replay fetcher invoked when a client
+  // reconnects with `?last_event_id=<uuid>`. Optional: when null,
+  // the route falls back to live frames only and existing tests stay
+  // green. Production binds this to a `RealtimeReplayResolver` over
+  // the publisher's recent-events ring buffer.
+  RealtimeReplayFetcher? realtimeReplayFetcher,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -7040,6 +7067,7 @@ Future<void> routeRequest(
             request: request,
             authGuard: authGuard,
             publisher: realtimePublisher,
+            replayFetcher: realtimeReplayFetcher,
           );
           return;
         }
@@ -7502,6 +7530,176 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'permission_snapshot_unavailable',
               'message': 'permission snapshot is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        if (request.method == 'POST' &&
+            path == authMobilePushTokenRegisterPath) {
+          if (mobilePushTokenGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'mobile_push_token_gateway_not_configured',
+              'message':
+                  'route requires a MobilePushTokenGateway to be installed',
+            });
+            return;
+          }
+
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          try {
+            final registered = await mobilePushTokenGateway.register(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              body: body,
+            );
+            registered
+              ..remove('token')
+              ..remove('token_hash')
+              ..remove('token_ciphertext')
+              ..remove('token_plaintext');
+            _writeJson(response, 200, <String, Object?>{
+              'ok': true,
+              ...registered,
+            });
+          } on MobilePushGatewayException catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message': error.message,
+            });
+          } catch (error) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'mobile_push_token_registration_unavailable',
+              'message':
+                  'mobile push token registration is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        if (request.method == 'POST' && path == authMobilePushTokenRevokePath) {
+          if (mobilePushTokenGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'mobile_push_token_gateway_not_configured',
+              'message':
+                  'route requires a MobilePushTokenGateway to be installed',
+            });
+            return;
+          }
+
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          try {
+            final revokedCount = await mobilePushTokenGateway.revoke(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              body: body,
+            );
+            _writeJson(response, 200, <String, Object?>{
+              'ok': true,
+              'revoked_count': revokedCount,
+            });
+          } on MobilePushGatewayException catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message': error.message,
+            });
+          } catch (error) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'mobile_push_token_revoke_unavailable',
+              'message':
+                  'mobile push token revoke is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        if (request.method == 'POST' && path == authMobilePushTestPath) {
+          if (mobilePushSelfTestGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'mobile_push_self_test_not_configured',
+              'message':
+                  'route requires a MobilePushSelfTestGateway to be installed',
+            });
+            return;
+          }
+
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          try {
+            final summary = await mobilePushSelfTestGateway.sendSelfTest(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              body: body,
+            );
+            _writeJson(response, 202, <String, Object?>{
+              'ok': true,
+              ...summary.toJson(),
+            });
+          } on MobilePushGatewayException catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message': error.message,
+            });
+          } catch (error) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'mobile_push_self_test_unavailable',
+              'message': 'mobile push self-test is unavailable; please retry',
             });
           }
           return;

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import 'services/auth_login_service.dart';
 import 'services/auth/auth_session_ledger_writer.dart';
+import 'services/mobile_push/mobile_push_notification_service.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/secure_session_storage.dart';
 import 'services/target_cycle_service.dart';
@@ -35,6 +36,7 @@ Future<void> bootstrapAndRunApp(
   SecureSessionStorage? secureSessionStorage,
   AuthSessionLedgerWriter? authSessionLedgerWriter,
   RealtimeSubscription? realtimeSubscription,
+  MobilePushNotificationService? mobilePushNotifications,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
@@ -46,8 +48,7 @@ Future<void> bootstrapAndRunApp(
 
   final loginService =
       authLoginService ?? const ScaffoldFailingAuthLoginService();
-  final storage =
-      secureSessionStorage ?? ScaffoldFailingSecureSessionStorage();
+  final storage = secureSessionStorage ?? ScaffoldFailingSecureSessionStorage();
   // B6: ledger writer defaults to scaffold-failing so a production
   // deploy that wires Firebase + secure storage but forgets the
   // Postgres-backed RepositoryAuthSessionLedgerWriter surfaces a
@@ -56,13 +57,15 @@ Future<void> bootstrapAndRunApp(
   // login ledger cannot be recorded, while refresh/sign-out remain
   // log-and-continue to preserve low-friction session UX.
   final ledgerWriter =
-      authSessionLedgerWriter ??
-      const ScaffoldFailingAuthSessionLedgerWriter();
+      authSessionLedgerWriter ?? const ScaffoldFailingAuthSessionLedgerWriter();
   final authNotifier = AuthSessionNotifier(
     loginService: loginService,
     storage: storage,
     ledgerWriter: ledgerWriter,
   );
+  final mobilePush =
+      mobilePushNotifications ?? const NoopMobilePushNotificationService();
+  _bindMobilePushRegistrationToAuth(mobilePush, authNotifier);
 
   // Phase 10a.UX.0 — expose the bridge subscription (when wired by
   // production main entry points) so the operator-facing
@@ -80,11 +83,14 @@ Future<void> bootstrapAndRunApp(
   // subscription was not wired (try/catch resolves through to a
   // null subscription).
   runApp(
-    Provider<RealtimeSubscription?>.value(
-      value: realtimeSubscription,
-      child: ChangeNotifierProvider<AuthSessionNotifier>.value(
-        value: authNotifier,
-        child: RealtimeAuthBridge(child: app),
+    Provider<MobilePushRouteIntentSource>.value(
+      value: mobilePush.routeIntents,
+      child: Provider<RealtimeSubscription?>.value(
+        value: realtimeSubscription,
+        child: ChangeNotifierProvider<AuthSessionNotifier>.value(
+          value: authNotifier,
+          child: RealtimeAuthBridge(child: app),
+        ),
       ),
     ),
   );
@@ -94,7 +100,31 @@ Future<void> bootstrapAndRunApp(
   // rehydrate resolves instead of leaving Android/iOS on the native
   // splash screen during SQLite/profile warm-up.
   unawaited(authNotifier.rehydrate());
+  unawaited(mobilePush.start());
   unawaited(_warmUpPersistedState());
+}
+
+void _bindMobilePushRegistrationToAuth(
+  MobilePushNotificationService mobilePush,
+  AuthSessionNotifier authNotifier,
+) {
+  void sync() {
+    final session = authNotifier.session;
+    unawaited(
+      mobilePush.updateRegistrationContext(
+        session == null
+            ? null
+            : MobilePushRegistrationContext(
+                userId: session.userId,
+                operatorId: session.operatorId,
+                locationId: session.locationId,
+              ),
+      ),
+    );
+  }
+
+  authNotifier.addListener(sync);
+  sync();
 }
 
 Future<void> _warmUpPersistedState() async {
@@ -114,10 +144,12 @@ Future<void> _warmUpPersistedState() async {
     // from BaselineData.
     final restaurantId = await SqliteRestaurantScopeRepository.instance
         .getActiveRestaurantId();
-    await WageStandardContextService.instance
-        .loadOrBootstrapProfile(restaurantId);
-    await TargetCycleService.instance
-        .hydrateBenchmarkHonestyFromActiveCycle(restaurantId);
+    await WageStandardContextService.instance.loadOrBootstrapProfile(
+      restaurantId,
+    );
+    await TargetCycleService.instance.hydrateBenchmarkHonestyFromActiveCycle(
+      restaurantId,
+    );
   } catch (error, stackTrace) {
     debugPrint('Startup warm-up failed: $error');
     debugPrintStack(stackTrace: stackTrace);

@@ -48,17 +48,26 @@ class DemoTeamLocationFixture {
   final String orgUnitId;
 }
 
-/// Region grouping (11W.3 walks the tree as East Region containing
-/// Downtown + North Loop, West Region containing Riverside).
+/// Region grouping (11W.3 walks the tree as the corp root `Demo Bistro`
+/// containing East Region (Downtown + North Loop) and West Region
+/// (Riverside)). `unitType` matches the catalog the mobile reference
+/// renders (`corp`, `region`, `district`, `location_group`); `path`
+/// mirrors the Postgres `ltree` shape Phase 9 ships so the gateway
+/// projection produces the same `TeamOrgUnitEntry.path` shape the
+/// mobile widget already understands.
 class DemoTeamOrgUnitFixture {
   const DemoTeamOrgUnitFixture({
     required this.orgUnitId,
     required this.name,
+    required this.unitType,
+    required this.path,
     this.parentOrgUnitId,
   });
 
   final String orgUnitId;
   final String name;
+  final String unitType;
+  final String path;
   final String? parentOrgUnitId;
 }
 
@@ -81,10 +90,32 @@ const List<DemoTeamLocationFixture> kDemoTeamLocationsFixture =
   ),
 ];
 
+/// Org-unit tree fixture. 11W.3 renders the corp root + two regions;
+/// 11W.1 surfaces the regions only (corp root is the implicit owner
+/// label). New entries should keep `path` consistent with the
+/// `parentOrgUnitId` chain so the gateway projection lines up.
 const List<DemoTeamOrgUnitFixture> kDemoTeamOrgUnitsFixture =
     <DemoTeamOrgUnitFixture>[
-  DemoTeamOrgUnitFixture(orgUnitId: 'demo-org-east', name: 'East Region'),
-  DemoTeamOrgUnitFixture(orgUnitId: 'demo-org-west', name: 'West Region'),
+  DemoTeamOrgUnitFixture(
+    orgUnitId: 'demo-org-root',
+    name: 'Demo Bistro',
+    unitType: 'corp',
+    path: 'demo_bistro',
+  ),
+  DemoTeamOrgUnitFixture(
+    orgUnitId: 'demo-org-east',
+    name: 'East Region',
+    unitType: 'region',
+    path: 'demo_bistro.east_region',
+    parentOrgUnitId: 'demo-org-root',
+  ),
+  DemoTeamOrgUnitFixture(
+    orgUnitId: 'demo-org-west',
+    name: 'West Region',
+    unitType: 'region',
+    path: 'demo_bistro.west_region',
+    parentOrgUnitId: 'demo-org-root',
+  ),
 ];
 
 /// Seeded role catalog the parity slices project from. 11W.1 needed
@@ -561,6 +592,44 @@ TeamUserListEntry teamUserEntryFromFixture(DemoTeamUserFixture fixture) {
   );
 }
 
+/// Project an org-unit fixture into the gateway's [TeamOrgUnitEntry]
+/// shape so the demo + live hierarchy gateways share one row contract.
+/// 11W.3 consumes this; 11W.1 (Members) does not — it reads the
+/// fixture struct directly for its location dropdown labels.
+TeamOrgUnitEntry teamOrgUnitEntryFromFixture(DemoTeamOrgUnitFixture fixture) {
+  return TeamOrgUnitEntry(
+    orgUnitId: fixture.orgUnitId,
+    parentOrgUnitId: fixture.parentOrgUnitId,
+    unitType: fixture.unitType,
+    path: fixture.path,
+    label: fixture.name,
+  );
+}
+
+/// Project a location fixture into the gateway's [TeamOrgLocationEntry]
+/// shape. Resolves the parent org-unit's `path` from the org-unit
+/// fixture set so the projection matches the live proxy payload shape.
+TeamOrgLocationEntry teamOrgLocationEntryFromFixture(
+  DemoTeamLocationFixture fixture, {
+  List<DemoTeamOrgUnitFixture> orgUnits = kDemoTeamOrgUnitsFixture,
+}) {
+  final parent = orgUnits.firstWhere(
+    (unit) => unit.orgUnitId == fixture.orgUnitId,
+    orElse: () => const DemoTeamOrgUnitFixture(
+      orgUnitId: '',
+      name: '',
+      unitType: 'region',
+      path: '',
+    ),
+  );
+  return TeamOrgLocationEntry(
+    locationId: fixture.locationId,
+    parentOrgUnitId: fixture.orgUnitId,
+    orgUnitPath: parent.path,
+    label: fixture.name,
+  );
+}
+
 /// Project the invite fixture into the gateway's [TeamInviteListEntry]
 /// shape.
 TeamInviteListEntry teamInviteEntryFromFixture(DemoTeamInviteFixture fixture) {
@@ -576,3 +645,133 @@ TeamInviteListEntry teamInviteEntryFromFixture(DemoTeamInviteFixture fixture) {
     createdAt: DateTime.parse(fixture.createdAtIso).toUtc(),
   );
 }
+
+/// 11W.4 Sessions — fixture session ledger snapshot. Four rows: the
+/// owner is signed in concurrently on web + mobile (so the unified
+/// list walkthrough has two owner-owned rows), the Downtown manager
+/// is on mobile only, and the North Loop location manager is on
+/// mobile only. Two of the four point at the demo owner so the
+/// owner walkthrough sees both their own devices in the unified
+/// `Your sessions` list. Order is deliberate: the owner's web
+/// session is the freshest (matches the walkthrough where the
+/// operator just signed in on web).
+@immutable
+class DemoTeamSessionFixture {
+  const DemoTeamSessionFixture({
+    required this.sessionId,
+    required this.userId,
+    required this.userDisplayName,
+    required this.userEmail,
+    required this.deviceLabel,
+    required this.userAgent,
+    required this.deviceFingerprint,
+    required this.geoCity,
+    required this.geoCountry,
+    required this.lastActiveAtIso,
+    required this.createdAtIso,
+  });
+
+  /// Stable id for the session row. Used by the screen to mark the
+  /// `(this session)` chip when the row's `sessionId` matches the
+  /// actor's current session id.
+  final String sessionId;
+
+  /// Target user the row belongs to. Lets the team-sessions view
+  /// render `display_name` + email next to the device label.
+  final String userId;
+  final String userDisplayName;
+  final String userEmail;
+
+  /// Friendly browser + OS pairing rendered as the row's primary
+  /// label. Falls back to [userAgent] when the screen wants the raw
+  /// string.
+  final String deviceLabel;
+  final String userAgent;
+  final String deviceFingerprint;
+
+  /// City-level geo hint per the parity contract `§ Sessions` rule
+  /// (city-level only, never raw IP). The [DemoTeamSessionFixture]
+  /// intentionally does NOT carry an IP field so the demo screen
+  /// cannot accidentally surface raw IPs.
+  final String geoCity;
+  final String geoCountry;
+
+  final String lastActiveAtIso;
+  final String createdAtIso;
+}
+
+/// Stable id of the row the operator-web walkthrough treats as the
+/// current web session. Demo flavor pins this so the
+/// `(this session)` chip lights up on a known row.
+const String kDemoTeamSessionThisSessionId = 'demo-session-owner-web';
+
+/// Stable id of the owner's mobile session — the walkthrough revokes
+/// this row first so the mobile device drops to login while the web
+/// session keeps rendering.
+const String kDemoTeamSessionOwnerMobileId = 'demo-session-owner-mobile';
+
+/// Stable id of the demo team-users fixture's owner row. The demo
+/// sessions gateway defaults to this id when filtering own-sessions,
+/// so the `Your sessions` section in the walkthrough surfaces the
+/// two owner-owned session rows. Note this is the team-users
+/// fixture's id, NOT the operator-web auth-source's session uid
+/// (`kDemoOperatorWebSession.uid` lives in a different namespace);
+/// the demo sessions gateway pins to this fixture id explicitly so
+/// the dependency stays visible.
+const String kDemoTeamSessionOwnerActorUserId = 'demo-user-owner';
+
+const List<DemoTeamSessionFixture> kDemoTeamSessionsFixture =
+    <DemoTeamSessionFixture>[
+  DemoTeamSessionFixture(
+    sessionId: kDemoTeamSessionThisSessionId,
+    userId: 'demo-user-owner',
+    userDisplayName: 'Sam Patel',
+    userEmail: 'sam.owner@demobistro.test',
+    deviceLabel: 'Chrome on macOS',
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) Chrome/124.0',
+    deviceFingerprint: 'fp-owner-web-chrome',
+    geoCity: 'Toronto',
+    geoCountry: 'CA',
+    lastActiveAtIso: '2026-05-05T14:30:00Z',
+    createdAtIso: '2026-05-05T14:00:00Z',
+  ),
+  DemoTeamSessionFixture(
+    sessionId: kDemoTeamSessionOwnerMobileId,
+    userId: 'demo-user-owner',
+    userDisplayName: 'Sam Patel',
+    userEmail: 'sam.owner@demobistro.test',
+    deviceLabel: 'Forge and Flow on iPhone',
+    userAgent: 'ForgeAndFlow/1.0 (iPhone; iOS 18.1)',
+    deviceFingerprint: 'fp-owner-mobile-ios',
+    geoCity: 'Toronto',
+    geoCountry: 'CA',
+    lastActiveAtIso: '2026-05-05T13:20:00Z',
+    createdAtIso: '2026-05-04T09:15:00Z',
+  ),
+  DemoTeamSessionFixture(
+    sessionId: 'demo-session-downtown-manager-mobile',
+    userId: 'demo-user-downtown-manager',
+    userDisplayName: 'Jordan Lee',
+    userEmail: 'jordan.lee@demobistro.test',
+    deviceLabel: 'Forge and Flow on Android',
+    userAgent: 'ForgeAndFlow/1.0 (Pixel 8; Android 15)',
+    deviceFingerprint: 'fp-jordan-mobile-android',
+    geoCity: 'Toronto',
+    geoCountry: 'CA',
+    lastActiveAtIso: '2026-05-05T11:00:00Z',
+    createdAtIso: '2026-05-03T08:42:00Z',
+  ),
+  DemoTeamSessionFixture(
+    sessionId: 'demo-session-northloop-locmgr-mobile',
+    userId: 'demo-user-northloop-locmgr',
+    userDisplayName: 'Taylor Kim',
+    userEmail: 'taylor.kim@demobistro.test',
+    deviceLabel: 'Forge and Flow on iPhone',
+    userAgent: 'ForgeAndFlow/1.0 (iPhone; iOS 17.6)',
+    deviceFingerprint: 'fp-taylor-mobile-ios',
+    geoCity: 'Mississauga',
+    geoCountry: 'CA',
+    lastActiveAtIso: '2026-05-04T22:05:00Z',
+    createdAtIso: '2026-05-01T17:30:00Z',
+  ),
+];

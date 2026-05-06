@@ -5,6 +5,17 @@
 //   - lag_seconds:       yellow at 60    / red at 300
 //   - publish_error_rate: yellow at 0.01 / red at 0.05
 //   - notify_queue_usage_ratio: yellow at 0.10 / red at 0.25
+//
+// Phase 10a.3 layered slice adds:
+//   - retention_backlog (existing, file-scoped): delivered rows past the
+//     7-day window that the sweep has not removed yet.
+//   - retention_lag_hours (this file): hours since the most recent
+//     run_event_outbox_retention_sweep() pass landed a row in
+//     event_outbox_retention_sweep_log. Distinguishes "sweep just ran
+//     and the backlog is normal volume churn" from "sweep stopped
+//     firing N hours ago".
+
+import 'dart:io' show Platform;
 
 import '../advisor_proxy.dart' show ProxyHealthMetric;
 import 'event_outbox_retention_producer.dart';
@@ -247,6 +258,156 @@ Future<ProxyHealthMetric> eventOutboxDlqDepthProducer(
   });
 }
 
+// ─── Phase 10a.3 (layered) — retention sweep lag in hours ──────────────
+//
+// Reports the time since the most recent
+// `run_event_outbox_retention_sweep()` pass logged a row in
+// `public.event_outbox_retention_sweep_log`. Backs the new bounded
+// retention sweep that runs daily at 03:00 UTC (cron job
+// `event_outbox_retention_sweep_daily`). The producer reads
+// `MAX(swept_at)` so a single index probe answers the metric.
+//
+// Distinguishes two failure modes that the existing
+// `event_outbox_retention_backlog` producer cannot tell apart:
+//
+//   * Sweep ran on schedule, backlog is normal volume churn -> lag is
+//     fresh (< 24h), backlog is small -> green/green.
+//   * Sweep stopped firing days ago, backlog is climbing -> lag is
+//     stale (> 36h), backlog grows past yellow -> yellow/yellow then
+//     red/red as the misalignment widens.
+//
+// Threshold defaults (env overrides below):
+//   * Yellow at 36h: the sweep runs daily, so 36h means two cron
+//     passes have been missed. One missed pass is normal (clock
+//     jitter, rolling restart of the cron host); two passes is a
+//     real signal worth a page-class alert at the Tier 2 envelope.
+//   * Red at 168h (one week): the sweep has been broken for a full
+//     week. With a busy operator emitting hundreds of delivered rows
+//     per hour the live table will start to feel the bloat by then.
+//
+// Env-var override:
+//   * `EVENT_OUTBOX_RETENTION_LAG_YELLOW_HOURS` (default 36)
+//   * `EVENT_OUTBOX_RETENTION_LAG_RED_HOURS`    (default 168)
+// Missing / blank / non-numeric / non-positive values fall back to
+// the default. Red MUST be strictly greater than yellow; if a config
+// inverts them, the resolver clamps red back to `yellow + 1`.
+//
+// NULL-safe path: `MAX(swept_at)` over an empty table returns NULL.
+// The producer projects an `unknown` placeholder with metadata
+// `sweep_never_ran: true` so the envelope distinguishes "table
+// truly empty" from "non-zero lag". Once the first sweep lands the
+// metric switches to a real numeric value.
+
+const String eventOutboxRetentionLagYellowHoursEnvVar =
+    'EVENT_OUTBOX_RETENTION_LAG_YELLOW_HOURS';
+const String eventOutboxRetentionLagRedHoursEnvVar =
+    'EVENT_OUTBOX_RETENTION_LAG_RED_HOURS';
+const int defaultEventOutboxRetentionLagYellowHours = 36;
+const int defaultEventOutboxRetentionLagRedHours = 168;
+
+({int yellowHours, int redHours}) resolveEventOutboxRetentionLagThresholds(
+  Map<String, String> environment,
+) {
+  final yellow =
+      _parsePositiveInt(environment[eventOutboxRetentionLagYellowHoursEnvVar]) ??
+      defaultEventOutboxRetentionLagYellowHours;
+  final redRaw =
+      _parsePositiveInt(environment[eventOutboxRetentionLagRedHoursEnvVar]) ??
+      defaultEventOutboxRetentionLagRedHours;
+  // Red MUST be strictly greater than yellow. An inverted pair would
+  // make every above-yellow value also above red, collapsing the
+  // yellow band entirely.
+  final red = redRaw > yellow ? redRaw : yellow + 1;
+  return (yellowHours: yellow, redHours: red);
+}
+
+int? _parsePositiveInt(String? raw) {
+  if (raw == null) return null;
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return null;
+  final parsed = int.tryParse(trimmed);
+  if (parsed == null || parsed <= 0) return null;
+  return parsed;
+}
+
+ProxyHealthMetric _eventOutboxRetentionLagTemplate(
+  int yellowHours,
+  int redHours,
+) => ProxyHealthMetric(
+  status: 'unknown',
+  value: null,
+  unit: 'hours',
+  description:
+      'Hours since the most recent run_event_outbox_retention_sweep() '
+      'pass landed in event_outbox_retention_sweep_log. Phase 10a.3 '
+      'fires yellow at ${yellowHours}h (sweep missed two daily cron '
+      'passes) and red at ${redHours}h (sweep missed a full week).',
+  source: 'event_outbox_retention_sweep_log',
+  owner: 'Phase 10a',
+  thresholds: <String, Object?>{'yellow': yellowHours, 'red': redHours},
+  metadata: const <String, Object?>{'tier': 2},
+);
+
+Future<ProxyHealthMetric> eventOutboxRetentionLagProducer(
+  ProxyHealthProducerContext context,
+) {
+  final thresholds = resolveEventOutboxRetentionLagThresholds(
+    Platform.environment,
+  );
+  ProxyHealthMetric template() => _eventOutboxRetentionLagTemplate(
+    thresholds.yellowHours,
+    thresholds.redHours,
+  );
+  return runProducer(context, template, () async {
+    final rows = await context.runner.query(
+      'select extract(epoch from (now() - max(swept_at))) / 3600 '
+      'as lag_hours '
+      'from public.event_outbox_retention_sweep_log',
+    );
+    final raw = rows.first['lag_hours'];
+    if (raw == null) {
+      // No sweep has ever logged a row. The metric is unknown rather
+      // than green: a freshly-deployed proxy can legitimately see
+      // this state during the first 24 hours; after that it means
+      // the cron was never registered or never fired. The envelope
+      // surfaces the sweep_never_ran metadata so triage can tell
+      // the two apart by reading deploy time.
+      final base = template();
+      return ProxyHealthMetric(
+        status: 'unknown',
+        value: null,
+        unit: 'hours',
+        description: base.description,
+        source: base.source,
+        owner: base.owner,
+        observedAt: context.now,
+        thresholds: base.thresholds,
+        metadata: const <String, Object?>{
+          'tier': 2,
+          'sweep_never_ran': true,
+        },
+      );
+    }
+    final lagHours = (raw as num).toDouble();
+    final yellow = thresholds.yellowHours;
+    final red = thresholds.redHours;
+    final status = lagHours >= red
+        ? 'red'
+        : (lagHours >= yellow ? 'yellow' : 'green');
+    return ProxyHealthMetric(
+      status: status,
+      value: lagHours,
+      unit: 'hours',
+      description: template().description,
+      source: 'event_outbox_retention_sweep_log',
+      owner: 'Phase 10a',
+      observedAt: context.now,
+      thresholds: <String, Object?>{'yellow': yellow, 'red': red},
+      metadata: const <String, Object?>{'tier': 2},
+    );
+  });
+}
+
 final Map<String, ProxyHealthProducer> outboxProducers =
     <String, ProxyHealthProducer>{
       'event_outbox_undelivered_count': eventOutboxUndeliveredCountProducer,
@@ -257,4 +418,6 @@ final Map<String, ProxyHealthProducer> outboxProducers =
       'event_outbox_dlq_depth': eventOutboxDlqDepthProducer,
       // Phase 10a.3 — retention sweep backlog.
       'event_outbox_retention_backlog': eventOutboxRetentionBacklogProducer,
+      // Phase 10a.3 (layered) — retention sweep lag in hours.
+      'event_outbox_retention_lag_hours': eventOutboxRetentionLagProducer,
     };

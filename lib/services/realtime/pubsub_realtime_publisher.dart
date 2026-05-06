@@ -42,9 +42,11 @@
 //     throw to re-NULL `picked_up_at` via the lease window.
 
 import 'dart:async';
+import 'dart:collection';
 
 import 'realtime_event.dart';
 import 'realtime_event_publisher.dart';
+import 'realtime_replay_resolver.dart';
 
 /// Resolves a Pub/Sub topic name from a locked namespace prefix
 /// (e.g. `rollup.invalidate`). The resolver is invoked once per
@@ -92,16 +94,27 @@ const Set<String> defaultLockedNamespaces = <String>{
 /// This publisher attaches `operator_id`, `topic`, and `event_id` as
 /// Pub/Sub message attributes so the subscription filter can match on
 /// them without parsing the body.
-class PubsubRealtimePublisher implements RealtimeEventPublisher {
+class PubsubRealtimePublisher
+    implements RealtimeEventPublisher, RealtimeReplayBacklog {
   PubsubRealtimePublisher({
     required PubsubMessagePublisher messagePublisher,
     PubsubTopicNameResolver? topicNameResolver,
     Set<String> lockedNamespaces = defaultLockedNamespaces,
     void Function(PubsubRealtimePublisherLogEvent)? logger,
+    int ringBufferCapacity = kRealtimeReplayRingBufferCapacity,
   }) : _messagePublisher = messagePublisher,
        _topicNameResolver = topicNameResolver ?? _defaultTopicNameResolver,
        _lockedNamespaces = Set<String>.unmodifiable(lockedNamespaces),
-       _logger = logger ?? _noopLogger {
+       _logger = logger ?? _noopLogger,
+       _ringBufferCapacity = ringBufferCapacity {
+    if (ringBufferCapacity <= 0) {
+      throw ArgumentError.value(
+        ringBufferCapacity,
+        'ringBufferCapacity',
+        'ring buffer capacity must be positive; replay would otherwise '
+            'be a no-op for every reconnect',
+      );
+    }
     // Resolve every locked namespace once at construction. A resolver
     // that returns an empty string (or throws) means a namespace is
     // not wired to a Pub/Sub topic in this deploy - boot must fail so
@@ -134,6 +147,18 @@ class PubsubRealtimePublisher implements RealtimeEventPublisher {
   final Set<String> _lockedNamespaces;
   final void Function(PubsubRealtimePublisherLogEvent) _logger;
   final Map<String, String> _resolvedTopics = <String, String>{};
+
+  /// Phase 10a.5 — recent-events ring buffer keyed by
+  /// `(operator_id, topic)` so [replayMissed] can answer reconnect
+  /// queries without a Pub/Sub round-trip in single-instance demo
+  /// mode. Production swaps this for a Cloud Pub/Sub backlog query
+  /// behind the same [RealtimeReplayBacklog] seam.
+  ///
+  /// Per-key capacity is fixed at construction; the oldest entry is
+  /// evicted when a publish would push the buffer past the cap.
+  final Map<_RingKey, Queue<RealtimeEvent>> _ringBuffers =
+      <_RingKey, Queue<RealtimeEvent>>{};
+  final int _ringBufferCapacity;
 
   int _publishedCount = 0;
   int _publishFailedCount = 0;
@@ -233,6 +258,7 @@ class PubsubRealtimePublisher implements RealtimeEventPublisher {
       rethrow;
     }
     _publishedCount += 1;
+    _appendToRingBuffer(event);
     _logger(
       PubsubRealtimePublisherLogEvent.published(
         topic: event.topic,
@@ -241,6 +267,108 @@ class PubsubRealtimePublisher implements RealtimeEventPublisher {
         topicName: topicName,
       ),
     );
+  }
+
+  /// Phase 10a.5 — RealtimeReplayBacklog implementation.
+  ///
+  /// Contract: "events with `occurred_at > lookup(lastEventId).occurred_at`"
+  /// (slice prompt). The cursor lookup is GLOBAL across the operator's
+  /// rings because `event_id` is globally unique per the
+  /// `event_outbox` contract — a cursor observed on topic A lives
+  /// only in topic A's ring, and a per-topic lookup against topic B
+  /// would otherwise falsely report "cursor unknown" and force the
+  /// route to truncate every topic the cursor was not originally on.
+  /// Cross-operator isolation still holds because the lookup only
+  /// inspects rings keyed to the supplied `operatorId`.
+  ///
+  /// Returns:
+  ///   * [RealtimeReplayStaleSentinel.instance] — cursor not in any
+  ///     of the operator's rings (evicted by ring overflow, or never
+  ///     seen on this proxy instance), OR cursor is in a ring but
+  ///     its `occurred_at` is older than `window` (production
+  ///     Pub/Sub would have evicted it by retention).
+  ///   * Empty list — cursor known and inside `window`, but the
+  ///     queried `topic` has no events newer than the cursor.
+  ///   * Non-empty list — events on the queried topic with
+  ///     `occurred_at > cursor.occurredAt`, ordered oldest → newest.
+  @override
+  Future<List<RealtimeEvent>> replayMissed({
+    required String operatorId,
+    required String topic,
+    required String lastEventId,
+    required Duration window,
+  }) async {
+    final cursorOccurredAt = _lookupCursorOccurredAt(operatorId, lastEventId);
+    if (cursorOccurredAt == null) {
+      return RealtimeReplayStaleSentinel.instance;
+    }
+    final cutoff = DateTime.now().toUtc().subtract(window);
+    if (cursorOccurredAt.toUtc().isBefore(cutoff)) {
+      return RealtimeReplayStaleSentinel.instance;
+    }
+    final ring = _ringBuffers[_RingKey(operatorId, topic)];
+    if (ring == null || ring.isEmpty) {
+      // Cursor known, but no events were ever published on this
+      // (operator, topic) pair on this proxy instance — return empty
+      // (no missed events on this topic), NOT sentinel.
+      return const <RealtimeEvent>[];
+    }
+    final missed = <RealtimeEvent>[];
+    for (final entry in ring) {
+      if (entry.occurredAt.isAfter(cursorOccurredAt)) {
+        missed.add(entry);
+      }
+    }
+    return List<RealtimeEvent>.unmodifiable(missed);
+  }
+
+  /// Search every ring belonging to [operatorId] for the supplied
+  /// [eventId] and return its `occurred_at`, or null if not found.
+  /// Cross-operator isolation: rings keyed to a different
+  /// `operatorId` are skipped before the inner scan.
+  DateTime? _lookupCursorOccurredAt(String operatorId, String eventId) {
+    for (final key in _ringBuffers.keys) {
+      if (key.operatorId != operatorId) continue;
+      final ring = _ringBuffers[key]!;
+      for (final entry in ring) {
+        if (entry.eventId == eventId) return entry.occurredAt;
+      }
+    }
+    return null;
+  }
+
+  void _appendToRingBuffer(RealtimeEvent event) {
+    final key = _RingKey(event.operatorId, event.topic);
+    final ring = _ringBuffers.putIfAbsent(key, () => Queue<RealtimeEvent>());
+    ring.addLast(event);
+    while (ring.length > _ringBufferCapacity) {
+      ring.removeFirst();
+    }
+  }
+
+  /// Visible for tests — current ring length for (operator, topic).
+  /// Returns 0 when no events have been published for the pair.
+  int ringLengthForTest(String operatorId, String topic) {
+    final ring = _ringBuffers[_RingKey(operatorId, topic)];
+    return ring?.length ?? 0;
+  }
+
+  /// Phase 10a.5 — topics the publisher has seen frames on for the
+  /// supplied operator. Used by the proxy WebSocket route's replay
+  /// fetcher closure to iterate the resolver per topic without
+  /// having to enumerate every dotted suffix in the locked-namespace
+  /// set. The result is a snapshot — concurrent publishes after the
+  /// call returns are not reflected, which is fine because the route
+  /// drains live frames into a buffer while the replay query is in
+  /// flight.
+  List<String> topicsForOperator(String operatorId) {
+    final topics = <String>[];
+    for (final key in _ringBuffers.keys) {
+      if (key.operatorId == operatorId) {
+        topics.add(key.topic);
+      }
+    }
+    return List<String>.unmodifiable(topics);
   }
 
   /// Per-segment shape required by
@@ -346,3 +474,25 @@ class PubsubRealtimePublisherLogEvent {
 enum PubsubRealtimePublisherLogKind { published, publishFailed }
 
 void _noopLogger(PubsubRealtimePublisherLogEvent event) {}
+
+/// Phase 10a.5 — composite ring-buffer key. `(operator_id, topic)` is
+/// the per-tenant slice that the route's defense-in-depth check
+/// matches against the connecting JWT. Two separate strings instead
+/// of an interpolated `$op|$topic` so a topic literal that happens to
+/// contain `|` cannot collide with another operator's slice.
+class _RingKey {
+  const _RingKey(this.operatorId, this.topic);
+
+  final String operatorId;
+  final String topic;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is _RingKey &&
+          other.operatorId == operatorId &&
+          other.topic == topic);
+
+  @override
+  int get hashCode => Object.hash(operatorId, topic);
+}

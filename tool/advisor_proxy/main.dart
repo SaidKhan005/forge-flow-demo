@@ -35,7 +35,9 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/realtime/pubsub_realtime_publisher.dart';
+import 'package:forge_and_flow/services/realtime/realtime_event.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
+import 'package:forge_and_flow/services/realtime/realtime_replay_resolver.dart';
 
 import 'admin_email_routes.dart';
 import 'admin_integrations_routes.dart';
@@ -43,6 +45,7 @@ import 'advisor_proxy.dart';
 import 'log.dart';
 import 'proxy_bootstrap.dart';
 import 'realtime_bridge.dart';
+import 'realtime_route.dart' show RealtimeReplayResult;
 
 Future<void> main(List<String> args) async {
   // Startup banner — plain text only, before the log module owns
@@ -360,6 +363,67 @@ Future<void> main(List<String> args) async {
   final realtimeAdminWrapper = TenantTransactionWrapper(
     productionBindings.adminPool,
   );
+  // Phase 10a.5 — server-side replay seam. The route invokes this
+  // closure when a client reconnects with `?last_event_id=<uuid>`.
+  // The resolver delegates to the in-process publisher's per-(operator,
+  // topic) ring buffer (default capacity 256) and the closure folds
+  // its per-topic answers into the route's connection-wide
+  // `RealtimeReplayResult`. If ANY topic returns the stale sentinel
+  // the closure returns `truncated: true` so the route emits the
+  // `replay_truncated` control envelope and the client refreshes
+  // from Postgres on the affected tables.
+  final realtimeReplayResolver = RealtimeReplayResolver(
+    backlog: realtimeInProcessPublisher,
+  );
+  Future<RealtimeReplayResult> realtimeReplayFetcher({
+    required OperatorContext scope,
+    required String lastEventId,
+    required Duration window,
+  }) async {
+    final topics = realtimeInProcessPublisher.topicsForOperator(
+      scope.operatorId,
+    );
+    if (topics.isEmpty) {
+      // Operator has no recent events in any topic ring. The cursor
+      // is by definition unknown — fall through to the truncation
+      // control envelope so the client refreshes instead of looping
+      // on a stale id.
+      return const RealtimeReplayResult(
+        events: <RealtimeEvent>[],
+        truncated: true,
+      );
+    }
+    final merged = <RealtimeEvent>[];
+    var truncated = false;
+    for (final topic in topics) {
+      final result = await realtimeReplayResolver.resolveMissedSince(
+        operatorId: scope.operatorId,
+        topic: topic,
+        lastEventId: lastEventId,
+        backlogWindow: window,
+      );
+      if (identical(result, RealtimeReplayStaleSentinel.instance)) {
+        truncated = true;
+        continue;
+      }
+      merged.addAll(result);
+    }
+    if (truncated) {
+      // Route contract: when truncated, the events list is ignored.
+      // We still drop it explicitly so a future refactor cannot leak
+      // a partial replay into the wire path.
+      return const RealtimeReplayResult(
+        events: <RealtimeEvent>[],
+        truncated: true,
+      );
+    }
+    merged.sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+    return RealtimeReplayResult(
+      events: List<RealtimeEvent>.unmodifiable(merged),
+      truncated: false,
+    );
+  }
+
   final realtimeBridgePublisher = selectRealtimePublisher(
     environment: Platform.environment,
     inProcessPublisher: realtimeInProcessPublisher,
@@ -615,6 +679,9 @@ Future<void> main(List<String> args) async {
             mfaOperationsGateway: productionBindings.mfaOperationsGateway,
             mfaRecoveryRequestGateway:
                 productionBindings.mfaRecoveryRequestGateway,
+            mobilePushTokenGateway: productionBindings.mobilePushTokenGateway,
+            mobilePushSelfTestGateway:
+                productionBindings.mobilePushSelfTestGateway,
             operatorLocationAdminGateway:
                 productionBindings.operatorLocationAdminGateway,
             pricingTierAdminGateway: productionBindings.pricingTierAdminGateway,
@@ -646,6 +713,10 @@ Future<void> main(List<String> args) async {
             // Phase 10a.0 — WebSocket route subscribes to this publisher
             // for the connected operator's events.
             realtimePublisher: realtimeInProcessPublisher,
+            // Phase 10a.5 — replay fetcher closure feeds missed events
+            // BEFORE live frames when the client reconnects with
+            // `?last_event_id=<uuid>`.
+            realtimeReplayFetcher: realtimeReplayFetcher,
           );
         } catch (error, stack) {
           log(
