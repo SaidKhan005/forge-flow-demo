@@ -835,6 +835,79 @@ void main() {
       expect(captured.url.queryParameters['mfa_enrolled'], equals('false'));
     });
 
+    test('listMembers accepts the proxy auth users payload shape', () async {
+      final mock = http_testing.MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'users': <Object?>[
+              <String, Object?>{
+                'user_id': 'u1',
+                'email': 'member@op.test',
+                'display_name': 'Member One',
+                'role_id': 'operator_staff',
+                'role_label': 'Operator staff',
+                'status': 'active',
+                'location_id': 'loc-1',
+                'location_label': '95 Water Street',
+                'mfa_enrolled': true,
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpMembersAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      final rows = await gateway.listMembers(operatorId: 'op-1');
+
+      expect(rows, hasLength(1));
+      expect(rows.single.roleKey, equals('operator_staff'));
+      expect(rows.single.primaryLocationId, equals('loc-1'));
+      expect(rows.single.primaryLocationName, equals('95 Water Street'));
+      expect(rows.single.createdAt.isUtc, isTrue);
+      expect(rows.single.updatedAt.isUtc, isTrue);
+    });
+
+    test('listInvites accepts the proxy auth invites payload shape', () async {
+      final mock = http_testing.MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'invites': <Object?>[
+              <String, Object?>{
+                'invite_id': 'inv-1',
+                'email': 'invitee@op.test',
+                'role_id': 'operator_manager',
+                'role_label': 'Operator manager',
+                'location_id': 'loc-1',
+                'location_label': '95 Water Street',
+                'created_at': '2026-05-06T14:40:00Z',
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpMembersAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      final rows = await gateway.listInvites(operatorId: 'op-1');
+
+      expect(rows, hasLength(1));
+      expect(rows.single.displayName, equals('invitee@op.test'));
+      expect(rows.single.roleKey, equals('operator_manager'));
+      expect(rows.single.primaryLocationName, equals('95 Water Street'));
+      expect(rows.single.invitedAt, equals(DateTime.utc(2026, 5, 6, 14, 40)));
+    });
+
     test('non-forge-admin caller never reaches the network', () async {
       var hits = 0;
       final mock = http_testing.MockClient((http.Request request) async {

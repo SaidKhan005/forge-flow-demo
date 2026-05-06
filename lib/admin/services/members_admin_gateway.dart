@@ -732,18 +732,32 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
 }
 
 MemberAdminRow _memberRowFromJson(Map<String, Object?> json) {
+  final timestamp =
+      _optionalDateTime(json['last_active_at']) ??
+      _optionalDateTime(json['updated_at']) ??
+      DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
   return MemberAdminRow(
     userId: _stringField(json, 'user_id'),
     email: _stringField(json, 'email'),
     displayName: _stringField(json, 'display_name'),
-    roleKey: _stringField(json, 'role_key'),
-    primaryLocationId: _stringField(json, 'primary_location_id'),
-    primaryLocationName: _stringField(json, 'primary_location_name'),
+    roleKey: _firstStringField(json, const <String>[
+      'role_key',
+      'role_id',
+      'role_label',
+    ]),
+    primaryLocationId: _firstStringField(
+      json,
+      const <String>['primary_location_id', 'location_id'],
+    ),
+    primaryLocationName: _firstStringField(
+      json,
+      const <String>['primary_location_name', 'location_label'],
+    ),
     status: MemberStatusWire.fromWire(_stringField(json, 'status')),
     mfaEnrolled: _boolField(json, 'mfa_enrolled'),
-    lastActiveAt: _dateTimeField(json, 'last_active_at'),
-    createdAt: _dateTimeField(json, 'created_at'),
-    updatedAt: _dateTimeField(json, 'updated_at'),
+    lastActiveAt: timestamp,
+    createdAt: _optionalDateTime(json['created_at']) ?? timestamp,
+    updatedAt: _optionalDateTime(json['updated_at']) ?? timestamp,
     createdBy: _optionalString(json['created_by']),
     updatedBy: _optionalString(json['updated_by']),
     orgUnitId: _optionalString(json['org_unit_id']),
@@ -751,15 +765,30 @@ MemberAdminRow _memberRowFromJson(Map<String, Object?> json) {
 }
 
 MemberInviteRow _inviteRowFromJson(Map<String, Object?> json) {
+  final invitedAt =
+      _optionalDateTime(json['invited_at']) ??
+      _optionalDateTime(json['created_at']) ??
+      DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
   return MemberInviteRow(
     inviteId: _stringField(json, 'invite_id'),
     email: _stringField(json, 'email'),
-    displayName: _stringField(json, 'display_name'),
-    roleKey: _stringField(json, 'role_key'),
-    primaryLocationId: _stringField(json, 'primary_location_id'),
-    primaryLocationName: _stringField(json, 'primary_location_name'),
-    invitedAt: _dateTimeField(json, 'invited_at'),
-    invitedBy: _stringField(json, 'invited_by'),
+    displayName:
+        _optionalString(json['display_name']) ?? _stringField(json, 'email'),
+    roleKey: _firstStringField(json, const <String>[
+      'role_key',
+      'role_id',
+      'role_label',
+    ]),
+    primaryLocationId: _firstStringField(
+      json,
+      const <String>['primary_location_id', 'location_id'],
+    ),
+    primaryLocationName: _firstStringField(
+      json,
+      const <String>['primary_location_name', 'location_label'],
+    ),
+    invitedAt: invitedAt,
+    invitedBy: _optionalString(json['invited_by']) ?? '',
     orgUnitId: _optionalString(json['org_unit_id']),
     welcomeNote: _optionalString(json['welcome_note']),
   );
@@ -777,6 +806,14 @@ String _stringField(Map<String, Object?> json, String key) {
   throw StateError('missing string field $key');
 }
 
+String _firstStringField(Map<String, Object?> json, List<String> keys) {
+  for (final key in keys) {
+    final value = _optionalString(json[key]);
+    if (value != null) return value;
+  }
+  throw StateError('missing string field ${keys.join('/')}');
+}
+
 bool _boolField(Map<String, Object?> json, String key) {
   final value = json[key];
   if (value is bool) return value;
@@ -790,13 +827,12 @@ String? _optionalString(Object? value) {
   return trimmed.isEmpty ? null : trimmed;
 }
 
-DateTime _dateTimeField(Map<String, Object?> json, String key) {
-  final value = json[key];
+DateTime? _optionalDateTime(Object? value) {
   if (value is DateTime) return value.toUtc();
   if (value is String && value.isNotEmpty) {
     return DateTime.parse(value).toUtc();
   }
-  throw StateError('missing datetime field $key');
+  return null;
 }
 
 /// Locked validation copy mirrored from the parity contract's
