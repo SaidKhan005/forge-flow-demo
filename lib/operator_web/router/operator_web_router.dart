@@ -27,9 +27,12 @@ import 'package:flutter/material.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../account/operator_web_account_actions.dart';
+import '../services/demo_team_users_gateway.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
+import '../services/web_team_users_gateway.dart';
 import '../screens/account_screen.dart';
 import '../screens/data_accuracy_screen.dart';
+import '../screens/members_screen.dart';
 import '../screens/mfa_enrollment_screen.dart';
 import '../screens/password_setup_screen.dart';
 import '../screens/sign_in_screen.dart';
@@ -42,8 +45,18 @@ import '../../theme/app_theme.dart';
 /// Stable nav ids for the post-onboarding shell. Tests and deep
 /// links key off these.
 const String kOperatorWebNavAccount = 'account';
+const String kOperatorWebNavMembers = 'members';
 const String kOperatorWebNavVendorConnections = 'vendor_connections';
 const String kOperatorWebNavDataAccuracy = 'data_accuracy';
+
+/// Sentinel the operator-web shell stamps on the auth source when it
+/// can supply a [WebTeamUsersGateway] for the Members surface. Demo
+/// auth source mixes this in with [DemoWebTeamUsersGateway];
+/// `11W.1.live` will mix it in on the live source with the
+/// `package:http` impl.
+abstract class OperatorWebTeamUsersGatewayProvider {
+  WebTeamUsersGateway get teamUsersGateway;
+}
 
 /// Default nav surface the shell lands on after onboarding completes.
 const String kOperatorWebDefaultNavId = kOperatorWebNavAccount;
@@ -259,6 +272,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.business_outlined,
       ),
       OperatorWebNavItem(
+        id: kOperatorWebNavMembers,
+        title: 'Members',
+        icon: Icons.group_outlined,
+      ),
+      OperatorWebNavItem(
         id: kOperatorWebNavVendorConnections,
         title: 'Vendor connections',
         icon: Icons.cable_outlined,
@@ -271,6 +289,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     ];
     final Widget body;
     switch (_selectedNavId) {
+      case kOperatorWebNavMembers:
+        body = MembersScreen(
+          session: session,
+          gateway: _teamUsersGateway,
+        );
+        break;
       case kOperatorWebNavVendorConnections:
         body = VendorConnectionsScreen(
           session: session,
@@ -309,6 +333,20 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       ? (widget.source as OperatorWebVendorConnectionsGatewayProvider)
             .vendorConnectionsGateway
       : null;
+
+  WebTeamUsersGateway get _teamUsersGateway {
+    final source = widget.source;
+    if (source is OperatorWebTeamUsersGatewayProvider) {
+      return (source as OperatorWebTeamUsersGatewayProvider).teamUsersGateway;
+    }
+    // Live source without a gateway mixin still gets a working
+    // surface for the slice walkthrough; the `11W.1.live` follow-up
+    // mixes the live HTTP gateway in via
+    // `OperatorWebTeamUsersGatewayProvider`.
+    return _routerOwnedDemoGateway ??= DemoWebTeamUsersGateway();
+  }
+
+  DemoWebTeamUsersGateway? _routerOwnedDemoGateway;
 }
 
 class _LoadingSplash extends StatelessWidget {
