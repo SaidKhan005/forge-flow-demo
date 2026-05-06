@@ -17,8 +17,9 @@
 //       operator_manager gets the manager-tier subset
 //   * The audit-fix migration grants the post-9.0 team.* keys to
 //     super_admin so "super_admin has every key" stays true.
-//   * `lib/auth/permission_keys.dart` exposes 13 team.* constants
-//     and PermissionKeys.all goes from 81 → 93.
+//   * `lib/auth/permission_keys.dart` exposes 14 team.* constants
+//     and PermissionKeys.all has grown to 99 (81 baseline + 14
+//     team.* + 3 later admin keys + 1 integrations.* key).
 //   * No timestamp without time zone is used (CLAUDE.md storage rule).
 
 import 'dart:io';
@@ -191,7 +192,7 @@ void main() {
   });
 
   group('PermissionKeys catalog mirror (9.0a)', () {
-    test('13 team.* constants are present', () {
+    test('14 team.* constants are present', () {
       const expectedKeys = <String>{
         'team.users.view',
         'team.users.invite',
@@ -205,6 +206,7 @@ void main() {
         'team.roles.assign',
         'team.roles.revoke',
         'team.audit_log.view',
+        'team.audit_log.export',
         'team.session.force_logout',
       };
       for (final key in expectedKeys) {
@@ -216,8 +218,8 @@ void main() {
       }
     });
 
-    test('PermissionKeys.all has 97 entries (81 baseline + 13 team.* + '
-        '2 later admin keys + 1 integrations.* key)', () {
+    test('PermissionKeys.all has 99 entries (81 baseline + 14 team.* + '
+        '3 later admin keys + 1 integrations.* key)', () {
       // The 9.0a slice landed at 93 keys; the 9.0Σ.h2 slice
       // (2026-04-28) added admin.audit_privacy.read for the
       // advisor-conversation audit-privacy gate. B41 then added
@@ -225,10 +227,15 @@ void main() {
       // 95. The MFA hardening slice added team.users.reset_mfa,
       // bringing the catalog to 96. Phase 8.0 added
       // integrations.configure for the Vendor Connections admin
-      // surface, bringing the catalog to 97. This test tracks the
-      // running total so a future catalog addition that forgets to
-      // grow the count is caught here.
-      expect(PermissionKeys.all.length, equals(97));
+      // surface, bringing the catalog to 97. The 11A.14 slice added
+      // admin.users.reset_mfa_factors for the F&F admin support MFA
+      // reset escalation, bringing the catalog to 98. The 11W.5
+      // catalog reconciliation slice added team.audit_log.export to
+      // back the Operator Web Audit Log CSV export gate, bringing
+      // the catalog to 99. This test tracks the running total so a
+      // future catalog addition that forgets to grow the count is
+      // caught here.
+      expect(PermissionKeys.all.length, equals(99));
     });
 
     test('team.* keys are NOT in requiresMfa (locked decision: no MFA gate '
@@ -246,6 +253,7 @@ void main() {
         'team.roles.assign',
         'team.roles.revoke',
         'team.audit_log.view',
+        'team.audit_log.export',
         'team.session.force_logout',
       };
       for (final key in teamKeys) {

@@ -24,17 +24,16 @@ are external; engineering can run in parallel.
       namespace `forge-flow-production-*`. Spec:
       `docs/phases/phase_production_cutover/production1_staging_parity_baseline_2026-05-03.md`.
       _Effort: 5–7 days. Blocks: cutover.0._
-- [ ] **Apply 3 pending Postgres migrations to Production1/staging as scoped:**
-      `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
-      and
-      `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`,
-      plus
-      `db/migrations/202605060000_phase_business_timing_live_schema.sql`.
-      Runbook: `runbooks/phase_9_production1_migration_apply_runbook.md`.
-      First two are additive-safe GRANT-only and verified on staging
-      2026-05-03 / -04; business timing schema must be staging/review-applied
-      before timing runtime proof and carried into the next Production1 batch.
-      _Effort: 1–2 days. Blocks: production admin console writes._
+- [ ] **Apply 7 pending Postgres migrations to Production1/staging as scoped.**
+      Full table in `docs/POST_HARDENING_FOLLOWUPS.md` "P0 - Production1
+      Migration Apply Gap". Runbook:
+      `runbooks/phase_9_production1_migration_apply_runbook.md`. First two are
+      already staging-applied (2026-05-03/-04); the remaining five
+      (mobile_push, business_timing_live, 11A.14 MFA reset, index rekey,
+      11W.5 audit_log_export) are code-ready and need staging apply before
+      Production1.
+      _Effort: 1–2 days. Blocks: production admin console writes,
+      mobile OS push delivery, live timing runtime, audit log CSV export._
 - [ ] **Escalate inbound T&Cs to lawyer.** Draft is in `docs/phases/phase_9_8/`.
       Set explicit deadlines: first pass 2026-05-10, final 2026-05-13. Without
       signed T&Cs there is no `tos_acceptances` row → `cutover.2` cannot run.
@@ -156,23 +155,35 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
 
 ## 4 · Phase work in scope (queued, not launch-blocking by themselves)
 
-- [ ] **Phase 10a — Real-time infrastructure.** Webhooks → NOTIFY → Pub/Sub
-      bridge. Closes the 5-minute freshness gap post-launch. `.3`/`.4`/`.5`
-      queued.
-- [ ] **Phase 11A.10 — operations console final slices.** `.8` (support
-      audit), `.9` (cross-operator reads), `.10` (user impersonation) — all
-      not started; deferred post-launch unless escalated.
-- [ ] **`8.spine-bridge-live` - live Shift snapshots.** Explicit follow-up
-      after sink fanout + business timing schema. Builds
-      `OpenShiftSnapshotProjector` -> `open_shift_snapshots` -> proxy pull ->
-      mobile SQLite. Do not fold into closed sink fanout or claim live vendor
-      Shift until this lane passes review-device proof. Live facts must bucket
-      into configured service periods first; Whole Day rolls up from those
-      buckets, not the other way around.
-- [ ] **Phase 11A.12 / .13 / .14 — cross-operator parity** (Members /
-      Hierarchy / audited support actions). Un-deferred 2026-05-05; queues
-      after Phase 7 + Phase 10 close, lockstep with `11W.1`–`11W.6` web
-      parity.
+- [x] **Phase 10a — Real-time infrastructure (CLOSED for V1 2026-05-06).**
+      `.0`/`.1`/`.2`/`.3`/`.4`/`.5` + `UX.0`/`UX.1` ACCEPT. Webhooks → NOTIFY
+      → Pub/Sub bridge complete; `last_event_id` replay on reconnect; Q22
+      tripwires + retention sweep. Bridge worker byte-identical across the
+      wave. Phase 10b (offline + optimistic concurrency) deferred post-launch.
+- [x] **Phase 11W parity slices `.1`–`.6` ACCEPT 2026-05-06.** Members /
+      Roles / Hierarchy / Sessions / Audit / Security web surfaces parity
+      with mobile Settings.
+- [x] **Phase 11A cross-operator parity `.12`/`.13`/`.14` ACCEPT 2026-05-06.**
+      Members + Invites / Roles + Hierarchy + Sessions / Audit log + audited
+      support actions.
+- [x] **`8.business_date_denorm` ACCEPT 2026-05-06.** Three Phase 8 tables
+      (`connector_sync_log`, `inbound_webhook_dead_letter`, `sanity_log`) now
+      carry denormalized `business_date DATE` with operator-leading indexes
+      and BEFORE-INSERT triggers.
+- [ ] **`8.spine-bridge-sink-fanout` (13 of 14 lanes remain).** Aloha
+      (`.1.AL`) ACCEPT 2026-05-06; remaining: Toast, Clover, Lightspeed LSK,
+      Revel, Square (POS); ADP, Agendrix, Humanity, Push Operations, 7shifts
+      (labor); OpenTable, SevenRooms, Tock (reservation). File-disjoint;
+      parallelizable.
+- [ ] **`8.spine-bridge-live` — live Shift snapshots.** Foundation
+      (`9e6fca84` schema + UI shell + contract amendments) ACCEPT 2026-05-06;
+      `OpenShiftSnapshotProjector` itself queued. Builds
+      `OpenShiftSnapshotProjector` → `open_shift_snapshots` → proxy pull →
+      mobile SQLite. Live facts bucket by stable `service_period_key` first;
+      Whole Day rolls up from those buckets.
+- [ ] **Phase 11A.8/.9/.10 — operations console final slices.** Support
+      audit, cross-operator reads, user impersonation — deferred post-launch
+      unless escalated.
 
 ---
 
@@ -205,13 +216,16 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
 
 ### From the architecture audit
 
-- [ ] **`business_date DATE` denormalized columns on Phase 8 integration
-      tables.** Required before live `OpenShiftSnapshotProjector` relies on
-      timestamp bucketing at scale; keep lower priority for closed proof only,
-      but promote to a live-lane prerequisite.
+- [x] **`business_date DATE` denormalized columns on Phase 8 integration
+      tables.** Closed 2026-05-06 via `c61c2ea7` (`8.business_date_denorm`):
+      `connector_sync_log`, `inbound_webhook_dead_letter`, `sanity_log`
+      now carry denormalized `business_date` with operator-leading indexes
+      + BEFORE-INSERT triggers (UTC fallback when timezone null).
 - [ ] **Timing provenance on closed records.** Closed `shift_records` need the
       timing profile/version id and stable `service_period_key` used at bucket
-      time before configurable labels/overrides ship widely.
+      time before configurable labels/overrides ship widely. Promised by
+      amended `phase_7_55_time_boundary_contract.md` Rule 9 (2026-05-06);
+      not yet wired in `ShiftFactBuilder.fromClosedShiftInput`.
 - [ ] **Data Accuracy keyed service-period settings.** Replace hardcoded
       lunch/dinner/late covers-source columns with
       `data_accuracy_service_period_settings` before fourth/custom periods

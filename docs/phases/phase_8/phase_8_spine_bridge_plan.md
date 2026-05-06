@@ -1,8 +1,8 @@
 # Phase 8 — Spine Bridge Plan
 
-Status: Active
-Updated: 2026-05-05
-Owner: Phase 8 / 8R / 8.S spine-bridge sprint
+Status: Sprint ACCEPT 2026-05-05 (11 sub-lanes + `.4` proof PASS 27/27); **sink-fanout running** as of 2026-05-06 — 1 of 14 lanes landed (`.1.AL` Aloha NCR Voyix `94ac00ac`); 13 lanes remain. Plus `8.business_date_denorm` ACCEPT 2026-05-06 (`c61c2ea7`).
+Updated: 2026-05-06
+Owner: Phase 8 / 8R / 8.S spine-bridge sprint + sink-fanout follow-up
 
 Authority (read in this order):
 

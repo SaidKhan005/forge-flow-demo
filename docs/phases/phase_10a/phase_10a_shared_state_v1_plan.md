@@ -1,21 +1,8 @@
 # Phase 10a - Shared Multi-Device State (V1)
 
-Updated: 2026-05-03
-Status: Active. `10a.0` realtime push channel scaffold accepted
-2026-05-02 (NOTIFY → `EventOutboxRepository.claimBatch` →
-`RealtimeEventPublisher` in-process binding → `/v1/realtime` WebSocket
-→ client `RealtimeSubscription`). `10a.UX.0` sync-state badge + auth
-bridge and `10a.UX.1` peer-edit toast + Settings freshness rows
-accepted 2026-05-03. `10a.1` Cloud Pub/Sub publisher adapter accepted
-2026-05-03 (`lib/services/realtime/pubsub_realtime_publisher.dart`;
-walkthrough `docs/_walkthroughs/10a.1.md`); the publisher swap sits
-behind `PUBSUB_REALTIME_ENABLED` and leaves the in-process binding as
-the demo/local default. **Still queued:** retry ledger, dead-letter
-cap (`10a.2`), retention sweep (`10a.3`), yellow/red tripwires
-(`10a.4`), `last_event_id` replay (`10a.5`). All layer on the
-`RealtimeEventPublisher` seam without touching the bridge worker or
-the WebSocket route.
-Owner: Future shared-state lane
+Updated: 2026-05-06
+Status: CLOSED for V1. All landed slices ACCEPT: `10a.0` realtime push channel scaffold + `10a.UX.0` sync badge + `10a.UX.1` peer-edit toast (2026-05-02/03), `10a.1` Cloud Pub/Sub publisher (2026-05-03), `10a.2` event_outbox dead-letter cap (2026-05-04), `10a.3` bounded retention sweep + lag-hours `/health` metric, `10a.4` yellow/red tripwires (Q22-locked thresholds), `10a.5` `last_event_id` replay on reconnect (all 2026-05-06; commits `b9bdeee5` / `1116f32f` / `4f8ddf16` + reserved-metrics alignment `b8e3e00d`). 129/129 realtime tests PASS. Bridge worker (`tool/advisor_proxy/realtime_bridge.dart`) byte-identical across the wave; NOTIFY-as-wake-up-only invariant preserved. The `RealtimeEventPublisher` seam remains the only path; in-process binding stays as demo/local default; `PUBSUB_REALTIME_ENABLED` flips to Cloud Pub/Sub in staging.
+Owner: Future shared-state lane (Phase 10b post-launch picks up offline writes + optimistic concurrency)
 
 ## 2026-04-28 - Phase 9 Foundation Available
 
