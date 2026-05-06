@@ -395,6 +395,8 @@ class _PollingAndPricingAdminScreenState
               surfaceName: 'polling and pricing',
               onClear: () => setState(() => _scope = null),
             ),
+          _buildPollingSummary(),
+          const SizedBox(height: 16),
           const PlainEnglishExplainerCard(),
           const SizedBox(height: 16),
           TierDefinitionsCard(
@@ -447,6 +449,32 @@ class _PollingAndPricingAdminScreenState
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPollingSummary() {
+    final rows = _filteredAssignments;
+    final assignedRows = rows.where((row) => row.assignment != null).length;
+    final openRequests = _visibleChangeRequests
+        .where(
+          (request) =>
+              request.status == TierChangeRequestStatus.pending ||
+              request.status == TierChangeRequestStatus.negotiating,
+        )
+        .length;
+    final margin = _visibleRollup.totalMonthlyMarginCents;
+    final marginLabel = formatCents(margin);
+    return AdminStatStrip(
+      items: <AdminStatItem>[
+        AdminStatItem(label: 'Visible locations', value: '${rows.length}'),
+        AdminStatItem(label: 'Assigned tiers', value: '$assignedRows'),
+        AdminStatItem(label: 'Open requests', value: '$openRequests'),
+        AdminStatItem(label: 'Net margin', value: marginLabel),
+        AdminStatItem(
+          label: 'Audit rows',
+          value: '${_visibleTierAuditEvents.length}',
+        ),
+      ],
     );
   }
 
