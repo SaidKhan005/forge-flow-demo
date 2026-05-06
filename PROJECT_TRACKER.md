@@ -56,13 +56,14 @@ POS + Labor + Reservation → Canonical Operational Facts → 60-Day Benchmark S
 
 Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 
+### Active
+
 | Phase | Status | Plan |
 | --- | --- | --- |
 | `9` framework + `9.0Σ.b-l` + `9.UX.*` | accepted; phase stays open until `9.8` inbound T&Cs land | `phase_9/*` |
 | `9.5` | `.0` accepted; `.UX.*` paused (Barrio) | `phase_9_5/*` |
 | `11A` | foundation `0`–`7`/`UX.health` ACCEPT + cross-op parity `.12`/`.13`/`.14` ACCEPT 2026-05-06; `.8`/`.9`/`.10` not started | `phase_11A_operations_console/*` |
 | `11W` Operator Web Console | `.0`–`.8` ACCEPT 2026-05-06 (A1 web shell `f5a94c08`, A2 Account + Business Timing `9a56cabf`, A3 Vendor Connections `075fde54`, parity `.1`–`.6`, live wiring fix `11W.7.live-wire`); `11W.9` paused (depends on 8.5) | `phase_11W/*` |
-| `9.75` | paused (Barrio) | `phase_9_75/*` |
 | `8` (POS) | engineering-complete (PASS 2026-05-05 via `mobile-proof.v2`); Wave B `documented` for 7 adapters; lifecycle promotion via `phase_8_live_rollout` | `phase_8/*` + `vendor_master_list.md` |
 | `8R` (Reservations) | engineering-complete (PASS 2026-05-05 via `mobile-proof.v2`); Wave B `documented` for 4 adapters; lifecycle promotion via `phase_8_live_rollout` | `phase_8R/*` |
 | `8.S` (Scheduling) | engineering-complete (PASS 2026-05-05 via `mobile-proof.v2`); Wave B `documented` for 6 adapters; lifecycle promotion via `phase_8_live_rollout` | `phase_8S/*` |
@@ -73,14 +74,25 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 | `8.business-scope-selector` | PLANNED 2026-05-06 — future Doc 1 sprint covering item 5 (mobile business scope selector + accessible-scopes server route). V1.D lane in dispatch plan ships Lane 0 only (server route + local active-scope repo). | `docs/contracts/mobile_core_business_scope_contract.md` |
 | Claude V1 closure dispatch | RUNNING 2026-05-06 — seven file-disjoint lanes (V1.A/B/C/D/E/F/G) closing punchlist items + Doc 1 Lane 0s + cutover preflight harness; V1.C/D wait for Codex's `8.star-target-server-truth.Lane 0` / `Lane 3` to merge. | `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md` |
 | `8.live` (lifecycle rollout) | open — 17 `*.live.sandbox` + 17 `*.live.prod` slices; closes when last vendor reaches `production_credentialed`; `*.live.prod` slices soft-blocked on V1.E `vendor-now-available` email fan-out | `phase_8_live_rollout/phase_8_live_rollout_plan.md` |
+| `9.8` | `.email` accepted (PR #88); inbound-vendor T&Cs in scope; advisor + outbound paused | `phase_9_8/*` |
+
+### Paused
+
+| Phase | Status | Plan |
+| --- | --- | --- |
+| `9.75` | paused (Barrio) | `phase_9_75/*` |
 | `8.5` (Outbound finance) | paused (outward-vendor) | `phase_8_5_external_integrations/*` |
 | `11b`/`.1`/`.2` | paused (AI) | `phase_11b/*` |
 | `12.0`–`12.5` | paused (AI) | `phase_12_workflow_platform/*` |
-| `9.8` | `.email` accepted (PR #88); inbound-vendor T&Cs in scope; advisor + outbound paused | `phase_9_8/*` |
 | `11A.3` + `11A.3.x` | paused (AI) | `phase_11A_operations_console/*` |
 | `11A.11` | paused (AI) | `phase_11A_operations_console/*` |
 | `11W.9` | paused (depends on 8.5) | `phase_11W/*` |
 | `10b` | paused (AI) | n/a |
+
+### Queued
+
+| Phase | Status | Plan |
+| --- | --- | --- |
 | `cutover.0b` | queued — Tier-M perf gate; needs `cutover.1` corpus seed | `phase_production_cutover/*` |
 | `cutover.1` | queued — production corpus load | same plan |
 | `cutover.2`–`5` | queued (post-`0b`) | same plan |
