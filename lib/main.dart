@@ -2,6 +2,7 @@ import 'forge_flow_app.dart';
 import 'forge_flow_bootstrap.dart';
 import 'services/auth/firebase_auth_runtime_bindings.dart';
 import 'services/mobile_push/firebase_mobile_push_runtime.dart';
+import 'services/sync/http_sync_proxy_client.dart';
 
 Future<void> main() async {
   if (const bool.fromEnvironment('FORGE_FLOW_USE_FIREBASE_AUTH')) {
@@ -10,6 +11,13 @@ Future<void> main() async {
     final bindings = await createFirebaseAuthRuntimeBindings(
       proxyBaseUri: proxyBaseUri,
     );
+    final syncProxyClient =
+        proxyBaseUri == null || bindings.idTokenProvider == null
+        ? null
+        : HttpSyncProxyClient(
+            proxyBaseUri: proxyBaseUri,
+            idTokenProvider: bindings.idTokenProvider!,
+          );
     final mobilePushNotifications = createFirebaseMobilePushNotificationService(
       tokenGateway: bindings.mobilePushTokenGateway,
       appVariant: const String.fromEnvironment(
@@ -36,6 +44,7 @@ Future<void> main() async {
       authLoginService: bindings.authLoginService,
       secureSessionStorage: bindings.secureSessionStorage,
       authSessionLedgerWriter: bindings.authSessionLedgerWriter,
+      syncProxyClient: syncProxyClient,
       mobilePushNotifications: mobilePushNotifications,
     );
     return;

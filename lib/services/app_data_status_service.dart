@@ -12,6 +12,7 @@ import 'shift_service.dart';
 class AppDataStatusService {
   AppDataStatusService._();
   static final AppDataStatusService instance = AppDataStatusService._();
+  static const bool _demoMode = bool.fromEnvironment('kDemoMode');
 
   /// Stale threshold: current-state data older than this is considered stale.
   static const staleThresholdHours = 24;
@@ -19,8 +20,8 @@ class AppDataStatusService {
   /// Evaluates the current app data status for the active restaurant.
   /// [now] is injectable for deterministic testing.
   Future<AppDataStatus> evaluate({DateTime? now}) async {
-    final restaurantId =
-        await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
+    final restaurantId = await SqliteRestaurantScopeRepository.instance
+        .getActiveRestaurantId();
     final effectiveNow = now ?? DateTime.now();
 
     // 1. Check latest import run
@@ -36,8 +37,9 @@ class AppDataStatusService {
     }
 
     // 3. Check for any data at all
-    final weeks = await SqliteWeekRecordRepository.instance
-        .getWeekHistory(restaurantId);
+    final weeks = await SqliteWeekRecordRepository.instance.getWeekHistory(
+      restaurantId,
+    );
     final hasHistory = weeks.isNotEmpty;
 
     // 4. Determine current-week presence from open snapshots
@@ -45,8 +47,18 @@ class AppDataStatusService {
     final hasOpenState = openWeekId != null;
 
     // Also check for current-week closed shifts not yet in week_records
-    final hasCurrentWeekShifts =
-        await _hasCurrentWeekShifts(restaurantId, weeks, effectiveNow);
+    final hasCurrentWeekShifts = await _hasCurrentWeekShifts(
+      restaurantId,
+      weeks,
+      effectiveNow,
+    );
+
+    if (_isPendingImport(latestImport?.status) && !hasOpenState) {
+      final timestamp = latestImport!.completedAt ?? latestImport.startedAt;
+      return _isBackfillMode(latestImport.mode)
+          ? AppDataStatus.backfillPending(timestamp: timestamp)
+          : AppDataStatus.firstSyncPending(timestamp: timestamp);
+    }
 
     if (!hasHistory && !hasOpenState && !hasCurrentWeekShifts) {
       return AppDataStatus.noData;
@@ -65,17 +77,23 @@ class AppDataStatusService {
         final latestUpdated = openSnapshots
             .map((s) => DateTime.tryParse(s.updatedAt))
             .whereType<DateTime>()
-            .fold<DateTime?>(
-                null, (a, b) => a == null || b.isAfter(a) ? b : a);
+            .fold<DateTime?>(null, (a, b) => a == null || b.isAfter(a) ? b : a);
 
         if (latestUpdated != null) {
           final age = effectiveNow.difference(latestUpdated);
           if (age.inHours >= staleThresholdHours) {
             return AppDataStatus.stale(
-                timestamp: latestUpdated.toUtc().toIso8601String());
+              timestamp: latestUpdated.toUtc().toIso8601String(),
+            );
           }
         }
       }
+    }
+
+    if (_demoMode && hasOpenState) {
+      return AppDataStatus.demo(
+        timestamp: latestImport?.completedAt ?? latestImport?.startedAt,
+      );
     }
 
     // 7. Current/live state
@@ -88,10 +106,12 @@ class AppDataStatusService {
   /// Checks whether closed shift_records exist for the actual current week
   /// (derived from [effectiveNow]) that are not yet in completed week_records.
   Future<bool> _hasCurrentWeekShifts(
-      String restaurantId, List<dynamic> weekRecords, DateTime effectiveNow) async {
+    String restaurantId,
+    List<dynamic> weekRecords,
+    DateTime effectiveNow,
+  ) async {
     final currentWeekId = _isoWeekId(effectiveNow);
-    final completedWeekIds =
-        weekRecords.map((w) => w.weekId as String).toSet();
+    final completedWeekIds = weekRecords.map((w) => w.weekId as String).toSet();
     if (completedWeekIds.contains(currentWeekId)) return false;
 
     final db = await SqliteDatabase.instance.database;
@@ -116,5 +136,23 @@ class AppDataStatusService {
     }
     final weekNum = (daysSince ~/ 7) + 1;
     return '${date.year}-W${weekNum.toString().padLeft(2, '0')}';
+  }
+
+  static bool _isPendingImport(String? status) {
+    switch (status) {
+      case 'queued':
+      case 'pending':
+      case 'started':
+      case 'running':
+      case 'in_progress':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  static bool _isBackfillMode(String mode) {
+    final normalized = mode.toLowerCase();
+    return normalized.contains('backfill') || normalized.contains('first_sync');
   }
 }

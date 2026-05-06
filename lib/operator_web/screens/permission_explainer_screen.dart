@@ -50,8 +50,7 @@ const List<String> kPermissionExplainerCategories = <String>[
 
 /// Display label for each category prefix. Plain English, matches the
 /// catalog doc category headings.
-const Map<String, String> kPermissionExplainerCategoryLabels =
-    <String, String>{
+const Map<String, String> kPermissionExplainerCategoryLabels = <String, String>{
   'product': 'Product access',
   'forgeflow': 'Forge & Flow',
   'barrio': 'Barrio',
@@ -68,8 +67,7 @@ const Map<String, String> kPermissionExplainerCategoryLabels =
 /// or fixing a description is a separate slice that updates the
 /// migration, catalog doc, `lib/auth/permission_keys.dart`, and this
 /// map together.
-const Map<String, String> kPermissionExplainerDescriptions =
-    <String, String>{
+const Map<String, String> kPermissionExplainerDescriptions = <String, String>{
   // product.* (2)
   'product.forgeflow.access':
       'Access to Forge & Flow surfaces in either product shell.',
@@ -129,9 +127,9 @@ const Map<String, String> kPermissionExplainerDescriptions =
       'Trigger admin-initiated password reset for a user.',
   'admin.users.reset_mfa_factors':
       "Reset a member's MFA factors from the F&F admin support path. "
-          'Required for support-side account recovery when the member has '
-          'lost access to their second factor. Paired with admin_reason on '
-          'every call. MFA required.',
+      'Required for support-side account recovery when the member has '
+      'lost access to their second factor. Paired with admin_reason on '
+      'every call. MFA required.',
   'admin.invites.create': 'Create user invites.',
   'admin.invites.revoke': 'Revoke pending user invites.',
   'admin.roles.view': 'View roles in admin console.',
@@ -150,17 +148,16 @@ const Map<String, String> kPermissionExplainerDescriptions =
       'Edit operator pricing tier (F&F super_admin only). MFA required.',
   'admin.feature_flag.view': 'View feature flags.',
   'admin.feature_flag.toggle': 'Toggle feature flag value.',
-  'admin.status_page.publish':
-      'Publish a status-page incident or recovery.',
+  'admin.status_page.publish': 'Publish a status-page incident or recovery.',
   'admin.debug_console.view': 'View internal debug console.',
   'admin.session.force_logout': 'Force-revoke all sessions for a user.',
   'admin.service_principal.issue_token':
       'Issue short-lived service-principal JWTs for automation identities. MFA required.',
   'admin.audit_privacy.read':
       'Read raw advisor conversation content (encrypted columns) under '
-          'the audit-privacy access path. Every call writes an audit_logs '
-          'provenance row capturing reader, reason, target, and records-read '
-          'count. MFA required.',
+      'the audit-privacy access path. Every call writes an audit_logs '
+      'provenance row capturing reader, reason, target, and records-read '
+      'count. MFA required.',
 
   // team.* (14)
   'team.users.view': "View the operator's user list.",
@@ -177,8 +174,7 @@ const Map<String, String> kPermissionExplainerDescriptions =
   'team.roles.assign': 'Grant role to user within own operator.',
   'team.roles.revoke': 'Revoke role from user within own operator.',
   'team.audit_log.view': 'View audit log scoped to own operator.',
-  'team.audit_log.export':
-      'View and export team audit log entries (CSV).',
+  'team.audit_log.export': 'View and export team audit log entries (CSV).',
   'team.session.force_logout':
       "Force-logout a user's sessions within own operator.",
 
@@ -194,22 +190,19 @@ const Map<String, String> kPermissionExplainerDescriptions =
   // integration.* (9)
   'integration.toast.connect': 'Connect or rotate Toast POS credentials.',
   'integration.toast.view': 'View Toast integration status.',
-  'integration.7shifts.connect':
-      'Connect or rotate 7shifts labor credentials.',
+  'integration.7shifts.connect': 'Connect or rotate 7shifts labor credentials.',
   'integration.7shifts.view': 'View 7shifts integration status.',
   'integration.opentable.connect':
       'Connect or rotate OpenTable reservation credentials.',
   'integration.opentable.view': 'View OpenTable integration status.',
-  'integration.qbo.connect':
-      'Connect or rotate QuickBooks Online credentials.',
+  'integration.qbo.connect': 'Connect or rotate QuickBooks Online credentials.',
   'integration.xero.connect': 'Connect or rotate Xero credentials.',
-  'integration.key_rotate':
-      'Rotate any integration secret. MFA required.',
+  'integration.key_rotate': 'Rotate any integration secret. MFA required.',
 
   // integrations.* (1)
   'integrations.configure':
       'Configure inbound vendor connections (POS / labor / reservation) '
-          'on the per-(operator, location) Vendor Connections admin surface.',
+      'on the per-(operator, location) Vendor Connections admin surface.',
 
   // workflow.* (8)
   'workflow.catalog.view': 'View Phase 12 workflow catalog.',
@@ -327,8 +320,7 @@ class _PermissionCategoryBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label =
-        kPermissionExplainerCategoryLabels[category] ?? category;
+    final label = kPermissionExplainerCategoryLabels[category] ?? category;
     return Container(
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
@@ -428,8 +420,7 @@ class _PermissionRow extends StatelessWidget {
                   key: Key(
                     'operator_web_permission_explainer_desc_$permissionKey',
                   ),
-                  style:
-                      AppTextStyles.body13(color: AppColors.textSecondary),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -465,10 +456,7 @@ class _MfaChip extends StatelessWidget {
           children: <Widget>[
             const Icon(Icons.lock_outline, size: 11, color: AppColors.warning),
             const SizedBox(width: 4),
-            Text(
-              'MFA',
-              style: AppTextStyles.mono8(color: AppColors.warning),
-            ),
+            Text('MFA', style: AppTextStyles.mono8(color: AppColors.warning)),
           ],
         ),
       ),

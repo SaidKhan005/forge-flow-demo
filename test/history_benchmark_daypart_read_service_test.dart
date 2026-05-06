@@ -11,6 +11,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
+import 'package:forge_and_flow/services/closed_timing_label_resolver.dart';
 import 'package:forge_and_flow/services/history_benchmark_daypart_read_service.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -27,22 +28,27 @@ ShiftRecord _shift({
   int bohHours = 29,
   String primaryLever = 'PPA_UP',
   String? businessDate,
-}) =>
-    ShiftRecord(
-      weekId: '2026-W10',
-      dayLabel: dayLabel,
-      daypart: daypart,
-      status: status,
-      covers: covers,
-      forecastCovers: covers,
-      ppa: ppa,
-      cplh: cplh,
-      splh: splh,
-      fohHours: fohHours,
-      bohHours: bohHours,
-      primaryLever: primaryLever,
-      businessDate: businessDate,
-    );
+  String? businessTimingProfileId,
+  String? businessTimingProfileVersionId,
+  String? servicePeriodKey,
+}) => ShiftRecord(
+  weekId: '2026-W10',
+  dayLabel: dayLabel,
+  daypart: daypart,
+  status: status,
+  covers: covers,
+  forecastCovers: covers,
+  ppa: ppa,
+  cplh: cplh,
+  splh: splh,
+  fohHours: fohHours,
+  bohHours: bohHours,
+  primaryLever: primaryLever,
+  businessDate: businessDate,
+  businessTimingProfileId: businessTimingProfileId,
+  businessTimingProfileVersionId: businessTimingProfileVersionId,
+  servicePeriodKey: servicePeriodKey,
+);
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -76,10 +82,18 @@ void main() {
       final shifts = [
         // Sat Dinner: 3 favorable
         _shift(dayLabel: 'Sat', daypart: 'dinner', primaryLever: 'PPA_UP'),
-        _shift(dayLabel: 'Sat', daypart: 'dinner', primaryLever: 'PPA_UP',
-            businessDate: '2026-03-08'),
-        _shift(dayLabel: 'Sat', daypart: 'dinner', primaryLever: 'PPA_UP',
-            businessDate: '2026-03-15'),
+        _shift(
+          dayLabel: 'Sat',
+          daypart: 'dinner',
+          primaryLever: 'PPA_UP',
+          businessDate: '2026-03-08',
+        ),
+        _shift(
+          dayLabel: 'Sat',
+          daypart: 'dinner',
+          primaryLever: 'PPA_UP',
+          businessDate: '2026-03-15',
+        ),
         // Mon Lunch: 1 favorable
         _shift(dayLabel: 'Mon', daypart: 'lunch', primaryLever: 'PPA_UP'),
       ];
@@ -91,8 +105,12 @@ void main() {
       final shifts = [
         // Wed Lunch: 1 favorable, 2 total
         _shift(dayLabel: 'Wed', daypart: 'lunch', primaryLever: 'PPA_UP'),
-        _shift(dayLabel: 'Wed', daypart: 'lunch', primaryLever: 'CPLH_DOWN',
-            businessDate: '2026-03-12'),
+        _shift(
+          dayLabel: 'Wed',
+          daypart: 'lunch',
+          primaryLever: 'CPLH_DOWN',
+          businessDate: '2026-03-12',
+        ),
         // Mon Lunch: 1 favorable, 1 total
         _shift(dayLabel: 'Mon', daypart: 'lunch', primaryLever: 'PPA_UP'),
       ];
@@ -108,8 +126,7 @@ void main() {
       ];
       final r1 = service.build(shifts);
       final r2 = service.build(shifts);
-      expect(r1.map((s) => s.label).toList(),
-          r2.map((s) => s.label).toList());
+      expect(r1.map((s) => s.label).toList(), r2.map((s) => s.label).toList());
     });
 
     test('exact ties fall back to canonical day then daypart order', () {
@@ -149,7 +166,10 @@ void main() {
       final shifts = [
         _shift(primaryLever: 'PPA_UP'), // favorable
         _shift(primaryLever: 'CPLH_DOWN', businessDate: '2026-03-08'), // leak
-        _shift(primaryLever: 'CPLH_UP', businessDate: '2026-03-15'), // favorable
+        _shift(
+          primaryLever: 'CPLH_UP',
+          businessDate: '2026-03-15',
+        ), // favorable
       ];
       final results = service.build(shifts);
       expect(results.length, 1);
@@ -157,16 +177,23 @@ void main() {
       expect(results.first.closedShiftCount, 3);
     });
 
-    test('avgCPLH and avgSPLH are computed from all closed shifts in bucket', () {
-      final shifts = [
-        _shift(cplh: 4.0, splh: 160.0, primaryLever: 'PPA_UP'),
-        _shift(cplh: 5.0, splh: 200.0, primaryLever: 'PPA_UP',
-            businessDate: '2026-03-08'),
-      ];
-      final results = service.build(shifts);
-      expect(results.first.avgCPLH, closeTo(4.5, 0.01));
-      expect(results.first.avgSPLH, closeTo(180.0, 0.01));
-    });
+    test(
+      'avgCPLH and avgSPLH are computed from all closed shifts in bucket',
+      () {
+        final shifts = [
+          _shift(cplh: 4.0, splh: 160.0, primaryLever: 'PPA_UP'),
+          _shift(
+            cplh: 5.0,
+            splh: 200.0,
+            primaryLever: 'PPA_UP',
+            businessDate: '2026-03-08',
+          ),
+        ];
+        final results = service.build(shifts);
+        expect(results.first.avgCPLH, closeTo(4.5, 0.01));
+        expect(results.first.avgSPLH, closeTo(180.0, 0.01));
+      },
+    );
   });
 
   // ── D: Edge cases ──────────────────────────────────────────────────────
@@ -195,8 +222,11 @@ void main() {
     test('mock replay historical closed shifts produce benchmark evidence', () {
       final replay = MockIntegrationReplaySeed.output;
       final results = service.build(replay.historicalClosedShifts);
-      expect(results, isNotEmpty,
-          reason: 'historical shifts should have at least one benchmark bucket');
+      expect(
+        results,
+        isNotEmpty,
+        reason: 'historical shifts should have at least one benchmark bucket',
+      );
       for (final b in results) {
         expect(b.benchmarkCount, greaterThan(0));
         expect(b.closedShiftCount, greaterThanOrEqualTo(b.benchmarkCount));
@@ -225,14 +255,26 @@ void main() {
       final shifts = [
         // Wed Lunch: 2 favorable, 2 total → earlySignal (closedShiftCount < 3)
         _shift(dayLabel: 'Wed', daypart: 'lunch', primaryLever: 'PPA_UP'),
-        _shift(dayLabel: 'Wed', daypart: 'lunch', primaryLever: 'PPA_UP',
-            businessDate: '2026-03-12'),
+        _shift(
+          dayLabel: 'Wed',
+          daypart: 'lunch',
+          primaryLever: 'PPA_UP',
+          businessDate: '2026-03-12',
+        ),
         // Sat Dinner: 1 favorable, 3 total → strong (closedShiftCount >= 3)
         _shift(dayLabel: 'Sat', daypart: 'dinner', primaryLever: 'PPA_UP'),
-        _shift(dayLabel: 'Sat', daypart: 'dinner', primaryLever: 'CPLH_DOWN',
-            businessDate: '2026-03-08'),
-        _shift(dayLabel: 'Sat', daypart: 'dinner', primaryLever: 'CPLH_DOWN',
-            businessDate: '2026-03-15'),
+        _shift(
+          dayLabel: 'Sat',
+          daypart: 'dinner',
+          primaryLever: 'CPLH_DOWN',
+          businessDate: '2026-03-08',
+        ),
+        _shift(
+          dayLabel: 'Sat',
+          daypart: 'dinner',
+          primaryLever: 'CPLH_DOWN',
+          businessDate: '2026-03-15',
+        ),
       ];
       final results = service.build(shifts);
       // Sat Dinner (strong) must appear before Wed Lunch (earlySignal)
@@ -245,25 +287,39 @@ void main() {
       // Create 4 strong buckets — only maxResults (3) should be returned,
       // all strong, none displaced by early signals.
       final shifts = [
-        for (final d in ['Mon', 'Tue', 'Wed', 'Thu'])
-          ...[
-            _shift(dayLabel: d, daypart: 'lunch', primaryLever: 'PPA_UP'),
-            _shift(dayLabel: d, daypart: 'lunch', primaryLever: 'CPLH_DOWN',
-                businessDate: '2026-03-08'),
-            _shift(dayLabel: d, daypart: 'lunch', primaryLever: 'CPLH_UP',
-                businessDate: '2026-03-15'),
-          ],
+        for (final d in ['Mon', 'Tue', 'Wed', 'Thu']) ...[
+          _shift(dayLabel: d, daypart: 'lunch', primaryLever: 'PPA_UP'),
+          _shift(
+            dayLabel: d,
+            daypart: 'lunch',
+            primaryLever: 'CPLH_DOWN',
+            businessDate: '2026-03-08',
+          ),
+          _shift(
+            dayLabel: d,
+            daypart: 'lunch',
+            primaryLever: 'CPLH_UP',
+            businessDate: '2026-03-15',
+          ),
+        ],
         // One early-signal bucket that ranks high by benchmarkCount alone
         _shift(dayLabel: 'Fri', daypart: 'dinner', primaryLever: 'PPA_UP'),
-        _shift(dayLabel: 'Fri', daypart: 'dinner', primaryLever: 'PPA_UP',
-            businessDate: '2026-03-22'),
+        _shift(
+          dayLabel: 'Fri',
+          daypart: 'dinner',
+          primaryLever: 'PPA_UP',
+          businessDate: '2026-03-22',
+        ),
       ];
       final results = service.build(shifts);
       expect(results.length, HistoryBenchmarkDaypartReadService.maxResults);
       // All returned results should be strong (closedShiftCount >= 3).
       for (final b in results) {
-        expect(b.closedShiftCount, greaterThanOrEqualTo(3),
-            reason: '${b.label} should be strong tier');
+        expect(
+          b.closedShiftCount,
+          greaterThanOrEqualTo(3),
+          reason: '${b.label} should be strong tier',
+        );
       }
     });
 
@@ -272,10 +328,18 @@ void main() {
       final shifts = [
         // Mon Lunch: 1 favorable, 3 total → strong
         _shift(dayLabel: 'Mon', daypart: 'lunch', primaryLever: 'PPA_UP'),
-        _shift(dayLabel: 'Mon', daypart: 'lunch', primaryLever: 'CPLH_DOWN',
-            businessDate: '2026-03-08'),
-        _shift(dayLabel: 'Mon', daypart: 'lunch', primaryLever: 'CPLH_DOWN',
-            businessDate: '2026-03-15'),
+        _shift(
+          dayLabel: 'Mon',
+          daypart: 'lunch',
+          primaryLever: 'CPLH_DOWN',
+          businessDate: '2026-03-08',
+        ),
+        _shift(
+          dayLabel: 'Mon',
+          daypart: 'lunch',
+          primaryLever: 'CPLH_DOWN',
+          businessDate: '2026-03-15',
+        ),
         // Wed Dinner: 1 favorable, 1 total → earlySignal
         _shift(dayLabel: 'Wed', daypart: 'dinner', primaryLever: 'PPA_UP'),
       ];
@@ -300,6 +364,45 @@ void main() {
       ];
       final results = service.build(shifts);
       expect(results.length, HistoryBenchmarkDaypartReadService.maxResults);
+    });
+  });
+
+  group('H - closed timing label provenance', () {
+    test('saved timing identity resolves the History label', () {
+      final resolver = ClosedTimingLabelResolver(const [
+        ClosedTimingLabelSnapshot(
+          businessTimingProfileVersionId: 'profile-v1',
+          servicePeriodKey: 'dinner',
+          label: 'Supper',
+        ),
+      ]);
+      final results = service.build([
+        _shift(
+          dayLabel: 'Sat',
+          daypart: 'dinner',
+          businessTimingProfileId: 'profile-v1',
+          businessTimingProfileVersionId: 'profile-v1',
+          servicePeriodKey: 'dinner',
+        ),
+      ], timingLabelResolver: resolver);
+
+      expect(results.single.label, 'Sat Supper');
+    });
+
+    test('legacy rows keep the daypart fallback label', () {
+      final resolver = ClosedTimingLabelResolver(const [
+        ClosedTimingLabelSnapshot(
+          businessTimingProfileVersionId: 'profile-v1',
+          servicePeriodKey: 'lunch',
+          label: 'Brunch',
+        ),
+      ]);
+
+      final results = service.build([
+        _shift(dayLabel: 'Mon', daypart: 'lunch'),
+      ], timingLabelResolver: resolver);
+
+      expect(results.single.label, 'Mon Lunch');
     });
   });
 }

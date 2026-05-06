@@ -11,6 +11,9 @@ class OpenShiftSnapshot {
   final String daypart;
   final String status; // 'open' or 'projected'
   final String businessDate;
+  final String? businessTimingProfileId;
+  final String? businessTimingProfileVersionId;
+  final String? servicePeriodKey;
   final int forecastCovers;
   final int currentCovers;
   final int scheduledFohHours;
@@ -33,6 +36,9 @@ class OpenShiftSnapshot {
     required this.daypart,
     required this.status,
     required this.businessDate,
+    this.businessTimingProfileId,
+    this.businessTimingProfileVersionId,
+    this.servicePeriodKey,
     required this.forecastCovers,
     required this.currentCovers,
     required this.scheduledFohHours,
@@ -50,36 +56,46 @@ class OpenShiftSnapshot {
   });
 
   Map<String, dynamic> toMap() => {
-        'restaurant_id': restaurantId,
-        'week_id': weekId,
-        'day_label': dayLabel,
-        'daypart': daypart,
-        'status': status,
-        'business_date': businessDate,
-        'forecast_covers': forecastCovers,
-        'current_covers': currentCovers,
-        'scheduled_foh_hours': scheduledFohHours,
-        'scheduled_boh_hours': scheduledBohHours,
-        'current_ppa': currentPPA,
-        'current_cplh': currentCPLH,
-        'current_splh': currentSPLH,
-        'blended_wage': blendedWage,
-        'time_label': timeLabel,
-        'service_elapsed_label': serviceElapsedLabel,
-        'source_system': sourceSystem,
-        'source_shift_id': sourceShiftId,
-        'last_event_at': lastEventAt,
-        'updated_at': updatedAt,
-      };
+    'restaurant_id': restaurantId,
+    'week_id': weekId,
+    'day_label': dayLabel,
+    'daypart': daypart,
+    'status': status,
+    'business_date': businessDate,
+    'business_timing_profile_id': businessTimingProfileId,
+    'business_timing_profile_version_id': businessTimingProfileVersionId,
+    'service_period_key': servicePeriodKey,
+    'forecast_covers': forecastCovers,
+    'current_covers': currentCovers,
+    'scheduled_foh_hours': scheduledFohHours,
+    'scheduled_boh_hours': scheduledBohHours,
+    'current_ppa': currentPPA,
+    'current_cplh': currentCPLH,
+    'current_splh': currentSPLH,
+    'blended_wage': blendedWage,
+    'time_label': timeLabel,
+    'service_elapsed_label': serviceElapsedLabel,
+    'source_system': sourceSystem,
+    'source_shift_id': sourceShiftId,
+    'last_event_at': lastEventAt,
+    'updated_at': updatedAt,
+  };
 
   factory OpenShiftSnapshot.fromMap(Map<String, dynamic> m) =>
       OpenShiftSnapshot(
         restaurantId: m['restaurant_id'] as String,
         weekId: m['week_id'] as String,
         dayLabel: m['day_label'] as String,
-        daypart: m['daypart'] as String,
+        daypart:
+            (m['daypart'] ?? m['service_period_key'] ?? 'whole_day') as String,
         status: m['status'] as String,
         businessDate: m['business_date'] as String,
+        businessTimingProfileId: m['business_timing_profile_id'] as String?,
+        businessTimingProfileVersionId:
+            (m['business_timing_profile_version_id'] ??
+                    m['business_timing_profile_id'])
+                as String?,
+        servicePeriodKey: (m['service_period_key'] ?? m['daypart']) as String?,
         forecastCovers: m['forecast_covers'] as int,
         currentCovers: m['current_covers'] as int,
         scheduledFohHours: m['scheduled_foh_hours'] as int,

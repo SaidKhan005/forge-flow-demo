@@ -63,4 +63,14 @@ class SqliteOpenShiftSnapshotRepository
     final dao = await _daoReady;
     return dao.replaceOpenShiftSnapshotsForWeek(restaurantId, weekId, snapshots);
   }
+
+  /// Deletes every mirrored `open_shift_snapshots` row whose
+  /// `restaurant_id` is NOT [keepRestaurantId]. Called by
+  /// `MobileOperationalSyncRuntime` on operator/location change so the
+  /// prior tenant's snapshots cannot leak through DAO reads that don't
+  /// filter by scope.
+  Future<int> wipeForOtherScopes(String keepRestaurantId) async {
+    final dao = await _daoReady;
+    return dao.deleteForOtherRestaurants(keepRestaurantId);
+  }
 }

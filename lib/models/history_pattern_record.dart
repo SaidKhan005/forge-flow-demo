@@ -10,8 +10,9 @@ class HistoryPatternRecord {
   final String weekId;
   final String weekLabel;
   final String dayLabel;
-  final String daypart;   // 'lunch' | 'dinner' | 'late_night'
-  final String leverId;   // matches LeverCardData.id
+  final String daypart; // 'lunch' | 'dinner' | 'late_night'
+  final String? servicePeriodLabel;
+  final String leverId; // matches LeverCardData.id
   final bool isBenchmark; // true = favorable benchmark; false = leak
 
   const HistoryPatternRecord({
@@ -19,16 +20,24 @@ class HistoryPatternRecord {
     required this.weekLabel,
     required this.dayLabel,
     required this.daypart,
+    this.servicePeriodLabel,
     required this.leverId,
     required this.isBenchmark,
   });
 
   String get daypartLabel {
+    if (servicePeriodLabel != null && servicePeriodLabel!.trim().isNotEmpty) {
+      return servicePeriodLabel!;
+    }
     switch (daypart) {
-      case 'lunch':      return 'Lunch';
-      case 'dinner':     return 'Dinner';
-      case 'late_night': return 'Late Night';
-      default:           return daypart;
+      case 'lunch':
+        return 'Lunch';
+      case 'dinner':
+        return 'Dinner';
+      case 'late_night':
+        return 'Late Night';
+      default:
+        return daypart;
     }
   }
 

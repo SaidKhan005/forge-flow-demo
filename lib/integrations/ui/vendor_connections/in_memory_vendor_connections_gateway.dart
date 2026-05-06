@@ -20,7 +20,7 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
 
   final Map<String, VendorConnectionsBundle> _bundles;
 
-  static const List<VendorPickerEntry> _vendorCatalog = <VendorPickerEntry>[
+  static const List<VendorPickerEntry> vendorCatalog = <VendorPickerEntry>[
     VendorPickerEntry(
       vendorId: 'aloha_ncr_voyix',
       displayName: 'Aloha (NCR Voyix)',
@@ -206,7 +206,7 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
   Future<List<VendorPickerEntry>> listAvailableVendors({
     required VendorCategory category,
   }) async {
-    return _vendorCatalog
+    return vendorCatalog
         .where((entry) => entry.category == category)
         .toList(growable: false);
   }
@@ -225,7 +225,7 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       operatorId: operatorId,
       locationId: locationId,
     );
-    final entry = _vendorCatalog.firstWhere((e) => e.vendorId == vendorId);
+    final entry = vendorCatalog.firstWhere((e) => e.vendorId == vendorId);
     final connection = VendorConnectionRow(
       connectionId: 'demo-conn-$vendorId',
       vendorId: vendorId,

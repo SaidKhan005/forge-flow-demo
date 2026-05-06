@@ -144,7 +144,7 @@ class DemoTeamRoleFixture {
 
   /// Frozen catalog keys this fixture role grants with `effect=allow`.
   /// Demo data only - the live catalog ships the authoritative grants
-  /// via the `/v1/admin/auth/roles` projection.
+  /// via the `/v1/auth/team/roles` projection.
   final List<String> permissionKeys;
 }
 

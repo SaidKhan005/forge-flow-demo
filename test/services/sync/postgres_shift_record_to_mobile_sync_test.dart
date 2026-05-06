@@ -420,6 +420,10 @@ void main() {
               weekId: '2026-W18',
               day: 'Mon',
               daypart: 'lunch',
+              businessTimingProfileId: '11111111-1111-1111-1111-111111111111',
+              businessTimingProfileVersionId:
+                  '11111111-1111-1111-1111-111111111111',
+              servicePeriodKey: 'lunch',
             ),
           ],
           nextCursor: 'open-cursor-1',
@@ -481,6 +485,30 @@ void main() {
     expect(snapshots, hasLength(1));
     expect(snapshots.single.daypart, 'lunch');
     expect(snapshots.single.status, 'open');
+    expect(
+      snapshots.single.businessTimingProfileId,
+      '11111111-1111-1111-1111-111111111111',
+    );
+    expect(
+      snapshots.single.businessTimingProfileVersionId,
+      '11111111-1111-1111-1111-111111111111',
+    );
+    expect(snapshots.single.servicePeriodKey, 'lunch');
+
+    final storedOpenRows = await db.query(
+      'open_shift_snapshots',
+      where: 'restaurant_id = ? AND business_date = ?',
+      whereArgs: [rid, '2026-05-04'],
+    );
+    expect(
+      storedOpenRows.single['business_timing_profile_id'],
+      '11111111-1111-1111-1111-111111111111',
+    );
+    expect(
+      storedOpenRows.single['business_timing_profile_version_id'],
+      '11111111-1111-1111-1111-111111111111',
+    );
+    expect(storedOpenRows.single['service_period_key'], 'lunch');
 
     final timingRows = await db.query(
       'restaurant_timing_configs',
@@ -773,6 +801,9 @@ OpenShiftSnapshot _openSnapshot(
   required String weekId,
   required String day,
   required String daypart,
+  String? businessTimingProfileId,
+  String? businessTimingProfileVersionId,
+  String? servicePeriodKey,
 }) {
   return OpenShiftSnapshot(
     restaurantId: restaurantId,
@@ -781,6 +812,9 @@ OpenShiftSnapshot _openSnapshot(
     daypart: daypart,
     status: 'open',
     businessDate: '2026-05-04',
+    businessTimingProfileId: businessTimingProfileId,
+    businessTimingProfileVersionId: businessTimingProfileVersionId,
+    servicePeriodKey: servicePeriodKey,
     forecastCovers: 120,
     currentCovers: 54,
     scheduledFohHours: 12,

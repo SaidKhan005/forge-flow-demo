@@ -35,6 +35,10 @@ class AggregatorProvenanceContext {
     required this.coversProvenance,
     required this.laborDollarsProvenance,
     required this.priorTargetProfileVersionId,
+    this.hasPriorShiftRecord = false,
+    this.priorBusinessTimingProfileId,
+    this.priorBusinessTimingProfileVersionId,
+    this.priorServicePeriodKey,
   });
 
   /// Provenance string for the covers value attached to the emitted
@@ -94,4 +98,17 @@ class AggregatorProvenanceContext {
   /// version under a newer cycle. Vendor corrections never re-grade
   /// closed history.
   final String? priorTargetProfileVersionId;
+
+  /// True when the aggregator found an existing closed row for the
+  /// slot. The writer uses this to distinguish a brand-new row from a
+  /// legacy prior row whose timing provenance columns are null.
+  final bool hasPriorShiftRecord;
+
+  /// Timing provenance already stored on the prior closed row. When
+  /// [hasPriorShiftRecord] is true, the writer reuses these values
+  /// verbatim, including nulls for legacy rows, so replay never
+  /// rewrites closed timing truth.
+  final String? priorBusinessTimingProfileId;
+  final String? priorBusinessTimingProfileVersionId;
+  final String? priorServicePeriodKey;
 }

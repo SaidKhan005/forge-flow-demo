@@ -51,4 +51,16 @@ class RestaurantTimingConfigDao {
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
+
+  /// Deletes every `restaurant_timing_configs` row whose `restaurant_id`
+  /// is NOT [keepRestaurantId]. Returns the number of rows deleted.
+  /// Mirrors the per-tenant residue purge used by the shift_records and
+  /// open_shift_snapshots DAOs.
+  Future<int> deleteForOtherRestaurants(String keepRestaurantId) async {
+    return _db.delete(
+      'restaurant_timing_configs',
+      where: 'restaurant_id != ?',
+      whereArgs: [keepRestaurantId],
+    );
+  }
 }

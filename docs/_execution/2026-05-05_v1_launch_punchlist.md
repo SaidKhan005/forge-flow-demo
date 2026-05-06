@@ -49,15 +49,6 @@ are external; engineering can run in parallel.
       (Intuit sandbox).
       _Effort: 2–3 days. Soft-blocks: `*.live.sandbox` slices._
 
-### Engineering decision (You, single signal)
-
-- [ ] **Unpause `8.spine-bridge-sink-fanout`.** 14 file-disjoint Postgres sink
-      lanes for the remaining Wave B vendors. Without these, "engineering-
-      complete Phase 8" doesn't translate into operator data on launch day.
-      Plan: `docs/phases/phase_8/phase_8_spine_bridge_plan.md`.
-      _Effort: 3–4 days parallel. Blocks: cutover.0b perf gate (which needs
-      real data in production Postgres for the Tier-M load test)._
-
 ### Engineering kickoff (Eng)
 
 - [ ] **Generate prompts + spin up worktrees for `11W.0`, `11W.7`, `11W.8`.**
@@ -170,11 +161,12 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
       (`connector_sync_log`, `inbound_webhook_dead_letter`, `sanity_log`) now
       carry denormalized `business_date DATE` with operator-leading indexes
       and BEFORE-INSERT triggers.
-- [ ] **`8.spine-bridge-sink-fanout` (13 of 14 lanes remain).** Aloha
-      (`.1.AL`) ACCEPT 2026-05-06; remaining: Toast, Clover, Lightspeed LSK,
-      Revel, Square (POS); ADP, Agendrix, Humanity, Push Operations, 7shifts
-      (labor); OpenTable, SevenRooms, Tock (reservation). File-disjoint;
-      parallelizable.
+- [ ] **`8.spine-bridge-sink-fanout` (7 of 14 lanes remain).** Aloha
+      (`.1.AL`), Tock (`.TC`), Humanity (`.HM`), Square (`.SQ`), Toast
+      (`.TS`), Push Operations (`.PU`), Agendrix (`.AG`) all ACCEPT 2026-05-06.
+      Remaining: Clover, Lightspeed LSK, Revel, Oracle Simphony (POS); ADP,
+      7shifts `/reports/hours_and_wages` upgrade (labor); OpenTable,
+      SevenRooms (reservation). File-disjoint; parallelizable.
 - [ ] **`8.spine-bridge-live` — live Shift snapshots.** Foundation
       (`9e6fca84` schema + UI shell + contract amendments) ACCEPT 2026-05-06;
       `OpenShiftSnapshotProjector` itself queued. Builds
@@ -203,12 +195,13 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
 - [ ] **18 of 29 Postgres repositories without dedicated tests** (per
       `docs/POST_HARDENING_FOLLOWUPS.md` P2). Chip away during routine
       slices.
-- [ ] **Delete 4 confirmed unused public classes** (P3 in
-      POST_HARDENING_FOLLOWUPS):
-      - `AuditLogExportResult` in `lib/services/admin/audit_log_csv_export.dart`
-      - `MfaOverrideChange` in `lib/services/admin/mfa_policy_editor_controller.dart`
-      - `MatrixCellChange` in `lib/services/admin/role_permission_matrix_controller.dart`
-      - `CorpusCloudLoadResult` in `lib/services/advisor_corpus_admin_service.dart`
+- [x] **4 "unused public classes" — verified-keep, not dead** (Wave B4,
+      2026-05-06; see updated P3 in `docs/POST_HARDENING_FOLLOWUPS.md`).
+      Each class is the return type of a unit-tested sibling method
+      (`AuditLogCsvExport.export`, `MfaPolicyEditorState.diff`,
+      `RolePermissionMatrixController.diff`,
+      `AdvisorCorpusAdminService.attemptCloudLoad`); deleting any in
+      isolation would break test compilation.
 - [ ] **Large UI screens (>2000 LOC) — extract components** when next
       touched: `team_settings_section.dart` (2810), `corpus_admin_screen.dart`
       (2427), `observability_admin_screen.dart` (2353),
