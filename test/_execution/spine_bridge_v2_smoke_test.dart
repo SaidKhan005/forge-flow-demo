@@ -1347,6 +1347,12 @@ class _SmokeSyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
   }) async => _pollingTierAssignment;
+
+  @override
+  Future<FirstBackfillStatusSnapshot?> fetchFirstBackfillStatus({
+    required String operatorId,
+    required String locationId,
+  }) async => null;
 }
 
 class _BusListener {

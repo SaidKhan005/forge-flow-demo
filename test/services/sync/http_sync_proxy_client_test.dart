@@ -115,6 +115,22 @@ void main() {
                 'effective_at': '2026-05-06T12:00:00Z',
               },
             },
+          '/base/v1/operators/op/locations/loc/first_backfill_status' =>
+            <String, Object?>{
+              'first_backfill_status': <String, Object?>{
+                'job_id': 'job-1',
+                'operator_id': 'op',
+                'location_id': 'loc',
+                'connection_id': 'conn-1',
+                'vendor_id': 'toast',
+                'category': 'pos',
+                'status': 'running',
+                'window_start': '2026-03-07T00:00:00Z',
+                'window_end': '2026-05-06T00:00:00Z',
+                'created_at': '2026-05-06T12:00:00Z',
+                'updated_at': '2026-05-06T12:05:00Z',
+              },
+            },
           _ => <String, Object?>{},
         };
         return http.Response(jsonEncode(body), 200);
@@ -144,6 +160,10 @@ void main() {
       operatorId: 'op',
       locationId: 'loc',
     );
+    final backfill = await client.fetchFirstBackfillStatus(
+      operatorId: 'op',
+      locationId: 'loc',
+    );
 
     expect(open.snapshots.single.daypart, 'lunch');
     expect(open.snapshots.single.businessTimingProfileId, 'profile-1');
@@ -159,7 +179,10 @@ void main() {
     expect(accuracy.coversManualEntries['2026-05-05']!['dinner'], 120);
     expect(tier!.tierKey, 'premium');
     expect(tier.pollingCadencePerVendorSeconds['toast'], 300);
-    expect(requests, hasLength(5));
+    expect(backfill!.status, 'running');
+    expect(backfill.vendorId, 'toast');
+    expect(backfill.isRunning, isTrue);
+    expect(requests, hasLength(6));
 
     // BUG 3 (MEDIUM): non-root proxyBaseUri prefix MUST be preserved.
     // The previous implementation called `proxyBaseUri.resolve` against
@@ -174,6 +197,52 @@ void main() {
       );
     }
   });
+
+  test('missing first backfill status payload remains compatible', () async {
+    final client = HttpSyncProxyClient(
+      proxyBaseUri: Uri.parse('https://proxy.example'),
+      idTokenProvider: () async => 'token-1',
+      httpClient: http_testing.MockClient((request) async {
+        expect(
+          request.url.path,
+          '/v1/operators/op/locations/loc/first_backfill_status',
+        );
+        return http.Response(jsonEncode(<String, Object?>{}), 200);
+      }),
+    );
+
+    final status = await client.fetchFirstBackfillStatus(
+      operatorId: 'op',
+      locationId: 'loc',
+    );
+
+    expect(status, isNull);
+  });
+
+  test(
+    'legacy proxy without first backfill status route returns null',
+    () async {
+      final client = HttpSyncProxyClient(
+        proxyBaseUri: Uri.parse('https://proxy.example'),
+        idTokenProvider: () async => 'token-1',
+        httpClient: http_testing.MockClient((_) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'error': 'mobile_sync_route_not_found',
+            }),
+            404,
+          );
+        }),
+      );
+
+      final status = await client.fetchFirstBackfillStatus(
+        operatorId: 'op',
+        locationId: 'loc',
+      );
+
+      expect(status, isNull);
+    },
+  );
 
   test(
     'legacy open snapshot row without timing provenance still parses',

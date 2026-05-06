@@ -147,6 +147,51 @@ class ForgeFlowPollingTierAssignmentSnapshot {
   final DateTime effectiveAt;
 }
 
+/// Latest server-side first-connection backfill job status for this
+/// operator/location.
+///
+/// Mobile treats this as status metadata only. It persists the row into
+/// the existing `import_runs` cache so app readiness can explain setup
+/// state without adding a new mobile table or speaking directly to
+/// Postgres/vendors.
+class FirstBackfillStatusSnapshot {
+  const FirstBackfillStatusSnapshot({
+    required this.jobId,
+    required this.operatorId,
+    required this.locationId,
+    required this.status,
+    required this.startedAt,
+    required this.updatedAt,
+    this.connectionId,
+    this.vendorId,
+    this.category,
+    this.windowStart,
+    this.windowEnd,
+    this.completedAt,
+    this.lastError,
+  });
+
+  final String jobId;
+  final String operatorId;
+  final String locationId;
+  final String status;
+  final DateTime startedAt;
+  final DateTime updatedAt;
+  final String? connectionId;
+  final String? vendorId;
+  final String? category;
+  final DateTime? windowStart;
+  final DateTime? windowEnd;
+  final DateTime? completedAt;
+  final String? lastError;
+
+  bool get isPending =>
+      status == 'queued' || status == 'pending' || status == 'started';
+  bool get isRunning => status == 'running' || status == 'in_progress';
+  bool get isFailed => status == 'failed';
+  bool get isSucceeded => status == 'succeeded' || status == 'completed';
+}
+
 /// Vendor-agnostic mobile sync surface.
 ///
 /// The production implementation talks to the proxy
@@ -218,6 +263,14 @@ abstract class SyncProxyClient {
   /// chrome on the web console).
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
   fetchForgeFlowPollingTierAssignment({
+    required String operatorId,
+    required String locationId,
+  });
+
+  /// Pull the latest first-connection backfill status, or null when
+  /// the proxy/server has no status row yet. Legacy/no-status proxy
+  /// deployments must remain compatible with the mobile runtime.
+  Future<FirstBackfillStatusSnapshot?> fetchFirstBackfillStatus({
     required String operatorId,
     required String locationId,
   });

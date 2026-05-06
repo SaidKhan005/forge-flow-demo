@@ -6145,6 +6145,12 @@ abstract class MobileOperationalSyncProxyGateway {
     required String operatorId,
     required String locationId,
   });
+
+  Future<Map<String, Object?>> fetchFirstBackfillStatus({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  });
 }
 
 class MobileOperationalSyncProxyGatewayException implements Exception {
@@ -13307,6 +13313,11 @@ Future<void> _routeMobileOperationalSync({
         operatorId: target.operatorId,
         locationId: target.locationId,
       ),
+      'first_backfill_status' => await gateway.fetchFirstBackfillStatus(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+      ),
       _ => throw const MobileOperationalSyncProxyGatewayException(
         statusCode: 404,
         code: 'mobile_sync_route_not_found',
@@ -13372,6 +13383,7 @@ _MobileOperationalPath? _mobileOperationalPath(String path) {
     case 'demo_mode_states':
     case 'data_accuracy_settings':
     case 'polling_tier_assignment':
+    case 'first_backfill_status':
       return _MobileOperationalPath(
         operatorId: Uri.decodeComponent(parts[0]),
         locationId: Uri.decodeComponent(parts[2]),

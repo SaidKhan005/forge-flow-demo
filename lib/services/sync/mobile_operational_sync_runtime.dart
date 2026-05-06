@@ -26,8 +26,7 @@ typedef MobileSyncFactory =
 /// Defaults to wiping shift_records / open_shift_snapshots /
 /// restaurant_timing_configs across the three SQLite repos the runtime
 /// pulls into; tests can substitute a stub. See BUG 1 (HIGH).
-typedef CrossTenantWipe =
-    Future<void> Function(String keepRestaurantId);
+typedef CrossTenantWipe = Future<void> Function(String keepRestaurantId);
 
 class MobileOperationalSyncRunner {
   MobileOperationalSyncRunner({
@@ -336,19 +335,19 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
       return live == null || live.userId != initialUserId;
     });
     unawaited(
-      runner.syncSession(session, reason: reason).catchError((
-        Object error,
-        StackTrace stack,
-      ) {
-        debugPrint('Mobile operational sync failed ($reason): $error');
-        debugPrintStack(stackTrace: stack);
-        return null;
-      }).whenComplete(() {
-        if (_activeSweepUserId == initialUserId) {
-          _activeSweepUserId = null;
-          runner.setAbortProbe(null);
-        }
-      }),
+      runner
+          .syncSession(session, reason: reason)
+          .catchError((Object error, StackTrace stack) {
+            debugPrint('Mobile operational sync failed ($reason): $error');
+            debugPrintStack(stackTrace: stack);
+            return null;
+          })
+          .whenComplete(() {
+            if (_activeSweepUserId == initialUserId) {
+              _activeSweepUserId = null;
+              runner.setAbortProbe(null);
+            }
+          }),
     );
   }
 
@@ -360,6 +359,8 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
         topic.contains('demo_mode') ||
         topic.contains('data_accuracy') ||
         topic.contains('polling_tier') ||
+        topic.contains('backfill') ||
+        topic.contains('connector_backfill_job') ||
         topic.contains('business_timing') ||
         topic.contains('timing')) {
       return true;
@@ -370,6 +371,7 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
         table == 'demo_mode_state' ||
         table == 'data_accuracy_settings' ||
         table == 'forge_flow_polling_tier_assignment' ||
+        table == 'connector_backfill_jobs' ||
         table == 'business_timing_profiles' ||
         table == 'business_timing_service_periods' ||
         table == 'restaurant_timing_configs';

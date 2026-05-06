@@ -30,10 +30,16 @@ class AppDataStatusService {
 
     // 2. Check for failed import
     if (latestImport != null && latestImport.status == 'failed') {
-      return AppDataStatus.failedImport(
-        errorSummary: latestImport.errorSummary,
-        timestamp: latestImport.completedAt ?? latestImport.startedAt,
-      );
+      final timestamp = latestImport.completedAt ?? latestImport.startedAt;
+      return _isBackfillMode(latestImport.mode)
+          ? AppDataStatus.backfillFailed(
+              errorSummary: latestImport.errorSummary,
+              timestamp: timestamp,
+            )
+          : AppDataStatus.failedImport(
+              errorSummary: latestImport.errorSummary,
+              timestamp: timestamp,
+            );
     }
 
     // 3. Check for any data at all

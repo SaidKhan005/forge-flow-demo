@@ -39,6 +39,9 @@
 // writers. The hardening doctrine is enforced by the per-file source
 // grep in `test/services/sync/postgres_shift_record_to_mobile_sync_test.dart`.
 
+import 'dart:convert';
+
+import '../../domain/models/import_run.dart';
 import '../../domain/models/sync_watermark.dart';
 import '../../domain/repositories/open_shift_snapshot_repository.dart';
 import '../../domain/repositories/restaurant_timing_config_repository.dart';
@@ -63,6 +66,7 @@ class SyncResult {
     required this.demoModeStates,
     required this.dataAccuracySettings,
     required this.pollingTierAssignment,
+    required this.firstBackfillStatus,
   });
 
   /// Total `ShiftRecord` rows persisted via
@@ -109,6 +113,10 @@ class SyncResult {
   /// `forge_flow_polling_tier_assignment` row, or null when not
   /// provisioned.
   final ForgeFlowPollingTierAssignmentSnapshot? pollingTierAssignment;
+
+  /// Latest first-connection backfill status pulled from the proxy, or
+  /// null when no status row/endpoint is available yet.
+  final FirstBackfillStatusSnapshot? firstBackfillStatus;
 }
 
 /// Pulls aggregated `ShiftRecord` rows from server-side Postgres into
@@ -151,6 +159,7 @@ class PostgresShiftRecordToMobileSync {
   List<DemoModeRecord> _latestDemoModeStates = const <DemoModeRecord>[];
   DataAccuracySettingsSnapshot? _latestDataAccuracySettings;
   ForgeFlowPollingTierAssignmentSnapshot? _latestPollingTierAssignment;
+  FirstBackfillStatusSnapshot? _latestFirstBackfillStatus;
 
   /// Most-recent `demo_mode_state` rows pulled from the server.
   /// Refreshed on every successful sweep; empty before the first sweep.
@@ -166,6 +175,11 @@ class PostgresShiftRecordToMobileSync {
   /// null when not provisioned.
   ForgeFlowPollingTierAssignmentSnapshot? get latestPollingTierAssignment =>
       _latestPollingTierAssignment;
+
+  /// Most-recent first-connection backfill status, or null before the
+  /// proxy exposes one.
+  FirstBackfillStatusSnapshot? get latestFirstBackfillStatus =>
+      _latestFirstBackfillStatus;
 
   String _watermarkSourceType(String operatorId, String locationId) =>
       '$_sourceTypePrefix:$operatorId:$locationId';
@@ -254,6 +268,7 @@ class PostgresShiftRecordToMobileSync {
         ),
         dataAccuracySettings: _latestDataAccuracySettings,
         pollingTierAssignment: _latestPollingTierAssignment,
+        firstBackfillStatus: _latestFirstBackfillStatus,
       );
     }
     final initialCursor = await _readCursor(
@@ -369,6 +384,7 @@ class PostgresShiftRecordToMobileSync {
         ),
         dataAccuracySettings: _latestDataAccuracySettings,
         pollingTierAssignment: _latestPollingTierAssignment,
+        firstBackfillStatus: _latestFirstBackfillStatus,
       );
     }
 
@@ -386,6 +402,18 @@ class PostgresShiftRecordToMobileSync {
           operatorId: operatorId,
           locationId: locationId,
         );
+    _latestFirstBackfillStatus = await client.fetchFirstBackfillStatus(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+    final backfillStatus = _latestFirstBackfillStatus;
+    if (backfillStatus != null) {
+      await _persistFirstBackfillStatus(
+        restaurantId: restaurantId,
+        status: backfillStatus,
+      );
+      invalidationBus.notifyImportCompletionPersisted();
+    }
 
     return SyncResult(
       recordsWritten: recordsWritten,
@@ -398,6 +426,57 @@ class PostgresShiftRecordToMobileSync {
       demoModeStates: List<DemoModeRecord>.unmodifiable(_latestDemoModeStates),
       dataAccuracySettings: _latestDataAccuracySettings,
       pollingTierAssignment: _latestPollingTierAssignment,
+      firstBackfillStatus: _latestFirstBackfillStatus,
     );
+  }
+
+  Future<void> _persistFirstBackfillStatus({
+    required String restaurantId,
+    required FirstBackfillStatusSnapshot status,
+  }) async {
+    await watermarkDao.createOrReplaceImportRun(
+      ImportRun(
+        importRunId: 'first_backfill:${status.jobId}',
+        restaurantId: restaurantId,
+        mode: 'first_backfill',
+        startedAt: status.startedAt.toUtc().toIso8601String(),
+        completedAt: status.isPending || status.isRunning
+            ? null
+            : (status.completedAt ?? status.updatedAt)
+                  .toUtc()
+                  .toIso8601String(),
+        status: _importRunStatus(status.status),
+        cursorJson: jsonEncode(<String, Object?>{
+          'operator_id': status.operatorId,
+          'location_id': status.locationId,
+          'connection_id': status.connectionId,
+          'vendor_id': status.vendorId,
+          'category': status.category,
+          'window_start': status.windowStart?.toUtc().toIso8601String(),
+          'window_end': status.windowEnd?.toUtc().toIso8601String(),
+          'updated_at': status.updatedAt.toUtc().toIso8601String(),
+        }),
+        errorSummary: status.isFailed ? status.lastError : null,
+      ),
+    );
+  }
+
+  static String _importRunStatus(String status) {
+    switch (status) {
+      case 'queued':
+      case 'pending':
+      case 'started':
+        return 'pending';
+      case 'running':
+      case 'in_progress':
+        return 'running';
+      case 'succeeded':
+      case 'completed':
+        return 'completed';
+      case 'failed':
+        return 'failed';
+      default:
+        return status;
+    }
   }
 }

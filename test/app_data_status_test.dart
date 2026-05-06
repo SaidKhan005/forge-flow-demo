@@ -192,6 +192,31 @@ void main() {
       expect(status.label, 'IMPORT FAILED');
       expect(status.description, contains('Connection timeout'));
     });
+
+    test(
+      'status resolves to backfillFailed for failed first backfill',
+      () async {
+        final db = await SqliteDatabase.instance.database;
+        await db.delete('import_runs');
+
+        await SqliteImportTrackingRepository.instance.createOrReplaceImportRun(
+          const ImportRun(
+            importRunId: 'first_backfill_failed_001',
+            restaurantId: 'demo_restaurant_001',
+            mode: 'first_backfill',
+            startedAt: '2026-05-06T12:00:00.000Z',
+            completedAt: '2026-05-06T12:05:00.000Z',
+            status: 'failed',
+            errorSummary: 'Vendor rate limit',
+          ),
+        );
+
+        final status = await AppDataStatusService.instance.evaluate();
+        expect(status.type, AppDataStatusType.backfillFailed);
+        expect(status.label, 'BACKFILL FAILED');
+        expect(status.description, contains('Vendor rate limit'));
+      },
+    );
   });
 
   // â”€â”€ D: stale â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

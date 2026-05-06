@@ -129,6 +129,16 @@ void main() {
           expect(tier.statusCode, 200);
           expect(tier.body, contains('polling_cadence_per_vendor_seconds'));
 
+          final backfill = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/first_backfill_status',
+            ),
+          );
+          expect(backfill.statusCode, 200);
+          expect(backfill.body, contains('first_backfill_status'));
+          expect(backfill.body, contains('running'));
+
           expect(ctx.gateway.calls, <String>[
             'shift_records:op-1:loc-1:2026-05-06T12:00:00Z:2',
             'open_shift_snapshots:op-1:loc-1:null:200',
@@ -136,6 +146,7 @@ void main() {
             'demo_mode_states:op-1:loc-1',
             'data_accuracy_settings:op-1:loc-1',
             'polling_tier_assignment:op-1:loc-1',
+            'first_backfill_status:op-1:loc-1',
           ]);
         } finally {
           ctx.client.close(force: true);
@@ -407,6 +418,30 @@ class _FakeMobileOperationalSyncGateway
         'polling_cadence_per_vendor_seconds': <String, Object?>{'toast': 300},
         'monthly_price_cents': 9900,
         'effective_at': '2026-05-06T12:00:00Z',
+      },
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>> fetchFirstBackfillStatus({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  }) async {
+    calls.add('first_backfill_status:$operatorId:$locationId');
+    return const <String, Object?>{
+      'first_backfill_status': <String, Object?>{
+        'job_id': 'job-1',
+        'operator_id': 'op-1',
+        'location_id': 'loc-1',
+        'connection_id': 'conn-1',
+        'vendor_id': 'toast',
+        'category': 'pos',
+        'status': 'running',
+        'window_start': '2026-03-07T00:00:00Z',
+        'window_end': '2026-05-06T00:00:00Z',
+        'created_at': '2026-05-06T12:00:00Z',
+        'updated_at': '2026-05-06T12:01:00Z',
       },
     };
   }

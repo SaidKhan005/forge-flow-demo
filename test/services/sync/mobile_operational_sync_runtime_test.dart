@@ -106,8 +106,11 @@ void main() {
         );
         await tester.pump();
 
-        expect(runner.installedAbortProbe, isNotNull,
-            reason: 'BUG 2: host must install an abort probe per sweep');
+        expect(
+          runner.installedAbortProbe,
+          isNotNull,
+          reason: 'BUG 2: host must install an abort probe per sweep',
+        );
 
         // Before sign-out the probe says "do not abort".
         expect(runner.installedAbortProbe!(), isFalse);
@@ -126,27 +129,23 @@ void main() {
       },
     );
 
-    test(
-      'BUG 5: residual singleton override is cleared by '
-      '`MobileOperationalSyncHost.initState`',
-      () {
-        // The fix lives in `initState`, which calls
-        // `clearRuntimeRestaurantOverride()`. We verify the underlying
-        // hook is reachable + idempotent without spinning up a full
-        // widget tree (the SQLite singleton + `pumpWidget` interaction
-        // is flaky inside the FakeAsync test zone).
-        SqliteRestaurantScopeRepository.instance
-            .clearRuntimeRestaurantOverride();
-        // Calling it twice must NOT throw — initState may run on the
-        // first frame after a hot-restart even when the override was
-        // already null.
-        expect(
-          () => SqliteRestaurantScopeRepository.instance
-              .clearRuntimeRestaurantOverride(),
-          returnsNormally,
-        );
-      },
-    );
+    test('BUG 5: residual singleton override is cleared by '
+        '`MobileOperationalSyncHost.initState`', () {
+      // The fix lives in `initState`, which calls
+      // `clearRuntimeRestaurantOverride()`. We verify the underlying
+      // hook is reachable + idempotent without spinning up a full
+      // widget tree (the SQLite singleton + `pumpWidget` interaction
+      // is flaky inside the FakeAsync test zone).
+      SqliteRestaurantScopeRepository.instance.clearRuntimeRestaurantOverride();
+      // Calling it twice must NOT throw — initState may run on the
+      // first frame after a hot-restart even when the override was
+      // already null.
+      expect(
+        () => SqliteRestaurantScopeRepository.instance
+            .clearRuntimeRestaurantOverride(),
+        returnsNormally,
+      );
+    });
   });
 
   group('PostgresShiftRecordToMobileSync abort cooperation', () {
@@ -182,9 +181,7 @@ void main() {
       'BUG 2: abort flips during shift-record loop -> aux pulls skipped',
       () async {
         var aborted = false;
-        final client = _CountingProxyClient(
-          onShiftFetch: () => aborted = true,
-        );
+        final client = _CountingProxyClient(onShiftFetch: () => aborted = true);
         final repo = _NoopShiftRepository();
         final wm = _InMemoryWatermarkDao();
         final sync = PostgresShiftRecordToMobileSync(
@@ -200,12 +197,19 @@ void main() {
           restaurantId: 'rest_abort_mid',
           isAborted: () => aborted,
         );
-        expect(client.shiftCallCount, 1,
-            reason: 'first shift fetch happens; subsequent loops abort');
-        expect(client.demoCallCount, 0,
-            reason: 'BUG 2: aux pulls (demo/accuracy/tier) skipped on abort');
+        expect(
+          client.shiftCallCount,
+          1,
+          reason: 'first shift fetch happens; subsequent loops abort',
+        );
+        expect(
+          client.demoCallCount,
+          0,
+          reason: 'BUG 2: aux pulls (demo/accuracy/tier) skipped on abort',
+        );
         expect(client.accuracyCallCount, 0);
         expect(client.tierCallCount, 0);
+        expect(client.backfillStatusCallCount, 0);
       },
     );
   });
@@ -298,6 +302,12 @@ class _StubSyncProxyClient implements SyncProxyClient {
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
   fetchForgeFlowPollingTierAssignment({
+    required String operatorId,
+    required String locationId,
+  }) async => null;
+
+  @override
+  Future<FirstBackfillStatusSnapshot?> fetchFirstBackfillStatus({
     required String operatorId,
     required String locationId,
   }) async => null;
@@ -407,6 +417,7 @@ class _CountingProxyClient implements SyncProxyClient {
   int accuracyCallCount = 0;
   int tierCallCount = 0;
   int timingCallCount = 0;
+  int backfillStatusCallCount = 0;
 
   @override
   Future<ShiftRecordPage> fetchShiftRecords({
@@ -469,6 +480,15 @@ class _CountingProxyClient implements SyncProxyClient {
     required String locationId,
   }) async {
     tierCallCount++;
+    return null;
+  }
+
+  @override
+  Future<FirstBackfillStatusSnapshot?> fetchFirstBackfillStatus({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    backfillStatusCallCount++;
     return null;
   }
 }
