@@ -78,6 +78,12 @@ The Business Timing Live slice adds
 and live `open_shift_snapshots`. That schema must be applied and verified in
 staging/review before console timing surfaces can be called live-schema-ready,
 then carried into the next Production1 apply before production claims.
+Phase 11A.14 adds
+`202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql`, an additive
+permission-key seed for the new `admin.users.reset_mfa_factors` key plus
+default grants for `super_admin`/`ff_support`; apply on staging before
+exercising the Reset-MFA admin path live, then carry into the next
+Production1 apply.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin

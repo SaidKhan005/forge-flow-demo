@@ -77,7 +77,11 @@ Do not re-open stale findings unless the repo regresses:
   staging apply, connected-device proof, and later Production1 approval. The Business Timing Live slice adds
   `202605060000_phase_business_timing_live_schema.sql`; apply and verify it on
   staging/review before claiming live business timing schema parity, then carry
-  it into the next Production1 batch.
+  it into the next Production1 batch. Phase 11A.14 adds
+  `202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql` (additive
+  permission-key catalog row + default grants for `super_admin`/`ff_support`);
+  apply on staging before exercising the Reset-MFA admin path live, then carry
+  into the next Production1 batch.
 
 ## Remaining Live-Closeout Gates
 

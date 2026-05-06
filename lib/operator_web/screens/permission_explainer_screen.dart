@@ -114,7 +114,7 @@ const Map<String, String> kPermissionExplainerDescriptions =
       'Mark a learning unit complete for the current user.',
   'barrio.streak.view': 'View own streak / leaderboard standing.',
 
-  // admin.* (27)
+  // admin.* (28)
   'admin.users.view': 'View users in admin console.',
   'admin.users.create': 'Create users programmatically (rare path).',
   'admin.users.deactivate': 'Suspend a user account.',
@@ -125,6 +125,11 @@ const Map<String, String> kPermissionExplainerDescriptions =
       'GDPR right-to-erasure: redact PII for a user. Paired-approval + MFA required.',
   'admin.users.reset_password':
       'Trigger admin-initiated password reset for a user.',
+  'admin.users.reset_mfa_factors':
+      "Reset a member's MFA factors from the F&F admin support path. "
+          'Required for support-side account recovery when the member has '
+          'lost access to their second factor. Paired with admin_reason on '
+          'every call. MFA required.',
   'admin.invites.create': 'Create user invites.',
   'admin.invites.revoke': 'Revoke pending user invites.',
   'admin.roles.view': 'View roles in admin console.',

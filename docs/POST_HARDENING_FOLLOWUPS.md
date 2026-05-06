@@ -13,11 +13,12 @@ Open items below are the current remainder.
 
 ## P0 - Production1 Migration Apply Gap
 
-**4 migrations pending Production1/staging apply**:
+**5 migrations pending Production1/staging apply**:
 `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`,
 `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`,
-`202605060000_mobile_push_notifications.sql`, and
-`202605060000_phase_business_timing_live_schema.sql`.
+`202605060000_mobile_push_notifications.sql`,
+`202605060000_phase_business_timing_live_schema.sql`, and
+`202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql`.
 It restores read-only Debug Console request-log inspection by granting
 `forge_admin` explicit `SELECT` on `public.proxy_requests`. The migration
 was applied to staging and Browser Use verified on 2026-05-03; it was not
@@ -32,6 +33,10 @@ apply, connected-device proof, and explicit Production1 approval before it is
 described as production-ready. The business timing migration adds canonical
 scoped timing profile tables and server-side `open_shift_snapshots`; it requires
 staging/review apply before timing runtime surfaces can claim live schema parity.
+The 11A.14 reset-MFA permission key migration is additive (single seed row +
+default grants for `super_admin` and `ff_support`); apply it on staging before
+the Audited support actions admin Reset-MFA path is exercised live, then carry
+into the next Production1 batch.
 
 **Action:** include these files in the next Production1 apply event under
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until that apply
