@@ -1006,15 +1006,25 @@ void main() {
       closedAt: '2026-03-29',
     );
 
-    testWidgets('history screen wires frozen impact rows and close footer',
+    testWidgets('history screen wires frozen impact rows and depth triplet',
         (tester) async {
       await _pumpWeekDetail(tester, frozen);
-      await _scrollWeekDetailToText(tester, 'As of close, Mar 29');
+      await _scrollWeekDetailToText(tester, 'this week');
       expect(find.text('this week'), findsOneWidget);
       expect(find.text('this month'), findsOneWidget);
       expect(find.text('last 60 days'), findsOneWidget);
       expect(find.text('annualized'), findsOneWidget);
-      expect(find.text('As of close, Mar 29'), findsOneWidget);
+      // 7.58.UX.6.followup: footer is the Best Possible / Actual / Closable
+      // Gap triplet whenever theoreticalLaborPct is non-null. Frozen fixture
+      // carries theo=20.48 and actual=21.45, gap=+0.97 pts.
+      expect(
+        find.text(
+          'Best Possible: 20.5%  ·  Actual: 21.4%'
+          '  ·  Closable Gap: +1.0 pts',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('As of close, Mar 29'), findsNothing);
     });
 
     if (_includePrunedLabelGroups())
@@ -1029,12 +1039,22 @@ void main() {
     });
 
     if (_includePrunedLabelGroups())
-    testWidgets('footer shows "As of close, Mar 29" when closedAt is present',
+    testWidgets('footer renders depth triplet when theoreticalLaborPct is set',
         (tester) async {
+      // 7.58.UX.6.followup: pre-relabel test asserted the close-stamp footer
+      // ("As of close, Mar 29"). Post-7.58.UX.6 the footer is the Best
+      // Possible / Actual / Closable Gap triplet whenever theoreticalLaborPct
+      // is non-null, regardless of closedAt.
       await _pumpWeekDetail(tester, frozen);
-      await _scrollWeekDetailToText(tester, 'As of close, Mar 29');
-      expect(find.text('As of close, Mar 29'), findsOneWidget);
-      // The legacy boilerplate footer must NOT render alongside.
+      await _scrollWeekDetailToText(tester, 'this week');
+      expect(
+        find.text(
+          'Best Possible: 20.5%  ·  Actual: 21.4%'
+          '  ·  Closable Gap: +1.0 pts',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('As of close, Mar 29'), findsNothing);
       expect(find.text('At \$3M annual sales. One location.'), findsNothing);
     });
 
@@ -1046,7 +1066,7 @@ void main() {
     });
 
     testWidgets(
-        'legacy row (no frozen fields) still renders 2 rows + boilerplate footer',
+        'legacy row (no frozen fields) still renders 2 rows + depth triplet',
         (tester) async {
       const legacy = WeekRecord(
         weekId: 'legacy-impact', weekLabel: 'Legacy',
@@ -1067,7 +1087,17 @@ void main() {
       expect(find.text('this month'), findsNothing);
       expect(find.text('last 60 days'), findsNothing);
       expect(find.text('annualized'), findsOneWidget);
-      expect(find.text('At \$3M annual sales. One location.'), findsOneWidget);
+      // 7.58.UX.6.followup: theoreticalLaborPct is non-null on this legacy
+      // fixture, so the footer renders the depth triplet (theo=20.48,
+      // actual=20.95, gap=+0.47 pts), not the static $3M boilerplate.
+      expect(
+        find.text(
+          'Best Possible: 20.5%  ·  Actual: 20.9%'
+          '  ·  Closable Gap: +0.5 pts',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('At \$3M annual sales. One location.'), findsNothing);
     });
   });
 }
