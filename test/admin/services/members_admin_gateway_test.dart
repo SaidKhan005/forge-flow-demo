@@ -44,10 +44,7 @@ void main() {
       );
       expect(diner.length, equals(4));
       expect(sunset.length, equals(2));
-      expect(
-        diner.every((m) => m.email.endsWith('@demo-diner.test')),
-        isTrue,
-      );
+      expect(diner.every((m) => m.email.endsWith('@demo-diner.test')), isTrue);
     });
 
     test('listMembers filters by status', () async {
@@ -263,45 +260,45 @@ void main() {
         );
         for (final call in <Future<void> Function()>[
           () => gateway.suspendMember(
-                operatorId: kDemoDinerOperatorId,
-                userId: 'demo-user-diner-owner',
-                idempotencyKey: 's',
-                actorUserId: 'demo-super-admin',
-                actorIsForgeAdmin: true,
-                adminReason: '   ',
-              ),
+            operatorId: kDemoDinerOperatorId,
+            userId: 'demo-user-diner-owner',
+            idempotencyKey: 's',
+            actorUserId: 'demo-super-admin',
+            actorIsForgeAdmin: true,
+            adminReason: '   ',
+          ),
           () => gateway.reactivateMember(
-                operatorId: kDemoDinerOperatorId,
-                userId: 'demo-user-diner-supervisor',
-                idempotencyKey: 'r',
-                actorUserId: 'demo-super-admin',
-                actorIsForgeAdmin: true,
-                adminReason: '',
-              ),
+            operatorId: kDemoDinerOperatorId,
+            userId: 'demo-user-diner-supervisor',
+            idempotencyKey: 'r',
+            actorUserId: 'demo-super-admin',
+            actorIsForgeAdmin: true,
+            adminReason: '',
+          ),
           () => gateway.resetPassword(
-                operatorId: kDemoDinerOperatorId,
-                userId: 'demo-user-diner-owner',
-                idempotencyKey: 'p',
-                actorUserId: 'demo-super-admin',
-                actorIsForgeAdmin: true,
-                adminReason: '',
-              ),
+            operatorId: kDemoDinerOperatorId,
+            userId: 'demo-user-diner-owner',
+            idempotencyKey: 'p',
+            actorUserId: 'demo-super-admin',
+            actorIsForgeAdmin: true,
+            adminReason: '',
+          ),
           () => gateway.resetMfa(
-                operatorId: kDemoDinerOperatorId,
-                userId: 'demo-user-diner-owner',
-                idempotencyKey: 'm',
-                actorUserId: 'demo-super-admin',
-                actorIsForgeAdmin: true,
-                adminReason: '',
-              ),
+            operatorId: kDemoDinerOperatorId,
+            userId: 'demo-user-diner-owner',
+            idempotencyKey: 'm',
+            actorUserId: 'demo-super-admin',
+            actorIsForgeAdmin: true,
+            adminReason: '',
+          ),
           () => gateway.forceLogout(
-                operatorId: kDemoDinerOperatorId,
-                userId: 'demo-user-diner-owner',
-                idempotencyKey: 'f',
-                actorUserId: 'demo-super-admin',
-                actorIsForgeAdmin: true,
-                adminReason: '',
-              ),
+            operatorId: kDemoDinerOperatorId,
+            userId: 'demo-user-diner-owner',
+            idempotencyKey: 'f',
+            actorUserId: 'demo-super-admin',
+            actorIsForgeAdmin: true,
+            adminReason: '',
+          ),
         ]) {
           await expectLater(
             call(),
@@ -362,8 +359,9 @@ void main() {
           adminReason: 'incident-response',
         );
 
-        final actions =
-            gateway.capturedAuditEvents.map((e) => e.action).toList();
+        final actions = gateway.capturedAuditEvents
+            .map((e) => e.action)
+            .toList();
         expect(
           actions,
           equals(<String>[
@@ -424,30 +422,33 @@ void main() {
       },
     );
 
-    test('idempotent retry collapses to a single audit row (suspend)', () async {
-      final gateway = InMemoryMembersAdminGateway(
-        membersByOperator: kDemoMembersByOperator(),
-      );
-      const key = 'idem-shared-key';
-      final first = await gateway.suspendMember(
-        operatorId: kDemoDinerOperatorId,
-        userId: 'demo-user-diner-manager',
-        idempotencyKey: key,
-        actorUserId: 'demo-super-admin',
-        actorIsForgeAdmin: true,
-        adminReason: 'first-call',
-      );
-      final second = await gateway.suspendMember(
-        operatorId: kDemoDinerOperatorId,
-        userId: 'demo-user-diner-manager',
-        idempotencyKey: key,
-        actorUserId: 'demo-super-admin',
-        actorIsForgeAdmin: true,
-        adminReason: 'this-reason-is-ignored-on-retry',
-      );
-      expect(identical(first, second), isTrue);
-      expect(gateway.capturedAuditEvents, hasLength(1));
-    });
+    test(
+      'idempotent retry collapses to a single audit row (suspend)',
+      () async {
+        final gateway = InMemoryMembersAdminGateway(
+          membersByOperator: kDemoMembersByOperator(),
+        );
+        const key = 'idem-shared-key';
+        final first = await gateway.suspendMember(
+          operatorId: kDemoDinerOperatorId,
+          userId: 'demo-user-diner-manager',
+          idempotencyKey: key,
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'first-call',
+        );
+        final second = await gateway.suspendMember(
+          operatorId: kDemoDinerOperatorId,
+          userId: 'demo-user-diner-manager',
+          idempotencyKey: key,
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'this-reason-is-ignored-on-retry',
+        );
+        expect(identical(first, second), isTrue);
+        expect(gateway.capturedAuditEvents, hasLength(1));
+      },
+    );
 
     test(
       'idempotent retry on createInvite returns the same row + does not double-audit',
@@ -516,32 +517,29 @@ void main() {
       },
     );
 
-    test(
-      'idempotent retry on resetPassword does not double-audit',
-      () async {
-        final gateway = InMemoryMembersAdminGateway(
-          membersByOperator: kDemoMembersByOperator(),
-        );
-        const key = 'idem-pwd';
-        await gateway.resetPassword(
-          operatorId: kDemoDinerOperatorId,
-          userId: 'demo-user-diner-owner',
-          idempotencyKey: key,
-          actorUserId: 'demo-super-admin',
-          actorIsForgeAdmin: true,
-          adminReason: 'r',
-        );
-        await gateway.resetPassword(
-          operatorId: kDemoDinerOperatorId,
-          userId: 'demo-user-diner-owner',
-          idempotencyKey: key,
-          actorUserId: 'demo-super-admin',
-          actorIsForgeAdmin: true,
-          adminReason: 'r',
-        );
-        expect(gateway.capturedAuditEvents, hasLength(1));
-      },
-    );
+    test('idempotent retry on resetPassword does not double-audit', () async {
+      final gateway = InMemoryMembersAdminGateway(
+        membersByOperator: kDemoMembersByOperator(),
+      );
+      const key = 'idem-pwd';
+      await gateway.resetPassword(
+        operatorId: kDemoDinerOperatorId,
+        userId: 'demo-user-diner-owner',
+        idempotencyKey: key,
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'r',
+      );
+      await gateway.resetPassword(
+        operatorId: kDemoDinerOperatorId,
+        userId: 'demo-user-diner-owner',
+        idempotencyKey: key,
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'r',
+      );
+      expect(gateway.capturedAuditEvents, hasLength(1));
+    });
 
     test('createInvite rejects an email already on the team', () async {
       final gateway = InMemoryMembersAdminGateway(
@@ -723,10 +721,7 @@ void main() {
         expect(captured.method, equals('POST'));
         // Path matches the locked `admin.users.deactivate` permission
         // key from § "Permission gate cheat sheet" line 203.
-        expect(
-          captured.url.path,
-          equals('/v1/admin/auth/users/u1/deactivate'),
-        );
+        expect(captured.url.path, equals('/v1/admin/auth/users/u1/deactivate'));
         expect(captured.headers['Idempotency-Key'], equals('idem-suspend-1'));
         expect(captured.headers['authorization'], equals('Bearer tok'));
         final body = jsonDecode(captured.body) as Map<String, Object?>;
@@ -765,7 +760,7 @@ void main() {
     });
 
     test(
-      'createInvite pins email + display_name + role_key + primary_location + admin_reason',
+      'createInvite pins routed role/scope fields plus readable admin payload',
       () async {
         late http.Request captured;
         final mock = http_testing.MockClient((http.Request request) async {
@@ -807,11 +802,52 @@ void main() {
         final body = jsonDecode(captured.body) as Map<String, Object?>;
         expect(body['operator_id'], equals('op-1'));
         expect(body['email'], equals('new@op.test'));
+        expect(body['role_id'], equals('operator_staff'));
         expect(body['role_key'], equals('operator_staff'));
+        expect(body['scope_type'], equals('location'));
+        expect(body['location_id'], equals('loc-1'));
         expect(body['primary_location_id'], equals('loc-1'));
         expect(body['admin_reason'], equals('support-onboarding'));
       },
     );
+
+    test('createInvite accepts the proxy auth create response shape', () async {
+      final mock = http_testing.MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'invite_id': 'inv-proxy-1',
+            'expires_at': '2026-05-13T12:00:00Z',
+            'created_at': '2026-05-06T12:00:00Z',
+          }),
+          201,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpMembersAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      final invite = await gateway.createInvite(
+        operatorId: 'op-1',
+        email: 'new@op.test',
+        displayName: 'New User',
+        roleKey: 'operator_staff',
+        primaryLocationId: 'loc-1',
+        idempotencyKey: 'idem-invite-proxy-1',
+        actorUserId: 'admin-1',
+        actorIsForgeAdmin: true,
+        adminReason: 'support-onboarding',
+      );
+
+      expect(invite.inviteId, equals('inv-proxy-1'));
+      expect(invite.email, equals('new@op.test'));
+      expect(invite.displayName, equals('New User'));
+      expect(invite.roleKey, equals('operator_staff'));
+      expect(invite.primaryLocationId, equals('loc-1'));
+      expect(invite.invitedAt, equals(DateTime.utc(2026, 5, 6, 12)));
+    });
 
     test('listMembers GET sends Authorization header + operator_id', () async {
       late http.Request captured;
@@ -844,7 +880,7 @@ void main() {
                 'user_id': 'u1',
                 'email': 'member@op.test',
                 'display_name': 'Member One',
-                'role_id': 'operator_staff',
+                'role_id': 'role-seed-staff-uuid',
                 'role_label': 'Operator staff',
                 'status': 'active',
                 'location_id': 'loc-1',
@@ -866,7 +902,7 @@ void main() {
       final rows = await gateway.listMembers(operatorId: 'op-1');
 
       expect(rows, hasLength(1));
-      expect(rows.single.roleKey, equals('operator_staff'));
+      expect(rows.single.roleKey, equals('Operator staff'));
       expect(rows.single.primaryLocationId, equals('loc-1'));
       expect(rows.single.primaryLocationName, equals('95 Water Street'));
       expect(rows.single.createdAt.isUtc, isTrue);
@@ -944,7 +980,7 @@ void main() {
               <String, Object?>{
                 'invite_id': 'inv-1',
                 'email': 'invitee@op.test',
-                'role_id': 'operator_manager',
+                'role_id': 'role-seed-manager-uuid',
                 'role_label': 'Operator manager',
                 'location_id': 'loc-1',
                 'location_label': '95 Water Street',
@@ -966,7 +1002,7 @@ void main() {
 
       expect(rows, hasLength(1));
       expect(rows.single.displayName, equals('invitee@op.test'));
-      expect(rows.single.roleKey, equals('operator_manager'));
+      expect(rows.single.roleKey, equals('Operator manager'));
       expect(rows.single.primaryLocationName, equals('95 Water Street'));
       expect(rows.single.invitedAt, equals(DateTime.utc(2026, 5, 6, 14, 40)));
     });
@@ -1121,8 +1157,11 @@ void main() {
           throwsA(
             isA<MembersAdminGatewayError>()
                 .having((e) => e.statusCode, 'statusCode', equals(409))
-                .having((e) => e.errorCode, 'errorCode',
-                    equals('email_in_operator')),
+                .having(
+                  (e) => e.errorCode,
+                  'errorCode',
+                  equals('email_in_operator'),
+                ),
           ),
         );
       },
@@ -1218,8 +1257,7 @@ void main() {
           'dormant_30',
           'soft_deleted',
         };
-        final actual =
-            MemberStatus.values.map((s) => s.wire).toSet();
+        final actual = MemberStatus.values.map((s) => s.wire).toSet();
         expect(actual, equals(expectedWires));
       },
     );

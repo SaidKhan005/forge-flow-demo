@@ -107,10 +107,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
     return _invites.putIfAbsent(operatorId, () => <MemberInviteRow>[]);
   }
 
-  int _indexOfMember({
-    required String operatorId,
-    required String userId,
-  }) {
+  int _indexOfMember({required String operatorId, required String userId}) {
     final members = _membersFor(operatorId);
     final index = members.indexWhere((m) => m.userId == userId);
     if (index < 0) {
@@ -162,36 +159,47 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
     MemberStatus? status,
     String? roleKey,
     String? locationId,
+    String? contextLocationId,
     bool? mfaEnrolled,
     String? search,
   }) async {
     final source = _membersFor(operatorId);
     final query = (search ?? '').trim().toLowerCase();
-    return source.where((m) {
-      if (status != null && m.status != status) return false;
-      if (roleKey != null && roleKey.isNotEmpty && m.roleKey != roleKey) {
-        return false;
-      }
-      if (locationId != null &&
-          locationId.isNotEmpty &&
-          m.primaryLocationId != locationId) {
-        return false;
-      }
-      if (mfaEnrolled != null && m.mfaEnrolled != mfaEnrolled) return false;
-      if (query.isNotEmpty) {
-        final haystack =
-            '${m.email.toLowerCase()} ${m.displayName.toLowerCase()}';
-        if (!haystack.contains(query)) return false;
-      }
-      return true;
-    }).toList(growable: false);
+    return source
+        .where((m) {
+          if (status != null && m.status != status) return false;
+          if (roleKey != null && roleKey.isNotEmpty && m.roleKey != roleKey) {
+            return false;
+          }
+          if (locationId != null &&
+              locationId.isNotEmpty &&
+              m.primaryLocationId != locationId) {
+            return false;
+          }
+          if (mfaEnrolled != null && m.mfaEnrolled != mfaEnrolled) return false;
+          if (query.isNotEmpty) {
+            final haystack =
+                '${m.email.toLowerCase()} ${m.displayName.toLowerCase()}';
+            if (!haystack.contains(query)) return false;
+          }
+          return true;
+        })
+        .toList(growable: false);
   }
 
   @override
   Future<List<MemberInviteRow>> listInvites({
     required String operatorId,
+    String? contextLocationId,
+    String? locationId,
   }) async {
-    return List<MemberInviteRow>.unmodifiable(_invitesFor(operatorId));
+    final invites = _invitesFor(operatorId);
+    if (locationId == null || locationId.isEmpty) {
+      return List<MemberInviteRow>.unmodifiable(invites);
+    }
+    return invites
+        .where((invite) => invite.primaryLocationId == locationId)
+        .toList(growable: false);
   }
 
   @override
@@ -225,10 +233,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
       targetKind: 'team_user',
       targetId: userId,
       payload: <String, Object?>{
-        'status': <String, String>{
-          'from': 'active',
-          'to': 'suspended',
-        },
+        'status': <String, String>{'from': 'active', 'to': 'suspended'},
       },
       adminReason: adminReason,
     );
@@ -262,10 +267,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
       targetKind: 'team_user',
       targetId: userId,
       payload: <String, Object?>{
-        'status': <String, String>{
-          'from': 'suspended',
-          'to': 'active',
-        },
+        'status': <String, String>{'from': 'suspended', 'to': 'active'},
       },
       adminReason: adminReason,
     );
@@ -347,10 +349,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
       targetKind: 'team_user',
       targetId: userId,
       payload: <String, Object?>{
-        'status': <String, String>{
-          'from': 'soft_deleted',
-          'to': 'active',
-        },
+        'status': <String, String>{'from': 'soft_deleted', 'to': 'active'},
       },
       adminReason: adminReason,
     );
@@ -482,10 +481,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
       targetKind: 'team_user',
       targetId: userId,
       payload: <String, Object?>{
-        'role_key': <String, String>{
-          'from': prev.roleKey,
-          'to': roleKey,
-        },
+        'role_key': <String, String>{'from': prev.roleKey, 'to': roleKey},
         'override': true,
       },
       adminReason: adminReason,
@@ -531,7 +527,8 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
       locationId: primaryLocationId,
     );
     final invite = MemberInviteRow(
-      inviteId: 'invite-${invites.length + 1}-${_clock().microsecondsSinceEpoch}',
+      inviteId:
+          'invite-${invites.length + 1}-${_clock().microsecondsSinceEpoch}',
       email: email.trim(),
       displayName: displayName.trim(),
       roleKey: roleKey,

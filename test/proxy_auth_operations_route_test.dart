@@ -122,16 +122,13 @@ void main() {
             adminPermissionGuard: guard,
           );
           try {
-            final response = await harness.postJson(
-              adminAuthInvitesPath,
-              <String, Object?>{
-                'email': 'new.user@example.test',
-                'role_id': 'operator_staff',
-                'scope_type': 'location',
-                'location_id': _locationId,
-              },
-              idempotencyKey: 'idem-invite-create-1',
-            );
+            final response = await harness
+                .postJson(adminAuthInvitesPath, <String, Object?>{
+                  'email': 'new.user@example.test',
+                  'role_id': 'operator_staff',
+                  'scope_type': 'location',
+                  'location_id': _locationId,
+                }, idempotencyKey: 'idem-invite-create-1');
 
             expect(response.statusCode, equals(201));
             expect(response.json['invite_id'], equals('invite-1'));
@@ -148,6 +145,85 @@ void main() {
       },
     );
 
+    test(
+      'POST invite create accepts admin console role_key and primary_location_id',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
+          );
+          try {
+            final response = await harness.postJson(
+              adminAuthInvitesPath,
+              <String, Object?>{
+                'email': 'manager@example.test',
+                'display_name': 'Manager User',
+                'role_key': 'operator_manager',
+                'primary_location_id': _locationId,
+              },
+              idempotencyKey: 'idem-invite-create-admin-console',
+            );
+
+            expect(response.statusCode, equals(201));
+            final command = gateway.inviteCreates.single;
+            expect(command.roleId, equals('operator_manager'));
+            expect(command.scopeType, equals('location'));
+            expect(command.targetLocationId, equals(_locationId));
+            expect(response.json['invite'], isA<Map<String, Object?>>());
+            final invite = response.json['invite'] as Map<String, Object?>;
+            expect(invite['email'], equals('manager@example.test'));
+            expect(invite['role_key'], equals('operator_manager'));
+            expect(invite['primary_location_id'], equals(_locationId));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'POST invite create honors explicit admin target operator/location',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+            verifier: _StaticVerifier(
+              roles: const <String>['super_admin', 'roles_version:7'],
+            ),
+          );
+          try {
+            const targetOperatorId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+            const targetLocationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+            final response = await harness.postJson(
+              adminAuthInvitesPath,
+              <String, Object?>{
+                'operator_id': targetOperatorId,
+                'email': 'manager@example.test',
+                'display_name': 'Manager User',
+                'role_key': 'operator_manager',
+                'primary_location_id': targetLocationId,
+              },
+              idempotencyKey: 'idem-invite-create-admin-target',
+            );
+
+            expect(response.statusCode, equals(201));
+            expect(guard.permissionKeys, isEmpty);
+            final command = gateway.inviteCreates.single;
+            expect(command.operatorId, equals(targetOperatorId));
+            expect(command.locationId, equals(targetLocationId));
+            expect(command.targetLocationId, equals(targetLocationId));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
     test('POST invite create forwards org-unit scope payload', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingAuthOperationsGateway();
@@ -156,16 +232,13 @@ void main() {
           adminPermissionGuard: _RecordingAdminGuard(),
         );
         try {
-          final response = await harness.postJson(
-            adminAuthInvitesPath,
-            <String, Object?>{
-              'email': 'regional.user@example.test',
-              'role_id': _roleId,
-              'scope_type': 'org_unit',
-              'org_unit_id': '55555555-5555-4555-8555-555555555555',
-            },
-            idempotencyKey: 'idem-invite-create-2',
-          );
+          final response = await harness
+              .postJson(adminAuthInvitesPath, <String, Object?>{
+                'email': 'regional.user@example.test',
+                'role_id': _roleId,
+                'scope_type': 'org_unit',
+                'org_unit_id': '55555555-5555-4555-8555-555555555555',
+              }, idempotencyKey: 'idem-invite-create-2');
 
           expect(response.statusCode, equals(201));
           final command = gateway.inviteCreates.single;
@@ -222,16 +295,13 @@ void main() {
             adminPermissionGuard: guard,
           );
           try {
-            final response = await harness.postJson(
-              adminAuthOrgUnitsPath,
-              const <String, Object?>{
-                'parent_org_unit_id': '66666666-6666-4666-8666-666666666666',
-                'unit_type': 'region',
-                'label': 'east',
-                'name': 'East Region',
-              },
-              idempotencyKey: 'idem-org-unit-create-1',
-            );
+            final response = await harness
+                .postJson(adminAuthOrgUnitsPath, const <String, Object?>{
+                  'parent_org_unit_id': '66666666-6666-4666-8666-666666666666',
+                  'unit_type': 'region',
+                  'label': 'east',
+                  'name': 'East Region',
+                }, idempotencyKey: 'idem-org-unit-create-1');
 
             expect(response.statusCode, equals(201));
             expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
@@ -366,6 +436,36 @@ void main() {
             Map<String, Object?>.from(inviteBody.single as Map)['invite_id'],
             equals('invite-1'),
           );
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('GET users honors explicit admin target operator/location', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+          verifier: _StaticVerifier(
+            roles: const <String>['super_admin', 'roles_version:7'],
+          ),
+        );
+        try {
+          const targetOperatorId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+          const targetLocationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+          final users = await harness.get(
+            '$adminAuthUsersPath?operator_id=$targetOperatorId'
+            '&location_id=$targetLocationId',
+          );
+
+          expect(users.statusCode, equals(200));
+          expect(guard.permissionKeys, isEmpty);
+          final command = gateway.userLists.single;
+          expect(command.operatorId, equals(targetOperatorId));
+          expect(command.locationId, equals(targetLocationId));
         } finally {
           await harness.close();
         }
@@ -1432,10 +1532,13 @@ class _HttpJsonResponse {
 }
 
 class _StaticVerifier implements ProxyJwtVerifier {
-  _StaticVerifier({DateTime? lastFreshAuthAt})
-    : lastFreshAuthAt = lastFreshAuthAt ?? DateTime.utc(2026, 4, 28, 11, 59);
+  _StaticVerifier({
+    DateTime? lastFreshAuthAt,
+    this.roles = const <String>['roles_version:7'],
+  }) : lastFreshAuthAt = lastFreshAuthAt ?? DateTime.utc(2026, 4, 28, 11, 59);
 
   final DateTime lastFreshAuthAt;
+  final List<String> roles;
 
   @override
   Future<ProxyJwtClaims> verify(String bearerToken) async {
@@ -1444,7 +1547,7 @@ class _StaticVerifier implements ProxyJwtVerifier {
       firebaseUid: _firebaseUid,
       operatorId: _operatorId,
       locationId: _locationId,
-      roles: const <String>['roles_version:7'],
+      roles: roles,
       rolesVersion: 7,
       lastFreshAuthAt: lastFreshAuthAt,
     );

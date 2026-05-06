@@ -247,6 +247,12 @@ void main() {
         isNot(contains(r'$adminUrl?cache_bust=preview-$safeName-')),
       );
     });
+
+    test('runtime checks include admin-auth CORS preflight', () {
+      expect(script, contains(r'$ProxyUrl/v1/admin/auth/users'));
+      expect(script, contains('admin-auth CORS preflight'));
+      expect(script, contains('AdminAuthCorsPreflightStatusCode'));
+    });
   });
 
   group('use_forge_flow_secrets.ps1', () {
