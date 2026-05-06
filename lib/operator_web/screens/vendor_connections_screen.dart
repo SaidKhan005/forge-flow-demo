@@ -113,6 +113,11 @@ class VendorConnectionsScreen extends StatelessWidget {
         key: const Key('operator_web_vendor_connections_forbidden'),
       );
     }
+    if (locationId.trim().isEmpty) {
+      return _NoLocationSurface(
+        key: const Key('operator_web_vendor_connections_no_location'),
+      );
+    }
     final locationLabel = locationId == session.primaryLocationId
         ? '${session.primaryLocationName} (primary location)'
         : 'location $locationId';
@@ -235,12 +240,69 @@ class _ForbiddenSurface extends StatelessWidget {
                       'business. Only operator admins and owners '
                       'can do that. Location managers can keep '
                       'reading dashboards and shift views in the '
-                      'mobile app — most day-to-day actions live '
+                      'mobile app; most day-to-day actions live '
                       'there.',
                       style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),
                   ],
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Honest "no location selected" surface shown when the route reaches
+/// the screen without a location id (the operator-web shell normally
+/// seeds it from `session.primaryLocationId`, but the route can
+/// surface here with an empty scope before the location resolves or
+/// when a deep link omits the location segment). Reads as training:
+/// explains what the screen does and how to land on a real location.
+class _NoLocationSurface extends StatelessWidget {
+  const _NoLocationSurface({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.place_outlined,
+                    size: 20,
+                    color: AppColors.sunsetDark,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'No location selected',
+                      style: AppTextStyles.display20(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Vendor connections are configured per location, so '
+                'this screen needs to know which location you are '
+                'setting up. Pick a location from the side nav, then '
+                'open Vendor connections again.',
+                key: const Key(
+                  'operator_web_vendor_connections_no_location_body',
+                ),
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
               ),
             ],
           ),

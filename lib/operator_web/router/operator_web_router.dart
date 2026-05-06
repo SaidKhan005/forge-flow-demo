@@ -36,7 +36,6 @@ import '../services/demo_team_roles_gateway.dart';
 import '../services/demo_team_sessions_gateway.dart';
 import '../services/demo_team_users_gateway.dart';
 import '../services/operator_web_team_gateway_providers.dart';
-import '../services/operator_web_vendor_connections_gateway.dart';
 import '../services/web_security_gateway.dart';
 import '../services/web_team_audit_log_gateway.dart';
 import '../services/web_team_hierarchy_gateway.dart';
@@ -507,11 +506,15 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       ? widget.source as OperatorWebAccountActions
       : null;
 
+  /// Resolver for the Vendor connections screen gateway. Lifts
+  /// gateway resolution off the router so the screen mount stays
+  /// thin and the wiring is testable in isolation. See
+  /// `services/operator_web_vendor_connections_resolver.dart`.
+  static const OperatorWebVendorConnectionsResolver
+  _vendorConnectionsResolver = OperatorWebVendorConnectionsResolver();
+
   VendorConnectionsGateway? get _vendorConnectionsGateway =>
-      widget.source is OperatorWebVendorConnectionsGatewayProvider
-      ? (widget.source as OperatorWebVendorConnectionsGatewayProvider)
-            .vendorConnectionsGateway
-      : null;
+      _vendorConnectionsResolver.resolve(widget.source);
 
   WebTeamUsersGateway get _teamUsersGateway {
     final source = widget.source;
