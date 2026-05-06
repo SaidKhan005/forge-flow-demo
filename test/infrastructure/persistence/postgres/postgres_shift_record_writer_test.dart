@@ -32,6 +32,8 @@ const String _opA = '11111111-1111-4111-8111-111111111111';
 const String _opB = '22222222-2222-4222-8222-222222222222';
 const String _locA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const String _locB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const String _timingProfileA = '33333333-3333-4333-8333-333333333333';
+const String _timingProfileB = '44444444-4444-4444-8444-444444444444';
 
 final DateTime _businessDate = DateTime.utc(2026, 5, 4);
 const String _businessDateIso = '2026-05-04';
@@ -70,20 +72,27 @@ const TargetSnapshot _targetSnapshotV2 = TargetSnapshot(
   theoreticalLaborPct: 24.0,
 );
 
-ClosedShiftInput _trioInput() => ClosedShiftInput(
-      businessDate: _businessDate,
-      weekId: '2026-W18',
-      dayLabel: 'Mon',
-      daypart: 'dinner',
-      covers: 5,
-      forecastCovers: 10,
-      actualSales: 124.85,
-      actualFohHours: 5,
-      actualBohHours: 6,
-      actualFohLaborDollars: 5 * 18.0,
-      actualBohLaborDollars: 6 * 20.0,
-      sourceSystem: 'oracle_micros_simphony',
-    );
+ClosedShiftInput _trioInput({
+  String? businessTimingProfileId,
+  String? businessTimingProfileVersionId,
+  String? servicePeriodKey,
+}) => ClosedShiftInput(
+  businessDate: _businessDate,
+  weekId: '2026-W18',
+  dayLabel: 'Mon',
+  daypart: 'dinner',
+  businessTimingProfileId: businessTimingProfileId,
+  businessTimingProfileVersionId: businessTimingProfileVersionId,
+  servicePeriodKey: servicePeriodKey,
+  covers: 5,
+  forecastCovers: 10,
+  actualSales: 124.85,
+  actualFohHours: 5,
+  actualBohHours: 6,
+  actualFohLaborDollars: 5 * 18.0,
+  actualBohLaborDollars: 6 * 20.0,
+  sourceSystem: 'oracle_micros_simphony',
+);
 
 void main() {
   // ─────────────────── A — write trio result ──────────────────────────────
@@ -117,17 +126,23 @@ void main() {
       expect(row['business_date'], _businessDateIso);
       expect(row['daypart'], 'dinner');
       expect(row['covers'], 5);
-      expect((row['actual_sales'] as num).toDouble(),
-          closeTo(124.85, 0.001));
+      expect((row['actual_sales'] as num).toDouble(), closeTo(124.85, 0.001));
       expect(row['foh_hours'], 5);
       expect(row['boh_hours'], 6);
-      expect((row['foh_labor_dollar'] as num).toDouble(),
-          closeTo(5 * 18.0, 0.001));
-      expect((row['boh_labor_dollar'] as num).toDouble(),
-          closeTo(6 * 20.0, 0.001));
+      expect(
+        (row['foh_labor_dollar'] as num).toDouble(),
+        closeTo(5 * 18.0, 0.001),
+      );
+      expect(
+        (row['boh_labor_dollar'] as num).toDouble(),
+        closeTo(6 * 20.0, 0.001),
+      );
       expect(row['source_system'], 'oracle_micros_simphony');
-      expect(row['target_profile_version_id'], 'tpv_X',
-          reason: 'first-time aggregation adopts the current ActiveTargetProfile');
+      expect(
+        row['target_profile_version_id'],
+        'tpv_X',
+        reason: 'first-time aggregation adopts the current ActiveTargetProfile',
+      );
       expect(row['covers_provenance'], 'vendor_oracle_micros_simphony');
       expect(
         row['labor_dollars_provenance'],
@@ -137,6 +152,149 @@ void main() {
   });
 
   // ─────────────────── J — re-aggregation idempotency ─────────────────────
+  group('PostgresShiftRecordWriter - timing provenance', () {
+    test('inserts timing triplet from ShiftFact on first write', () async {
+      final pool = _FakePool();
+      final writer = PostgresShiftRecordWriter(TenantTransactionWrapper(pool));
+
+      final fact = ShiftFactBuilder.fromClosedShiftInput(
+        _trioInput(
+          businessTimingProfileId: _timingProfileA,
+          businessTimingProfileVersionId: _timingProfileA,
+          servicePeriodKey: 'dinner',
+        ),
+        _targetSnapshotV1,
+      );
+
+      await writer.writeShiftRecord(
+        operatorId: _opA,
+        locationId: _locA,
+        shiftFact: fact,
+        provenance: const AggregatorProvenanceContext(
+          coversProvenance: 'vendor_oracle_micros_simphony',
+          laborDollarsProvenance:
+              'vendor_quickbooks_time_per_employee_actual_dollars_per_employee_rates',
+          priorTargetProfileVersionId: null,
+        ),
+      );
+
+      final row = pool.shiftRecords.values.single;
+      expect(pool.lastShiftRecordSql, contains('business_timing_profile_id'));
+      expect(
+        pool.lastShiftRecordSql,
+        contains('business_timing_profile_version_id'),
+      );
+      expect(pool.lastShiftRecordSql, contains('service_period_key'));
+      expect(row['business_timing_profile_id'], _timingProfileA);
+      expect(row['business_timing_profile_version_id'], _timingProfileA);
+      expect(row['service_period_key'], 'dinner');
+    });
+
+    test('preserves prior timing triplet on replay even when current '
+        'bucketing has changed', () async {
+      final pool = _FakePool();
+      final writer = PostgresShiftRecordWriter(TenantTransactionWrapper(pool));
+
+      final firstFact = ShiftFactBuilder.fromClosedShiftInput(
+        _trioInput(
+          businessTimingProfileId: _timingProfileA,
+          businessTimingProfileVersionId: _timingProfileA,
+          servicePeriodKey: 'dinner',
+        ),
+        _targetSnapshotV1,
+      );
+      await writer.writeShiftRecord(
+        operatorId: _opA,
+        locationId: _locA,
+        shiftFact: firstFact,
+        provenance: const AggregatorProvenanceContext(
+          coversProvenance: 'vendor_oracle_micros_simphony',
+          laborDollarsProvenance:
+              'vendor_quickbooks_time_per_employee_actual_dollars_per_employee_rates',
+          priorTargetProfileVersionId: null,
+        ),
+      );
+
+      final correctedFact = ShiftFactBuilder.fromClosedShiftInput(
+        ClosedShiftInput(
+          businessDate: _businessDate,
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          daypart: 'dinner',
+          businessTimingProfileId: _timingProfileB,
+          businessTimingProfileVersionId: _timingProfileB,
+          servicePeriodKey: 'supper',
+          covers: 6,
+          forecastCovers: 10,
+          actualSales: 142.50,
+          actualFohHours: 5,
+          actualBohHours: 6,
+          actualFohLaborDollars: 5 * 18.0,
+          actualBohLaborDollars: 6 * 20.0,
+          sourceSystem: 'oracle_micros_simphony',
+        ),
+        _targetSnapshotV2,
+      );
+      await writer.writeShiftRecord(
+        operatorId: _opA,
+        locationId: _locA,
+        shiftFact: correctedFact,
+        provenance: const AggregatorProvenanceContext(
+          coversProvenance: 'vendor_oracle_micros_simphony',
+          laborDollarsProvenance:
+              'vendor_quickbooks_time_per_employee_actual_dollars_per_employee_rates',
+          priorTargetProfileVersionId: 'tpv_X',
+          hasPriorShiftRecord: true,
+          priorBusinessTimingProfileId: _timingProfileA,
+          priorBusinessTimingProfileVersionId: _timingProfileA,
+          priorServicePeriodKey: 'dinner',
+        ),
+      );
+
+      final reread = pool.shiftRecords.values.single;
+      expect(reread['covers'], 6);
+      expect(reread['target_profile_version_id'], 'tpv_X');
+      expect(reread['business_timing_profile_id'], _timingProfileA);
+      expect(reread['business_timing_profile_version_id'], _timingProfileA);
+      expect(reread['service_period_key'], 'dinner');
+    });
+
+    test('keeps legacy prior timing nulls on replay', () async {
+      final pool = _FakePool();
+      final writer = PostgresShiftRecordWriter(TenantTransactionWrapper(pool));
+
+      final fact = ShiftFactBuilder.fromClosedShiftInput(
+        _trioInput(
+          businessTimingProfileId: _timingProfileB,
+          businessTimingProfileVersionId: _timingProfileB,
+          servicePeriodKey: 'dinner',
+        ),
+        _targetSnapshotV2,
+      );
+      await writer.writeShiftRecord(
+        operatorId: _opA,
+        locationId: _locA,
+        shiftFact: fact,
+        provenance: const AggregatorProvenanceContext(
+          coversProvenance: 'vendor_oracle_micros_simphony',
+          laborDollarsProvenance:
+              'vendor_quickbooks_time_per_employee_actual_dollars_per_employee_rates',
+          priorTargetProfileVersionId: 'tpv_X',
+          hasPriorShiftRecord: true,
+          priorBusinessTimingProfileId: null,
+          priorBusinessTimingProfileVersionId: null,
+          priorServicePeriodKey: null,
+        ),
+      );
+
+      final row = pool.shiftRecords.values.single;
+      expect(row['target_profile_version_id'], 'tpv_X');
+      expect(row['business_timing_profile_id'], isNull);
+      expect(row['business_timing_profile_version_id'], isNull);
+      expect(row['service_period_key'], isNull);
+    });
+  });
+
   group('PostgresShiftRecordWriter — J. re-aggregation idempotent', () {
     test('writing the same trio result twice replaces in place; no '
         'duplicate row', () async {
@@ -167,8 +325,11 @@ void main() {
         provenance: provenance,
       );
 
-      expect(pool.shiftRecords, hasLength(1),
-          reason: 'replace-for-slot keeps a single row per slot');
+      expect(
+        pool.shiftRecords,
+        hasLength(1),
+        reason: 'replace-for-slot keeps a single row per slot',
+      );
     });
   });
 
@@ -197,8 +358,10 @@ void main() {
           priorTargetProfileVersionId: null,
         ),
       );
-      expect(pool.shiftRecords.values.single['target_profile_version_id'],
-          'tpv_X');
+      expect(
+        pool.shiftRecords.values.single['target_profile_version_id'],
+        'tpv_X',
+      );
 
       // ── TargetCycle rolls; ActiveTargetProfile points at tpv_Y ──
       // A corrected vendor fact arrives. The aggregator (.2) reads the
@@ -238,45 +401,63 @@ void main() {
         ),
       );
 
-      expect(pool.shiftRecords, hasLength(1),
-          reason: 'replace-for-slot, not append');
+      expect(
+        pool.shiftRecords,
+        hasLength(1),
+        reason: 'replace-for-slot, not append',
+      );
       final reread = pool.shiftRecords.values.single;
-      expect(reread['target_profile_version_id'], 'tpv_X',
-          reason:
-              'Concern A: corrected fact does NOT re-grade closed history under '
-              'a newer cycle; prior tpv_X preserved verbatim');
-      expect(reread['covers'], 6,
-          reason: 'numeric correction lands on the row');
-      expect((reread['actual_sales'] as num).toDouble(),
-          closeTo(142.50, 0.001));
+      expect(
+        reread['target_profile_version_id'],
+        'tpv_X',
+        reason:
+            'Concern A: corrected fact does NOT re-grade closed history under '
+            'a newer cycle; prior tpv_X preserved verbatim',
+      );
+      expect(
+        reread['covers'],
+        6,
+        reason: 'numeric correction lands on the row',
+      );
+      expect(
+        (reread['actual_sales'] as num).toDouble(),
+        closeTo(142.50, 0.001),
+      );
     });
 
-    test('first-time aggregation (priorTargetProfileVersionId = null) '
-        'mints a fresh version id from the current ActiveTargetProfile',
-        () async {
-      final pool = _FakePool();
-      final writer = PostgresShiftRecordWriter(TenantTransactionWrapper(pool));
+    test(
+      'first-time aggregation (priorTargetProfileVersionId = null) '
+      'mints a fresh version id from the current ActiveTargetProfile',
+      () async {
+        final pool = _FakePool();
+        final writer = PostgresShiftRecordWriter(
+          TenantTransactionWrapper(pool),
+        );
 
-      final fact = ShiftFactBuilder.fromClosedShiftInput(
-        _trioInput(),
-        _targetSnapshotV2, // ActiveTargetProfile currently at tpv_Y.
-      );
-      await writer.writeShiftRecord(
-        operatorId: _opA,
-        locationId: _locA,
-        shiftFact: fact,
-        provenance: const AggregatorProvenanceContext(
-          coversProvenance: 'vendor_oracle_micros_simphony',
-          laborDollarsProvenance:
-              'vendor_quickbooks_time_per_employee_actual_dollars_per_employee_rates',
-          priorTargetProfileVersionId: null,
-        ),
-      );
+        final fact = ShiftFactBuilder.fromClosedShiftInput(
+          _trioInput(),
+          _targetSnapshotV2, // ActiveTargetProfile currently at tpv_Y.
+        );
+        await writer.writeShiftRecord(
+          operatorId: _opA,
+          locationId: _locA,
+          shiftFact: fact,
+          provenance: const AggregatorProvenanceContext(
+            coversProvenance: 'vendor_oracle_micros_simphony',
+            laborDollarsProvenance:
+                'vendor_quickbooks_time_per_employee_actual_dollars_per_employee_rates',
+            priorTargetProfileVersionId: null,
+          ),
+        );
 
-      final row = pool.shiftRecords.values.single;
-      expect(row['target_profile_version_id'], 'tpv_Y',
-          reason: 'first-time aggregation adopts the current snapshot version');
-    });
+        final row = pool.shiftRecords.values.single;
+        expect(
+          row['target_profile_version_id'],
+          'tpv_Y',
+          reason: 'first-time aggregation adopts the current snapshot version',
+        );
+      },
+    );
   });
 
   // ─────────────────── L — RLS + tenancy ──────────────────────────────────
@@ -312,15 +493,21 @@ void main() {
 
       expect(pool.transactions, isNotEmpty);
       final tenants = pool.transactions
-          .map((tx) => '${tx.setConfigCalls['app.operator_id']}|'
-              '${tx.setConfigCalls['app.location_id']}')
+          .map(
+            (tx) =>
+                '${tx.setConfigCalls['app.operator_id']}|'
+                '${tx.setConfigCalls['app.location_id']}',
+          )
           .toSet();
       expect(tenants.contains('$_opA|$_locA'), isTrue);
       expect(tenants.contains('$_opB|$_locB'), isTrue);
       // Tenant isolation: rows are keyed by the SET LOCAL pair so
       // operator A's write does not surface under operator B's tenant.
-      expect(pool.shiftRecords, hasLength(2),
-          reason: '(operator_id, location_id) is part of the slot key');
+      expect(
+        pool.shiftRecords,
+        hasLength(2),
+        reason: '(operator_id, location_id) is part of the slot key',
+      );
     });
   });
 
@@ -364,6 +551,7 @@ class _FakePool implements PostgresPool {
   /// production ON CONFLICT DO UPDATE semantics.
   final Map<String, Map<String, Object?>> shiftRecords =
       <String, Map<String, Object?>>{};
+  String? lastShiftRecordSql;
 
   final List<_FakeTransaction> transactions = <_FakeTransaction>[];
 
@@ -415,6 +603,7 @@ class _FakeTransaction implements PostgresTransaction {
       return 0;
     }
     if (sql.contains('insert into public.shift_records')) {
+      pool.lastShiftRecordSql = sql;
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final businessDate = parameters['business_date'] as String;
@@ -451,15 +640,16 @@ class _FakeTransaction implements PostgresTransaction {
         'target_boh_wage': parameters['target_boh_wage'],
         'opz_floor_cplh': parameters['opz_floor_cplh'],
         'opz_ceiling_cplh': parameters['opz_ceiling_cplh'],
-        'theoretical_foh_labor_pct':
-            parameters['theoretical_foh_labor_pct'],
-        'theoretical_boh_labor_pct':
-            parameters['theoretical_boh_labor_pct'],
+        'theoretical_foh_labor_pct': parameters['theoretical_foh_labor_pct'],
+        'theoretical_boh_labor_pct': parameters['theoretical_boh_labor_pct'],
+        'business_timing_profile_id': parameters['business_timing_profile_id'],
+        'business_timing_profile_version_id':
+            parameters['business_timing_profile_version_id'],
+        'service_period_key': parameters['service_period_key'],
         'source_system': parameters['source_system'],
         'source_shift_id': parameters['source_shift_id'],
         'covers_provenance': parameters['covers_provenance'],
-        'labor_dollars_provenance':
-            parameters['labor_dollars_provenance'],
+        'labor_dollars_provenance': parameters['labor_dollars_provenance'],
       };
       return 1;
     }

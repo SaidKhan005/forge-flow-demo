@@ -60,13 +60,15 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
     required ShiftFact shiftFact,
     required AggregatorProvenanceContext provenance,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
-      final resolvedTpv = provenance.priorTargetProfileVersionId ??
+      final resolvedTpv =
+          provenance.priorTargetProfileVersionId ??
           shiftFact.targetSnapshot.targetProfileVersionId;
+      final resolvedTiming = _resolvedTimingProvenance(
+        shiftFact: shiftFact,
+        provenance: provenance,
+      );
 
       await _upsertShiftRecord(
         exec: exec,
@@ -75,6 +77,7 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
         shiftFact: shiftFact,
         provenance: provenance,
         resolvedTargetProfileVersionId: resolvedTpv,
+        resolvedTiming: resolvedTiming,
       );
     });
   }
@@ -86,6 +89,7 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
     required ShiftFact shiftFact,
     required AggregatorProvenanceContext provenance,
     required String? resolvedTargetProfileVersionId,
+    required _ResolvedTimingProvenance resolvedTiming,
   }) async {
     final snap = shiftFact.targetSnapshot;
     await exec.execute(
@@ -103,6 +107,8 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
       'target_foh_wage, target_boh_wage, '
       'opz_floor_cplh, opz_ceiling_cplh, '
       'theoretical_foh_labor_pct, theoretical_boh_labor_pct, '
+      'business_timing_profile_id, business_timing_profile_version_id, '
+      'service_period_key, '
       'source_system, source_shift_id, '
       'covers_provenance, labor_dollars_provenance, '
       'created_at, updated_at'
@@ -120,6 +126,9 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
       '@target_foh_wage, @target_boh_wage, '
       '@opz_floor_cplh, @opz_ceiling_cplh, '
       '@theoretical_foh_labor_pct, @theoretical_boh_labor_pct, '
+      '@business_timing_profile_id::uuid, '
+      '@business_timing_profile_version_id::uuid, '
+      '@service_period_key, '
       '@source_system, @source_shift_id, '
       '@covers_provenance, @labor_dollars_provenance, '
       'now(), now()'
@@ -158,6 +167,10 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
       'opz_ceiling_cplh = excluded.opz_ceiling_cplh, '
       'theoretical_foh_labor_pct = excluded.theoretical_foh_labor_pct, '
       'theoretical_boh_labor_pct = excluded.theoretical_boh_labor_pct, '
+      'business_timing_profile_id = excluded.business_timing_profile_id, '
+      'business_timing_profile_version_id = '
+      'excluded.business_timing_profile_version_id, '
+      'service_period_key = excluded.service_period_key, '
       'source_system = excluded.source_system, '
       'source_shift_id = excluded.source_shift_id, '
       'covers_provenance = excluded.covers_provenance, '
@@ -198,11 +211,32 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
         'opz_ceiling_cplh': snap.opzCeilingCPLH,
         'theoretical_foh_labor_pct': snap.theoreticalFohLaborPct,
         'theoretical_boh_labor_pct': snap.theoreticalBohLaborPct,
+        'business_timing_profile_id': resolvedTiming.profileId,
+        'business_timing_profile_version_id': resolvedTiming.versionId,
+        'service_period_key': resolvedTiming.servicePeriodKey,
         'source_system': shiftFact.sourceSystem,
         'source_shift_id': shiftFact.sourceShiftId,
         'covers_provenance': provenance.coversProvenance,
         'labor_dollars_provenance': provenance.laborDollarsProvenance,
       },
+    );
+  }
+
+  _ResolvedTimingProvenance _resolvedTimingProvenance({
+    required ShiftFact shiftFact,
+    required AggregatorProvenanceContext provenance,
+  }) {
+    if (provenance.hasPriorShiftRecord) {
+      return _ResolvedTimingProvenance(
+        profileId: provenance.priorBusinessTimingProfileId,
+        versionId: provenance.priorBusinessTimingProfileVersionId,
+        servicePeriodKey: provenance.priorServicePeriodKey,
+      );
+    }
+    return _ResolvedTimingProvenance(
+      profileId: shiftFact.businessTimingProfileId,
+      versionId: shiftFact.businessTimingProfileVersionId,
+      servicePeriodKey: shiftFact.servicePeriodKey,
     );
   }
 
@@ -212,4 +246,16 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
     final d = date.day.toString().padLeft(2, '0');
     return '$y-$m-$d';
   }
+}
+
+class _ResolvedTimingProvenance {
+  const _ResolvedTimingProvenance({
+    required this.profileId,
+    required this.versionId,
+    required this.servicePeriodKey,
+  });
+
+  final String? profileId;
+  final String? versionId;
+  final String? servicePeriodKey;
 }
