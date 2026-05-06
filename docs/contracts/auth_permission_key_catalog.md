@@ -38,11 +38,12 @@ the constants without seeding it, the test catches that.
 
 ## Categories
 
-The catalog carries 83 keys across 7 categories in the core catalog
-(81 original + 2 admin keys added after baseline). The 13 `team.*` keys
+The catalog carries 84 keys across 7 categories in the core catalog
+(81 original + 2 admin keys added after baseline +
+`admin.users.reset_mfa_factors` added in 11A.14). The 13 `team.*` keys
 added across 9.0a and the MFA hardening slice live in their own section
 below; the Phase 8.0 single `integrations.configure` key adds a 9th
-category. The running total across all 9 categories is 97 keys.
+category. The running total across all 9 categories is 98 keys.
 
 ### `product.*` (2)
 
@@ -108,14 +109,18 @@ where operator owners or F&F may curate Barrio content per operator.
 | `barrio.learning.complete_unit` | Mark a learning unit complete for the current user. | — |
 | `barrio.streak.view` | View own streak / leaderboard standing. | — |
 
-### `admin.*` (27)
+### `admin.*` (28)
 
 F&F admin actions. Mostly mounted under `/v1/admin/auth/*` (9.6, 9.8).
 Sensitive keys carry `requires_mfa = true`. The 9.0Σ.h2 slice
 (2026-04-28) added `admin.audit_privacy.read` to gate the audit-read
 path on `advisor_conversation_log`; that key is seeded by
 `db/migrations/202604280014_phase_9_0sigma_h2_audit_privacy_role.sql`,
-not by the 9.0 foundation seed.
+not by the 9.0 foundation seed. The 11A.14 slice (2026-05-06) added
+`admin.users.reset_mfa_factors` to gate the support-side MFA-reset
+escalation; that key is seeded by
+`db/migrations/202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql`,
+also not by the 9.0 foundation seed.
 
 | Key | Description | MFA |
 |---|---|---|
@@ -126,6 +131,7 @@ not by the 9.0 foundation seed.
 | `admin.users.soft_delete` | Soft-delete a user (status -> deleted; data retained). | — |
 | `admin.users.erase_pii` | GDPR right-to-erasure: redact PII for a user. Paired-approval + MFA required. | yes |
 | `admin.users.reset_password` | Trigger admin-initiated password reset for a user. | — |
+| `admin.users.reset_mfa_factors` | Reset a member's MFA factors from the F&F admin support path. Required for support-side account recovery when the member has lost access to their second factor. Paired with admin_reason on every call. MFA required. | yes |
 | `admin.invites.create` | Create user invites. | — |
 | `admin.invites.revoke` | Revoke pending user invites. | — |
 | `admin.roles.view` | View roles in admin console. | — |
