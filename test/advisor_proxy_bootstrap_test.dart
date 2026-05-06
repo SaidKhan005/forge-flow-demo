@@ -12,6 +12,8 @@ import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/repository_password_change_gateway.dart';
+import 'package:forge_and_flow/services/integration/integration_adapter_common.dart'
+    as integration;
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 
@@ -178,6 +180,17 @@ void main() {
       expect(
         bindings.featureFlagsAdminGateway,
         isA<RepositoryFeatureFlagsAdminProxyGateway>(),
+      );
+      expect(
+        bindings.firstConnectionBackfillEnqueueGateway,
+        isA<RepositoryFirstConnectionBackfillEnqueueGateway>(),
+      );
+      expect(
+        bindings.integrationCategoryResolver(
+          'toast',
+          const <String, Object?>{},
+        ),
+        equals(integration.IntegrationCategory.pos),
       );
       expect(
         capturedConnectionStrings,

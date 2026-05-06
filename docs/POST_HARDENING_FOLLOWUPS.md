@@ -1,11 +1,11 @@
 # Post-Hardening Follow-ups
 
-Updated: 2026-05-06 (B1 data-accuracy migration renumbered to `…1701_…`; Phase 8 first-connection backfill job seam added at `…1800_…`).
+Updated: 2026-05-06 (B1 data-accuracy migration renumbered to `…1701_…`; Phase 8 first-connection backfill job seam added at `…1800_…`; Phase 11W.7 operator account fields added at `…070000_…`).
 Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`. Staging remediation evidence in `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`.
 
 ## P0 - Production1 Migration Apply Gap
 
-**11 migrations pending Production1/staging apply** (chronological):
+**12 migrations pending Production1/staging apply** (chronological):
 
 | Migration | Origin | Staging status |
 |---|---|---|
@@ -20,8 +20,9 @@ Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FO
 | `202605061700_phase_8_timing_provenance_shift_records.sql` | Phase 8 timing provenance keys for closed/live shift rows | code-ready |
 | `202605061701_phase_8_data_accuracy_service_period_settings.sql` | Hardening Wave B1 keyed Data Accuracy child table per `(operator_id, location_id, service_period_key, effective_at_business_date)` (replaces hardcoded `covers_source_lunch`/`_dinner`/`_late_night` columns; legacy columns kept as read-only fallback). Renumbered 2026-05-06 from `202605061700_…` to break same-second prefix collision. | code-ready |
 | `202605061800_phase_8_first_connection_backfill_jobs.sql` | Phase 8 mobile core first-connection durable backfill jobs: server-side enqueue/claim/status seam for the 60-day backfill path. | code-ready |
+| `202605070000_phase_11W_7_operator_account_fields.sql` | Phase 11W.7 operator-web Account settings fields: nullable/defaulted operator identity/regional defaults plus validation constraints for PATCH `/v1/operator/account`. | code-ready |
 
-**Action:** apply all 11 in next Production1 event per `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied + verified, the corresponding feature is **staging-ready only**.
+**Action:** apply all 12 in next Production1 event per `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied + verified, the corresponding feature is **staging-ready only**.
 
 ## P1 - Live Admin Operational Gates
 

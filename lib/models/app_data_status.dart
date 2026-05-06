@@ -5,6 +5,7 @@ enum AppDataStatusType {
   noData,
   firstSyncPending,
   backfillPending,
+  backfillFailed,
   historicalOnly,
   failedImport,
   stale,
@@ -46,6 +47,17 @@ class AppDataStatus {
     label: 'BACKFILL PENDING',
     description:
         'First backfill is running; live snapshot truth is not ready yet.',
+    latestImportTimestamp: timestamp,
+  );
+
+  static AppDataStatus backfillFailed({
+    String? errorSummary,
+    String? timestamp,
+  }) => AppDataStatus(
+    type: AppDataStatusType.backfillFailed,
+    label: 'BACKFILL FAILED',
+    description: errorSummary ?? 'First backfill failed.',
+    latestImportStatus: 'failed',
     latestImportTimestamp: timestamp,
   );
 

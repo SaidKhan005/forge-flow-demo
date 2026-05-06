@@ -7,7 +7,7 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605061800_phase_8_first_connection_backfill_jobs.sql`. This
+`202605070000_phase_11W_7_operator_account_fields.sql`. This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -49,7 +49,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (11 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (12 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -62,6 +62,7 @@ Pending follow-up scope (11 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605061700_phase_8_timing_provenance_shift_records.sql`
 - `db/migrations/202605061701_phase_8_data_accuracy_service_period_settings.sql`
 - `db/migrations/202605061800_phase_8_first_connection_backfill_jobs.sql`
+- `db/migrations/202605070000_phase_11W_7_operator_account_fields.sql`
 
 Out of scope:
 
@@ -71,7 +72,7 @@ Out of scope:
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
-  anything later than `202605061800_phase_8_first_connection_backfill_jobs.sql`
+  anything later than `202605070000_phase_11W_7_operator_account_fields.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
@@ -123,6 +124,12 @@ Current known post-cutoff staging additions:
   table. It is the server-side enqueue/claim/status seam for the bounded
   60-day mobile core backfill path. It is code-ready and remains
   staging/Production1 apply gated with the rest of the follow-up batch.
+- `db/migrations/202605070000_phase_11W_7_operator_account_fields.sql`
+  adds the operator-web Account settings identity/regional default fields on
+  `public.operators` plus validation constraints for logo URL, locale tag,
+  week start day, rollover hour, and business name length. It is additive and
+  remains staging/Production1 apply gated with the rest of the follow-up
+  batch.
 
 Migration drift automation:
 
@@ -195,6 +202,7 @@ Current pending follow-up order:
 9. `202605061700_phase_8_timing_provenance_shift_records.sql`
 10. `202605061701_phase_8_data_accuracy_service_period_settings.sql`
 11. `202605061800_phase_8_first_connection_backfill_jobs.sql`
+12. `202605070000_phase_11W_7_operator_account_fields.sql`
 
 Dependency notes:
 
@@ -547,7 +555,7 @@ until the post-tuning monitor window is clean.
   `build/phase_9_production1_apply/2026-05-03_second_batch/` and intentionally
   stay uncommitted.
 
-### Next follow-up - pending (cutoff `202605061800_phase_8_first_connection_backfill_jobs.sql`)
+### Next follow-up - pending (cutoff `202605070000_phase_11W_7_operator_account_fields.sql`)
 
 - `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` is
   applied and Browser Use verified on staging. Apply it to Production1 under
@@ -610,6 +618,10 @@ until the post-tuning monitor window is clean.
   cache and no worker/connect/projection logic is enabled by this migration
   alone. Apply on staging first; carry into the next Production1 batch with
   the rest of the follow-up migrations.
+- `202605070000_phase_11W_7_operator_account_fields.sql` adds the
+  operator-web Account settings identity/regional default fields and
+  validation constraints on `public.operators`. Apply on staging first; carry
+  into the next Production1 batch with the rest of the follow-up migrations.
 - One-shot apply plan once approved: confirm staging parity for the same files,
   confirm fresh backup/restore point, run analyzer/lints/focused tests, apply
   the approved files to Production1, verify the `forge_admin`
@@ -619,9 +631,10 @@ until the post-tuning monitor window is clean.
   presence directly, verify the rekeyed Phase 8 / Phase 9.8 indexes lead
   with `operator_id` via `pg_indexes`, and verify the
   `admin.users.reset_mfa_factors` and `team.audit_log.export` permission keys
-  exist in `permission_keys` with the expected default role grants, and verify
+  exist in `permission_keys` with the expected default role grants, verify
   `connector_backfill_jobs` exists with RLS enabled plus operator-leading
-  claim/status indexes. Then run
+  claim/status indexes, and verify the Phase 11W.7 operator account columns
+  and CHECK constraints exist on `public.operators`. Then run
   RLS lint, update this history and the production cutoff docs. Do not perform
   production runtime setup as part of this database apply.
 

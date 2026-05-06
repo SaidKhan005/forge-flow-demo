@@ -1557,6 +1557,7 @@ class _DataStatusTile extends StatelessWidget {
       AppDataStatusType.demo => AppColors.textMuted,
       AppDataStatusType.firstSyncPending => AppColors.sunsetDark,
       AppDataStatusType.backfillPending => AppColors.sunsetDark,
+      AppDataStatusType.backfillFailed => AppColors.negative,
       AppDataStatusType.historicalOnly => AppColors.sunsetDark,
       AppDataStatusType.stale => AppColors.warning,
       AppDataStatusType.failedImport => AppColors.negative,

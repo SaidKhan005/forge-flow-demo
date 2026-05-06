@@ -123,9 +123,7 @@ class HttpSyncProxyClient implements SyncProxyClient {
     required String locationId,
   }) async {
     final body = await _getJson(
-      _locationPath(operatorId, locationId, const <String>[
-        'demo_mode_states',
-      ]),
+      _locationPath(operatorId, locationId, const <String>['demo_mode_states']),
     );
     final rows = _readList(body, const <String>[
       'demo_mode_states',
@@ -169,6 +167,35 @@ class HttpSyncProxyClient implements SyncProxyClient {
         body['polling_tier_assignment'] ?? body['assignment'] ?? body['data'];
     if (raw == null) return null;
     return _pollingTierFromJson(_stringKeyMap(raw));
+  }
+
+  @override
+  Future<FirstBackfillStatusSnapshot?> fetchFirstBackfillStatus({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final Map<String, Object?> body;
+    try {
+      body = await _getJson(
+        _locationPath(operatorId, locationId, const <String>[
+          'first_backfill_status',
+        ]),
+      );
+    } on SyncProxyClientException catch (error) {
+      if (error.statusCode == 404) return null;
+      rethrow;
+    }
+    final raw =
+        body['first_backfill_status'] ??
+        body['backfill_status'] ??
+        body['status'] ??
+        body['data'];
+    if (raw == null) return null;
+    if (raw is List) {
+      if (raw.isEmpty) return null;
+      return _firstBackfillStatusFromJson(_stringKeyMap(raw.first));
+    }
+    return _firstBackfillStatusFromJson(_stringKeyMap(raw));
   }
 
   Future<Map<String, Object?>> _getJson(
@@ -445,6 +472,43 @@ class HttpSyncProxyClient implements SyncProxyClient {
       monthlyPriceCents: _readInt(json['monthly_price_cents']),
       effectiveAt:
           _readDateTime(json['effective_at']) ?? DateTime.now().toUtc(),
+    );
+  }
+
+  static FirstBackfillStatusSnapshot _firstBackfillStatusFromJson(
+    Map<String, dynamic> json,
+  ) {
+    final createdAt = _readDateTime(json['created_at']);
+    final startedAt =
+        _readDateTime(json['started_at']) ??
+        _readDateTime(json['claimed_at']) ??
+        createdAt;
+    final updatedAt =
+        _readDateTime(json['updated_at']) ??
+        _readDateTime(json['completed_at']) ??
+        startedAt;
+    if (startedAt == null || updatedAt == null) {
+      throw const SyncProxyClientException(
+        code: 'malformed_sync_proxy_response',
+        message:
+            'The sync proxy first_backfill_status row was missing timestamps.',
+      );
+    }
+    return FirstBackfillStatusSnapshot(
+      jobId: _requiredString(json, 'job_id'),
+      operatorId: _readString(json['operator_id']) ?? '',
+      locationId: _readString(json['location_id']) ?? '',
+      connectionId: _readString(json['connection_id']),
+      vendorId: _readString(json['vendor_id']),
+      category: _readString(json['category']),
+      status: _requiredString(json, 'status').toLowerCase(),
+      windowStart: _readDateTime(json['window_start']),
+      windowEnd: _readDateTime(json['window_end']),
+      startedAt: startedAt,
+      completedAt: _readDateTime(json['completed_at']),
+      updatedAt: updatedAt,
+      lastError:
+          _readString(json['last_error']) ?? _readString(json['error_summary']),
     );
   }
 

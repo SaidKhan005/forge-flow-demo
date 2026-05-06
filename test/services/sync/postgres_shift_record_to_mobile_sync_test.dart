@@ -519,6 +519,71 @@ void main() {
     expect(timingRows.single['week_start_day'], 1);
   });
 
+  test(
+    'H2. first-backfill status persists as existing import_run status',
+    () async {
+      const rid = 'rest_H2';
+      final client = _FakeSyncProxyClient()
+        ..scriptShiftPages([_Page(records: const [], nextCursor: null)])
+        ..scriptOpenShiftPages([
+          _OpenPage(
+            snapshots: [
+              _openSnapshot(
+                rid,
+                weekId: '2026-W18',
+                day: 'Mon',
+                daypart: 'lunch',
+              ),
+            ],
+            nextCursor: null,
+          ),
+        ])
+        ..scriptFirstBackfillStatus(
+          FirstBackfillStatusSnapshot(
+            jobId: 'job-h2',
+            operatorId: _opId,
+            locationId: _locId,
+            connectionId: 'connection-h2',
+            vendorId: 'toast',
+            category: 'pos',
+            status: 'running',
+            windowStart: DateTime.parse('2026-03-07T00:00:00Z'),
+            windowEnd: DateTime.parse('2026-05-06T00:00:00Z'),
+            startedAt: DateTime.parse('2026-05-06T12:00:00Z'),
+            updatedAt: DateTime.parse('2026-05-06T12:05:00Z'),
+          ),
+        );
+
+      final invalidations = _BusListener(bus);
+      addTearDown(invalidations.detach);
+      final sync = PostgresShiftRecordToMobileSync(
+        client: client,
+        shiftRepository: SqliteShiftRecordRepository.instance,
+        watermarkDao: watermarkDao,
+        invalidationBus: bus,
+      );
+
+      final result = await sync.sync(
+        operatorId: _opId,
+        locationId: _locId,
+        restaurantId: rid,
+      );
+      invalidations.detach();
+
+      expect(result.openSnapshotsWritten, 1);
+      expect(result.firstBackfillStatus!.status, 'running');
+
+      final runs = await watermarkDao.getImportRunsForRestaurant(rid);
+      final run = runs.singleWhere(
+        (candidate) => candidate.importRunId == 'first_backfill:job-h2',
+      );
+      expect(run.mode, 'first_backfill');
+      expect(run.status, 'running');
+      expect(run.completedAt, isNull);
+      expect(run.cursorJson, contains('"vendor_id":"toast"'));
+    },
+  );
+
   test('I. multi-page: pulls all pages until nextCursor is null', () async {
     const rid = 'rest_I';
     final client = _FakeSyncProxyClient()
@@ -660,6 +725,7 @@ class _FakeSyncProxyClient implements SyncProxyClient {
   List<DemoModeRecord> _demoModeStates = const <DemoModeRecord>[];
   DataAccuracySettingsSnapshot? _dataAccuracySettings;
   ForgeFlowPollingTierAssignmentSnapshot? _pollingTierAssignment;
+  FirstBackfillStatusSnapshot? _firstBackfillStatus;
   RestaurantTimingConfig? _timingConfig;
 
   void scriptShiftPages(List<_Page> pages) {
@@ -690,6 +756,10 @@ class _FakeSyncProxyClient implements SyncProxyClient {
     ForgeFlowPollingTierAssignmentSnapshot? snap,
   ) {
     _pollingTierAssignment = snap;
+  }
+
+  void scriptFirstBackfillStatus(FirstBackfillStatusSnapshot? snap) {
+    _firstBackfillStatus = snap;
   }
 
   @override
@@ -753,6 +823,12 @@ class _FakeSyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
   }) async => _pollingTierAssignment;
+
+  @override
+  Future<FirstBackfillStatusSnapshot?> fetchFirstBackfillStatus({
+    required String operatorId,
+    required String locationId,
+  }) async => _firstBackfillStatus;
 }
 
 class _BusListener {
