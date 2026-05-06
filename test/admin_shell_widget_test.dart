@@ -137,6 +137,9 @@ void main() {
         kAdminOperatorsRouteId,
         kAdminDataAccuracyRouteId,
         kAdminPollingPricingRouteId,
+        kAdminMembersRouteId,
+        kAdminRolesHierarchySessionsRouteId,
+        kAdminAuditedSupportActionsRouteId,
       ],
     );
 
