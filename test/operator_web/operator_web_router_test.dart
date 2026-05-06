@@ -33,27 +33,34 @@ void main() {
   }
 
   group('OperatorWebRouter onboarding stages', () {
-    testWidgets('signed-out state lands on the welcome screen with token field', (
-      tester,
-    ) async {
-      await sizeViewport(tester);
-      final source = DemoOperatorWebAuthSource.signedOut();
-      addTearDown(source.dispose);
+    testWidgets(
+      'signed-out state lands on the welcome screen with token field',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = DemoOperatorWebAuthSource.signedOut();
+        addTearDown(source.dispose);
 
-      await tester.pumpWidget(
-        wrap(OperatorWebRouter(source: source, initialMagicLinkToken: 'abc')),
-      );
+        await tester.pumpWidget(
+          wrap(OperatorWebRouter(source: source, initialMagicLinkToken: 'abc')),
+        );
 
-      expect(find.byKey(const Key('operator_web_welcome_token_field')),
-          findsOneWidget);
-      expect(find.byKey(const Key('operator_web_welcome_submit')),
-          findsOneWidget);
-      // Step pill confirms we're on the welcome stage.
-      expect(find.text('Step 1 of 4 — Welcome'), findsOneWidget);
-      // Welcome explainer rendered.
-      expect(find.byKey(const Key('operator_web_welcome_explainer')),
-          findsOneWidget);
-    });
+        expect(
+          find.byKey(const Key('operator_web_welcome_token_field')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_welcome_submit')),
+          findsOneWidget,
+        );
+        // Step pill confirms we're on the welcome stage.
+        expect(find.text('Step 1 of 4 — Welcome'), findsOneWidget);
+        // Welcome explainer rendered.
+        expect(
+          find.byKey(const Key('operator_web_welcome_explainer')),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('settingPassword state renders the password screen', (
       tester,
@@ -67,10 +74,14 @@ void main() {
 
       await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
 
-      expect(find.byKey(const Key('operator_web_password_field')),
-          findsOneWidget);
-      expect(find.byKey(const Key('operator_web_password_confirm_field')),
-          findsOneWidget);
+      expect(
+        find.byKey(const Key('operator_web_password_field')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_password_confirm_field')),
+        findsOneWidget,
+      );
       expect(find.text('Step 2 of 4 — Password'), findsOneWidget);
     });
 
@@ -86,12 +97,18 @@ void main() {
 
       await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
 
-      expect(find.byKey(const Key('operator_web_mfa_factor_picker')),
-          findsOneWidget);
-      expect(find.byKey(const Key('operator_web_mfa_option_totp')),
-          findsOneWidget);
-      expect(find.byKey(const Key('operator_web_mfa_option_sms')),
-          findsOneWidget);
+      expect(
+        find.byKey(const Key('operator_web_mfa_factor_picker')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_mfa_option_totp')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_mfa_option_sms')),
+        findsOneWidget,
+      );
       expect(find.text('Step 3 of 4 — Two-factor sign-in'), findsOneWidget);
     });
 
@@ -112,42 +129,59 @@ void main() {
 
       await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
 
-      expect(find.byKey(const Key('operator_web_tos_summary')),
-          findsOneWidget);
-      expect(find.byKey(const Key('operator_web_tos_body_panel')),
-          findsOneWidget);
-      expect(find.byKey(const Key('operator_web_tos_agreement_checkbox')),
-          findsOneWidget);
+      expect(find.byKey(const Key('operator_web_tos_summary')), findsOneWidget);
+      expect(
+        find.byKey(const Key('operator_web_tos_body_panel')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_tos_agreement_checkbox')),
+        findsOneWidget,
+      );
       expect(find.text('Step 4 of 4 — Authorize data access'), findsOneWidget);
     });
 
-    testWidgets('completed state renders the post-onboarding shell with Account body', (
-      tester,
-    ) async {
-      await sizeViewport(tester);
-      final source = DemoOperatorWebAuthSource.completed();
-      addTearDown(source.dispose);
+    testWidgets(
+      'completed state renders the post-onboarding shell with Account body',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = DemoOperatorWebAuthSource.completed();
+        addTearDown(source.dispose);
 
-      await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
+        await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
 
-      expect(find.byKey(const Key('operator_web_shell_scaffold')),
-          findsOneWidget);
-      expect(find.byKey(const Key('operator_web_header_bar')), findsOneWidget);
-      expect(find.byKey(const Key('operator_web_side_nav')), findsOneWidget);
-      expect(find.byKey(const Key('operator_web_nav_item_account')),
-          findsOneWidget);
-      expect(
-        find.byKey(const Key('operator_web_nav_item_vendor_connections')),
-        findsOneWidget,
-      );
-      // Default body is the real Account screen (11W.7).
-      expect(find.byKey(const Key('operator_web_account_screen')),
-          findsOneWidget);
-      expect(
-        find.byKey(const Key('operator_web_vendor_connections_screen')),
-        findsNothing,
-      );
-    });
+        expect(
+          find.byKey(const Key('operator_web_shell_scaffold')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_header_bar')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('operator_web_side_nav')), findsOneWidget);
+        expect(
+          find.byKey(const Key('operator_web_nav_item_account')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_nav_item_business_setup')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_nav_item_vendor_connections')),
+          findsOneWidget,
+        );
+        // Default body is the real Account screen (11W.7).
+        expect(
+          find.byKey(const Key('operator_web_account_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_vendor_connections_screen')),
+          findsNothing,
+        );
+      },
+    );
 
     testWidgets('side nav switches body to vendor-connections screen', (
       tester,
@@ -167,8 +201,34 @@ void main() {
         find.byKey(const Key('operator_web_vendor_connections_screen')),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('operator_web_account_screen')),
-          findsNothing);
+      expect(
+        find.byKey(const Key('operator_web_account_screen')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('side nav switches body to business setup screen', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final source = DemoOperatorWebAuthSource.completed();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_nav_item_business_setup')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_business_setup_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_account_screen')),
+        findsNothing,
+      );
     });
 
     testWidgets('initialNavId opens the vendor-connections route directly', (
@@ -194,6 +254,29 @@ void main() {
       );
     });
 
+    testWidgets('initialNavId opens the business setup route directly', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final source = DemoOperatorWebAuthSource.completed();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialNavId: kOperatorWebNavBusinessSetup,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_business_setup_screen')),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('forbidden state renders the fail-closed surface', (
       tester,
     ) async {
@@ -203,10 +286,14 @@ void main() {
 
       await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
 
-      expect(find.byKey(const Key('operator_web_forbidden_card')),
-          findsOneWidget);
-      expect(find.byKey(const Key('operator_web_forbidden_signout')),
-          findsOneWidget);
+      expect(
+        find.byKey(const Key('operator_web_forbidden_card')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_forbidden_signout')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('header sign-out routes through the auth source', (
@@ -225,8 +312,10 @@ void main() {
 
       expect(source.current, isA<OperatorWebSignedOut>());
       // After sign-out the welcome screen reappears.
-      expect(find.byKey(const Key('operator_web_welcome_token_field')),
-          findsOneWidget);
+      expect(
+        find.byKey(const Key('operator_web_welcome_token_field')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('forbidden surface sign-out also routes through the source', (
@@ -238,9 +327,7 @@ void main() {
 
       await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
 
-      await tester.tap(
-        find.byKey(const Key('operator_web_forbidden_signout')),
-      );
+      await tester.tap(find.byKey(const Key('operator_web_forbidden_signout')));
       await tester.pumpAndSettle();
 
       expect(source.current, isA<OperatorWebSignedOut>());

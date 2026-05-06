@@ -825,6 +825,7 @@ class _OperatorDetail extends StatelessWidget {
                   ...bundle.locations.map(
                     (location) => _LocationRow(
                       key: Key('admin_location_row_${location.locationId}'),
+                      operatorName: operator.businessName,
                       location: location,
                       muted: operator.isSuspended,
                       isPrimary:
@@ -875,6 +876,7 @@ class _OperatorDetail extends StatelessWidget {
 class _LocationRow extends StatelessWidget {
   const _LocationRow({
     super.key,
+    required this.operatorName,
     required this.location,
     required this.muted,
     required this.isPrimary,
@@ -887,6 +889,7 @@ class _LocationRow extends StatelessWidget {
     required this.editingEnabled,
   });
 
+  final String operatorName;
   final LocationAdminRecord location;
   final bool muted;
   final bool isPrimary;
@@ -927,6 +930,7 @@ class _LocationRow extends StatelessWidget {
       ],
     );
     final actions = _LocationActionWrap(
+      operatorName: operatorName,
       location: location,
       isPrimary: isPrimary,
       onEdit: onEdit,
@@ -968,6 +972,7 @@ class _LocationRow extends StatelessWidget {
 
 class _LocationActionWrap extends StatelessWidget {
   const _LocationActionWrap({
+    required this.operatorName,
     required this.location,
     required this.isPrimary,
     required this.onEdit,
@@ -979,6 +984,7 @@ class _LocationActionWrap extends StatelessWidget {
     required this.editingEnabled,
   });
 
+  final String operatorName;
   final LocationAdminRecord location;
   final bool isPrimary;
   final VoidCallback onEdit;
@@ -1015,6 +1021,23 @@ class _LocationActionWrap extends StatelessWidget {
           tooltip: 'View logs for this location',
           minWidth: 116,
           onPressed: onOpenSupportLogs,
+        ),
+        _LocationActionButton(
+          buttonKey: Key('admin_location_timing_${location.locationId}'),
+          label: 'Timing',
+          icon: Icons.schedule_outlined,
+          tooltip: 'View timing for this location',
+          minWidth: 108,
+          onPressed: () {
+            showDialog<void>(
+              context: context,
+              builder: (_) => _AdminLocationTimingDialog(
+                operatorName: operatorName,
+                location: location,
+                editingEnabled: editingEnabled,
+              ),
+            );
+          },
         ),
         _LocationActionButton(
           buttonKey: Key('admin_location_data_accuracy_${location.locationId}'),
@@ -1079,6 +1102,195 @@ class _LocationActionWrap extends StatelessWidget {
             onPressed: isPrimary ? null : onRemove,
           ),
       ],
+    );
+  }
+}
+
+class _AdminLocationTimingDialog extends StatelessWidget {
+  const _AdminLocationTimingDialog({
+    required this.operatorName,
+    required this.location,
+    required this.editingEnabled,
+  });
+
+  final String operatorName;
+  final LocationAdminRecord location;
+  final bool editingEnabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final rolloverHour = location.businessDayRolloverHour ?? 0;
+    final startsAt = '${rolloverHour.toString().padLeft(2, '0')}:00';
+    return AlertDialog(
+      key: const Key('admin_location_timing_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      title: Text(
+        'Timing',
+        style: AppTextStyles.display20(color: AppColors.textPrimary),
+      ),
+      content: SizedBox(
+        width: 520,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _TimingDialogRow(
+                label: 'Scope',
+                value: '$operatorName / ${location.name}',
+              ),
+              _TimingDialogRow(label: 'Timezone', value: location.timezone),
+              _TimingDialogRow(label: 'Business day starts', value: startsAt),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                decoration: BoxDecoration(
+                  color: AppColors.cardGlow,
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Effective service periods',
+                      style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+                    ),
+                    const SizedBox(height: 8),
+                    const _TimingPeriodLine(
+                      name: 'Lunch',
+                      range: '11:00 - 15:00',
+                      source: 'Inherited demo',
+                    ),
+                    const _TimingPeriodLine(
+                      name: 'Dinner',
+                      range: '17:00 - 22:00',
+                      source: 'Inherited demo',
+                    ),
+                    const _TimingPeriodLine(
+                      name: 'Late night',
+                      range: '22:00 - 01:00',
+                      source: 'Inherited demo',
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                editingEnabled
+                    ? 'Override controls are staged for audited support use, '
+                          'but this dialog has no backend write path. No timing '
+                          'change was written.'
+                    : 'Read-only support view. Timing overrides require an '
+                          'audited admin write path before this dialog can '
+                          'change anything.',
+                key: const Key('admin_location_timing_safe_copy'),
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              if (editingEnabled) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  key: const Key('admin_location_timing_audit_reason'),
+                  enabled: false,
+                  decoration: InputDecoration(
+                    labelText: 'Audit reason',
+                    labelStyle: AppTextStyles.uiLabel(
+                      color: AppColors.textMuted,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: const BorderSide(
+                        color: AppColors.borderSubtle,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        if (editingEnabled)
+          OutlinedButton.icon(
+            key: const Key('admin_location_timing_save_disabled'),
+            onPressed: null,
+            icon: const Icon(Icons.save_outlined, size: 15),
+            label: const Text('Save override'),
+          ),
+        TextButton(
+          key: const Key('admin_location_timing_close'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+}
+
+class _TimingDialogRow extends StatelessWidget {
+  const _TimingDialogRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimingPeriodLine extends StatelessWidget {
+  const _TimingPeriodLine({
+    required this.name,
+    required this.range,
+    required this.source,
+  });
+
+  final String name;
+  final String range;
+  final String source;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              name,
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            ),
+          ),
+          Text(
+            range,
+            style: AppTextStyles.mono11(color: AppColors.textPrimary),
+          ),
+          const SizedBox(width: 10),
+          Text(source, style: AppTextStyles.mono8(color: AppColors.textMuted)),
+        ],
+      ),
     );
   }
 }

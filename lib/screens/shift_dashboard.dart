@@ -40,14 +40,6 @@ void _ensureTzInitialized() {
   _tzInitialized = true;
 }
 
-/// Shift surface scope selector.
-///
-/// Phase 10.5: whole-day is the default and the source of truth; daypart
-/// is an additive lens that opens alongside it. The bucketing engine and
-/// per-period live metrics land in subsequent 10.5 slices; this scaffold
-/// only opens the surface.
-enum ShiftScope { wholeDay, daypart }
-
 class ShiftDashboard extends StatefulWidget {
   final VoidCallback? onVarianceTap;
 
@@ -64,11 +56,11 @@ class ShiftDashboard extends StatefulWidget {
 }
 
 class _ShiftDashboardState extends State<ShiftDashboard> {
-  ShiftScope _scope = ShiftScope.wholeDay;
+  String? _selectedServicePeriodId;
 
-  void _setScope(ShiftScope next) {
-    if (_scope == next) return;
-    setState(() => _scope = next);
+  void _setSelectedServicePeriodId(String? next) {
+    if (_selectedServicePeriodId == next) return;
+    setState(() => _selectedServicePeriodId = next);
   }
 
   @override
@@ -86,8 +78,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
         // Awaits both in parallel so the spinner only releases once
         // both surfaces have rebuilt.
         Future<void> refreshBoth() async {
-          final periodNotifier =
-              context.read<ShiftServicePeriodNotifier?>();
+          final periodNotifier = context.read<ShiftServicePeriodNotifier?>();
           await Future.wait([
             notifier.refresh(),
             if (periodNotifier != null) periodNotifier.refresh(),
@@ -110,7 +101,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
                     body: notifier.lockedPlanUnavailable
                         ? 'No locked weekly plan is available for the current week.'
                         : notifier.status?.description ??
-                            'No open or projected shift is available.',
+                              'No open or projected shift is available.',
                     timestamp: notifier.status?.latestImportTimestamp,
                   ),
                 ),
@@ -119,10 +110,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
           );
         }
         return FadingHeaderShell(
-          header: _ShiftHeader(
-            readModel: rm,
-            freshness: notifier.freshness,
-          ),
+          header: _ShiftHeader(readModel: rm, freshness: notifier.freshness),
           child: RefreshIndicator(
             color: AppColors.sunset,
             onRefresh: refreshBoth,
@@ -130,9 +118,9 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
                 SliverToBoxAdapter(
-                  child: _ShiftScopeToggle(
-                    scope: _scope,
-                    onChanged: _setScope,
+                  child: _ShiftPeriodSelector(
+                    selectedPeriodId: _selectedServicePeriodId,
+                    onChanged: _setSelectedServicePeriodId,
                   ),
                 ),
                 // Phase 8.0 V1 lean cut 2 — DataSourceHealthPill
@@ -145,8 +133,10 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
                 SliverToBoxAdapter(
                   child: _ShiftDashboardHealthPill(readModel: rm),
                 ),
-                if (_scope == ShiftScope.wholeDay) ..._wholeDaySlivers(rm),
-                if (_scope == ShiftScope.daypart) ..._daypartSlivers(),
+                if (_selectedServicePeriodId == null)
+                  ..._wholeDaySlivers(rm)
+                else
+                  ..._servicePeriodSlivers(_selectedServicePeriodId!),
                 const SliverToBoxAdapter(child: SizedBox(height: 48)),
               ],
             ),
@@ -169,9 +159,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
             pinned: true,
             delegate: StickySectionDelegate('SHIFT OUTPUTS'),
           ),
-          SliverToBoxAdapter(
-            child: _OutputsSection(readModel: rm),
-          ),
+          SliverToBoxAdapter(child: _OutputsSection(readModel: rm)),
         ],
       ),
       SliverMainAxisGroup(
@@ -180,9 +168,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
             pinned: true,
             delegate: StickySectionDelegate('SHIFT INPUTS'),
           ),
-          SliverToBoxAdapter(
-            child: _InputsSection(readModel: rm),
-          ),
+          SliverToBoxAdapter(child: _InputsSection(readModel: rm)),
         ],
       ),
       SliverMainAxisGroup(
@@ -221,16 +207,20 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
   /// when the bucket has data. The time-into-service header
   /// ("Lunch · 1h 12m in") sits above the SERVICE PERIODS sticky
   /// header and only renders when an active period is in progress.
-  List<Widget> _daypartSlivers() {
+  List<Widget> _servicePeriodSlivers(String selectedPeriodId) {
     return [
-      const SliverToBoxAdapter(child: _TimeIntoServiceHeader()),
+      SliverToBoxAdapter(
+        child: _TimeIntoServiceHeader(selectedPeriodId: selectedPeriodId),
+      ),
       SliverMainAxisGroup(
         slivers: [
           SliverPersistentHeader(
             pinned: true,
-            delegate: const StickySectionDelegate('SERVICE PERIODS'),
+            delegate: const StickySectionDelegate('SERVICE PERIOD'),
           ),
-          const SliverToBoxAdapter(child: _DaypartScaffoldSection()),
+          SliverToBoxAdapter(
+            child: _DaypartScaffoldSection(selectedPeriodId: selectedPeriodId),
+          ),
         ],
       ),
     ];
@@ -248,7 +238,7 @@ class _ShiftHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final restaurantName =
         context.watch<RestaurantScopeNotifier?>()?.restaurant?.displayName ??
-            'Restaurant';
+        'Restaurant';
     return AppScreenHeader(
       title: restaurantName,
       trailing: const _LiveClock(),
@@ -264,8 +254,18 @@ class _ShiftHeader extends StatelessWidget {
 
 String _formatMonthDay(String isoDate) {
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   final parts = isoDate.split('-');
   if (parts.length != 3) return isoDate;
@@ -316,8 +316,7 @@ class _ShiftHeaderMeta extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 '$day \u00b7 ${_formatMonthDay(businessDate)}',
-                style:
-                    AppTextStyles.mono12(color: AppColors.sunsetDark),
+                style: AppTextStyles.mono12(color: AppColors.sunsetDark),
               ),
             ],
           ),
@@ -354,8 +353,7 @@ class _LiveClockState extends State<_LiveClock> {
   late DateTime _now;
   Timer? _timer;
 
-  DateTime _currentTime() =>
-      (ShiftDashboard.clockOverride ?? DateTime.now)();
+  DateTime _currentTime() => (ShiftDashboard.clockOverride ?? DateTime.now)();
 
   @override
   void initState() {
@@ -387,10 +385,7 @@ class _LiveClockState extends State<_LiveClock> {
           style: AppTextStyles.mono16(color: AppColors.textPrimary),
         ),
         const SizedBox(width: 4),
-        Text(
-          amPm,
-          style: AppTextStyles.mono10(color: AppColors.textMuted),
-        ),
+        Text(amPm, style: AppTextStyles.mono10(color: AppColors.textMuted)),
       ],
     );
   }
@@ -437,10 +432,7 @@ class _FreshnessLabel extends StatelessWidget {
         Container(
           width: 6,
           height: 6,
-          decoration: BoxDecoration(
-            color: dotColor,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
         Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
@@ -482,7 +474,13 @@ class _SectionHeaderWithIcon extends StatelessWidget {
               const SizedBox(width: 10),
               Icon(icon, size: 16, color: AppColors.sunset),
               const SizedBox(width: 6),
-              Text(label, style: AppTextStyles.mono14(color: AppColors.textPrimary, weight: FontWeight.w700)),
+              Text(
+                label,
+                style: AppTextStyles.mono14(
+                  color: AppColors.textPrimary,
+                  weight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -509,8 +507,12 @@ class _OutputsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Extract output metric cards: COVERS and BLENDED WAGE
-    final coversCard = readModel.metricCards.where((m) => m.name == 'COVERS').toList();
-    final wageCard = readModel.metricCards.where((m) => m.name == 'BLENDED WAGE').toList();
+    final coversCard = readModel.metricCards
+        .where((m) => m.name == 'COVERS')
+        .toList();
+    final wageCard = readModel.metricCards
+        .where((m) => m.name == 'BLENDED WAGE')
+        .toList();
 
     // Phase 8.0 V1 lean cut 2 — switch on MetricProvenance state
     // BEFORE rendering. When state is `unavailable`, render
@@ -535,9 +537,7 @@ class _OutputsSection extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: _LaborCard(readModel: readModel),
-                ),
+                Expanded(child: _LaborCard(readModel: readModel)),
               ],
             ),
           ),
@@ -551,19 +551,22 @@ class _OutputsSection extends StatelessWidget {
                   child: coversProv.state == MetricState.unavailable
                       ? const MetricCardNotYetAvailable(metricLabel: 'COVERS')
                       : (coversCard.isNotEmpty
-                          ? InputMetricCard(metric: coversCard.first)
-                          : const MetricCardNotYetAvailable(
-                              metricLabel: 'COVERS')),
+                            ? InputMetricCard(metric: coversCard.first)
+                            : const MetricCardNotYetAvailable(
+                                metricLabel: 'COVERS',
+                              )),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: wageProv.state == MetricState.unavailable
                       ? const MetricCardNotYetAvailable(
-                          metricLabel: 'BLENDED WAGE')
+                          metricLabel: 'BLENDED WAGE',
+                        )
                       : (wageCard.isNotEmpty
-                          ? InputMetricCard(metric: wageCard.first)
-                          : const MetricCardNotYetAvailable(
-                              metricLabel: 'BLENDED WAGE')),
+                            ? InputMetricCard(metric: wageCard.first)
+                            : const MetricCardNotYetAvailable(
+                                metricLabel: 'BLENDED WAGE',
+                              )),
                 ),
               ],
             ),
@@ -657,7 +660,6 @@ class _InputsSection extends StatelessWidget {
   }
 }
 
-
 // ─── Teaching takeaway ───────────────────────────────────────────────────────
 
 // ignore: unused_element — Phase 10.5 lever teaching
@@ -676,7 +678,9 @@ class _TeachingTakeaway extends StatelessWidget {
           colors: [AppColors.backgroundMid, AppColors.cardGlow],
         ),
         border: Border.all(
-            color: AppColors.borderSubtle.withValues(alpha: 0.7), width: 1),
+          color: AppColors.borderSubtle.withValues(alpha: 0.7),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -684,7 +688,9 @@ class _TeachingTakeaway extends StatelessWidget {
           Text(
             lever.metric,
             style: AppTextStyles.mono14(
-                color: AppColors.textPrimary, weight: FontWeight.w600),
+              color: AppColors.textPrimary,
+              weight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
@@ -699,55 +705,100 @@ class _TeachingTakeaway extends StatelessWidget {
 
 // ─── Scope toggle (Phase 10.5.0) ────────────────────────────────────────────
 
-/// Segmented control that switches the Shift surface between the
-/// authoritative whole-day view and the additive daypart lens.
+/// Unified selector for the Shift rollup and configured service periods.
 ///
-/// Whole-day stays selected by default and stays the source of truth;
-/// the daypart selection opens a parallel lens without removing or
-/// rewriting the whole-day path. See `phase_10_5_*.md` for the full
-/// scope contract.
-class _ShiftScopeToggle extends StatelessWidget {
-  final ShiftScope scope;
-  final ValueChanged<ShiftScope> onChanged;
+/// Whole Day stays selected by default and remains the authoritative
+/// rollup; selecting a period opens that period's live lens without
+/// changing the whole-day path.
+class _ShiftPeriodSelector extends StatefulWidget {
+  final String? selectedPeriodId;
+  final ValueChanged<String?> onChanged;
 
-  const _ShiftScopeToggle({required this.scope, required this.onChanged});
+  const _ShiftPeriodSelector({
+    required this.selectedPeriodId,
+    required this.onChanged,
+  });
+
+  @override
+  State<_ShiftPeriodSelector> createState() => _ShiftPeriodSelectorState();
+}
+
+class _ShiftPeriodSelectorState extends State<_ShiftPeriodSelector> {
+  static const Duration _tickInterval = Duration(seconds: 30);
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(_tickInterval, (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
+    final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
+    final definitions = ServicePeriodDefinitionResolver.ordered(
+      periodNotifier?.definitions ??
+          ServicePeriodDefinitionResolver.demoDefinitions,
+    );
+    final cutoff =
+        periodNotifier?.businessDayStartLocalTime ??
+        _defaultBusinessDayStartLocalTime;
+    final localNow = _restaurantLocalNow(restaurant);
+    final activeId = localNow == null
+        ? null
+        : resolveActiveServicePeriodId(
+            localNow: localNow,
+            businessDayStartLocalTime: cutoff,
+            definitions: definitions,
+          );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: _ScopePill(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _PeriodPill(
               label: 'Whole Day',
-              selected: scope == ShiftScope.wholeDay,
-              onTap: () => onChanged(ShiftScope.wholeDay),
+              selected: widget.selectedPeriodId == null,
+              onTap: () => widget.onChanged(null),
             ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _ScopePill(
-              label: 'Daypart',
-              selected: scope == ShiftScope.daypart,
-              onTap: () => onChanged(ShiftScope.daypart),
-            ),
-          ),
-        ],
+            for (final definition in definitions) ...[
+              const SizedBox(width: 8),
+              _PeriodPill(
+                label: definition.label,
+                selected: widget.selectedPeriodId == definition.id,
+                activeNow: activeId == definition.id,
+                onTap: () => widget.onChanged(definition.id),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _ScopePill extends StatelessWidget {
+class _PeriodPill extends StatelessWidget {
   final String label;
   final bool selected;
+  final bool activeNow;
   final VoidCallback onTap;
 
-  const _ScopePill({
+  const _PeriodPill({
     required this.label,
     required this.selected,
     required this.onTap,
+    this.activeNow = false,
   });
 
   @override
@@ -756,8 +807,9 @@ class _ScopePill extends StatelessWidget {
     final borderColor = selected
         ? AppColors.sunsetDark
         : AppColors.borderSubtle.withValues(alpha: 0.7);
-    final textColor =
-        selected ? AppColors.textPrimary : AppColors.textSecondary;
+    final textColor = selected
+        ? AppColors.textPrimary
+        : AppColors.textSecondary;
     return Semantics(
       button: true,
       selected: selected,
@@ -765,19 +817,34 @@ class _ScopePill extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          constraints: const BoxConstraints(minWidth: 88, minHeight: 38),
+          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 12),
           decoration: BoxDecoration(
             color: bgColor,
             border: Border.all(color: borderColor, width: 1),
             borderRadius: BorderRadius.circular(2),
           ),
           alignment: Alignment.center,
-          child: Text(
-            label,
-            style: AppTextStyles.mono12(
-              color: textColor,
-              weight: FontWeight.w700,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: AppTextStyles.mono12(
+                  color: textColor,
+                  weight: FontWeight.w700,
+                ),
+              ),
+              if (activeNow) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'ACTIVE NOW',
+                  style: AppTextStyles.mono8(
+                    color: AppColors.sunsetDark,
+                  ).copyWith(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -811,7 +878,9 @@ class _ScopePill extends StatelessWidget {
 /// accurate when the operator parks on the daypart view across a
 /// service-period boundary (e.g. Lunch → no-period → Dinner).
 class _DaypartScaffoldSection extends StatefulWidget {
-  const _DaypartScaffoldSection();
+  final String selectedPeriodId;
+
+  const _DaypartScaffoldSection({required this.selectedPeriodId});
 
   @override
   State<_DaypartScaffoldSection> createState() =>
@@ -841,13 +910,14 @@ class _DaypartScaffoldSectionState extends State<_DaypartScaffoldSection> {
 
   @override
   Widget build(BuildContext context) {
-    final restaurant =
-        context.watch<RestaurantScopeNotifier?>()?.restaurant;
+    final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
     final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
 
-    final definitions = periodNotifier?.definitions ??
+    final definitions =
+        periodNotifier?.definitions ??
         ServicePeriodDefinitionResolver.demoDefinitions;
-    final cutoff = periodNotifier?.businessDayStartLocalTime ??
+    final cutoff =
+        periodNotifier?.businessDayStartLocalTime ??
         _defaultBusinessDayStartLocalTime;
     final localNow = _restaurantLocalNow(restaurant);
     final activeId = localNow == null
@@ -857,8 +927,14 @@ class _DaypartScaffoldSectionState extends State<_DaypartScaffoldSection> {
             businessDayStartLocalTime: cutoff,
             definitions: definitions,
           );
-    final ordered =
-        ServicePeriodDefinitionResolver.ordered(definitions);
+    final ordered = ServicePeriodDefinitionResolver.ordered(definitions);
+    ServicePeriodDefinition? selectedDefinition;
+    for (final definition in ordered) {
+      if (definition.id == widget.selectedPeriodId) {
+        selectedDefinition = definition;
+        break;
+      }
+    }
     final buckets = periodNotifier?.buckets;
     final missingTimezone = periodNotifier?.missingTimezone ?? false;
 
@@ -886,17 +962,23 @@ class _DaypartScaffoldSectionState extends State<_DaypartScaffoldSection> {
                 child: Text(
                   'Restaurant timezone is not configured. Per-period '
                   'metrics are unavailable until Settings is completed.',
-                  style:
-                      AppTextStyles.body13(color: AppColors.textSecondary),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ),
             ),
-          for (final def in ordered) ...[
+          if (selectedDefinition == null)
+            Text(
+              'Selected service period is unavailable.',
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            )
+          else ...[
             _DaypartScaffoldCard(
-              definition: def,
-              isActive: def.id == activeId,
-              bucket: buckets?[def.id],
-              primaryLeverCard: periodNotifier?.primaryLeverCardFor(def.id),
+              definition: selectedDefinition,
+              isActive: selectedDefinition.id == activeId,
+              bucket: buckets?[selectedDefinition.id],
+              primaryLeverCard: periodNotifier?.primaryLeverCardFor(
+                selectedDefinition.id,
+              ),
               missingTimezone: missingTimezone,
             ),
             const SizedBox(height: 8),
@@ -946,16 +1028,16 @@ class _DaypartScaffoldCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: AppColors.sunset.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(2),
                 ),
                 child: Text(
                   definition.shortLabel,
-                  style: AppTextStyles.mono10(color: AppColors.sunsetDark)
-                      .copyWith(fontWeight: FontWeight.w700),
+                  style: AppTextStyles.mono10(
+                    color: AppColors.sunsetDark,
+                  ).copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
               const SizedBox(width: 8),
@@ -972,22 +1054,6 @@ class _DaypartScaffoldCard extends StatelessWidget {
                 '${definition.startLocalTime} – ${definition.endLocalTime}',
                 style: AppTextStyles.mono10(color: AppColors.textMuted),
               ),
-              if (isActive) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.sunset.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                  child: Text(
-                    'ACTIVE NOW',
-                    style: AppTextStyles.mono8(color: AppColors.sunsetDark)
-                        .copyWith(fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ],
             ],
           ),
           const SizedBox(height: 8),
@@ -1003,7 +1069,9 @@ class _DaypartScaffoldCard extends StatelessWidget {
             Text(
               missingTimezone
                   ? 'Timezone not configured — metrics unavailable.'
-                  : 'No data yet for this period.',
+                  : isActive
+                  ? 'No data yet for this period.'
+                  : 'Projected / unavailable until this period opens.',
               style: AppTextStyles.mono10(color: AppColors.textMuted),
             ),
         ],
@@ -1050,8 +1118,9 @@ class _DaypartDriverChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: AppTextStyles.mono10(color: accent)
-            .copyWith(fontWeight: FontWeight.w700),
+        style: AppTextStyles.mono10(
+          color: accent,
+        ).copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -1071,19 +1140,18 @@ class _DaypartMetricGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fohHrs = (bucket.fohMinutes / 60).toStringAsFixed(
-        bucket.fohMinutes % 60 == 0 ? 0 : 1);
+      bucket.fohMinutes % 60 == 0 ? 0 : 1,
+    );
     final bohHrs = (bucket.bohMinutes / 60).toStringAsFixed(
-        bucket.bohMinutes % 60 == 0 ? 0 : 1);
+      bucket.bohMinutes % 60 == 0 ? 0 : 1,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Expanded(
-              child: _MetricCell(
-                label: 'COVERS',
-                value: '${bucket.covers}',
-              ),
+              child: _MetricCell(label: 'COVERS', value: '${bucket.covers}'),
             ),
             Expanded(
               child: _MetricCell(
@@ -1192,7 +1260,9 @@ DateTime? _restaurantLocalNow(RestaurantLocation? restaurant) {
 /// Owns its own 30-second ticker so the elapsed display stays current
 /// without a snapshot refresh.
 class _TimeIntoServiceHeader extends StatefulWidget {
-  const _TimeIntoServiceHeader();
+  final String selectedPeriodId;
+
+  const _TimeIntoServiceHeader({required this.selectedPeriodId});
 
   @override
   State<_TimeIntoServiceHeader> createState() => _TimeIntoServiceHeaderState();
@@ -1218,12 +1288,13 @@ class _TimeIntoServiceHeaderState extends State<_TimeIntoServiceHeader> {
 
   @override
   Widget build(BuildContext context) {
-    final restaurant =
-        context.watch<RestaurantScopeNotifier?>()?.restaurant;
+    final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
     final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
-    final definitions = periodNotifier?.definitions ??
+    final definitions =
+        periodNotifier?.definitions ??
         ServicePeriodDefinitionResolver.demoDefinitions;
-    final cutoff = periodNotifier?.businessDayStartLocalTime ??
+    final cutoff =
+        periodNotifier?.businessDayStartLocalTime ??
         _defaultBusinessDayStartLocalTime;
     final localNow = _restaurantLocalNow(restaurant);
     if (localNow == null) return const SizedBox.shrink();
@@ -1233,6 +1304,9 @@ class _TimeIntoServiceHeaderState extends State<_TimeIntoServiceHeader> {
       definitions: definitions,
     );
     if (interval == null) return const SizedBox.shrink();
+    if (interval.definition.id != widget.selectedPeriodId) {
+      return const SizedBox.shrink();
+    }
     final elapsedMinutes = localNow.difference(interval.start).inMinutes;
     if (elapsedMinutes < 0) return const SizedBox.shrink();
     return Padding(
@@ -1286,16 +1360,22 @@ class _ShiftEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(headline,
-                style: AppTextStyles.mono14(color: AppColors.textMuted)),
+            Text(
+              headline,
+              style: AppTextStyles.mono14(color: AppColors.textMuted),
+            ),
             const SizedBox(height: 8),
-            Text(body,
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-                textAlign: TextAlign.center),
+            Text(
+              body,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
             if (timestamp != null) ...[
               const SizedBox(height: 8),
-              Text('Last import: $timestamp',
-                  style: AppTextStyles.mono8(color: AppColors.textMuted)),
+              Text(
+                'Last import: $timestamp',
+                style: AppTextStyles.mono8(color: AppColors.textMuted),
+              ),
             ],
           ],
         ),
@@ -1303,7 +1383,6 @@ class _ShiftEmptyState extends StatelessWidget {
     );
   }
 }
-
 
 class _LaborCard extends StatelessWidget {
   final ShiftDashboardReadModel readModel;
@@ -1320,7 +1399,9 @@ class _LaborCard extends StatelessWidget {
           colors: [AppColors.backgroundMid, AppColors.cardGlow],
         ),
         border: Border.all(
-            color: AppColors.borderSubtle.withValues(alpha: 0.7), width: 1),
+          color: AppColors.borderSubtle.withValues(alpha: 0.7),
+          width: 1,
+        ),
         borderRadius: BorderRadius.circular(3),
       ),
       child: _LaborVarianceSection(readModel: readModel),
@@ -1346,8 +1427,10 @@ class _LaborVarianceSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Label
-        Text('LABOR %',
-            style: AppTextStyles.mono10(color: AppColors.textMuted)),
+        Text(
+          'LABOR %',
+          style: AppTextStyles.mono10(color: AppColors.textMuted),
+        ),
         const SizedBox(height: 6),
         // Current value
         Text(
@@ -1363,8 +1446,7 @@ class _LaborVarianceSection extends StatelessWidget {
         const SizedBox(height: 8),
         // Delta pill
         Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: 6, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
             color: accentColor.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(2),
@@ -1374,12 +1456,16 @@ class _LaborVarianceSection extends StatelessWidget {
             children: [
               Icon(
                 isOver ? Icons.arrow_upward : Icons.arrow_downward,
-                size: 14, color: accentColor),
+                size: 14,
+                color: accentColor,
+              ),
               const SizedBox(width: 2),
               Text(
                 '$ptSign${variancePts.abs().toStringAsFixed(1)} pts',
                 style: AppTextStyles.mono12(
-                    color: accentColor, weight: FontWeight.w700),
+                  color: accentColor,
+                  weight: FontWeight.w700,
+                ),
               ),
             ],
           ),
@@ -1425,21 +1511,20 @@ class _CompactHoursColumn extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Label
-          Text(label,
-              style: AppTextStyles.mono10(color: AppColors.textMuted)),
+          Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
           const SizedBox(height: 6),
           // Current value
-          Text('$scheduled',
-              style: AppTextStyles.mono28()),
+          Text('$scheduled', style: AppTextStyles.mono28()),
           const SizedBox(height: 3),
           // Target reference
-          Text('Target $needed hrs',
-              style: AppTextStyles.mono10(color: AppColors.textMuted)),
+          Text(
+            'Target $needed hrs',
+            style: AppTextStyles.mono10(color: AppColors.textMuted),
+          ),
           const SizedBox(height: 8),
           // Delta pill
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 6, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
               color: deltaColor.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(2),
@@ -1452,7 +1537,9 @@ class _CompactHoursColumn extends StatelessWidget {
                 Text(
                   '${isOver ? '+' : ''}$excess hrs',
                   style: AppTextStyles.mono12(
-                      color: deltaColor, weight: FontWeight.w700),
+                    color: deltaColor,
+                    weight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),
@@ -1477,8 +1564,11 @@ class _ShiftDashboardHealthPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entries = <DataSourceHealthEntry>[];
-    void addIfDegraded(String label, MetricProvenance prov,
-        {String? overrideLine}) {
+    void addIfDegraded(
+      String label,
+      MetricProvenance prov, {
+      String? overrideLine,
+    }) {
       if (!prov.isDegraded) return;
       String summary;
       switch (prov.state) {
@@ -1494,19 +1584,24 @@ class _ShiftDashboardHealthPill extends StatelessWidget {
         case MetricState.live:
           return;
       }
-      entries.add(DataSourceHealthEntry(
-        metricLabel: label,
-        state: prov.state,
-        provenance: prov.provenance,
-        summaryLine: summary,
-      ));
+      entries.add(
+        DataSourceHealthEntry(
+          metricLabel: label,
+          state: prov.state,
+          provenance: prov.provenance,
+          summaryLine: summary,
+        ),
+      );
     }
 
     addIfDegraded('Sales', readModel.salesProvenance);
     addIfDegraded('Covers', readModel.coversProvenance);
     addIfDegraded('PPA', readModel.ppaProvenance);
-    addIfDegraded('CPLH', readModel.cplhProvenance,
-        overrideLine: 'Labor: not yet connected');
+    addIfDegraded(
+      'CPLH',
+      readModel.cplhProvenance,
+      overrideLine: 'Labor: not yet connected',
+    );
     addIfDegraded('SPLH', readModel.splhProvenance);
     addIfDegraded('Blended wage', readModel.blendedWageProvenance);
 

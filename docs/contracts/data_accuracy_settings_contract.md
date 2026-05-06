@@ -25,9 +25,9 @@ sit at the canonical-fact resolution boundary in the integration spine:
 2. **Wage source** - when the labor vendor doesn't expose dollars, the
    operator chooses between (a) target wage × hours substitution and
    (b) manual wage-mix from `wage_role_rows`.
-3. **Polling cadence + costing** - operator sets per-(operator,
-   location, vendor) polling cadence above the framework default, with
-   cost projection surfaced before commit.
+3. **Polling cadence + costing** - F&F controls polling cadence by
+   tier assignment per (operator, location). Operators see the effective
+   tier and can request a change; F&F Ops owns cadence/cost/margin controls.
 
 Without this contract, those overrides would either be ad-hoc widget
 state (architecture violation) or implicit default behavior (operator
@@ -76,9 +76,9 @@ not by the polling setting:
   → Oracle data lags up to 5 minutes; everything from your webhook
   vendors is still live within seconds.
 
-The polling cadence picker on the Operator Web Console **only renders
-poll-only vendors**. Webhook vendors do not appear; the picker would
-have no effect on them.
+The Operator Web Console polling card is display-only and only lists
+poll-only vendors. Webhook vendors do not appear because tier cadence
+has no effect on them.
 
 ### F&F controls cadence; operator sees tiers, not vendor calls (REVERSED)
 
@@ -175,14 +175,15 @@ The tab carries four cards in this order:
    uses)". Vendor relativity label: "This setting applies when your
    labor vendor (currently: <vendor_displayname>) does not expose
    per-shift dollars. Vendors that do not expose dollars at V1: <list>."
-2. **Covers source card** - per-daypart toggle. Three states: vendor /
-   forecast / manual. When `manual` is chosen for a daypart, an inline
-   sub-card opens for entering today's manual covers (lunch / dinner /
-   late_night). Operator can copy yesterday's manual entry to today as
-   a one-tap shortcut. Vendor relativity label: "This setting applies
-   when your POS vendor (currently: <vendor_displayname>) does not
-   expose covers as a first-class field. POS vendors that do not
-   expose covers at V1: Square, Clover."
+2. **Covers source card** - per-effective-service-period toggle. Three states: vendor /
+   forecast / manual. Current V1 storage exposes the canonical lunch / dinner /
+   late_night columns; configurable-period support must use the compatibility
+   rule below before any location exceeds those canonical period keys. When
+   `manual` is chosen, the inline editor stores manual covers for that
+   business date and service-period key. Vendor relativity label: "This setting
+   applies when your POS vendor (currently: <vendor_displayname>) does not
+   expose covers as a first-class field. POS vendors that do not expose covers
+   at V1: Square, Clover."
 3. **Polling cadence card** - display-only summary + request-tier-change
    flow. The card shows the operator's current tier name + tier price
    (read from `forge_flow_polling_tier_assignment` via Lane `.A`'s
@@ -321,6 +322,23 @@ and the reason note. No silent edits.
 Admin overrides write `audit_logs` rows with
 `actor_kind = 'forge_admin'` and the diff captured in the audit row
 payload.
+
+
+## Business timing compatibility amendment (2026-05-06)
+
+Business timing makes service periods restaurant-configurable. Data Accuracy
+settings therefore resolve by stable `service_period_key`, not by display label.
+The existing `covers_source_lunch` / `covers_source_dinner` /
+`covers_source_late_night` columns are a V1 compatibility shape for locations
+whose effective timing profile uses the canonical keys `lunch`, `dinner`, and
+`late_night`.
+
+Before an operator can configure a fourth period or rename/re-key away from the
+canonical three, the data-accuracy lane must add a keyed child table such as
+`data_accuracy_service_period_settings(operator_id, location_id, service_period_key, covers_source, manual_entries)`.
+Closed and live aggregators must persist/use the stable key captured from the
+timing profile in force at bucket time. Labels may change; keys and provenance
+must remain stable.
 
 ## Schema
 

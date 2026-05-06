@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-05
+Updated: 2026-05-06
 Owner: You · Execution: We think, Claude codes
 
 Routing map only. Slice scopes live in their phase docs.
@@ -30,8 +30,8 @@ Prefer `.mcp.json` servers for orientation: `forgeflow_docs`, `forgeflow_sqlite_
 - **AI paused** — `11b/.1/.2`, `12.*`, `11A.3/.3.x`, `11A.11`, `9.8` AI portion, `10b`. See `memory/project_phase_pause_2026_05_03.md`.
 - **Outward-vendor paused** — `8.5`, `11W.9`. See `memory/project_phase_pause_2026_05_03.md`.
 - **Barrio paused** — `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart`. See `memory/project_barrio_paused.md`.
-- **In scope** — `8`/`8R`/`8.S`/`8.spine-bridge`/`11W` (minus `.9`)/`11A.10`/`10a`/`9.8` inbound T&Cs + email/`7.58`/Cutover.
-- **Production1 paused** (2026-05-03). Wave 1 ships staging-only first; unfreeze becomes a parallel critical path before V1 launch. Baseline: `docs/phases/phase_production_cutover/production1_staging_parity_baseline_2026-05-03.md`. Pending Production1 apply: `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` + `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql` (latter applied + Browser Use verified on staging 2026-05-04 after live-admin E2E found `forge_admin` lacked operator/location DML).
+- **In scope** - `8`/`8R`/`8.S`/`8.spine-bridge`/`8.spine-bridge-live`/`business-timing-live`/`11W` (minus `.9`)/`11A.10`/`10a`/`9.8` inbound T&Cs + email/`7.58`/Cutover.
+- **Production1 paused** (2026-05-03). Wave 1 ships staging-only first; unfreeze becomes a parallel critical path before V1 launch. Baseline: `docs/phases/phase_production_cutover/production1_staging_parity_baseline_2026-05-03.md`. Pending Production1/staging apply queue now runs through `202605060000_phase_business_timing_live_schema.sql`: `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` + `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql` (latter applied + Browser Use verified on staging 2026-05-04 after live-admin E2E found `forge_admin` lacked operator/location DML) + `202605060000_phase_business_timing_live_schema.sql` (business timing + live open-shift snapshot schema; staging apply pending).
 - **Staging runtime/perf carry-forward** (2026-05-03): `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`; durable rules in `docs/contracts/slice_runtime_acceptance_contract.md`.
 - **Notify before** any live Firebase mutation, key/account request, billing setup, provider call, or product decision.
 
@@ -44,7 +44,7 @@ Prefer `.mcp.json` servers for orientation: `forgeflow_docs`, `forgeflow_sqlite_
 | `cutover.*` | `phase_production_cutover/phase_production_cutover_plan.md` |
 | `9.0Σ.*`, `9.live-closeout`, `9.0-9.10` | `phase_9/phase_9_auth_plan.md` + `phase_9_execution_backlog.md` |
 | `7.61` / `10.5` (closed) | `docs/archive/phases/phase_7_61/`, `docs/archive/phases/phase_10_5/` |
-| `8` / `8R` / `8.S` / `8.spine-bridge` / `8.live` | `phase_8/*`, `phase_8R/*`, `phase_8S/*`, `phase_8/phase_8_spine_bridge_plan.md`, `phase_8_live_rollout/*` |
+| `8` / `8R` / `8.S` / `8.spine-bridge` / `8.spine-bridge-live` / `8.live` | `phase_8/*`, `phase_8R/*`, `phase_8S/*`, `phase_8/phase_8_spine_bridge_plan.md`, `phase_business_timing_live/*`, `phase_8_live_rollout/*` |
 | `8.5`, `9.8`, `10a`/`10b`, `9.5`/`9.75`, `7.58`, `11b*`, `11W*`, `12.*` | matching `docs/phases/**` doc |
 
 ## North Star
@@ -71,6 +71,7 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 | `8.S` (Scheduling) | engineering-complete (PASS 2026-05-05 via `mobile-proof.v2`); Wave B `documented` for 6 adapters; lifecycle promotion via `phase_8_live_rollout` | `phase_8S/*` |
 | `8.spine-bridge` | accepted 2026-05-05 — 11 sub-lanes landed (`.0` / `.0a` / `.1.OR` / `.1.QBT` / `.1.LB` / `.2` / `.3` / `.A` / `.B` / `.C` / `.7S.upgrade`); `.4` proof v2 PASSED 27/27 | `phase_8/phase_8_spine_bridge_plan.md`, `docs/_execution/2026-05-05_8_integration_mobile_proof_v2_execution.md` |
 | `8.spine-bridge-sink-fanout` | queued — 14 file-disjoint Postgres sink lanes for the remaining vendors (cleared by `mobile-proof.v2` PASS 2026-05-05) | `phase_8/phase_8_spine_bridge_plan.md` |
+| `business-timing-live` | running - schema/domain/resolved timing/mobile read surfaces drafted; live producer/proxy writes gated behind `8.spine-bridge-live` | `phase_business_timing_live/business_timing_live_plan.md` |
 | `8.live` (lifecycle rollout) | open — 17 `*.live.sandbox` + 17 `*.live.prod` slices; closes when last vendor reaches `production_credentialed` | `phase_8_live_rollout/phase_8_live_rollout_plan.md` |
 | `8.5` (Outbound finance) | paused (outward-vendor) | `phase_8_5_external_integrations/*` |
 | `11b`/`.1`/`.2` | paused (AI) | `phase_11b/*` |

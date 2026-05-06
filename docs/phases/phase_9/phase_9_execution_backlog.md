@@ -71,7 +71,10 @@ Do not re-open stale findings unless the repo regresses:
   live-admin E2E on 2026-05-04 also applied and verified
   `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql` for
   operator/location admin writes; those writes stay staging-ready only until
-  the grant is applied and verified on Production1.
+  the grant is applied and verified on Production1. The Business Timing Live
+  slice adds `202605060000_phase_business_timing_live_schema.sql`; apply and
+  verify it on staging/review before claiming live business timing schema
+  parity, then carry it into the next Production1 batch.
 
 ## Remaining Live-Closeout Gates
 

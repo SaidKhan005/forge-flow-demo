@@ -51,7 +51,9 @@ UX-writing standard applies to every onboarding screen. Welcome copy explains wh
 
 ### `11W.7` Account and Business setup
 
-Minimal account-management screen for V1. Operator edits business name, business identity (logo upload, brand color), preferred currency, business-day rollover hour, and per-location IANA timezone. Reads from Phase 9 auth tables and Phase 11A.1 operator/location schema. Writes through existing operator-scoped routes. Audited via existing Phase 9 audit log.
+Minimal account-management screen for V1. Operator edits business name, business identity (logo upload, brand color), preferred currency, business-day rollover hour, week start, per-location IANA timezone, and business timing/service-period setup. Reads from Phase 9 auth tables, Phase 11A.1 operator/location schema, and the Business Timing source tables. Writes through operator-scoped routes only; shared admin form components may be reused, but `/v1/admin/*` gateways are not used for operator self-service. Audited via existing Phase 9 audit log.
+
+Business timing hierarchy follows the product rule: operator default -> org-unit ancestors -> location, with lower scopes overriding higher scopes. Operator Web is the normal editor. F&F Operations Console remains the support/internal override surface and requires audited admin reason text.
 
 V1 explicit non-goals on this screen: full billing UI, invoice viewer, audit log export, profile photo upload for individual users. These wait until operator demand justifies the engineering work.
 

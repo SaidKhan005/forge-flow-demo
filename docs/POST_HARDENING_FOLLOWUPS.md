@@ -13,9 +13,10 @@ Open items below are the current remainder.
 
 ## P0 - Production1 Migration Apply Gap
 
-**2 migrations pending Production1 apply**:
+**3 migrations pending Production1/staging apply**:
 `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` and
-`202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`.
+`202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`, plus
+`202605060000_phase_business_timing_live_schema.sql`.
 It restores read-only Debug Console request-log inspection by granting
 `forge_admin` explicit `SELECT` on `public.proxy_requests`. The migration
 was applied to staging and Browser Use verified on 2026-05-03; it was not
@@ -24,12 +25,16 @@ The operator/location admin grant restores `forge_admin` DML on
 `public.operators`, `public.locations`, and `public.operator_admins`; it was
 applied and Browser Use verified on staging on 2026-05-04 after operator and
 location edit routes returned live 200s.
+The business timing migration adds the canonical scoped timing profile tables
+and server-side `open_shift_snapshots` table; it is queued by the Business
+Timing Live slice and requires staging apply before review/runtime deploys can
+claim live schema parity.
 
-**Action:** include these files in the next Production1 apply event under
+**Action:** include these files in the next staged/Production1 apply event under
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until that apply
 and direct grant verification complete, Debug Console request-log inspection
-and operator/location admin writes are staging-ready only and must not be
-described as production-ready.
+and operator/location admin writes are staging-ready only, and business timing
+live schema must not be described as review/staging-ready.
 
 ## P1 - Live Admin Operational Gates
 
@@ -43,6 +48,20 @@ candidate packaging and staging audit-anchor remediation are archived in the
 - Admin browser QA: use the static-build path in
   `runbooks/admin_console_browser_qa_runbook.md`; treat debug web-server
   bootstrap failures as dev-workflow noise unless the static build also fails.
+
+## P1 - Business Timing / Live Shift Architecture Follow-ups
+
+The 2026-05-06 audit found the product direction sound but identified contract
+work that must land before live in-progress Shift is claimed:
+
+- Keep `8.spine-bridge-sink-fanout` closed-truth only. Live
+  `OpenShiftSnapshot` production belongs in explicit `8.spine-bridge-live`.
+- Add keyed per-service-period Data Accuracy settings before enabling a fourth
+  or non-canonical service period key for an operator.
+- Persist/use stable timing profile and service-period keys for bucketed live
+  and closed facts so label changes do not rewrite history.
+- Treat Operator Web as the normal timing editor and F&F Operations Console as
+  audited support override only.
 
 ## P2 - Test Coverage Gaps Remaining
 

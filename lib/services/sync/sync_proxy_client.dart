@@ -24,6 +24,8 @@
 //     banner clears without a redeploy once the first vendor backfill
 //     commits server-side.
 
+import '../../domain/models/open_shift_snapshot.dart';
+import '../../domain/models/restaurant_timing_config.dart';
 import '../../models/shift_record.dart';
 import '../integration/demo_mode_state.dart';
 
@@ -36,10 +38,7 @@ import '../integration/demo_mode_state.dart';
 /// again with that cursor. When [nextCursor] is null, the sweep ends
 /// and the last-persisted watermark stays as-is.
 class ShiftRecordPage {
-  const ShiftRecordPage({
-    required this.records,
-    required this.nextCursor,
-  });
+  const ShiftRecordPage({required this.records, required this.nextCursor});
 
   /// Rows in this page. May be empty (no new records since the input
   /// cursor); the orchestrator tolerates an empty list and emits no
@@ -49,6 +48,22 @@ class ShiftRecordPage {
   /// Cursor to pass back on the next call to advance the high-water
   /// mark. `null` means "no more pages in this sweep" — the loop
   /// terminates.
+  final String? nextCursor;
+}
+
+/// One bounded page of server-produced live/open shift snapshots.
+///
+/// These rows are provisional current-state read models, not closed
+/// historical truth. The phone persists them to local SQLite so Shift
+/// can render instantly, but the proxy/server remains the source of
+/// truth and closed `ShiftRecord` rows keep their existing path.
+class OpenShiftSnapshotPage {
+  const OpenShiftSnapshotPage({
+    required this.snapshots,
+    required this.nextCursor,
+  });
+
+  final List<OpenShiftSnapshot> snapshots;
   final String? nextCursor;
 }
 
@@ -138,10 +153,10 @@ class ForgeFlowPollingTierAssignmentSnapshot {
 /// `/v1/operators/<op>/locations/<loc>/...` endpoints. Tests inject a
 /// fake; no live HTTP runs in tests per the lean-cut ledger.
 ///
-/// All four methods are bounded: `fetchShiftRecords` takes an explicit
-/// page size; the three aux fetches return at most one row per
-/// (operator, location, category) by schema. Whole-table sweeps are
-/// not part of the surface.
+/// All methods are bounded: `fetchShiftRecords` and
+/// `fetchOpenShiftSnapshots` take an explicit page size; the aux
+/// fetches return at most one row per (operator, location, category)
+/// by schema. Whole-table sweeps are not part of the surface.
 abstract class SyncProxyClient {
   /// Pull one bounded page of `ShiftRecord` rows modified since
   /// [cursor]. The proxy enforces operator / location isolation via
@@ -156,6 +171,29 @@ abstract class SyncProxyClient {
     required String locationId,
     required String? cursor,
     required int pageSize,
+  });
+
+  /// Pull one bounded page of live/open `OpenShiftSnapshot` rows
+  /// modified since [cursor]. The proxy enforces operator / location
+  /// isolation. Rows are provisional and keyed on the current
+  /// business date + service period.
+  Future<OpenShiftSnapshotPage> fetchOpenShiftSnapshots({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  });
+
+  /// Pull the server-resolved effective timing config for this
+  /// location, or null when the operator has not configured timing
+  /// yet and mobile should keep its current local/default row.
+  ///
+  /// This is the resolved shape, not the inheritance graph. Mobile
+  /// stores it in `restaurant_timing_configs` for fast rendering.
+  Future<RestaurantTimingConfig?> fetchResolvedTimingConfig({
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
   });
 
   /// Pull every `demo_mode_state` row for this (operator, location).
@@ -179,7 +217,7 @@ abstract class SyncProxyClient {
   /// the operator yet — operator sees "Standard tier — provisioning"
   /// chrome on the web console).
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
-      fetchForgeFlowPollingTierAssignment({
+  fetchForgeFlowPollingTierAssignment({
     required String operatorId,
     required String locationId,
   });

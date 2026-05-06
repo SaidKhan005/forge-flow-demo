@@ -40,8 +40,12 @@
 // grep in `test/services/sync/postgres_shift_record_to_mobile_sync_test.dart`.
 
 import '../../domain/models/sync_watermark.dart';
+import '../../domain/repositories/open_shift_snapshot_repository.dart';
+import '../../domain/repositories/restaurant_timing_config_repository.dart';
 import '../../domain/repositories/shift_record_repository.dart';
 import '../../infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_timing_config_repository.dart';
 import '../../state/app_runtime_invalidation_bus.dart';
 import '../integration/demo_mode_state.dart';
 import 'sync_proxy_client.dart';
@@ -50,8 +54,12 @@ import 'sync_proxy_client.dart';
 class SyncResult {
   const SyncResult({
     required this.recordsWritten,
+    required this.openSnapshotsWritten,
     required this.pagesPulled,
+    required this.openSnapshotPagesPulled,
     required this.finalCursor,
+    required this.finalOpenSnapshotCursor,
+    required this.timingConfigSynced,
     required this.demoModeStates,
     required this.dataAccuracySettings,
     required this.pollingTierAssignment,
@@ -63,14 +71,31 @@ class SyncResult {
   /// emitted (one per write, per the contract).
   final int recordsWritten;
 
+  /// Total provisional `OpenShiftSnapshot` rows persisted during this
+  /// sweep. These rows drive live/current Shift surfaces and never
+  /// replace closed historical `ShiftRecord` truth.
+  final int openSnapshotsWritten;
+
   /// Number of pages fetched (>= 1, since the loop always runs at
   /// least one fetch per sweep).
   final int pagesPulled;
+
+  /// Number of open-snapshot pages fetched. Equals 0 only when the
+  /// proxy/client implementation throws before the live-snapshot leg
+  /// starts.
+  final int openSnapshotPagesPulled;
 
   /// Last cursor in effect at the end of the sweep. Equals the
   /// persisted watermark when any non-null cursor advanced; equals
   /// the input watermark otherwise.
   final String? finalCursor;
+
+  /// Last open-snapshot cursor in effect at the end of the sweep.
+  final String? finalOpenSnapshotCursor;
+
+  /// True when a resolved effective timing config was fetched and
+  /// persisted to mobile SQLite.
+  final bool timingConfigSynced;
 
   /// Snapshot of `demo_mode_state` rows for this (operator, location).
   /// Snapshot of three at most (one per `IntegrationCategory`).
@@ -95,19 +120,31 @@ class PostgresShiftRecordToMobileSync {
     required this.client,
     required this.shiftRepository,
     required this.watermarkDao,
+    OpenShiftSnapshotRepository? openShiftSnapshotRepository,
+    RestaurantTimingConfigRepository? timingConfigRepository,
     AppRuntimeInvalidationBus? invalidationBus,
     this.pageSize = 200,
-  })  : assert(pageSize > 0, 'pageSize must be positive'),
-        invalidationBus = invalidationBus ?? AppRuntimeInvalidationBus.instance;
+  }) : assert(pageSize > 0, 'pageSize must be positive'),
+       openShiftSnapshotRepository =
+           openShiftSnapshotRepository ??
+           SqliteOpenShiftSnapshotRepository.instance,
+       timingConfigRepository =
+           timingConfigRepository ??
+           SqliteRestaurantTimingConfigRepository.instance,
+       invalidationBus = invalidationBus ?? AppRuntimeInvalidationBus.instance;
 
   final SyncProxyClient client;
   final ShiftRecordRepository shiftRepository;
+  final OpenShiftSnapshotRepository openShiftSnapshotRepository;
+  final RestaurantTimingConfigRepository timingConfigRepository;
   final ImportTrackingDao watermarkDao;
   final AppRuntimeInvalidationBus invalidationBus;
   final int pageSize;
 
   static const String _watermarkType = 'cursor';
   static const String _sourceTypePrefix = 'pg_shift_record_sync';
+  static const String _openSnapshotSourceTypePrefix =
+      'pg_open_shift_snapshot_sync';
 
   // ── Latest aux-pull snapshots (in-memory; SQLite parity deferred) ──
 
@@ -133,14 +170,20 @@ class PostgresShiftRecordToMobileSync {
   String _watermarkSourceType(String operatorId, String locationId) =>
       '$_sourceTypePrefix:$operatorId:$locationId';
 
+  String _openSnapshotWatermarkSourceType(
+    String operatorId,
+    String locationId,
+  ) => '$_openSnapshotSourceTypePrefix:$operatorId:$locationId';
+
   Future<String?> _readCursor({
     required String restaurantId,
     required String operatorId,
     required String locationId,
+    String? sourceType,
   }) async {
     final wm = await watermarkDao.getWatermark(
       restaurantId,
-      _watermarkSourceType(operatorId, locationId),
+      sourceType ?? _watermarkSourceType(operatorId, locationId),
       _watermarkType,
     );
     final value = wm?.watermarkValue;
@@ -153,14 +196,17 @@ class PostgresShiftRecordToMobileSync {
     required String operatorId,
     required String locationId,
     required String cursorToken,
+    String? sourceType,
   }) async {
-    await watermarkDao.upsertWatermark(SyncWatermark(
-      restaurantId: restaurantId,
-      sourceType: _watermarkSourceType(operatorId, locationId),
-      watermarkType: _watermarkType,
-      watermarkValue: cursorToken,
-      updatedAt: DateTime.now().toUtc().toIso8601String(),
-    ));
+    await watermarkDao.upsertWatermark(
+      SyncWatermark(
+        restaurantId: restaurantId,
+        sourceType: sourceType ?? _watermarkSourceType(operatorId, locationId),
+        watermarkType: _watermarkType,
+        watermarkValue: cursorToken,
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+      ),
+    );
   }
 
   /// Run one sync sweep for the (operator, location).
@@ -195,10 +241,35 @@ class PostgresShiftRecordToMobileSync {
       operatorId: operatorId,
       locationId: locationId,
     );
+    final openSnapshotSourceType = _openSnapshotWatermarkSourceType(
+      operatorId,
+      locationId,
+    );
+    final initialOpenCursor = await _readCursor(
+      restaurantId: restaurantId,
+      operatorId: operatorId,
+      locationId: locationId,
+      sourceType: openSnapshotSourceType,
+    );
 
     var cursor = initialCursor;
+    var openCursor = initialOpenCursor;
     var recordsWritten = 0;
     var pagesPulled = 0;
+    var openSnapshotsWritten = 0;
+    var openSnapshotPagesPulled = 0;
+    var timingConfigSynced = false;
+
+    final timingConfig = await client.fetchResolvedTimingConfig(
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+    );
+    if (timingConfig != null) {
+      await timingConfigRepository.saveTimingConfig(timingConfig);
+      timingConfigSynced = true;
+      invalidationBus.notifyImportCompletionPersisted();
+    }
 
     while (true) {
       final page = await client.fetchShiftRecords(
@@ -228,6 +299,35 @@ class PostgresShiftRecordToMobileSync {
       cursor = next;
     }
 
+    while (true) {
+      final page = await client.fetchOpenShiftSnapshots(
+        operatorId: operatorId,
+        locationId: locationId,
+        cursor: openCursor,
+        pageSize: pageSize,
+      );
+      openSnapshotPagesPulled++;
+
+      for (final snapshot in page.snapshots) {
+        await openShiftSnapshotRepository.replaceOpenShiftSnapshot(snapshot);
+        invalidationBus.notifyImportCompletionPersisted();
+        openSnapshotsWritten++;
+      }
+
+      final next = page.nextCursor;
+      if (next == null) {
+        break;
+      }
+      await _writeCursor(
+        restaurantId: restaurantId,
+        operatorId: operatorId,
+        locationId: locationId,
+        cursorToken: next,
+        sourceType: openSnapshotSourceType,
+      );
+      openCursor = next;
+    }
+
     // Aux pulls in the same sweep (per spine-bridge.3 contract).
     _latestDemoModeStates = await client.fetchDemoModeStates(
       operatorId: operatorId,
@@ -237,16 +337,20 @@ class PostgresShiftRecordToMobileSync {
       operatorId: operatorId,
       locationId: locationId,
     );
-    _latestPollingTierAssignment =
-        await client.fetchForgeFlowPollingTierAssignment(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    _latestPollingTierAssignment = await client
+        .fetchForgeFlowPollingTierAssignment(
+          operatorId: operatorId,
+          locationId: locationId,
+        );
 
     return SyncResult(
       recordsWritten: recordsWritten,
+      openSnapshotsWritten: openSnapshotsWritten,
       pagesPulled: pagesPulled,
+      openSnapshotPagesPulled: openSnapshotPagesPulled,
       finalCursor: cursor,
+      finalOpenSnapshotCursor: openCursor,
+      timingConfigSynced: timingConfigSynced,
       demoModeStates: List<DemoModeRecord>.unmodifiable(_latestDemoModeStates),
       dataAccuracySettings: _latestDataAccuracySettings,
       pollingTierAssignment: _latestPollingTierAssignment,

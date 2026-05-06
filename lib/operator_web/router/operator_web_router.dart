@@ -27,10 +27,12 @@ import 'package:flutter/material.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../account/operator_web_account_actions.dart';
+import '../services/business_timing_gateway.dart';
 import '../services/demo_team_users_gateway.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
 import '../services/web_team_users_gateway.dart';
 import '../screens/account_screen.dart';
+import '../screens/business_setup_screen.dart';
 import '../screens/data_accuracy_screen.dart';
 import '../screens/members_screen.dart';
 import '../screens/mfa_enrollment_screen.dart';
@@ -45,6 +47,7 @@ import '../../theme/app_theme.dart';
 /// Stable nav ids for the post-onboarding shell. Tests and deep
 /// links key off these.
 const String kOperatorWebNavAccount = 'account';
+const String kOperatorWebNavBusinessSetup = 'business_setup';
 const String kOperatorWebNavMembers = 'members';
 const String kOperatorWebNavVendorConnections = 'vendor_connections';
 const String kOperatorWebNavDataAccuracy = 'data_accuracy';
@@ -56,6 +59,13 @@ const String kOperatorWebNavDataAccuracy = 'data_accuracy';
 /// `package:http` impl.
 abstract class OperatorWebTeamUsersGatewayProvider {
   WebTeamUsersGateway get teamUsersGateway;
+}
+
+/// Optional source-owned timing gateway. Live wiring can mix this into the
+/// Firebase source once backend timing routes are ready; the router otherwise
+/// uses the read-only demo gateway.
+abstract class OperatorWebBusinessTimingGatewayProvider {
+  BusinessTimingGateway get businessTimingGateway;
 }
 
 /// Default nav surface the shell lands on after onboarding completes.
@@ -272,6 +282,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.business_outlined,
       ),
       OperatorWebNavItem(
+        id: kOperatorWebNavBusinessSetup,
+        title: 'Business setup',
+        icon: Icons.storefront_outlined,
+      ),
+      OperatorWebNavItem(
         id: kOperatorWebNavMembers,
         title: 'Members',
         icon: Icons.group_outlined,
@@ -289,11 +304,15 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     ];
     final Widget body;
     switch (_selectedNavId) {
-      case kOperatorWebNavMembers:
-        body = MembersScreen(
+      case kOperatorWebNavBusinessSetup:
+        body = BusinessSetupScreen(
           session: session,
-          gateway: _teamUsersGateway,
+          locationId: session.primaryLocationId,
+          gateway: _businessTimingGateway,
         );
+        break;
+      case kOperatorWebNavMembers:
+        body = MembersScreen(session: session, gateway: _teamUsersGateway);
         break;
       case kOperatorWebNavVendorConnections:
         body = VendorConnectionsScreen(
@@ -346,7 +365,17 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     return _routerOwnedDemoGateway ??= DemoWebTeamUsersGateway();
   }
 
+  BusinessTimingGateway get _businessTimingGateway {
+    final source = widget.source;
+    if (source is OperatorWebBusinessTimingGatewayProvider) {
+      return (source as OperatorWebBusinessTimingGatewayProvider)
+          .businessTimingGateway;
+    }
+    return _routerOwnedTimingGateway ??= const DemoBusinessTimingGateway();
+  }
+
   DemoWebTeamUsersGateway? _routerOwnedDemoGateway;
+  BusinessTimingGateway? _routerOwnedTimingGateway;
 }
 
 class _LoadingSplash extends StatelessWidget {

@@ -11,9 +11,10 @@
 //      sees on next sync sweep).
 //   F. data_accuracy_settings sync to mobile.
 //   G. forge_flow_polling_tier_assignment sync to mobile.
-//   H. Multi-page; final cursor empty.
-//   I. Empty page no-op; no invalidation.
-//   J. Banned-items grep across both new source files.
+//   H. live open_shift_snapshots + resolved timing config sync to mobile.
+//   I. Multi-page; final cursor empty.
+//   J. Empty page no-op; no invalidation.
+//   K. Banned-items grep across both new source files.
 //
 // No live HTTP — `_FakeSyncProxyClient` answers every fetch from
 // scripted in-memory state.
@@ -21,7 +22,11 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
+import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
@@ -51,96 +56,95 @@ void main() {
 
   // ── A. Single-page pull: 2 rows -> 2 writes + 2 fires ──────────────
 
-  test('A. single-page pull: 2 records -> 2 writes + 2 invalidations',
-      () async {
-    const rid = 'rest_A';
-    final client = _FakeSyncProxyClient()
-      ..scriptShiftPages([
-        _Page(
-          records: [
-            _shift(rid, weekId: '2026-W13', day: 'Mon', daypart: 'lunch'),
-            _shift(rid, weekId: '2026-W13', day: 'Mon', daypart: 'dinner'),
-          ],
-          nextCursor: null,
-        ),
-      ]);
+  test(
+    'A. single-page pull: 2 records -> 2 writes + 2 invalidations',
+    () async {
+      const rid = 'rest_A';
+      final client = _FakeSyncProxyClient()
+        ..scriptShiftPages([
+          _Page(
+            records: [
+              _shift(rid, weekId: '2026-W13', day: 'Mon', daypart: 'lunch'),
+              _shift(rid, weekId: '2026-W13', day: 'Mon', daypart: 'dinner'),
+            ],
+            nextCursor: null,
+          ),
+        ]);
 
-    final invalidations = _BusListener(bus);
-    addTearDown(invalidations.detach);
-    final sync = PostgresShiftRecordToMobileSync(
-      client: client,
-      shiftRepository: SqliteShiftRecordRepository.instance,
-      watermarkDao: watermarkDao,
-      invalidationBus: bus,
-    );
+      final invalidations = _BusListener(bus);
+      addTearDown(invalidations.detach);
+      final sync = PostgresShiftRecordToMobileSync(
+        client: client,
+        shiftRepository: SqliteShiftRecordRepository.instance,
+        watermarkDao: watermarkDao,
+        invalidationBus: bus,
+      );
 
-    final result = await sync.sync(
-      operatorId: _opId,
-      locationId: _locId,
-      restaurantId: rid,
-    );
-    invalidations.detach();
+      final result = await sync.sync(
+        operatorId: _opId,
+        locationId: _locId,
+        restaurantId: rid,
+      );
+      invalidations.detach();
 
-    expect(result.recordsWritten, 2);
-    expect(result.pagesPulled, 1);
-    expect(invalidations.count, 2,
-        reason: 'one bus fire per write');
+      expect(result.recordsWritten, 2);
+      expect(result.pagesPulled, 1);
+      expect(invalidations.count, 2, reason: 'one bus fire per write');
 
-    final stored = await SqliteShiftRecordRepository.instance
-        .getShiftsForWeek(rid, '2026-W13');
-    expect(stored.map((r) => r.daypart).toSet(), {'lunch', 'dinner'});
-  });
+      final stored = await SqliteShiftRecordRepository.instance
+          .getShiftsForWeek(rid, '2026-W13');
+      expect(stored.map((r) => r.daypart).toSet(), {'lunch', 'dinner'});
+    },
+  );
 
   // ── B. Cursor advance: second pull uses last persisted cursor ──────
 
-  test('B. cursor advance: second sync pull uses last persisted cursor',
-      () async {
-    const rid = 'rest_B';
-    final client = _FakeSyncProxyClient()
-      ..scriptShiftPages([
-        _Page(
-          records: [
-            _shift(rid, weekId: '2026-W13', day: 'Tue', daypart: 'lunch'),
-          ],
-          nextCursor: 'cursor-after-page-1',
-        ),
-        _Page(records: const [], nextCursor: null),
-      ]);
+  test(
+    'B. cursor advance: second sync pull uses last persisted cursor',
+    () async {
+      const rid = 'rest_B';
+      final client = _FakeSyncProxyClient()
+        ..scriptShiftPages([
+          _Page(
+            records: [
+              _shift(rid, weekId: '2026-W13', day: 'Tue', daypart: 'lunch'),
+            ],
+            nextCursor: 'cursor-after-page-1',
+          ),
+          _Page(records: const [], nextCursor: null),
+        ]);
 
-    final sync = PostgresShiftRecordToMobileSync(
-      client: client,
-      shiftRepository: SqliteShiftRecordRepository.instance,
-      watermarkDao: watermarkDao,
-      invalidationBus: bus,
-    );
+      final sync = PostgresShiftRecordToMobileSync(
+        client: client,
+        shiftRepository: SqliteShiftRecordRepository.instance,
+        watermarkDao: watermarkDao,
+        invalidationBus: bus,
+      );
 
-    // First sweep: writes 1 row, advances watermark to "cursor-after-page-1",
-    // then second fetch with that cursor returns empty + nextCursor=null.
-    final firstResult = await sync.sync(
-      operatorId: _opId,
-      locationId: _locId,
-      restaurantId: rid,
-    );
-    expect(firstResult.recordsWritten, 1);
-    expect(firstResult.pagesPulled, 2);
-    expect(client.shiftCursorsObserved,
-        [null, 'cursor-after-page-1']);
+      // First sweep: writes 1 row, advances watermark to "cursor-after-page-1",
+      // then second fetch with that cursor returns empty + nextCursor=null.
+      final firstResult = await sync.sync(
+        operatorId: _opId,
+        locationId: _locId,
+        restaurantId: rid,
+      );
+      expect(firstResult.recordsWritten, 1);
+      expect(firstResult.pagesPulled, 2);
+      expect(client.shiftCursorsObserved, [null, 'cursor-after-page-1']);
 
-    // Second sweep: should read the persisted cursor and call with it.
-    client.scriptShiftPages([
-      _Page(records: const [], nextCursor: null),
-    ]);
-    client.shiftCursorsObserved.clear();
+      // Second sweep: should read the persisted cursor and call with it.
+      client.scriptShiftPages([_Page(records: const [], nextCursor: null)]);
+      client.shiftCursorsObserved.clear();
 
-    await sync.sync(
-      operatorId: _opId,
-      locationId: _locId,
-      restaurantId: rid,
-    );
+      await sync.sync(operatorId: _opId, locationId: _locId, restaurantId: rid);
 
-    expect(client.shiftCursorsObserved, ['cursor-after-page-1'],
-        reason: 'second sweep MUST resume from the persisted watermark');
-  });
+      expect(
+        client.shiftCursorsObserved,
+        ['cursor-after-page-1'],
+        reason: 'second sweep MUST resume from the persisted watermark',
+      );
+    },
+  );
 
   // ── C. Replace-for-slot: same slot twice -> later wins ─────────────
 
@@ -152,11 +156,13 @@ void main() {
       ..scriptShiftPages([
         _Page(
           records: [
-            _shift(rid,
-                weekId: '2026-W14',
-                day: 'Wed',
-                daypart: 'dinner',
-                covers: 100),
+            _shift(
+              rid,
+              weekId: '2026-W14',
+              day: 'Wed',
+              daypart: 'dinner',
+              covers: 100,
+            ),
           ],
           nextCursor: null,
         ),
@@ -167,25 +173,25 @@ void main() {
       watermarkDao: watermarkDao,
       invalidationBus: bus,
     );
-    await syncA.sync(
-      operatorId: _opId,
-      locationId: _locId,
-      restaurantId: rid,
-    );
+    await syncA.sync(operatorId: _opId, locationId: _locId, restaurantId: rid);
 
-    var stored = await SqliteShiftRecordRepository.instance
-        .getShiftsForWeek(rid, '2026-W14');
+    var stored = await SqliteShiftRecordRepository.instance.getShiftsForWeek(
+      rid,
+      '2026-W14',
+    );
     expect(stored.single.covers, 100);
 
     final clientB = _FakeSyncProxyClient()
       ..scriptShiftPages([
         _Page(
           records: [
-            _shift(rid,
-                weekId: '2026-W14',
-                day: 'Wed',
-                daypart: 'dinner',
-                covers: 222),
+            _shift(
+              rid,
+              weekId: '2026-W14',
+              day: 'Wed',
+              daypart: 'dinner',
+              covers: 222,
+            ),
           ],
           nextCursor: null,
         ),
@@ -196,24 +202,27 @@ void main() {
       watermarkDao: watermarkDao,
       invalidationBus: bus,
     );
-    await syncB.sync(
-      operatorId: _opId,
-      locationId: _locId,
-      restaurantId: rid,
-    );
+    await syncB.sync(operatorId: _opId, locationId: _locId, restaurantId: rid);
 
-    stored = await SqliteShiftRecordRepository.instance
-        .getShiftsForWeek(rid, '2026-W14');
-    expect(stored, hasLength(1),
-        reason: 'replace-for-slot: still exactly one row at this slot');
-    expect(stored.single.covers, 222,
-        reason: 'later payload (covers=222) overrides the earlier one (100)');
+    stored = await SqliteShiftRecordRepository.instance.getShiftsForWeek(
+      rid,
+      '2026-W14',
+    );
+    expect(
+      stored,
+      hasLength(1),
+      reason: 'replace-for-slot: still exactly one row at this slot',
+    );
+    expect(
+      stored.single.covers,
+      222,
+      reason: 'later payload (covers=222) overrides the earlier one (100)',
+    );
   });
 
   // ── D. AppRuntimeInvalidationBus fires per write ───────────────────
 
-  test('D. AppRuntimeInvalidationBus fires exactly once per write',
-      () async {
+  test('D. AppRuntimeInvalidationBus fires exactly once per write', () async {
     const rid = 'rest_D';
     final client = _FakeSyncProxyClient()
       ..scriptShiftPages([
@@ -243,8 +252,11 @@ void main() {
     invalidations.detach();
 
     expect(result.recordsWritten, 3);
-    expect(invalidations.count, 3,
-        reason: 'bus fires exactly once per ShiftRecord write');
+    expect(
+      invalidations.count,
+      3,
+      reason: 'bus fires exactly once per ShiftRecord write',
+    );
   });
 
   // ── E. Demo-mode flip propagation to mobile ────────────────────────
@@ -285,58 +297,67 @@ void main() {
     );
 
     expect(result.demoModeStates, hasLength(2));
-    final pos = result.demoModeStates
-        .firstWhere((r) => r.category == IntegrationCategory.pos);
-    expect(pos.isDemo, isFalse,
-        reason: 'mobile sees the flipped row on the next sweep');
+    final pos = result.demoModeStates.firstWhere(
+      (r) => r.category == IntegrationCategory.pos,
+    );
+    expect(
+      pos.isDemo,
+      isFalse,
+      reason: 'mobile sees the flipped row on the next sweep',
+    );
     expect(pos.flippedByConnectionId, 'conn-toast-001');
-    expect(sync.latestDemoModeStates, hasLength(2),
-        reason: 'getter exposes the same snapshot');
+    expect(
+      sync.latestDemoModeStates,
+      hasLength(2),
+      reason: 'getter exposes the same snapshot',
+    );
   });
 
   // ── F. data_accuracy_settings sync to mobile ───────────────────────
 
-  test('F. data_accuracy_settings sync: server snapshot -> mobile getter',
-      () async {
-    const rid = 'rest_F';
-    final client = _FakeSyncProxyClient()
-      ..scriptShiftPages([_Page(records: const [], nextCursor: null)])
-      ..scriptDataAccuracySettings(
-        DataAccuracySettingsSnapshot(
-          operatorId: _opId,
-          locationId: _locId,
-          coversSourceLunch: 'manual',
-          coversSourceDinner: 'vendor',
-          coversSourceLateNight: 'forecast',
-          coversManualEntries: const {
-            '2026-05-04': {'lunch': 87, 'dinner': 187, 'late_night': 12},
-          },
-          wageSource: 'manual_mix',
-          updatedAt: DateTime.utc(2026, 5, 4, 12, 0),
-        ),
+  test(
+    'F. data_accuracy_settings sync: server snapshot -> mobile getter',
+    () async {
+      const rid = 'rest_F';
+      final client = _FakeSyncProxyClient()
+        ..scriptShiftPages([_Page(records: const [], nextCursor: null)])
+        ..scriptDataAccuracySettings(
+          DataAccuracySettingsSnapshot(
+            operatorId: _opId,
+            locationId: _locId,
+            coversSourceLunch: 'manual',
+            coversSourceDinner: 'vendor',
+            coversSourceLateNight: 'forecast',
+            coversManualEntries: const {
+              '2026-05-04': {'lunch': 87, 'dinner': 187, 'late_night': 12},
+            },
+            wageSource: 'manual_mix',
+            updatedAt: DateTime.utc(2026, 5, 4, 12, 0),
+          ),
+        );
+
+      final sync = PostgresShiftRecordToMobileSync(
+        client: client,
+        shiftRepository: SqliteShiftRecordRepository.instance,
+        watermarkDao: watermarkDao,
+        invalidationBus: bus,
+      );
+      final result = await sync.sync(
+        operatorId: _opId,
+        locationId: _locId,
+        restaurantId: rid,
       );
 
-    final sync = PostgresShiftRecordToMobileSync(
-      client: client,
-      shiftRepository: SqliteShiftRecordRepository.instance,
-      watermarkDao: watermarkDao,
-      invalidationBus: bus,
-    );
-    final result = await sync.sync(
-      operatorId: _opId,
-      locationId: _locId,
-      restaurantId: rid,
-    );
-
-    final settings = result.dataAccuracySettings;
-    expect(settings, isNotNull);
-    expect(settings!.coversSourceLunch, 'manual');
-    expect(settings.coversSourceDinner, 'vendor');
-    expect(settings.coversSourceLateNight, 'forecast');
-    expect(settings.coversManualEntries['2026-05-04']!['dinner'], 187);
-    expect(settings.wageSource, 'manual_mix');
-    expect(sync.latestDataAccuracySettings?.wageSource, 'manual_mix');
-  });
+      final settings = result.dataAccuracySettings;
+      expect(settings, isNotNull);
+      expect(settings!.coversSourceLunch, 'manual');
+      expect(settings.coversSourceDinner, 'vendor');
+      expect(settings.coversSourceLateNight, 'forecast');
+      expect(settings.coversManualEntries['2026-05-04']!['dinner'], 187);
+      expect(settings.wageSource, 'manual_mix');
+      expect(sync.latestDataAccuracySettings?.wageSource, 'manual_mix');
+    },
+  );
 
   // ── G. forge_flow_polling_tier_assignment sync to mobile ───────────
 
@@ -374,17 +395,104 @@ void main() {
     final tier = result.pollingTierAssignment;
     expect(tier, isNotNull);
     expect(tier!.tierKey, 'premium');
-    expect(tier.pollingCadencePerVendorSeconds['oracle_micros_simphony'],
-        300);
+    expect(tier.pollingCadencePerVendorSeconds['oracle_micros_simphony'], 300);
     expect(tier.monthlyPriceCents, 4900);
     expect(sync.latestPollingTierAssignment?.tierKey, 'premium');
   });
 
   // ── H. Multi-page; final cursor empty ──────────────────────────────
 
-  test('H. multi-page: pulls all pages until nextCursor is null',
-      () async {
-    const rid = 'rest_H';
+  test('H. open_shift_snapshots + resolved timing sync to mobile', () async {
+    const rid = 'rest_H_live';
+    final db = await SqliteDatabase.instance.database;
+    await db.delete(
+      'restaurant_timing_configs',
+      where: 'restaurant_id = ?',
+      whereArgs: [rid],
+    );
+    final client = _FakeSyncProxyClient()
+      ..scriptShiftPages([_Page(records: const [], nextCursor: null)])
+      ..scriptOpenShiftPages([
+        _OpenPage(
+          snapshots: [
+            _openSnapshot(
+              rid,
+              weekId: '2026-W18',
+              day: 'Mon',
+              daypart: 'lunch',
+            ),
+          ],
+          nextCursor: 'open-cursor-1',
+        ),
+        const _OpenPage(snapshots: <OpenShiftSnapshot>[], nextCursor: null),
+      ])
+      ..scriptResolvedTimingConfig(
+        RestaurantTimingConfig(
+          restaurantId: rid,
+          businessTimezone: 'America/St_Johns',
+          businessDayStartLocalTime: '04:00',
+          weekStartDay: 1,
+          servicePeriodDefinitions: const [
+            ServicePeriodDefinition(
+              id: 'lunch',
+              label: 'Lunch',
+              shortLabel: 'L',
+              sortOrder: 1,
+              startLocalTime: '11:00',
+              endLocalTime: '15:00',
+              rollsPastMidnight: false,
+              applicableDays: [1, 2, 3, 4, 5, 6, 7],
+            ),
+          ],
+          shiftCloseAuthority: ShiftCloseAuthority.vendorFinalization,
+          createdAt: '2026-05-06T00:00:00.000Z',
+          updatedAt: '2026-05-06T00:00:00.000Z',
+        ),
+      );
+
+    final invalidations = _BusListener(bus);
+    addTearDown(invalidations.detach);
+    final sync = PostgresShiftRecordToMobileSync(
+      client: client,
+      shiftRepository: SqliteShiftRecordRepository.instance,
+      watermarkDao: watermarkDao,
+      invalidationBus: bus,
+    );
+    final result = await sync.sync(
+      operatorId: _opId,
+      locationId: _locId,
+      restaurantId: rid,
+    );
+    invalidations.detach();
+
+    expect(result.recordsWritten, 0);
+    expect(result.openSnapshotsWritten, 1);
+    expect(result.timingConfigSynced, isTrue);
+    expect(result.openSnapshotPagesPulled, 2);
+    expect(result.finalOpenSnapshotCursor, 'open-cursor-1');
+    expect(
+      invalidations.count,
+      2,
+      reason: 'one signal for timing config + one for open snapshot',
+    );
+
+    final snapshots = await SqliteOpenShiftSnapshotRepository.instance
+        .getSnapshotsForDay(rid, '2026-05-04');
+    expect(snapshots, hasLength(1));
+    expect(snapshots.single.daypart, 'lunch');
+    expect(snapshots.single.status, 'open');
+
+    final timingRows = await db.query(
+      'restaurant_timing_configs',
+      where: 'restaurant_id = ?',
+      whereArgs: [rid],
+    );
+    expect(timingRows, hasLength(1));
+    expect(timingRows.single['week_start_day'], 1);
+  });
+
+  test('I. multi-page: pulls all pages until nextCursor is null', () async {
+    const rid = 'rest_I';
     final client = _FakeSyncProxyClient()
       ..scriptShiftPages([
         _Page(
@@ -424,57 +532,64 @@ void main() {
     expect(client.shiftCursorsObserved, [null, 'page-2', 'page-3']);
     expect(result.finalCursor, 'page-3');
 
-    final stored = await SqliteShiftRecordRepository.instance
-        .getShiftsForWeek(rid, '2026-W16');
+    final stored = await SqliteShiftRecordRepository.instance.getShiftsForWeek(
+      rid,
+      '2026-W16',
+    );
     expect(stored, hasLength(3));
   });
 
   // ── I. Empty page no-op; no invalidation ───────────────────────────
 
-  test('I. empty initial page is a no-op: zero writes, zero invalidations',
-      () async {
-    const rid = 'rest_I';
-    final client = _FakeSyncProxyClient()
-      ..scriptShiftPages([_Page(records: const [], nextCursor: null)]);
+  test(
+    'J. empty initial page is a no-op: zero writes, zero invalidations',
+    () async {
+      const rid = 'rest_J';
+      final client = _FakeSyncProxyClient()
+        ..scriptShiftPages([_Page(records: const [], nextCursor: null)]);
 
-    final invalidations = _BusListener(bus);
-    addTearDown(invalidations.detach);
-    final sync = PostgresShiftRecordToMobileSync(
-      client: client,
-      shiftRepository: SqliteShiftRecordRepository.instance,
-      watermarkDao: watermarkDao,
-      invalidationBus: bus,
-    );
-    final result = await sync.sync(
-      operatorId: _opId,
-      locationId: _locId,
-      restaurantId: rid,
-    );
-    invalidations.detach();
+      final invalidations = _BusListener(bus);
+      addTearDown(invalidations.detach);
+      final sync = PostgresShiftRecordToMobileSync(
+        client: client,
+        shiftRepository: SqliteShiftRecordRepository.instance,
+        watermarkDao: watermarkDao,
+        invalidationBus: bus,
+      );
+      final result = await sync.sync(
+        operatorId: _opId,
+        locationId: _locId,
+        restaurantId: rid,
+      );
+      invalidations.detach();
 
-    expect(result.recordsWritten, 0);
-    expect(result.pagesPulled, 1);
-    expect(invalidations.count, 0,
-        reason: 'no records -> no invalidation signals');
+      expect(result.recordsWritten, 0);
+      expect(result.pagesPulled, 1);
+      expect(
+        invalidations.count,
+        0,
+        reason: 'no records -> no invalidation signals',
+      );
 
-    // Watermark must NOT advance when no nextCursor came back.
-    final wm = await watermarkDao.getWatermark(
-      rid,
-      'pg_shift_record_sync:$_opId:$_locId',
-      'cursor',
-    );
-    expect(wm, isNull,
-        reason: 'no advance on empty initial page (nextCursor=null)');
-  });
+      // Watermark must NOT advance when no nextCursor came back.
+      final wm = await watermarkDao.getWatermark(
+        rid,
+        'pg_shift_record_sync:$_opId:$_locId',
+        'cursor',
+      );
+      expect(
+        wm,
+        isNull,
+        reason: 'no advance on empty initial page (nextCursor=null)',
+      );
+    },
+  );
 
   // ── J. Banned-items grep across both new source files ──────────────
 
-  group('J. Banned-item ledger absent from every new source file '
+  group('K. Banned-item ledger absent from every new source file '
       'this lane shipped', () {
-    const banned = <String>[
-      _t1, _t2, _t3, _t4, _t5,
-      _t6, _t7, _t8, _t9, _t10,
-    ];
+    const banned = <String>[_t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9, _t10];
     const newFiles = <String>[
       'lib/services/sync/sync_proxy_client.dart',
       'lib/services/sync/postgres_shift_record_to_mobile_sync.dart',
@@ -484,8 +599,11 @@ void main() {
       test('$path raw grep: zero banned-token matches', () {
         final source = File(path).readAsStringSync();
         for (final token in banned) {
-          expect(source.contains(token), isFalse,
-              reason: 'banned token "$token" present in $path');
+          expect(
+            source.contains(token),
+            isFalse,
+            reason: 'banned token "$token" present in $path',
+          );
         }
       });
     }
@@ -500,17 +618,36 @@ class _Page {
   final String? nextCursor;
 }
 
+class _OpenPage {
+  const _OpenPage({required this.snapshots, required this.nextCursor});
+  final List<OpenShiftSnapshot> snapshots;
+  final String? nextCursor;
+}
+
 class _FakeSyncProxyClient implements SyncProxyClient {
   final List<_Page> _shiftPages = <_Page>[];
+  final List<_OpenPage> _openPages = <_OpenPage>[];
   final List<String?> shiftCursorsObserved = <String?>[];
+  final List<String?> openCursorsObserved = <String?>[];
   List<DemoModeRecord> _demoModeStates = const <DemoModeRecord>[];
   DataAccuracySettingsSnapshot? _dataAccuracySettings;
   ForgeFlowPollingTierAssignmentSnapshot? _pollingTierAssignment;
+  RestaurantTimingConfig? _timingConfig;
 
   void scriptShiftPages(List<_Page> pages) {
     _shiftPages
       ..clear()
       ..addAll(pages);
+  }
+
+  void scriptOpenShiftPages(List<_OpenPage> pages) {
+    _openPages
+      ..clear()
+      ..addAll(pages);
+  }
+
+  void scriptResolvedTimingConfig(RestaurantTimingConfig? config) {
+    _timingConfig = config;
   }
 
   void scriptDemoModeStates(List<DemoModeRecord> states) {
@@ -522,7 +659,8 @@ class _FakeSyncProxyClient implements SyncProxyClient {
   }
 
   void scriptPollingTierAssignment(
-      ForgeFlowPollingTierAssignmentSnapshot? snap) {
+    ForgeFlowPollingTierAssignmentSnapshot? snap,
+  ) {
     _pollingTierAssignment = snap;
   }
 
@@ -538,33 +676,55 @@ class _FakeSyncProxyClient implements SyncProxyClient {
       return const ShiftRecordPage(records: <ShiftRecord>[], nextCursor: null);
     }
     final page = _shiftPages.removeAt(0);
-    return ShiftRecordPage(
-      records: page.records,
+    return ShiftRecordPage(records: page.records, nextCursor: page.nextCursor);
+  }
+
+  @override
+  Future<OpenShiftSnapshotPage> fetchOpenShiftSnapshots({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  }) async {
+    openCursorsObserved.add(cursor);
+    if (_openPages.isEmpty) {
+      return const OpenShiftSnapshotPage(
+        snapshots: <OpenShiftSnapshot>[],
+        nextCursor: null,
+      );
+    }
+    final page = _openPages.removeAt(0);
+    return OpenShiftSnapshotPage(
+      snapshots: page.snapshots,
       nextCursor: page.nextCursor,
     );
   }
 
   @override
+  Future<RestaurantTimingConfig?> fetchResolvedTimingConfig({
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+  }) async => _timingConfig;
+
+  @override
   Future<List<DemoModeRecord>> fetchDemoModeStates({
     required String operatorId,
     required String locationId,
-  }) async =>
-      _demoModeStates;
+  }) async => _demoModeStates;
 
   @override
   Future<DataAccuracySettingsSnapshot?> fetchDataAccuracySettings({
     required String operatorId,
     required String locationId,
-  }) async =>
-      _dataAccuracySettings;
+  }) async => _dataAccuracySettings;
 
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
-      fetchForgeFlowPollingTierAssignment({
+  fetchForgeFlowPollingTierAssignment({
     required String operatorId,
     required String locationId,
-  }) async =>
-      _pollingTierAssignment;
+  }) async => _pollingTierAssignment;
 }
 
 class _BusListener {
@@ -608,16 +768,74 @@ ShiftRecord _shift(
   );
 }
 
+OpenShiftSnapshot _openSnapshot(
+  String restaurantId, {
+  required String weekId,
+  required String day,
+  required String daypart,
+}) {
+  return OpenShiftSnapshot(
+    restaurantId: restaurantId,
+    weekId: weekId,
+    dayLabel: day,
+    daypart: daypart,
+    status: 'open',
+    businessDate: '2026-05-04',
+    forecastCovers: 120,
+    currentCovers: 54,
+    scheduledFohHours: 12,
+    scheduledBohHours: 9,
+    currentPPA: 38.5,
+    currentCPLH: 21.0,
+    currentSPLH: 95.0,
+    blendedWage: 19.25,
+    sourceSystem: 'oracle_micros_simphony',
+    sourceShiftId: 'live-shift-1',
+    lastEventAt: '2026-05-04T16:30:00.000Z',
+    updatedAt: '2026-05-04T16:31:00.000Z',
+  );
+}
+
 // Banned tokens declared as fragmented constants so this file itself
 // does not contain any of the literal tokens (mirrors the canonical
 // pattern in test/services/integration/canonical_sink_contract_test.dart).
-const String _t1 = 'K' 'M' 'S';
-const String _t2 = 'parse' '_' 'warnings';
-const String _t3 = 'parse' '_' 'partial';
-const String _t4 = 'kStrict' 'Replay' 'FiveMinute';
-const String _t5 = 'pg_' 'advisory' '_lock';
-const String _t6 = 'sigterm' 'Drain' 'Handler';
-const String _t7 = 'inboundWebhook' 'DLQ' 'Tile';
-const String _t8 = 'raw_' 'payload' '_partition';
-const String _t9 = 'pg_' 'partman' '_raw';
-const String _t10 = 'package' ':' 'postgres';
+const String _t1 =
+    'K'
+    'M'
+    'S';
+const String _t2 =
+    'parse'
+    '_'
+    'warnings';
+const String _t3 =
+    'parse'
+    '_'
+    'partial';
+const String _t4 =
+    'kStrict'
+    'Replay'
+    'FiveMinute';
+const String _t5 =
+    'pg_'
+    'advisory'
+    '_lock';
+const String _t6 =
+    'sigterm'
+    'Drain'
+    'Handler';
+const String _t7 =
+    'inboundWebhook'
+    'DLQ'
+    'Tile';
+const String _t8 =
+    'raw_'
+    'payload'
+    '_partition';
+const String _t9 =
+    'pg_'
+    'partman'
+    '_raw';
+const String _t10 =
+    'package'
+    ':'
+    'postgres';

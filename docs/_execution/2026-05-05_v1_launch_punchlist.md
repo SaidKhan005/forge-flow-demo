@@ -24,12 +24,16 @@ are external; engineering can run in parallel.
       namespace `forge-flow-production-*`. Spec:
       `docs/phases/phase_production_cutover/production1_staging_parity_baseline_2026-05-03.md`.
       _Effort: 5–7 days. Blocks: cutover.0._
-- [ ] **Apply 2 pending Postgres migrations to Production1:**
+- [ ] **Apply 3 pending Postgres migrations to Production1/staging as scoped:**
       `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
       and
-      `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`.
+      `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`,
+      plus
+      `db/migrations/202605060000_phase_business_timing_live_schema.sql`.
       Runbook: `runbooks/phase_9_production1_migration_apply_runbook.md`.
-      Both additive-safe (GRANT-only, verified on staging 2026-05-03 / -04).
+      First two are additive-safe GRANT-only and verified on staging
+      2026-05-03 / -04; business timing schema must be staging/review-applied
+      before timing runtime proof and carried into the next Production1 batch.
       _Effort: 1–2 days. Blocks: production admin console writes._
 - [ ] **Escalate inbound T&Cs to lawyer.** Draft is in `docs/phases/phase_9_8/`.
       Set explicit deadlines: first pass 2026-05-10, final 2026-05-13. Without
@@ -61,7 +65,9 @@ are external; engineering can run in parallel.
       Web shell + magic-link onboarding · Account / Business setup · Vendor
       Connections widget mount. Three lanes parallel; web shell is a separate
       Flutter Web entry (`lib/main_operator_web.dart` mirroring
-      `lib/main_admin.dart`), not a web build of the mobile app.
+      `lib/main_admin.dart`), not a web build of the mobile app. The `11W.7`
+      prompt must route business timing writes through operator-scoped routes,
+      not admin gateways.
       _Effort: 15–20 days across 3 lanes. Blocks: cutover.2 operator
       onboarding._
 
@@ -72,8 +78,11 @@ are external; engineering can run in parallel.
 - [ ] **`11W.0` — Web shell + magic-link onboarding.** Brand theme + auth
       gateway reuse from `lib/main_admin.dart` pattern. Thin HTTP client; no
       offline storage.
-- [ ] **`11W.7` — Account / Business setup (minimal).** Operator + location
-      bootstrap forms. Reuse Phase 11A admin gateways.
+- [ ] **`11W.7` - Account / Business setup (minimal).** Operator + location
+      bootstrap forms. Reuse admin form patterns where safe, but all writes
+      must go through operator-scoped proxy routes, not `/v1/admin/*` gateways.
+      Business timing setup belongs here as the normal operator-owned editor;
+      F&F Admin remains support/internal override with audit reason.
 - [ ] **`11W.8` — Vendor Connections widget mount.** Mount the existing
       vendor-connections widget tree (the same one `lib/main_admin.dart`
       uses) inside the operator web shell.
@@ -95,7 +104,7 @@ are external; engineering can run in parallel.
 
 - [ ] **`cutover.0` — Pre-flight readiness.** Read-only smoke tests on
       Production1 (schemas, firewall, DNS, RLS isolation, secrets). Requires
-      Production1 provisioning + 2 pending migrations applied.
+      Production1 provisioning + 3 pending migrations applied.
 - [x] **`cutover.0a` + `0a.pg` — CMK provisioning.** Done 2026-05-01.
 - [ ] **`cutover.1` — Corpus load to production.** Voyage embeddings +
       Anthropic Contextual Retrieval. Has cost approval gates (you must sign
@@ -153,6 +162,11 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
 - [ ] **Phase 11A.10 — operations console final slices.** `.8` (support
       audit), `.9` (cross-operator reads), `.10` (user impersonation) — all
       not started; deferred post-launch unless escalated.
+- [ ] **`8.spine-bridge-live` - live Shift snapshots.** Explicit follow-up
+      after sink fanout + business timing schema. Builds
+      `OpenShiftSnapshotProjector` -> `open_shift_snapshots` -> proxy pull ->
+      mobile SQLite. Do not fold into closed sink fanout or claim live vendor
+      Shift until this lane passes review-device proof.
 - [ ] **Phase 11A.12 / .13 / .14 — cross-operator parity** (Members /
       Hierarchy / audited support actions). Un-deferred 2026-05-05; queues
       after Phase 7 + Phase 10 close, lockstep with `11W.1`–`11W.6` web
@@ -190,9 +204,9 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
 ### From the architecture audit
 
 - [ ] **`business_date DATE` denormalized columns on Phase 8 integration
-      tables.** Currently absent (low risk — those are scaffolding tables,
-      not operational facts). Wire when canonical-fact materialization
-      lands in spine-bridge follow-ups.
+      tables.** Required before live `OpenShiftSnapshotProjector` relies on
+      timestamp bucketing at scale; keep lower priority for closed proof only,
+      but promote to a live-lane prerequisite.
 
 ### From the tech-debt audit
 

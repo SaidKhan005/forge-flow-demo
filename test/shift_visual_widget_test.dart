@@ -57,7 +57,12 @@ ShiftDashboardReadModel _fixtureReadModel() {
     serviceElapsedLabel: ShiftSnapshot.serviceElapsed,
     updatedAt: '2026-03-27T19:42:00',
   );
-  return ShiftDashboardReadModel.build(snapshot, profile);
+  return ShiftDashboardReadModel.build(
+    snapshot,
+    profile,
+    posSourceVendorId: 'toast',
+    laborSourceVendorId: '7shifts',
+  );
 }
 
 ShiftDashboardReadModel _fixtureReadModelWithReservation() {
@@ -96,10 +101,19 @@ ShiftDashboardReadModel _fixtureReadModelWithReservation() {
     serviceElapsedLabel: ShiftSnapshot.serviceElapsed,
     updatedAt: '2026-03-27T19:42:00',
   );
-  return ShiftDashboardReadModel.build(snapshot, profile, inTheBooksCovers: 72);
+  return ShiftDashboardReadModel.build(
+    snapshot,
+    profile,
+    inTheBooksCovers: 72,
+    posSourceVendorId: 'toast',
+    laborSourceVendorId: '7shifts',
+  );
 }
 
-Widget _buildShiftDashboard({String? restaurantName, ShiftDashboardReadModel? readModel}) {
+Widget _buildShiftDashboard({
+  String? restaurantName,
+  ShiftDashboardReadModel? readModel,
+}) {
   final rm = readModel ?? _fixtureReadModel();
   return MultiProvider(
     providers: [
@@ -118,13 +132,23 @@ Widget _buildShiftDashboard({String? restaurantName, ShiftDashboardReadModel? re
         create: (_) => ShiftDashboardNotifier.fromReadModel(rm),
       ),
     ],
-    child: const MaterialApp(
-      home: Scaffold(body: ShiftDashboard()),
-    ),
+    child: const MaterialApp(home: Scaffold(body: ShiftDashboard())),
   );
 }
 
 bool _includePrunedLabelGroups() => false;
+
+Future<void> _scrollUntilMetricVisible(
+  WidgetTester tester,
+  String metricName,
+) async {
+  await tester.scrollUntilVisible(
+    find.text(metricName, skipOffstage: false),
+    240,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pump();
+}
 
 void main() {
   // Clear clock override between tests.
@@ -133,7 +157,9 @@ void main() {
   });
 
   group('ShiftDashboard smoke', () {
-    testWidgets('renders provider-backed dashboard scaffolding', (tester) async {
+    testWidgets('renders provider-backed dashboard scaffolding', (
+      tester,
+    ) async {
       final rm = _fixtureReadModel();
       await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
       await tester.pump();
@@ -148,7 +174,10 @@ void main() {
         findsOneWidget,
       );
       expect(find.text(rm.opzLabel, skipOffstage: false), findsOneWidget);
-      expect(find.text('LABOR %', skipOffstage: false), findsAtLeastNWidgets(1));
+      expect(
+        find.text('LABOR %', skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
       expect(find.text('COVERS', skipOffstage: false), findsAtLeastNWidgets(1));
       expect(find.text('PPA', skipOffstage: false), findsAtLeastNWidgets(1));
       expect(find.text('CPLH', skipOffstage: false), findsAtLeastNWidgets(1));
@@ -157,6 +186,8 @@ void main() {
         find.text('BLENDED WAGE', skipOffstage: false),
         findsAtLeastNWidgets(1),
       );
+      final heroMetric = rm.metricCards.firstWhere((m) => m.isHero);
+      await _scrollUntilMetricVisible(tester, heroMetric.name);
       expect(find.text('DRIVER', skipOffstage: false), findsAtLeastNWidgets(1));
       expect(find.text('PRIMARY DRIVER', skipOffstage: false), findsNothing);
       expect(
@@ -172,8 +203,9 @@ void main() {
       );
     });
 
-    testWidgets('smoke: restaurant scope override renders in header',
-        (tester) async {
+    testWidgets('smoke: restaurant scope override renders in header', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _buildShiftDashboard(restaurantName: 'Forge & Flow Halifax'),
       );
@@ -185,7 +217,9 @@ void main() {
       );
     });
 
-    testWidgets('smoke: header renders live clock via test seam', (tester) async {
+    testWidgets('smoke: header renders live clock via test seam', (
+      tester,
+    ) async {
       ShiftDashboard.clockOverride = () => DateTime(2026, 3, 27, 20, 30);
 
       await tester.pumpWidget(_buildShiftDashboard());
@@ -200,152 +234,165 @@ void main() {
 
   group('A â€” core sections', () {
     if (_includePrunedLabelGroups())
-    testWidgets('restaurant name prefers persisted scope when provided',
-        (tester) async {
-      await tester.pumpWidget(
-        _buildShiftDashboard(restaurantName: 'Forge & Flow Halifax'),
-      );
-      await tester.pump();
-      await tester.pump();
-      expect(
-        find.text('Forge & Flow Halifax', skipOffstage: false),
-        findsOneWidget,
-      );
-    });
+      testWidgets('restaurant name prefers persisted scope when provided', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          _buildShiftDashboard(restaurantName: 'Forge & Flow Halifax'),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text('Forge & Flow Halifax', skipOffstage: false),
+          findsOneWidget,
+        );
+      });
 
     if (_includePrunedLabelGroups())
-    testWidgets('daypart and day are present', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      // Shift header trailing slot now renders day · daypart on a single
-      // line under the live clock, matching the variance-style header.
-      expect(
+      testWidgets('daypart and day are present', (tester) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        // Shift header trailing slot now renders day · daypart on a single
+        // line under the live clock, matching the variance-style header.
+        expect(
           find.text('Friday \u00b7 Mar 27', skipOffstage: false),
-          findsOneWidget);
-    });
+          findsOneWidget,
+        );
+      });
 
     // 7.55m.3: header time is now a live wall clock, not static snapshot text.
     if (_includePrunedLabelGroups())
-    testWidgets('header renders live clock via test seam', (tester) async {
-      // Inject a deterministic time: 8:30 PM
-      ShiftDashboard.clockOverride = () => DateTime(2026, 3, 27, 20, 30);
+      testWidgets('header renders live clock via test seam', (tester) async {
+        // Inject a deterministic time: 8:30 PM
+        ShiftDashboard.clockOverride = () => DateTime(2026, 3, 27, 20, 30);
 
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      // Clock now splits the time and AM/PM into separate Text widgets so
-      // the digits can be larger than the meridiem suffix.
-      expect(find.text('8:30', skipOffstage: false), findsOneWidget);
-      expect(find.text('PM', skipOffstage: false), findsOneWidget);
-    });
-
-    if (_includePrunedLabelGroups())
-    testWidgets('header does NOT render old service-elapsed text', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      // The old static “into service” text must not appear.
-      expect(find.textContaining('into service', skipOffstage: false),
-          findsNothing);
-    });
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        // Clock now splits the time and AM/PM into separate Text widgets so
+        // the digits can be larger than the meridiem suffix.
+        expect(find.text('8:30', skipOffstage: false), findsOneWidget);
+        expect(find.text('PM', skipOffstage: false), findsOneWidget);
+      });
 
     if (_includePrunedLabelGroups())
-    testWidgets('header does NOT render old static time text', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      // The old combined “timeLabel · serviceElapsedLabel” must not appear.
-      expect(
+      testWidgets('header does NOT render old service-elapsed text', (
+        tester,
+      ) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        // The old static “into service” text must not appear.
+        expect(
+          find.textContaining('into service', skipOffstage: false),
+          findsNothing,
+        );
+      });
+
+    if (_includePrunedLabelGroups())
+      testWidgets('header does NOT render old static time text', (
+        tester,
+      ) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        // The old combined “timeLabel · serviceElapsedLabel” must not appear.
+        expect(
           find.text(
-              '${ShiftSnapshot.time} \u00b7 ${ShiftSnapshot.serviceElapsed}',
-              skipOffstage: false),
-          findsNothing);
-    });
+            '${ShiftSnapshot.time} \u00b7 ${ShiftSnapshot.serviceElapsed}',
+            skipOffstage: false,
+          ),
+          findsNothing,
+        );
+      });
 
     if (_includePrunedLabelGroups())
-    testWidgets('LABOR % label is present', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      expect(find.text('LABOR %', skipOffstage: false),
-          findsAtLeastNWidgets(1));
-    });
+      testWidgets('LABOR % label is present', (tester) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text('LABOR %', skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
+      });
   });
 
   // â”€â”€ B: OPZ widget key pieces â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('B â€” OPZ widget', () {
     if (_includePrunedLabelGroups())
-    testWidgets('OPZ status label exists', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      final rm = _fixtureReadModel();
-      expect(find.text(rm.opzLabel, skipOffstage: false), findsOneWidget);
-    });
+      testWidgets('OPZ status label exists', (tester) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        final rm = _fixtureReadModel();
+        expect(find.text(rm.opzLabel, skipOffstage: false), findsOneWidget);
+      });
 
     if (_includePrunedLabelGroups())
-    testWidgets('CPLH label exists', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      expect(find.text('CPLH', skipOffstage: false),
-          findsAtLeastNWidgets(1));
-    });
+      testWidgets('CPLH label exists', (tester) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('CPLH', skipOffstage: false), findsAtLeastNWidgets(1));
+      });
 
     if (_includePrunedLabelGroups())
-    testWidgets('target value exists', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      final rm = _fixtureReadModel();
-      expect(
+      testWidgets('target value exists', (tester) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        final rm = _fixtureReadModel();
+        expect(
           find.text(rm.targetCPLH.toStringAsFixed(2), skipOffstage: false),
-          findsAtLeastNWidgets(1));
-    });
+          findsAtLeastNWidgets(1),
+        );
+      });
 
     if (_includePrunedLabelGroups())
-    testWidgets('ceiling value exists', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      final rm = _fixtureReadModel();
-      expect(
+      testWidgets('ceiling value exists', (tester) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        final rm = _fixtureReadModel();
+        expect(
           find.text(rm.opzCeilingCPLH.toStringAsFixed(2), skipOffstage: false),
-          findsAtLeastNWidgets(1));
-    });
+          findsAtLeastNWidgets(1),
+        );
+      });
   });
 
   // â”€â”€ C: metric cards render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('C â€” metric cards', () {
     if (_includePrunedLabelGroups())
-    testWidgets('COVERS card exists', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      expect(
-          find.text('COVERS', skipOffstage: false), findsAtLeastNWidgets(1));
-    });
+      testWidgets('COVERS card exists', (tester) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text('COVERS', skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
+      });
 
     if (_includePrunedLabelGroups())
-    testWidgets('PPA card exists', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      expect(
-          find.text('PPA', skipOffstage: false), findsAtLeastNWidgets(1));
-    });
+      testWidgets('PPA card exists', (tester) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('PPA', skipOffstage: false), findsAtLeastNWidgets(1));
+      });
 
     if (_includePrunedLabelGroups())
-    testWidgets('CPLH card exists', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      expect(
-          find.text('CPLH', skipOffstage: false), findsAtLeastNWidgets(1));
-    });
+      testWidgets('CPLH card exists', (tester) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('CPLH', skipOffstage: false), findsAtLeastNWidgets(1));
+      });
 
     testWidgets('CPLH metric card renders at 2dp (7.55h)', (tester) async {
       final rm = _fixtureReadModel();
@@ -354,6 +401,7 @@ void main() {
       await tester.pump();
 
       final cplhCard = rm.metricCards.firstWhere((c) => c.name == 'CPLH');
+      await _scrollUntilMetricVisible(tester, cplhCard.name);
       // Current value must be 2dp
       expect(cplhCard.currentFormatted, contains('.'));
       expect(cplhCard.currentFormatted.split('.').last.length, 2);
@@ -370,22 +418,23 @@ void main() {
     });
 
     if (_includePrunedLabelGroups())
-    testWidgets('SPLH card exists', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      expect(
-          find.text('SPLH', skipOffstage: false), findsAtLeastNWidgets(1));
-    });
+      testWidgets('SPLH card exists', (tester) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('SPLH', skipOffstage: false), findsAtLeastNWidgets(1));
+      });
 
     if (_includePrunedLabelGroups())
-    testWidgets('BLENDED WAGE card exists', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      expect(find.text('BLENDED WAGE', skipOffstage: false),
-          findsAtLeastNWidgets(1));
-    });
+      testWidgets('BLENDED WAGE card exists', (tester) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text('BLENDED WAGE', skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
+      });
   });
 
   // â”€â”€ D: teaching container â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -393,15 +442,16 @@ void main() {
   // Teaching section hidden on Shift screen — Phase 10.5.
   group('D â€” teaching container', () {
     if (_includePrunedLabelGroups())
-    testWidgets('PRIMARY DRIVER section label is NOT rendered (Phase 10.5)',
-        (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      // The full teaching section is commented out — deferred until Shift
-      // is daypart-live in Phase 10.5. The section label must not appear.
-      expect(find.text('PRIMARY DRIVER', skipOffstage: false), findsNothing);
-    });
+      testWidgets('PRIMARY DRIVER section label is NOT rendered (Phase 10.5)', (
+        tester,
+      ) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        // The full teaching section is commented out — deferred until Shift
+        // is daypart-live in Phase 10.5. The section label must not appear.
+        expect(find.text('PRIMARY DRIVER', skipOffstage: false), findsNothing);
+      });
   });
 
   // â”€â”€ E: hero truth intact â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -414,20 +464,23 @@ void main() {
     });
 
     if (_includePrunedLabelGroups())
-    testWidgets('DRIVER badge renders for hero card', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      expect(find.text('DRIVER', skipOffstage: false),
-          findsAtLeastNWidgets(1));
-    });
+      testWidgets('DRIVER badge renders for hero card', (tester) async {
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text('DRIVER', skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
+      });
   });
 
   // ── G: LABOR % card reads from ShiftDashboardReadModel ────────────────────
 
   group('G — LABOR % from read model, not WTD', () {
-    testWidgets('LABOR % card shows read-model actualLaborPct, not WTD value',
-        (tester) async {
+    testWidgets('LABOR % card shows read-model actualLaborPct, not WTD value', (
+      tester,
+    ) async {
       final rm = _fixtureReadModel();
       await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
       await tester.pump();
@@ -437,12 +490,15 @@ void main() {
       // StaticShiftDataSource WTD actualLaborPct is different from the
       // read model's whole-day labor %. This proves the card reads the read model.
       final expectedText = '${rm.actualLaborPct.toStringAsFixed(1)}%';
-      expect(find.text(expectedText, skipOffstage: false),
-          findsAtLeastNWidgets(1));
+      expect(
+        find.text(expectedText, skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
     });
 
-    testWidgets('LABOR % card shows read-model theoretical target',
-        (tester) async {
+    testWidgets('LABOR % card shows read-model theoretical target', (
+      tester,
+    ) async {
       final rm = _fixtureReadModel();
       await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
       await tester.pump();
@@ -450,8 +506,10 @@ void main() {
 
       final expectedTarget =
           'Theoretical ${rm.targetLaborPct.toStringAsFixed(1)}%';
-      expect(find.text(expectedTarget, skipOffstage: false),
-          findsAtLeastNWidgets(1));
+      expect(
+        find.text(expectedTarget, skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
     });
 
     test('7.55q.6: ShiftDashboardReadModel.targetLaborPct sources from '
@@ -508,24 +566,31 @@ void main() {
   // â”€â”€ F: reservation book signal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('F â€” reservation book signal', () {
-    testWidgets('COVERS card renders “In the books 72” when reservation exists',
-        (tester) async {
-      final rm = _fixtureReadModelWithReservation();
-      await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
-      await tester.pump();
-      await tester.pump();
-      expect(find.text('In the books 72', skipOffstage: false),
-          findsOneWidget);
-    });
+    testWidgets(
+      'COVERS card renders “In the books 72” when reservation exists',
+      (tester) async {
+        final rm = _fixtureReadModelWithReservation();
+        await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text('In the books 72', skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
 
-    testWidgets('COVERS card hides “In the books” when no reservation exists',
-        (tester) async {
+    testWidgets('COVERS card hides “In the books” when no reservation exists', (
+      tester,
+    ) async {
       final rm = _fixtureReadModel();
       await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
       await tester.pump();
       await tester.pump();
-      expect(find.textContaining('In the books', skipOffstage: false),
-          findsNothing);
+      expect(
+        find.textContaining('In the books', skipOffstage: false),
+        findsNothing,
+      );
     });
   });
 }

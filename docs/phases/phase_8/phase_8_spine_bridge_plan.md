@@ -35,14 +35,14 @@ trio). Mirrors Wave B's engineer-all-17 shape. Lands right after
 | Lane | Status | Files NEW | Owns |
 |---|---|---|---|
 | `.0` Seam definition | RUNNING (worktree); awaiting amendment | `tool/advisor_proxy/{pos,labor,reservation}_adapter_registry.dart`, `tool/integration_sync_worker/{main,dispatch}.dart`, `lib/services/integration/canonical_sink.dart` | Adapter registry binding 17 Wave B adapters; sync worker dispatch; unified CanonicalSink interface |
-| `.0a` Polling cadence resolver (additive) | Queued | `lib/services/integration/polling_cadence_resolver.dart` + test | Per-(operator, location, vendor) cadence override read from `.A`; clamp to vendor min/max; default 60s when no override; sync log on clamp/unack |
+| `.0a` Polling cadence resolver (additive) | Queued | `lib/services/integration/polling_cadence_resolver.dart` + test | Reads F&F-controlled tier assignment from `.A`; clamps to vendor min/max; default standard tier when no assignment; sync log on clamp/missing tier |
 | `.1.OR` Oracle Simphony Postgres sink | Queued | `lib/infrastructure/persistence/postgres/oracle_micros_simphony_postgres_sink.dart` + test | Writes canonical-fact dict to `cover_facts` via `OperatorScopedRepository.withTenant`; idempotency UNIQUE; raw_payload; demo-flip on first batch |
 | `.1.QBT` QuickBooks Time Postgres sink | Queued | `lib/infrastructure/persistence/postgres/quickbooks_time_postgres_sink.dart` + test | Writes to `labor_punches`; module disambiguation respected |
 | `.1.LB` Libro Postgres sink | Queued | `lib/infrastructure/persistence/postgres/libro_postgres_sink.dart` + test | Writes to `reservation_facts`; webhook + poll inputs |
 | `.2` Aggregator + ShiftRecord writer | Queued | `lib/services/integration/canonical_fact_to_closed_shift_input.dart`, `lib/infrastructure/persistence/postgres/postgres_shift_record_writer.dart`, `lib/services/integration/labor_wage_source_class.dart` (sidecar lookup), `lib/domain/models/aggregator_provenance_context.dart` + tests | 5-way covers resolution (manual / vendor / reservation+walk-in / forecast / unavailable); 4-way wage resolution (vendor per-employee / vendor per-position / target wage substitution / manual mix); `target_profile_version_id` preservation on re-aggregation |
 | `.3` Server→mobile sync | Queued | `lib/services/sync/postgres_shift_record_to_mobile_sync.dart`, `lib/services/sync/sync_proxy_client.dart` + test | Pull `ShiftRecord` rows via proxy; write via existing `SqliteShiftRecordRepository.replaceShiftForSlot`; fire `AppRuntimeInvalidationBus.notifyRuntimeWriteCompleted`; pull `demo_mode_state` + `data_accuracy_settings` in same sweep |
 | `.A` Data Accuracy schema + repository | Queued | Migration + `lib/services/data_accuracy/data_accuracy_settings_repository.dart` + `lib/domain/models/data_accuracy_settings.dart` + tests | Schema per `data_accuracy_settings_contract.md`; RLS-scoped repository; consumed by `.0a` / `.2` / `.B` / `.C` |
-| `.B` Operator Web Data Accuracy tab | Queued | `lib/operator_web/screens/data_accuracy_screen.dart` + 7 widgets + tests + walkthrough | Wage source toggle (vendor / manual_mix); covers source toggle per daypart (vendor / forecast / manual / reservation+walk-in); polling cadence picker with cost projection; 60-day historical seed; walk-in handling card; vendor relativity labels |
+| `.B` Operator Web Data Accuracy tab | Queued | `lib/operator_web/screens/data_accuracy_screen.dart` + widgets + tests + walkthrough | Wage source toggle (vendor / manual_mix); covers source toggle per effective service period (vendor / forecast / manual / reservation+walk-in); polling tier display + request-change flow only; 60-day historical seed; walk-in handling card; vendor relativity labels |
 | `.C` F&F Ops Console per-location data accuracy + Polling & Pricing | Queued; **scope expanded 2026-05-05** | `lib/admin/screens/per_location_data_accuracy_screen.dart` + `lib/admin/screens/polling_and_pricing_admin_screen.dart` + 8 widgets + tests + walkthrough | Two-tab admin: Data Accuracy (per-location overrides) + Polling & Pricing (tier definitions / per-assignment / margin rollup / change requests / audit). All forge_admin-gated. Plain-English explainer card per `data_accuracy_settings_contract.md` "Polling & Pricing tab" section. Audit row on every change. |
 | `.7S.upgrade` (NEW 2026-05-05; per-vendor adapter capability extension) | Queued | edits to `lib/integrations/labor/seven_shifts_labor_adapter.dart` + new tests + `docs/integrations/seven_shifts/{api_consumed,field_mapping}.md` updates | Adds `/reports/hours_and_wages` endpoint consumption to the 7shifts adapter so it qualifies as `perEmployeeWithDollars` (vendor exposes `total_pay` per shift via this report). Enables the highest-fidelity wage class for 7shifts operators. File-scope: only seven_shifts adapter + its doc pack + its tests. |
 | `.4` Proof v2 (sequential) | Queued | `docs/_execution/<date>_8_integration_mobile_proof_v2_execution.md` + E2E harness | Re-run mobile-proof against complete spine; verify all 27 acceptance items (12 v1 + 10 added by spine-bridge concerns + 5 added by 2026-05-05 falsehood corrections) |
@@ -85,6 +85,21 @@ basis). Lane `.B` polling card becomes display-only +
 request-tier-change ticket flow. Lane `.C` admin surface gains
 tier-assignment + cost-rollup with margin view. Lane `.0a` resolver
 reads from the tier assignment table, NOT operator overrides.
+
+
+## Parallel-lane amendment - Business Timing / Live Shift (2026-05-06)
+
+`8.spine-bridge-sink-fanout` remains a closed-shift sink fanout. It must not
+write `open_shift_snapshots`, reinterpret service periods, or create a second
+timing authority while the Business Timing Live slice is in flight.
+
+Business timing setup lands through the Operator Console / Admin Console /
+mobile-read-model shape in `docs/phases/phase_business_timing_live/`. The live
+vendor feed for in-progress Shift requires an explicit `8.spine-bridge-live`
+lane after sink fanout and timing schema are review-ready: canonical facts ->
+OpenShiftSnapshotProjector -> `open_shift_snapshots` -> proxy pull -> mobile
+SQLite. Until that lane lands, any Shift service-period selector must render
+honest unavailable/demo/fallback states rather than implying a live vendor feed.
 
 ## Out of scope (binding)
 

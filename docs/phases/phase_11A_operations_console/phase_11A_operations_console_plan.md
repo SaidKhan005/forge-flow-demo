@@ -73,6 +73,15 @@ was applied and Browser Use verified on staging the same day: operator edit and
 location edit both returned live 200s. Until the same file is applied and
 directly verified on Production1, operator/location admin writes are
 staging-ready only.
+The Business Timing Live slice adds
+`202605060000_phase_business_timing_live_schema.sql` for scoped timing profiles
+and live `open_shift_snapshots`. That schema must be applied and verified in
+staging/review before console timing surfaces can be called live-schema-ready,
+then carried into the next Production1 apply before production claims.
+Normal timing edits belong in the Operator Web Console. The F&F Operations
+Console may expose the same effective profile for support and may write
+overrides only through `/v1/admin/*` routes with a required audited admin
+reason; it must not become the operator's primary hierarchy editor.
 
 Operational runbooks added from the 2026-05-03 live staging console smoke:
 provider credential/KMS rollout is owned by
