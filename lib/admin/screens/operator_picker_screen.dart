@@ -8,17 +8,22 @@
 // over the existing [OperatorLocationAdminGateway]; pop with the
 // resolved pair on confirm, null on cancel.
 //
+// 11A.12 reuses this picker as the entry path to the cross-
+// operator Members surface, so the picker is no longer purely
+// "internal to Corpus" — it is the canonical helper for any
+// admin route that needs to scope to one operator at a time.
+//
 // Caching is in-memory only - keyed by admin UID - so the next
 // picker open inside the same session pre-selects the most-
 // recently-confirmed pair. Durable cookie / shared-prefs
 // persistence is intentionally out of scope; that lands in a
 // future slice when cross-session continuity is needed.
 //
-// The picker mounts via Navigator.push from the Corpus admin
-// screen; it is NOT a side-nav route because the boundary is
-// "internal helper of the Corpus surface." The route ID
-// [kAdminOperatorPickerRouteId] in `admin_routes.dart` is the
-// stable handle audit logs / deep-links can refer to.
+// The picker mounts via Navigator.push from the host screen and
+// is NOT a side-nav route because no admin destination "is" the
+// picker — it is always a dependency of another surface. The
+// route ID [kAdminOperatorPickerRouteId] in `admin_routes.dart`
+// is the stable handle audit logs / deep-links can refer to.
 
 import 'package:flutter/material.dart';
 
