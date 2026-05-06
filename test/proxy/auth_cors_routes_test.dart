@@ -70,6 +70,34 @@ void main() {
     });
   });
 
+  test('auth team preflight exposes self-service write methods', () async {
+    await _withRealHttp(() async {
+      final ctx = await _spinUp();
+      try {
+        final request = await ctx.client.openUrl(
+          'OPTIONS',
+          ctx.baseUri.resolve('/v1/auth/team/locations/loc_1/org-unit'),
+        );
+        request.headers.set('Origin', _operatorWebOrigin);
+        request.headers.set('Access-Control-Request-Method', 'PATCH');
+        request.headers.set(
+          'Access-Control-Request-Headers',
+          'authorization,content-type,idempotency-key',
+        );
+        request.contentLength = 0;
+        final response = await request.close();
+        expect(response.statusCode, equals(HttpStatus.noContent));
+        final methods =
+            response.headers.value('access-control-allow-methods') ?? '';
+        expect(methods, contains('PATCH'));
+        expect(methods, contains('DELETE'));
+      } finally {
+        ctx.client.close(force: true);
+        await ctx.server.close(force: true);
+      }
+    });
+  });
+
   test('auth rejection still echoes allowed operator web origin', () async {
     await _withRealHttp(() async {
       final ctx = await _spinUp();

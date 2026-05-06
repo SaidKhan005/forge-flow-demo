@@ -16,12 +16,12 @@
 // Routes (already shipped by Phase 9 + 11A.1, no new backend
 // surface added by 11W.2):
 //
-//   * GET    /v1/admin/auth/roles
-//   * POST   /v1/admin/auth/roles
-//   * PATCH  /v1/admin/auth/roles/{role_id}
-//   * DELETE /v1/admin/auth/roles/{role_id}
-//   * POST   /v1/admin/auth/role-grants
-//   * DELETE /v1/admin/auth/role-grants/{user_role_id}
+//   * GET    /v1/auth/team/roles
+//   * POST   /v1/auth/team/roles
+//   * PATCH  /v1/auth/team/roles/{role_id}
+//   * DELETE /v1/auth/team/roles/{role_id}
+//   * POST   /v1/auth/team/role-grants
+//   * DELETE /v1/auth/team/role-grants/{user_role_id}
 //
 // Idempotency posture: every write carries an `Idempotency-Key`
 // header; the screen layer mints one key per user action and threads
@@ -102,10 +102,10 @@ class WebTeamRolesError implements Exception {
 class WebTeamRolesPaths {
   const WebTeamRolesPaths._();
 
-  static const String roles = '/v1/admin/auth/roles';
-  static const String rolesPrefix = '/v1/admin/auth/roles/';
-  static const String roleGrants = '/v1/admin/auth/role-grants';
-  static const String roleGrantsPrefix = '/v1/admin/auth/role-grants/';
+  static const String roles = '/v1/auth/team/roles';
+  static const String rolesPrefix = '/v1/auth/team/roles/';
+  static const String roleGrants = '/v1/auth/team/role-grants';
+  static const String roleGrantsPrefix = '/v1/auth/team/role-grants/';
 
   static String role(String roleId) =>
       '$rolesPrefix${Uri.encodeComponent(roleId)}';
@@ -128,9 +128,9 @@ class WebTeamRolesGatewayLive implements WebTeamRolesGateway {
     required Future<String?> Function() idTokenProvider,
     http.Client? httpClient,
     Duration timeout = const Duration(seconds: 30),
-  })  : _idTokenProvider = idTokenProvider,
-        _httpClient = httpClient ?? http.Client(),
-        _timeout = timeout;
+  }) : _idTokenProvider = idTokenProvider,
+       _httpClient = httpClient ?? http.Client(),
+       _timeout = timeout;
 
   final Uri proxyBaseUri;
   final Future<String?> Function() _idTokenProvider;
@@ -172,8 +172,9 @@ class WebTeamRolesGatewayLive implements WebTeamRolesGateway {
         if (command.description.trim().isNotEmpty)
           'description': command.description.trim(),
         if (command.permissions.isNotEmpty)
-          'permissions':
-              command.permissions.map(_permissionUpdateJson).toList(),
+          'permissions': command.permissions
+              .map(_permissionUpdateJson)
+              .toList(),
         if (_readNonBlankString(command.reason) != null)
           'reason': command.reason!.trim(),
       },
@@ -199,8 +200,9 @@ class WebTeamRolesGatewayLive implements WebTeamRolesGateway {
         if (command.description != null)
           'description': command.description!.trim(),
         if (command.permissions.isNotEmpty)
-          'permissions':
-              command.permissions.map(_permissionUpdateJson).toList(),
+          'permissions': command.permissions
+              .map(_permissionUpdateJson)
+              .toList(),
         if (_readNonBlankString(command.reason) != null)
           'reason': command.reason!.trim(),
       },
@@ -353,9 +355,9 @@ class WebTeamRolesGatewayLive implements WebTeamRolesGateway {
   void _expectStatus(WebTeamRolesResponse response, int expected) {
     if (response.statusCode == expected) return;
     throw WebTeamRolesError(
-      code:
-          _readNonBlankString(response.body['error']) ?? 'team_roles_failed',
-      message: _readNonBlankString(response.body['message']) ??
+      code: _readNonBlankString(response.body['error']) ?? 'team_roles_failed',
+      message:
+          _readNonBlankString(response.body['message']) ??
           'proxy returned status ${response.statusCode}',
       statusCode: response.statusCode,
     );
@@ -404,10 +406,7 @@ class WebTeamRolesGatewayLive implements WebTeamRolesGateway {
       permissions: List<TeamRolePermissionRule>.unmodifiable(
         permissions.map((rawPermission) {
           if (rawPermission is! Map) {
-            throw _malformed(
-              response,
-              'role permission payload was malformed',
-            );
+            throw _malformed(response, 'role permission payload was malformed');
           }
           final permission = Map<String, Object?>.from(rawPermission);
           final permissionKey = _readNonBlankString(

@@ -10,9 +10,9 @@
 // Routes (already shipped by Phase 9 + 11A.1; no new backend surface
 // added by 11W.3):
 //
-//   * GET   /v1/admin/auth/org-units
-//   * POST  /v1/admin/auth/org-units
-//   * PATCH /v1/admin/auth/locations/{location_id}/org-unit
+//   * GET   /v1/auth/team/org-units
+//   * POST  /v1/auth/team/org-units
+//   * PATCH /v1/auth/team/locations/{location_id}/org-unit
 //
 // The proxy route handlers gate POST + PATCH on `team.roles.assign`
 // (per `tool/advisor_proxy/advisor_proxy.dart` § auth-operations) and
@@ -88,8 +88,8 @@ class WebTeamHierarchyError implements Exception {
 class WebTeamHierarchyPaths {
   const WebTeamHierarchyPaths._();
 
-  static const String orgUnits = '/v1/admin/auth/org-units';
-  static const String locationsPrefix = '/v1/admin/auth/locations/';
+  static const String orgUnits = '/v1/auth/team/org-units';
+  static const String locationsPrefix = '/v1/auth/team/locations/';
 
   static String locationOrgUnit(String locationId) =>
       '$locationsPrefix${Uri.encodeComponent(locationId)}/org-unit';
@@ -104,9 +104,9 @@ class WebTeamHierarchyGatewayLive implements WebTeamHierarchyGateway {
     required Future<String?> Function() idTokenProvider,
     http.Client? httpClient,
     Duration timeout = const Duration(seconds: 30),
-  })  : _idTokenProvider = idTokenProvider,
-        _httpClient = httpClient ?? http.Client(),
-        _timeout = timeout;
+  }) : _idTokenProvider = idTokenProvider,
+       _httpClient = httpClient ?? http.Client(),
+       _timeout = timeout;
 
   final Uri proxyBaseUri;
   final Future<String?> Function() _idTokenProvider;
@@ -170,9 +170,7 @@ class WebTeamHierarchyGatewayLive implements WebTeamHierarchyGateway {
       method: 'PATCH',
       path: WebTeamHierarchyPaths.locationOrgUnit(command.targetLocationId),
       idempotencyKey: idempotencyKey,
-      body: <String, Object?>{
-        'parent_org_unit_id': command.parentOrgUnitId,
-      },
+      body: <String, Object?>{'parent_org_unit_id': command.parentOrgUnitId},
     );
     _expectStatus(response, 200);
     final moved = response.body['moved'];
@@ -246,9 +244,11 @@ class WebTeamHierarchyGatewayLive implements WebTeamHierarchyGateway {
   void _expectStatus(WebTeamHierarchyResponse response, int expected) {
     if (response.statusCode == expected) return;
     throw WebTeamHierarchyError(
-      code: _readNonBlankString(response.body['error']) ??
+      code:
+          _readNonBlankString(response.body['error']) ??
           'team_hierarchy_failed',
-      message: _readNonBlankString(response.body['message']) ??
+      message:
+          _readNonBlankString(response.body['message']) ??
           'proxy returned status ${response.statusCode}',
       statusCode: response.statusCode,
     );

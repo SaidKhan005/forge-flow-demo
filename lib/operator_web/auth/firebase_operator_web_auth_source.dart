@@ -8,15 +8,28 @@ import 'package:crypto/crypto.dart';
 import '../../services/auth/account_info_gateway.dart';
 import '../../services/auth/firebase_auth_client.dart';
 import '../account/operator_web_account_actions.dart';
+import '../router/operator_web_router.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
+import '../services/web_security_gateway.dart';
+import '../services/web_team_audit_log_gateway.dart';
+import '../services/web_team_hierarchy_gateway.dart';
+import '../services/web_team_roles_gateway.dart';
+import '../services/web_team_sessions_gateway.dart';
+import '../services/web_team_users_gateway.dart';
 import 'operator_web_auth_source.dart';
 
 class FirebaseOperatorWebAuthSource
     implements
         OperatorWebAuthSource,
         OperatorWebAccountActions,
-        OperatorWebVendorConnectionsGatewayProvider {
+        OperatorWebVendorConnectionsGatewayProvider,
+        OperatorWebTeamUsersGatewayProvider,
+        OperatorWebTeamRolesGatewayProvider,
+        OperatorWebTeamHierarchyGatewayProvider,
+        OperatorWebTeamSessionsGatewayProvider,
+        OperatorWebTeamAuditLogGatewayProvider,
+        OperatorWebSecurityGatewayProvider {
   FirebaseOperatorWebAuthSource({
     required FirebaseAuthClient authClient,
     required OperatorWebProxyClient proxyClient,
@@ -24,6 +37,32 @@ class FirebaseOperatorWebAuthSource
        _proxyClient = proxyClient,
        vendorConnectionsGateway = OperatorWebHttpVendorConnectionsGateway(
          proxyClient: proxyClient,
+         idTokenProvider: authClient.currentIdToken,
+       ),
+       teamUsersGateway = WebTeamUsersGatewayLive(
+         proxyBaseUri: proxyClient.baseUri,
+         idTokenProvider: authClient.currentIdToken,
+       ),
+       teamRolesGateway = WebTeamRolesGatewayLive(
+         proxyBaseUri: proxyClient.baseUri,
+         idTokenProvider: authClient.currentIdToken,
+       ),
+       teamHierarchyGateway = WebTeamHierarchyGatewayLive(
+         proxyBaseUri: proxyClient.baseUri,
+         idTokenProvider: authClient.currentIdToken,
+       ),
+       teamSessionsGateway = _OperatorWebLiveSessionsGateway(
+         delegate: WebTeamSessionsGatewayLive(
+           proxyBaseUri: proxyClient.baseUri,
+           idTokenProvider: authClient.currentIdToken,
+         ),
+       ),
+       teamAuditLogGateway = WebTeamAuditLogGatewayLive(
+         proxyBaseUri: proxyClient.baseUri,
+         idTokenProvider: authClient.currentIdToken,
+       ),
+       securityGateway = WebSecurityGatewayLive(
+         proxyBaseUri: proxyClient.baseUri,
          idTokenProvider: authClient.currentIdToken,
        ) {
     _controller.add(_state);
@@ -39,6 +78,29 @@ class FirebaseOperatorWebAuthSource
 
   @override
   final OperatorWebHttpVendorConnectionsGateway vendorConnectionsGateway;
+
+  @override
+  final WebTeamUsersGateway teamUsersGateway;
+
+  @override
+  final WebTeamRolesGateway teamRolesGateway;
+
+  @override
+  final WebTeamHierarchyGateway teamHierarchyGateway;
+
+  @override
+  final WebTeamSessionsGateway teamSessionsGateway;
+
+  @override
+  final WebTeamAuditLogGateway teamAuditLogGateway;
+
+  @override
+  final WebSecurityGateway securityGateway;
+
+  String? _currentSessionId;
+
+  @override
+  String? get currentSessionId => _currentSessionId;
 
   @override
   Stream<OperatorWebAuthState> get stream => _controller.stream;
@@ -184,6 +246,7 @@ class FirebaseOperatorWebAuthSource
         tokenHash: tokenHash,
         email: credential.email,
       );
+      _currentSessionId = ledger.sessionId;
       final account = await _proxyClient.loadAccountInfo(
         idToken: credential.idToken,
       );
@@ -353,6 +416,7 @@ class FirebaseOperatorWebAuthSource
 
   @override
   Future<void> signOut() async {
+    _currentSessionId = null;
     await _authClient.signOut();
     _emit(const OperatorWebNeedsSignIn());
   }
@@ -475,5 +539,35 @@ class FirebaseOperatorWebAuthSource
     if (value is! String) return null;
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+}
+
+class _OperatorWebLiveSessionsGateway implements WebTeamSessionsGateway {
+  const _OperatorWebLiveSessionsGateway({
+    required WebTeamSessionsGatewayLive delegate,
+  }) : _delegate = delegate;
+
+  final WebTeamSessionsGatewayLive _delegate;
+
+  @override
+  Future<WebTeamSessionsListed> listOwnSessions() {
+    return _delegate.listOwnSessions();
+  }
+
+  @override
+  Future<WebTeamSessionsListed> listTeamSessions() {
+    throw const WebTeamSessionsError(
+      code: 'team_sessions_not_routed',
+      message: 'Team-wide session listing is not routed by the proxy yet.',
+      statusCode: 501,
+    );
+  }
+
+  @override
+  Future<WebTeamSessionRevoked> revokeSession(
+    WebTeamSessionRevokeCommand command, {
+    required String idempotencyKey,
+  }) {
+    return _delegate.revokeSession(command, idempotencyKey: idempotencyKey);
   }
 }
