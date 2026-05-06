@@ -7,7 +7,7 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605061600_phase_11W_5_team_audit_log_export_key.sql`. This
+`202605061700_hardening_audit_anchor_daily_schedule.sql`. This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -49,7 +49,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (7 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (8 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -58,6 +58,7 @@ Pending follow-up scope (7 migrations; staging status varies, Production1 pendin
 - `db/migrations/202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql`
 - `db/migrations/202605061500_hardening_phase_8_email_index_leading_column_rekey.sql`
 - `db/migrations/202605061600_phase_11W_5_team_audit_log_export_key.sql`
+- `db/migrations/202605061700_hardening_audit_anchor_daily_schedule.sql`
 
 Out of scope:
 
@@ -67,7 +68,7 @@ Out of scope:
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
-  anything later than `202605061600_phase_11W_5_team_audit_log_export_key.sql`
+  anything later than `202605061700_hardening_audit_anchor_daily_schedule.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
@@ -161,6 +162,7 @@ Current pending follow-up order:
 5. `202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql`
 6. `202605061500_hardening_phase_8_email_index_leading_column_rekey.sql`
 7. `202605061600_phase_11W_5_team_audit_log_export_key.sql`
+8. `202605061700_hardening_audit_anchor_daily_schedule.sql`
 
 Dependency notes:
 
@@ -513,7 +515,7 @@ until the post-tuning monitor window is clean.
   `build/phase_9_production1_apply/2026-05-03_second_batch/` and intentionally
   stay uncommitted.
 
-### Next follow-up - pending (cutoff `202605061600_phase_11W_5_team_audit_log_export_key.sql`)
+### Next follow-up - pending (cutoff `202605061700_hardening_audit_anchor_daily_schedule.sql`)
 
 - `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` is
   applied and Browser Use verified on staging. Apply it to Production1 under
@@ -544,6 +546,17 @@ until the post-tuning monitor window is clean.
   `team.audit_log.export` permission key plus default grants for
   `operator_owner`/`operator_admin` so the 11W.5 audit log export gate has
   catalog parity. Apply on staging first; carry into the next Production1 batch.
+- `202605061700_hardening_audit_anchor_daily_schedule.sql` adds the daily
+  pg_cron tick `forge_audit_anchor_daily` at `0 2 * * *` (02:00 UTC) so the
+  audit-anchor cadence is observable from inside Postgres
+  (`cron.job_run_details`) regardless of Cloud Scheduler state. The kickoff
+  function `public.audit_anchor_run_daily()` is NOTIFY-only and does NOT
+  perform anchor work; the Cloud Run binary at `tool/audit_anchor/main.dart`
+  remains the production anchor executor. Replay-safe via
+  unschedule-then-reschedule; NOTICE-and-return guard for the Azure split-DB
+  case (schedule from `cron.database_name` with
+  `cron.schedule_in_database(..., 'forgeflow')`). Apply on staging first; carry
+  into the next Production1 batch.
 - One-shot apply plan once approved: confirm staging parity for the same files,
   confirm fresh backup/restore point, run analyzer/lints/focused tests, apply
   the approved files to Production1, verify the `forge_admin`

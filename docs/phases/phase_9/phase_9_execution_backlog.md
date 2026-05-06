@@ -90,8 +90,17 @@ Do not re-open stale findings unless the repo regresses:
   `operator_owner`/`operator_admin` so the 11W.5 audit-log export gate has
   catalog parity); apply both on staging before claiming index hygiene parity
   or live audit-log export readiness, then carry into the next Production1
-  batch. The current Production1 follow-up cutoff is therefore
-  `202605061600_phase_11W_5_team_audit_log_export_key.sql`.
+  batch. The Hardening Wave B3 audit-anchor cron follow-up (punchlist §5) adds
+  `202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron
+  schedule registration for `forge_audit_anchor_daily` at `0 2 * * *` UTC; the
+  kickoff function `public.audit_anchor_run_daily()` is NOTIFY-only on channel
+  `audit_anchor_tick` and does NOT perform the anchor work — the Cloud Run
+  binary at `tool/audit_anchor/main.dart` remains the production executor;
+  replay-safe via unschedule-then-reschedule and NOTICE-and-return guarded for
+  the Azure pg_cron split-DB topology); apply on staging before claiming
+  daily-cadence-from-Postgres observability parity, then carry into the next
+  Production1 batch. The current Production1 follow-up cutoff is therefore
+  `202605061700_hardening_audit_anchor_daily_schedule.sql`.
 
 ## Remaining Live-Closeout Gates
 
