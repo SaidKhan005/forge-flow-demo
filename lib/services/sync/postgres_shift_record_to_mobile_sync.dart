@@ -235,7 +235,27 @@ class PostgresShiftRecordToMobileSync {
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    bool Function()? isAborted,
   }) async {
+    bool aborted() => isAborted?.call() ?? false;
+    if (aborted()) {
+      // BUG 2 (HIGH): the auth context flipped before the sweep even
+      // started; bail without touching the proxy or local SQLite.
+      return SyncResult(
+        recordsWritten: 0,
+        openSnapshotsWritten: 0,
+        pagesPulled: 0,
+        openSnapshotPagesPulled: 0,
+        finalCursor: null,
+        finalOpenSnapshotCursor: null,
+        timingConfigSynced: false,
+        demoModeStates: List<DemoModeRecord>.unmodifiable(
+          _latestDemoModeStates,
+        ),
+        dataAccuracySettings: _latestDataAccuracySettings,
+        pollingTierAssignment: _latestPollingTierAssignment,
+      );
+    }
     final initialCursor = await _readCursor(
       restaurantId: restaurantId,
       operatorId: operatorId,
@@ -272,12 +292,17 @@ class PostgresShiftRecordToMobileSync {
     }
 
     while (true) {
+      // BUG 2 (HIGH): re-check the auth context before each page
+      // request so a sign-out / scope flip mid-sweep stops further
+      // proxy calls and SQLite writes.
+      if (aborted()) break;
       final page = await client.fetchShiftRecords(
         operatorId: operatorId,
         locationId: locationId,
         cursor: cursor,
         pageSize: pageSize,
       );
+      if (aborted()) break;
       pagesPulled++;
 
       for (final record in page.records) {
@@ -300,12 +325,14 @@ class PostgresShiftRecordToMobileSync {
     }
 
     while (true) {
+      if (aborted()) break;
       final page = await client.fetchOpenShiftSnapshots(
         operatorId: operatorId,
         locationId: locationId,
         cursor: openCursor,
         pageSize: pageSize,
       );
+      if (aborted()) break;
       openSnapshotPagesPulled++;
 
       for (final snapshot in page.snapshots) {
@@ -326,6 +353,23 @@ class PostgresShiftRecordToMobileSync {
         sourceType: openSnapshotSourceType,
       );
       openCursor = next;
+    }
+
+    if (aborted()) {
+      return SyncResult(
+        recordsWritten: recordsWritten,
+        openSnapshotsWritten: openSnapshotsWritten,
+        pagesPulled: pagesPulled,
+        openSnapshotPagesPulled: openSnapshotPagesPulled,
+        finalCursor: cursor,
+        finalOpenSnapshotCursor: openCursor,
+        timingConfigSynced: timingConfigSynced,
+        demoModeStates: List<DemoModeRecord>.unmodifiable(
+          _latestDemoModeStates,
+        ),
+        dataAccuracySettings: _latestDataAccuracySettings,
+        pollingTierAssignment: _latestPollingTierAssignment,
+      );
     }
 
     // Aux pulls in the same sweep (per spine-bridge.3 contract).
