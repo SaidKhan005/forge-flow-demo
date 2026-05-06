@@ -27,6 +27,7 @@ import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../models/shift_record.dart';
 import '../models/variance_week_projection_row.dart';
+import 'closed_timing_label_resolver.dart';
 
 class VarianceWeekProjectionReadService {
   const VarianceWeekProjectionReadService();
@@ -51,9 +52,11 @@ class VarianceWeekProjectionReadService {
     List<ShiftRecord> shifts, {
     ActiveTargetProfile? currentTargetProfile,
     List<ServicePeriodDefinition>? servicePeriodDefinitions,
+    ClosedTimingLabelResolver? timingLabelResolver,
   }) {
     // 7.55r item 1: prefer persisted config; fall back to demo.
-    final defs = servicePeriodDefinitions ??
+    final defs =
+        servicePeriodDefinitions ??
         ServicePeriodDefinitionResolver.demoDefinitions;
 
     final dayRows = <ProjectionDayRow>[];
@@ -61,14 +64,30 @@ class VarianceWeekProjectionReadService {
     for (final day in WeekDayOrder.dayLabels) {
       final order = ServicePeriodDefinitionResolver.idsForDayLabel(defs, day);
       final dayShifts = shifts.where((s) => s.dayLabel == day).toList()
-        ..sort((a, b) =>
-            order.indexOf(a.daypart).compareTo(order.indexOf(b.daypart)));
+        ..sort((a, b) {
+          final savedA = timingLabelResolver?.sortOrderFor(a);
+          final savedB = timingLabelResolver?.sortOrderFor(b);
+          if (savedA != null && savedB != null && savedA != savedB) {
+            return savedA.compareTo(savedB);
+          }
+          final aKey = timingLabelResolver?.bucketKeyFor(a) ?? a.daypart;
+          final bKey = timingLabelResolver?.bucketKeyFor(b) ?? b.daypart;
+          return order.indexOf(aKey).compareTo(order.indexOf(bKey));
+        });
 
       if (dayShifts.isEmpty) continue;
 
-      final children = dayShifts.map(_buildDaypartRow).toList();
-      dayRows.add(_buildDayRow(day, children,
-          currentTargetProfile: currentTargetProfile));
+      final children = dayShifts
+          .map(
+            (shift) => _buildDaypartRow(
+              shift,
+              timingLabelResolver: timingLabelResolver,
+            ),
+          )
+          .toList();
+      dayRows.add(
+        _buildDayRow(day, children, currentTargetProfile: currentTargetProfile),
+      );
     }
 
     return VarianceWeekProjection(dayRows: dayRows);
@@ -76,12 +95,15 @@ class VarianceWeekProjectionReadService {
 
   // ── Private helpers ─────────────────────────────────────────────────────
 
-  ProjectionDaypartRow _buildDaypartRow(ShiftRecord s) {
+  ProjectionDaypartRow _buildDaypartRow(
+    ShiftRecord s, {
+    ClosedTimingLabelResolver? timingLabelResolver,
+  }) {
     final status = _statusFromShift(s);
     return ProjectionDaypartRow(
       dayLabel: s.dayLabel,
-      daypart: s.daypart,
-      daypartLabel: s.daypartLabel,
+      daypart: timingLabelResolver?.bucketKeyFor(s) ?? s.daypart,
+      daypartLabel: timingLabelResolver?.labelFor(s) ?? s.daypartLabel,
       status: status,
       shift: s,
       driverLabel: _driverLabel(s, status),
@@ -89,26 +111,33 @@ class VarianceWeekProjectionReadService {
   }
 
   ProjectionDayRow _buildDayRow(
-      String dayLabel, List<ProjectionDaypartRow> children,
-      {ActiveTargetProfile? currentTargetProfile}) {
+    String dayLabel,
+    List<ProjectionDaypartRow> children, {
+    ActiveTargetProfile? currentTargetProfile,
+  }) {
     final status = _resolveDayStatus(children);
     final summary = _statusSummary(children);
 
     // Day-row totals reconcile to expanded child rows.
-    final totalCovers =
-        children.fold<int>(0, (s, r) => s + r.shift.covers);
+    final totalCovers = children.fold<int>(0, (s, r) => s + r.shift.covers);
 
-    final totalSales =
-        children.fold<double>(0, (s, r) => s + _salesForRow(r));
+    final totalSales = children.fold<double>(0, (s, r) => s + _salesForRow(r));
     final totalLabor = children.fold<double>(
-        0, (s, r) => s + _laborDollarsForRow(r, currentTargetProfile));
+      0,
+      (s, r) => s + _laborDollarsForRow(r, currentTargetProfile),
+    );
     final laborPct = totalSales > 0
         ? totalLabor / totalSales * 100
-        : _meanTheoreticalPct(children,
-            currentTargetProfile: currentTargetProfile);
+        : _meanTheoreticalPct(
+            children,
+            currentTargetProfile: currentTargetProfile,
+          );
 
-    final theoPct = _weightedTheoreticalPct(children, totalSales,
-        currentTargetProfile: currentTargetProfile);
+    final theoPct = _weightedTheoreticalPct(
+      children,
+      totalSales,
+      currentTargetProfile: currentTargetProfile,
+    );
     final variancePts = laborPct - theoPct;
 
     return ProjectionDayRow(
@@ -168,7 +197,11 @@ class VarianceWeekProjectionReadService {
     if (counts.length <= 1) return '';
 
     final parts = <String>[];
-    for (final status in [RowStatus.closed, RowStatus.open, RowStatus.projected]) {
+    for (final status in [
+      RowStatus.closed,
+      RowStatus.open,
+      RowStatus.projected,
+    ]) {
       final n = counts[status];
       if (n != null && n > 0) {
         final label = status.name[0].toUpperCase() + status.name.substring(1);
@@ -184,7 +217,9 @@ class VarianceWeekProjectionReadService {
   ///   when provided (Rule 3). Falls back to `shift.theoreticalLaborPct`
   ///   when no current profile is passed (backward-compatible).
   static double _theoreticalPctForRow(
-      ProjectionDaypartRow row, ActiveTargetProfile? currentTargetProfile) {
+    ProjectionDaypartRow row,
+    ActiveTargetProfile? currentTargetProfile,
+  ) {
     if (row.status == RowStatus.closed || currentTargetProfile == null) {
       return row.shift.theoreticalLaborPct;
     }
@@ -192,28 +227,34 @@ class VarianceWeekProjectionReadService {
   }
 
   static double _weightedTheoreticalPct(
-      List<ProjectionDaypartRow> children, double totalSales,
-      {ActiveTargetProfile? currentTargetProfile}) {
+    List<ProjectionDaypartRow> children,
+    double totalSales, {
+    ActiveTargetProfile? currentTargetProfile,
+  }) {
     if (totalSales > 0) {
       final weighted = children.fold<double>(
-          0,
-          (s, r) =>
-              s +
-              _theoreticalPctForRow(r, currentTargetProfile) *
-                  _salesForRow(r));
+        0,
+        (s, r) =>
+            s +
+            _theoreticalPctForRow(r, currentTargetProfile) * _salesForRow(r),
+      );
       return weighted / totalSales;
     }
-    return _meanTheoreticalPct(children,
-        currentTargetProfile: currentTargetProfile);
+    return _meanTheoreticalPct(
+      children,
+      currentTargetProfile: currentTargetProfile,
+    );
   }
 
-  static double _meanTheoreticalPct(List<ProjectionDaypartRow> children,
-      {ActiveTargetProfile? currentTargetProfile}) {
+  static double _meanTheoreticalPct(
+    List<ProjectionDaypartRow> children, {
+    ActiveTargetProfile? currentTargetProfile,
+  }) {
     if (children.isEmpty) return 0.0;
     return children.fold<double>(
-            0,
-            (s, r) =>
-                s + _theoreticalPctForRow(r, currentTargetProfile)) /
+          0,
+          (s, r) => s + _theoreticalPctForRow(r, currentTargetProfile),
+        ) /
         children.length;
   }
 
@@ -247,7 +288,9 @@ class VarianceWeekProjectionReadService {
   /// available, fall back to the shift's own labor dollars (legacy
   /// behaviour).
   static double _laborDollarsForRow(
-      ProjectionDaypartRow row, ActiveTargetProfile? currentTargetProfile) {
+    ProjectionDaypartRow row,
+    ActiveTargetProfile? currentTargetProfile,
+  ) {
     final shift = row.shift;
     final totalHours = shift.fohHours + shift.bohHours;
     if (row.status != RowStatus.closed && totalHours > 0) {
