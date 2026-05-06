@@ -9,9 +9,11 @@ import '../../domain/models/service_period_definition.dart';
 import '../../models/shift_record.dart';
 import '../integration/demo_mode_state.dart';
 import '../integration/integration_adapter_common.dart';
+import 'star_target_sync_resources.dart';
 import 'sync_proxy_client.dart';
 
-class HttpSyncProxyClient implements SyncProxyClient {
+class HttpSyncProxyClient
+    implements SyncProxyClient, StarTargetSyncProxyClient {
   HttpSyncProxyClient({
     required this.proxyBaseUri,
     required Future<String?> Function() idTokenProvider,
@@ -198,6 +200,142 @@ class HttpSyncProxyClient implements SyncProxyClient {
     return _firstBackfillStatusFromJson(_stringKeyMap(raw));
   }
 
+  @override
+  Future<SelectedStarShiftDecisionPage> fetchSelectedStarShiftDecisions({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  }) async {
+    final body = await _getStarTargetJsonOrUnavailable(
+      _locationPath(operatorId, locationId, const <String>[
+        'selected_star_shift_decisions',
+      ]),
+      queryParameters: _pageQuery(cursor: cursor, pageSize: pageSize),
+    );
+    final unavailableReason = starTargetUnavailableReason(body);
+    if (unavailableReason != null) {
+      return SelectedStarShiftDecisionPage.unavailable(unavailableReason);
+    }
+    final rows = _readList(body, const <String>[
+      'decisions',
+      'selected_star_shift_decisions',
+      'baseline_selected_records',
+      'records',
+      'items',
+      'data',
+    ]);
+    return SelectedStarShiftDecisionPage(
+      decisions: rows
+          .map(
+            (row) =>
+                SelectedStarShiftDecisionSyncRow.fromJson(_stringKeyMap(row)),
+          )
+          .toList(growable: false),
+      nextCursor:
+          _readString(body['next_cursor']) ?? _readString(body['nextCursor']),
+    );
+  }
+
+  @override
+  Future<TargetCycleSyncPage> fetchTargetCycles({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  }) async {
+    final body = await _getStarTargetJsonOrUnavailable(
+      _locationPath(operatorId, locationId, const <String>['target_cycles']),
+      queryParameters: _pageQuery(cursor: cursor, pageSize: pageSize),
+    );
+    final unavailableReason = starTargetUnavailableReason(body);
+    if (unavailableReason != null) {
+      return TargetCycleSyncPage.unavailable(unavailableReason);
+    }
+    final rows = _readList(body, const <String>[
+      'target_cycles',
+      'cycles',
+      'records',
+      'items',
+      'data',
+    ]);
+    return TargetCycleSyncPage(
+      cycles: rows
+          .map((row) => TargetCycleSyncRow.fromJson(_stringKeyMap(row)))
+          .toList(growable: false),
+      nextCursor:
+          _readString(body['next_cursor']) ?? _readString(body['nextCursor']),
+    );
+  }
+
+  @override
+  Future<ActiveTargetProfileSyncPage> fetchActiveTargetProfiles({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  }) async {
+    final body = await _getStarTargetJsonOrUnavailable(
+      _locationPath(operatorId, locationId, const <String>[
+        'active_target_profiles',
+      ]),
+      queryParameters: _pageQuery(cursor: cursor, pageSize: pageSize),
+    );
+    final unavailableReason = starTargetUnavailableReason(body);
+    if (unavailableReason != null) {
+      return ActiveTargetProfileSyncPage.unavailable(unavailableReason);
+    }
+    final rows = _readList(body, const <String>[
+      'active_target_profiles',
+      'profiles',
+      'records',
+      'items',
+      'data',
+    ]);
+    return ActiveTargetProfileSyncPage(
+      profiles: rows
+          .map((row) => ActiveTargetProfileSyncRow.fromJson(_stringKeyMap(row)))
+          .toList(growable: false),
+      nextCursor:
+          _readString(body['next_cursor']) ?? _readString(body['nextCursor']),
+    );
+  }
+
+  @override
+  Future<TargetProfileVersionSyncPage> fetchTargetProfileVersions({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  }) async {
+    final body = await _getStarTargetJsonOrUnavailable(
+      _locationPath(operatorId, locationId, const <String>[
+        'target_profile_versions',
+      ]),
+      queryParameters: _pageQuery(cursor: cursor, pageSize: pageSize),
+    );
+    final unavailableReason = starTargetUnavailableReason(body);
+    if (unavailableReason != null) {
+      return TargetProfileVersionSyncPage.unavailable(unavailableReason);
+    }
+    final rows = _readList(body, const <String>[
+      'target_profile_versions',
+      'versions',
+      'records',
+      'items',
+      'data',
+    ]);
+    return TargetProfileVersionSyncPage(
+      versions: rows
+          .map(
+            (row) => TargetProfileVersionSyncRow.fromJson(_stringKeyMap(row)),
+          )
+          .toList(growable: false),
+      nextCursor:
+          _readString(body['next_cursor']) ?? _readString(body['nextCursor']),
+    );
+  }
+
   Future<Map<String, Object?>> _getJson(
     List<String> tailSegments, {
     Map<String, String>? queryParameters,
@@ -224,6 +362,23 @@ class HttpSyncProxyClient implements SyncProxyClient {
       queryParameters: queryParameters,
     );
     return _interpret(retry);
+  }
+
+  Future<Map<String, Object?>> _getStarTargetJsonOrUnavailable(
+    List<String> tailSegments, {
+    Map<String, String>? queryParameters,
+  }) async {
+    try {
+      return await _getJson(tailSegments, queryParameters: queryParameters);
+    } on SyncProxyClientException catch (error) {
+      if (error.statusCode == 404) {
+        return const <String, Object?>{
+          'available': false,
+          'unavailable_reason': 'star_target_proxy_route_not_found',
+        };
+      }
+      rethrow;
+    }
   }
 
   Future<_HttpAttemptResult> _attemptGet(

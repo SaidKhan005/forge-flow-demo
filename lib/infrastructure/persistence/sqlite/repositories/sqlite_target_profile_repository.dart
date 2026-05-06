@@ -20,7 +20,8 @@ class SqliteTargetProfileRepository implements TargetProfileRepository {
 
   @override
   Future<ActiveTargetProfile?> getActiveTargetProfile(
-      String restaurantId) async {
+    String restaurantId,
+  ) async {
     final dao = await _daoReady;
     return dao.getActiveTargetProfile(restaurantId);
   }
@@ -32,16 +33,22 @@ class SqliteTargetProfileRepository implements TargetProfileRepository {
   }
 
   @override
-  Future<void> insertTargetProfileVersion(
-      TargetProfileVersion version) async {
+  Future<void> insertTargetProfileVersion(TargetProfileVersion version) async {
     final dao = await _daoReady;
     return dao.insertTargetProfileVersion(version);
   }
 
   @override
   Future<TargetProfileVersion?> getTargetProfileVersion(
-      String restaurantId, String versionId) async {
+    String restaurantId,
+    String versionId,
+  ) async {
     final dao = await _daoReady;
     return dao.getTargetProfileVersion(restaurantId, versionId);
+  }
+
+  Future<void> wipeForOtherScopes(String keepRestaurantId) async {
+    final dao = await _daoReady;
+    return dao.wipeForOtherScopes(keepRestaurantId);
   }
 }

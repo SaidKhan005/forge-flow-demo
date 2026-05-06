@@ -43,14 +43,21 @@ import 'dart:convert';
 
 import '../../domain/models/import_run.dart';
 import '../../domain/models/sync_watermark.dart';
+import '../../domain/repositories/baseline_selection_repository.dart';
 import '../../domain/repositories/open_shift_snapshot_repository.dart';
 import '../../domain/repositories/restaurant_timing_config_repository.dart';
 import '../../domain/repositories/shift_record_repository.dart';
+import '../../domain/repositories/target_cycle_repository.dart';
+import '../../domain/repositories/target_profile_repository.dart';
 import '../../infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_baseline_selection_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_timing_config_repository.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import '../../state/app_runtime_invalidation_bus.dart';
 import '../integration/demo_mode_state.dart';
+import 'star_target_sync_resources.dart';
 import 'sync_proxy_client.dart';
 
 /// Outcome of one [PostgresShiftRecordToMobileSync.sync] sweep.
@@ -67,6 +74,7 @@ class SyncResult {
     required this.dataAccuracySettings,
     required this.pollingTierAssignment,
     required this.firstBackfillStatus,
+    required this.starTargetMirrors,
   });
 
   /// Total `ShiftRecord` rows persisted via
@@ -117,6 +125,11 @@ class SyncResult {
   /// Latest first-connection backfill status pulled from the proxy, or
   /// null when no status row/endpoint is available yet.
   final FirstBackfillStatusSnapshot? firstBackfillStatus;
+
+  /// Status for selected-star, target-cycle, active-profile, and profile
+  /// version cache mirrors. Legacy proxy clients surface unavailable
+  /// status here instead of treating existing local rows as server truth.
+  final StarTargetMirrorSyncResult starTargetMirrors;
 }
 
 /// Pulls aggregated `ShiftRecord` rows from server-side Postgres into
@@ -130,6 +143,9 @@ class PostgresShiftRecordToMobileSync {
     required this.watermarkDao,
     OpenShiftSnapshotRepository? openShiftSnapshotRepository,
     RestaurantTimingConfigRepository? timingConfigRepository,
+    BaselineSelectionRepository? baselineSelectionRepository,
+    TargetCycleRepository? targetCycleRepository,
+    TargetProfileRepository? targetProfileRepository,
     AppRuntimeInvalidationBus? invalidationBus,
     this.pageSize = 200,
   }) : assert(pageSize > 0, 'pageSize must be positive'),
@@ -139,12 +155,22 @@ class PostgresShiftRecordToMobileSync {
        timingConfigRepository =
            timingConfigRepository ??
            SqliteRestaurantTimingConfigRepository.instance,
+       baselineSelectionRepository =
+           baselineSelectionRepository ??
+           SqliteBaselineSelectionRepository.instance,
+       targetCycleRepository =
+           targetCycleRepository ?? SqliteTargetCycleRepository.instance,
+       targetProfileRepository =
+           targetProfileRepository ?? SqliteTargetProfileRepository.instance,
        invalidationBus = invalidationBus ?? AppRuntimeInvalidationBus.instance;
 
   final SyncProxyClient client;
   final ShiftRecordRepository shiftRepository;
   final OpenShiftSnapshotRepository openShiftSnapshotRepository;
   final RestaurantTimingConfigRepository timingConfigRepository;
+  final BaselineSelectionRepository baselineSelectionRepository;
+  final TargetCycleRepository targetCycleRepository;
+  final TargetProfileRepository targetProfileRepository;
   final ImportTrackingDao watermarkDao;
   final AppRuntimeInvalidationBus invalidationBus;
   final int pageSize;
@@ -153,6 +179,13 @@ class PostgresShiftRecordToMobileSync {
   static const String _sourceTypePrefix = 'pg_shift_record_sync';
   static const String _openSnapshotSourceTypePrefix =
       'pg_open_shift_snapshot_sync';
+  static const String _selectedStarsSourceTypePrefix =
+      'pg_selected_star_shift_decision_sync';
+  static const String _targetCyclesSourceTypePrefix = 'pg_target_cycle_sync';
+  static const String _activeProfilesSourceTypePrefix =
+      'pg_active_target_profile_sync';
+  static const String _profileVersionsSourceTypePrefix =
+      'pg_target_profile_version_sync';
 
   // ── Latest aux-pull snapshots (in-memory; SQLite parity deferred) ──
 
@@ -188,6 +221,26 @@ class PostgresShiftRecordToMobileSync {
     String operatorId,
     String locationId,
   ) => '$_openSnapshotSourceTypePrefix:$operatorId:$locationId';
+
+  String _selectedStarsWatermarkSourceType(
+    String operatorId,
+    String locationId,
+  ) => '$_selectedStarsSourceTypePrefix:$operatorId:$locationId';
+
+  String _targetCyclesWatermarkSourceType(
+    String operatorId,
+    String locationId,
+  ) => '$_targetCyclesSourceTypePrefix:$operatorId:$locationId';
+
+  String _activeProfilesWatermarkSourceType(
+    String operatorId,
+    String locationId,
+  ) => '$_activeProfilesSourceTypePrefix:$operatorId:$locationId';
+
+  String _profileVersionsWatermarkSourceType(
+    String operatorId,
+    String locationId,
+  ) => '$_profileVersionsSourceTypePrefix:$operatorId:$locationId';
 
   Future<String?> _readCursor({
     required String restaurantId,
@@ -269,6 +322,7 @@ class PostgresShiftRecordToMobileSync {
         dataAccuracySettings: _latestDataAccuracySettings,
         pollingTierAssignment: _latestPollingTierAssignment,
         firstBackfillStatus: _latestFirstBackfillStatus,
+        starTargetMirrors: StarTargetMirrorSyncResult.skipped(),
       );
     }
     final initialCursor = await _readCursor(
@@ -385,6 +439,7 @@ class PostgresShiftRecordToMobileSync {
         dataAccuracySettings: _latestDataAccuracySettings,
         pollingTierAssignment: _latestPollingTierAssignment,
         firstBackfillStatus: _latestFirstBackfillStatus,
+        starTargetMirrors: StarTargetMirrorSyncResult.skipped(),
       );
     }
 
@@ -414,6 +469,12 @@ class PostgresShiftRecordToMobileSync {
       );
       invalidationBus.notifyImportCompletionPersisted();
     }
+    final starTargetMirrors = await _syncStarTargetMirrors(
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      isAborted: isAborted,
+    );
 
     return SyncResult(
       recordsWritten: recordsWritten,
@@ -427,7 +488,423 @@ class PostgresShiftRecordToMobileSync {
       dataAccuracySettings: _latestDataAccuracySettings,
       pollingTierAssignment: _latestPollingTierAssignment,
       firstBackfillStatus: _latestFirstBackfillStatus,
+      starTargetMirrors: starTargetMirrors,
     );
+  }
+
+  Future<StarTargetMirrorSyncResult> _syncStarTargetMirrors({
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+    bool Function()? isAborted,
+  }) async {
+    bool aborted() => isAborted?.call() ?? false;
+    if (aborted()) return StarTargetMirrorSyncResult.skipped();
+    final starTargetClient = client is StarTargetSyncProxyClient
+        ? client as StarTargetSyncProxyClient
+        : null;
+    if (starTargetClient == null) {
+      return StarTargetMirrorSyncResult.unavailable(
+        'star_target_proxy_client_not_configured',
+      );
+    }
+
+    final selectedStars = await _syncSelectedStarDecisions(
+      starTargetClient,
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      isAborted: isAborted,
+    );
+    if (aborted()) {
+      return StarTargetMirrorSyncResult(
+        selectedStars: selectedStars,
+        targetCycles: StarTargetResourceSyncStatus.skipped('target_cycles'),
+        activeTargetProfiles: StarTargetResourceSyncStatus.skipped(
+          'active_target_profiles',
+        ),
+        targetProfileVersions: StarTargetResourceSyncStatus.skipped(
+          'target_profile_versions',
+        ),
+      );
+    }
+    final targetCycles = await _syncTargetCycles(
+      starTargetClient,
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      isAborted: isAborted,
+    );
+    if (aborted()) {
+      return StarTargetMirrorSyncResult(
+        selectedStars: selectedStars,
+        targetCycles: targetCycles,
+        activeTargetProfiles: StarTargetResourceSyncStatus.skipped(
+          'active_target_profiles',
+        ),
+        targetProfileVersions: StarTargetResourceSyncStatus.skipped(
+          'target_profile_versions',
+        ),
+      );
+    }
+    final activeProfiles = await _syncActiveTargetProfiles(
+      starTargetClient,
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      isAborted: isAborted,
+    );
+    if (aborted()) {
+      return StarTargetMirrorSyncResult(
+        selectedStars: selectedStars,
+        targetCycles: targetCycles,
+        activeTargetProfiles: activeProfiles,
+        targetProfileVersions: StarTargetResourceSyncStatus.skipped(
+          'target_profile_versions',
+        ),
+      );
+    }
+    final profileVersions = await _syncTargetProfileVersions(
+      starTargetClient,
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      isAborted: isAborted,
+    );
+
+    return StarTargetMirrorSyncResult(
+      selectedStars: selectedStars,
+      targetCycles: targetCycles,
+      activeTargetProfiles: activeProfiles,
+      targetProfileVersions: profileVersions,
+    );
+  }
+
+  Future<StarTargetResourceSyncStatus> _syncSelectedStarDecisions(
+    StarTargetSyncProxyClient starTargetClient, {
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+    bool Function()? isAborted,
+  }) async {
+    bool aborted() => isAborted?.call() ?? false;
+    final sourceType = _selectedStarsWatermarkSourceType(
+      operatorId,
+      locationId,
+    );
+    var cursor = await _readCursor(
+      restaurantId: restaurantId,
+      operatorId: operatorId,
+      locationId: locationId,
+      sourceType: sourceType,
+    );
+    final selected = cursor == null
+        ? <String>{}
+        : Set<String>.from(
+            await baselineSelectionRepository.getSelectedRecordKeys(
+              restaurantId,
+            ),
+          );
+    String? pendingCursor;
+    var pagesPulled = 0;
+    var rowsApplied = 0;
+    while (true) {
+      if (aborted()) {
+        return StarTargetResourceSyncStatus.skipped('selected_stars');
+      }
+      final page = await starTargetClient.fetchSelectedStarShiftDecisions(
+        operatorId: operatorId,
+        locationId: locationId,
+        cursor: cursor,
+        pageSize: pageSize,
+      );
+      if (page.isUnavailable) {
+        return StarTargetResourceSyncStatus.unavailable(
+          'selected_stars',
+          page.unavailableReason!,
+          finalCursor: cursor,
+        );
+      }
+      pagesPulled++;
+      for (final decision in page.decisions) {
+        _assertScopedRow(
+          resource: 'selected_stars',
+          operatorId: operatorId,
+          locationId: locationId,
+          rowOperatorId: decision.operatorId,
+          rowLocationId: decision.locationId,
+        );
+        if (decision.isSelected) {
+          selected.add(decision.recordKey);
+        } else if (decision.isClear) {
+          selected.remove(decision.recordKey);
+        }
+        rowsApplied++;
+      }
+      final next = page.nextCursor;
+      if (next == null) break;
+      cursor = next;
+      pendingCursor = next;
+    }
+    if (aborted()) {
+      return StarTargetResourceSyncStatus.skipped('selected_stars');
+    }
+    await baselineSelectionRepository.replaceSelectedRecordKeys(
+      restaurantId,
+      selected,
+    );
+    if (pendingCursor != null) {
+      await _writeCursor(
+        restaurantId: restaurantId,
+        operatorId: operatorId,
+        locationId: locationId,
+        cursorToken: pendingCursor,
+        sourceType: sourceType,
+      );
+    }
+    if (rowsApplied > 0) {
+      invalidationBus.notifyImportCompletionPersisted();
+    }
+    return StarTargetResourceSyncStatus.synced(
+      resource: 'selected_stars',
+      rowsWritten: rowsApplied,
+      pagesPulled: pagesPulled,
+      finalCursor: cursor,
+    );
+  }
+
+  Future<StarTargetResourceSyncStatus> _syncTargetCycles(
+    StarTargetSyncProxyClient starTargetClient, {
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+    bool Function()? isAborted,
+  }) async {
+    bool aborted() => isAborted?.call() ?? false;
+    final sourceType = _targetCyclesWatermarkSourceType(operatorId, locationId);
+    var cursor = await _readCursor(
+      restaurantId: restaurantId,
+      operatorId: operatorId,
+      locationId: locationId,
+      sourceType: sourceType,
+    );
+    var pagesPulled = 0;
+    var rowsWritten = 0;
+    while (true) {
+      if (aborted()) {
+        return StarTargetResourceSyncStatus.skipped('target_cycles');
+      }
+      final page = await starTargetClient.fetchTargetCycles(
+        operatorId: operatorId,
+        locationId: locationId,
+        cursor: cursor,
+        pageSize: pageSize,
+      );
+      if (page.isUnavailable) {
+        return StarTargetResourceSyncStatus.unavailable(
+          'target_cycles',
+          page.unavailableReason!,
+          finalCursor: cursor,
+        );
+      }
+      pagesPulled++;
+      for (final row in page.cycles) {
+        _assertScopedRow(
+          resource: 'target_cycles',
+          operatorId: operatorId,
+          locationId: locationId,
+          rowOperatorId: row.operatorId,
+          rowLocationId: row.locationId,
+        );
+        if (row.cycle.restaurantId != restaurantId) continue;
+        await targetCycleRepository.upsertCycle(row.cycle);
+        rowsWritten++;
+      }
+      final next = page.nextCursor;
+      if (next == null) break;
+      await _writeCursor(
+        restaurantId: restaurantId,
+        operatorId: operatorId,
+        locationId: locationId,
+        cursorToken: next,
+        sourceType: sourceType,
+      );
+      cursor = next;
+    }
+    if (rowsWritten > 0) {
+      invalidationBus.notifyImportCompletionPersisted();
+    }
+    return StarTargetResourceSyncStatus.synced(
+      resource: 'target_cycles',
+      rowsWritten: rowsWritten,
+      pagesPulled: pagesPulled,
+      finalCursor: cursor,
+    );
+  }
+
+  Future<StarTargetResourceSyncStatus> _syncActiveTargetProfiles(
+    StarTargetSyncProxyClient starTargetClient, {
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+    bool Function()? isAborted,
+  }) async {
+    bool aborted() => isAborted?.call() ?? false;
+    final sourceType = _activeProfilesWatermarkSourceType(
+      operatorId,
+      locationId,
+    );
+    var cursor = await _readCursor(
+      restaurantId: restaurantId,
+      operatorId: operatorId,
+      locationId: locationId,
+      sourceType: sourceType,
+    );
+    var pagesPulled = 0;
+    var rowsWritten = 0;
+    while (true) {
+      if (aborted()) {
+        return StarTargetResourceSyncStatus.skipped('active_target_profiles');
+      }
+      final page = await starTargetClient.fetchActiveTargetProfiles(
+        operatorId: operatorId,
+        locationId: locationId,
+        cursor: cursor,
+        pageSize: pageSize,
+      );
+      if (page.isUnavailable) {
+        return StarTargetResourceSyncStatus.unavailable(
+          'active_target_profiles',
+          page.unavailableReason!,
+          finalCursor: cursor,
+        );
+      }
+      pagesPulled++;
+      for (final row in page.profiles) {
+        _assertScopedRow(
+          resource: 'active_target_profiles',
+          operatorId: operatorId,
+          locationId: locationId,
+          rowOperatorId: row.operatorId,
+          rowLocationId: row.locationId,
+        );
+        if (row.profile.restaurantId != restaurantId) continue;
+        await targetProfileRepository.upsertActiveTargetProfile(row.profile);
+        rowsWritten++;
+      }
+      final next = page.nextCursor;
+      if (next == null) break;
+      await _writeCursor(
+        restaurantId: restaurantId,
+        operatorId: operatorId,
+        locationId: locationId,
+        cursorToken: next,
+        sourceType: sourceType,
+      );
+      cursor = next;
+    }
+    if (rowsWritten > 0) {
+      invalidationBus.notifyImportCompletionPersisted();
+    }
+    return StarTargetResourceSyncStatus.synced(
+      resource: 'active_target_profiles',
+      rowsWritten: rowsWritten,
+      pagesPulled: pagesPulled,
+      finalCursor: cursor,
+    );
+  }
+
+  Future<StarTargetResourceSyncStatus> _syncTargetProfileVersions(
+    StarTargetSyncProxyClient starTargetClient, {
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+    bool Function()? isAborted,
+  }) async {
+    bool aborted() => isAborted?.call() ?? false;
+    final sourceType = _profileVersionsWatermarkSourceType(
+      operatorId,
+      locationId,
+    );
+    var cursor = await _readCursor(
+      restaurantId: restaurantId,
+      operatorId: operatorId,
+      locationId: locationId,
+      sourceType: sourceType,
+    );
+    var pagesPulled = 0;
+    var rowsWritten = 0;
+    while (true) {
+      if (aborted()) {
+        return StarTargetResourceSyncStatus.skipped('target_profile_versions');
+      }
+      final page = await starTargetClient.fetchTargetProfileVersions(
+        operatorId: operatorId,
+        locationId: locationId,
+        cursor: cursor,
+        pageSize: pageSize,
+      );
+      if (page.isUnavailable) {
+        return StarTargetResourceSyncStatus.unavailable(
+          'target_profile_versions',
+          page.unavailableReason!,
+          finalCursor: cursor,
+        );
+      }
+      pagesPulled++;
+      for (final row in page.versions) {
+        _assertScopedRow(
+          resource: 'target_profile_versions',
+          operatorId: operatorId,
+          locationId: locationId,
+          rowOperatorId: row.operatorId,
+          rowLocationId: row.locationId,
+        );
+        if (row.version.restaurantId != restaurantId) continue;
+        await targetProfileRepository.insertTargetProfileVersion(row.version);
+        rowsWritten++;
+      }
+      final next = page.nextCursor;
+      if (next == null) break;
+      await _writeCursor(
+        restaurantId: restaurantId,
+        operatorId: operatorId,
+        locationId: locationId,
+        cursorToken: next,
+        sourceType: sourceType,
+      );
+      cursor = next;
+    }
+    if (rowsWritten > 0) {
+      invalidationBus.notifyImportCompletionPersisted();
+    }
+    return StarTargetResourceSyncStatus.synced(
+      resource: 'target_profile_versions',
+      rowsWritten: rowsWritten,
+      pagesPulled: pagesPulled,
+      finalCursor: cursor,
+    );
+  }
+
+  static void _assertScopedRow({
+    required String resource,
+    required String operatorId,
+    required String locationId,
+    required String? rowOperatorId,
+    required String? rowLocationId,
+  }) {
+    if (rowOperatorId != null && rowOperatorId != operatorId) {
+      throw StateError(
+        '$resource sync row crossed operator scope: '
+        '$rowOperatorId != $operatorId',
+      );
+    }
+    if (rowLocationId != null && rowLocationId != locationId) {
+      throw StateError(
+        '$resource sync row crossed location scope: '
+        '$rowLocationId != $locationId',
+      );
+    }
   }
 
   Future<void> _persistFirstBackfillStatus({

@@ -56,4 +56,12 @@ class TargetCycleDao {
       whereArgs: [restaurantId],
     );
   }
+
+  Future<void> wipeForOtherScopes(String keepRestaurantId) async {
+    await _db.delete(
+      'target_cycles',
+      where: 'restaurant_id != ?',
+      whereArgs: [keepRestaurantId],
+    );
+  }
 }

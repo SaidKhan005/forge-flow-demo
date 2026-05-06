@@ -2,8 +2,7 @@ import '../../../../domain/repositories/baseline_selection_repository.dart';
 import '../dao/baseline_selection_dao.dart';
 import '../sqlite_database.dart';
 
-class SqliteBaselineSelectionRepository
-    implements BaselineSelectionRepository {
+class SqliteBaselineSelectionRepository implements BaselineSelectionRepository {
   SqliteBaselineSelectionRepository._();
   static final SqliteBaselineSelectionRepository instance =
       SqliteBaselineSelectionRepository._();
@@ -25,8 +24,15 @@ class SqliteBaselineSelectionRepository
 
   @override
   Future<void> replaceSelectedRecordKeys(
-      String restaurantId, Set<String> keys) async {
+    String restaurantId,
+    Set<String> keys,
+  ) async {
     final dao = await _daoReady;
     return dao.replaceSelectedRecordKeys(restaurantId, keys);
+  }
+
+  Future<void> wipeForOtherScopes(String keepRestaurantId) async {
+    final dao = await _daoReady;
+    return dao.wipeForOtherScopes(keepRestaurantId);
   }
 }
