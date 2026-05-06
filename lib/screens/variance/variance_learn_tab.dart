@@ -10,7 +10,9 @@ import 'package:provider/provider.dart';
 
 import '../../services/learn_benchmark_context_service.dart';
 import '../../data/app_defaults.dart';
+import '../../data/cross_axis_pair_catalog.dart';
 import '../../services/shift_data_source.dart';
+import '../../models/cross_axis_pair_record.dart';
 import '../../models/history_pattern_record.dart';
 import '../../models/learn_benchmark_context.dart';
 import '../../models/learn_repeatable_win_summary.dart';
@@ -190,6 +192,22 @@ class _LearnContentState extends State<_LearnContent> {
     final leakCard = summary.hasHistoryPatterns
         ? widget.leakDriver.card
         : null;
+    // 7.58.UX.9: cross-axis swap predicate. When the cross-axis
+    // analyzer surfaces a recurring CPLH x SPLH pair pattern that is
+    // BOTH (a) at least 3 contributing records strong AND (b) larger
+    // than the dominant single-axis leak, the carousel swaps its data
+    // source from `LeverCards` to `CrossAxisPairs` so the operator
+    // walks the joint diagnosis instead of the single-axis one. The
+    // single-axis path stays the default whenever the predicate is
+    // false (empty pairs list, weak pair, or single-axis leak still
+    // dominates). See `docs/contracts/phase_7_58_primary_driver_contract.md`
+    // "Depth Surfaces" addendum.
+    final CrossAxisPairData? crossAxisCard =
+        (summary.crossAxisPairs.isNotEmpty &&
+                summary.crossAxisPairs.first.count >= 3 &&
+                summary.crossAxisPairs.first.count > summary.primaryLeakCount)
+            ? CrossAxisPairs.lookup(summary.crossAxisPairs.first.pairId)
+            : null;
     final LearnRepeatableWinSummary? topWin = wins.isNotEmpty
         ? wins.first
         : null;
@@ -200,7 +218,39 @@ class _LearnContentState extends State<_LearnContent> {
     final int cardCount;
     final IndexedWidgetBuilder cardBuilder;
     if (_activeChapter == 0) {
-      if (leakCard == null) {
+      if (crossAxisCard != null) {
+        // 7.58.UX.9: cross-axis 4-card walk. Same shape as the
+        // single-axis branch; only the input changes.
+        final pairRecord = summary.crossAxisPairs.first;
+        cardCount = 4;
+        cardBuilder = (ctx, i) {
+          switch (i) {
+            case 0:
+              return _CrossAxisSnapshotCard(
+                pairCard: crossAxisCard,
+                pairRecord: pairRecord,
+              );
+            case 1:
+              return LearnTeachingCard(
+                badgeLabel: 'WHAT HAPPENED',
+                badgeColor: AppColors.negative,
+                body: crossAxisCard.whatHappened,
+              );
+            case 2:
+              return LearnTeachingCard(
+                badgeLabel: 'WHAT TO DO',
+                badgeColor: AppColors.sunset,
+                body: crossAxisCard.whatToDo,
+              );
+            default:
+              return LearnTeachingCard(
+                badgeLabel: 'WHAT TO STUDY',
+                badgeColor: AppColors.sunsetDark,
+                body: crossAxisCard.teachingNote,
+              );
+          }
+        };
+      } else if (leakCard == null) {
         cardCount = 1;
         cardBuilder = (ctx, _) => LearnTeachingCard(
           badgeLabel: 'NO PATTERNS YET',
@@ -389,10 +439,23 @@ class _LeakSnapshotCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 7.58.UX.7: append the coverage denominator caption to the lever
+    // metric so the leak headline names the population the repeat
+    // counter was drawn from. Honest fallback: omit the caption when
+    // `coverageCount == 0` or no top daypart label is available, so
+    // the copy never asserts a denominator we cannot back. Middot
+    // (U+00B7) joins the metric and the caption so the depth-wave
+    // em-dash ban (hard gate #4) is not introduced. See
+    // `docs/contracts/phase_7_58_primary_driver_contract.md`
+    // "Depth Surfaces" addendum.
+    final coverageCaption = _coverageCaption(summary);
+    final title = coverageCaption == null
+        ? leakCard.metric
+        : '${leakCard.metric} \u00b7 $coverageCaption';
     return LearnTeachingCard(
       badgeLabel: 'LEAK',
       badgeColor: AppColors.negative,
-      title: leakCard.metric,
+      title: title,
       body:
           'This lever has shown up most often as the top driver of '
           'variance across your tracked weeks. The next three cards '
@@ -427,7 +490,7 @@ class _LeakSnapshotCard extends StatelessWidget {
                 child: _LearnMetricRow(
                   label: 'REPEATS IN',
                   value: summary.topLeakDayparts.isEmpty
-                      ? '\u2014'
+                      ? '-'
                       : summary.topLeakDayparts.join(' / '),
                 ),
               ),
@@ -437,6 +500,102 @@ class _LeakSnapshotCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 7.58.UX.9 - cross-axis snapshot card. Same chrome and layout as
+/// `_LeakSnapshotCard`; reads from `CrossAxisPairData` plus the
+/// matching `CrossAxisPairRecord` instead of the single-axis lever
+/// card and `LearnTeachingSummary`. Caption + chips + metric rows
+/// follow the same shape so the operator walks an identical 4-card
+/// rhythm whether the recurring pattern is single-axis or cross-axis.
+class _CrossAxisSnapshotCard extends StatelessWidget {
+  final CrossAxisPairData pairCard;
+  final CrossAxisPairRecord pairRecord;
+  const _CrossAxisSnapshotCard({
+    required this.pairCard,
+    required this.pairRecord,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LearnTeachingCard(
+      badgeLabel: 'CROSS AXIS LEAK',
+      badgeColor: AppColors.negative,
+      title: pairCard.metric,
+      body:
+          'CPLH and SPLH moved together on the same shifts, repeating '
+          'across your closed weeks. The next three cards break down '
+          'what happened on both sides, what to do about the joint '
+          'pattern, and what to study next.',
+      trailing: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              VarianceChip(
+                label: pairCard.shortLabel,
+                color: AppColors.negative,
+              ),
+              VarianceChip(
+                label: pairCard.causeCategory,
+                color: AppColors.textMuted,
+              ),
+              VarianceChip(
+                label: pairCard.sideLabel,
+                color: AppColors.textMuted,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _LearnMetricRow(
+                  label: 'PAIR REPEATS',
+                  value: pairRecord.count.toString(),
+                  valueColor: AppColors.negative,
+                ),
+              ),
+              Expanded(
+                child: _LearnMetricRow(
+                  label: 'REPEATS IN',
+                  value: pairRecord.topDayparts.isEmpty
+                      ? '-'
+                      : pairRecord.topDayparts.join(' / '),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 7.58.UX.7 - assembles the coverage caption suffix for the leak
+/// snapshot title. Returns `null` when the caption should be omitted
+/// (zero coverage OR no recurring leak yet OR no daypart label
+/// available); otherwise returns a string of the form
+/// `Repeated <count> of last <coverageCount> <pluralized daypart>`.
+String? _coverageCaption(LearnTeachingSummary summary) {
+  if (summary.coverageCount <= 0) return null;
+  if (summary.primaryLeakCount <= 0) return null;
+  if (summary.topLeakDayparts.isEmpty) return null;
+  final daypartLabel = _pluralizeDaypart(summary.topLeakDayparts.first);
+  return 'Repeated ${summary.primaryLeakCount} of last '
+      '${summary.coverageCount} $daypartLabel';
+}
+
+/// 7.58.UX.7 - pluralizes the trailing daypart noun on a `fullLabel`
+/// like `Tue Lunch` -> `Tue Lunches`. The three daypart labels in the
+/// canonical catalog (`Lunch` / `Dinner` / `Late Night`) cover the
+/// plural rules: `Lunch` takes `es`, the others take `s`.
+String _pluralizeDaypart(String fullLabel) {
+  if (fullLabel.isEmpty) return fullLabel;
+  if (fullLabel.endsWith('Lunch')) return '${fullLabel}es';
+  return '${fullLabel}s';
 }
 
 /// First card in the Repeatable Wins chapter ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â surfaces the dominant
@@ -511,12 +670,14 @@ class _WinsSnapshotCard extends StatelessWidget {
 
 /// Resolves a lever ID to its compact short label for per-row identity chips.
 ///
-/// 7.58.UX.5 (F-1): null lookup → '—' badge text instead of a silent
-/// fall-through to the ppaUp short label. See
+/// 7.58.UX.5 (F-1): null lookup -> '-' badge text instead of a silent
+/// fall-through to the ppaUp short label. 7.58.UX.7+9 swapped the
+/// rendered placeholder from U+2014 to ASCII hyphen so the depth
+/// wave's em-dash ban (hard gate #4) holds across this file. See
 /// `docs/contracts/phase_7_58_primary_driver_contract.md`.
 String _leverShortLabel(String leverId) {
   final card = LeverCards.lookup(leverId);
-  return card?.shortLabel ?? '—';
+  return card?.shortLabel ?? '-';
 }
 
 // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Coach Next Week card ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
