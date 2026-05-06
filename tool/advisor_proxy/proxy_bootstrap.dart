@@ -27,6 +27,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_recovery_request_attempts_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_tokens_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
@@ -85,6 +86,7 @@ import 'advisor_proxy.dart';
 import 'anthropic_http_complete_fn.dart';
 import 'health_producers/producer_registry.dart';
 import 'log.dart';
+import 'mobile_push_notifications.dart';
 import 'vendor_admin_status_catalog.dart' as vendor_status;
 
 typedef PostgresPoolFactory = PostgresPool Function(String connectionString);
@@ -143,6 +145,8 @@ class ProxyProductionBindings {
     required this.mfaOperationsGateway,
     required this.mfaRecoveryRequestGateway,
     required this.mfaRemovalWorker,
+    required this.mobilePushTokenGateway,
+    required this.mobilePushSelfTestGateway,
     required this.operatorLocationAdminGateway,
     required this.pricingTierAdminGateway,
     required this.dataAccuracyAdminGateway,
@@ -192,6 +196,8 @@ class ProxyProductionBindings {
   final MfaOperationsGateway mfaOperationsGateway;
   final MfaRecoveryRequestGateway mfaRecoveryRequestGateway;
   final MfaRemovalWorker mfaRemovalWorker;
+  final MobilePushTokenGateway? mobilePushTokenGateway;
+  final MobilePushSelfTestGateway? mobilePushSelfTestGateway;
   final OperatorLocationAdminProxyGateway operatorLocationAdminGateway;
   final PricingTierAdminProxyGateway pricingTierAdminGateway;
   final DataAccuracyAdminProxyGateway dataAccuracyAdminGateway;
@@ -485,6 +491,30 @@ ProxyProductionBindings buildProxyProductionBindings(
   // shared across both surfaces.
   final kmsTokenProvider = MetadataServerAccessTokenProvider();
 
+  final MobilePushTokenGateway? mobilePushTokenGateway =
+      config.hasSecretFor(ProxySecretNames.mobilePushTokenEnvelopeKey)
+      ? RepositoryMobilePushTokenGateway(
+          repository: MobilePushTokensRepository(tenantWrapper),
+          tokenEnvelopeKey: config.secretFor(
+            ProxySecretNames.mobilePushTokenEnvelopeKey,
+          ),
+        )
+      : null;
+  final MobilePushSelfTestGateway? mobilePushSelfTestGateway =
+      config.hasSecretFor(ProxySecretNames.mobilePushTokenEnvelopeKey) &&
+          config.firebaseProjectId != null
+      ? RepositoryMobilePushSelfTestGateway(
+          tokensRepository: MobilePushTokensRepository(tenantWrapper),
+          sender: FcmHttpV1MobilePushSender(
+            firebaseProjectId: config.firebaseProjectId!,
+            accessTokenProvider: kmsTokenProvider,
+          ),
+          tokenEnvelopeKey: config.secretFor(
+            ProxySecretNames.mobilePushTokenEnvelopeKey,
+          ),
+        )
+      : null;
+
   return ProxyProductionBindings(
     accountingStore: PostgresProxyAccountingStore(wrapper: tenantWrapper),
     firebaseAdminAuthClient: firebaseAdmin,
@@ -564,6 +594,8 @@ ProxyProductionBindings buildProxyProductionBindings(
       firebaseAdmin: firebaseAdmin,
       eventOutboxRepository: adminEventOutbox,
     ),
+    mobilePushTokenGateway: mobilePushTokenGateway,
+    mobilePushSelfTestGateway: mobilePushSelfTestGateway,
     // Phase 11A.1 — operator/location admin gateway. The repos run
     // through the admin pool (POSTGRES_ADMIN_URL) because the F&F
     // admin console scans / writes across operators; per-tenant RLS
