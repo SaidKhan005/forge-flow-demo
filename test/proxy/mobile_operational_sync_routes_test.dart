@@ -180,6 +180,34 @@ void main() {
       });
     });
 
+    test('upstream gateway throw surfaces a 503 wrapper to the client',
+        () async {
+      // BUG 4 (MEDIUM) supporting test: confirm the proxy wraps an
+      // upstream exception (5xx-class fault inside the gateway) into a
+      // 503 envelope with the documented `mobile_operational_sync_unavailable`
+      // code. The client's 401-retry path does not need this code path,
+      // but verifying the wrapper here keeps the route's failure mode
+      // honest for the mobile runtime's pull loop.
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        ctx.gateway.throwOnNextShift = StateError('upstream fault');
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/shift_records',
+            ),
+          );
+          expect(response.statusCode, 503);
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], 'mobile_operational_sync_unavailable');
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test('validates page size and cursor before gateway dispatch', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
@@ -230,6 +258,7 @@ class _SettableVerifier implements ProxyJwtVerifier {
 class _FakeMobileOperationalSyncGateway
     implements MobileOperationalSyncProxyGateway {
   final List<String> calls = <String>[];
+  Object? throwOnNextShift;
 
   @override
   Future<Map<String, Object?>> fetchShiftRecords({
@@ -239,6 +268,11 @@ class _FakeMobileOperationalSyncGateway
     required String? modifiedSince,
     required int pageSize,
   }) async {
+    final thrown = throwOnNextShift;
+    if (thrown != null) {
+      throwOnNextShift = null;
+      throw thrown;
+    }
     calls.add('shift_records:$operatorId:$locationId:$modifiedSince:$pageSize');
     return const <String, Object?>{
       'shift_records': <Map<String, Object?>>[

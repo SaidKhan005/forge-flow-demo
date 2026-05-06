@@ -42,17 +42,20 @@ void main() {
 
   test('parses open snapshots, timing config, and aux snapshots', () async {
     final requests = <String>[];
+    final fullUrls = <String>[];
     final client = HttpSyncProxyClient(
       proxyBaseUri: Uri.parse('https://proxy.example/base/'),
       idTokenProvider: () async => 'token-1',
       httpClient: http_testing.MockClient((request) async {
         requests.add(request.url.path);
+        fullUrls.add(request.url.toString());
         final body = switch (request.url.path) {
-          '/v1/operators/op/locations/loc/open_shift_snapshots' =>
+          '/base/v1/operators/op/locations/loc/open_shift_snapshots' =>
             <String, Object?>{
               'open_shift_snapshots': <Object?>[_openSnapshotRow()],
             },
-          '/v1/operators/op/locations/loc/timing/resolved' => <String, Object?>{
+          '/base/v1/operators/op/locations/loc/timing/resolved' =>
+              <String, Object?>{
             'timing_config': <String, Object?>{
               'restaurant_id': 'loc',
               'location_timezone': 'America/St_Johns',
@@ -73,7 +76,7 @@ void main() {
               ]),
             },
           },
-          '/v1/operators/op/locations/loc/demo_mode_states' =>
+          '/base/v1/operators/op/locations/loc/demo_mode_states' =>
             <String, Object?>{
               'demo_mode_states': <Object?>[
                 <String, Object?>{
@@ -84,7 +87,7 @@ void main() {
                 },
               ],
             },
-          '/v1/operators/op/locations/loc/data_accuracy_settings' =>
+          '/base/v1/operators/op/locations/loc/data_accuracy_settings' =>
             <String, Object?>{
               'data': <String, Object?>{
                 'operator_id': 'op',
@@ -99,7 +102,7 @@ void main() {
                 'updated_at': '2026-05-06T12:00:00Z',
               },
             },
-          '/v1/operators/op/locations/loc/polling_tier_assignment' =>
+          '/base/v1/operators/op/locations/loc/polling_tier_assignment' =>
             <String, Object?>{
               'assignment': <String, Object?>{
                 'operator_id': 'op',
@@ -154,6 +157,146 @@ void main() {
     expect(tier!.tierKey, 'premium');
     expect(tier.pollingCadencePerVendorSeconds['toast'], 300);
     expect(requests, hasLength(5));
+
+    // BUG 3 (MEDIUM): non-root proxyBaseUri prefix MUST be preserved.
+    // The previous implementation called `proxyBaseUri.resolve` against
+    // an absolute path that wiped any prefix on the base URI; here we
+    // assert the full URL contains the `/base/` segment AND the
+    // composed `/v1/operators/...` tail.
+    for (final url in fullUrls) {
+      expect(
+        url,
+        startsWith('https://proxy.example/base/v1/operators/op/locations/loc/'),
+        reason:
+            'every request URL must preserve the configured /base/ prefix',
+      );
+    }
+  });
+
+  test('non-root proxyBaseUri without trailing slash also keeps the prefix',
+      () async {
+    late http.Request seen;
+    final client = HttpSyncProxyClient(
+      // Note: no trailing slash on the base URI.
+      proxyBaseUri: Uri.parse('https://proxy.example/api'),
+      idTokenProvider: () async => 'tok',
+      httpClient: http_testing.MockClient((request) async {
+        seen = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'records': const <Object?>[],
+            'next_cursor': null,
+          }),
+          200,
+        );
+      }),
+    );
+
+    await client.fetchShiftRecords(
+      operatorId: 'op',
+      locationId: 'loc',
+      cursor: null,
+      pageSize: 10,
+    );
+
+    expect(
+      seen.url.toString(),
+      startsWith(
+        'https://proxy.example/api/v1/operators/op/locations/loc/shift_records',
+      ),
+      reason:
+          'BUG 3: prefix path on proxyBaseUri must be preserved even when '
+          'the base URI is supplied without a trailing slash',
+    );
+  });
+
+  test('retries once after a 401 by force-refreshing the id token', () async {
+    final tokens = <String>['stale-token', 'fresh-token'];
+    var refreshCount = 0;
+    final requestTokens = <String>[];
+    final client = HttpSyncProxyClient(
+      proxyBaseUri: Uri.parse('https://proxy.example'),
+      idTokenProvider: () async => tokens.first,
+      refreshIdToken: () async {
+        refreshCount++;
+        // Rotate the token so the retry sends the fresh one.
+        if (tokens.length > 1) tokens.removeAt(0);
+      },
+      httpClient: http_testing.MockClient((request) async {
+        requestTokens.add(request.headers['authorization'] ?? '');
+        if (requestTokens.length == 1) {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'error': 'unauthorized',
+              'message': 'token expired',
+            }),
+            401,
+          );
+        }
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'records': const <Object?>[],
+            'next_cursor': null,
+          }),
+          200,
+        );
+      }),
+    );
+
+    final page = await client.fetchShiftRecords(
+      operatorId: 'op',
+      locationId: 'loc',
+      cursor: null,
+      pageSize: 10,
+    );
+
+    expect(refreshCount, 1, reason: 'refresh hook is invoked exactly once');
+    expect(requestTokens, <String>[
+      'Bearer stale-token',
+      'Bearer fresh-token',
+    ]);
+    expect(page.records, isEmpty);
+  });
+
+  test('does not retry past one refresh attempt; surfaces 401 on retry too',
+      () async {
+    var refreshCount = 0;
+    var requestCount = 0;
+    final client = HttpSyncProxyClient(
+      proxyBaseUri: Uri.parse('https://proxy.example'),
+      idTokenProvider: () async => 'still-stale',
+      refreshIdToken: () async {
+        refreshCount++;
+      },
+      httpClient: http_testing.MockClient((_) async {
+        requestCount++;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'error': 'unauthorized',
+            'message': 'token expired',
+          }),
+          401,
+        );
+      }),
+    );
+
+    await expectLater(
+      client.fetchShiftRecords(
+        operatorId: 'op',
+        locationId: 'loc',
+        cursor: null,
+        pageSize: 10,
+      ),
+      throwsA(
+        isA<SyncProxyClientException>().having(
+          (error) => error.statusCode,
+          'statusCode',
+          401,
+        ),
+      ),
+    );
+    expect(requestCount, 2, reason: 'one initial + one retry, no more');
+    expect(refreshCount, 1);
   });
 
   test('throws a diagnostic-safe error when token is absent', () async {

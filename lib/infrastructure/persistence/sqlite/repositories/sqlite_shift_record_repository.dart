@@ -49,4 +49,13 @@ class SqliteShiftRecordRepository implements ShiftRecordRepository {
     final dao = await _daoReady;
     return dao.replaceShiftForSlot(record);
   }
+
+  /// Deletes every mirrored `shift_records` row whose `restaurant_id`
+  /// is NOT [keepRestaurantId]. Called by `MobileOperationalSyncRuntime`
+  /// on operator/location change so the prior tenant's rows cannot
+  /// leak through DAO reads that don't filter by scope.
+  Future<int> wipeForOtherScopes(String keepRestaurantId) async {
+    final dao = await _daoReady;
+    return dao.deleteForOtherRestaurants(keepRestaurantId);
+  }
 }

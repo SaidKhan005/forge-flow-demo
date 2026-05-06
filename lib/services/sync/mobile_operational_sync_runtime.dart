@@ -7,7 +7,9 @@ import '../../auth/auth_session.dart';
 import '../../domain/models/restaurant_location.dart';
 import '../../domain/services/utc_metadata_timestamp.dart';
 import '../../infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_timing_config_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../../state/auth_session_notifier.dart';
@@ -18,6 +20,14 @@ import 'sync_proxy_client.dart';
 
 typedef MobileSyncFactory =
     Future<PostgresShiftRecordToMobileSync> Function(SyncProxyClient client);
+
+/// Hook signature used by [MobileOperationalSyncHost] (and tests) to
+/// purge mirrored rows whose `restaurant_id` is NOT [keepRestaurantId].
+/// Defaults to wiping shift_records / open_shift_snapshots /
+/// restaurant_timing_configs across the three SQLite repos the runtime
+/// pulls into; tests can substitute a stub. See BUG 1 (HIGH).
+typedef CrossTenantWipe =
+    Future<void> Function(String keepRestaurantId);
 
 class MobileOperationalSyncRunner {
   MobileOperationalSyncRunner({
@@ -34,6 +44,21 @@ class MobileOperationalSyncRunner {
 
   bool _running = false;
   AuthSession? _pendingSession;
+
+  /// Optional probe that returns true when the in-flight sweep should
+  /// abort (e.g. the user signed out mid-pull). Wired by
+  /// [MobileOperationalSyncHost] to a `userId`-equality recheck against
+  /// the live [AuthSessionNotifier]. See BUG 2 (HIGH).
+  bool Function()? _abortProbe;
+
+  /// Test/host hook for installing the abort probe. The probe is checked
+  /// before each page fetch and after each successful page; when it
+  /// returns true the runner stops the loop and skips writes for the
+  /// remaining pages. Pass `null` to clear.
+  // ignore: use_setters_to_change_properties
+  void setAbortProbe(bool Function()? probe) {
+    _abortProbe = probe;
+  }
 
   Future<SyncResult?> syncSession(
     AuthSession? session, {
@@ -58,7 +83,14 @@ class MobileOperationalSyncRunner {
           operatorId: current.operatorId,
           locationId: current.locationId,
           restaurantId: restaurantId,
+          isAborted: _abortProbe,
         );
+        if (_abortProbe?.call() == true) {
+          // BUG 2 (HIGH): the auth context flipped mid-sweep; bail out
+          // before promoting any pending session so the next caller
+          // re-evaluates against the fresh session.
+          break;
+        }
         final pending = _pendingSession;
         if (pending == null) break;
         current = pending;
@@ -96,17 +128,39 @@ class MobileOperationalSyncRunner {
   }
 }
 
+/// Default cross-tenant wipe used by [MobileOperationalSyncHost]. Calls
+/// the per-repo `wipeForOtherScopes` hooks the runtime pulls into so a
+/// shared-device operator/location flip cannot leave the prior tenant's
+/// rows reachable through DAO reads that don't filter by scope.
+Future<void> defaultCrossTenantWipe(String keepRestaurantId) async {
+  await SqliteShiftRecordRepository.instance.wipeForOtherScopes(
+    keepRestaurantId,
+  );
+  await SqliteOpenShiftSnapshotRepository.instance.wipeForOtherScopes(
+    keepRestaurantId,
+  );
+  await SqliteRestaurantTimingConfigRepository.instance.wipeForOtherScopes(
+    keepRestaurantId,
+  );
+}
+
 class MobileOperationalSyncHost extends StatefulWidget {
   const MobileOperationalSyncHost({
     super.key,
     required this.syncClient,
     required this.child,
     this.runner,
+    this.crossTenantWipe = defaultCrossTenantWipe,
   });
 
   final SyncProxyClient? syncClient;
   final Widget child;
   final MobileOperationalSyncRunner? runner;
+
+  /// Override-able cross-tenant wipe hook so widget tests can stub the
+  /// SQLite delete pass while still exercising the
+  /// `_handleAuthChanged` -> wipe -> sync wiring. See BUG 1 (HIGH).
+  final CrossTenantWipe crossTenantWipe;
 
   @override
   State<MobileOperationalSyncHost> createState() =>
@@ -121,10 +175,18 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
   StreamSubscription<void>? _replayTruncatedSubscription;
   MobileOperationalSyncRunner? _runner;
   String? _lastAuthScope;
+  String? _activeSweepUserId;
 
   @override
   void initState() {
     super.initState();
+    // BUG 5 (MEDIUM): hot-restart skips `dispose()` so the singleton
+    // `_runtimeActiveRestaurantId` on `SqliteRestaurantScopeRepository`
+    // can still hold the previous process's override. Clear it here
+    // BEFORE `_bindAuthNotifier` runs (in `didChangeDependencies`) so a
+    // fresh process always starts with no override; the next
+    // `_handleAuthChanged` re-activates the right one.
+    SqliteRestaurantScopeRepository.instance.clearRuntimeRestaurantOverride();
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -217,8 +279,32 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
     }
     final scope = '${session.operatorId}:${session.locationId}';
     if (scope == _lastAuthScope) return;
+    final priorScope = _lastAuthScope;
     _lastAuthScope = scope;
+    if (priorScope != null) {
+      // BUG 1 (HIGH): operator OR location flipped on a shared device.
+      // Purge the prior tenant's mirrored rows from local SQLite BEFORE
+      // the next sync sweep so DAO reads that don't filter by
+      // (operator_id, location_id) cannot return stale rows. The mobile
+      // SQLite tables key on `restaurant_id`; the runtime promotes
+      // `session.locationId` into the active `restaurantId`, so the new
+      // tenant's `restaurantId` is exactly the new `locationId`.
+      _wipeOtherTenantsThenSync(session, 'auth_changed');
+      return;
+    }
     _syncForCurrentSession('auth_changed');
+  }
+
+  void _wipeOtherTenantsThenSync(AuthSession session, String reason) {
+    unawaited(() async {
+      try {
+        await widget.crossTenantWipe(session.locationId);
+      } catch (error, stack) {
+        debugPrint('Mobile operational sync wipe failed ($reason): $error');
+        debugPrintStack(stackTrace: stack);
+      }
+      _syncForCurrentSession(reason);
+    }());
   }
 
   void _handleRealtimeEvent(RealtimeEvent event) {
@@ -233,6 +319,22 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
     if (runner == null) return;
     final session = _authNotifier?.session;
     if (session == null) return;
+    // Track the scope so a subsequent `_handleAuthChanged` can tell the
+    // delta between the prior tenant and the new tenant. Without this,
+    // the very first scope change after host attach would see
+    // `priorScope == null` and skip the wipe.
+    _lastAuthScope ??= '${session.operatorId}:${session.locationId}';
+    // BUG 2 (HIGH): capture the userId at sweep start and re-check the
+    // live session before each page fetch. If the user signs out or the
+    // operator/location flips mid-pull, the runner aborts the loop and
+    // skips writes for the remaining pages instead of continuing
+    // against the stale token + scope.
+    final initialUserId = session.userId;
+    _activeSweepUserId = initialUserId;
+    runner.setAbortProbe(() {
+      final live = _authNotifier?.session;
+      return live == null || live.userId != initialUserId;
+    });
     unawaited(
       runner.syncSession(session, reason: reason).catchError((
         Object error,
@@ -241,6 +343,11 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
         debugPrint('Mobile operational sync failed ($reason): $error');
         debugPrintStack(stackTrace: stack);
         return null;
+      }).whenComplete(() {
+        if (_activeSweepUserId == initialUserId) {
+          _activeSweepUserId = null;
+          runner.setAbortProbe(null);
+        }
       }),
     );
   }

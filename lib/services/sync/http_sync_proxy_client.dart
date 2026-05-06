@@ -15,18 +15,33 @@ class HttpSyncProxyClient implements SyncProxyClient {
   HttpSyncProxyClient({
     required this.proxyBaseUri,
     required Future<String?> Function() idTokenProvider,
+    Future<void> Function()? refreshIdToken,
     http.Client? httpClient,
     Duration timeout = const Duration(seconds: 20),
   }) : _idTokenProvider = idTokenProvider,
+       _refreshIdToken = refreshIdToken,
        _httpClient = httpClient ?? http.Client(),
        _timeout = timeout;
 
   final Uri proxyBaseUri;
   final Future<String?> Function() _idTokenProvider;
+
+  /// Optional force-refresh hook for the Firebase ID token. When the
+  /// proxy returns 401 (clock-skewed device, mid-sweep token rotation)
+  /// the client invokes this once and retries the same request before
+  /// surfacing the failure. Production wires this to
+  /// `FirebaseAuthClient.refreshIdToken`. Demo/test bindings can leave
+  /// it null — the client then throws on the first 401, matching the
+  /// pre-fix behavior.
+  final Future<void> Function()? _refreshIdToken;
   final http.Client _httpClient;
   final Duration _timeout;
 
-  static const String _basePath = '/v1/operators';
+  // Note: no leading slash. `_resolve` appends these segments to the
+  // configured `proxyBaseUri` so any prefix path on the base URI (e.g.
+  // `https://host/api/`) is preserved instead of being silently
+  // replaced by `Uri.resolve('/v1/operators/...')`.
+  static const List<String> _baseSegments = <String>['v1', 'operators'];
 
   @override
   Future<ShiftRecordPage> fetchShiftRecords({
@@ -36,7 +51,7 @@ class HttpSyncProxyClient implements SyncProxyClient {
     required int pageSize,
   }) async {
     final body = await _getJson(
-      _locationPath(operatorId, locationId, 'shift_records'),
+      _locationPath(operatorId, locationId, const <String>['shift_records']),
       queryParameters: _pageQuery(cursor: cursor, pageSize: pageSize),
     );
     final rows = _readList(body, const <String>[
@@ -62,7 +77,9 @@ class HttpSyncProxyClient implements SyncProxyClient {
     required int pageSize,
   }) async {
     final body = await _getJson(
-      _locationPath(operatorId, locationId, 'open_shift_snapshots'),
+      _locationPath(operatorId, locationId, const <String>[
+        'open_shift_snapshots',
+      ]),
       queryParameters: _pageQuery(cursor: cursor, pageSize: pageSize),
     );
     final rows = _readList(body, const <String>[
@@ -87,7 +104,10 @@ class HttpSyncProxyClient implements SyncProxyClient {
     required String restaurantId,
   }) async {
     final body = await _getJson(
-      _locationPath(operatorId, locationId, 'timing/resolved'),
+      _locationPath(operatorId, locationId, const <String>[
+        'timing',
+        'resolved',
+      ]),
       queryParameters: <String, String>{'restaurant_id': restaurantId},
     );
     final raw =
@@ -103,7 +123,9 @@ class HttpSyncProxyClient implements SyncProxyClient {
     required String locationId,
   }) async {
     final body = await _getJson(
-      _locationPath(operatorId, locationId, 'demo_mode_states'),
+      _locationPath(operatorId, locationId, const <String>[
+        'demo_mode_states',
+      ]),
     );
     final rows = _readList(body, const <String>[
       'demo_mode_states',
@@ -122,7 +144,9 @@ class HttpSyncProxyClient implements SyncProxyClient {
     required String locationId,
   }) async {
     final body = await _getJson(
-      _locationPath(operatorId, locationId, 'data_accuracy_settings'),
+      _locationPath(operatorId, locationId, const <String>[
+        'data_accuracy_settings',
+      ]),
     );
     final raw =
         body['data_accuracy_settings'] ?? body['settings'] ?? body['data'];
@@ -137,7 +161,9 @@ class HttpSyncProxyClient implements SyncProxyClient {
     required String locationId,
   }) async {
     final body = await _getJson(
-      _locationPath(operatorId, locationId, 'polling_tier_assignment'),
+      _locationPath(operatorId, locationId, const <String>[
+        'polling_tier_assignment',
+      ]),
     );
     final raw =
         body['polling_tier_assignment'] ?? body['assignment'] ?? body['data'];
@@ -146,7 +172,35 @@ class HttpSyncProxyClient implements SyncProxyClient {
   }
 
   Future<Map<String, Object?>> _getJson(
-    String path, {
+    List<String> tailSegments, {
+    Map<String, String>? queryParameters,
+  }) async {
+    final firstAttempt = await _attemptGet(
+      tailSegments,
+      queryParameters: queryParameters,
+    );
+    if (firstAttempt.statusCode != 401 || _refreshIdToken == null) {
+      return _interpret(firstAttempt);
+    }
+    // BUG 4 (MEDIUM): force a single token refresh and retry once. A
+    // clock-skewed device shipping a stale token surfaces as a 401 here;
+    // the refresh hook re-pulls a fresh ID token. If the retry also
+    // returns 401 we throw the original exception path — no infinite
+    // retry loop.
+    try {
+      await _refreshIdToken();
+    } catch (_) {
+      return _interpret(firstAttempt);
+    }
+    final retry = await _attemptGet(
+      tailSegments,
+      queryParameters: queryParameters,
+    );
+    return _interpret(retry);
+  }
+
+  Future<_HttpAttemptResult> _attemptGet(
+    List<String> tailSegments, {
     Map<String, String>? queryParameters,
   }) async {
     final token = (await _idTokenProvider())?.trim();
@@ -158,7 +212,7 @@ class HttpSyncProxyClient implements SyncProxyClient {
     }
     final request = http.Request(
       'GET',
-      _resolve(path, queryParameters: queryParameters),
+      _resolve(tailSegments, queryParameters: queryParameters),
     );
     request.headers.addAll(<String, String>{
       'accept': 'application/json',
@@ -166,20 +220,40 @@ class HttpSyncProxyClient implements SyncProxyClient {
     });
     final streamed = await _httpClient.send(request).timeout(_timeout);
     final raw = await streamed.stream.bytesToString().timeout(_timeout);
-    final body = _decodeObject(raw);
-    if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+    return _HttpAttemptResult(streamed.statusCode, raw);
+  }
+
+  Map<String, Object?> _interpret(_HttpAttemptResult attempt) {
+    final body = _decodeObject(attempt.body);
+    if (attempt.statusCode < 200 || attempt.statusCode >= 300) {
       throw SyncProxyClientException(
         code: _readString(body['error']) ?? 'sync_proxy_request_failed',
         message:
             _readString(body['message']) ?? 'The sync proxy request failed.',
-        statusCode: streamed.statusCode,
+        statusCode: attempt.statusCode,
       );
     }
     return body;
   }
 
-  Uri _resolve(String path, {Map<String, String>? queryParameters}) {
-    final resolved = proxyBaseUri.resolve(path);
+  Uri _resolve(
+    List<String> tailSegments, {
+    Map<String, String>? queryParameters,
+  }) {
+    // BUG 3 (MEDIUM): preserve any prefix path on `proxyBaseUri` (e.g.
+    // `https://host/api/`). The previous implementation called
+    // `proxyBaseUri.resolve('/v1/operators/...')`, which Uri treated as
+    // an absolute path that wiped the prefix. Using path-segments here
+    // guarantees prefix + `v1/operators/...` are concatenated cleanly.
+    final basePathSegments = proxyBaseUri.pathSegments
+        .where((segment) => segment.isNotEmpty)
+        .toList(growable: false);
+    final composed = <String>[
+      ...basePathSegments,
+      ..._baseSegments,
+      ...tailSegments,
+    ];
+    final resolved = proxyBaseUri.replace(pathSegments: composed);
     if (queryParameters == null || queryParameters.isEmpty) {
       return resolved;
     }
@@ -191,13 +265,11 @@ class HttpSyncProxyClient implements SyncProxyClient {
     );
   }
 
-  static String _locationPath(
+  static List<String> _locationPath(
     String operatorId,
     String locationId,
-    String tail,
-  ) =>
-      '$_basePath/${Uri.encodeComponent(operatorId)}'
-      '/locations/${Uri.encodeComponent(locationId)}/$tail';
+    List<String> tail,
+  ) => <String>[operatorId, 'locations', locationId, ...tail];
 
   static Map<String, String> _pageQuery({
     required String? cursor,
@@ -464,4 +536,14 @@ class SyncProxyClientException implements Exception {
 
   @override
   String toString() => 'SyncProxyClientException($code, status=$statusCode)';
+}
+
+/// Internal carrier of a single HTTP attempt's status code + body so
+/// the 401-retry path in [HttpSyncProxyClient] can decide whether to
+/// invoke the optional refresh hook before throwing.
+class _HttpAttemptResult {
+  const _HttpAttemptResult(this.statusCode, this.body);
+
+  final int statusCode;
+  final String body;
 }

@@ -84,4 +84,14 @@ class SqliteRestaurantTimingConfigRepository
     _dao = null;
     _scopeDao = null;
   }
+
+  /// Deletes every mirrored `restaurant_timing_configs` row whose
+  /// `restaurant_id` is NOT [keepRestaurantId]. Called by
+  /// `MobileOperationalSyncRuntime` on operator/location change so the
+  /// prior tenant's timing config cannot leak through reads that don't
+  /// filter by scope.
+  Future<int> wipeForOtherScopes(String keepRestaurantId) async {
+    final dao = await _daoReady;
+    return dao.deleteForOtherRestaurants(keepRestaurantId);
+  }
 }
