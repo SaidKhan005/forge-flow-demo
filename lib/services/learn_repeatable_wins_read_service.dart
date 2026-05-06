@@ -11,6 +11,7 @@ import '../domain/canonical_day_order.dart';
 import '../models/daypart_pattern_summary.dart';
 import '../models/learn_repeatable_win_summary.dart';
 import '../models/shift_record.dart';
+import '../services/closed_timing_label_resolver.dart';
 import '../services/daypart_pattern_summary_builder.dart';
 
 class LearnRepeatableWinsReadService {
@@ -33,15 +34,20 @@ class LearnRepeatableWinsReadService {
   /// dominant benchmark lever are included.
   /// Ranking: benchmarkCount descending, then closedShiftCount descending,
   /// then canonical day order (Mon-Sun), then service-period order.
-  List<LearnRepeatableWinSummary> build(List<ShiftRecord> closedShifts) {
+  List<LearnRepeatableWinSummary> build(
+    List<ShiftRecord> closedShifts, {
+    ClosedTimingLabelResolver? timingLabelResolver,
+  }) {
     final summaries = DaypartPatternSummaryBuilder.fromClosedShifts(
       closedShifts,
+      timingLabelResolver: timingLabelResolver,
     );
 
     // Filter to buckets with benchmark evidence and a known dominant lever.
     final winBuckets = summaries
-        .where((s) =>
-            s.benchmarkCount > 0 && s.dominantBenchmarkLeverId != null)
+        .where(
+          (s) => s.benchmarkCount > 0 && s.dominantBenchmarkLeverId != null,
+        )
         .toList();
 
     // Rank: benchmarkCount desc, closedShiftCount desc, then explicit
@@ -59,10 +65,7 @@ class LearnRepeatableWinsReadService {
       return dpA.compareTo(dpB);
     });
 
-    return winBuckets
-        .take(maxResults)
-        .map((s) => _toReadModel(s))
-        .toList();
+    return winBuckets.take(maxResults).map((s) => _toReadModel(s)).toList();
   }
 
   static LearnRepeatableWinSummary _toReadModel(DaypartPatternSummary s) {

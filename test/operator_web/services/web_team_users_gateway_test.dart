@@ -20,7 +20,7 @@ void main() {
   Future<String?> tokenProvider() async => 'test-id-token';
 
   group('WebTeamUsersGatewayLive', () {
-    test('listUsers GETs /v1/admin/auth/users with bearer token + no '
+    test('listUsers GETs /v1/auth/team/users with bearer token + no '
         'idempotency key', () async {
       late http.Request captured;
       final client = MockClient((request) async {
@@ -67,7 +67,7 @@ void main() {
       expect(captured.headers.containsKey('Idempotency-Key'), isFalse);
     });
 
-    test('createInvite POSTs /v1/admin/auth/invites with the screen-supplied '
+    test('createInvite POSTs /v1/auth/team/invites with the screen-supplied '
         'idempotency key threaded through', () async {
       late http.Request captured;
       final client = MockClient((request) async {
@@ -102,14 +102,8 @@ void main() {
       expect(created.inviteId, 'invite-99');
       expect(captured.method, 'POST');
       expect(captured.url.path, WebTeamUsersPaths.invites);
-      expect(
-        captured.headers['Idempotency-Key'],
-        'op-web-members-uid-123-1',
-      );
-      expect(
-        captured.headers['authorization'],
-        'Bearer test-id-token',
-      );
+      expect(captured.headers['Idempotency-Key'], 'op-web-members-uid-123-1');
+      expect(captured.headers['authorization'], 'Bearer test-id-token');
       final body = jsonDecode(captured.body) as Map<String, Object?>;
       expect(body['email'], 'new@example.test');
       expect(body['role_id'], 'r1');
@@ -117,7 +111,7 @@ void main() {
       expect(body['location_id'], 'loc');
     });
 
-    test('suspendUser POSTs to /v1/admin/auth/users/{id}/suspend', () async {
+    test('suspendUser POSTs to /v1/auth/team/users/{id}/suspend', () async {
       late http.Request captured;
       final client = MockClient((request) async {
         captured = request;
@@ -152,36 +146,40 @@ void main() {
       expect(captured.headers['Idempotency-Key'], 'idem-suspend-1');
     });
 
-    test('non-2xx response surfaces a WebTeamUsersError with the proxy code',
-        () async {
-      final client = MockClient((request) async {
-        return http.Response(
-          jsonEncode(<String, Object?>{
-            'error': 'forbidden',
-            'message': 'Caller is not allowed',
-          }),
-          403,
+    test(
+      'non-2xx response surfaces a WebTeamUsersError with the proxy code',
+      () async {
+        final client = MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'error': 'forbidden',
+              'message': 'Caller is not allowed',
+            }),
+            403,
+          );
+        });
+        final gateway = WebTeamUsersGatewayLive(
+          proxyBaseUri: kProxyBase,
+          idTokenProvider: tokenProvider,
+          httpClient: client,
         );
-      });
-      final gateway = WebTeamUsersGatewayLive(
-        proxyBaseUri: kProxyBase,
-        idTokenProvider: tokenProvider,
-        httpClient: client,
-      );
 
-      await expectLater(
-        gateway.listUsers(const TeamUserListCommand(
-          actorUserId: 'actor',
-          operatorId: 'op',
-          locationId: 'loc',
-        )),
-        throwsA(
-          isA<WebTeamUsersError>()
-              .having((e) => e.code, 'code', 'forbidden')
-              .having((e) => e.statusCode, 'statusCode', 403),
-        ),
-      );
-    });
+        await expectLater(
+          gateway.listUsers(
+            const TeamUserListCommand(
+              actorUserId: 'actor',
+              operatorId: 'op',
+              locationId: 'loc',
+            ),
+          ),
+          throwsA(
+            isA<WebTeamUsersError>()
+                .having((e) => e.code, 'code', 'forbidden')
+                .having((e) => e.statusCode, 'statusCode', 403),
+          ),
+        );
+      },
+    );
 
     test('the gateway never mints its own idempotency key - the caller key '
         'is sent verbatim on every retry', () async {
@@ -213,30 +211,38 @@ void main() {
       expect(captured[1].headers['Idempotency-Key'], key);
     });
 
-    test('missing id token throws no_id_token error before any HTTP call',
-        () async {
-      var calls = 0;
-      final client = MockClient((request) async {
-        calls += 1;
-        return http.Response('{}', 200);
-      });
-      final gateway = WebTeamUsersGatewayLive(
-        proxyBaseUri: kProxyBase,
-        idTokenProvider: () async => null,
-        httpClient: client,
-      );
+    test(
+      'missing id token throws no_id_token error before any HTTP call',
+      () async {
+        var calls = 0;
+        final client = MockClient((request) async {
+          calls += 1;
+          return http.Response('{}', 200);
+        });
+        final gateway = WebTeamUsersGatewayLive(
+          proxyBaseUri: kProxyBase,
+          idTokenProvider: () async => null,
+          httpClient: client,
+        );
 
-      await expectLater(
-        gateway.listUsers(const TeamUserListCommand(
-          actorUserId: 'actor',
-          operatorId: 'op',
-          locationId: 'loc',
-        )),
-        throwsA(
-          isA<WebTeamUsersError>().having((e) => e.code, 'code', 'no_id_token'),
-        ),
-      );
-      expect(calls, 0);
-    });
+        await expectLater(
+          gateway.listUsers(
+            const TeamUserListCommand(
+              actorUserId: 'actor',
+              operatorId: 'op',
+              locationId: 'loc',
+            ),
+          ),
+          throwsA(
+            isA<WebTeamUsersError>().having(
+              (e) => e.code,
+              'code',
+              'no_id_token',
+            ),
+          ),
+        );
+        expect(calls, 0);
+      },
+    );
   });
 }

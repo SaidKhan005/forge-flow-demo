@@ -35,6 +35,7 @@ import '../services/demo_team_hierarchy_gateway.dart';
 import '../services/demo_team_roles_gateway.dart';
 import '../services/demo_team_sessions_gateway.dart';
 import '../services/demo_team_users_gateway.dart';
+import '../services/operator_web_team_gateway_providers.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
 import '../services/web_security_gateway.dart';
 import '../services/web_team_audit_log_gateway.dart';
@@ -84,75 +85,6 @@ const String kOperatorWebNavDataAccuracy = 'data_accuracy';
 const String kOperatorWebRolesPath = '/roles';
 const String kOperatorWebRolesExplainerPath = '/roles/explainer';
 const String kOperatorWebRolesEditPath = '/roles/edit';
-
-/// Sentinel the operator-web shell stamps on the auth source when it
-/// can supply a [WebTeamUsersGateway] for the Members surface. Demo
-/// auth source mixes this in with [DemoWebTeamUsersGateway];
-/// `11W.1.live` will mix it in on the live source with the
-/// `package:http` impl.
-abstract class OperatorWebTeamUsersGatewayProvider {
-  WebTeamUsersGateway get teamUsersGateway;
-}
-
-/// Optional source-owned timing gateway. Live wiring can mix this into the
-/// Firebase source once backend timing routes are ready; the router otherwise
-/// uses the read-only demo gateway.
-abstract class OperatorWebBusinessTimingGatewayProvider {
-  BusinessTimingGateway get businessTimingGateway;
-}
-
-/// Sentinel the operator-web shell stamps on the auth source when it
-/// can supply a [WebTeamRolesGateway] for the Roles surface. Demo
-/// auth source mixes this in with [DemoWebTeamRolesGateway];
-/// `11W.2.live` will mix it in on the live source with the
-/// `package:http` impl.
-abstract class OperatorWebTeamRolesGatewayProvider {
-  WebTeamRolesGateway get teamRolesGateway;
-}
-
-/// Sentinel the operator-web shell stamps on the auth source when it
-/// can supply a [WebTeamHierarchyGateway] for the `/locations`
-/// surface. Demo auth source mixes this in with
-/// [DemoWebTeamHierarchyGateway]; `11W.3.live` will mix it in on the
-/// live source with the `package:http` impl.
-abstract class OperatorWebTeamHierarchyGatewayProvider {
-  WebTeamHierarchyGateway get teamHierarchyGateway;
-}
-
-/// Sentinel the operator-web shell stamps on the auth source when it
-/// can supply a [WebTeamSessionsGateway] for the Sessions surface.
-/// Demo auth source mixes this in with [DemoWebTeamSessionsGateway];
-/// `11W.4.live` will mix it in on the live source with the
-/// `package:http` impl. The provider also surfaces the actor's
-/// current session id so the screen can mark `(this session)` and
-/// short-circuit a self-revoke into `signOut()`.
-abstract class OperatorWebTeamSessionsGatewayProvider {
-  WebTeamSessionsGateway get teamSessionsGateway;
-
-  /// Stable id of the row representing the current operator-web
-  /// session. Null when the auth source has not surfaced one yet
-  /// (early bootstrap); the screen falls back to no chip + no
-  /// short-circuit in that case.
-  String? get currentSessionId;
-}
-
-/// Sentinel the operator-web shell stamps on the auth source when it
-/// can supply a [WebTeamAuditLogGateway] for the `/audit-log` surface.
-/// Demo auth source mixes this in with [DemoWebTeamAuditLogGateway];
-/// `11W.5.live` will mix it in on the live source with the
-/// `package:http` impl.
-abstract class OperatorWebTeamAuditLogGatewayProvider {
-  WebTeamAuditLogGateway get teamAuditLogGateway;
-}
-
-/// Sentinel the operator-web shell stamps on the auth source when it
-/// can supply a [WebSecurityGateway] for the Security surface. Demo
-/// auth source mixes this in with [DemoWebSecurityGateway];
-/// `11W.6.live` will mix it in on the live source with the
-/// `package:http` impl.
-abstract class OperatorWebSecurityGatewayProvider {
-  WebSecurityGateway get securityGateway;
-}
 
 /// Default nav surface the shell lands on after onboarding completes.
 const String kOperatorWebDefaultNavId = kOperatorWebNavAccount;

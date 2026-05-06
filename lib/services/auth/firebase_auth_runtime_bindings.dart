@@ -56,6 +56,7 @@ class FirebaseAuthRuntimeBindings {
     this.passwordResetGateway,
     this.passwordResetDeepLinkSource,
     this.mobilePushTokenGateway,
+    this.idTokenProvider,
   });
 
   final AuthLoginService authLoginService;
@@ -75,6 +76,7 @@ class FirebaseAuthRuntimeBindings {
   final MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
   final PasswordResetGateway? passwordResetGateway;
   final MobilePushTokenGateway? mobilePushTokenGateway;
+  final Future<String?> Function()? idTokenProvider;
 
   /// 9.UX.7 — incoming-URI source forwarded to the unauthenticated
   /// shell so `forgeflow://reset-password?oobCode=...` reaches the
@@ -209,5 +211,6 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
     passwordResetGateway: passwordResetGateway,
     passwordResetDeepLinkSource: deepLinkSource,
     mobilePushTokenGateway: mobilePushTokenGateway,
+    idTokenProvider: authClient.currentIdToken,
   );
 }

@@ -16,6 +16,7 @@ import '../data/app_defaults.dart';
 import '../domain/canonical_day_order.dart';
 import '../models/daypart_pattern_summary.dart';
 import '../models/shift_record.dart';
+import '../services/closed_timing_label_resolver.dart';
 import '../services/labor_model.dart';
 
 class DaypartPatternSummaryBuilder {
@@ -69,12 +70,15 @@ class DaypartPatternSummaryBuilder {
   static List<DaypartPatternSummary> fromClosedShifts(
     List<ShiftRecord> shifts, {
     int minSampleThreshold = 1,
+    ClosedTimingLabelResolver? timingLabelResolver,
   }) {
     // ── 1. Group closed shifts by recurring bucket ────────────────────────
     final buckets = <String, List<ShiftRecord>>{};
     for (final shift in shifts) {
       if (!shift.isClosed) continue;
-      final key = '${shift.restaurantId}|${shift.dayLabel}|${shift.daypart}';
+      final bucketKey =
+          timingLabelResolver?.bucketKeyFor(shift) ?? shift.daypart;
+      final key = '${shift.restaurantId}|${shift.dayLabel}|$bucketKey';
       (buckets[key] ??= []).add(shift);
     }
 
@@ -85,12 +89,15 @@ class DaypartPatternSummaryBuilder {
       if (group.length < minSampleThreshold) continue;
 
       final first = group.first;
-      summaries.add(_buildSummary(
-        restaurantId: first.restaurantId,
-        dayLabel: first.dayLabel,
-        daypart: first.daypart,
-        shifts: group,
-      ));
+      summaries.add(
+        _buildSummary(
+          restaurantId: first.restaurantId,
+          dayLabel: first.dayLabel,
+          daypart: timingLabelResolver?.bucketKeyFor(first) ?? first.daypart,
+          servicePeriodLabel: timingLabelResolver?.labelFor(first),
+          shifts: group,
+        ),
+      );
     }
 
     // ── 3. Sort deterministically ─────────────────────────────────────────
@@ -116,6 +123,7 @@ class DaypartPatternSummaryBuilder {
     required String restaurantId,
     required String dayLabel,
     required String daypart,
+    String? servicePeriodLabel,
     required List<ShiftRecord> shifts,
   }) {
     final count = shifts.length;
@@ -186,9 +194,14 @@ class DaypartPatternSummaryBuilder {
       });
 
     final exemplarIds = <String>[];
-    for (var i = 0; i < sorted.length && exemplarIds.length < maxExemplarCount; i++) {
+    for (
+      var i = 0;
+      i < sorted.length && exemplarIds.length < maxExemplarCount;
+      i++
+    ) {
       final s = sorted[i];
-      final id = s.sourceShiftId ??
+      final id =
+          s.sourceShiftId ??
           '${s.weekId}:${s.dayLabel}:${s.daypart}:${s.businessDate ?? s.weekId}';
       exemplarIds.add(id);
     }
@@ -197,10 +210,14 @@ class DaypartPatternSummaryBuilder {
       restaurantId: restaurantId,
       dayLabel: dayLabel,
       daypart: daypart,
+      servicePeriodLabel: servicePeriodLabel,
       closedShiftCount: count,
       benchmarkCount: benchmarkCount,
       leakCount: leakCount,
-      dominantBenchmarkLeverId: _dominantLever(benchmarkFreq, _benchmarkTieBreakOrder),
+      dominantBenchmarkLeverId: _dominantLever(
+        benchmarkFreq,
+        _benchmarkTieBreakOrder,
+      ),
       dominantLeakLeverId: _dominantLever(leakFreq, _leakTieBreakOrder),
       avgCovers: count > 0 ? sumCovers / count : 0,
       avgSales: count > 0 ? sumSales / count : 0,
@@ -209,8 +226,7 @@ class DaypartPatternSummaryBuilder {
       avgSPLH: count > 0 ? sumSPLH / count : 0,
       avgFohHours: count > 0 ? sumFohHours / count : 0,
       avgBohHours: count > 0 ? sumBohHours / count : 0,
-      avgLaborPct:
-          laborSampleCount > 0 ? sumLaborPct / laborSampleCount : 0,
+      avgLaborPct: laborSampleCount > 0 ? sumLaborPct / laborSampleCount : 0,
       avgLaborSampleCount: laborSampleCount,
       avgVariancePts: count > 0 ? sumVariancePts / count : 0,
       exemplarSourceShiftIds: exemplarIds,

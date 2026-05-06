@@ -397,7 +397,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('admin_nav_item_corpus')));
+      final corpusNavItem = find.byKey(const Key('admin_nav_item_corpus'));
+      await tester.ensureVisible(corpusNavItem);
+      await tester.tap(corpusNavItem);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('admin_corpus_screen')), findsOneWidget);

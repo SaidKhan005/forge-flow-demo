@@ -48,6 +48,8 @@ const String _opB = '22222222-2222-4222-8222-222222222222';
 const String _locA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const String _locB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const String _restaurantA = 'demo_restaurant_001';
+const String _timingProfileA = '33333333-3333-4333-8333-333333333333';
+const String _timingProfileB = '44444444-4444-4444-8444-444444444444';
 
 final DateTime _businessDate = DateTime.utc(2026, 5, 4);
 
@@ -110,18 +112,18 @@ void main() {
           'business_date': _businessDateIso,
         },
       ];
-      pool.reservationFactsByOperatorLocation[
-          '$_opA|$_locA|$_businessDateIso'] = [
-        <String, Object?>{
-          'vendor_id': 'libro',
-          'vendor_entity_id': 'res_001',
-          'reservation_at': _dinnerInstantUtc,
-          'party_size': 4,
-          'status': 'SEATED',
-          'seated_at': _dinnerInstantUtc,
-          'business_date': _businessDateIso,
-        },
-      ];
+      pool.reservationFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+          [
+            <String, Object?>{
+              'vendor_id': 'libro',
+              'vendor_entity_id': 'res_001',
+              'reservation_at': _dinnerInstantUtc,
+              'party_size': 4,
+              'status': 'SEATED',
+              'seated_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+            },
+          ];
 
       final aggregator = CanonicalFactToClosedShiftInputAggregator(
         TenantTransactionWrapper(pool),
@@ -139,8 +141,11 @@ void main() {
       );
 
       expect(result, isNotNull);
-      expect(result!.input.covers, 5,
-          reason: 'covers from Oracle Simphony cover_facts row');
+      expect(
+        result!.input.covers,
+        5,
+        reason: 'covers from Oracle Simphony cover_facts row',
+      );
       expect(result.input.actualSales, closeTo(124.85, 0.001));
       expect(result.input.actualFohHours, 5);
       expect(result.input.actualBohHours, 6);
@@ -149,8 +154,10 @@ void main() {
       expect(result.input.actualFohLaborDollars, closeTo(5 * 18.0, 0.001));
       expect(result.input.actualBohLaborDollars, closeTo(6 * 20.0, 0.001));
       expect(result.input.sourceSystem, 'oracle_micros_simphony');
-      expect(result.provenance.coversProvenance,
-          'vendor_oracle_micros_simphony');
+      expect(
+        result.provenance.coversProvenance,
+        'vendor_oracle_micros_simphony',
+      );
       expect(
         result.provenance.laborDollarsProvenance,
         'vendor_quickbooks_time_per_employee_actual_dollars_per_employee_rates',
@@ -159,6 +166,109 @@ void main() {
   });
 
   // ─────────────────── B — multiple POS adapters at same slot ─────────────
+  group('aggregator - timing provenance', () {
+    test('stamps ClosedShiftInput with the effective timing profile and '
+        'service period used for bucketing', () async {
+      final pool = _FakePool()..seedLocation(_opA, _locA);
+      pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+        <String, Object?>{
+          'vendor_id': 'oracle_micros_simphony',
+          'vendor_entity_id': 'check_001',
+          'vendor_modified_at': _dinnerInstantUtc,
+          'covers': 5,
+          'covers_source': 'direct',
+          'opened_at': _dinnerInstantUtc.subtract(const Duration(hours: 1)),
+          'closed_at': _dinnerInstantUtc,
+          'business_date': _businessDateIso,
+          'actual_sales': 124.85,
+        },
+      ];
+
+      final aggregator = CanonicalFactToClosedShiftInputAggregator(
+        TenantTransactionWrapper(pool),
+      );
+
+      final result = await aggregator.aggregate(
+        operatorId: _opA,
+        locationId: _locA,
+        restaurantId: _restaurantA,
+        businessDate: _businessDate,
+        weekId: '2026-W18',
+        dayLabel: 'Mon',
+        daypart: Daypart.dinner,
+        periodDefinition: _dinnerPeriod,
+        businessTimingProfileId: _timingProfileA,
+      );
+
+      expect(result, isNotNull);
+      expect(result!.input.businessTimingProfileId, _timingProfileA);
+      expect(
+        result.input.businessTimingProfileVersionId,
+        _timingProfileA,
+        reason: 'Lane 0 maps the V1 version id to the profile id',
+      );
+      expect(result.input.servicePeriodKey, 'dinner');
+    });
+
+    test(
+      'carries prior closed timing provenance for replay preservation',
+      () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_001',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 5,
+            'covers_source': 'direct',
+            'opened_at': _dinnerInstantUtc.subtract(const Duration(hours: 1)),
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 124.85,
+          },
+        ];
+        pool.shiftRecordProvenanceBySlot['$_opA|$_locA|$_businessDateIso|dinner'] =
+            <String, Object?>{
+              'target_profile_version_id': 'tpv_X',
+              'business_timing_profile_id': _timingProfileA,
+              'business_timing_profile_version_id': _timingProfileA,
+              'service_period_key': 'dinner',
+            };
+
+        final aggregator = CanonicalFactToClosedShiftInputAggregator(
+          TenantTransactionWrapper(pool),
+        );
+
+        final result = await aggregator.aggregate(
+          operatorId: _opA,
+          locationId: _locA,
+          restaurantId: _restaurantA,
+          businessDate: _businessDate,
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          daypart: Daypart.dinner,
+          periodDefinition: _dinnerPeriod,
+          businessTimingProfileId: _timingProfileB,
+        );
+
+        expect(result, isNotNull);
+        expect(
+          result!.input.businessTimingProfileId,
+          _timingProfileB,
+          reason: 'current bucketing still records the effective profile',
+        );
+        expect(result.provenance.hasPriorShiftRecord, isTrue);
+        expect(result.provenance.priorTargetProfileVersionId, 'tpv_X');
+        expect(result.provenance.priorBusinessTimingProfileId, _timingProfileA);
+        expect(
+          result.provenance.priorBusinessTimingProfileVersionId,
+          _timingProfileA,
+        );
+        expect(result.provenance.priorServicePeriodKey, 'dinner');
+      },
+    );
+  });
+
   group('aggregator — B. MultiplePosAdaptersException', () {
     test('two POS vendors writing the same daypart -> exception', () async {
       final pool = _FakePool()..seedLocation(_opA, _locA);
@@ -210,8 +320,7 @@ void main() {
   // ─────────────────── C — Square coversFieldExposed=false → forecast ─────
   group('aggregator — C. forecast substitution when POS lacks covers', () {
     test('Square (coversFieldExposed=false) row + forecast available -> '
-        'vendor_square_covers_unavailable_app_forecast_substituted',
-        () async {
+        'vendor_square_covers_unavailable_app_forecast_substituted', () async {
       final pool = _FakePool()..seedLocation(_opA, _locA);
       // Square fact lacks covers (covers = 0) but actual_sales is
       // populated (Square exposes sales but not covers per 2026-05-05
@@ -262,8 +371,11 @@ void main() {
       );
 
       expect(result, isNotNull);
-      expect(result!.input.covers, greaterThan(0),
-          reason: 'forecast share allocates a positive integer per daypart');
+      expect(
+        result!.input.covers,
+        greaterThan(0),
+        reason: 'forecast share allocates a positive integer per daypart',
+      );
       expect(
         result.provenance.coversProvenance,
         'vendor_square_covers_unavailable_app_forecast_substituted',
@@ -326,8 +438,10 @@ void main() {
       expect(result, isNotNull);
       expect(result!.input.covers, 187);
       expect(result.input.sourceSystem, 'operator_manual_entry');
-      expect(result.provenance.coversProvenance,
-          'operator_manual_entry_per_daypart');
+      expect(
+        result.provenance.coversProvenance,
+        'operator_manual_entry_per_daypart',
+      );
     });
   });
 
@@ -351,27 +465,27 @@ void main() {
         },
       ];
       // Libro reservations seated this daypart.
-      pool.reservationFactsByOperatorLocation[
-          '$_opA|$_locA|$_businessDateIso'] = [
-        <String, Object?>{
-          'vendor_id': 'libro',
-          'vendor_entity_id': 'res_001',
-          'reservation_at': _dinnerInstantUtc,
-          'party_size': 4,
-          'status': 'SEATED',
-          'seated_at': _dinnerInstantUtc,
-          'business_date': _businessDateIso,
-        },
-        <String, Object?>{
-          'vendor_id': 'libro',
-          'vendor_entity_id': 'res_002',
-          'reservation_at': _dinnerInstantUtc,
-          'party_size': 6,
-          'status': 'SEATED',
-          'seated_at': _dinnerInstantUtc,
-          'business_date': _businessDateIso,
-        },
-      ];
+      pool.reservationFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+          [
+            <String, Object?>{
+              'vendor_id': 'libro',
+              'vendor_entity_id': 'res_001',
+              'reservation_at': _dinnerInstantUtc,
+              'party_size': 4,
+              'status': 'SEATED',
+              'seated_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+            },
+            <String, Object?>{
+              'vendor_id': 'libro',
+              'vendor_entity_id': 'res_002',
+              'reservation_at': _dinnerInstantUtc,
+              'party_size': 6,
+              'status': 'SEATED',
+              'seated_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+            },
+          ];
 
       final aggregator = CanonicalFactToClosedShiftInputAggregator(
         TenantTransactionWrapper(pool),
@@ -386,8 +500,9 @@ void main() {
         dayLabel: 'Mon',
         daypart: Daypart.dinner,
         periodDefinition: _dinnerPeriod,
-        walkInOverride:
-            const ReservationWalkInOverride(operatorWalkInCount: 25),
+        walkInOverride: const ReservationWalkInOverride(
+          operatorWalkInCount: 25,
+        ),
       );
 
       expect(result, isNotNull);
@@ -406,21 +521,21 @@ void main() {
     test('Tock reservation_facts with no seated_at still bucket by '
         'reservation_at; SEATED party_size sums', () async {
       final pool = _FakePool()..seedLocation(_opA, _locA);
-      pool.reservationFactsByOperatorLocation[
-          '$_opA|$_locA|$_businessDateIso'] = [
-        <String, Object?>{
-          'vendor_id': 'tock',
-          'vendor_entity_id': 'res_001',
-          // reservation_at populated from Tock's serviceDateTimestamp;
-          // seated_at deliberately null per the 2026-05-05 binding
-          // correction (Tock public docs do not expose seated_at).
-          'reservation_at': _dinnerInstantUtc,
-          'party_size': 8,
-          'status': 'SEATED',
-          'seated_at': null,
-          'business_date': _businessDateIso,
-        },
-      ];
+      pool.reservationFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+          [
+            <String, Object?>{
+              'vendor_id': 'tock',
+              'vendor_entity_id': 'res_001',
+              // reservation_at populated from Tock's serviceDateTimestamp;
+              // seated_at deliberately null per the 2026-05-05 binding
+              // correction (Tock public docs do not expose seated_at).
+              'reservation_at': _dinnerInstantUtc,
+              'party_size': 8,
+              'status': 'SEATED',
+              'seated_at': null,
+              'business_date': _businessDateIso,
+            },
+          ];
 
       final aggregator = CanonicalFactToClosedShiftInputAggregator(
         TenantTransactionWrapper(pool),
@@ -435,84 +550,89 @@ void main() {
         dayLabel: 'Mon',
         daypart: Daypart.dinner,
         periodDefinition: _dinnerPeriod,
-        walkInOverride:
-            const ReservationWalkInOverride(operatorWalkInCount: 0),
+        walkInOverride: const ReservationWalkInOverride(operatorWalkInCount: 0),
       );
 
       expect(result, isNotNull);
       // Pattern A path: 8 seated + 0 walk-in = 8.
       expect(result!.input.covers, 8);
-      expect(result.provenance.coversProvenance,
-          'vendor_tock_seated_plus_operator_walk_in_count');
+      expect(
+        result.provenance.coversProvenance,
+        'vendor_tock_seated_plus_operator_walk_in_count',
+      );
     });
   });
 
   // ─────────────────── G — perPositionWithRates (Humanity) ────────────────
   group('aggregator — G. wage perPositionWithRates (Humanity)', () {
-    test('Humanity per-position rates compute dollars via rate × hours', () async {
-      final pool = _FakePool()..seedLocation(_opA, _locA);
-      // POS covers from Oracle so the aggregator has a sales source.
-      pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
-        <String, Object?>{
-          'vendor_id': 'oracle_micros_simphony',
-          'vendor_entity_id': 'check_001',
-          'vendor_modified_at': _dinnerInstantUtc,
-          'covers': 12,
-          'covers_source': 'direct',
-          'opened_at': _dinnerInstantUtc,
-          'closed_at': _dinnerInstantUtc,
-          'business_date': _businessDateIso,
-          'actual_sales': 480.00,
-        },
-      ];
-      pool.laborPunchesByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
-        <String, Object?>{
-          'vendor_id': 'humanity',
-          'vendor_entity_id': 'sched_001',
-          'employee_source_id': 'emp_1',
-          'role_name': 'server',
-          'shift_start': _dinnerInstantUtc,
-          'shift_end': _dinnerInstantUtc.add(const Duration(hours: 4)),
-          'hours_worked': 4,
-          'pay_rate': 22.0,
-          'business_date': _businessDateIso,
-        },
-        <String, Object?>{
-          'vendor_id': 'humanity',
-          'vendor_entity_id': 'sched_002',
-          'employee_source_id': 'emp_2',
-          'role_name': 'cook',
-          'shift_start': _dinnerInstantUtc,
-          'shift_end': _dinnerInstantUtc.add(const Duration(hours: 5)),
-          'hours_worked': 5,
-          'pay_rate': 24.0,
-          'business_date': _businessDateIso,
-        },
-      ];
+    test(
+      'Humanity per-position rates compute dollars via rate × hours',
+      () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        // POS covers from Oracle so the aggregator has a sales source.
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_001',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 12,
+            'covers_source': 'direct',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 480.00,
+          },
+        ];
+        pool.laborPunchesByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+            [
+              <String, Object?>{
+                'vendor_id': 'humanity',
+                'vendor_entity_id': 'sched_001',
+                'employee_source_id': 'emp_1',
+                'role_name': 'server',
+                'shift_start': _dinnerInstantUtc,
+                'shift_end': _dinnerInstantUtc.add(const Duration(hours: 4)),
+                'hours_worked': 4,
+                'pay_rate': 22.0,
+                'business_date': _businessDateIso,
+              },
+              <String, Object?>{
+                'vendor_id': 'humanity',
+                'vendor_entity_id': 'sched_002',
+                'employee_source_id': 'emp_2',
+                'role_name': 'cook',
+                'shift_start': _dinnerInstantUtc,
+                'shift_end': _dinnerInstantUtc.add(const Duration(hours: 5)),
+                'hours_worked': 5,
+                'pay_rate': 24.0,
+                'business_date': _businessDateIso,
+              },
+            ];
 
-      final aggregator = CanonicalFactToClosedShiftInputAggregator(
-        TenantTransactionWrapper(pool),
-      );
+        final aggregator = CanonicalFactToClosedShiftInputAggregator(
+          TenantTransactionWrapper(pool),
+        );
 
-      final result = await aggregator.aggregate(
-        operatorId: _opA,
-        locationId: _locA,
-        restaurantId: _restaurantA,
-        businessDate: _businessDate,
-        weekId: '2026-W18',
-        dayLabel: 'Mon',
-        daypart: Daypart.dinner,
-        periodDefinition: _dinnerPeriod,
-      );
+        final result = await aggregator.aggregate(
+          operatorId: _opA,
+          locationId: _locA,
+          restaurantId: _restaurantA,
+          businessDate: _businessDate,
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          daypart: Daypart.dinner,
+          periodDefinition: _dinnerPeriod,
+        );
 
-      expect(result, isNotNull);
-      expect(result!.input.actualFohLaborDollars, closeTo(4 * 22.0, 0.001));
-      expect(result.input.actualBohLaborDollars, closeTo(5 * 24.0, 0.001));
-      expect(
-        result.provenance.laborDollarsProvenance,
-        'vendor_humanity_per_position_actual_dollars',
-      );
-    });
+        expect(result, isNotNull);
+        expect(result!.input.actualFohLaborDollars, closeTo(4 * 22.0, 0.001));
+        expect(result.input.actualBohLaborDollars, closeTo(5 * 24.0, 0.001));
+        expect(
+          result.provenance.laborDollarsProvenance,
+          'vendor_humanity_per_position_actual_dollars',
+        );
+      },
+    );
   });
 
   // ─────────────────── H — manual_mix override ────────────────────────────
@@ -581,8 +701,10 @@ void main() {
       // the wage*hours fallback; provenance is target_wage_substituted.
       expect(result!.input.actualFohLaborDollars, isNull);
       expect(result.input.actualBohLaborDollars, isNull);
-      expect(result.provenance.laborDollarsProvenance,
-          'target_wage_substituted');
+      expect(
+        result.provenance.laborDollarsProvenance,
+        'target_wage_substituted',
+      );
     });
   });
 
@@ -832,11 +954,317 @@ void main() {
       // Every transaction set both tenant keys.
       expect(pool.transactions, isNotEmpty);
       for (final tx in pool.transactions) {
-        expect(tx.setConfigCalls['app.operator_id'], isNotNull,
-            reason: 'tenant SET LOCAL must run on every transaction');
+        expect(
+          tx.setConfigCalls['app.operator_id'],
+          isNotNull,
+          reason: 'tenant SET LOCAL must run on every transaction',
+        );
         expect(tx.setConfigCalls['app.location_id'], isNotNull);
       }
     });
+  });
+
+  // ─────────────────── N — keyed Data Accuracy service-period settings ────
+  //
+  // Hardening Wave B1: covers-source resolution must prefer the
+  // keyed `data_accuracy_service_period_settings` row when present
+  // and fall back to the legacy `covers_source_*` column otherwise.
+  group(
+      'aggregator — N. Hardening Wave B1 keyed service-period settings '
+      'preference',
+      () {
+    test(
+      'keyed setting present (covers_source=manual) overrides legacy '
+      'column (covers_source_dinner=vendor); manual entry from the '
+      'legacy jsonb still resolves; provenance + sourceSystem reflect '
+      'operator manual entry',
+      () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        // Legacy column says vendor; keyed setting flips to manual.
+        pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+          'setting_id': 'das_001',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'covers_source_lunch': 'vendor',
+          'covers_source_dinner': 'vendor',
+          'covers_source_late_night': 'vendor',
+          'covers_manual_entries': <String, Map<String, int>>{
+            _businessDateIso: <String, int>{'dinner': 142},
+          },
+          'wage_source': 'vendor',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 4),
+          'updated_by': null,
+        };
+        // Keyed setting wins: covers_source=manual for service period
+        // 'dinner' effective from 2026-05-01 (≤ business_date 2026-05-04).
+        pool.dataAccuracyServicePeriodSettingsByTenant[
+            '$_opA|$_locA|dinner'] = <String, Object?>{
+          'id': '99999999-9999-9999-9999-999999999999',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'service_period_key': 'dinner',
+          'covers_source': 'manual',
+          'wage_source': 'manual_mix',
+          'effective_at_business_date': '2026-05-01',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 1),
+          'updated_by': null,
+        };
+        // POS row exists but operator manual preference must win.
+        pool.coverFactsByOperatorLocation[
+            '$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'square',
+            'vendor_entity_id': 'order_001',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 0,
+            'covers_source': 'forecast_fallback',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 250.00,
+          },
+        ];
+
+        final aggregator = CanonicalFactToClosedShiftInputAggregator(
+          TenantTransactionWrapper(pool),
+        );
+        final result = await aggregator.aggregate(
+          operatorId: _opA,
+          locationId: _locA,
+          restaurantId: _restaurantA,
+          businessDate: _businessDate,
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          daypart: Daypart.dinner,
+          periodDefinition: _dinnerPeriod,
+        );
+        expect(result, isNotNull);
+        expect(
+          result!.input.covers,
+          142,
+          reason: 'keyed covers_source=manual must promote the legacy '
+              'manual jsonb value over the legacy column preference',
+        );
+        expect(result.input.sourceSystem, 'operator_manual_entry');
+        expect(
+          result.provenance.coversProvenance,
+          'operator_manual_entry_per_daypart',
+        );
+      },
+    );
+
+    test(
+      'no keyed row present — aggregator falls back to legacy '
+      'covers_source_dinner column (vendor) and emits the vendor '
+      'provenance with the POS-supplied covers',
+      () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        // Legacy column says vendor; keyed table is empty for this
+        // (operator, location, service_period_key).
+        pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+          'setting_id': 'das_001',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'covers_source_lunch': 'vendor',
+          'covers_source_dinner': 'vendor',
+          'covers_source_late_night': 'vendor',
+          'covers_manual_entries': const <String, Map<String, int>>{},
+          'wage_source': 'vendor',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 4),
+          'updated_by': null,
+        };
+        // POS supplies covers; vendor preference flows through stage 2.
+        pool.coverFactsByOperatorLocation[
+            '$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_001',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 73,
+            'covers_source': 'direct',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 1184.50,
+          },
+        ];
+
+        final aggregator = CanonicalFactToClosedShiftInputAggregator(
+          TenantTransactionWrapper(pool),
+        );
+        final result = await aggregator.aggregate(
+          operatorId: _opA,
+          locationId: _locA,
+          restaurantId: _restaurantA,
+          businessDate: _businessDate,
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          daypart: Daypart.dinner,
+          periodDefinition: _dinnerPeriod,
+        );
+        expect(result, isNotNull);
+        expect(result!.input.covers, 73);
+        expect(result.input.sourceSystem, 'oracle_micros_simphony');
+        expect(
+          result.provenance.coversProvenance,
+          'vendor_oracle_micros_simphony',
+        );
+      },
+    );
+
+    test(
+      'forward-staged keyed row (effective_at AFTER the business_date) '
+      'must NOT short-circuit the legacy fallback — the at-or-before '
+      'lookup keeps a 2026-06-01 manual switch from gating a '
+      '2026-05-04 close',
+      () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+          'setting_id': 'das_001',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'covers_source_lunch': 'vendor',
+          'covers_source_dinner': 'vendor',
+          'covers_source_late_night': 'vendor',
+          'covers_manual_entries': const <String, Map<String, int>>{},
+          'wage_source': 'vendor',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 4),
+          'updated_by': null,
+        };
+        // Forward-staged keyed setting: effective from 2026-06-01.
+        pool.dataAccuracyServicePeriodSettingsByTenant[
+            '$_opA|$_locA|dinner'] = <String, Object?>{
+          'id': '99999999-9999-9999-9999-999999999999',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'service_period_key': 'dinner',
+          'covers_source': 'manual',
+          'wage_source': 'manual_mix',
+          'effective_at_business_date': '2026-06-01',
+          'created_at': DateTime.utc(2026, 5, 31),
+          'updated_at': DateTime.utc(2026, 5, 31),
+          'updated_by': null,
+        };
+        pool.coverFactsByOperatorLocation[
+            '$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_001',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 51,
+            'covers_source': 'direct',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 812.00,
+          },
+        ];
+
+        final aggregator = CanonicalFactToClosedShiftInputAggregator(
+          TenantTransactionWrapper(pool),
+        );
+        final result = await aggregator.aggregate(
+          operatorId: _opA,
+          locationId: _locA,
+          restaurantId: _restaurantA,
+          businessDate: _businessDate, // 2026-05-04
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          daypart: Daypart.dinner,
+          periodDefinition: _dinnerPeriod,
+        );
+        expect(result, isNotNull);
+        expect(
+          result!.input.covers,
+          51,
+          reason: 'forward-staged keyed row must not short-circuit '
+              'the legacy vendor preference for a historical close',
+        );
+        expect(
+          result.provenance.coversProvenance,
+          'vendor_oracle_micros_simphony',
+        );
+      },
+    );
+
+    test(
+      'cross-tenant isolation — operator A\'s keyed row must NOT be '
+      'reachable from operator B\'s tenant context (the fake pool '
+      'partitions by operator_id, mirroring production RLS)',
+      () async {
+        final pool = _FakePool()
+          ..seedLocation(_opA, _locA)
+          ..seedLocation(_opB, _locA);
+        // Keyed setting only seeded for operator A.
+        pool.dataAccuracyServicePeriodSettingsByTenant[
+            '$_opA|$_locA|dinner'] = <String, Object?>{
+          'id': '99999999-9999-9999-9999-999999999999',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'service_period_key': 'dinner',
+          'covers_source': 'manual',
+          'wage_source': 'manual_mix',
+          'effective_at_business_date': '2026-05-01',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 1),
+          'updated_by': null,
+        };
+        // Operator B has only the legacy default + a vendor POS row.
+        pool.dataAccuracySettingsByTenant['$_opB|$_locA'] = <String, Object?>{
+          'setting_id': 'das_002',
+          'operator_id': _opB,
+          'location_id': _locA,
+          'covers_source_lunch': 'vendor',
+          'covers_source_dinner': 'vendor',
+          'covers_source_late_night': 'vendor',
+          'covers_manual_entries': const <String, Map<String, int>>{},
+          'wage_source': 'vendor',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 4),
+          'updated_by': null,
+        };
+        pool.coverFactsByOperatorLocation[
+            '$_opB|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_001',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 28,
+            'covers_source': 'direct',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 412.50,
+          },
+        ];
+
+        final aggregator = CanonicalFactToClosedShiftInputAggregator(
+          TenantTransactionWrapper(pool),
+        );
+        final result = await aggregator.aggregate(
+          operatorId: _opB,
+          locationId: _locA,
+          restaurantId: _restaurantA,
+          businessDate: _businessDate,
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          daypart: Daypart.dinner,
+          periodDefinition: _dinnerPeriod,
+        );
+        expect(result, isNotNull);
+        // Operator B sees vendor covers, NOT operator A's manual mode.
+        expect(result!.input.covers, 28);
+        expect(result.input.sourceSystem, 'oracle_micros_simphony');
+        expect(
+          result.provenance.coversProvenance,
+          'vendor_oracle_micros_simphony',
+        );
+      },
+    );
   });
 
   // ─────────────────── M — banned-items grep ──────────────────────────────
@@ -879,7 +1307,8 @@ void main() {
 
 // ─── Helpers + fakes ──────────────────────────────────────────────────
 
-String get _businessDateIso => '${_businessDate.year.toString().padLeft(4, '0')}'
+String get _businessDateIso =>
+    '${_businessDate.year.toString().padLeft(4, '0')}'
     '-${_businessDate.month.toString().padLeft(2, '0')}'
     '-${_businessDate.day.toString().padLeft(2, '0')}';
 
@@ -892,19 +1321,30 @@ class _FakePool implements PostgresPool {
   final Map<String, Map<String, Object?>> dataAccuracySettingsByTenant =
       <String, Map<String, Object?>>{};
 
+  /// Hardening Wave B1 — keyed by `(operator_id, location_id,
+  /// service_period_key)`. The fake returns the row when
+  /// `effective_at_business_date <= @business_date`; tests pre-seed
+  /// rows whose effective date should win the at-or-before lookup.
+  final Map<String, Map<String, Object?>>
+      dataAccuracyServicePeriodSettingsByTenant =
+      <String, Map<String, Object?>>{};
+
   /// Keyed by `(operator_id, location_id, business_date_iso)`.
   final Map<String, List<Map<String, Object?>>> coverFactsByOperatorLocation =
       <String, List<Map<String, Object?>>>{};
-  final Map<String, List<Map<String, Object?>>>
-      laborPunchesByOperatorLocation =
+  final Map<String, List<Map<String, Object?>>> laborPunchesByOperatorLocation =
       <String, List<Map<String, Object?>>>{};
   final Map<String, List<Map<String, Object?>>>
-      reservationFactsByOperatorLocation =
-      <String, List<Map<String, Object?>>>{};
+  reservationFactsByOperatorLocation = <String, List<Map<String, Object?>>>{};
 
   /// Keyed by `(operator_id, location_id, business_date_iso, daypart)`.
   /// Pre-seed when a test wants to exercise priorTargetProfileVersionId.
   final Map<String, String> shiftRecordTpvBySlot = <String, String>{};
+
+  /// Keyed by `(operator_id, location_id, business_date_iso, daypart)`.
+  /// Pre-seed when a test wants prior timing provenance as well.
+  final Map<String, Map<String, Object?>> shiftRecordProvenanceBySlot =
+      <String, Map<String, Object?>>{};
 
   final List<_FakeTransaction> transactions = <_FakeTransaction>[];
 
@@ -953,6 +1393,23 @@ class _FakeTransaction implements PostgresTransaction {
       _captureSetConfig(sql, parameters);
       return const <PostgresRow>[];
     }
+    if (sql.contains(
+        'from public.data_accuracy_service_period_settings')) {
+      final operatorId = parameters['operator_id'] as String;
+      final locationId = parameters['location_id'] as String;
+      final servicePeriodKey = parameters['service_period_key'] as String;
+      final businessDate = parameters['business_date'] as String;
+      final row = pool.dataAccuracyServicePeriodSettingsByTenant[
+          '$operatorId|$locationId|$servicePeriodKey'];
+      if (row == null) return const <PostgresRow>[];
+      // Honour the at-or-before contract — if the seeded effective
+      // date is AFTER the queried business_date, return no row.
+      final effectiveAt = row['effective_at_business_date'];
+      if (effectiveAt is String && effectiveAt.compareTo(businessDate) > 0) {
+        return const <PostgresRow>[];
+      }
+      return <PostgresRow>[row];
+    }
     if (sql.contains('from data_accuracy_settings')) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
@@ -961,7 +1418,8 @@ class _FakeTransaction implements PostgresTransaction {
       return <PostgresRow>[row];
     }
     if (sql.contains(
-        'select timezone, business_day_rollover_hour from public.locations')) {
+      'select timezone, business_day_rollover_hour from public.locations',
+    )) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final row = pool.readLocation(operatorId, locationId);
@@ -972,24 +1430,24 @@ class _FakeTransaction implements PostgresTransaction {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final businessDate = parameters['business_date'] as String;
-      return pool.coverFactsByOperatorLocation[
-              '$operatorId|$locationId|$businessDate'] ??
+      return pool
+              .coverFactsByOperatorLocation['$operatorId|$locationId|$businessDate'] ??
           const <PostgresRow>[];
     }
     if (sql.contains('from public.labor_punches')) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final businessDate = parameters['business_date'] as String;
-      return pool.laborPunchesByOperatorLocation[
-              '$operatorId|$locationId|$businessDate'] ??
+      return pool
+              .laborPunchesByOperatorLocation['$operatorId|$locationId|$businessDate'] ??
           const <PostgresRow>[];
     }
     if (sql.contains('from public.reservation_facts')) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final businessDate = parameters['business_date'] as String;
-      return pool.reservationFactsByOperatorLocation[
-              '$operatorId|$locationId|$businessDate'] ??
+      return pool
+              .reservationFactsByOperatorLocation['$operatorId|$locationId|$businessDate'] ??
           const <PostgresRow>[];
     }
     if (sql.contains('from public.shift_records')) {
@@ -997,8 +1455,11 @@ class _FakeTransaction implements PostgresTransaction {
       final locationId = parameters['location_id'] as String;
       final businessDate = parameters['business_date'] as String;
       final daypart = parameters['daypart'] as String;
-      final tpv = pool.shiftRecordTpvBySlot[
-          '$operatorId|$locationId|$businessDate|$daypart'];
+      final provenance = pool
+          .shiftRecordProvenanceBySlot['$operatorId|$locationId|$businessDate|$daypart'];
+      if (provenance != null) return <PostgresRow>[provenance];
+      final tpv = pool
+          .shiftRecordTpvBySlot['$operatorId|$locationId|$businessDate|$daypart'];
       if (tpv == null) return const <PostgresRow>[];
       return <PostgresRow>[
         <String, Object?>{'target_profile_version_id': tpv},

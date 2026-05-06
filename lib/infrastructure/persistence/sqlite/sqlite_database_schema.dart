@@ -145,6 +145,9 @@ Future<void> _createAllTables(Database db) async {
       foh_labor_dollar           REAL,
       boh_labor_dollar           REAL,
       business_date              TEXT,
+      business_timing_profile_id TEXT,
+      business_timing_profile_version_id TEXT,
+      service_period_key         TEXT,
       source_system              TEXT,
       source_shift_id            TEXT,
       target_profile_id          TEXT,
@@ -218,6 +221,9 @@ Future<void> _createAllTables(Database db) async {
       daypart                 TEXT NOT NULL,
       status                  TEXT NOT NULL DEFAULT 'projected',
       business_date           TEXT NOT NULL,
+      business_timing_profile_id TEXT,
+      business_timing_profile_version_id TEXT,
+      service_period_key      TEXT,
       forecast_covers         INTEGER NOT NULL,
       current_covers          INTEGER NOT NULL,
       scheduled_foh_hours     INTEGER NOT NULL,
@@ -431,9 +437,11 @@ Future<void> _createAllTables(Database db) async {
 }
 
 Future<void> _createTableIfNotExists(
-    Database db, String table, String createSql) async {
+  Database db,
+  String table,
+  String createSql,
+) async {
   if (!await _tableExists(db, table)) {
     await db.execute(createSql);
   }
 }
-

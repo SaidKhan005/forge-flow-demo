@@ -25,6 +25,18 @@
 //      a nested tenant transaction and double the SET LOCAL round-trip,
 //      so the aggregator inlines a small read against the same
 //      executor).
+//   2a. Hardening Wave B1 — reads `data_accuracy_service_period_settings`
+//       via inline SELECT under the same tenant transaction for
+//       `(operator_id, location_id, service_period_key=daypart.wire,
+//       business_date)`. The lookup picks the most recent row at-or-
+//       before the closed shift's business date so historical closes
+//       resolve under the setting in force on the day the shift
+//       closed. When a keyed row exists its `covers_source` wins;
+//       otherwise the legacy `covers_source_lunch` / `_dinner` /
+//       `_late_night` column on `data_accuracy_settings` is read.
+//       Manual covers VALUES still come from the legacy
+//       `covers_manual_entries` jsonb (manual-entry storage migration
+//       is a future slice).
 //   3. Resolves covers via the 5-way decision per
 //      `data_accuracy_settings_contract.md` (manual / vendor /
 //      reservation+walk-in / forecast / unavailable) — stage 3
@@ -58,6 +70,7 @@ import 'dart:convert';
 
 import '../../domain/models/aggregator_provenance_context.dart';
 import '../../domain/models/closed_shift_input.dart';
+import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/demand_forecast_context.dart';
 import '../../domain/models/service_period_definition.dart';
@@ -74,9 +87,7 @@ import 'labor_wage_source_class.dart';
 /// surfaces the seam so tests can drive Pattern A without introducing
 /// the UI lane).
 class ReservationWalkInOverride {
-  const ReservationWalkInOverride({
-    required this.operatorWalkInCount,
-  });
+  const ReservationWalkInOverride({required this.operatorWalkInCount});
 
   /// Operator-supplied walk-in count for the slot. Combined with the
   /// summed seated `party_size` from `reservation_facts` to land the
@@ -90,10 +101,7 @@ class ReservationWalkInOverride {
 /// dashboard renders `MetricCardNotYetAvailable` per
 /// `metric_card_honesty_contract.md`.
 class AggregatorResult {
-  const AggregatorResult({
-    required this.input,
-    required this.provenance,
-  });
+  const AggregatorResult({required this.input, required this.provenance});
 
   final ClosedShiftInput input;
   final AggregatorProvenanceContext provenance;
@@ -150,18 +158,31 @@ class CanonicalFactToClosedShiftInputAggregator
     required String dayLabel,
     required Daypart daypart,
     required ServicePeriodDefinition periodDefinition,
+    String? businessTimingProfileId,
+    String? businessTimingProfileVersionId,
     DemandForecastContext? forecastContext,
     ReservationWalkInOverride? walkInOverride,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<AggregatorResult?>(ctx, (exec) async {
       final settings = await _readDataAccuracySettings(
         exec,
         operatorId: operatorId,
         locationId: locationId,
+      );
+
+      // Hardening Wave B1 — prefer the keyed
+      // `data_accuracy_service_period_settings` row for this
+      // (operator, location, service_period_key, business_date).
+      // Falls back to the legacy hardcoded `covers_source_*` columns
+      // on `data_accuracy_settings` when no keyed row exists for this
+      // service period at-or-before the closed shift's business date.
+      final keyedServicePeriodSetting = await _readKeyedServicePeriodSetting(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        servicePeriodKey: daypart.wire,
+        businessDate: businessDate,
       );
 
       final locationMeta = await _readLocationMeta(
@@ -193,8 +214,7 @@ class CanonicalFactToClosedShiftInputAggregator
           vendorIds: posVendorIds,
         );
       }
-      final posVendorId =
-          posVendorIds.isNotEmpty ? posVendorIds.first : null;
+      final posVendorId = posVendorIds.isNotEmpty ? posVendorIds.first : null;
 
       // ─── Walk labor_punches for slot ─────────────────────────────
       final laborPunches = await _readLaborPunchesForDaypart(
@@ -216,8 +236,8 @@ class CanonicalFactToClosedShiftInputAggregator
         timezone: locationMeta.timezone,
       );
 
-      // ─── Read prior shift_records row → priorTargetProfileVersionId
-      final priorTpv = await _readPriorTargetProfileVersionId(
+      // ─── Read prior shift_records row → target + timing preservation
+      final priorShift = await _readPriorShiftRecordProvenance(
         exec,
         operatorId: operatorId,
         locationId: locationId,
@@ -228,6 +248,7 @@ class CanonicalFactToClosedShiftInputAggregator
       // ─── 5-way covers resolution ─────────────────────────────────
       final coversResolution = _resolveCovers(
         settings: settings,
+        keyedServicePeriodSetting: keyedServicePeriodSetting,
         businessDate: businessDate,
         daypart: daypart,
         coverFacts: coverFacts,
@@ -249,14 +270,11 @@ class CanonicalFactToClosedShiftInputAggregator
       );
 
       // ─── Sales (POS-derived; sums actual_sales across cover_facts) ─
-      final actualSales = coverFacts.fold<double>(
-        0,
-        (acc, row) {
-          final raw = row['actual_sales'];
-          if (raw is num) return acc + raw.toDouble();
-          return acc;
-        },
-      );
+      final actualSales = coverFacts.fold<double>(0, (acc, row) {
+        final raw = row['actual_sales'];
+        if (raw is num) return acc + raw.toDouble();
+        return acc;
+      });
 
       // ─── Forecast covers — F&F-derived weekly forecast allocated
       // proportionally; the spine consumes the resolved value as a
@@ -269,6 +287,13 @@ class CanonicalFactToClosedShiftInputAggregator
         weekId: weekId,
         dayLabel: dayLabel,
         daypart: daypart.wire,
+        businessTimingProfileId: businessTimingProfileId,
+        businessTimingProfileVersionId: businessTimingProfileId == null
+            ? null
+            : businessTimingProfileVersionId ?? businessTimingProfileId,
+        servicePeriodKey: businessTimingProfileId == null
+            ? null
+            : periodDefinition.id,
         covers: coversResolution.covers,
         forecastCovers: forecastCovers,
         actualSales: actualSales,
@@ -287,7 +312,12 @@ class CanonicalFactToClosedShiftInputAggregator
         provenance: AggregatorProvenanceContext(
           coversProvenance: coversResolution.provenance,
           laborDollarsProvenance: laborResolution.provenance,
-          priorTargetProfileVersionId: priorTpv,
+          priorTargetProfileVersionId: priorShift?.targetProfileVersionId,
+          hasPriorShiftRecord: priorShift != null,
+          priorBusinessTimingProfileId: priorShift?.businessTimingProfileId,
+          priorBusinessTimingProfileVersionId:
+              priorShift?.businessTimingProfileVersionId,
+          priorServicePeriodKey: priorShift?.servicePeriodKey,
         ),
       );
     });
@@ -297,6 +327,7 @@ class CanonicalFactToClosedShiftInputAggregator
 
   _CoversResolution? _resolveCovers({
     required DataAccuracySettings settings,
+    required DataAccuracyServicePeriodSetting? keyedServicePeriodSetting,
     required DateTime businessDate,
     required Daypart daypart,
     required List<Map<String, Object?>> coverFacts,
@@ -306,7 +337,14 @@ class CanonicalFactToClosedShiftInputAggregator
     required ServicePeriodDefinition periodDefinition,
     required ReservationWalkInOverride? walkInOverride,
   }) {
-    final operatorPreference = settings.coversSourceFor(daypart);
+    // Hardening Wave B1 — prefer the keyed setting; legacy column is
+    // the read-only fallback until every read path migrates and the
+    // legacy column drop ships.
+    final operatorPreference = _resolveOperatorCoversPreference(
+      settings: settings,
+      keyedServicePeriodSetting: keyedServicePeriodSetting,
+      daypart: daypart,
+    );
     final isoBusinessDate = _isoDate(businessDate);
 
     // Stage 1 — operator manual entry (overrides everything when
@@ -326,15 +364,12 @@ class CanonicalFactToClosedShiftInputAggregator
     // Stage 2 — vendor-supplied covers (POS adapter declared
     // coversFieldExposed=true AND vendor fact populated covers).
     if (posVendorId != null) {
-      final summed = coverFacts.fold<int>(
-        0,
-        (acc, row) {
-          final raw = row['covers'];
-          if (raw is int) return acc + raw;
-          if (raw is num) return acc + raw.toInt();
-          return acc;
-        },
-      );
+      final summed = coverFacts.fold<int>(0, (acc, row) {
+        final raw = row['covers'];
+        if (raw is int) return acc + raw;
+        if (raw is num) return acc + raw.toInt();
+        return acc;
+      });
       if (summed > 0) {
         return _CoversResolution(
           covers: summed,
@@ -348,15 +383,12 @@ class CanonicalFactToClosedShiftInputAggregator
     // operator walk-in count). Skips Tock when seated_at absent;
     // bucketing already filtered to slot via reservation_at.
     if (reservationFacts.isNotEmpty && walkInOverride != null) {
-      final seatedSum = reservationFacts.fold<int>(
-        0,
-        (acc, row) {
-          final raw = row['party_size'];
-          if (raw is int) return acc + raw;
-          if (raw is num) return acc + raw.toInt();
-          return acc;
-        },
-      );
+      final seatedSum = reservationFacts.fold<int>(0, (acc, row) {
+        final raw = row['party_size'];
+        if (raw is int) return acc + raw;
+        if (raw is num) return acc + raw.toInt();
+        return acc;
+      });
       final reservationVendorId =
           reservationFacts.first['vendor_id'] as String? ?? '';
       if (seatedSum > 0 && reservationVendorId.isNotEmpty) {
@@ -499,6 +531,45 @@ class CanonicalFactToClosedShiftInputAggregator
     );
   }
 
+  // ─── Operator covers-source preference (keyed-first, legacy fallback) ─
+  //
+  // Hardening Wave B1: when a row exists in
+  // `data_accuracy_service_period_settings` for this service period
+  // at-or-before the closed shift's business date, that row's
+  // `covers_source` wins. Otherwise the legacy hardcoded
+  // `covers_source_lunch` / `_dinner` / `_late_night` column on
+  // `data_accuracy_settings` is read. The legacy columns are
+  // read-only fallback while migration of every read path lands; a
+  // future migration drops them once the keyed table is the sole
+  // source of truth.
+  CoversSource _resolveOperatorCoversPreference({
+    required DataAccuracySettings settings,
+    required DataAccuracyServicePeriodSetting? keyedServicePeriodSetting,
+    required Daypart daypart,
+  }) {
+    if (keyedServicePeriodSetting != null) {
+      switch (keyedServicePeriodSetting.coversSource) {
+        case ServicePeriodCoversSource.vendor:
+          return CoversSource.vendor;
+        case ServicePeriodCoversSource.forecast:
+          return CoversSource.forecast;
+        case ServicePeriodCoversSource.manual:
+          return CoversSource.manual;
+        case ServicePeriodCoversSource.reservationPlusWalkin:
+          // The reservation+walk-in path runs at stage 3 of
+          // `_resolveCovers` whenever reservation_facts are present
+          // and a walk-in override is supplied. The legacy
+          // CoversSource enum has no equivalent value, so we map
+          // back to `vendor` (the default preference) and let the
+          // existing stage 3 logic flow. A future slice will
+          // promote `reservation_plus_walkin` to a first-class
+          // operator preference at stage 3.
+          return CoversSource.vendor;
+      }
+    }
+    return settings.coversSourceFor(daypart);
+  }
+
   // ─── DAS read (inline, same tenant transaction) ────────────────────
 
   Future<DataAccuracySettings> _readDataAccuracySettings(
@@ -542,6 +613,51 @@ class CanonicalFactToClosedShiftInputAggregator
     );
   }
 
+  // ─── Keyed service-period setting (inline, same tenant transaction) ─
+  //
+  // Hardening Wave B1: composing
+  // `DataAccuracyServicePeriodSettingsRepository.readEffectiveAt`
+  // would open a nested tenant transaction and double the SET LOCAL
+  // round-trip; the aggregator inlines a small SELECT against the
+  // same executor for the same reason `_readDataAccuracySettings`
+  // does. Returns null when no row exists for this service period
+  // at-or-before the supplied business date — caller falls back to
+  // the legacy column.
+  Future<DataAccuracyServicePeriodSetting?> _readKeyedServicePeriodSetting(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required DateTime businessDate,
+  }) async {
+    final rows = await exec.query(
+      'select '
+      'id::text as id, '
+      'operator_id::text as operator_id, '
+      'location_id::text as location_id, '
+      'service_period_key, '
+      'covers_source, '
+      'wage_source, '
+      'effective_at_business_date, '
+      'created_at, updated_at, updated_by '
+      'from public.data_accuracy_service_period_settings '
+      'where operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid '
+      'and service_period_key = @service_period_key '
+      'and effective_at_business_date <= @business_date::date '
+      'order by effective_at_business_date desc '
+      'limit 1',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'service_period_key': servicePeriodKey,
+        'business_date': _isoDate(businessDate),
+      },
+    );
+    if (rows.isEmpty) return null;
+    return DataAccuracyServicePeriodSetting.fromRow(rows.single);
+  }
+
   // ─── Location meta ─────────────────────────────────────────────────
 
   Future<_LocationMeta> _readLocationMeta(
@@ -568,8 +684,7 @@ class CanonicalFactToClosedShiftInputAggregator
     final row = rows.single;
     return _LocationMeta(
       timezone: (row['timezone'] as String?) ?? 'UTC',
-      businessDayRolloverHour:
-          (row['business_day_rollover_hour'] as int?) ?? 0,
+      businessDayRolloverHour: (row['business_day_rollover_hour'] as int?) ?? 0,
     );
   }
 
@@ -597,11 +712,13 @@ class CanonicalFactToClosedShiftInputAggregator
       },
     );
     return rows
-        .where((row) => _bucketsToDaypart(
-              instant: row['closed_at'],
-              periodDefinition: periodDefinition,
-              timezone: timezone,
-            ))
+        .where(
+          (row) => _bucketsToDaypart(
+            instant: row['closed_at'],
+            periodDefinition: periodDefinition,
+            timezone: timezone,
+          ),
+        )
         .toList(growable: false);
   }
 
@@ -627,11 +744,13 @@ class CanonicalFactToClosedShiftInputAggregator
       },
     );
     return rows
-        .where((row) => _bucketsToDaypart(
-              instant: row['shift_start'],
-              periodDefinition: periodDefinition,
-              timezone: timezone,
-            ))
+        .where(
+          (row) => _bucketsToDaypart(
+            instant: row['shift_start'],
+            periodDefinition: periodDefinition,
+            timezone: timezone,
+          ),
+        )
         .toList(growable: false);
   }
 
@@ -677,7 +796,7 @@ class CanonicalFactToClosedShiftInputAggregator
         .toList(growable: false);
   }
 
-  Future<String?> _readPriorTargetProfileVersionId(
+  Future<_PriorShiftRecordProvenance?> _readPriorShiftRecordProvenance(
     PostgresExecutor exec, {
     required String operatorId,
     required String locationId,
@@ -685,7 +804,13 @@ class CanonicalFactToClosedShiftInputAggregator
     required String daypart,
   }) async {
     final rows = await exec.query(
-      'select target_profile_version_id from public.shift_records '
+      'select '
+      'target_profile_version_id, '
+      'business_timing_profile_id::text as business_timing_profile_id, '
+      'business_timing_profile_version_id::text '
+      'as business_timing_profile_version_id, '
+      'service_period_key '
+      'from public.shift_records '
       'where operator_id = @operator_id::uuid '
       'and location_id = @location_id::uuid '
       'and business_date = @business_date::date '
@@ -699,9 +824,17 @@ class CanonicalFactToClosedShiftInputAggregator
       },
     );
     if (rows.isEmpty) return null;
-    final raw = rows.single['target_profile_version_id'];
-    if (raw is String && raw.isNotEmpty) return raw;
-    return null;
+    final row = rows.single;
+    return _PriorShiftRecordProvenance(
+      targetProfileVersionId: _nonBlankString(row['target_profile_version_id']),
+      businessTimingProfileId: _nonBlankString(
+        row['business_timing_profile_id'],
+      ),
+      businessTimingProfileVersionId: _nonBlankString(
+        row['business_timing_profile_version_id'],
+      ),
+      servicePeriodKey: _nonBlankString(row['service_period_key']),
+    );
   }
 
   // ─── Daypart bucketing ─────────────────────────────────────────────
@@ -731,18 +864,12 @@ class CanonicalFactToClosedShiftInputAggregator
 
   static ({int hour, int minute}) _parseHHmm(String hhmm) {
     final parts = hhmm.split(':');
-    return (
-      hour: int.parse(parts[0]),
-      minute: int.parse(parts[1]),
-    );
+    return (hour: int.parse(parts[0]), minute: int.parse(parts[1]));
   }
 
   // ─── Hours / dollars summing helpers ───────────────────────────────
 
-  int _sumHours(
-    List<Map<String, Object?>> punches, {
-    required bool isFoh,
-  }) {
+  int _sumHours(List<Map<String, Object?>> punches, {required bool isFoh}) {
     var total = 0.0;
     for (final punch in punches) {
       if (_isFohPunch(punch) != isFoh) continue;
@@ -800,7 +927,8 @@ class CanonicalFactToClosedShiftInputAggregator
       'front-of-house',
     };
     if (fohRoles.contains(role)) return true;
-    if (role.contains('foh') || role.contains('server') ||
+    if (role.contains('foh') ||
+        role.contains('server') ||
         role.contains('host')) {
       return true;
     }
@@ -822,6 +950,11 @@ class CanonicalFactToClosedShiftInputAggregator
     final m = date.month.toString().padLeft(2, '0');
     final d = date.day.toString().padLeft(2, '0');
     return '$y-$m-$d';
+  }
+
+  static String? _nonBlankString(Object? raw) {
+    if (raw is String && raw.isNotEmpty) return raw;
+    return null;
   }
 
   // The aggregator does not currently emit a JSON structural payload;
@@ -868,4 +1001,18 @@ class _LocationMeta {
   });
   final String timezone;
   final int businessDayRolloverHour;
+}
+
+class _PriorShiftRecordProvenance {
+  const _PriorShiftRecordProvenance({
+    required this.targetProfileVersionId,
+    required this.businessTimingProfileId,
+    required this.businessTimingProfileVersionId,
+    required this.servicePeriodKey,
+  });
+
+  final String? targetProfileVersionId;
+  final String? businessTimingProfileId;
+  final String? businessTimingProfileVersionId;
+  final String? servicePeriodKey;
 }

@@ -16,15 +16,15 @@
 // Routes (already shipped by Phase 9 + 11A.1, no new backend
 // surface added by 11W.1):
 //
-//   * GET    /v1/admin/auth/users
-//   * GET    /v1/admin/auth/invites
-//   * POST   /v1/admin/auth/invites
-//   * DELETE /v1/admin/auth/invites/{invite_id}
-//   * POST   /v1/admin/auth/users/{user_id}/suspend
-//   * POST   /v1/admin/auth/users/{user_id}/reactivate
-//   * POST   /v1/admin/auth/users/{user_id}/soft-delete
-//   * POST   /v1/admin/auth/users/{user_id}/reset-password
-//   * POST   /v1/admin/auth/users/{user_id}/reset-mfa
+//   * GET    /v1/auth/team/users
+//   * GET    /v1/auth/team/invites
+//   * POST   /v1/auth/team/invites
+//   * DELETE /v1/auth/team/invites/{invite_id}
+//   * POST   /v1/auth/team/users/{user_id}/suspend
+//   * POST   /v1/auth/team/users/{user_id}/reactivate
+//   * POST   /v1/auth/team/users/{user_id}/soft-delete
+//   * POST   /v1/auth/team/users/{user_id}/reset-password
+//   * POST   /v1/auth/team/users/{user_id}/reset-mfa
 //
 // Idempotency posture: every write carries an `Idempotency-Key`
 // header; the screen layer mints one key per user action and threads
@@ -117,10 +117,10 @@ class WebTeamUsersError implements Exception {
 class WebTeamUsersPaths {
   const WebTeamUsersPaths._();
 
-  static const String invites = '/v1/admin/auth/invites';
-  static const String invitePrefix = '/v1/admin/auth/invites/';
-  static const String users = '/v1/admin/auth/users';
-  static const String userPrefix = '/v1/admin/auth/users/';
+  static const String invites = '/v1/auth/team/invites';
+  static const String invitePrefix = '/v1/auth/team/invites/';
+  static const String users = '/v1/auth/team/users';
+  static const String userPrefix = '/v1/auth/team/users/';
 
   static String userAction(String userId, String action) =>
       '$userPrefix${Uri.encodeComponent(userId)}/$action';
@@ -138,9 +138,9 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
     required Future<String?> Function() idTokenProvider,
     http.Client? httpClient,
     Duration timeout = const Duration(seconds: 30),
-  })  : _idTokenProvider = idTokenProvider,
-        _httpClient = httpClient ?? http.Client(),
-        _timeout = timeout;
+  }) : _idTokenProvider = idTokenProvider,
+       _httpClient = httpClient ?? http.Client(),
+       _timeout = timeout;
 
   final Uri proxyBaseUri;
   final Future<String?> Function() _idTokenProvider;
@@ -149,10 +149,7 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
 
   @override
   Future<TeamUsersListed> listUsers(TeamUserListCommand command) async {
-    final response = await _send(
-      method: 'GET',
-      path: WebTeamUsersPaths.users,
-    );
+    final response = await _send(method: 'GET', path: WebTeamUsersPaths.users);
     _expectStatus(response, 200);
     final rawUsers = response.body['users'];
     if (rawUsers is! List) {
@@ -265,7 +262,10 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
   }) async {
     final response = await _send(
       method: 'POST',
-      path: WebTeamUsersPaths.userAction(command.targetUserId, 'reset-password'),
+      path: WebTeamUsersPaths.userAction(
+        command.targetUserId,
+        'reset-password',
+      ),
       idempotencyKey: idempotencyKey,
       body: const <String, Object?>{},
     );
@@ -353,7 +353,8 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
     } on TimeoutException {
       throw const WebTeamUsersError(
         code: 'transport_timeout',
-        message: 'team-users gateway request timed out before reaching the '
+        message:
+            'team-users gateway request timed out before reaching the '
             'proxy.',
       );
     } catch (error) {
@@ -385,9 +386,9 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
   void _expectStatus(WebTeamUsersResponse response, int expected) {
     if (response.statusCode == expected) return;
     throw WebTeamUsersError(
-      code:
-          _readNonBlankString(response.body['error']) ?? 'team_users_failed',
-      message: _readNonBlankString(response.body['message']) ??
+      code: _readNonBlankString(response.body['error']) ?? 'team_users_failed',
+      message:
+          _readNonBlankString(response.body['message']) ??
           'proxy returned status ${response.statusCode}',
       statusCode: response.statusCode,
     );
@@ -433,13 +434,14 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
       locationId: _readNonBlankString(json['location_id']),
       locationLabel: _readNonBlankString(json['location_label']),
       mfaEnrolled: mfaEnrolled,
-      mfaRemovalPending:
-          json['mfa_removal_pending'] is bool ? json['mfa_removal_pending'] as bool : false,
-      mfaRemovalRequestId:
-          _readNonBlankString(json['mfa_removal_request_id']),
+      mfaRemovalPending: json['mfa_removal_pending'] is bool
+          ? json['mfa_removal_pending'] as bool
+          : false,
+      mfaRemovalRequestId: _readNonBlankString(json['mfa_removal_request_id']),
       userRoleId: _readNonBlankString(json['user_role_id']),
-      lastActiveAt:
-          lastActiveAtRaw == null ? null : DateTime.parse(lastActiveAtRaw).toUtc(),
+      lastActiveAt: lastActiveAtRaw == null
+          ? null
+          : DateTime.parse(lastActiveAtRaw).toUtc(),
     );
   }
 

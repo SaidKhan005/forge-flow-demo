@@ -18,6 +18,8 @@ import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connect
 import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/screens/vendor_connections_screen.dart';
+import 'package:forge_and_flow/operator_web/services/operator_web_proxy_client.dart';
+import 'package:forge_and_flow/operator_web/services/operator_web_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/operator_web/widgets/vendor_lifecycle_notify_me_dialog.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -381,6 +383,35 @@ void main() {
         ]),
       );
     });
+
+    test(
+      'live operator-web catalog keeps documented lifecycle truth',
+      () async {
+        final gateway = OperatorWebHttpVendorConnectionsGateway(
+          proxyClient: OperatorWebProxyClient(
+            baseUri: Uri.parse('https://proxy.example.test'),
+          ),
+          idTokenProvider: () async => 'token',
+        );
+        final pos = await gateway.listAvailableVendors(
+          category: VendorCategory.pos,
+        );
+        final reservations = await gateway.listAvailableVendors(
+          category: VendorCategory.reservation,
+        );
+        final labor = await gateway.listAvailableVendors(
+          category: VendorCategory.labor,
+        );
+
+        expect(pos, hasLength(7));
+        expect(reservations, hasLength(4));
+        expect(labor, hasLength(6));
+        expect(
+          [...pos, ...reservations, ...labor].map((entry) => entry.lifecycle),
+          everyElement(VendorLifecycle.documented),
+        );
+      },
+    );
 
     testWidgets('documented vendors are visible but cannot continue', (
       tester,

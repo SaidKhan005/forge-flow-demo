@@ -73,4 +73,17 @@ class ShiftRecordDao {
       return txn.insert('shift_records', record.toMap()..remove('id'));
     });
   }
+
+  /// Deletes every `shift_records` row whose `restaurant_id` is NOT
+  /// [keepRestaurantId]. Returns the number of rows deleted. Used by
+  /// the mobile operational sync runtime when the active operator or
+  /// location flips on a shared device, so the prior tenant's mirrored
+  /// rows cannot leak through DAO reads that don't filter by scope.
+  Future<int> deleteForOtherRestaurants(String keepRestaurantId) async {
+    return _db.delete(
+      'shift_records',
+      where: 'restaurant_id != ?',
+      whereArgs: [keepRestaurantId],
+    );
+  }
 }

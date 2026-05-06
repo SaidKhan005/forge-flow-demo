@@ -5891,6 +5891,7 @@ const String authMobilePushTokenRegisterPath =
 const String authMobilePushTokenRevokePath =
     '/v1/auth/mobile/push-token/revoke';
 const String authMobilePushTestPath = '/v1/auth/mobile/push/test';
+const String mobileOperatorsPrefix = '/v1/operators/';
 const String adminAuthInvitesPath = '/v1/admin/auth/invites';
 const String adminAuthInvitePrefix = '$adminAuthInvitesPath/';
 const String adminAuthUsersPath = '/v1/admin/auth/users';
@@ -5899,11 +5900,21 @@ const String adminAuthRolesPath = '/v1/admin/auth/roles';
 const String adminAuthRolePrefix = '$adminAuthRolesPath/';
 const String adminAuthRoleGrantsPath = '/v1/admin/auth/role-grants';
 const String adminAuthRoleGrantPrefix = '$adminAuthRoleGrantsPath/';
+const String authTeamInvitesPath = '/v1/auth/team/invites';
+const String authTeamInvitePrefix = '$authTeamInvitesPath/';
+const String authTeamUsersPath = '/v1/auth/team/users';
+const String authTeamUsersPrefix = '/v1/auth/team/users/';
+const String authTeamRolesPath = '/v1/auth/team/roles';
+const String authTeamRolePrefix = '$authTeamRolesPath/';
+const String authTeamRoleGrantsPath = '/v1/auth/team/role-grants';
+const String authTeamRoleGrantPrefix = '$authTeamRoleGrantsPath/';
 // Phase 9.UX.4 — org hierarchy admin routes. Reads gate on
 // `team.users.view`, mutations on `team.roles.assign` (per the
 // hierarchy-touches-grants posture from `phase_9_auth_plan.md`).
 const String adminAuthOrgUnitsPath = '/v1/admin/auth/org-units';
 const String adminAuthLocationsPrefix = '/v1/admin/auth/locations/';
+const String authTeamOrgUnitsPath = '/v1/auth/team/org-units';
+const String authTeamLocationsPrefix = '/v1/auth/team/locations/';
 const String adminServicePrincipalsPath = '/v1/admin/service-principals';
 const String adminServicePrincipalsPrefix = '$adminServicePrincipalsPath/';
 
@@ -6066,6 +6077,72 @@ abstract class PricingTierAdminProxyGateway {
     required String tierKey,
     required String adminReason,
   });
+}
+
+/// Read-only mobile operational sync gateway.
+///
+/// Native operator apps call `/v1/operators/:operatorId/locations/:locationId/*`
+/// with a Firebase bearer token. The route layer verifies that the URL scope
+/// exactly matches the token scope before delegating here; implementations must
+/// still run through tenant-scoped Postgres transactions so RLS remains the
+/// backup defense.
+abstract class MobileOperationalSyncProxyGateway {
+  Future<Map<String, Object?>> fetchShiftRecords({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String? modifiedSince,
+    required int pageSize,
+  });
+
+  Future<Map<String, Object?>> fetchOpenShiftSnapshots({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String? modifiedSince,
+    required int pageSize,
+  });
+
+  Future<Map<String, Object?>> fetchResolvedTimingConfig({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String? businessDate,
+  });
+
+  Future<Map<String, Object?>> fetchDemoModeStates({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  });
+
+  Future<Map<String, Object?>> fetchDataAccuracySettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  });
+
+  Future<Map<String, Object?>> fetchPollingTierAssignment({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  });
+}
+
+class MobileOperationalSyncProxyGatewayException implements Exception {
+  const MobileOperationalSyncProxyGatewayException({
+    required this.statusCode,
+    required this.code,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String code;
+  final String message;
+
+  @override
+  String toString() =>
+      'MobileOperationalSyncProxyGatewayException($statusCode/$code)';
 }
 
 class DataAccuracyAdminGatewayValidationError implements Exception {
@@ -6936,6 +7013,7 @@ Future<void> routeRequest(
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
   MobilePushTokenGateway? mobilePushTokenGateway,
   MobilePushSelfTestGateway? mobilePushSelfTestGateway,
+  MobileOperationalSyncProxyGateway? mobileOperationalSyncGateway,
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
   PricingTierAdminProxyGateway? pricingTierAdminGateway,
   DataAccuracyAdminProxyGateway? dataAccuracyAdminGateway,
@@ -7191,6 +7269,18 @@ Future<void> routeRequest(
               'message': 'tripwire status is unavailable; please retry',
             });
           }
+          return;
+        }
+
+        final mobileOperationalPath = _mobileOperationalPath(path);
+        if (request.method == 'GET' && mobileOperationalPath != null) {
+          await _routeMobileOperationalSync(
+            request: request,
+            response: response,
+            authGuard: authGuard,
+            gateway: mobileOperationalSyncGateway,
+            target: mobileOperationalPath,
+          );
           return;
         }
 
@@ -8541,6 +8631,7 @@ Future<void> routeRequest(
         }
 
         if (_isAdminAuthOperation(path, request.method)) {
+          final authOperationPath = _canonicalAuthOperationPath(path);
           if (authOperationsGateway == null) {
             _writeJson(response, 503, <String, Object?>{
               'error': 'auth_operations_not_configured',
@@ -8578,8 +8669,30 @@ Future<void> routeRequest(
             return;
           }
 
+          // Phase 11A.10 / Hard Promise #7 — every proxy write is
+          // idempotent. Self-service Team write branches (role
+          // create/patch/delete, invite create/revoke, role-grant
+          // create/delete, org-unit create, location move) all
+          // require an `Idempotency-Key` header so a retry collapses
+          // to a single back-end mutation. Reads (`GET`) skip this
+          // check.
+          final authOpsCache =
+              authIdempotencyCache ?? _defaultAuthIdempotencyCache;
+          String? readIdempotencyKeyOrFail() {
+            final key = request.headers.value('Idempotency-Key')?.trim();
+            if (key == null || key.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'missing_idempotency_key',
+                'message': 'Idempotency-Key header is required',
+              });
+              return null;
+            }
+            return key;
+          }
+
           try {
-            if (request.method == 'GET' && path == adminAuthRolesPath) {
+            if (request.method == 'GET' &&
+                authOperationPath == adminAuthRolesPath) {
               if (!await requirePermission('team.roles.view')) return;
               final listed = await authOperationsGateway.listRoles(
                 TeamRoleCatalogListCommand(
@@ -8595,7 +8708,8 @@ Future<void> routeRequest(
               return;
             }
 
-            if (request.method == 'GET' && path == adminAuthUsersPath) {
+            if (request.method == 'GET' &&
+                authOperationPath == adminAuthUsersPath) {
               if (!await requirePermission('team.users.view')) return;
               final listed = await authOperationsGateway.listUsers(
                 TeamUserListCommand(
@@ -8610,7 +8724,8 @@ Future<void> routeRequest(
               return;
             }
 
-            if (request.method == 'POST' && path == adminAuthRolesPath) {
+            if (request.method == 'POST' &&
+                authOperationPath == adminAuthRolesPath) {
               if (!await requirePermission('team.roles.create_custom')) return;
               final roleKey = _nonBlankString(body['role_key']);
               final displayName = _nonBlankString(body['display_name']);
@@ -8621,28 +8736,43 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final created = await authOperationsGateway.createRole(
-                TeamRoleCreateCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  roleKey: roleKey,
-                  displayName: displayName,
-                  description: _stringValue(body['description']) ?? '',
-                  permissions: _rolePermissionUpdates(body['permissions']),
-                  reason: _nonBlankString(body['reason']),
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: adminAuthRolesPath,
+                key: idempotencyKey,
+                compute: () async {
+                  final created = await authOperationsGateway.createRole(
+                    TeamRoleCreateCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      roleKey: roleKey,
+                      displayName: displayName,
+                      description: _stringValue(body['description']) ?? '',
+                      permissions: _rolePermissionUpdates(body['permissions']),
+                      reason: _nonBlankString(body['reason']),
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 201,
+                    body: <String, Object?>{
+                      'role': _teamRoleToJson(created.role),
+                    },
+                  );
+                },
               );
-              _writeJson(response, 201, <String, Object?>{
-                'role': _teamRoleToJson(created.role),
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
             if (request.method == 'PATCH' &&
-                path.startsWith(adminAuthRolePrefix)) {
+                authOperationPath.startsWith(adminAuthRolePrefix)) {
               if (!await requirePermission('team.roles.create_custom')) return;
-              final roleId = _pathSuffix(path, adminAuthRolePrefix);
+              final roleId = _pathSuffix(
+                authOperationPath,
+                adminAuthRolePrefix,
+              );
               if (roleId == null) {
                 _writeJson(response, 404, <String, Object?>{
                   'error': 'not found',
@@ -8651,29 +8781,44 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final patched = await authOperationsGateway.patchRole(
-                TeamRolePatchCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  roleId: roleId,
-                  displayName: _stringValue(body['display_name']),
-                  description: _stringValue(body['description']),
-                  permissions: _rolePermissionUpdates(body['permissions']),
-                  reason: _nonBlankString(body['reason']),
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthRolePrefix$roleId',
+                key: idempotencyKey,
+                compute: () async {
+                  final patched = await authOperationsGateway.patchRole(
+                    TeamRolePatchCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      roleId: roleId,
+                      displayName: _stringValue(body['display_name']),
+                      description: _stringValue(body['description']),
+                      permissions: _rolePermissionUpdates(body['permissions']),
+                      reason: _nonBlankString(body['reason']),
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'role': _teamRoleToJson(patched.role),
+                      'bumped_users': patched.bumpedUsers,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 200, <String, Object?>{
-                'role': _teamRoleToJson(patched.role),
-                'bumped_users': patched.bumpedUsers,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
             if (request.method == 'DELETE' &&
-                path.startsWith(adminAuthRolePrefix)) {
+                authOperationPath.startsWith(adminAuthRolePrefix)) {
               if (!await requirePermission('team.roles.create_custom')) return;
-              final roleId = _pathSuffix(path, adminAuthRolePrefix);
+              final roleId = _pathSuffix(
+                authOperationPath,
+                adminAuthRolePrefix,
+              );
               if (roleId == null) {
                 _writeJson(response, 404, <String, Object?>{
                   'error': 'not found',
@@ -8682,23 +8827,36 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final deleted = await authOperationsGateway.deleteRole(
-                TeamRoleDeleteCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  roleId: roleId,
-                  reason: _nonBlankString(body['reason']),
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: 'DELETE $adminAuthRolePrefix$roleId',
+                key: idempotencyKey,
+                compute: () async {
+                  final deleted = await authOperationsGateway.deleteRole(
+                    TeamRoleDeleteCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      roleId: roleId,
+                      reason: _nonBlankString(body['reason']),
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'deleted': deleted.deleted,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 200, <String, Object?>{
-                'ok': true,
-                'deleted': deleted.deleted,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
-            if (request.method == 'POST' && path == adminAuthInvitesPath) {
+            if (request.method == 'POST' &&
+                authOperationPath == adminAuthInvitesPath) {
               if (!await requirePermission('team.users.invite')) return;
               final email = _nonBlankString(body['email']);
               final roleId = _nonBlankString(body['role_id']);
@@ -8710,27 +8868,42 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final created = await authOperationsGateway.createInvite(
-                TeamInviteCreateCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  email: email,
-                  roleId: roleId,
-                  scopeType: scopeType,
-                  targetLocationId: _nonBlankString(body['location_id']),
-                  targetOrgUnitId: _nonBlankString(body['org_unit_id']),
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: adminAuthInvitesPath,
+                key: idempotencyKey,
+                compute: () async {
+                  final created = await authOperationsGateway.createInvite(
+                    TeamInviteCreateCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      email: email,
+                      roleId: roleId,
+                      scopeType: scopeType,
+                      targetLocationId: _nonBlankString(body['location_id']),
+                      targetOrgUnitId: _nonBlankString(body['org_unit_id']),
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 201,
+                    body: <String, Object?>{
+                      'invite_id': created.inviteId,
+                      'expires_at': created.expiresAt
+                          .toUtc()
+                          .toIso8601String(),
+                      if (created.userId != null) 'user_id': created.userId,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 201, <String, Object?>{
-                'invite_id': created.inviteId,
-                'expires_at': created.expiresAt.toUtc().toIso8601String(),
-                if (created.userId != null) 'user_id': created.userId,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
-            if (request.method == 'GET' && path == adminAuthInvitesPath) {
+            if (request.method == 'GET' &&
+                authOperationPath == adminAuthInvitesPath) {
               if (!await requirePermission('team.users.view')) return;
               final listed = await authOperationsGateway.listInvites(
                 TeamInviteListCommand(
@@ -8746,9 +8919,12 @@ Future<void> routeRequest(
             }
 
             if (request.method == 'DELETE' &&
-                path.startsWith(adminAuthInvitePrefix)) {
+                authOperationPath.startsWith(adminAuthInvitePrefix)) {
               if (!await requirePermission('team.users.invite')) return;
-              final inviteId = _pathSuffix(path, adminAuthInvitePrefix);
+              final inviteId = _pathSuffix(
+                authOperationPath,
+                adminAuthInvitePrefix,
+              );
               if (inviteId == null) {
                 _writeJson(response, 404, <String, Object?>{
                   'error': 'not found',
@@ -8757,24 +8933,36 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final revoked = await authOperationsGateway.revokeInvite(
-                TeamInviteRevokeCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  inviteId: inviteId,
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: 'DELETE $adminAuthInvitePrefix$inviteId',
+                key: idempotencyKey,
+                compute: () async {
+                  final revoked = await authOperationsGateway.revokeInvite(
+                    TeamInviteRevokeCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      inviteId: inviteId,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'revoked': revoked.revoked,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 200, <String, Object?>{
-                'ok': true,
-                'revoked': revoked.revoked,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
             if (request.method == 'POST' &&
-                path.startsWith(adminAuthUsersPrefix)) {
-              final action = _userActionFromPath(path);
+                authOperationPath.startsWith(adminAuthUsersPrefix)) {
+              final action = _userActionFromPath(authOperationPath);
               if (action == null) {
                 _writeJson(response, 404, <String, Object?>{
                   'error': 'not found',
@@ -8801,16 +8989,30 @@ Future<void> routeRequest(
                 return;
               }
               if (!await requirePermission(permissionKey)) return;
+              final userActionRouteKey =
+                  '$adminAuthUsersPrefix${action.userId}/${action.action}';
               if (action.action == 'reset-password') {
-                await authOperationsGateway.requestPasswordReset(
-                  TeamPasswordResetCommand(
-                    actorUserId: scope.userId,
-                    operatorId: scope.operatorId,
-                    locationId: scope.locationId,
-                    targetUserId: action.userId,
-                  ),
+                final idempotencyKey = readIdempotencyKeyOrFail();
+                if (idempotencyKey == null) return;
+                final cached = await authOpsCache.runOrReplay(
+                  route: userActionRouteKey,
+                  key: idempotencyKey,
+                  compute: () async {
+                    await authOperationsGateway.requestPasswordReset(
+                      TeamPasswordResetCommand(
+                        actorUserId: scope.userId,
+                        operatorId: scope.operatorId,
+                        locationId: scope.locationId,
+                        targetUserId: action.userId,
+                      ),
+                    );
+                    return CachedProxyResponse(
+                      statusCode: 200,
+                      body: <String, Object?>{'ok': true},
+                    );
+                  },
                 );
-                _writeJson(response, 200, <String, Object?>{'ok': true});
+                _writeJson(response, cached.statusCode, cached.body);
                 return;
               }
               if (action.action == 'reset-mfa') {
@@ -8828,28 +9030,40 @@ Future<void> routeRequest(
                   requestedAt: clock().toUtc(),
                 );
                 if (!freshEnough) return;
-                final queued = await mfaOperationsGateway.revokeUserFactors(
-                  MfaRevokeUserFactorsCommand(
-                    actorUserId: scope.userId,
-                    operatorId: scope.operatorId,
-                    locationId: scope.locationId,
-                    targetUserId: action.userId,
-                    stepUpProofId: _freshAuthProofId(
-                      scope: scope,
-                      path: path,
-                      requestedAt: clock().toUtc(),
-                    ),
-                  ),
+                final idempotencyKey = readIdempotencyKeyOrFail();
+                if (idempotencyKey == null) return;
+                final cached = await authOpsCache.runOrReplay(
+                  route: userActionRouteKey,
+                  key: idempotencyKey,
+                  compute: () async {
+                    final queued = await mfaOperationsGateway.revokeUserFactors(
+                      MfaRevokeUserFactorsCommand(
+                        actorUserId: scope.userId,
+                        operatorId: scope.operatorId,
+                        locationId: scope.locationId,
+                        targetUserId: action.userId,
+                        stepUpProofId: _freshAuthProofId(
+                          scope: scope,
+                          path: path,
+                          requestedAt: clock().toUtc(),
+                        ),
+                      ),
+                    );
+                    return CachedProxyResponse(
+                      statusCode: 200,
+                      body: <String, Object?>{
+                        'ok': true,
+                        'requested_count': queued.requestedCount,
+                        'request_ids': queued.requestIds,
+                        if (queued.executeAfter != null)
+                          'execute_after': queued.executeAfter!
+                              .toUtc()
+                              .toIso8601String(),
+                      },
+                    );
+                  },
                 );
-                _writeJson(response, 200, <String, Object?>{
-                  'ok': true,
-                  'requested_count': queued.requestedCount,
-                  'request_ids': queued.requestIds,
-                  if (queued.executeAfter != null)
-                    'execute_after': queued.executeAfter!
-                        .toUtc()
-                        .toIso8601String(),
-                });
+                _writeJson(response, cached.statusCode, cached.body);
                 return;
               }
               if (action.action == 'cancel-mfa-removal') {
@@ -8869,48 +9083,75 @@ Future<void> routeRequest(
                   });
                   return;
                 }
-                final completed = await mfaOperationsGateway
-                    .cancelFactorRemoval(
-                      MfaCancelFactorRemovalCommand(
-                        actorUserId: scope.userId,
-                        operatorId: scope.operatorId,
-                        locationId: scope.locationId,
-                        targetUserId: action.userId,
-                        requestId: requestId,
-                      ),
+                final idempotencyKey = readIdempotencyKeyOrFail();
+                if (idempotencyKey == null) return;
+                final cached = await authOpsCache.runOrReplay(
+                  route: userActionRouteKey,
+                  key: idempotencyKey,
+                  compute: () async {
+                    final completed = await mfaOperationsGateway
+                        .cancelFactorRemoval(
+                          MfaCancelFactorRemovalCommand(
+                            actorUserId: scope.userId,
+                            operatorId: scope.operatorId,
+                            locationId: scope.locationId,
+                            targetUserId: action.userId,
+                            requestId: requestId,
+                          ),
+                        );
+                    return CachedProxyResponse(
+                      statusCode: 200,
+                      body: <String, Object?>{
+                        'ok': true,
+                        'cancelled': completed.cancelled,
+                      },
                     );
-                _writeJson(response, 200, <String, Object?>{
-                  'ok': true,
-                  'cancelled': completed.cancelled,
-                });
+                  },
+                );
+                _writeJson(response, cached.statusCode, cached.body);
                 return;
               }
 
-              final command = TeamUserStatusCommand(
-                actorUserId: scope.userId,
-                operatorId: scope.operatorId,
-                locationId: scope.locationId,
-                targetUserId: action.userId,
-                reason: _nonBlankString(body['reason']) ?? action.action,
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: userActionRouteKey,
+                key: idempotencyKey,
+                compute: () async {
+                  final command = TeamUserStatusCommand(
+                    actorUserId: scope.userId,
+                    operatorId: scope.operatorId,
+                    locationId: scope.locationId,
+                    targetUserId: action.userId,
+                    reason: _nonBlankString(body['reason']) ?? action.action,
+                  );
+                  final updated = switch (action.action) {
+                    'suspend' => await authOperationsGateway.suspendUser(
+                      command,
+                    ),
+                    'reactivate' => await authOperationsGateway.reactivateUser(
+                      command,
+                    ),
+                    'soft-delete' => await authOperationsGateway.softDeleteUser(
+                      command,
+                    ),
+                    _ => throw StateError('unreachable action'),
+                  };
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'updated': updated.updated,
+                    },
+                  );
+                },
               );
-              final updated = switch (action.action) {
-                'suspend' => await authOperationsGateway.suspendUser(command),
-                'reactivate' => await authOperationsGateway.reactivateUser(
-                  command,
-                ),
-                'soft-delete' => await authOperationsGateway.softDeleteUser(
-                  command,
-                ),
-                _ => throw StateError('unreachable action'),
-              };
-              _writeJson(response, 200, <String, Object?>{
-                'ok': true,
-                'updated': updated.updated,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
-            if (request.method == 'POST' && path == adminAuthRoleGrantsPath) {
+            if (request.method == 'POST' &&
+                authOperationPath == adminAuthRoleGrantsPath) {
               if (!await requirePermission('team.roles.assign')) return;
               final targetUserId = _nonBlankString(body['user_id']);
               final roleId = _nonBlankString(body['role_id']);
@@ -8922,29 +9163,44 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final created = await authOperationsGateway.createRoleGrant(
-                TeamRoleGrantCreateCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  targetUserId: targetUserId,
-                  roleId: roleId,
-                  scopeType: scopeType,
-                  targetLocationId: _nonBlankString(body['location_id']),
-                  targetOrgUnitId: _nonBlankString(body['org_unit_id']),
-                  reason: _nonBlankString(body['reason']),
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: adminAuthRoleGrantsPath,
+                key: idempotencyKey,
+                compute: () async {
+                  final created = await authOperationsGateway.createRoleGrant(
+                    TeamRoleGrantCreateCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      targetUserId: targetUserId,
+                      roleId: roleId,
+                      scopeType: scopeType,
+                      targetLocationId: _nonBlankString(body['location_id']),
+                      targetOrgUnitId: _nonBlankString(body['org_unit_id']),
+                      reason: _nonBlankString(body['reason']),
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 201,
+                    body: <String, Object?>{
+                      'user_role_id': created.userRoleId,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 201, <String, Object?>{
-                'user_role_id': created.userRoleId,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
             if (request.method == 'DELETE' &&
-                path.startsWith(adminAuthRoleGrantPrefix)) {
+                authOperationPath.startsWith(adminAuthRoleGrantPrefix)) {
               if (!await requirePermission('team.roles.revoke')) return;
-              final userRoleId = _pathSuffix(path, adminAuthRoleGrantPrefix);
+              final userRoleId = _pathSuffix(
+                authOperationPath,
+                adminAuthRoleGrantPrefix,
+              );
               final targetUserId = _nonBlankString(body['user_id']);
               if (userRoleId == null || targetUserId == null) {
                 _writeJson(response, 400, <String, Object?>{
@@ -8954,24 +9210,37 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final revoked = await authOperationsGateway.revokeRoleGrant(
-                TeamRoleGrantRevokeCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  userRoleId: userRoleId,
-                  targetUserId: targetUserId,
-                  reason: _nonBlankString(body['reason']),
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: 'DELETE $adminAuthRoleGrantPrefix$userRoleId',
+                key: idempotencyKey,
+                compute: () async {
+                  final revoked = await authOperationsGateway.revokeRoleGrant(
+                    TeamRoleGrantRevokeCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      userRoleId: userRoleId,
+                      targetUserId: targetUserId,
+                      reason: _nonBlankString(body['reason']),
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'revoked': revoked.revoked,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 200, <String, Object?>{
-                'ok': true,
-                'revoked': revoked.revoked,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
-            if (request.method == 'GET' && path == adminAuthOrgUnitsPath) {
+            if (request.method == 'GET' &&
+                authOperationPath == adminAuthOrgUnitsPath) {
               if (!await requirePermission('team.users.view')) return;
               final listed = await authOperationsGateway.listOrgHierarchy(
                 TeamOrgHierarchyListCommand(
@@ -8991,7 +9260,8 @@ Future<void> routeRequest(
               return;
             }
 
-            if (request.method == 'POST' && path == adminAuthOrgUnitsPath) {
+            if (request.method == 'POST' &&
+                authOperationPath == adminAuthOrgUnitsPath) {
               if (!await requirePermission('team.roles.assign')) return;
               final parentOrgUnitId = _nonBlankString(
                 body['parent_org_unit_id'],
@@ -9010,28 +9280,42 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final created = await authOperationsGateway.createOrgUnit(
-                TeamOrgUnitCreateCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  parentOrgUnitId: parentOrgUnitId,
-                  unitType: unitType,
-                  label: label,
-                  name: name,
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: adminAuthOrgUnitsPath,
+                key: idempotencyKey,
+                compute: () async {
+                  final created = await authOperationsGateway.createOrgUnit(
+                    TeamOrgUnitCreateCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      parentOrgUnitId: parentOrgUnitId,
+                      unitType: unitType,
+                      label: label,
+                      name: name,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 201,
+                    body: <String, Object?>{
+                      'org_unit_id': created.orgUnitId,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 201, <String, Object?>{
-                'org_unit_id': created.orgUnitId,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
             if (request.method == 'PATCH' &&
-                path.startsWith(adminAuthLocationsPrefix) &&
-                path.endsWith('/org-unit')) {
+                authOperationPath.startsWith(adminAuthLocationsPrefix) &&
+                authOperationPath.endsWith('/org-unit')) {
               if (!await requirePermission('team.roles.assign')) return;
-              final targetLocationId = _orgUnitLocationIdFromPath(path);
+              final targetLocationId = _orgUnitLocationIdFromPath(
+                authOperationPath,
+              );
               final parentOrgUnitId = _nonBlankString(
                 body['parent_org_unit_id'],
               );
@@ -9043,19 +9327,33 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final moved = await authOperationsGateway.moveLocationToOrgUnit(
-                TeamLocationOrgUnitMoveCommand(
-                  actorUserId: scope.userId,
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  targetLocationId: targetLocationId,
-                  parentOrgUnitId: parentOrgUnitId,
-                ),
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route:
+                    '$adminAuthLocationsPrefix$targetLocationId/org-unit',
+                key: idempotencyKey,
+                compute: () async {
+                  final moved = await authOperationsGateway
+                      .moveLocationToOrgUnit(
+                        TeamLocationOrgUnitMoveCommand(
+                          actorUserId: scope.userId,
+                          operatorId: scope.operatorId,
+                          locationId: scope.locationId,
+                          targetLocationId: targetLocationId,
+                          parentOrgUnitId: parentOrgUnitId,
+                        ),
+                      );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'moved': moved.moved,
+                    },
+                  );
+                },
               );
-              _writeJson(response, 200, <String, Object?>{
-                'ok': true,
-                'moved': moved.moved,
-              });
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
           } on MfaOperationRejected catch (error) {
@@ -12698,6 +12996,169 @@ Future<ProxyJwtClaims?> _resolveVerifiedClaimsOrWrite(
   }
 }
 
+Future<void> _routeMobileOperationalSync({
+  required HttpRequest request,
+  required HttpResponse response,
+  required ProxyRequestGuard authGuard,
+  required MobileOperationalSyncProxyGateway? gateway,
+  required _MobileOperationalPath target,
+}) async {
+  if (gateway == null) {
+    _writeJson(response, 503, <String, Object?>{
+      'error': 'mobile_operational_sync_not_configured',
+      'message':
+          'route requires a MobileOperationalSyncProxyGateway to be installed',
+    });
+    return;
+  }
+
+  final scope = await _resolveOperatorContextOrWrite(
+    request,
+    response,
+    authGuard,
+  );
+  if (scope == null) return;
+
+  if (scope.operatorId != target.operatorId ||
+      scope.locationId != target.locationId) {
+    _writeJson(response, 403, <String, Object?>{
+      'error': 'permission_denied',
+      'message': 'requested mobile sync scope does not match caller scope',
+    });
+    return;
+  }
+
+  final params = request.uri.queryParameters;
+  final pageSize = _mobileSyncPageSizeOrWrite(response, params['page_size']);
+  if (pageSize == null) return;
+  final modifiedSince =
+      _nonBlankString(params['modified_since']) ??
+      _nonBlankString(params['cursor']);
+  if (!_mobileSyncCursorValidOrWrite(response, modifiedSince)) return;
+
+  try {
+    final payload = switch (target.resource) {
+      'shift_records' => await gateway.fetchShiftRecords(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+        modifiedSince: modifiedSince,
+        pageSize: pageSize,
+      ),
+      'open_shift_snapshots' => await gateway.fetchOpenShiftSnapshots(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+        modifiedSince: modifiedSince,
+        pageSize: pageSize,
+      ),
+      'timing/resolved' => await gateway.fetchResolvedTimingConfig(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+        businessDate: _nonBlankString(params['business_date']),
+      ),
+      'demo_mode_states' => await gateway.fetchDemoModeStates(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+      ),
+      'data_accuracy_settings' => await gateway.fetchDataAccuracySettings(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+      ),
+      'polling_tier_assignment' => await gateway.fetchPollingTierAssignment(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+      ),
+      _ => throw const MobileOperationalSyncProxyGatewayException(
+        statusCode: 404,
+        code: 'mobile_sync_route_not_found',
+        message: 'mobile sync route not found',
+      ),
+    };
+    _writeJson(response, 200, payload);
+  } on MobileOperationalSyncProxyGatewayException catch (error) {
+    _writeJson(response, error.statusCode, <String, Object?>{
+      'error': error.code,
+      'message': error.message,
+    });
+  } catch (error, stackTrace) {
+    if (_maybeWriteDependencyTimeout(response, error)) return;
+    _logProxyUnhandled(
+      surface: 'mobile_operational_sync',
+      method: request.method,
+      path: request.uri.path,
+      error: error,
+      stackTrace: stackTrace,
+    );
+    _writeJson(response, 503, <String, Object?>{
+      'error': 'mobile_operational_sync_unavailable',
+      'message': 'mobile operational sync is unavailable; please retry',
+    });
+  }
+}
+
+int? _mobileSyncPageSizeOrWrite(HttpResponse response, String? raw) {
+  if (raw == null || raw.trim().isEmpty) return 200;
+  final parsed = int.tryParse(raw);
+  if (parsed == null || parsed <= 0 || parsed > 500) {
+    _writeJson(response, 400, <String, Object?>{
+      'error': 'invalid_page_size',
+      'message': 'page_size must be a positive integer no greater than 500',
+    });
+    return null;
+  }
+  return parsed;
+}
+
+bool _mobileSyncCursorValidOrWrite(HttpResponse response, String? cursor) {
+  if (cursor == null) return true;
+  if (DateTime.tryParse(cursor) != null) return true;
+  _writeJson(response, 400, <String, Object?>{
+    'error': 'invalid_modified_since',
+    'message': 'modified_since must be an ISO-8601 timestamp',
+  });
+  return false;
+}
+
+_MobileOperationalPath? _mobileOperationalPath(String path) {
+  if (!path.startsWith(mobileOperatorsPrefix)) return null;
+  final tail = path.substring(mobileOperatorsPrefix.length);
+  final parts = tail.split('/');
+  if (parts.length < 4 || parts[1] != 'locations') return null;
+  final resource = parts.sublist(3).join('/');
+  if (resource.isEmpty) return null;
+  switch (resource) {
+    case 'shift_records':
+    case 'open_shift_snapshots':
+    case 'timing/resolved':
+    case 'demo_mode_states':
+    case 'data_accuracy_settings':
+    case 'polling_tier_assignment':
+      return _MobileOperationalPath(
+        operatorId: Uri.decodeComponent(parts[0]),
+        locationId: Uri.decodeComponent(parts[2]),
+        resource: resource,
+      );
+  }
+  return null;
+}
+
+class _MobileOperationalPath {
+  const _MobileOperationalPath({
+    required this.operatorId,
+    required this.locationId,
+    required this.resource,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String resource;
+}
+
 Future<OperatorContext?> _resolveOperatorContextOrWrite(
   HttpRequest request,
   HttpResponse response,
@@ -12792,29 +13253,81 @@ String _freshAuthProofId({
 }
 
 bool _isAdminAuthOperation(String path, String method) {
-  if (method == 'GET' && path == adminAuthRolesPath) return true;
-  if (method == 'POST' && path == adminAuthRolesPath) return true;
-  if (method == 'PATCH' && path.startsWith(adminAuthRolePrefix)) return true;
-  if (method == 'DELETE' && path.startsWith(adminAuthRolePrefix)) return true;
-  if (method == 'GET' && path == adminAuthUsersPath) return true;
-  if (method == 'GET' && path == adminAuthInvitesPath) return true;
-  if (method == 'POST' && path == adminAuthInvitesPath) return true;
-  if (method == 'DELETE' && path.startsWith(adminAuthInvitePrefix)) {
+  final authOperationPath = _canonicalAuthOperationPath(path);
+  if (method == 'GET' && authOperationPath == adminAuthRolesPath) {
     return true;
   }
-  if (method == 'POST' && path.startsWith(adminAuthUsersPrefix)) return true;
-  if (method == 'POST' && path == adminAuthRoleGrantsPath) return true;
-  if (method == 'DELETE' && path.startsWith(adminAuthRoleGrantPrefix)) {
+  if (method == 'POST' && authOperationPath == adminAuthRolesPath) {
     return true;
   }
-  if (method == 'GET' && path == adminAuthOrgUnitsPath) return true;
-  if (method == 'POST' && path == adminAuthOrgUnitsPath) return true;
+  if (method == 'PATCH' && authOperationPath.startsWith(adminAuthRolePrefix)) {
+    return true;
+  }
+  if (method == 'DELETE' && authOperationPath.startsWith(adminAuthRolePrefix)) {
+    return true;
+  }
+  if (method == 'GET' && authOperationPath == adminAuthUsersPath) {
+    return true;
+  }
+  if (method == 'GET' && authOperationPath == adminAuthInvitesPath) {
+    return true;
+  }
+  if (method == 'POST' && authOperationPath == adminAuthInvitesPath) {
+    return true;
+  }
+  if (method == 'DELETE' &&
+      authOperationPath.startsWith(adminAuthInvitePrefix)) {
+    return true;
+  }
+  if (method == 'POST' && authOperationPath.startsWith(adminAuthUsersPrefix)) {
+    return true;
+  }
+  if (method == 'POST' && authOperationPath == adminAuthRoleGrantsPath) {
+    return true;
+  }
+  if (method == 'DELETE' &&
+      authOperationPath.startsWith(adminAuthRoleGrantPrefix)) {
+    return true;
+  }
+  if (method == 'GET' && authOperationPath == adminAuthOrgUnitsPath) {
+    return true;
+  }
+  if (method == 'POST' && authOperationPath == adminAuthOrgUnitsPath) {
+    return true;
+  }
   if (method == 'PATCH' &&
-      path.startsWith(adminAuthLocationsPrefix) &&
-      path.endsWith('/org-unit')) {
+      authOperationPath.startsWith(adminAuthLocationsPrefix) &&
+      authOperationPath.endsWith('/org-unit')) {
     return true;
   }
   return false;
+}
+
+String _canonicalAuthOperationPath(String path) {
+  if (path == authTeamRolesPath) return adminAuthRolesPath;
+  if (path.startsWith(authTeamRolePrefix)) {
+    return '$adminAuthRolePrefix${path.substring(authTeamRolePrefix.length)}';
+  }
+  if (path == authTeamRoleGrantsPath) return adminAuthRoleGrantsPath;
+  if (path.startsWith(authTeamRoleGrantPrefix)) {
+    return '$adminAuthRoleGrantPrefix'
+        '${path.substring(authTeamRoleGrantPrefix.length)}';
+  }
+  if (path == authTeamUsersPath) return adminAuthUsersPath;
+  if (path.startsWith(authTeamUsersPrefix)) {
+    return '$adminAuthUsersPrefix${path.substring(authTeamUsersPrefix.length)}';
+  }
+  if (path == authTeamInvitesPath) return adminAuthInvitesPath;
+  if (path.startsWith(authTeamInvitePrefix)) {
+    return '$adminAuthInvitePrefix'
+        '${path.substring(authTeamInvitePrefix.length)}';
+  }
+  if (path == authTeamOrgUnitsPath) return adminAuthOrgUnitsPath;
+  if (path.startsWith(authTeamLocationsPrefix)) {
+    return '$adminAuthLocationsPrefix'
+        '${path.substring(authTeamLocationsPrefix.length)}';
+  }
+  return path;
 }
 
 String? _orgUnitLocationIdFromPath(String path) {
@@ -13374,7 +13887,13 @@ const List<String> kAdminFeatureFlagsCorsMethods = <String>[
 const List<String> kAdminDebugConsoleCorsMethods = <String>['GET', 'OPTIONS'];
 const List<String> kAdminObservabilityCorsMethods = <String>['GET', 'OPTIONS'];
 const List<String> kAdminHealthCorsMethods = <String>['GET', 'OPTIONS'];
-const List<String> kAuthCorsMethods = <String>['GET', 'POST', 'OPTIONS'];
+const List<String> kAuthCorsMethods = <String>[
+  'GET',
+  'POST',
+  'PATCH',
+  'DELETE',
+  'OPTIONS',
+];
 
 /// HARD-C — sole origin-decision site for admin CORS.
 ///

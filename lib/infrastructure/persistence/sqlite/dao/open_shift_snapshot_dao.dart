@@ -92,4 +92,18 @@ class OpenShiftSnapshotDao {
       }
     });
   }
+
+  /// Deletes every `open_shift_snapshots` row whose `restaurant_id` is
+  /// NOT [keepRestaurantId]. Returns the number of rows deleted. Used
+  /// by the mobile operational sync runtime when the active operator
+  /// or location flips on a shared device, so the prior tenant's
+  /// mirrored snapshots cannot leak through DAO reads that don't
+  /// filter by scope.
+  Future<int> deleteForOtherRestaurants(String keepRestaurantId) async {
+    return _db.delete(
+      'open_shift_snapshots',
+      where: 'restaurant_id != ?',
+      whereArgs: [keepRestaurantId],
+    );
+  }
 }
