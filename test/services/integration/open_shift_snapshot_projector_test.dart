@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/canonical_day_order.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/services/integration/open_shift_snapshot_projector.dart';
 
@@ -280,6 +281,229 @@ void main() {
         writer.byScopeAndKey('service_period', 'dinner')!.currentCovers,
         2,
       );
+    });
+
+    // M2 regression — barback is BOH, bartender is FOH.
+    //
+    // The pre-fix heuristic used a naive `role.contains('bar')` substring
+    // check, which silently flipped barback punches into the FOH bucket
+    // and inflated CPLH while starving SPLH. Operators consistently
+    // classify barback as BOH; bartender stays FOH.
+    test('barback role is BOH, bartender is FOH', () async {
+      final writer = _InMemorySnapshotWriter();
+      final projector = _projector(writer);
+
+      await projector.projectFacts(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        facts: <OpenShiftCanonicalFact>[
+          _posFact(id: 'check-1', hour: 18, covers: 12, sales: 600),
+          _laborFact(
+            id: 'bartender-punch',
+            hour: 17,
+            endedHour: 21,
+            roleName: 'bartender',
+          ),
+          _laborFact(
+            id: 'barback-punch',
+            hour: 17,
+            endedHour: 21,
+            roleName: 'barback',
+          ),
+        ],
+      );
+
+      final dinner = writer.byScopeAndKey('service_period', 'dinner')!;
+      // Bartender (4h) → FOH; barback (4h) → BOH.
+      expect(dinner.scheduledFohHours, 4);
+      expect(dinner.scheduledBohHours, 4);
+      expect(dinner.currentCplh, closeTo(3, 0.001));
+      expect(dinner.currentSplh, closeTo(150, 0.001));
+    });
+
+    test('compound bar-back tokens stay BOH', () async {
+      final writer = _InMemorySnapshotWriter();
+      final projector = _projector(writer);
+
+      await projector.projectFacts(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        facts: <OpenShiftCanonicalFact>[
+          _posFact(id: 'check-1', hour: 18, covers: 8, sales: 320),
+          _laborFact(
+            id: 'punch-bar-back',
+            hour: 17,
+            endedHour: 21,
+            roleName: 'Bar Back',
+          ),
+          _laborFact(
+            id: 'punch-bar-back-hyphen',
+            hour: 17,
+            endedHour: 21,
+            roleName: 'bar-back',
+          ),
+        ],
+      );
+
+      final dinner = writer.byScopeAndKey('service_period', 'dinner')!;
+      expect(dinner.scheduledFohHours, 0);
+      expect(dinner.scheduledBohHours, 8);
+    });
+
+    test('FOH allowlist tokens (server/host/runner/busser/foh) classify FOH',
+        () async {
+      final writer = _InMemorySnapshotWriter();
+      final projector = _projector(writer);
+
+      await projector.projectFacts(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        facts: <OpenShiftCanonicalFact>[
+          _posFact(id: 'check-1', hour: 18, covers: 6, sales: 240),
+          _laborFact(
+            id: 'punch-server',
+            hour: 17,
+            endedHour: 18,
+            roleName: 'server',
+          ),
+          _laborFact(
+            id: 'punch-host',
+            hour: 17,
+            endedHour: 18,
+            roleName: 'hostess',
+          ),
+          _laborFact(
+            id: 'punch-runner',
+            hour: 17,
+            endedHour: 18,
+            roleName: 'food runner',
+          ),
+          _laborFact(
+            id: 'punch-busser',
+            hour: 17,
+            endedHour: 18,
+            roleName: 'busser',
+          ),
+          _laborFact(
+            id: 'punch-foh',
+            hour: 17,
+            endedHour: 18,
+            roleName: 'FOH',
+          ),
+        ],
+      );
+
+      final dinner = writer.byScopeAndKey('service_period', 'dinner')!;
+      // 5 punches × 1h each → 5h FOH, 0h BOH.
+      expect(dinner.scheduledFohHours, 5);
+      expect(dinner.scheduledBohHours, 0);
+    });
+  });
+
+  // L1 regression — reservation/booking tokens are matched BEFORE the
+  // POS catch-all (cover/pos/check/order), so a compound key like
+  // `cover_facts_reservation_overlay` routes to reservation.
+  group('OpenShiftCanonicalFactKind.fromValue', () {
+    test('reservation token wins over cover token by first-match', () {
+      expect(
+        OpenShiftCanonicalFactKind.fromValue('cover_facts_reservation_overlay'),
+        OpenShiftCanonicalFactKind.reservation,
+      );
+      expect(
+        OpenShiftCanonicalFactKind.fromValue('check_facts_booking_overlay'),
+        OpenShiftCanonicalFactKind.reservation,
+      );
+    });
+
+    test('plain reservation / booking values still resolve', () {
+      expect(
+        OpenShiftCanonicalFactKind.fromValue('reservation_fact'),
+        OpenShiftCanonicalFactKind.reservation,
+      );
+      expect(
+        OpenShiftCanonicalFactKind.fromValue('booking'),
+        OpenShiftCanonicalFactKind.reservation,
+      );
+    });
+
+    test('labor tokens beat POS tokens too', () {
+      expect(
+        OpenShiftCanonicalFactKind.fromValue('check_facts_labor_overlay'),
+        OpenShiftCanonicalFactKind.labor,
+      );
+      expect(
+        OpenShiftCanonicalFactKind.fromValue('punch_fact'),
+        OpenShiftCanonicalFactKind.labor,
+      );
+    });
+
+    test('plain pos / cover / check / order values still resolve to pos', () {
+      expect(
+        OpenShiftCanonicalFactKind.fromValue('cover_fact'),
+        OpenShiftCanonicalFactKind.pos,
+      );
+      expect(
+        OpenShiftCanonicalFactKind.fromValue('pos_fact'),
+        OpenShiftCanonicalFactKind.pos,
+      );
+      expect(
+        OpenShiftCanonicalFactKind.fromValue('check_fact'),
+        OpenShiftCanonicalFactKind.pos,
+      );
+      expect(
+        OpenShiftCanonicalFactKind.fromValue('order_fact'),
+        OpenShiftCanonicalFactKind.pos,
+      );
+    });
+
+    test('unknown values still throw', () {
+      expect(
+        () => OpenShiftCanonicalFactKind.fromValue('weather_event'),
+        throwsArgumentError,
+      );
+    });
+  });
+
+  // L2 regression — the projector's day-label index assumes labels[0]
+  // is Monday and that DateTime.weekday is ISO (1=Mon..7=Sun). If the
+  // canonical order ever changes, this test fails before the silent
+  // misalignment can ship.
+  group('CanonicalDayOrder alignment', () {
+    test('labels[0] is Monday so weekday-1 indexing is safe', () {
+      expect(CanonicalDayOrder.labels.first, 'Mon');
+      expect(CanonicalDayOrder.labels.last, 'Sun');
+      expect(CanonicalDayOrder.labels.length, 7);
+      // 2026-05-04 is a Monday → DateTime.weekday == 1.
+      expect(DateTime.parse('2026-05-04').weekday, DateTime.monday);
+      expect(
+        CanonicalDayOrder.labels[DateTime.parse('2026-05-04').weekday - 1],
+        'Mon',
+      );
+      // 2026-05-10 is a Sunday → DateTime.weekday == 7.
+      expect(DateTime.parse('2026-05-10').weekday, DateTime.sunday);
+      expect(
+        CanonicalDayOrder.labels[DateTime.parse('2026-05-10').weekday - 1],
+        'Sun',
+      );
+    });
+
+    test('projected snapshot day_label matches business date weekday',
+        () async {
+      final writer = _InMemorySnapshotWriter();
+      final projector = _projector(writer);
+
+      // 2026-05-06 is a Wednesday.
+      await projector.projectFacts(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        facts: <OpenShiftCanonicalFact>[
+          _posFact(id: 'check-1', hour: 18, covers: 4, sales: 168),
+        ],
+      );
+
+      final dinner = writer.byScopeAndKey('service_period', 'dinner')!;
+      expect(dinner.businessDate, '2026-05-06');
+      expect(dinner.dayLabel, 'Wed');
     });
   });
 }
