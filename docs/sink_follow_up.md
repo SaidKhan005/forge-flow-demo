@@ -277,3 +277,34 @@ Three open items left after the sink + test landed on
    Same bespoke + unified surface widening, same idempotency partial
    UNIQUE, same demo-flip auto-evaluator. Schedule directly after RV
    merges.
+
+---
+
+# Sink Follow-Up — `8.spine-bridge-sink-fanout.ADP` (ADP Workforce Now / Workforce Manager)
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-ADP`:
+
+1. **CI verification of the sink suite.** The worktree environment has
+   no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `adp_postgres_sink_test.dart` suite (Tests A–H), and the
+   `adp_labor_adapter_test.dart` regression were not run locally. CI
+   (subosito/flutter-action) must run all three before merge; any
+   failures are bounded fixes inside the two new files.
+
+2. **Adapter-side hours_worked propagation.** The sink derives
+   `hours_worked = (shift_end - shift_start)` and falls back to `0`
+   for open punches, but `AdpLaborAdapter._canonicalize` does not
+   yet emit an explicit `hours_worked` field on
+   `AdpCanonicalTimePunchFact`. `8.S.ADP.live.sandbox` should add
+   the field once the live ADP payload confirms whether ADP exposes
+   a precomputed duration anywhere on `time_event`; until then the
+   sink's derivation is the single source.
+
+3. **Wage-dollar lane (post-V1).** V1 wage class is `hoursOnly`; the
+   sink leaves the wage-dollar columns NULL and the per-file
+   banned-grep enforces it. A post-V1 slice
+   (`8.S.ADP.wage_dollars`) must lift the banned-grep tokens, widen
+   the column list, and decide whether ADP wage rates flow through
+   the adapter (rate × duration) or directly via a payroll-side
+   join. Schedule only after the V1 launch ledger clears.
