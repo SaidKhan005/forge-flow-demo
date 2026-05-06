@@ -108,8 +108,17 @@ apply.
 Phase 8 timing provenance also adds
 `202605061700_phase_8_timing_provenance_shift_records.sql`; it is not an 11A
 surface, but it moves the shared Production1 follow-up cutoff watched by this
-plan. The current Production1 follow-up cutoff is therefore
-`202605061700_phase_8_timing_provenance_shift_records.sql`.
+plan. Hardening Wave B1 also queues
+`202605061701_phase_8_data_accuracy_service_period_settings.sql`, an additive
+keyed Data Accuracy child table per
+`(operator_id, location_id, service_period_key, effective_at_business_date)`
+that replaces the hardcoded `covers_source_lunch`/`_dinner`/`_late_night`
+columns; it is not an 11A surface either, but it moves the shared cutoff
+again. Originally added under the `202605061700_…` basename (commit
+`4655b484`); renumbered on 2026-05-06 to break the same-second prefix
+collision with the audit-anchor + timing-provenance migrations. The current
+Production1 follow-up cutoff is therefore
+`202605061701_phase_8_data_accuracy_service_period_settings.sql`.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin

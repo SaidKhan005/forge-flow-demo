@@ -1,6 +1,6 @@
 # Post-Hardening Follow-ups
 
-Updated: 2026-05-06.
+Updated: 2026-05-06 (B1 data-accuracy migration renumbered to `…1701_…` to break same-second prefix collision).
 Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`. Staging remediation evidence in `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`.
 
 ## P0 - Production1 Migration Apply Gap
@@ -18,7 +18,7 @@ Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FO
 | `202605061600_phase_11W_5_team_audit_log_export_key.sql` | 11W.5 `team.audit_log.export` key + grants | code-ready |
 | `202605061700_hardening_audit_anchor_daily_schedule.sql` | Hardening Wave B3 daily pg_cron tick `forge_audit_anchor_daily` at 02:00 UTC (NOTIFY-only kickoff; punchlist §5) | code-ready |
 | `202605061700_phase_8_timing_provenance_shift_records.sql` | Phase 8 timing provenance keys for closed/live shift rows | code-ready |
-| `202605061700_phase_8_data_accuracy_service_period_settings.sql` ⚠️ shares `202605061700_*` prefix — pending B1 timestamp rename to `202605061701_*` per audit | Wave B1 keyed Data Accuracy service-period settings (PR #184, `4655b484`) | code-ready; rename pending |
+| `202605061701_phase_8_data_accuracy_service_period_settings.sql` | Hardening Wave B1 keyed Data Accuracy child table per `(operator_id, location_id, service_period_key, effective_at_business_date)` (replaces hardcoded `covers_source_lunch`/`_dinner`/`_late_night` columns; legacy columns kept as read-only fallback). Renumbered 2026-05-06 from `202605061700_…` to break same-second prefix collision. | code-ready |
 
 **Action:** apply all 10 in next Production1 event per `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied + verified, the corresponding feature is **staging-ready only**.
 
@@ -98,19 +98,21 @@ remain:
   first divergent INSERT fails. Refs:
   `db/migrations/202605061700_phase_8_timing_provenance_shift_records.sql:51-66,
   113-129`.
-- **Three migrations now share the `202605061700_` timestamp prefix.**
-  `..._hardening_audit_anchor_daily_schedule.sql`,
+- **Same-second prefix collision resolved 2026-05-06.** Three migrations
+  briefly shared the `202605061700_` timestamp slot
+  (`..._hardening_audit_anchor_daily_schedule.sql`,
   `..._phase_8_data_accuracy_service_period_settings.sql`, and
-  `..._phase_8_timing_provenance_shift_records.sql` all landed in the
-  same timestamp slot (the data-accuracy one was added by `4655b484`
-  after the original two). The cutoff lint accepts them because it
-  sorts by full basename, but operationally one migration per
-  timestamp keeps deploy ordering deterministic. Renumber the
-  audit-anchor + data-accuracy entries on the next batch — the
-  timing-provenance basename is referenced from
+  `..._phase_8_timing_provenance_shift_records.sql`). The data-accuracy
+  entry (most recent — added by `4655b484`, none of the three applied to
+  staging or production yet) was renumbered to
+  `202605061701_phase_8_data_accuracy_service_period_settings.sql` to
+  restore deterministic deploy ordering across environments. The
+  audit-anchor + timing-provenance basenames stay at `…1700_…` because
+  the timing-provenance basename is referenced from
   `scripts/postgres_staging_setup.ps1` and
-  `docs/_walkthroughs/8.timing-provenance-closed.md` and is therefore
-  the most expensive one to rename.
+  `docs/_walkthroughs/8.timing-provenance-closed.md`, and the
+  audit-anchor basename is referenced from
+  `test/infrastructure/persistence/postgres/audit_anchor_cron_schedule_test.dart`.
 
 ## P2 - Test Coverage Gaps Remaining
 
