@@ -166,7 +166,9 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
       after sink fanout + business timing schema. Builds
       `OpenShiftSnapshotProjector` -> `open_shift_snapshots` -> proxy pull ->
       mobile SQLite. Do not fold into closed sink fanout or claim live vendor
-      Shift until this lane passes review-device proof.
+      Shift until this lane passes review-device proof. Live facts must bucket
+      into configured service periods first; Whole Day rolls up from those
+      buckets, not the other way around.
 - [ ] **Phase 11A.12 / .13 / .14 — cross-operator parity** (Members /
       Hierarchy / audited support actions). Un-deferred 2026-05-05; queues
       after Phase 7 + Phase 10 close, lockstep with `11W.1`–`11W.6` web
@@ -207,6 +209,13 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
       tables.** Required before live `OpenShiftSnapshotProjector` relies on
       timestamp bucketing at scale; keep lower priority for closed proof only,
       but promote to a live-lane prerequisite.
+- [ ] **Timing provenance on closed records.** Closed `shift_records` need the
+      timing profile/version id and stable `service_period_key` used at bucket
+      time before configurable labels/overrides ship widely.
+- [ ] **Data Accuracy keyed service-period settings.** Replace hardcoded
+      lunch/dinner/late covers-source columns with
+      `data_accuracy_service_period_settings` before fourth/custom periods
+      are operator-configurable.
 
 ### From the tech-debt audit
 

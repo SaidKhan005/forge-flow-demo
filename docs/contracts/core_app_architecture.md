@@ -1,7 +1,7 @@
 # Core App Architecture
 
 Status: **Active authority** (Tier-2 contract)
-Updated: 2026-05-04
+Updated: 2026-05-06
 Owner: Codex architecture
 Authority position:
 
@@ -76,7 +76,7 @@ flowchart LR
         direction TB
         SH([Shift]):::live
         FS([Full Shift<br/>whole-day]):::live
-        DP([Day Part<br/>lunch · dinner · late]):::future
+        DP([Service Periods<br/>1-4 configured]):::future
         VAR([Variance]):::live
         SH --> FS
         SH --> DP
@@ -179,7 +179,10 @@ Three things lock and stay locked:
 
 - **Already closed shifts** stay graded under the cycle that was active
   when they closed. A new TargetCycle in force next month does not
-  re-grade last month's history.
+  re-grade last month's history. Closed rows also preserve the timing
+  profile/version id and stable service_period_key used for bucket-time
+  classification; later timing edits, labels, or overrides do not silently
+  rewrite historical buckets.
 - **WeeklyPlanSnapshot** locks for one business week. Once locked, it
   does not regenerate midweek even if the forecast plan changes.
 - **Cycle/week provenance** stays attached to closed facts forever.
@@ -214,6 +217,13 @@ Every metric carries `state` ∈ {`live`, `partial`, `fallback`,
 switches on state. `unavailable` triggers `MetricCardNotYetAvailable`;
 all other states render the number; the dashboard health pill summarizes
 non-live states.
+
+Live service-period rows are not UI slices of an already-rounded whole-day
+row. Live canonical POS/labor/reservation facts must be bucketed into the
+effective configured service periods first, including interval splitting for
+labor punches; Whole Day is then a rollup from those buckets. Future or
+unavailable service periods render honest projected/unavailable states rather
+than borrowing a closed or whole-day driver.
 
 ---
 
@@ -342,8 +352,9 @@ the cycle in force when that week was generated.
 
 ### Layer 9 — Shift
 
-Live operational surface. Default view is whole-day. Phase 10.5 added an
-additive daypart view alongside (not replacing) whole-day.
+Live operational surface. Default view is Whole Day. Configured service-period
+views sit alongside it and use the same card grammar; Whole Day rolls up from
+service-period buckets.
 
 - Shift can use live open snapshot context
 - Shift truth is live operational fact, not closed historical truth
@@ -542,8 +553,9 @@ These rules are non-negotiable:
 Source systems provide operational facts; the app normalizes them into one
 canonical truth shape, locks standards on a 60-day cycle, locks plan on a
 weekly snapshot, computes its own demand forecast from closed history,
-exposes operator-controlled accuracy overrides for covers / wage / polling
-cadence, compares live and closed truth honestly, preserves historical
+exposes operator-controlled accuracy overrides for covers / wage plus
+F&F-controlled polling tier assignment, compares live and closed truth
+honestly, preserves historical
 provenance, and teaches only from closed evidence — without ever letting a
 new cycle, a new forecast, a vendor correction, or a UI widget rewrite
 locked reality.
@@ -569,7 +581,7 @@ locked reality.
   rules (Wave B)
 - `docs/contracts/per_vendor_doc_pack_contract.md` — per-vendor doc folder
 - `docs/contracts/data_accuracy_settings_contract.md` — operator-
-  controlled accuracy overrides (covers / wage / polling cadence)
+  controlled covers/wage overrides plus F&F-controlled polling tiers
 - `docs/contracts/hardening_rls_and_repository_pattern_contract.md` —
   RLS + OperatorScopedRepository pattern
 - `docs/archive/reference/architecture_pipeline.md` — flowchart source

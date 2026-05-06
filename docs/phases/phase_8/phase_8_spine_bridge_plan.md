@@ -8,7 +8,7 @@ Authority (read in this order):
 
 1. `docs/contracts/core_app_architecture.md` — Layer 1–12 binding rules
 2. `docs/contracts/integration_spine_architecture_contract.md` — sprint binding
-3. `docs/contracts/data_accuracy_settings_contract.md` — operator-controlled accuracy seams
+3. `docs/contracts/data_accuracy_settings_contract.md` — covers/wage accuracy seams + F&F polling tiers
 4. `docs/contracts/metric_card_honesty_contract.md` — metric state + provenance
 5. `docs/contracts/vendor_adapter_slice_contract.md` — Wave B left-half rules
 6. `docs/_execution/2026-05-04_8_integration_mobile_proof_execution.md` — origin proof + SQLite addendum

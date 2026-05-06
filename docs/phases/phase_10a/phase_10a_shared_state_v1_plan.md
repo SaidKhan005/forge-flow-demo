@@ -458,15 +458,25 @@ Research and industry-standard patterns this spec is built against:
 A deep architecture-alignment audit surfaced one misalignment explicitly
 scoped to Phase 10a rather than to any current lane: **editable
 restaurant timing + service-period settings UI.** This handoff captures
-what exists, what's missing, and what Phase 10a should build.
+what exists, what's missing, and what the Business Timing lane should build
+on top of Phase 10a transport.
+
+**2026-05-06 amendment.** The timing write path is no longer owned by
+Phase 10a. `business_timing_profiles` plus
+`business_timing_service_periods` are the server source of truth in the same
+Azure Postgres database. `RestaurantTimingConfig` and mobile SQLite timing
+rows are resolved read models only. Phase 10a owns durable realtime signalling,
+cache hydration, and shared-state transport, not timing authority or live
+vendor fact production.
 
 ### Current state (what's persisted, what's wired)
 
-- `RestaurantTimingConfig` fully persists `businessTimezone`,
+- `RestaurantTimingConfig` can carry resolved `businessTimezone`,
   `businessDayStartLocalTime`, `weekStartDay`, `shiftCloseAuthority`,
-  and `servicePeriodDefinitions` (7.55n).
+  and `servicePeriodDefinitions`, but it is a read-model projection of the
+  effective business timing profile, not competing truth.
 - `RestaurantTimingConfigReadService.instance.getActiveTimingConfig()`
-  is the canonical read seam and is already consumed by
+  is the canonical mobile/read seam and is already consumed by
   `WeeklyPlanSnapshotService`, `ShiftBoundaryResolver` in
   `ShiftService`, and — after 7.55r item 1 —
   `VarianceWeekProjectionReadService` and `ScheduleForecastNotifier`.
@@ -477,11 +487,13 @@ what exists, what's missing, and what Phase 10a should build.
   demo restaurant; every consumer hits its honest Monday/demoDefinitions
   fallback.
 
-### What Phase 10a should build (editable settings write path)
+### What the Business Timing lane should build (editable settings write path)
 
 This is the concrete checklist implied by the existing
 "Editable restaurant timing + service-period settings UI that writes
-through Postgres" Scope bullet:
+through Postgres" Scope bullet. Ownership is
+`docs/phases/phase_business_timing_live/business_timing_live_plan.md`, not
+Phase 10a:
 
 - Settings UI controls for:
   - `businessTimezone` (IANA picker — must reject non-IANA strings)
@@ -493,9 +505,9 @@ through Postgres" Scope bullet:
     with fields: stable `id`, `label`, `shortLabel`, `sortOrder`,
     `startLocalTime`, `endLocalTime`, `rollsPastMidnight`, weekday
     applicability.
-- Write path through the proxy backend to Azure DB Postgres (via the
-  Phase 10a shared-state repository), respecting RLS scoping on
-  `restaurant_id`.
+- Write path through operator-scoped proxy routes to Azure DB Postgres using
+  `business_timing_profiles` / `business_timing_service_periods`, respecting
+  RLS scoping on `(operator_id, location_id)` and the timing hierarchy.
 - On write, invalidate downstream read models so any mid-week change
   triggers recompute (Variance daypart subrows, Schedule daypart
   subrows, Shift boundary resolution). Locked weekly-plan snapshots
