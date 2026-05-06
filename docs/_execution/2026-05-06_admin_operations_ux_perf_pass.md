@@ -112,7 +112,7 @@ Perf summary:
 
 ## Post-Fix Admin Auth Route Closeout
 
-- Source commit: `ed44de1d` (`fix(proxy): route admin auth sessions and audit log`)
+- Source code/deploy commit: `9ebcdddd` (`fix(proxy): route admin auth sessions and audit log`)
 - Admin URL: `https://forge-flow-preview-backend-surface-additions-admi-rf7nosnoka-pd.a.run.app`
 - Proxy URL: `https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app`
 - Admin revision: `forge-flow-preview-backend-surface-additions-admin-00016-5hr`, traffic 100 percent.
