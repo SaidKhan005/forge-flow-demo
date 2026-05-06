@@ -31,8 +31,8 @@ Branch: `codex/admin-console-full-verification`
 - Final admin image: `northamerica-northeast2-docker.pkg.dev/forge-flow-staging/forge-flow-cloud-run/forge-flow-preview-backend-surface-additions-admin:20260506173640`
 - Final admin image digest from deploy: `sha256:fd59b474b7331eea2a3153f88768597df21d8f1403a5b7d60e230bdd69e8914c`
 - Final proxy traffic revision: `forge-flow-preview-backend-surface-additions-proxy-00021-tmz`, traffic 100 percent
-- Final proxy latest ready revision: `forge-flow-preview-backend-surface-additions-proxy-00034-qhc` (not serving traffic)
-- Final proxy traffic note: `00031-gcb`/`00034-qhc` were produced by the postfix deploy attempts but returned 404 on `/v1/admin/auth/*` OPTIONS. Traffic was intentionally pinned back to verified revision `00021-tmz`, which returns 204 for `/v1/admin/auth/users`, `/v1/admin/auth/roles`, `/v1/admin/auth/audit-log`, `/v1/admin/auth/invites`, and `/v1/admin/feature-flags` preflight from the preview admin origin.
+- Final proxy latest ready revision at closeout: `forge-flow-preview-backend-surface-additions-proxy-00036-8fb` (not serving traffic)
+- Final proxy traffic note: `00031-gcb`/`00034-qhc`/`00036-8fb` were produced by the postfix deploy attempts but returned 404 on `/v1/admin/auth/*` OPTIONS. Traffic was intentionally pinned back to verified revision `00021-tmz`, which returns 204 for `/v1/admin/auth/users`, `/v1/admin/auth/roles`, `/v1/admin/auth/audit-log`, `/v1/admin/auth/invites`, and `/v1/admin/feature-flags` preflight from the preview admin origin.
 - Final proxy template image digest while traffic is pinned: `sha256:4b2f0594de1733faa71c72fc53cc346ffc1177ce22ac992ffa35f80589a20cdb`
 - Proxy `/readyz`: 200, `{"status":"ok"}`
 - Admin-auth CORS preflight: 204 for preview admin origin
@@ -157,5 +157,5 @@ Postfix performance:
 - The preview uses shared staging data and staging secrets; browser smoke intentionally avoided writes.
 - Scoped auth admin surfaces still depend on routed backend operations that return errors in this preview. The UI now reports those backend states instead of failing on client-side parser exceptions.
 - Cloud Run proxy `source_commit` label is stale, so release traceability should use the git/deploy evidence above until the deploy script stamps current commits.
-- Cloud Run source deploys produced later ready proxy revisions (`00031-gcb`/`00034-qhc`) that failed admin-auth OPTIONS despite local route tests passing. Final traffic is intentionally pinned to `00021-tmz`; the deploy workflow should be hardened to check `/v1/admin/auth/*` preflights and roll back automatically before promoting latest ready traffic.
+- Cloud Run source deploys produced later ready proxy revisions (`00031-gcb`/`00034-qhc`/`00036-8fb`) that failed admin-auth OPTIONS despite local route tests passing. Final traffic is intentionally pinned to `00021-tmz`; the deploy workflow should be hardened to check `/v1/admin/auth/*` preflights and roll back automatically before promoting latest ready traffic.
 - Browser evidence is visual because Flutter web exposes limited semantic DOM in the in-app browser.
