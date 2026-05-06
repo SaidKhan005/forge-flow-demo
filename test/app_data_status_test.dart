@@ -36,24 +36,81 @@ void main() {
       final status = await AppDataStatusService.instance.evaluate();
       expect(status.type, AppDataStatusType.noData);
       expect(status.label, 'NO DATA');
+      expect(status.description.toLowerCase(), isNot(contains('demo')));
     });
+  });
+
+  group('A2 - first sync and backfill pending', () {
+    test(
+      'status resolves to backfillPending while first backfill is running',
+      () async {
+        final db = await SqliteDatabase.instance.database;
+        await db.delete('shift_records');
+        await db.delete('week_records');
+        await db.delete('open_shift_snapshots');
+        await db.delete('import_runs');
+
+        await SqliteImportTrackingRepository.instance.createOrReplaceImportRun(
+          ImportRun(
+            importRunId: 'backfill_run_001',
+            restaurantId: 'demo_restaurant_001',
+            mode: 'first_backfill',
+            startedAt: '2026-05-06T12:00:00.000Z',
+            status: 'running',
+          ),
+        );
+
+        final status = await AppDataStatusService.instance.evaluate();
+        expect(status.type, AppDataStatusType.backfillPending);
+        expect(status.label, 'BACKFILL PENDING');
+      },
+    );
+
+    test(
+      'status resolves to firstSyncPending for non-backfill sync startup',
+      () async {
+        final db = await SqliteDatabase.instance.database;
+        await db.delete('shift_records');
+        await db.delete('week_records');
+        await db.delete('open_shift_snapshots');
+        await db.delete('import_runs');
+
+        await SqliteImportTrackingRepository.instance.createOrReplaceImportRun(
+          ImportRun(
+            importRunId: 'sync_run_001',
+            restaurantId: 'demo_restaurant_001',
+            mode: 'proxy_sync',
+            startedAt: '2026-05-06T12:00:00.000Z',
+            status: 'pending',
+          ),
+        );
+
+        final status = await AppDataStatusService.instance.evaluate();
+        expect(status.type, AppDataStatusType.firstSyncPending);
+        expect(status.label, 'FIRST SYNC PENDING');
+      },
+    );
   });
 
   // â”€â”€ B: historical_only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('B â€” historical only', () {
-    test('status resolves to historicalOnly when only completed week history exists',
-        () async {
-      final db = await SqliteDatabase.instance.database;
-      // Remove all current-week state: open snapshots AND current-week shifts
-      await db.delete('open_shift_snapshots');
-      await db.delete('shift_records'); // remove all shifts including current week
-      // week_records still has completed historical weeks â†’ historicalOnly
+    test(
+      'status resolves to historicalOnly when only completed week history exists',
+      () async {
+        final db = await SqliteDatabase.instance.database;
+        // Remove all current-week state: open snapshots AND current-week shifts
+        await db.delete('open_shift_snapshots');
+        await db.delete(
+          'shift_records',
+        ); // remove all shifts including current week
+        // week_records still has completed historical weeks â†’ historicalOnly
 
-      final status = await AppDataStatusService.instance.evaluate();
-      expect(status.type, AppDataStatusType.historicalOnly);
-      expect(status.label, 'HISTORICAL ONLY');
-    });
+        final status = await AppDataStatusService.instance.evaluate();
+        expect(status.type, AppDataStatusType.historicalOnly);
+        expect(status.label, 'HISTORICAL ONLY');
+      },
+    );
 
     test('partial current-week closed shifts are NOT historicalOnly', () async {
       final db = await SqliteDatabase.instance.database;
@@ -68,43 +125,45 @@ void main() {
       expect(status.type, isNot(AppDataStatusType.historicalOnly));
     });
 
-    test('older stray unrolled week does NOT count as current-week state',
-        () async {
-      final db = await SqliteDatabase.instance.database;
-      // Clear all current state
-      await db.delete('open_shift_snapshots');
-      await db.delete('shift_records');
-      // week_records still has completed historical weeks
-      // Insert one stray closed shift in an old week NOT in week_records
-      await db.insert('shift_records', {
-        'restaurant_id': 'demo_restaurant_001',
-        'week_id': '2025-W50', // old week, not current
-        'day_label': 'Mon',
-        'daypart': 'lunch',
-        'status': 'closed',
-        'covers': 100,
-        'forecast_covers': 120,
-        'ppa': 42.0,
-        'cplh': 4.5,
-        'splh': 180.0,
-        'blended_wage': 18.5,
-        'foh_hours': 22,
-        'boh_hours': 24,
-        'foh_labor_pct': 9.0,
-        'boh_labor_pct': 12.0,
-        'total_labor_pct': 21.0,
-        'theoretical_labor_pct': 20.5,
-        'variance_pts': 0.5,
-        'primary_lever': 'COVERS_DOWN',
-      });
+    test(
+      'older stray unrolled week does NOT count as current-week state',
+      () async {
+        final db = await SqliteDatabase.instance.database;
+        // Clear all current state
+        await db.delete('open_shift_snapshots');
+        await db.delete('shift_records');
+        // week_records still has completed historical weeks
+        // Insert one stray closed shift in an old week NOT in week_records
+        await db.insert('shift_records', {
+          'restaurant_id': 'demo_restaurant_001',
+          'week_id': '2025-W50', // old week, not current
+          'day_label': 'Mon',
+          'daypart': 'lunch',
+          'status': 'closed',
+          'covers': 100,
+          'forecast_covers': 120,
+          'ppa': 42.0,
+          'cplh': 4.5,
+          'splh': 180.0,
+          'blended_wage': 18.5,
+          'foh_hours': 22,
+          'boh_hours': 24,
+          'foh_labor_pct': 9.0,
+          'boh_labor_pct': 12.0,
+          'total_labor_pct': 21.0,
+          'theoretical_labor_pct': 20.5,
+          'variance_pts': 0.5,
+          'primary_lever': 'COVERS_DOWN',
+        });
 
-      // now = 2026-03-27 â€” current week is 2026-W13, not 2025-W50
-      final status = await AppDataStatusService.instance.evaluate(
-        now: DateTime(2026, 3, 27),
-      );
-      // The stray 2025-W50 shift should NOT make this "current"
-      expect(status.type, AppDataStatusType.historicalOnly);
-    });
+        // now = 2026-03-27 â€” current week is 2026-W13, not 2025-W50
+        final status = await AppDataStatusService.instance.evaluate(
+          now: DateTime(2026, 3, 27),
+        );
+        // The stray 2025-W50 shift should NOT make this "current"
+        expect(status.type, AppDataStatusType.historicalOnly);
+      },
+    );
   });
 
   // â”€â”€ C: failed_import â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -124,8 +183,9 @@ void main() {
         status: 'failed',
         errorSummary: 'Connection timeout',
       );
-      await SqliteImportTrackingRepository.instance
-          .createOrReplaceImportRun(failedRun);
+      await SqliteImportTrackingRepository.instance.createOrReplaceImportRun(
+        failedRun,
+      );
 
       final status = await AppDataStatusService.instance.evaluate();
       expect(status.type, AppDataStatusType.failedImport);
@@ -183,6 +243,27 @@ void main() {
       expect(status.type, AppDataStatusType.current);
       expect(status.label, 'CURRENT');
     });
+
+    test(
+      'running sync does not hide an already-landed open snapshot',
+      () async {
+        final db = await SqliteDatabase.instance.database;
+        await db.delete('import_runs');
+        await SqliteImportTrackingRepository.instance.createOrReplaceImportRun(
+          const ImportRun(
+            importRunId: 'sync_run_with_open_state',
+            restaurantId: 'demo_restaurant_001',
+            mode: 'proxy_sync',
+            startedAt: '2026-05-06T12:00:00.000Z',
+            status: 'running',
+          ),
+        );
+
+        final status = await AppDataStatusService.instance.evaluate();
+        expect(status.type, AppDataStatusType.current);
+        expect(status.latestImportStatus, 'running');
+      },
+    );
   });
 
   // â”€â”€ F: intraday open-snapshot replacement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -192,8 +273,7 @@ void main() {
       final repo = SqliteOpenShiftSnapshotRepository.instance;
 
       // Read original
-      final original =
-          await repo.getCurrentOpenShift('demo_restaurant_001');
+      final original = await repo.getCurrentOpenShift('demo_restaurant_001');
       expect(original, isNotNull);
       final originalCovers = original!.currentCovers;
 
@@ -220,16 +300,16 @@ void main() {
       await repo.replaceOpenShiftSnapshot(updated);
 
       // Re-read through the service query path
-      final reloaded =
-          await repo.getCurrentOpenShift('demo_restaurant_001');
+      final reloaded = await repo.getCurrentOpenShift('demo_restaurant_001');
       expect(reloaded, isNotNull);
       expect(reloaded!.currentCovers, originalCovers + 20);
       expect(reloaded.currentPPA, 41.50);
       expect(reloaded.timeLabel, '8:15 PM');
 
       // Full week merge also reflects the update
-      final fullWeek =
-          await ShiftService.instance.getFullWeekShifts('2026-W13');
+      final fullWeek = await ShiftService.instance.getFullWeekShifts(
+        '2026-W13',
+      );
       final openRows = fullWeek.where((s) => s.isOpen).toList();
       expect(openRows, isNotEmpty);
       expect(openRows.first.covers, originalCovers + 20);

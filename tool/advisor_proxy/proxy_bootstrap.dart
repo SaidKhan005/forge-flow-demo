@@ -1287,6 +1287,12 @@ class RepositoryMobileOperationalSyncProxyGateway
         'location_id::text as restaurant_id, week_id, day_label, '
         'service_period_key as daypart, status, '
         'business_date::text as business_date, '
+        'business_timing_profile_id::text as business_timing_profile_id, '
+        'coalesce('
+        '  business_timing_profile_version_id, '
+        '  business_timing_profile_id'
+        ')::text as business_timing_profile_version_id, '
+        'service_period_key, '
         'forecast_covers, current_covers, scheduled_foh_hours, '
         'scheduled_boh_hours, current_ppa, current_cplh, current_splh, '
         'blended_wage, time_label, service_elapsed_label, source_system, '
@@ -1522,6 +1528,10 @@ class RepositoryMobileOperationalSyncProxyGateway
       'daypart': row['daypart'],
       'status': row['status'],
       'business_date': _dateOnly(row['business_date']),
+      'business_timing_profile_id': row['business_timing_profile_id'],
+      'business_timing_profile_version_id':
+          row['business_timing_profile_version_id'],
+      'service_period_key': row['service_period_key'],
       'forecast_covers': _asInt(row['forecast_covers']),
       'current_covers': _asInt(row['current_covers']),
       'scheduled_foh_hours': _asInt(row['scheduled_foh_hours']),

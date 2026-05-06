@@ -88,6 +88,9 @@ void main() {
           );
           expect(open.statusCode, 200);
           expect(open.body, contains('open_shift_snapshots'));
+          expect(open.body, contains('business_timing_profile_id'));
+          expect(open.body, contains('business_timing_profile_version_id'));
+          expect(open.body, contains('service_period_key'));
 
           final timing = await _httpGet(
             ctx.client,
@@ -180,33 +183,35 @@ void main() {
       });
     });
 
-    test('upstream gateway throw surfaces a 503 wrapper to the client',
-        () async {
-      // BUG 4 (MEDIUM) supporting test: confirm the proxy wraps an
-      // upstream exception (5xx-class fault inside the gateway) into a
-      // 503 envelope with the documented `mobile_operational_sync_unavailable`
-      // code. The client's 401-retry path does not need this code path,
-      // but verifying the wrapper here keeps the route's failure mode
-      // honest for the mobile runtime's pull loop.
-      await withRealHttp(() async {
-        final ctx = await spinUp();
-        ctx.gateway.throwOnNextShift = StateError('upstream fault');
-        try {
-          final response = await _httpGet(
-            ctx.client,
-            ctx.baseUri.resolve(
-              '/v1/operators/op-1/locations/loc-1/shift_records',
-            ),
-          );
-          expect(response.statusCode, 503);
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], 'mobile_operational_sync_unavailable');
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+    test(
+      'upstream gateway throw surfaces a 503 wrapper to the client',
+      () async {
+        // BUG 4 (MEDIUM) supporting test: confirm the proxy wraps an
+        // upstream exception (5xx-class fault inside the gateway) into a
+        // 503 envelope with the documented `mobile_operational_sync_unavailable`
+        // code. The client's 401-retry path does not need this code path,
+        // but verifying the wrapper here keeps the route's failure mode
+        // honest for the mobile runtime's pull loop.
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          ctx.gateway.throwOnNextShift = StateError('upstream fault');
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '/v1/operators/op-1/locations/loc-1/shift_records',
+              ),
+            );
+            expect(response.statusCode, 503);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], 'mobile_operational_sync_unavailable');
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('validates page size and cursor before gateway dispatch', () async {
       await withRealHttp(() async {
@@ -309,7 +314,20 @@ class _FakeMobileOperationalSyncGateway
       'open_shift_snapshots:$operatorId:$locationId:$modifiedSince:$pageSize',
     );
     return const <String, Object?>{
-      'open_shift_snapshots': <Map<String, Object?>>[],
+      'open_shift_snapshots': <Map<String, Object?>>[
+        <String, Object?>{
+          'restaurant_id': 'loc-1',
+          'week_id': '2026-W18',
+          'day_label': 'Tue',
+          'daypart': 'lunch',
+          'status': 'open',
+          'business_date': '2026-05-06',
+          'business_timing_profile_id': '11111111-1111-1111-1111-111111111111',
+          'business_timing_profile_version_id':
+              '11111111-1111-1111-1111-111111111111',
+          'service_period_key': 'lunch',
+        },
+      ],
       'next_cursor': null,
     };
   }
