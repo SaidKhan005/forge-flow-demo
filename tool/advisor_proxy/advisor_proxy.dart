@@ -77,10 +77,7 @@ import 'log.dart';
 import 'mobile_push_notifications.dart';
 import 'proxy_idempotency_cache.dart';
 import 'realtime_route.dart'
-    show
-        handleRealtimeUpgrade,
-        RealtimeReplayFetcher,
-        realtimeSubscribePath;
+    show handleRealtimeUpgrade, RealtimeReplayFetcher, realtimeSubscribePath;
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
     show DependencyTimeoutException;
 export 'log.dart'
@@ -3509,6 +3506,29 @@ proxyHealthReservedMetrics = <String, ProxyHealthMetric>{
     source: 'event_outbox_dead_letter',
     owner: 'Phase 10a',
     thresholds: <String, Object?>{'yellow': 1, 'red': 100},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'event_outbox_retention_backlog': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description:
+        'Delivered event_outbox rows older than the 7-day retention window '
+        'that are still in the live table.',
+    source: 'event_outbox',
+    owner: 'Phase 10a',
+    thresholds: <String, Object?>{'yellow': 100, 'red': 10000},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'event_outbox_retention_lag_hours': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'hours',
+    description:
+        'Hours since the most recent event_outbox retention sweep completed.',
+    source: 'event_outbox_retention_sweep_log',
+    owner: 'Phase 10a',
+    thresholds: <String, Object?>{'yellow': 36, 'red': 168},
     metadata: <String, Object?>{'tier': 2},
   ),
   'notify_queue_usage_ratio': ProxyHealthMetric(
