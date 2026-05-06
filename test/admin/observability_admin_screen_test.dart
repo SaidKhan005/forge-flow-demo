@@ -25,6 +25,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/models/observability_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/observability_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/observability_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/realtime_tripwire_admin_gateway.dart';
+import 'package:forge_and_flow/services/realtime/outbox_tripwire_evaluator.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -799,6 +801,99 @@ void main() {
     );
     await tester.pump();
   });
+
+  // ─── Phase 10a.4 — Realtime bridge tripwires section ───────────────
+  testWidgets(
+    'tripwire section renders one row per Q22 metric and the worst-wins pill',
+    (tester) async {
+      setLargeViewport(tester);
+      final observability = InMemoryObservabilityAdminGateway(
+        envelope: kObservabilityAdminDemoEnvelope,
+      );
+      // Seeded: bridge_lag yellow (90s), undelivered green (5),
+      // publish error red (10%), notify queue green (5%). Worst-wins
+      // → red header pill.
+      final tripwires = InMemoryRealtimeTripwireAdminGateway(
+        snapshot: RealtimeTripwireSnapshot.fromJson(<String, Object?>{
+          'status': 'red',
+          'metrics': <String, Object?>{
+            'event_outbox_bridge_lag_seconds': <String, Object?>{
+              'value': 90,
+              'status': 'yellow',
+              'thresholds': <String, Object?>{'yellow': 60, 'red': 300},
+            },
+            'event_outbox_undelivered_count': <String, Object?>{
+              'value': 5,
+              'status': 'green',
+              'thresholds': <String, Object?>{
+                'yellow': 10000,
+                'red': 100000,
+              },
+            },
+            'event_outbox_publish_error_rate': <String, Object?>{
+              'value': 0.10,
+              'status': 'red',
+              'thresholds': <String, Object?>{
+                'yellow': 0.01,
+                'red': 0.05,
+              },
+            },
+            'pg_notification_queue_usage': <String, Object?>{
+              'value': 0.05,
+              'status': 'green',
+              'thresholds': <String, Object?>{
+                'yellow': 0.10,
+                'red': 0.25,
+              },
+            },
+          },
+          'breaches': const <Object?>[],
+          'checked_at': '2026-05-03T12:00:00.000Z',
+        }),
+      );
+      await tester.pumpWidget(
+        wrap(
+          ObservabilityAdminScreen(
+            gateway: observability,
+            tripwireGateway: tripwires,
+            now: () => DateTime.utc(2026, 5, 3, 12),
+          ),
+        ),
+      );
+      await runCheck(tester);
+
+      // Section is mounted above the tab bar.
+      expect(
+        find.byKey(
+          const Key('admin_observability_bridge_tripwires_section'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Realtime bridge tripwires'), findsOneWidget);
+
+      // One row per Q22 metric (4 total).
+      for (final metric in OutboxTripwireMetric.values) {
+        final key = outboxTripwireMetricKey(metric);
+        expect(
+          find.byKey(
+            Key('admin_observability_bridge_tripwire_row_$key'),
+          ),
+          findsOneWidget,
+          reason:
+              'expected a row for $key in the bridge tripwires section',
+        );
+      }
+
+      // Worst-wins header pill is red because publish_error_rate
+      // breached red even though bridge_lag is only yellow.
+      expect(
+        find.byKey(
+          const Key('admin_observability_bridge_tripwire_status_red'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 class _BlockingObservabilityGateway implements ObservabilityAdminGateway {

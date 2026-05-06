@@ -46,6 +46,7 @@ import 'log.dart';
 import 'proxy_bootstrap.dart';
 import 'realtime_bridge.dart';
 import 'realtime_route.dart' show RealtimeReplayResult;
+import 'realtime_tripwire_gateway.dart';
 
 Future<void> main(List<String> args) async {
   // Startup banner — plain text only, before the log module owns
@@ -362,6 +363,18 @@ Future<void> main(List<String> args) async {
   );
   final realtimeAdminWrapper = TenantTransactionWrapper(
     productionBindings.adminPool,
+  );
+  // Phase 10a.4 — `/v1/realtime/tripwire-status` gateway. Reads the
+  // four Q22 metrics through the admin pool's `runAsSystem` path
+  // (platform-wide aggregate, no per-tenant filter). Threshold
+  // overrides come from env vars; production runs the locked
+  // Q22 numbers (overrides resolve to null and the evaluator falls
+  // back to `kOutboxTripwireDefaultThresholds`).
+  final realtimeTripwireGateway = PostgresRealtimeTripwireGateway(
+    adminWrapper: realtimeAdminWrapper,
+    now: DateTime.now,
+    thresholdOverrides:
+        resolveTripwireThresholdOverrides(Platform.environment),
   );
   // Phase 10a.5 — server-side replay seam. The route invokes this
   // closure when a client reconnects with `?last_event_id=<uuid>`.
@@ -717,6 +730,14 @@ Future<void> main(List<String> args) async {
             // BEFORE live frames when the client reconnects with
             // `?last_event_id=<uuid>`.
             realtimeReplayFetcher: realtimeReplayFetcher,
+            // Phase 10a.4 — `/v1/realtime/tripwire-status` gateway.
+            // Read-only platform-wide aggregate; the sync badge polls
+            // this every ~60s so it can shift to "Degraded" when ANY
+            // Q22 metric fires red even while the WebSocket itself is
+            // alive. Threshold overrides come from env vars (demo
+            // walkthrough only); production runs the locked Q22
+            // numbers.
+            realtimeTripwireGateway: realtimeTripwireGateway,
           );
         } catch (error, stack) {
           log(

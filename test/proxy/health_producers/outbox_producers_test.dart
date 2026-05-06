@@ -104,6 +104,36 @@ void main() {
       );
       expect(red.status, equals('red'));
     });
+
+    test(
+      'event_outbox_bridge_lag_seconds: yellow at 60s, red at 300s, NULL→0',
+      () async {
+        // Phase 10a.4 — bridge-side post-pickup lag. Same Q22 thresholds
+        // as event_outbox_lag_seconds; SQL semantic differs.
+        final yellow = await eventOutboxBridgeLagSecondsProducer(
+          contextWith(runnerWith('event_outbox', <Map<String, Object?>>[
+            {'lag': 90},
+          ])),
+        );
+        expect(yellow.status, equals('yellow'));
+        expect(yellow.value, equals(90.0));
+        final red = await eventOutboxBridgeLagSecondsProducer(
+          contextWith(runnerWith('event_outbox', <Map<String, Object?>>[
+            {'lag': 600},
+          ])),
+        );
+        expect(red.status, equals('red'));
+        // NULL-safe path: zero rows OR row with NULL lag both project
+        // to lag = 0 (green) — the bridge has nothing pending to lag on.
+        final greenNullRow = await eventOutboxBridgeLagSecondsProducer(
+          contextWith(runnerWith('event_outbox', <Map<String, Object?>>[
+            {'lag': null},
+          ])),
+        );
+        expect(greenNullRow.status, equals('green'));
+        expect(greenNullRow.value, equals(0.0));
+      },
+    );
   });
 
   group('outbox_producers — error projections', () {

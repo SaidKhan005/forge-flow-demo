@@ -1,4 +1,5 @@
 // Phase 10a.UX.0 — Sync-state badge.
+// Phase 10a.4 — degraded-state branch from the tripwire stream.
 //
 // Renders the bridge connection state surfaced by
 // `RealtimeSubscription.connectionState` (10a.0) as a small pill in the
@@ -11,11 +12,22 @@
 //   * reconnecting  → amber "Reconnecting…"
 //   * idle / no scope → hidden (SizedBox.shrink)
 //
+// 10a.4 layered: when an ambient [RealtimeTripwireScope] is mounted
+// AND its current value is `red`, the pill shifts to amber "Degraded"
+// EVEN IF the WebSocket itself is healthy. The connection state owns
+// the green/amber band; the tripwire state owns the "is the bridge
+// dropping events under the hood" signal. Both are operator-facing.
+//
 // The visible pill has a stable min-width so transitions between
-// "Live" and "Reconnecting…" don't shift the surrounding actions.
+// "Live" and "Reconnecting…" / "Degraded" don't shift the surrounding
+// actions.
+//
+// File stays free of `dart:io` / `sqflite` — the badge ships in
+// `lib/main_operator_web.dart` too.
 
 import 'package:flutter/material.dart';
 
+import '../services/realtime/outbox_tripwire_evaluator.dart';
 import '../services/realtime/realtime_subscription.dart';
 import '../theme/app_theme.dart';
 
@@ -57,6 +69,45 @@ class RealtimeConnectionScope extends InheritedWidget {
       initialState != oldWidget.initialState;
 }
 
+/// Phase 10a.4 — ambient tripwire-status scope. Optional sibling of
+/// [RealtimeConnectionScope] that lets the badge shift to "Degraded"
+/// when the proxy `/v1/realtime/tripwire-status` envelope reports
+/// `red` even though the WebSocket itself is alive.
+///
+/// Production binds the stream to a polled service that calls the
+/// proxy every ~60s. Widget tests / demo walkthroughs drive a
+/// controller directly. When no scope is mounted (or the stream is
+/// `null`), the badge ignores tripwire state — backward compatible
+/// with existing AppShell wiring that did not yet plumb the scope.
+class RealtimeTripwireScope extends InheritedWidget {
+  const RealtimeTripwireScope({
+    super.key,
+    required this.tripwireStatusStream,
+    this.initialStatus = OutboxTripwireStatus.green,
+    required super.child,
+  });
+
+  final Stream<OutboxTripwireStatus>? tripwireStatusStream;
+  final OutboxTripwireStatus initialStatus;
+
+  static Stream<OutboxTripwireStatus>? streamOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<RealtimeTripwireScope>();
+    return scope?.tripwireStatusStream;
+  }
+
+  static OutboxTripwireStatus initialStatusOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<RealtimeTripwireScope>();
+    return scope?.initialStatus ?? OutboxTripwireStatus.green;
+  }
+
+  @override
+  bool updateShouldNotify(RealtimeTripwireScope oldWidget) =>
+      tripwireStatusStream != oldWidget.tripwireStatusStream ||
+      initialStatus != oldWidget.initialStatus;
+}
+
 /// Pill that surfaces the realtime bridge connection state in the
 /// operator app bar. Reads from the ambient
 /// [RealtimeConnectionScope]; renders hidden when no scope or stream
@@ -79,21 +130,39 @@ class SyncStateBadge extends StatelessWidget {
     if (stream == null) {
       return const SizedBox.shrink();
     }
+    final tripwireStream = RealtimeTripwireScope.streamOf(context);
+    final tripwireInitial = RealtimeTripwireScope.initialStatusOf(context);
     return StreamBuilder<RealtimeConnectionState>(
       stream: stream,
       initialData: initial,
       builder: (context, snapshot) {
         final state = snapshot.data ?? initial;
-        return _SyncStatePill(state: state);
+        if (tripwireStream == null) {
+          return _SyncStatePill(
+            state: state,
+            tripwireStatus: tripwireInitial,
+          );
+        }
+        return StreamBuilder<OutboxTripwireStatus>(
+          stream: tripwireStream,
+          initialData: tripwireInitial,
+          builder: (context, tripwireSnapshot) {
+            return _SyncStatePill(
+              state: state,
+              tripwireStatus: tripwireSnapshot.data ?? tripwireInitial,
+            );
+          },
+        );
       },
     );
   }
 }
 
 class _SyncStatePill extends StatelessWidget {
-  const _SyncStatePill({required this.state});
+  const _SyncStatePill({required this.state, required this.tripwireStatus});
 
   final RealtimeConnectionState state;
+  final OutboxTripwireStatus tripwireStatus;
 
   /// Fixed width for the visible pill — chosen to accommodate the
   /// longest label ("Reconnecting…") without clipping while keeping
@@ -103,7 +172,7 @@ class _SyncStatePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visual = _visualFor(state);
+    final visual = _visualFor(state, tripwireStatus);
     if (visual == null) {
       return const SizedBox.shrink();
     }
@@ -153,8 +222,11 @@ class _SyncStatePill extends StatelessWidget {
     );
   }
 
-  _PillVisual? _visualFor(RealtimeConnectionState state) =>
-      syncStateBadgeVisualFor(state);
+  _PillVisual? _visualFor(
+    RealtimeConnectionState state,
+    OutboxTripwireStatus tripwireStatus,
+  ) =>
+      syncStateBadgeVisualFor(state, tripwireStatus: tripwireStatus);
 }
 
 /// Visible-for-tests visual contract used by [SyncStateBadge].
@@ -165,7 +237,27 @@ class _SyncStatePill extends StatelessWidget {
 /// in via [syncStateBadgeVisualFor]; runtime code uses the private
 /// `_visualFor` indirection.
 @visibleForTesting
-SyncStateBadgeVisual? syncStateBadgeVisualFor(RealtimeConnectionState state) {
+SyncStateBadgeVisual? syncStateBadgeVisualFor(
+  RealtimeConnectionState state, {
+  OutboxTripwireStatus tripwireStatus = OutboxTripwireStatus.green,
+}) {
+  // 10a.4 — degraded branch wins over the green "Live" pill but does
+  // NOT cover the idle/connecting/reconnecting bands; while the
+  // socket itself is mid-handshake the connection state is the more
+  // urgent signal to surface.
+  if (state == RealtimeConnectionState.connected &&
+      tripwireStatus == OutboxTripwireStatus.red) {
+    return const SyncStateBadgeVisual(
+      label: 'Degraded',
+      tooltip:
+          'Realtime bridge is dropping events. The connection is alive but '
+          'a Q22 tripwire fired red.',
+      dot: AppColors.warning,
+      text: AppColors.warning,
+      background: AppColors.warningBadgeBg,
+      border: Color(0x66997000),
+    );
+  }
   switch (state) {
     case RealtimeConnectionState.connected:
       return const SyncStateBadgeVisual(
