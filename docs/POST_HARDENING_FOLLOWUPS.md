@@ -1,11 +1,11 @@
 # Post-Hardening Follow-ups
 
-Updated: 2026-05-06 (B1 data-accuracy migration renumbered to `…1701_…`; Phase 8 first-connection backfill job seam added at `…1800_…`; Phase 11W.7 operator account write-fields added at `…07000000_…`).
+Updated: 2026-05-06 (B1 data-accuracy migration renumbered to `…1701_…`; Phase 8 first-connection backfill job seam added at `…1800_…`; Phase 11W.7 operator account write-fields added at `…07000000_…`; Phase 8 timing-provenance FK posture flipped to `ON DELETE SET NULL` at `…08000000_…`).
 Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`. Staging remediation evidence in `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`.
 
 ## P0 - Production1 Migration Apply Gap
 
-**12 migrations pending Production1/staging apply** (chronological):
+**13 migrations pending Production1/staging apply** (chronological):
 
 | Migration | Origin | Staging status |
 |---|---|---|
@@ -21,8 +21,9 @@ Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FO
 | `202605061701_phase_8_data_accuracy_service_period_settings.sql` | Hardening Wave B1 keyed Data Accuracy child table per `(operator_id, location_id, service_period_key, effective_at_business_date)` (replaces hardcoded `covers_source_lunch`/`_dinner`/`_late_night` columns; legacy columns kept as read-only fallback). Renumbered 2026-05-06 from `202605061700_…` to break same-second prefix collision. | code-ready |
 | `202605061800_phase_8_first_connection_backfill_jobs.sql` | Phase 8 mobile core first-connection durable backfill jobs: server-side enqueue/claim/status seam for the 60-day backfill path. | code-ready |
 | `202605070000_phase_11W_7_operator_account_fields.sql` | Phase 11W.7 / Wave A2 operator-web Account editor write-fields on `public.operators` (`logo_url`, `locale_tag`, `week_start_day`, `rollover_hour`) plus format CHECK constraints + `business_name` length CHECK. Additive + default-backed; existing rows preserved. | code-ready |
+| `202605080000_phase_8_timing_provenance_fk_posture.sql` | V1.B Phase 8 timing-provenance FK posture flip: drops + re-adds `shift_records_business_timing_profile_fk`, `shift_records_business_timing_profile_version_fk`, and `open_shift_snapshots_profile_version_fk` with `ON DELETE SET NULL NOT VALID` so closed historical truth survives `business_timing_profiles` deletion (Operator Web timing editor lifecycle). Validation deferred to a future maintenance window. | code-ready |
 
-**Action:** apply all 12 in next Production1 event per `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied + verified, the corresponding feature is **staging-ready only**.
+**Action:** apply all 13 in next Production1 event per `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied + verified, the corresponding feature is **staging-ready only**.
 
 ## P1 - Live Admin Operational Gates
 
@@ -77,20 +78,23 @@ remain:
   `_openShiftSnapshotJson`. **In flight via V1.A
   `8.closed-row-proxy-timing-provenance` per
   `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md`.**
-- **[~] FK posture on closed `shift_records` — IN FLIGHT (V1.B).** The
-  migration adds `shift_records_business_timing_profile_fk` and
+- **[x] FK posture on closed `shift_records` — CLOSED via V1.B
+  (`db/migrations/202605080000_phase_8_timing_provenance_fk_posture.sql`).**
+  Lane 0 added `shift_records_business_timing_profile_fk` and
   `shift_records_business_timing_profile_version_fk` (both `NOT VALID`) with
-  default `ON DELETE NO ACTION`. The `core_app_architecture.md` "What never
-  rewrites" non-negotiable says closed historical truth must outlive profile
-  mutation. Default `NO ACTION` blocks any `business_timing_profiles` delete
-  the moment a closed row references the profile, which conflicts with the
-  Operator Web timing editor's expected lifecycle. Decision: `ON DELETE
-  SET NULL` (closed row degrades to legacy/null but survives). The matching
-  FK on `open_shift_snapshots_profile_version_fk` gets the same treatment.
-  Refs:
+  the default `ON DELETE NO ACTION`. The `core_app_architecture.md` "What
+  never rewrites" non-negotiable says closed historical truth must outlive
+  profile mutation; default `NO ACTION` blocked any
+  `business_timing_profiles` delete the moment a closed row referenced the
+  profile, conflicting with the Operator Web timing editor's expected
+  lifecycle. The follow-up migration drops + re-adds the two `shift_records`
+  FKs and the matching `open_shift_snapshots_profile_version_fk` with
+  `ON DELETE SET NULL NOT VALID`, so profile deletion degrades the row to a
+  null timing triplet (legacy `daypart` still drives display) and survives.
+  Validation is deferred to a future maintenance window. Refs:
   `db/migrations/202605061700_phase_8_timing_provenance_shift_records.sql:39-77,
-  101-108`. **In flight via V1.B `8.timing-provenance-fk-posture` per
-  `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md`.**
+  101-108`,
+  `db/migrations/202605080000_phase_8_timing_provenance_fk_posture.sql`.
 - **Drop the version-equals-profile CHECKs before any future Phase 8R
   divergence.** Lane 0 added
   `shift_records_timing_version_profile_match_check` and
