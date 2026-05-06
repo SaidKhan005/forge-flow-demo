@@ -230,6 +230,25 @@ void main() {
     });
   });
 
+  group('deploy_preview_stack.ps1', () {
+    late String script;
+
+    setUpAll(() {
+      script = File('scripts/deploy_preview_stack.ps1').readAsStringSync();
+    });
+
+    test('prints cache-busted share URL with the admin origin intact', () {
+      expect(
+        script,
+        contains(r'${adminUrl}?cache_bust=preview-$safeName-'),
+      );
+      expect(
+        script,
+        isNot(contains(r'$adminUrl?cache_bust=preview-$safeName-')),
+      );
+    });
+  });
+
   group('use_forge_flow_secrets.ps1', () {
     late String script;
 

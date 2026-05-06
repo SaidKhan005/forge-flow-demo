@@ -11386,7 +11386,7 @@ bool _isAdminIntegrationsPath(String path) {
 }
 
 bool _isAuthCorsPath(String path) {
-  return path.startsWith('/v1/auth/');
+  return path.startsWith('/v1/auth/') || path.startsWith('/v1/admin/auth/');
 }
 
 bool _isAdminIntegrationsOperation(String path, String method) {
