@@ -98,9 +98,7 @@ Widget _buildShiftDashboard({
         ),
       ),
     ],
-    child: const MaterialApp(
-      home: Scaffold(body: ShiftDashboard()),
-    ),
+    child: const MaterialApp(home: Scaffold(body: ShiftDashboard())),
   );
 }
 
@@ -138,55 +136,60 @@ void main() {
 
   group('ShiftDashboard daypart lens (10.5.2 — populated cards)', () {
     testWidgets(
-        'cards render per-period metrics from the notifier when buckets '
-        'have data', (tester) async {
-      // Tuesday 2026-03-31 12:30 — Lunch is the active period.
-      ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
+      'cards render per-period metrics from the notifier when buckets '
+      'have data',
+      (tester) async {
+        // Tuesday 2026-03-31 12:30 — Lunch is the active period.
+        ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
 
-      // Lunch bucket: 100 covers, $4200 sales, 240 min FOH (4h),
-      // 240 min BOH (4h), $80 FOH wage, $100 BOH wage.
-      // Expected derived: PPA $42.00, CPLH 12.50, SPLH $525, blended $22.50.
-      final buckets = {
-        ..._emptyBuckets(),
-        'lunch': _bucketWith(
-          id: 'lunch',
-          covers: 100,
-          sales: 4200.00,
-          fohMinutes: 240,
-          bohMinutes: 240,
-          fohWageDollars: 80.00,
-          bohWageDollars: 100.00,
-        ),
-      };
+        // Lunch bucket: 100 covers, $4200 sales, 240 min FOH (4h),
+        // 240 min BOH (4h), $80 FOH wage, $100 BOH wage.
+        // Expected derived: PPA $42.00, CPLH 12.50, SPLH $525, blended $22.50.
+        final buckets = {
+          ..._emptyBuckets(),
+          'lunch': _bucketWith(
+            id: 'lunch',
+            covers: 100,
+            sales: 4200.00,
+            fohMinutes: 240,
+            bohMinutes: 240,
+            fohWageDollars: 80.00,
+            bohWageDollars: 100.00,
+          ),
+        };
 
-      await tester.pumpWidget(_buildShiftDashboard(periodBuckets: buckets));
-      await tester.pump();
-      await tester.pump();
+        await tester.pumpWidget(_buildShiftDashboard(periodBuckets: buckets));
+        await tester.pump();
+        await tester.pump();
 
-      await tester.tap(find.text('Daypart', skipOffstage: false));
-      await tester.pump();
+        await tester.tap(find.text('Lunch', skipOffstage: false));
+        await tester.pump();
 
-      expect(find.text('SERVICE PERIODS', skipOffstage: false),
-          findsOneWidget);
+        expect(
+          find.text('SERVICE PERIOD', skipOffstage: false),
+          findsOneWidget,
+        );
 
-      // Lunch card metrics rendered (per-period values from the notifier).
-      expect(find.text('100', skipOffstage: false), findsOneWidget);
-      expect(find.text(r'$4200', skipOffstage: false), findsOneWidget);
-      expect(find.text(r'$42.00', skipOffstage: false), findsOneWidget);
-      expect(find.text('12.50', skipOffstage: false), findsOneWidget);
-      expect(find.text(r'$525', skipOffstage: false), findsOneWidget);
-      expect(find.text(r'$22.50', skipOffstage: false), findsOneWidget);
+        // Lunch card metrics rendered (per-period values from the notifier).
+        expect(find.text('100', skipOffstage: false), findsOneWidget);
+        expect(find.text(r'$4200', skipOffstage: false), findsOneWidget);
+        expect(find.text(r'$42.00', skipOffstage: false), findsOneWidget);
+        expect(find.text('12.50', skipOffstage: false), findsOneWidget);
+        expect(find.text(r'$525', skipOffstage: false), findsOneWidget);
+        expect(find.text(r'$22.50', skipOffstage: false), findsOneWidget);
 
-      // Empty buckets (Dinner, Late Night) render the placeholder.
-      expect(find.text('No data yet for this period.', skipOffstage: false),
-          findsNWidgets(2));
+        // Only the selected period card renders.
+        expect(
+          find.text('No data yet for this period.', skipOffstage: false),
+          findsNothing,
+        );
 
-      // Lunch is the active period — exactly one ACTIVE NOW chip.
-      expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
-    });
+        // Lunch is the active period — exactly one ACTIVE NOW chip.
+        expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
+      },
+    );
 
-    testWidgets(
-        'time-into-service header renders during an active period '
+    testWidgets('time-into-service header renders during an active period '
         '("Lunch · 1h 12m in")', (tester) async {
       // Tuesday 2026-03-31 12:12. Lunch starts at 11:00, so
       // elapsed = 1h 12m exactly.
@@ -198,16 +201,17 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      await tester.tap(find.text('Daypart', skipOffstage: false));
+      await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
 
       // Header strip above the SERVICE PERIODS sticky group.
-      expect(find.text('Lunch · 1h 12m in', skipOffstage: false),
-          findsOneWidget);
+      expect(
+        find.text('Lunch · 1h 12m in', skipOffstage: false),
+        findsOneWidget,
+      );
     });
 
-    testWidgets(
-        'no time-into-service header renders when no period is active '
+    testWidgets('no time-into-service header renders when no period is active '
         '(between Lunch and Dinner)', (tester) async {
       // Tuesday 2026-03-31 16:00 — outside Lunch (11:00–15:00) and
       // before Dinner (17:00–23:00). No active period.
@@ -219,57 +223,90 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      await tester.tap(find.text('Daypart', skipOffstage: false));
+      await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
 
       // No "X · Yh Zm in" line should render in the gap.
       expect(find.textContaining(' in', skipOffstage: false), findsNothing);
     });
 
-    testWidgets(
-        'missing timezone surfaces an explicit "timezone not configured" '
-        'banner above the cards (not a generic no-data placeholder)',
-        (tester) async {
-      // Build the dashboard with an empty IANA timezone; the
-      // ShiftServicePeriodNotifier will mark `missingTimezone = true`
-      // and the daypart section must degrade honestly.
+    testWidgets('future selected period renders projected/unavailable copy', (
+      tester,
+    ) async {
+      // Tuesday 2026-03-31 12:30: Lunch is active, Dinner is still future.
       ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
 
-      await tester.pumpWidget(_buildShiftDashboard(
-        periodBuckets: _emptyBuckets(),
-        iana: '',
-      ));
+      await tester.pumpWidget(
+        _buildShiftDashboard(periodBuckets: _emptyBuckets()),
+      );
       await tester.pump();
       await tester.pump();
 
-      await tester.tap(find.text('Daypart', skipOffstage: false));
+      await tester.tap(find.text('Dinner', skipOffstage: false));
       await tester.pump();
 
-      // Explicit config-degraded message renders above the cards.
+      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsOneWidget);
       expect(
-        find.textContaining(
-          'Restaurant timezone is not configured',
+        find.text(
+          'Projected / unavailable until this period opens.',
           skipOffstage: false,
         ),
         findsOneWidget,
       );
-      // Each card's empty-state subline is also degraded — not the
-      // generic "No data yet for this period." copy.
       expect(
-        find.text('Timezone not configured — metrics unavailable.',
-            skipOffstage: false),
-        findsNWidgets(3),
+        find.text('PRIMARY DRIVER Â· NO PATTERN YET', skipOffstage: false),
+        findsNothing,
       );
-      // The generic no-data copy must NOT appear when timezone is the
-      // honest cause of the empty state.
-      expect(find.text('No data yet for this period.', skipOffstage: false),
-          findsNothing);
     });
 
     testWidgets(
-        'pull-to-refresh awaits both ShiftDashboardNotifier AND '
-        'ShiftServicePeriodNotifier (daypart cards do not stay stale)',
-        (tester) async {
+      'missing timezone surfaces an explicit "timezone not configured" '
+      'banner above the cards (not a generic no-data placeholder)',
+      (tester) async {
+        // Build the dashboard with an empty IANA timezone; the
+        // ShiftServicePeriodNotifier will mark `missingTimezone = true`
+        // and the daypart section must degrade honestly.
+        ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
+
+        await tester.pumpWidget(
+          _buildShiftDashboard(periodBuckets: _emptyBuckets(), iana: ''),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        await tester.tap(find.text('Lunch', skipOffstage: false));
+        await tester.pump();
+
+        // Explicit config-degraded message renders above the cards.
+        expect(
+          find.textContaining(
+            'Restaurant timezone is not configured',
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+        // Each card's empty-state subline is also degraded — not the
+        // generic "No data yet for this period." copy.
+        expect(
+          find.text(
+            'Timezone not configured — metrics unavailable.',
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+        // The generic no-data copy must NOT appear when timezone is the
+        // honest cause of the empty state.
+        expect(
+          find.text('No data yet for this period.', skipOffstage: false),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('pull-to-refresh awaits both ShiftDashboardNotifier AND '
+        'ShiftServicePeriodNotifier (daypart cards do not stay stale)', (
+      tester,
+    ) async {
       ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
 
       // Start with empty buckets.
@@ -303,19 +340,19 @@ void main() {
             },
           ),
         ],
-        child: const MaterialApp(
-          home: Scaffold(body: ShiftDashboard()),
-        ),
+        child: const MaterialApp(home: Scaffold(body: ShiftDashboard())),
       );
       await tester.pumpWidget(widget);
       await tester.pump();
       await tester.pump();
 
       // Confirm starting state — empty Lunch card.
-      await tester.tap(find.text('Daypart', skipOffstage: false));
+      await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
-      expect(find.text('No data yet for this period.', skipOffstage: false),
-          findsNWidgets(3));
+      expect(
+        find.text('No data yet for this period.', skipOffstage: false),
+        findsOneWidget,
+      );
 
       // Mutate the captured notifier the way a Phase-8 vendor write
       // would: install fresh buckets and notify. Then trigger a
@@ -346,8 +383,7 @@ void main() {
       expect(find.text(r'$4200', skipOffstage: false), findsOneWidget);
     });
 
-    testWidgets(
-        'whole-day view is unchanged when buckets are present — no '
+    testWidgets('whole-day view is unchanged when buckets are present — no '
         'regression from additive daypart wiring', (tester) async {
       ShiftDashboard.clockOverride = () => DateTime(2026, 3, 27, 20, 30);
 
@@ -369,15 +405,15 @@ void main() {
       await tester.pump();
 
       // Whole-day default sections still render — additive only.
-      expect(find.text('SHIFT OUTPUTS', skipOffstage: false),
-          findsOneWidget);
-      expect(find.text('SHIFT INPUTS', skipOffstage: false),
-          findsOneWidget);
-      expect(find.text('FOH PRODUCTIVITY', skipOffstage: false),
-          findsOneWidget);
+      expect(find.text('SHIFT OUTPUTS', skipOffstage: false), findsOneWidget);
+      expect(find.text('SHIFT INPUTS', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('FOH PRODUCTIVITY', skipOffstage: false),
+        findsOneWidget,
+      );
 
       // SERVICE PERIODS only opens after an explicit toggle to daypart.
-      expect(find.text('SERVICE PERIODS', skipOffstage: false), findsNothing);
+      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsNothing);
       expect(find.textContaining(' in', skipOffstage: false), findsNothing);
     });
   });

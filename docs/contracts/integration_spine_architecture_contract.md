@@ -159,6 +159,30 @@ Explicitly **out of scope** for this sprint and the
 This sprint's proof gate (`8.integration-mobile-proof.v2`) verifies
 closed-shift behavior only.
 
+## Business Timing / Live Shift amendment (2026-05-06)
+
+Parallel sink implementations must preserve the closed-spine boundary above.
+They may write canonical facts and closed `ShiftRecord` outputs, but they must
+not write `open_shift_snapshots` or introduce a second service-period resolver.
+
+Live in-progress Shift is a follow-up lane with this required shape:
+
+```text
+canonical POS/labor/reservation facts
+-> OpenShiftSnapshotProjector
+-> public.open_shift_snapshots
+-> event_outbox topic open_shift_snapshot_changed
+-> proxy read endpoint
+-> mobile SQLite mirror
+-> Shift whole-day + service-period selectors
+```
+
+Business timing source of truth is server-side `business_timing_profiles` plus
+`business_timing_service_periods`; mobile timing configs are resolved read
+models only. Closed aggregation must use the timing profile/service-period key
+in force at bucket time, and closed rows must not be silently re-bucketed after
+timing edits.
+
 ## Why this exists
 
 Wave B proved 17 vendor adapters in fixture isolation. The

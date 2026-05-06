@@ -334,6 +334,21 @@ availability are restaurant settings, not hardcoded product constants.
 Vendor-native daypart labels are optional input hints. They are not the
 authoritative model.
 
+For V1 business timing configuration, the product guardrails are:
+
+- 1 to 4 service periods per effective business day.
+- 15-minute clock increments.
+- No overlapping periods on the same business date.
+- Gaps are allowed and classify as `non_service`.
+- At most one period may roll past midnight.
+- `businessDayStartLocalTime` may not fall inside a service period.
+- Stable service-period keys survive label changes.
+
+Timing settings may be defined at multiple business levels. Resolution is
+top-down and lower scope wins: operator default -> org-unit ancestors ->
+location. The resolved location profile is the authority used by live
+bucketing, closed aggregation, and mobile read models.
+
 ### Rule 10 - Learn teaches only from closed truth with time provenance
 
 Learn must teach from:

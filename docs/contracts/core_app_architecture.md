@@ -411,10 +411,10 @@ vendor → mobile flow goes through server-side Postgres + the proxy.
 
 ---
 
-## Operator-controlled accuracy seams (Data Accuracy)
+## Accuracy seams (Data Accuracy)
 
-The architecture exposes three operator-controlled overrides that affect
-how source data flows into canonical facts. These overrides are NOT
+The architecture exposes sanctioned accuracy settings that affect how source
+data flows into canonical facts. These settings are NOT
 ad-hoc widget logic — they are sanctioned by the architecture and surfaced
 through dedicated UI per
 `docs/contracts/data_accuracy_settings_contract.md`:
@@ -424,12 +424,13 @@ through dedicated UI per
    (operator, location).
 2. **Covers source** — operator chooses: POS-vendor covers (when vendor
    exposes them), F&F-derived forecast fallback, or manual entry per
-   (business_date, daypart). Per-(operator, location, daypart).
-3. **Polling cadence + costing** — operator chooses per-(operator,
-   location, vendor) polling cadence override above the framework default
-   (60s). Faster cadence costs more in API calls; the cost projection is
-   surfaced in the Data Accuracy tab + the F&F Ops Console per-location
-   admin surface.
+   (business_date, service_period). Per-(operator, location,
+   service_period). Legacy `daypart` labels are display aliases only.
+3. **Polling cadence + costing** - F&F controls polling cadence per
+   (operator, location) through tier assignment. Operators see the effective
+   tier and may request a tier change; they do not edit vendor polling
+   cadence or see vendor per-call cost. F&F Ops Console owns the internal
+   tier/cost/margin controls.
 
 These overrides bind to Layer 2 (canonical facts) input resolution. The
 canonical fact rows still carry honest provenance: `vendor_<id>` /
@@ -450,16 +451,17 @@ states; the data layer never quietly lies.
 - Active target profile projection
 - Demand forecast context (F&F-computed, never vendor-supplied)
 - Weekly plan snapshot
-- Service-period definitions and bucketing rules
+- Business timing profiles, service-period definitions, and bucketing rules
 - Variance / history / learn read seams
 - Product-facing explanation of what is locked vs rolling
-- Operator-controlled accuracy overrides (covers source, wage source,
-  polling cadence)
+- Operator-controlled accuracy overrides (covers source, wage source) and
+  F&F-controlled polling tier assignment
 
 ### The app must not
 
 - Let widgets own source-truth decisions
 - Let widgets own service-period bucketing rules
+- Let mobile clients pull vendor facts directly
 - Let new standards rewrite already closed weeks
 - Let weekly forecast movement rewrite a locked weekly snapshot
 - Let live operational rows masquerade as closed truth

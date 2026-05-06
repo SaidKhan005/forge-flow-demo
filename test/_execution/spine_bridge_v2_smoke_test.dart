@@ -43,6 +43,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart'
     show Daypart;
 import 'package:forge_and_flow/domain/models/demand_forecast_context.dart';
+import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
+import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/domain/models/target_snapshot.dart';
@@ -127,8 +129,7 @@ void main() {
 
   // ──────────────────── Trio end-to-end (acceptance #1, #2, #3, #4) ────
 
-  test(
-      'trio chain: Oracle Simphony + QuickBooks Time + Libro fixture -> '
+  test('trio chain: Oracle Simphony + QuickBooks Time + Libro fixture -> '
       'aggregator + writer + sync -> SQLite shift_records row carries '
       'vendor provenance', () async {
     final pool = _SmokeFakePool()..seedLocation(_opA, _locA);
@@ -172,18 +173,18 @@ void main() {
         'business_date': _businessDateIso,
       },
     ];
-    pool.reservationFactsByOperatorLocation[
-        '$_opA|$_locA|$_businessDateIso'] = [
-      <String, Object?>{
-        'vendor_id': 'libro',
-        'vendor_entity_id': 'res_001',
-        'reservation_at': _dinnerInstantUtc,
-        'party_size': 4,
-        'status': 'SEATED',
-        'seated_at': _dinnerInstantUtc,
-        'business_date': _businessDateIso,
-      },
-    ];
+    pool.reservationFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+        [
+          <String, Object?>{
+            'vendor_id': 'libro',
+            'vendor_entity_id': 'res_001',
+            'reservation_at': _dinnerInstantUtc,
+            'party_size': 4,
+            'status': 'SEATED',
+            'seated_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+          },
+        ];
 
     final wrapper = TenantTransactionWrapper(pool);
     final aggregator = CanonicalFactToClosedShiftInputAggregator(wrapper);
@@ -201,13 +202,19 @@ void main() {
       periodDefinition: _dinnerPeriod,
     );
     expect(agg, isNotNull);
-    expect(agg!.input.covers, 5,
-        reason: 'covers from Oracle Simphony cover_facts');
+    expect(
+      agg!.input.covers,
+      5,
+      reason: 'covers from Oracle Simphony cover_facts',
+    );
     expect(agg.input.actualSales, closeTo(124.85, 0.001));
     expect(agg.input.actualFohHours, 5);
     expect(agg.input.actualBohHours, 6);
-    expect(agg.input.actualFohLaborDollars, closeTo(5 * 18.0, 0.001),
-        reason: 'QBT perEmployeeWithRates: rate × duration');
+    expect(
+      agg.input.actualFohLaborDollars,
+      closeTo(5 * 18.0, 0.001),
+      reason: 'QBT perEmployeeWithRates: rate × duration',
+    );
     expect(agg.input.actualBohLaborDollars, closeTo(6 * 20.0, 0.001));
     expect(agg.input.sourceSystem, 'oracle_micros_simphony');
     expect(agg.provenance.coversProvenance, 'vendor_oracle_micros_simphony');
@@ -233,10 +240,15 @@ void main() {
     expect(pool.shiftRecords, hasLength(1));
     final captured = pool.shiftRecords.values.single;
     expect(captured['covers'], 5);
-    expect((captured['actual_sales'] as num).toDouble(),
-        closeTo(124.85, 0.001));
-    expect(captured['source_system'], 'oracle_micros_simphony',
-        reason: 'sourceSystem != "demo" — flipped to vendor truth');
+    expect(
+      (captured['actual_sales'] as num).toDouble(),
+      closeTo(124.85, 0.001),
+    );
+    expect(
+      captured['source_system'],
+      'oracle_micros_simphony',
+      reason: 'sourceSystem != "demo" — flipped to vendor truth',
+    );
     expect(captured['target_profile_version_id'], 'tpv_X');
     expect(captured['covers_provenance'], 'vendor_oracle_micros_simphony');
     expect(
@@ -319,9 +331,13 @@ void main() {
 
     // Stage 6: SQLite read-back.
     expect(result.recordsWritten, 1);
-    expect(invalidations.count, 1,
-        reason: 'AppRuntimeInvalidationBus fires per write -> dashboard '
-            '/ variance / history / learn refresh');
+    expect(
+      invalidations.count,
+      1,
+      reason:
+          'AppRuntimeInvalidationBus fires per write -> dashboard '
+          '/ variance / history / learn refresh',
+    );
 
     // Aux pulls (data_accuracy + polling tier) flowed through the proxy.
     expect(result.dataAccuracySettings, isNotNull);
@@ -329,21 +345,28 @@ void main() {
     expect(result.pollingTierAssignment, isNotNull);
     expect(result.pollingTierAssignment!.tierKey, 'standard');
     expect(
-      result.pollingTierAssignment!.pollingCadencePerVendorSeconds[
-          'oracle_micros_simphony'],
+      result
+          .pollingTierAssignment!
+          .pollingCadencePerVendorSeconds['oracle_micros_simphony'],
       300,
       reason: 'F&F-controlled cadence — 300s per Oracle Simphony minimum',
     );
 
     // Stored mobile row matches vendor truth.
-    final stored = await SqliteShiftRecordRepository.instance
-        .getShiftsForWeek(_restaurantA, '2026-W18');
+    final stored = await SqliteShiftRecordRepository.instance.getShiftsForWeek(
+      _restaurantA,
+      '2026-W18',
+    );
     expect(stored, hasLength(1));
     expect(stored.single.covers, 5);
     expect(stored.single.daypart, 'dinner');
-    expect(stored.single.sourceSystem, 'oracle_micros_simphony',
-        reason: 'sourceSystem flowed Postgres -> SQLite; never reverted to '
-            '"demo" — closes acceptance items 4, 10, 11, 12 for the trio');
+    expect(
+      stored.single.sourceSystem,
+      'oracle_micros_simphony',
+      reason:
+          'sourceSystem flowed Postgres -> SQLite; never reverted to '
+          '"demo" — closes acceptance items 4, 10, 11, 12 for the trio',
+    );
 
     // Cleanup: remove the row so the next test sees a clean slate (the
     // sync test pattern keys per-test on a unique restaurant_id; this
@@ -354,8 +377,7 @@ void main() {
 
   // ──────────────────── Concern A — TPV preservation ───────────────────
 
-  test(
-      'Concern A: re-aggregation after cycle roll preserves '
+  test('Concern A: re-aggregation after cycle roll preserves '
       'target_profile_version_id verbatim', () async {
     final pool = _SmokeFakePool()..seedLocation(_opA, _locA);
     pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
@@ -388,8 +410,11 @@ void main() {
       periodDefinition: _dinnerPeriod,
     );
     expect(aggV1, isNotNull);
-    expect(aggV1!.provenance.priorTargetProfileVersionId, isNull,
-        reason: 'no prior shift_records row -> first-time aggregation');
+    expect(
+      aggV1!.provenance.priorTargetProfileVersionId,
+      isNull,
+      reason: 'no prior shift_records row -> first-time aggregation',
+    );
 
     final factV1 = ShiftFactBuilder.fromClosedShiftInput(
       aggV1.input,
@@ -401,8 +426,10 @@ void main() {
       shiftFact: factV1,
       provenance: aggV1.provenance,
     );
-    expect(pool.shiftRecords.values.single['target_profile_version_id'],
-        'tpv_X');
+    expect(
+      pool.shiftRecords.values.single['target_profile_version_id'],
+      'tpv_X',
+    );
 
     // Seed the prior TPV in the fake so the aggregator's prior-TPV read
     // returns tpv_X for the second pass (production path: writer wrote
@@ -412,10 +439,14 @@ void main() {
         'tpv_X';
 
     // Step 2 — TargetCycle rolls; vendor correction arrives.
-    pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso']!
-        .first['covers'] = 6;
-    pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso']!
-        .first['actual_sales'] = 142.50;
+    pool
+            .coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso']!
+            .first['covers'] =
+        6;
+    pool
+            .coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso']!
+            .first['actual_sales'] =
+        142.50;
 
     final aggV2 = await aggregator.aggregate(
       operatorId: _opA,
@@ -428,8 +459,11 @@ void main() {
       periodDefinition: _dinnerPeriod,
     );
     expect(aggV2, isNotNull);
-    expect(aggV2!.provenance.priorTargetProfileVersionId, 'tpv_X',
-        reason: 'aggregator surfaces the prior TPV verbatim');
+    expect(
+      aggV2!.provenance.priorTargetProfileVersionId,
+      'tpv_X',
+      reason: 'aggregator surfaces the prior TPV verbatim',
+    );
 
     final factV2 = ShiftFactBuilder.fromClosedShiftInput(
       aggV2.input,
@@ -441,21 +475,25 @@ void main() {
       shiftFact: factV2,
       provenance: aggV2.provenance,
     );
-    expect(pool.shiftRecords, hasLength(1),
-        reason: 'replace-for-slot, not append');
+    expect(
+      pool.shiftRecords,
+      hasLength(1),
+      reason: 'replace-for-slot, not append',
+    );
     final reread = pool.shiftRecords.values.single;
-    expect(reread['target_profile_version_id'], 'tpv_X',
-        reason:
-            'Concern A: corrected fact does NOT re-grade closed history under '
-            'a newer cycle; prior tpv_X preserved verbatim');
-    expect(reread['covers'], 6,
-        reason: 'numeric correction lands on the row');
+    expect(
+      reread['target_profile_version_id'],
+      'tpv_X',
+      reason:
+          'Concern A: corrected fact does NOT re-grade closed history under '
+          'a newer cycle; prior tpv_X preserved verbatim',
+    );
+    expect(reread['covers'], 6, reason: 'numeric correction lands on the row');
   });
 
   // ──────────────────── Square forecast substitution + manual + walk-in ─
 
-  test(
-      'Square (coversFieldExposed=false) trio: vendor row covers=0 + '
+  test('Square (coversFieldExposed=false) trio: vendor row covers=0 + '
       'forecast available -> aggregator emits '
       'vendor_square_covers_unavailable_app_forecast_substituted', () async {
     final pool = _SmokeFakePool()..seedLocation(_opA, _locA);
@@ -507,104 +545,104 @@ void main() {
   });
 
   test(
-      'Pattern A: Square + Libro operator with operator_walk_in_count -> '
-      'covers source = vendor_libro_seated_plus_operator_walk_in_count',
-      () async {
-    final pool = _SmokeFakePool()..seedLocation(_opA, _locA);
-    pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
-      <String, Object?>{
-        'vendor_id': 'square',
-        'vendor_entity_id': 'order_001',
-        'vendor_modified_at': _dinnerInstantUtc,
-        'covers': 0,
-        'covers_source': 'forecast_fallback',
-        'opened_at': _dinnerInstantUtc,
-        'closed_at': _dinnerInstantUtc,
-        'business_date': _businessDateIso,
-        'actual_sales': 250.00,
-      },
-    ];
-    pool.reservationFactsByOperatorLocation[
-        '$_opA|$_locA|$_businessDateIso'] = [
-      <String, Object?>{
-        'vendor_id': 'libro',
-        'vendor_entity_id': 'res_001',
-        'reservation_at': _dinnerInstantUtc,
-        'party_size': 4,
-        'status': 'SEATED',
-        'seated_at': _dinnerInstantUtc,
-        'business_date': _businessDateIso,
-      },
-      <String, Object?>{
-        'vendor_id': 'libro',
-        'vendor_entity_id': 'res_002',
-        'reservation_at': _dinnerInstantUtc,
-        'party_size': 2,
-        'status': 'SEATED',
-        'seated_at': _dinnerInstantUtc,
-        'business_date': _businessDateIso,
-      },
-    ];
+    'Pattern A: Square + Libro operator with operator_walk_in_count -> '
+    'covers source = vendor_libro_seated_plus_operator_walk_in_count',
+    () async {
+      final pool = _SmokeFakePool()..seedLocation(_opA, _locA);
+      pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+        <String, Object?>{
+          'vendor_id': 'square',
+          'vendor_entity_id': 'order_001',
+          'vendor_modified_at': _dinnerInstantUtc,
+          'covers': 0,
+          'covers_source': 'forecast_fallback',
+          'opened_at': _dinnerInstantUtc,
+          'closed_at': _dinnerInstantUtc,
+          'business_date': _businessDateIso,
+          'actual_sales': 250.00,
+        },
+      ];
+      pool.reservationFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+          [
+            <String, Object?>{
+              'vendor_id': 'libro',
+              'vendor_entity_id': 'res_001',
+              'reservation_at': _dinnerInstantUtc,
+              'party_size': 4,
+              'status': 'SEATED',
+              'seated_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+            },
+            <String, Object?>{
+              'vendor_id': 'libro',
+              'vendor_entity_id': 'res_002',
+              'reservation_at': _dinnerInstantUtc,
+              'party_size': 2,
+              'status': 'SEATED',
+              'seated_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+            },
+          ];
 
-    final wrapper = TenantTransactionWrapper(pool);
-    final aggregator = CanonicalFactToClosedShiftInputAggregator(wrapper);
-    final result = await aggregator.aggregate(
-      operatorId: _opA,
-      locationId: _locA,
-      restaurantId: _restaurantA,
-      businessDate: _businessDate,
-      weekId: '2026-W18',
-      dayLabel: 'Mon',
-      daypart: Daypart.dinner,
-      periodDefinition: _dinnerPeriod,
-      walkInOverride: const ReservationWalkInOverride(
-        operatorWalkInCount: 8,
-      ),
-    );
-    expect(result, isNotNull);
-    expect(result!.input.covers, 4 + 2 + 8,
-        reason: 'seated party_size sum + operator walk-in count');
-    expect(
-      result.provenance.coversProvenance,
-      'vendor_libro_seated_plus_operator_walk_in_count',
-    );
-  });
+      final wrapper = TenantTransactionWrapper(pool);
+      final aggregator = CanonicalFactToClosedShiftInputAggregator(wrapper);
+      final result = await aggregator.aggregate(
+        operatorId: _opA,
+        locationId: _locA,
+        restaurantId: _restaurantA,
+        businessDate: _businessDate,
+        weekId: '2026-W18',
+        dayLabel: 'Mon',
+        daypart: Daypart.dinner,
+        periodDefinition: _dinnerPeriod,
+        walkInOverride: const ReservationWalkInOverride(operatorWalkInCount: 8),
+      );
+      expect(result, isNotNull);
+      expect(
+        result!.input.covers,
+        4 + 2 + 8,
+        reason: 'seated party_size sum + operator walk-in count',
+      );
+      expect(
+        result.provenance.coversProvenance,
+        'vendor_libro_seated_plus_operator_walk_in_count',
+      );
+    },
+  );
 
   // ──────────────────── Tock daypart bucketing without seated_at ───────
 
-  test(
-      'Tock fixture without seated_at: aggregator buckets by '
-      'reservation_at; SEATED party_size sums; NO_SHOW excluded',
-      () async {
+  test('Tock fixture without seated_at: aggregator buckets by '
+      'reservation_at; SEATED party_size sums; NO_SHOW excluded', () async {
     final pool = _SmokeFakePool()..seedLocation(_opA, _locA);
-    pool.reservationFactsByOperatorLocation[
-        '$_opA|$_locA|$_businessDateIso'] = [
-      <String, Object?>{
-        'vendor_id': 'tock',
-        'vendor_entity_id': 'tock_001',
-        'reservation_at': _dinnerInstantUtc,
-        'party_size': 4,
-        'status': 'SEATED',
-        // seated_at deliberately absent — Tock has no seated_at field.
-        'business_date': _businessDateIso,
-      },
-      <String, Object?>{
-        'vendor_id': 'tock',
-        'vendor_entity_id': 'tock_002',
-        'reservation_at': _dinnerInstantUtc,
-        'party_size': 6,
-        'status': 'SEATED',
-        'business_date': _businessDateIso,
-      },
-      <String, Object?>{
-        'vendor_id': 'tock',
-        'vendor_entity_id': 'tock_003',
-        'reservation_at': _dinnerInstantUtc,
-        'party_size': 2,
-        'status': 'NO_SHOW',
-        'business_date': _businessDateIso,
-      },
-    ];
+    pool.reservationFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+        [
+          <String, Object?>{
+            'vendor_id': 'tock',
+            'vendor_entity_id': 'tock_001',
+            'reservation_at': _dinnerInstantUtc,
+            'party_size': 4,
+            'status': 'SEATED',
+            // seated_at deliberately absent — Tock has no seated_at field.
+            'business_date': _businessDateIso,
+          },
+          <String, Object?>{
+            'vendor_id': 'tock',
+            'vendor_entity_id': 'tock_002',
+            'reservation_at': _dinnerInstantUtc,
+            'party_size': 6,
+            'status': 'SEATED',
+            'business_date': _businessDateIso,
+          },
+          <String, Object?>{
+            'vendor_id': 'tock',
+            'vendor_entity_id': 'tock_003',
+            'reservation_at': _dinnerInstantUtc,
+            'party_size': 2,
+            'status': 'NO_SHOW',
+            'business_date': _businessDateIso,
+          },
+        ];
     pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
       <String, Object?>{
         'vendor_id': 'square',
@@ -630,19 +668,19 @@ void main() {
       dayLabel: 'Mon',
       daypart: Daypart.dinner,
       periodDefinition: _dinnerPeriod,
-      walkInOverride: const ReservationWalkInOverride(
-        operatorWalkInCount: 0,
-      ),
+      walkInOverride: const ReservationWalkInOverride(operatorWalkInCount: 0),
     );
     expect(result, isNotNull);
-    expect(result!.input.covers, 4 + 6,
-        reason: 'SEATED party_size sums (10); NO_SHOW excluded');
+    expect(
+      result!.input.covers,
+      4 + 6,
+      reason: 'SEATED party_size sums (10); NO_SHOW excluded',
+    );
   });
 
   // ──────────────────── Per-position vendor wage class ─────────────────
 
-  test(
-      'Humanity per-position fixture: rate × hours -> '
+  test('Humanity per-position fixture: rate × hours -> '
       'vendor_humanity_per_position_actual_dollars', () async {
     final pool = _SmokeFakePool()..seedLocation(_opA, _locA);
     pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
@@ -706,8 +744,7 @@ void main() {
 
   // ──────────────────── 7shifts perEmployeeWithDollars after upgrade ───
 
-  test(
-      '7shifts post-.7S.upgrade is in perEmployeeWithDollars; aggregator '
+  test('7shifts post-.7S.upgrade is in perEmployeeWithDollars; aggregator '
       'consumes vendor-supplied total_pay -> '
       'vendor_seven_shifts_per_employee_actual_dollars', () async {
     // Direct sidecar assertion (.7S.upgrade landed; the sidecar lookup
@@ -715,7 +752,8 @@ void main() {
     expect(
       laborWageSourceClassFor('seven_shifts'),
       LaborWageSourceClass.perEmployeeWithDollars,
-      reason: '8.spine-bridge.7S.upgrade flipped 7shifts via '
+      reason:
+          '8.spine-bridge.7S.upgrade flipped 7shifts via '
           '/reports/hours_and_wages',
     );
 
@@ -783,8 +821,7 @@ void main() {
 
   // ──────────────────── Manual entry per daypart (acceptance #14) ──────
 
-  test(
-      'operator manual entry per daypart -> sourceSystem = '
+  test('operator manual entry per daypart -> sourceSystem = '
       'operator_manual_entry; provenance = '
       'operator_manual_entry_per_daypart', () async {
     final pool = _SmokeFakePool()..seedLocation(_opA, _locA);
@@ -838,8 +875,7 @@ void main() {
     );
   });
 
-  test(
-      'wage source = manual_mix -> labor_dollars provenance = '
+  test('wage source = manual_mix -> labor_dollars provenance = '
       'target_wage_substituted (acceptance #15)', () async {
     final pool = _SmokeFakePool()..seedLocation(_opA, _locA);
     pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
@@ -877,7 +913,8 @@ void main() {
         'shift_start': _dinnerInstantUtc,
         'shift_end': _dinnerInstantUtc.add(const Duration(hours: 4)),
         'hours_worked': 4,
-        'actual_dollars': 95.50, // vendor exposes dollars but operator overrides.
+        'actual_dollars':
+            95.50, // vendor exposes dollars but operator overrides.
         'business_date': _businessDateIso,
       },
     ];
@@ -898,7 +935,8 @@ void main() {
     expect(
       result!.provenance.laborDollarsProvenance,
       'target_wage_substituted',
-      reason: 'manual_mix forces operator-mix override regardless of vendor '
+      reason:
+          'manual_mix forces operator-mix override regardless of vendor '
           'capability',
     );
   });
@@ -906,36 +944,39 @@ void main() {
   // ──────────────────── Architectural compliance grep audit ────────────
 
   group('Architectural compliance audit', () {
-    test('no `vendorProvidedForecast` enum or field anywhere under lib/',
-        () async {
-      // Forecast is F&F-computed (Layer 6 in core_app_architecture.md).
-      // No vendor ever produces a forecast — this rules out any sneaky
-      // re-introduction of vendor-supplied forecasts.
-      final dirs = <String>[
-        'lib/services/integration',
-        'lib/infrastructure/persistence/postgres',
-        'lib/services/sync',
-        'lib/services/data_accuracy',
-        'lib/admin',
-        'lib/operator_web',
-        'lib/domain',
-      ];
-      for (final dir in dirs) {
-        final root = Directory(dir);
-        if (!root.existsSync()) continue;
-        for (final entry in root.listSync(recursive: true)) {
-          if (entry is! File) continue;
-          if (!entry.path.endsWith('.dart')) continue;
-          final source = entry.readAsStringSync();
-          expect(
-            source.contains('vendorProvidedForecast'),
-            isFalse,
-            reason: 'Layer 6 violation in ${entry.path} — forecast is '
-                'F&F-computed, never vendor-supplied',
-          );
+    test(
+      'no `vendorProvidedForecast` enum or field anywhere under lib/',
+      () async {
+        // Forecast is F&F-computed (Layer 6 in core_app_architecture.md).
+        // No vendor ever produces a forecast — this rules out any sneaky
+        // re-introduction of vendor-supplied forecasts.
+        final dirs = <String>[
+          'lib/services/integration',
+          'lib/infrastructure/persistence/postgres',
+          'lib/services/sync',
+          'lib/services/data_accuracy',
+          'lib/admin',
+          'lib/operator_web',
+          'lib/domain',
+        ];
+        for (final dir in dirs) {
+          final root = Directory(dir);
+          if (!root.existsSync()) continue;
+          for (final entry in root.listSync(recursive: true)) {
+            if (entry is! File) continue;
+            if (!entry.path.endsWith('.dart')) continue;
+            final source = entry.readAsStringSync();
+            expect(
+              source.contains('vendorProvidedForecast'),
+              isFalse,
+              reason:
+                  'Layer 6 violation in ${entry.path} — forecast is '
+                  'F&F-computed, never vendor-supplied',
+            );
+          }
         }
-      }
-    });
+      },
+    );
 
     test('spine-bridge code does not write to open_shift_snapshots', () {
       // Out-of-scope per integration_spine_architecture_contract.md
@@ -952,8 +993,6 @@ void main() {
         'lib/infrastructure/persistence/postgres/oracle_micros_simphony_postgres_sink.dart',
         'lib/infrastructure/persistence/postgres/quickbooks_time_postgres_sink.dart',
         'lib/infrastructure/persistence/postgres/libro_postgres_sink.dart',
-        'lib/services/sync/postgres_shift_record_to_mobile_sync.dart',
-        'lib/services/sync/sync_proxy_client.dart',
         'lib/services/data_accuracy/data_accuracy_settings_repository.dart',
       ];
       for (final relPath in spineBridgeFiles) {
@@ -963,7 +1002,8 @@ void main() {
         expect(
           source.contains('open_shift_snapshots'),
           isFalse,
-          reason: 'open_shift_snapshots write found in $relPath; out of '
+          reason:
+              'open_shift_snapshots write found in $relPath; out of '
               'scope per integration_spine_architecture_contract.md',
         );
       }
@@ -974,12 +1014,21 @@ void main() {
       final source = File(
         'lib/integrations/pos/oracle_micros_simphony_pos_adapter.dart',
       ).readAsStringSync();
-      expect(source.contains("header['guestCount']"), isTrue,
-          reason: '2026-05-05 falsehood correction #5: Gen2 path required');
-      expect(source.contains('numOfGst'), isFalse,
-          reason: 'Gen1 path forbidden after 2026-05-05 correction');
-      expect(source.contains('numberOfGuests'), isFalse,
-          reason: 'adapter constant guess forbidden after 2026-05-05 correction');
+      expect(
+        source.contains("header['guestCount']"),
+        isTrue,
+        reason: '2026-05-05 falsehood correction #5: Gen2 path required',
+      );
+      expect(
+        source.contains('numOfGst'),
+        isFalse,
+        reason: 'Gen1 path forbidden after 2026-05-05 correction',
+      );
+      expect(
+        source.contains('numberOfGuests'),
+        isFalse,
+        reason: 'adapter constant guess forbidden after 2026-05-05 correction',
+      );
     });
 
     test('ADP webhookSupport = autoRegister (not pollOnly) — '
@@ -994,8 +1043,7 @@ void main() {
       );
     });
 
-    test('aggregator provenance string template binds vendor_<id>_*',
-        () async {
+    test('aggregator provenance string template binds vendor_<id>_*', () async {
       final source = await File(
         'lib/services/integration/canonical_fact_to_closed_shift_input.dart',
       ).readAsString();
@@ -1003,22 +1051,26 @@ void main() {
       expect(source.contains("'vendor_\$posVendorId'"), isTrue);
       expect(
         source.contains(
-            "'vendor_\${reservationVendorId}_seated_plus_operator_walk_in_count'"),
+          "'vendor_\${reservationVendorId}_seated_plus_operator_walk_in_count'",
+        ),
         isTrue,
       );
       expect(
         source.contains(
-            "'vendor_\${vendorBase}_covers_unavailable_app_forecast_substituted'"),
+          "'vendor_\${vendorBase}_covers_unavailable_app_forecast_substituted'",
+        ),
         isTrue,
       );
       expect(
         source.contains(
-            "'vendor_\${laborVendorId}_per_employee_actual_dollars'"),
+          "'vendor_\${laborVendorId}_per_employee_actual_dollars'",
+        ),
         isTrue,
       );
       expect(
         source.contains(
-            "'vendor_\${laborVendorId}_per_position_actual_dollars'"),
+          "'vendor_\${laborVendorId}_per_position_actual_dollars'",
+        ),
         isTrue,
       );
       expect(source.contains("'operator_manual_entry_per_daypart'"), isTrue);
@@ -1038,11 +1090,10 @@ class _SmokeFakePool implements PostgresPool {
       <String, Map<String, Object?>>{};
   final Map<String, List<Map<String, Object?>>> coverFactsByOperatorLocation =
       <String, List<Map<String, Object?>>>{};
-  final Map<String, List<Map<String, Object?>>>
-      laborPunchesByOperatorLocation = <String, List<Map<String, Object?>>>{};
-  final Map<String, List<Map<String, Object?>>>
-      reservationFactsByOperatorLocation =
+  final Map<String, List<Map<String, Object?>>> laborPunchesByOperatorLocation =
       <String, List<Map<String, Object?>>>{};
+  final Map<String, List<Map<String, Object?>>>
+  reservationFactsByOperatorLocation = <String, List<Map<String, Object?>>>{};
   final Map<String, String> shiftRecordTpvBySlot = <String, String>{};
   final Map<String, Map<String, Object?>> shiftRecords =
       <String, Map<String, Object?>>{};
@@ -1098,7 +1149,8 @@ class _SmokeFakeTransaction implements PostgresTransaction {
       return <PostgresRow>[row];
     }
     if (sql.contains(
-        'select timezone, business_day_rollover_hour from public.locations')) {
+      'select timezone, business_day_rollover_hour from public.locations',
+    )) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final row = pool.readLocation(operatorId, locationId);
@@ -1109,24 +1161,24 @@ class _SmokeFakeTransaction implements PostgresTransaction {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final businessDate = parameters['business_date'] as String;
-      return pool.coverFactsByOperatorLocation[
-              '$operatorId|$locationId|$businessDate'] ??
+      return pool
+              .coverFactsByOperatorLocation['$operatorId|$locationId|$businessDate'] ??
           const <PostgresRow>[];
     }
     if (sql.contains('from public.labor_punches')) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final businessDate = parameters['business_date'] as String;
-      return pool.laborPunchesByOperatorLocation[
-              '$operatorId|$locationId|$businessDate'] ??
+      return pool
+              .laborPunchesByOperatorLocation['$operatorId|$locationId|$businessDate'] ??
           const <PostgresRow>[];
     }
     if (sql.contains('from public.reservation_facts')) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final businessDate = parameters['business_date'] as String;
-      return pool.reservationFactsByOperatorLocation[
-              '$operatorId|$locationId|$businessDate'] ??
+      return pool
+              .reservationFactsByOperatorLocation['$operatorId|$locationId|$businessDate'] ??
           const <PostgresRow>[];
     }
     if (sql.contains('from public.shift_records')) {
@@ -1134,8 +1186,8 @@ class _SmokeFakeTransaction implements PostgresTransaction {
       final locationId = parameters['location_id'] as String;
       final businessDate = parameters['business_date'] as String;
       final daypart = parameters['daypart'] as String;
-      final tpv = pool.shiftRecordTpvBySlot[
-          '$operatorId|$locationId|$businessDate|$daypart'];
+      final tpv = pool
+          .shiftRecordTpvBySlot['$operatorId|$locationId|$businessDate|$daypart'];
       if (tpv == null) return const <PostgresRow>[];
       return <PostgresRow>[
         <String, Object?>{'target_profile_version_id': tpv},
@@ -1190,10 +1242,8 @@ class _SmokeFakeTransaction implements PostgresTransaction {
         'target_boh_wage': parameters['target_boh_wage'],
         'opz_floor_cplh': parameters['opz_floor_cplh'],
         'opz_ceiling_cplh': parameters['opz_ceiling_cplh'],
-        'theoretical_foh_labor_pct':
-            parameters['theoretical_foh_labor_pct'],
-        'theoretical_boh_labor_pct':
-            parameters['theoretical_boh_labor_pct'],
+        'theoretical_foh_labor_pct': parameters['theoretical_foh_labor_pct'],
+        'theoretical_boh_labor_pct': parameters['theoretical_boh_labor_pct'],
         'source_system': parameters['source_system'],
         'source_shift_id': parameters['source_shift_id'],
         'covers_provenance': parameters['covers_provenance'],
@@ -1242,7 +1292,8 @@ class _SmokeSyncProxyClient implements SyncProxyClient {
   }
 
   void scriptPollingTierAssignment(
-      ForgeFlowPollingTierAssignmentSnapshot? snap) {
+    ForgeFlowPollingTierAssignmentSnapshot? snap,
+  ) {
     _pollingTierAssignment = snap;
   }
 
@@ -1257,33 +1308,45 @@ class _SmokeSyncProxyClient implements SyncProxyClient {
       return const ShiftRecordPage(records: <ShiftRecord>[], nextCursor: null);
     }
     final page = _shiftPages.removeAt(0);
-    return ShiftRecordPage(
-      records: page.records,
-      nextCursor: page.nextCursor,
-    );
+    return ShiftRecordPage(records: page.records, nextCursor: page.nextCursor);
   }
+
+  @override
+  Future<OpenShiftSnapshotPage> fetchOpenShiftSnapshots({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  }) async => const OpenShiftSnapshotPage(
+    snapshots: <OpenShiftSnapshot>[],
+    nextCursor: null,
+  );
+
+  @override
+  Future<RestaurantTimingConfig?> fetchResolvedTimingConfig({
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+  }) async => null;
 
   @override
   Future<List<DemoModeRecord>> fetchDemoModeStates({
     required String operatorId,
     required String locationId,
-  }) async =>
-      _demoModeStates;
+  }) async => _demoModeStates;
 
   @override
   Future<DataAccuracySettingsSnapshot?> fetchDataAccuracySettings({
     required String operatorId,
     required String locationId,
-  }) async =>
-      _dataAccuracySettings;
+  }) async => _dataAccuracySettings;
 
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
-      fetchForgeFlowPollingTierAssignment({
+  fetchForgeFlowPollingTierAssignment({
     required String operatorId,
     required String locationId,
-  }) async =>
-      _pollingTierAssignment;
+  }) async => _pollingTierAssignment;
 }
 
 class _BusListener {

@@ -82,9 +82,7 @@ Widget _buildShiftDashboard() {
         create: (_) => ShiftDashboardNotifier.fromReadModel(rm),
       ),
     ],
-    child: const MaterialApp(
-      home: Scaffold(body: ShiftDashboard()),
-    ),
+    child: const MaterialApp(home: Scaffold(body: ShiftDashboard())),
   );
 }
 
@@ -93,8 +91,8 @@ void main() {
     ShiftDashboard.clockOverride = null;
   });
 
-  group('ShiftDashboard daypart toggle (10.5.0)', () {
-    testWidgets('defaults to whole-day; both pills render', (tester) async {
+  group('ShiftDashboard service-period selector', () {
+    testWidgets('defaults to whole-day; period chips render', (tester) async {
       // Friday 2026-03-27 8:30 PM (Dinner window is open) so the
       // ACTIVE NOW chip would surface IF the daypart lens were active.
       // It must not, because whole-day is the default.
@@ -105,26 +103,28 @@ void main() {
       await tester.pump();
 
       // Authoritative whole-day sections are present.
-      expect(find.text('SHIFT OUTPUTS', skipOffstage: false),
-          findsOneWidget);
-      expect(find.text('SHIFT INPUTS', skipOffstage: false),
-          findsOneWidget);
-      expect(find.text('FOH PRODUCTIVITY', skipOffstage: false),
-          findsOneWidget);
+      expect(find.text('SHIFT OUTPUTS', skipOffstage: false), findsOneWidget);
+      expect(find.text('SHIFT INPUTS', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('FOH PRODUCTIVITY', skipOffstage: false),
+        findsOneWidget,
+      );
 
       // Both scope pills render (toggle is alongside, not a replacement).
       expect(find.text('Whole Day', skipOffstage: false), findsOneWidget);
-      expect(find.text('Daypart', skipOffstage: false), findsOneWidget);
+      expect(find.text('Lunch', skipOffstage: false), findsWidgets);
+      expect(find.text('Dinner', skipOffstage: false), findsOneWidget);
+      expect(find.text('Late Night', skipOffstage: false), findsOneWidget);
+      expect(find.text('Daypart', skipOffstage: false), findsNothing);
+      expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
 
       // Daypart scaffold is NOT visible by default.
-      expect(find.text('SERVICE PERIODS', skipOffstage: false),
-          findsNothing);
-      expect(find.text('Lunch', skipOffstage: false), findsNothing);
-      expect(find.text('ACTIVE NOW', skipOffstage: false), findsNothing);
+      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsNothing);
     });
 
-    testWidgets('tapping Daypart opens the SERVICE PERIODS scaffold',
-        (tester) async {
+    testWidgets('tapping a period opens the SERVICE PERIOD scaffold', (
+      tester,
+    ) async {
       // Tuesday 2026-03-31 12:30 — Lunch is the active period
       // (Lunch 11:00–15:00, applicable Mon–Fri).
       ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
@@ -133,29 +133,24 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      await tester.tap(find.text('Daypart', skipOffstage: false));
+      await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
 
       // Whole-day sections are gone — daypart lens is the active view.
       expect(find.text('SHIFT OUTPUTS', skipOffstage: false), findsNothing);
       expect(find.text('SHIFT INPUTS', skipOffstage: false), findsNothing);
-      expect(
-          find.text('FOH PRODUCTIVITY', skipOffstage: false), findsNothing);
+      expect(find.text('FOH PRODUCTIVITY', skipOffstage: false), findsNothing);
 
       // Daypart scaffold is visible.
-      expect(find.text('SERVICE PERIODS', skipOffstage: false),
-          findsOneWidget);
+      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsOneWidget);
 
       // All three demo definitions render with their clock windows.
-      expect(find.text('Lunch', skipOffstage: false), findsOneWidget);
+      expect(find.text('Lunch', skipOffstage: false), findsWidgets);
       expect(find.text('Dinner', skipOffstage: false), findsOneWidget);
-      expect(find.text('Late Night', skipOffstage: false), findsOneWidget);
-      expect(find.text('11:00 – 15:00', skipOffstage: false),
-          findsOneWidget);
-      expect(find.text('17:00 – 23:00', skipOffstage: false),
-          findsOneWidget);
-      expect(find.text('23:00 – 02:00', skipOffstage: false),
-          findsOneWidget);
+      expect(find.text('Late Night', skipOffstage: false), findsWidgets);
+      expect(find.textContaining('11:00', skipOffstage: false), findsOneWidget);
+      expect(find.textContaining('17:00', skipOffstage: false), findsNothing);
+      expect(find.textContaining('23:00', skipOffstage: false), findsNothing);
 
       // 10.5.2 replaces the 10.5.0 "build out in upcoming 10.5 slices"
       // banner with live per-period accumulator metrics on each card.
@@ -168,8 +163,9 @@ void main() {
       expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
     });
 
-    testWidgets('tapping Whole Day restores the authoritative sections',
-        (tester) async {
+    testWidgets('tapping Whole Day restores the authoritative sections', (
+      tester,
+    ) async {
       ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
 
       await tester.pumpWidget(_buildShiftDashboard());
@@ -177,27 +173,26 @@ void main() {
       await tester.pump();
 
       // Open daypart lens.
-      await tester.tap(find.text('Daypart', skipOffstage: false));
+      await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
-      expect(find.text('SERVICE PERIODS', skipOffstage: false),
-          findsOneWidget);
+      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsOneWidget);
 
       // Tap Whole Day to restore the authoritative view.
       await tester.tap(find.text('Whole Day', skipOffstage: false));
       await tester.pump();
 
-      expect(find.text('SHIFT OUTPUTS', skipOffstage: false),
-          findsOneWidget);
-      expect(find.text('SHIFT INPUTS', skipOffstage: false),
-          findsOneWidget);
-      expect(find.text('FOH PRODUCTIVITY', skipOffstage: false),
-          findsOneWidget);
-      expect(find.text('SERVICE PERIODS', skipOffstage: false),
-          findsNothing);
+      expect(find.text('SHIFT OUTPUTS', skipOffstage: false), findsOneWidget);
+      expect(find.text('SHIFT INPUTS', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('FOH PRODUCTIVITY', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsNothing);
     });
 
-    testWidgets('no ACTIVE NOW chip when the clock is between periods',
-        (tester) async {
+    testWidgets('no ACTIVE NOW chip when the clock is between periods', (
+      tester,
+    ) async {
       // Tuesday 2026-03-31 16:00 — outside Lunch (11:00–15:00) and
       // before Dinner (17:00–23:00). No period is active.
       ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 16, 0);
@@ -206,66 +201,65 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      await tester.tap(find.text('Daypart', skipOffstage: false));
+      await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
 
-      expect(find.text('SERVICE PERIODS', skipOffstage: false),
-          findsOneWidget);
-      expect(find.text('Lunch', skipOffstage: false), findsOneWidget);
+      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsOneWidget);
+      expect(find.text('Lunch', skipOffstage: false), findsWidgets);
       expect(find.text('Dinner', skipOffstage: false), findsOneWidget);
       expect(find.text('ACTIVE NOW', skipOffstage: false), findsNothing);
     });
 
     testWidgets(
-        'Late Night ACTIVE NOW surfaces post-midnight on rolls-past-midnight days',
-        (tester) async {
-      // Saturday 2026-03-28 01:30 calendar — with the 04:00 business-day
-      // cutoff this is still Friday's business day (weekday 5 = Fri),
-      // and Late Night is applicable Fri/Sat. The post-midnight portion
-      // belongs to the prior business date per the time-boundary contract.
-      ShiftDashboard.clockOverride = () => DateTime(2026, 3, 28, 1, 30);
+      'Late Night ACTIVE NOW surfaces post-midnight on rolls-past-midnight days',
+      (tester) async {
+        // Saturday 2026-03-28 01:30 calendar — with the 04:00 business-day
+        // cutoff this is still Friday's business day (weekday 5 = Fri),
+        // and Late Night is applicable Fri/Sat. The post-midnight portion
+        // belongs to the prior business date per the time-boundary contract.
+        ShiftDashboard.clockOverride = () => DateTime(2026, 3, 28, 1, 30);
 
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
 
-      await tester.tap(find.text('Daypart', skipOffstage: false));
-      await tester.pump();
+        await tester.tap(find.text('Late Night', skipOffstage: false));
+        await tester.pump();
 
-      // Late Night is the only active period.
-      expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
-      // Sanity: the Late Night card is present.
-      expect(find.text('Late Night', skipOffstage: false), findsOneWidget);
-    });
-
-    testWidgets(
-        'ACTIVE chip uses business-date weekday, not wall-clock weekday '
-        '(Sun 01:30 calendar = Sat business day)',
-        (tester) async {
-      // Sunday 2026-03-29 01:30 calendar. Wall weekday is 7 (Sun) and
-      // Late Night's applicableDays = [5, 6] (Fri, Sat) — under the
-      // previous device-clock implementation the chip would have
-      // silently disappeared at the calendar rollover. With the
-      // BusinessDateResolver wiring in place, the 04:00 cutoff makes
-      // this Saturday's business day (weekday 6), so Late Night is
-      // still active. This is the regression test for P2 #1.
-      ShiftDashboard.clockOverride = () => DateTime(2026, 3, 29, 1, 30);
-
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-
-      await tester.tap(find.text('Daypart', skipOffstage: false));
-      await tester.pump();
-
-      expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
-      expect(find.text('Late Night', skipOffstage: false), findsOneWidget);
-    });
+        // Late Night is the only active period.
+        expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
+        // Sanity: the Late Night card is present.
+        expect(find.text('Late Night', skipOffstage: false), findsWidgets);
+      },
+    );
 
     testWidgets(
-        'ACTIVE chip refreshes on the periodic ticker when the clock '
-        'crosses a service-period boundary',
-        (tester) async {
+      'ACTIVE chip uses business-date weekday, not wall-clock weekday '
+      '(Sun 01:30 calendar = Sat business day)',
+      (tester) async {
+        // Sunday 2026-03-29 01:30 calendar. Wall weekday is 7 (Sun) and
+        // Late Night's applicableDays = [5, 6] (Fri, Sat) — under the
+        // previous device-clock implementation the chip would have
+        // silently disappeared at the calendar rollover. With the
+        // BusinessDateResolver wiring in place, the 04:00 cutoff makes
+        // this Saturday's business day (weekday 6), so Late Night is
+        // still active. This is the regression test for P2 #1.
+        ShiftDashboard.clockOverride = () => DateTime(2026, 3, 29, 1, 30);
+
+        await tester.pumpWidget(_buildShiftDashboard());
+        await tester.pump();
+        await tester.pump();
+
+        await tester.tap(find.text('Late Night', skipOffstage: false));
+        await tester.pump();
+
+        expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
+        expect(find.text('Late Night', skipOffstage: false), findsWidgets);
+      },
+    );
+
+    testWidgets('ACTIVE chip refreshes on the periodic ticker when the clock '
+        'crosses a service-period boundary', (tester) async {
       // Tuesday 2026-03-31. Start at 14:55 (Lunch active 11:00–15:00),
       // advance the source-of-truth clock past Lunch end to 15:01
       // (no period applies), then pump > 30 s of virtual time to fire
@@ -279,7 +273,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      await tester.tap(find.text('Daypart', skipOffstage: false));
+      await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
 
       // 14:55 — Lunch is the active period.
@@ -300,10 +294,8 @@ void main() {
       expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
     });
 
-    testWidgets(
-        'no ACTIVE chip when restaurant scope has no usable IANA '
-        'timezone and clockOverride is unset',
-        (tester) async {
+    testWidgets('no ACTIVE chip when restaurant scope has no usable IANA '
+        'timezone and clockOverride is unset', (tester) async {
       // Build a dashboard with a restaurant that has an empty IANA
       // timezone string. With clockOverride deliberately null, the
       // scaffold has no honest source-of-truth clock, so per the
@@ -327,21 +319,19 @@ void main() {
             create: (_) => ShiftDashboardNotifier.fromReadModel(rm),
           ),
         ],
-        child: const MaterialApp(
-          home: Scaffold(body: ShiftDashboard()),
-        ),
+        child: const MaterialApp(home: Scaffold(body: ShiftDashboard())),
       );
 
       await tester.pumpWidget(widget);
       await tester.pump();
       await tester.pump();
 
-      await tester.tap(find.text('Daypart', skipOffstage: false));
+      await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
 
       // The cards still render; no ACTIVE chip surfaces because the
       // scaffold refuses to fall back to the device clock.
-      expect(find.text('Lunch', skipOffstage: false), findsOneWidget);
+      expect(find.text('Lunch', skipOffstage: false), findsWidgets);
       expect(find.text('Dinner', skipOffstage: false), findsOneWidget);
       expect(find.text('Late Night', skipOffstage: false), findsOneWidget);
       expect(find.text('ACTIVE NOW', skipOffstage: false), findsNothing);

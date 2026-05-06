@@ -264,9 +264,9 @@ class ShiftDashboardReadModel {
     String? posSourceVendorId,
     String? laborSourceVendorId,
     bool laborDollarsFromVendor = true,
-  })  : _posSourceVendorId = posSourceVendorId,
-        _laborSourceVendorId = laborSourceVendorId,
-        _laborDollarsFromVendor = laborDollarsFromVendor;
+  }) : _posSourceVendorId = posSourceVendorId,
+       _laborSourceVendorId = laborSourceVendorId,
+       _laborDollarsFromVendor = laborDollarsFromVendor;
 
   /// Builds the read model from a single snapshot + active target profile.
   /// Used by tests and legacy paths. Plan values are derived from the snapshot.
@@ -274,6 +274,9 @@ class ShiftDashboardReadModel {
     OpenShiftSnapshot snapshot,
     ActiveTargetProfile profile, {
     int? inTheBooksCovers,
+    String? posSourceVendorId,
+    String? laborSourceVendorId,
+    bool laborDollarsFromVendor = true,
   }) {
     final sales = snapshot.currentCovers * snapshot.currentPPA;
     return ShiftDashboardReadModel.buildWholeDay(
@@ -282,12 +285,20 @@ class ShiftDashboardReadModel {
       forecastCovers: snapshot.forecastCovers,
       forecastSales: snapshot.forecastCovers * profile.targetPPA,
       planFohHours: LaborModel.modelFohHours(
-          snapshot.forecastCovers, profile.targetCPLH),
+        snapshot.forecastCovers,
+        profile.targetCPLH,
+      ),
       planBohHours: LaborModel.modelBohHours(
-          snapshot.forecastCovers, profile.targetPPA, profile.targetSPLH),
+        snapshot.forecastCovers,
+        profile.targetPPA,
+        profile.targetSPLH,
+      ),
       inTheBooksCovers: inTheBooksCovers,
       actualCoversOverride: snapshot.currentCovers,
       actualSalesOverride: sales,
+      posSourceVendorId: posSourceVendorId,
+      laborSourceVendorId: laborSourceVendorId,
+      laborDollarsFromVendor: laborDollarsFromVendor,
     );
   }
 
@@ -315,13 +326,19 @@ class ShiftDashboardReadModel {
   }) {
     // Day label to full name
     const dayFull = {
-      'Mon': 'Monday', 'Tue': 'Tuesday', 'Wed': 'Wednesday',
-      'Thu': 'Thursday', 'Fri': 'Friday', 'Sat': 'Saturday', 'Sun': 'Sunday',
+      'Mon': 'Monday',
+      'Tue': 'Tuesday',
+      'Wed': 'Wednesday',
+      'Thu': 'Thursday',
+      'Fri': 'Friday',
+      'Sat': 'Saturday',
+      'Sun': 'Sunday',
     };
 
     // Use the open snapshot for time context, fall back to first
-    final openSnap = snapshots.where((s) => s.status == 'open').firstOrNull
-        ?? snapshots.first;
+    final openSnap =
+        snapshots.where((s) => s.status == 'open').firstOrNull ??
+        snapshots.first;
     final dayName = dayFull[openSnap.dayLabel] ?? openSnap.dayLabel;
 
     // Aggregate actuals from closed + open snapshots (not projected)
@@ -329,16 +346,26 @@ class ShiftDashboardReadModel {
         .where((s) => s.status == 'closed' || s.status == 'open')
         .toList();
 
-    final totalCovers = actualCoversOverride ??
+    final totalCovers =
+        actualCoversOverride ??
         actualSnapshots.fold<int>(0, (s, r) => s + r.currentCovers);
-    final totalSales = actualSalesOverride ??
+    final totalSales =
+        actualSalesOverride ??
         actualSnapshots.fold<double>(
-            0, (s, r) => s + r.currentCovers * r.currentPPA);
+          0,
+          (s, r) => s + r.currentCovers * r.currentPPA,
+        );
     final avgPPA = totalCovers > 0 ? totalSales / totalCovers : 0.0;
 
     // Actual-to-date hours: closed + open only (not projected future labor)
-    final actFoh = actualSnapshots.fold<int>(0, (s, r) => s + r.scheduledFohHours);
-    final actBoh = actualSnapshots.fold<int>(0, (s, r) => s + r.scheduledBohHours);
+    final actFoh = actualSnapshots.fold<int>(
+      0,
+      (s, r) => s + r.scheduledFohHours,
+    );
+    final actBoh = actualSnapshots.fold<int>(
+      0,
+      (s, r) => s + r.scheduledBohHours,
+    );
 
     // Full-day scheduled hours: closed + open + projected (staffing decisions)
     final totalFoh = snapshots.fold<int>(0, (s, r) => s + r.scheduledFohHours);
@@ -350,9 +377,13 @@ class ShiftDashboardReadModel {
 
     // Blended wage: weighted by actual-to-date hours (closed + open)
     final actualWageDollars = actualSnapshots.fold<double>(
-        0, (s, r) => s + r.blendedWage * (r.scheduledFohHours + r.scheduledBohHours));
+      0,
+      (s, r) => s + r.blendedWage * (r.scheduledFohHours + r.scheduledBohHours),
+    );
     final actualTotalHours = actFoh + actBoh;
-    final avgBlendedWage = actualTotalHours > 0 ? actualWageDollars / actualTotalHours : 0.0;
+    final avgBlendedWage = actualTotalHours > 0
+        ? actualWageDollars / actualTotalHours
+        : 0.0;
 
     // Whole-day labor %.
     //
@@ -365,11 +396,14 @@ class ShiftDashboardReadModel {
     //
     // The actual side stays as before: closed+open hours × blended wage
     // ÷ closed+open sales × 100.
-    final computedActualLaborDollars = actualWageDollars; // already weighted sum of wage × hours
-    final computedActualLaborPct =
-        totalSales > 0 ? computedActualLaborDollars / totalSales * 100 : 0.0;
+    final computedActualLaborDollars =
+        actualWageDollars; // already weighted sum of wage × hours
+    final computedActualLaborPct = totalSales > 0
+        ? computedActualLaborDollars / totalSales * 100
+        : 0.0;
     final computedTargetLaborPct = profile.theoreticalLaborPct;
-    final computedLaborVariancePts = computedActualLaborPct - computedTargetLaborPct;
+    final computedLaborVariancePts =
+        computedActualLaborPct - computedTargetLaborPct;
 
     // Primary lever — whole-day current-state scope.
     // Uses actual-to-date productivity from closed + open snapshots, and
@@ -399,7 +433,10 @@ class ShiftDashboardReadModel {
 
     // OPZ status
     final opzStatus = _computeOpzStatus(
-        avgCPLH, profile.opzFloorCPLH, profile.opzCeilingCPLH);
+      avgCPLH,
+      profile.opzFloorCPLH,
+      profile.opzCeilingCPLH,
+    );
     final opzLabel = _computeOpzLabel(opzStatus);
     // 7.58 depth wave (slice 10.5.6): cross-axis SPLH state + sub-label.
     final splhState = _computeSplhState(
@@ -479,17 +516,24 @@ class ShiftDashboardReadModel {
 
   static String _daypartLabel(String daypart) {
     switch (daypart) {
-      case 'lunch':      return 'Lunch';
-      case 'dinner':     return 'Dinner';
-      case 'late_night': return 'Late Night';
-      default:           return daypart;
+      case 'lunch':
+        return 'Lunch';
+      case 'dinner':
+        return 'Dinner';
+      case 'late_night':
+        return 'Late Night';
+      default:
+        return daypart;
     }
   }
 
   // ── OPZ helpers ─────────────────────────────────────────────────────────
 
   static String _computeOpzStatus(
-      double currentCplh, double floor, double ceiling) {
+    double currentCplh,
+    double floor,
+    double ceiling,
+  ) {
     if (currentCplh < floor) return 'below';
     if (currentCplh > ceiling) return 'above';
     return 'in';
@@ -497,9 +541,12 @@ class ShiftDashboardReadModel {
 
   static String _computeOpzLabel(String status) {
     switch (status) {
-      case 'below': return 'BELOW OPZ';
-      case 'above': return 'ABOVE OPZ';
-      default:      return 'IN OPZ';
+      case 'below':
+        return 'BELOW OPZ';
+      case 'above':
+        return 'ABOVE OPZ';
+      default:
+        return 'IN OPZ';
     }
   }
 
@@ -532,10 +579,7 @@ class ShiftDashboardReadModel {
   // SPLH state is absent or agrees with CPLH on the on-target reading.
   // Four cross-axis sentences swap in for the cells where the two axes
   // disagree, sourced from Jim Taylor labor-model deep dive ch. 7.
-  static String _computeOpzSubLabel(
-    String cplhStatus, [
-    String? splhState,
-  ]) {
+  static String _computeOpzSubLabel(String cplhStatus, [String? splhState]) {
     if (splhState != null) {
       if (cplhStatus == 'below' && splhState == 'above') {
         return 'Below OPZ floor. Team executed. Volume problem, not '
@@ -571,8 +615,7 @@ class ShiftDashboardReadModel {
   static String computeOpzSubLabelForTest(
     String cplhStatus,
     String? splhState,
-  ) =>
-      _computeOpzSubLabel(cplhStatus, splhState);
+  ) => _computeOpzSubLabel(cplhStatus, splhState);
 
   /// Test-only accessor for the SPLH band classifier.
   @visibleForTesting
@@ -580,12 +623,11 @@ class ShiftDashboardReadModel {
     required int actualBohHours,
     required double actualSplh,
     required double targetSplh,
-  }) =>
-      _computeSplhState(
-        actualBohHours: actualBohHours,
-        actualSplh: actualSplh,
-        targetSplh: targetSplh,
-      );
+  }) => _computeSplhState(
+    actualBohHours: actualBohHours,
+    actualSplh: actualSplh,
+    targetSplh: targetSplh,
+  );
 
   // ── Metric card builder ─────────────────────────────────────────────────
 
@@ -637,10 +679,17 @@ class ShiftDashboardReadModel {
     final cplhUnfavorable = actualCPLH < profile.targetCPLH;
     String cplhStatus;
     switch (opzLabel) {
-      case 'BELOW OPZ': cplhStatus = 'Below OPZ'; break;
-      case 'IN OPZ':    cplhStatus = 'In OPZ'; break;
-      case 'ABOVE OPZ': cplhStatus = 'Above OPZ'; break;
-      default:          cplhStatus = 'In OPZ';
+      case 'BELOW OPZ':
+        cplhStatus = 'Below OPZ';
+        break;
+      case 'IN OPZ':
+        cplhStatus = 'In OPZ';
+        break;
+      case 'ABOVE OPZ':
+        cplhStatus = 'Above OPZ';
+        break;
+      default:
+        cplhStatus = 'In OPZ';
     }
     final cplhStatusFavorable = opzStatus == 'in';
 
@@ -658,9 +707,7 @@ class ShiftDashboardReadModel {
     final targetBlendedWage = profile.targetBlendedWage;
     final wageDelta = blendedWage - targetBlendedWage;
     final wageUnfavorable = blendedWage > targetBlendedWage;
-    final wageStatus = wageUnfavorable
-        ? 'Watch for Overtime'
-        : 'No Overtime';
+    final wageStatus = wageUnfavorable ? 'Watch for Overtime' : 'No Overtime';
 
     return [
       InputMetric(
@@ -690,7 +737,8 @@ class ShiftDashboardReadModel {
         name: 'CPLH',
         currentFormatted: actualCPLH.toStringAsFixed(2),
         targetFormatted: 'Target ${profile.targetCPLH.toStringAsFixed(2)}',
-        deltaFormatted: '${cplhDelta >= 0 ? '+' : ''}${cplhDelta.toStringAsFixed(2)}',
+        deltaFormatted:
+            '${cplhDelta >= 0 ? '+' : ''}${cplhDelta.toStringAsFixed(2)}',
         deltaUnfavorable: cplhUnfavorable,
         statusFavorable: cplhStatusFavorable,
         isHero: heroName == 'CPLH',

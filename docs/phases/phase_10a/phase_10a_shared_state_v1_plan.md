@@ -95,7 +95,7 @@ undelivered-count are queued in `phase_9_execution_backlog.md` B42 (proxy
   sync call.
 
 - **Shared-state list (in Postgres, RLS-protected):**
-  - `restaurants` (timing config, service-period definitions)
+  - `business_timing_profiles` + `business_timing_service_periods` (server timing source of truth; `restaurants`/mobile timing configs are resolved read models)
   - `benchmark_overrides` (manager override applications)
   - `weekly_plan_snapshots` (locked weekly plans)
   - `target_cycle_provenance` (which cycle is active, when locked)
@@ -107,8 +107,7 @@ undelivered-count are queued in `phase_9_execution_backlog.md` B42 (proxy
     shared with 10a scoping)
 
 - **Per-device-only state (stays SQLite, never Postgres):**
-  - Canonical operational facts cache (`ClosedShiftInput`,
-    `OpenShiftSnapshot`, `ReservationBookSnapshot`, `RawImportRecord`)
+  - Mobile mirror cache for canonical operational facts (`ShiftRecord`, `OpenShiftSnapshot`, `ReservationBookSnapshot`, sync cursors). These rows originate server-side and are pulled through the proxy; mobile never pulls vendor adapters directly.
   - Derived read models (`ShiftDashboardReadModel`, etc.)
   - Import tracking (`ImportRun`, `SyncWatermark`)
   - UI state (scroll positions, expanded rows, local drafts)
@@ -258,8 +257,11 @@ Phase 10a does not own:
 - Full offline sync with optimistic concurrency (`Phase 10b`)
 - Multi-user conflict UI ("someone else just changed this; refresh?")
   (`Phase 10b`)
-- Operational-facts sync (those stay per-device; each device pulls from
-  vendor adapters independently)
+- Operational-fact production itself. Phase 8/8.spine-bridge owns closed
+  `ShiftRecord` production; the explicit `8.spine-bridge-live` follow-up
+  owns `OpenShiftSnapshot`/`ReservationBookSnapshot` live production. Phase
+  10a owns durable realtime signalling and cache hydration plumbing only.
+  Mobile devices pull durable rows through the proxy, never vendor adapters.
 - Auth, roles, permission keys (`Phase 9`)
 - Methodology corpus storage (`Phase 11a` — different tables)
 - Cross-restaurant analytics (no cross-restaurant read paths exist;

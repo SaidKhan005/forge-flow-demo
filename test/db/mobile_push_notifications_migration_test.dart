@@ -9,7 +9,7 @@ void main() {
     setUpAll(() {
       sql = File(
         'db/migrations/202605060000_mobile_push_notifications.sql',
-      ).readAsStringSync();
+      ).readAsStringSync().replaceAll('\r\n', '\n');
     });
 
     test(

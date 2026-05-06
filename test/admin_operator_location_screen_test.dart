@@ -155,6 +155,92 @@ void main() {
     expect(supportLogRequests.last, <String?>['op-support', 'loc-support']);
   });
 
+  testWidgets('location Timing action opens a scoped non-destructive dialog', (
+    tester,
+  ) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[
+        seedBundle(
+          operatorId: 'op-timing',
+          primaryLocationId: 'loc-timing',
+          businessName: 'Timing Cafe',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
+
+    final timingAction = find.byKey(
+      const Key('admin_location_timing_loc-timing'),
+    );
+    await tester.ensureVisible(timingAction);
+    await tester.pumpAndSettle();
+    await tester.tap(timingAction);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_location_timing_dialog')),
+      findsOneWidget,
+    );
+    expect(find.text('Timing Cafe / HQ'), findsOneWidget);
+    expect(find.text('America/Toronto'), findsOneWidget);
+    expect(find.text('04:00'), findsOneWidget);
+    expect(find.textContaining('No timing change was written'), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_location_timing_audit_reason')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_location_timing_save_disabled')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'read-only location Timing dialog does not expose save controls',
+    (tester) async {
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[
+          seedBundle(
+            operatorId: 'op-timing-readonly',
+            primaryLocationId: 'loc-timing-readonly',
+            businessName: 'Readonly Cafe',
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(
+          OperatorLocationAdminScreen(gateway: gateway, editingEnabled: false),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final timingAction = find.byKey(
+        const Key('admin_location_timing_loc-timing-readonly'),
+      );
+      await tester.ensureVisible(timingAction);
+      await tester.pumpAndSettle();
+      await tester.tap(timingAction);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_location_timing_dialog')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Read-only support view'), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_location_timing_audit_reason')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_location_timing_save_disabled')),
+        findsNothing,
+      );
+    },
+  );
+
   testWidgets('search filters operators by operator and location text', (
     tester,
   ) async {
