@@ -121,3 +121,35 @@ Three open items left after the sink + test landed on
    on `(operator_id, vendor_id, vendor_entity_id, vendor_modified_at)`,
    demo-flip auto-evaluator on watermark advance. Schedule the
    next lane directly after SQ merges.
+
+---
+
+# Sink Follow-Up — `8.spine-bridge.1.OT` (OpenTable)
+
+Three open items left after the sink + test landed on
+`claude/cool-williamson-7c45a0`:
+
+1. **CI verification of the sink suite.** The worktree environment
+   has no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `opentable_reservation_postgres_sink_test.dart` suite, and the
+   `opentable_reservation_adapter_test.dart` regression were not run
+   locally. CI (subosito/flutter-action) must run all three before
+   the slice can be considered green; any failures are bounded fixes
+   inside the two new files.
+
+2. **Production access-token storage path.** The sink reads
+   `vendor_credentials.access_token_ciphertext` as plaintext for the
+   documented-lifecycle adapter (no KMS plumbing yet).
+   `8R.OT.live.sandbox` must wire the proxy-side decrypt step before
+   the adapter's `readAccessToken` returns a usable token in
+   production, and the in-flight `OpenTableGateway.upsertConnection`
+   shape needs an access-token-write seam (the interface currently
+   persists only the connection metadata, not the token).
+
+3. **Next sink-fanout lane.** Schedule the next reservation lane
+   (SevenRooms or whichever the wave plan picks next) in the same
+   shape as `.OT`: bespoke gateway + unified `CanonicalSink`
+   co-implementation, idempotency partial UNIQUE on
+   `(operator_id, vendor_id, vendor_entity_id, vendor_modified_at)`,
+   and `evaluateDemoFlip(category=reservation)` auto-trigger from
+   the watermark commit path.
