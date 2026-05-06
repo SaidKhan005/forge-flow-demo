@@ -376,11 +376,6 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         group: 'Business',
       ),
       OperatorWebNavItem(
-        id: kOperatorWebNavMyAccount,
-        title: 'My account',
-        icon: Icons.person_outline,
-      ),
-      OperatorWebNavItem(
         id: kOperatorWebNavBusinessSetup,
         title: 'Business setup',
         icon: Icons.storefront_outlined,
@@ -391,6 +386,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         title: 'Locations',
         icon: Icons.account_tree_outlined,
         group: 'Business',
+      ),
+      OperatorWebNavItem(
+        id: kOperatorWebNavMyAccount,
+        title: 'My account',
+        icon: Icons.person_outline,
+        group: 'People & access',
       ),
       OperatorWebNavItem(
         id: kOperatorWebNavMembers,
@@ -498,10 +499,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         );
         break;
       default:
-        body = AccountScreen(
-          session: session,
-          gateway: _webAccountGateway,
-        );
+        body = AccountScreen(session: session, gateway: _webAccountGateway);
     }
     return WebAppShell(
       session: session,
@@ -565,8 +563,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   /// gateway resolution off the router so the screen mount stays
   /// thin and the wiring is testable in isolation. See
   /// `services/operator_web_vendor_connections_resolver.dart`.
-  static const OperatorWebVendorConnectionsResolver
-  _vendorConnectionsResolver = OperatorWebVendorConnectionsResolver();
+  static const OperatorWebVendorConnectionsResolver _vendorConnectionsResolver =
+      OperatorWebVendorConnectionsResolver();
 
   VendorConnectionsGateway? get _vendorConnectionsGateway =>
       _vendorConnectionsResolver.resolve(widget.source);

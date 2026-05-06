@@ -201,6 +201,7 @@ void main() {
           'account',
           'business_setup',
           'locations',
+          'my_account',
           'members',
           'roles',
           'security',
