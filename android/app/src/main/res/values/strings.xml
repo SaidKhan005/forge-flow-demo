@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="forge_flow_notification_channel_id">forge_flow_app_notifications</string>
+</resources>

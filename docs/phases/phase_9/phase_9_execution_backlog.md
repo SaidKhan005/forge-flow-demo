@@ -71,7 +71,10 @@ Do not re-open stale findings unless the repo regresses:
   live-admin E2E on 2026-05-04 also applied and verified
   `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql` for
   operator/location admin writes; those writes stay staging-ready only until
-  the grant is applied and verified on Production1.
+  the grant is applied and verified on Production1. The mobile push branch adds
+  `202605060000_mobile_push_notifications.sql` for encrypted FCM/APNs token
+  storage and push sidecar delivery state; that migration remains queued for
+  staging apply, connected-device proof, and later Production1 approval.
 
 ## Remaining Live-Closeout Gates
 

@@ -74,6 +74,13 @@ location edit both returned live 200s. Until the same file is applied and
 directly verified on Production1, operator/location admin writes are
 staging-ready only.
 
+Mobile push notification work on 2026-05-06 adds
+`202605060000_mobile_push_notifications.sql` for encrypted FCM/APNs token
+storage and a durable mobile push sidecar queue. This is not an 11A UI surface,
+but it updates the shared migration cutoff watched by this plan. It remains
+staging/prod apply gated until the branch is deployed to staging and the
+connected-device popup proof passes.
+
 Operational runbooks added from the 2026-05-03 live staging console smoke:
 provider credential/KMS rollout is owned by
 `runbooks/admin_provider_credentials_kms_rollout_runbook.md`, and local
