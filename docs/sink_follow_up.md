@@ -121,3 +121,34 @@ Three open items left after the sink + test landed on
    on `(operator_id, vendor_id, vendor_entity_id, vendor_modified_at)`,
    demo-flip auto-evaluator on watermark advance. Schedule the
    next lane directly after SQ merges.
+
+# Sink Follow-Up — `8.spine-bridge-sink-fanout.7S` (7shifts)
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-7S`:
+
+1. **CI verification of the sink suite.** Same story as `.AL`: the
+   worktree environment has no Flutter/Dart SDK on PATH, so
+   `dart analyze`, the new `seven_shifts_postgres_sink_test.dart`
+   suite, and the `seven_shifts_labor_adapter_test.dart` regression
+   were not run locally. CI (subosito/flutter-action) must run all
+   three before merge; any failures are bounded fixes inside the two
+   new files.
+
+2. **Lane `.7S.upgrade` wage-class promotion.** The 7shifts adapter
+   already produces `actual_labor_dollars` / `regular_pay` /
+   `overtime_pay` from `/reports/hours_and_wages`, but this V1 sink
+   intentionally drops those fields to honor falsehood correction #6
+   (`perEmployeeWithRates` — pay_rate written, labor_dollars NULL).
+   When `.7S.upgrade` flips the contract to `perEmployeeWithDollars`,
+   the sink writer must learn to read those keys from the canonical
+   dict and write `labor_dollars`; the banned-`total_pay` test in
+   `seven_shifts_postgres_sink_test.dart` (Test H) retires alongside.
+
+3. **`payroll_period.closed` persistence stub.** V1 records the
+   closed instant via a structured `connector_sync_log` row with
+   `event_kind = 'payroll_period_closed'` because no dedicated
+   `payroll_periods` fact table exists yet (no migration in this
+   slice). Phase 7.55+ should land that table and migrate
+   `writePayrollPeriodClosedFact` off the log-row stub before the
+   Phase 7.58 Primary Driver audit binds against it in production.
