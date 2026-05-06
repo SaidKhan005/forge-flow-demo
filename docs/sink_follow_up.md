@@ -25,3 +25,33 @@ Three open items left after the sink + test landed on
    bespoke + unified surface widening, same idempotency partial
    UNIQUE, same demo-flip auto-evaluator. Schedule directly after
    AL merges.
+
+# Sink Follow-Up — `8.spine-bridge.1.PU` (Push Operations)
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-PU`:
+
+1. **CI verification of the sink suite.** The worktree environment has
+   no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `push_operations_postgres_sink_test.dart` suite, and the
+   `push_operations_labor_adapter_test.dart` regression were not run
+   locally. CI (subosito/flutter-action) must run all three before
+   merge; any failures are bounded fixes inside the two new files.
+
+2. **Wage-class promotion path.** The sink is pinned at V1 `hoursOnly`
+   per the 2026-05-05 falsehood correction #8 — `pay_rate` and
+   `labor_dollars` are intentionally absent from the INSERT and the
+   banned-grep enforces zero wage-dollar tokens in the source. When
+   Push Operations later exposes a documented pay-rate join (or a V2
+   wage-class lift moves them onto `perEmployeeWithRates`), the lane
+   that adds wage writes must update the banned-grep ledger and the
+   Test G hours-only invariant in the same PR — silent re-introduction
+   of either token would slip past today's guard.
+
+3. **Sync-worker dispatcher wiring.** The unified `CanonicalSink`
+   surface is implemented but no `tool/integration_sync_worker`
+   dispatcher route currently hands a Push Operations labor batch to
+   `PushOperationsPostgresSink.upsertLaborPunch`. The follow-up lane
+   wires the dispatcher (`8.spine-bridge.2.PU` or the next fanout
+   wave's worker pass) and adds an integration test that exercises
+   the dispatcher → sink path end-to-end.
