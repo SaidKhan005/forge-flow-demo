@@ -64,10 +64,9 @@ void main() {
         ),
       );
       expect(
-        migration,
+        compact,
         contains(
-          'business_timing_profile_version_id\n'
-          '          is not distinct from business_timing_profile_id',
+          'business_timing_profile_version_id is not distinct from business_timing_profile_id',
         ),
       );
       expect(compact, contains('not valid'));
