@@ -472,6 +472,125 @@ void main() {
       });
     });
 
+    test('GET admin sessions returns Access screen session rows', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          verifier: _StaticVerifier(
+            roles: const <String>['super_admin', 'roles_version:7'],
+          ),
+        );
+        try {
+          const targetOperatorId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+          const targetLocationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+          final response = await harness.get(
+            '$adminAuthSessionsPath?operator_id=$targetOperatorId'
+            '&location_id=$targetLocationId',
+          );
+
+          expect(response.statusCode, equals(200));
+          final sessions = response.json['sessions'] as List<Object?>;
+          final row = Map<String, Object?>.from(sessions.single as Map);
+          expect(
+            row['session_id'],
+            equals('88888888-8888-4888-8888-888888888888'),
+          );
+          expect(row['user_id'], equals(_userId));
+          expect(row['user_email'], equals(_firebaseUid));
+          expect(row['last_active_at'], equals('2026-04-28T12:00:00.000Z'));
+          expect(
+            gateway.activeSessionsLists.single.operatorId,
+            targetOperatorId,
+          );
+          expect(
+            gateway.activeSessionsLists.single.locationId,
+            targetLocationId,
+          );
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('GET admin audit-log returns audited-support row envelope', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        gateway.auditLogHasMore = true;
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          verifier: _StaticVerifier(
+            roles: const <String>['super_admin', 'roles_version:7'],
+          ),
+        );
+        try {
+          const targetOperatorId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+          const targetLocationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+          final response = await harness.get(
+            '$adminAuthAuditLogPath?operator_id=$targetOperatorId'
+            '&location_id=$targetLocationId&actions=sign_in&limit=25'
+            '&cursor=5',
+          );
+
+          expect(response.statusCode, equals(200));
+          final rows = response.json['rows'] as List<Object?>;
+          final row = Map<String, Object?>.from(rows.single as Map);
+          expect(row['action'], equals('auth.user.signed_in'));
+          expect(row['actor_kind'], equals('team_member'));
+          expect(row['operator_id'], equals(targetOperatorId));
+          expect(response.json['next_cursor'], equals('30'));
+          final command = gateway.auditLogLists.single;
+          expect(command.operatorId, equals(targetOperatorId));
+          expect(command.locationId, equals(targetLocationId));
+          expect(command.eventKind, equals(AuthEventKind.signIn));
+          expect(command.limit, equals(25));
+          expect(command.offset, equals(5));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test(
+      'POST admin session revoke delegates idempotent force logout',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            final response = await harness.postJson(
+              '$adminAuthSessionsPrefix${Uri.encodeComponent('sess-1')}/revoke',
+              const <String, Object?>{
+                'user_id': 'target-user',
+                'admin_reason': 'operator requested forced sign-out',
+              },
+              idempotencyKey: 'idem-admin-session-revoke-1',
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(response.json['revoked'], isTrue);
+            expect(
+              guard.permissionKeys,
+              equals(<String>['team.session.force_logout']),
+            );
+            final command = gateway.sessionRevokes.single;
+            expect(command.sessionId, equals('sess-1'));
+            expect(command.actorUserId, equals('target-user'));
+            expect(
+              command.reason,
+              equals('operator requested forced sign-out'),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
     test('POST team user reset-mfa queues delayed removal', () async {
       await _withRealHttp(() async {
         final authGateway = _RecordingAuthOperationsGateway();

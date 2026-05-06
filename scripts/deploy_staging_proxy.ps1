@@ -340,6 +340,12 @@ try {
   [System.IO.File]::WriteAllText($envVarsFile, $envVarsContent)
   & $gcloud @deployArgs
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  & $gcloud run services update-traffic $Service `
+    --project $Project `
+    --region $Region `
+    --to-latest `
+    --quiet
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {
   if (Test-Path -LiteralPath $envVarsFile) {
     Remove-Item -LiteralPath $envVarsFile -Force

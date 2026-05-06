@@ -57,6 +57,7 @@ Mobile Web Console E2E Framework:
 - Team: scoped to `Barrio Legado`, but live fetch failed against `/v1/admin/auth/invites` because of the admin-auth proxy fetch/CORS runtime issue.
 - Access: scoped to `Barrio Legado`, but live fetch failed against `/v1/admin/auth/roles` for the same runtime issue.
 - Audit & support: scoped to `Barrio Legado`, but live fetch failed against `/v1/admin/auth/audit-log` for the same runtime issue.
+- Post-fix verification on proxy revision `forge-flow-preview-backend-surface-additions-proxy-00045-86b`: Team shows `5 rows`; Access > Sessions shows `4 sessions`; Audit & support shows audit rows. Browser app console warning/error logs were empty.
 - Plans and limits: loaded operator plan list and selected operator details.
 - Knowledge base: loaded content version, relationship-review tab remained reachable.
 - Connected services: loaded service access and vendor integration documentation state.
@@ -85,9 +86,14 @@ Passed:
 - `flutter test test\admin_shell_widget_test.dart` - 12 tests
 - `flutter test test\admin` - 358 tests
 - `flutter test test\proxy\admin_cors_routes_test.dart` - 20 tests
-- `flutter test test\deploy_staging_proxy_contract_test.dart` - 18 tests
+- `flutter test test\deploy_staging_proxy_contract_test.dart` - 18 tests before the post-fix; 19 tests after adding the traffic-promotion contract.
 - `flutter build web --release --target=lib\main_admin.dart --dart-define=ADMIN_PROXY_BASE_URI=https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app --pwa-strategy=none`
 - `dart run tool\perf_gate\staging_console_probe.dart --run --enforce-budgets --admin-url=https://forge-flow-preview-backend-surface-additions-admi-rf7nosnoka-pd.a.run.app --proxy-url=https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app --admin-revision=forge-flow-preview-backend-surface-additions-admin-00016-5hr --proxy-revision=forge-flow-preview-backend-surface-additions-proxy-00037-8tp --label=ops-ux-perf-final-20260506 --write-json=build\perf_gate\admin_console_ops_ux_final_20260506T1957.json --include-health`
+- Post-fix targeted gates:
+  - `flutter test test\proxy_auth_operations_route_test.dart` - 47 tests
+  - `flutter test test\deploy_staging_proxy_contract_test.dart` - 19 tests
+  - `flutter test test\proxy\admin_cors_routes_test.dart` - 20 tests
+  - `flutter analyze tool\advisor_proxy\advisor_proxy.dart test\proxy_auth_operations_route_test.dart scripts\deploy_staging_proxy.ps1 test\deploy_staging_proxy_contract_test.dart`
 
 Perf summary:
 - `admin_index_c1`: p50 64.7 ms, p95 392.9 ms, errors 0.0 percent.
@@ -99,7 +105,21 @@ Perf summary:
 
 ## Residual Risks
 
-- Live proxy revision `forge-flow-preview-backend-surface-additions-proxy-00037-8tp` returns 404 for `OPTIONS /v1/admin/auth/users` from the preview admin origin, even though repository admin CORS and deploy contract tests pass. This blocks live Team/Access/Audit data fetches in the browser.
-- The deploy wrapper exits non-zero because of that admin-auth preflight drift, even though the admin revision is serving 100 percent of traffic.
+- Resolved after the post-fix: live proxy revision `forge-flow-preview-backend-surface-additions-proxy-00045-86b` now serves 100 percent of traffic and returns 204 for admin-auth preflights on `/v1/admin/auth/users`, `/v1/admin/auth/roles`, `/v1/admin/auth/sessions`, and `/v1/admin/auth/audit-log`.
+- Resolved after the post-fix: Cloud Run logs on revision `00045-86b` show GET 200 for `/v1/admin/auth/users`, `/v1/admin/auth/sessions`, and `/v1/admin/auth/audit-log` from the preview admin flow.
 - The optional deep health perf sample timed out once; readyz and admin startup budgets passed.
 - Browser evidence is visual because Flutter web exposes limited semantic DOM in the in-app browser.
+
+## Post-Fix Admin Auth Route Closeout
+
+- Source commit: `ed44de1d` (`fix(proxy): route admin auth sessions and audit log`)
+- Admin URL: `https://forge-flow-preview-backend-surface-additions-admi-rf7nosnoka-pd.a.run.app`
+- Proxy URL: `https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app`
+- Admin revision: `forge-flow-preview-backend-surface-additions-admin-00016-5hr`, traffic 100 percent.
+- Proxy revision: `forge-flow-preview-backend-surface-additions-proxy-00045-86b`, traffic 100 percent.
+- Database mode: staging secrets/shared staging data.
+- Fresh Browser Use URL: `https://forge-flow-preview-backend-surface-additions-admi-rf7nosnoka-pd.a.run.app/?cache_bust=proxy-routes-fixed-00045-86b-20260506T2055`
+- Direct preflight evidence from the preview admin origin: `/v1/admin/auth/users` 204, `/v1/admin/auth/roles` 204, `/v1/admin/auth/sessions` 204, `/v1/admin/auth/audit-log` 204.
+- Browser Use evidence: Team loaded member cards (`5 rows`); Access loaded Roles and Sessions (`4 sessions`); Audit & support loaded action controls and audit rows. App console warning/error logs were empty for the checked screens.
+- Bugs fixed: deploy script now promotes Cloud Run source deploy traffic to the latest ready revision; proxy now routes admin auth sessions, admin auth audit-log, and idempotent admin session revoke paths instead of falling through to 404.
+- Intentionally gated: support actions and force logout buttons remained unsubmitted during verification; staging secrets are live, and no write was needed to prove the route fix.
