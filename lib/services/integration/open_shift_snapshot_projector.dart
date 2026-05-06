@@ -639,21 +639,27 @@ enum OpenShiftCanonicalFactKind {
   labor,
   reservation;
 
+  // Maps a free-form canonical-fact-type string onto the projector's
+  // three kinds. Order matters: more-specific tokens (reservation,
+  // booking, labor) are checked BEFORE the catch-all POS tokens
+  // (cover, pos, check, order) so that compound keys like
+  // `cover_facts_reservation_overlay` route to reservation, not POS,
+  // by first-match.
   static OpenShiftCanonicalFactKind fromValue(String value) {
     final normalized = value.toLowerCase().trim();
-    if (normalized.contains('cover') ||
-        normalized.contains('pos') ||
-        normalized.contains('check') ||
-        normalized.contains('order')) {
-      return OpenShiftCanonicalFactKind.pos;
+    if (normalized.contains('reservation') || normalized.contains('booking')) {
+      return OpenShiftCanonicalFactKind.reservation;
     }
     if (normalized.contains('labor') ||
         normalized.contains('punch') ||
         normalized.contains('shift')) {
       return OpenShiftCanonicalFactKind.labor;
     }
-    if (normalized.contains('reservation') || normalized.contains('booking')) {
-      return OpenShiftCanonicalFactKind.reservation;
+    if (normalized.contains('cover') ||
+        normalized.contains('pos') ||
+        normalized.contains('check') ||
+        normalized.contains('order')) {
+      return OpenShiftCanonicalFactKind.pos;
     }
     throw ArgumentError.value(value, 'value', 'unknown canonical fact kind');
   }
@@ -973,13 +979,66 @@ class _OpenShiftBucket {
     }
   }
 
+  // Stable role → FOH/BOH mapping for canonical labor punches.
+  //
+  // FOH = front-of-house (servers, hosts, bartenders, bussers, runners,
+  // food runners, expo). BOH = back-of-house (cooks, dish, prep, line,
+  // barback). The canonical fact does not (yet) carry an explicit
+  // `is_foh` flag, so this is a pure heuristic: an exact-match
+  // allowlist on common tokens, a blocklist of compound BOH tokens
+  // (notably "barback") that would otherwise be caught by a naive
+  // "bar" substring match, and finally a defensive contains-check
+  // for "foh" / "front".
   static bool _isFohRole(String? roleName) {
-    final role = (roleName ?? '').toLowerCase();
+    final role = (roleName ?? '').toLowerCase().trim();
+    if (role.isEmpty) return false;
+
+    // Compound BOH role tokens that must NOT be classified as FOH even
+    // though their substrings collide with FOH tokens (e.g. "barback"
+    // contains "bar"). Operators overwhelmingly classify these as BOH.
+    const bohBlocklist = <String>{
+      'barback',
+      'bar back',
+      'bar-back',
+    };
+    if (bohBlocklist.contains(role)) return false;
+    for (final token in bohBlocklist) {
+      if (role.contains(token)) return false;
+    }
+
+    // Explicit FOH role tokens. Exact match wins immediately.
+    const fohAllowlist = <String>{
+      'server',
+      'bartender',
+      'host',
+      'hostess',
+      'runner',
+      'food runner',
+      'busser',
+      'expo',
+      'expediter',
+      'expeditor',
+      'foh',
+      'front of house',
+      'front-of-house',
+      'front_of_house',
+    };
+    if (fohAllowlist.contains(role)) return true;
+
+    // Defensive contains-checks for compound role names that embed
+    // an unambiguous FOH token (e.g. "lead server", "head bartender").
+    // We deliberately do NOT match "bar" alone — barback is BOH.
+    if (role.contains('foh') || role.contains('front of house')) {
+      return true;
+    }
     if (role.contains('server') ||
+        role.contains('bartender') ||
         role.contains('host') ||
-        role.contains('bar') ||
-        role.contains('foh') ||
-        role.contains('front')) {
+        role.contains('runner') ||
+        role.contains('busser') ||
+        role.contains('expo') ||
+        role.contains('expediter') ||
+        role.contains('expeditor')) {
       return true;
     }
     return false;
