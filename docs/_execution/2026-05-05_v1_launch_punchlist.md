@@ -24,16 +24,18 @@ are external; engineering can run in parallel.
       namespace `forge-flow-production-*`. Spec:
       `docs/phases/phase_production_cutover/production1_staging_parity_baseline_2026-05-03.md`.
       _Effort: 5–7 days. Blocks: cutover.0._
-- [ ] **Apply 7 pending Postgres migrations to Production1/staging as scoped.**
+- [ ] **Apply 10 pending Postgres migrations to Production1/staging as scoped.**
       Full table in `docs/POST_HARDENING_FOLLOWUPS.md` "P0 - Production1
       Migration Apply Gap". Runbook:
-      `runbooks/phase_9_production1_migration_apply_runbook.md`. First two are
-      already staging-applied (2026-05-03/-04); the remaining five
+      `runbooks/phase_9_production1_migration_apply_runbook.md`. First two
+      are already staging-applied (2026-05-03/-04); the remaining eight
       (mobile_push, business_timing_live, 11A.14 MFA reset, index rekey,
-      11W.5 audit_log_export) are code-ready and need staging apply before
-      Production1.
-      _Effort: 1–2 days. Blocks: production admin console writes,
-      mobile OS push delivery, live timing runtime, audit log CSV export._
+      11W.5 audit_log_export, audit-anchor daily cron, timing provenance
+      shift_records, data accuracy keyed service-period settings) are
+      code-ready and need staging apply before Production1.
+      _Effort: 1–2 days. Blocks: production admin console writes, mobile
+      OS push delivery, live timing runtime, audit log CSV export, keyed
+      Data Accuracy editor._
 - [ ] **Escalate inbound T&Cs to lawyer.** Draft is in `docs/phases/phase_9_8/`.
       Set explicit deadlines: first pass 2026-05-10, final 2026-05-13. Without
       signed T&Cs there is no `tos_acceptances` row → `cutover.2` cannot run.
@@ -161,18 +163,32 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
       (`connector_sync_log`, `inbound_webhook_dead_letter`, `sanity_log`) now
       carry denormalized `business_date DATE` with operator-leading indexes
       and BEFORE-INSERT triggers.
-- [ ] **`8.spine-bridge-sink-fanout` (7 of 14 lanes remain).** Aloha
+- [ ] **`8.spine-bridge-sink-fanout` (2 of 14 sink lanes remain).** Aloha
       (`.1.AL`), Tock (`.TC`), Humanity (`.HM`), Square (`.SQ`), Toast
-      (`.TS`), Push Operations (`.PU`), Agendrix (`.AG`) all ACCEPT 2026-05-06.
-      Remaining: Clover, Lightspeed LSK, Revel, Oracle Simphony (POS); ADP,
-      7shifts `/reports/hours_and_wages` upgrade (labor); OpenTable,
-      SevenRooms (reservation). File-disjoint; parallelizable.
-- [ ] **`8.spine-bridge-live` — live Shift snapshots.** Foundation
-      (`9e6fca84` schema + UI shell + contract amendments) ACCEPT 2026-05-06;
-      `OpenShiftSnapshotProjector` itself queued. Builds
-      `OpenShiftSnapshotProjector` → `open_shift_snapshots` → proxy pull →
-      mobile SQLite. Live facts bucket by stable `service_period_key` first;
-      Whole Day rolls up from those buckets.
+      (`.TS`), Push Operations (`.PU`), Agendrix (`.AG`), Clover (`.CL`),
+      ADP (`.ADP`), Revel (`.RV`), SevenRooms (`.SR`), Lightspeed LSK
+      (`.LSK`) all ACCEPT 2026-05-06. Remaining: Oracle Simphony (POS);
+      OpenTable (reservation); plus `.7S.upgrade` 7shifts
+      `/reports/hours_and_wages` adapter capability extension.
+      File-disjoint; parallelizable.
+- [~] **`8.spine-bridge-live` + closed timing provenance — components
+      landed, production wire-in PENDING.** Lane 0 schema (`9740488f`
+      migration `202605061700_phase_8_timing_provenance_shift_records.sql`)
+      + Lane 1 builder/writer (`da1484a0`) + Lane 2 V/H/L label resolver
+      (`976e8d7e`) + Lane 3 `OpenShiftSnapshotProjector` (`c9a3de6b`) +
+      Lane 4 mobile/proxy enrichment (`e3c196bf`) + Lane 5 proof doc
+      (`389704bf`) all merged with passing tests against fakes.
+      **2026-05-06 5-agent audit found
+      `CanonicalFactToClosedShiftInputAggregator` and
+      `OpenShiftSnapshotProjector` are dormant in production: no sink and
+      no event-outbox claimer invokes them; the production canonical-fact
+      write seam still emits closed `shift_records` without the timing
+      triplet, and `open_shift_snapshots` are only populated via the
+      payload harness.** Follow-up slice `8.live-and-closed-truth.wire-in`
+      will (a) wire the closed aggregator into the canonical close-shift
+      seam with a new `BusinessTimingProfileResolver`, and (b) wire the
+      projector into each sink's write Tx OR add an event-outbox claimer
+      worker.
 - [ ] **Phase 11A.8/.9/.10 — operations console final slices.** Support
       audit, cross-operator reads, user impersonation — deferred post-launch
       unless escalated.
@@ -214,11 +230,18 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
       `connector_sync_log`, `inbound_webhook_dead_letter`, `sanity_log`
       now carry denormalized `business_date` with operator-leading indexes
       + BEFORE-INSERT triggers (UTC fallback when timezone null).
-- [ ] **Timing provenance on closed records.** Closed `shift_records` need the
-      timing profile/version id and stable `service_period_key` used at bucket
-      time before configurable labels/overrides ship widely. Promised by
-      amended `phase_7_55_time_boundary_contract.md` Rule 9 (2026-05-06);
-      not yet wired in `ShiftFactBuilder.fromClosedShiftInput`.
+- [~] **Timing provenance on closed records — components landed,
+      production wire-in PENDING.** Schema migration
+      `202605061700_phase_8_timing_provenance_shift_records.sql`,
+      `ClosedShiftInput`/`ShiftRecord` model additions,
+      `ShiftFactBuilder.fromClosedShiftInput` propagation,
+      `PostgresShiftRecordWriter` Concern A preservation, and
+      Variance/History/Learn label resolver all landed 2026-05-06 with
+      passing tests. **Audit found the production aggregator
+      (`CanonicalFactToClosedShiftInputAggregator`) is referenced only
+      from `test/`; no production call site instantiates it; closed
+      `shift_records` continue to be written without the triplet.**
+      Folded into `8.live-and-closed-truth.wire-in` follow-up slice.
 - [ ] **Data Accuracy keyed service-period settings.** Replace hardcoded
       lunch/dinner/late covers-source columns with
       `data_accuracy_service_period_settings` before fourth/custom periods

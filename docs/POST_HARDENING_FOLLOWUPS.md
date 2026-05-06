@@ -5,7 +5,7 @@ Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FO
 
 ## P0 - Production1 Migration Apply Gap
 
-**9 migrations pending Production1/staging apply** (chronological):
+**10 migrations pending Production1/staging apply** (chronological):
 
 | Migration | Origin | Staging status |
 |---|---|---|
@@ -18,8 +18,9 @@ Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FO
 | `202605061600_phase_11W_5_team_audit_log_export_key.sql` | 11W.5 `team.audit_log.export` key + grants | code-ready |
 | `202605061700_hardening_audit_anchor_daily_schedule.sql` | Hardening Wave B3 daily pg_cron tick `forge_audit_anchor_daily` at 02:00 UTC (NOTIFY-only kickoff; punchlist §5) | code-ready |
 | `202605061700_phase_8_timing_provenance_shift_records.sql` | Phase 8 timing provenance keys for closed/live shift rows | code-ready |
+| `202605061700_phase_8_data_accuracy_service_period_settings.sql` ⚠️ shares `202605061700_*` prefix — pending B1 timestamp rename to `202605061701_*` per audit | Wave B1 keyed Data Accuracy service-period settings (PR #184, `4655b484`) | code-ready; rename pending |
 
-**Action:** apply all 9 in next Production1 event per `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied + verified, the corresponding feature is **staging-ready only**.
+**Action:** apply all 10 in next Production1 event per `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied + verified, the corresponding feature is **staging-ready only**.
 
 ## P1 - Live Admin Operational Gates
 
