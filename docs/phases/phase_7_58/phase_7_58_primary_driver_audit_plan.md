@@ -1,7 +1,7 @@
 # Phase 7.58 - Primary Driver Audit + Sub-Slice Plan
 
-Updated: 2026-05-02
-Status: Active. `7.58.0` contract pin + `7.58.5` row purity + `7.58.UX.5` renderer honesty (F-1/F-6/F-7) accepted 2026-05-02; zero DRIFT. `7.58.1`/`.2`/`.3`/`.4` queued.
+Updated: 2026-05-05
+Status: `.0`/`.5`/`.UX.5`/`.1`/`.2`/`.3`/`.4`/`.UX.1` accepted; depth wave (`.UX.6`/`.UX.7+9`/`.UX.8`/`.cross-axis.0` + sibling `10.5.6`) CLOSED 2026-05-05 on master @ `699a45f`; `.UX.6` legacy widget-test alignment landed via `3154679` (PR #144). Phase 7.58 advisor-depth-complete. Detail: `docs/phases/phase_7_58/phase_7_58_depth_wave_plan.md`. Audit: `docs/_execution/2026-05-05_depth_wave_audit.md`.
 Owner: Variance / Learn lane
 Companion contract: `docs/contracts/phase_7_58_primary_driver_contract.md`
 

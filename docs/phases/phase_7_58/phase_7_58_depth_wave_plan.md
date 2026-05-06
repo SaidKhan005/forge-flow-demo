@@ -1,6 +1,6 @@
 # Phase 7.58 — Depth Wave Plan
 
-Status: Active. Queued 2026-05-05 against master @ `b91235b`.
+Status: Wave CLOSED 2026-05-05 on master @ `699a45f`. All 5 slices ACCEPT (`7.58.UX.6`, `7.58.UX.8`, `7.58.cross-axis.0`, `10.5.6`, `7.58.UX.7+9`). The bounded `7.58.UX.6` follow-up (legacy widget-test assertion alignment in `variance_history_widget_test.dart`) closed via `3154679` / PR #144; `flutter test test/variance_history_widget_test.dart` → 70/70 PASS. Audit verdict: `docs/_execution/2026-05-05_depth_wave_audit.md`.
 Owner: Phase 7.58 advisor depth lane (operator-facing teaching surfaces).
 
 Authority (read in this order):

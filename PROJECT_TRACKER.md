@@ -58,7 +58,7 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 | Phase | Status | Plan |
 | --- | --- | --- |
 | `9` framework + `9.0Σ.b-l` + `9.UX.*` | accepted; phase 9 stays open until `9.8` lands | `phase_9/*` |
-| `7.58` | `.0`/`.5`/`.1`/`.2`/`.3`/`.4`/`.UX.1`/`.UX.5` accepted 2026-05-05; depth wave `.UX.6`/`.UX.7+9`/`.UX.8`/`.cross-axis.0` + sibling `10.5.6` queued | `phase_7_58/phase_7_58_depth_wave_plan.md` |
+| `7.58` | CLOSED — depth wave landed 2026-05-05 on master @ `699a45f`: all 5 slices ACCEPT (`.UX.6`/`.UX.8`/`.cross-axis.0`/`10.5.6`/`.UX.7+9`). `.UX.6` follow-up closed via `3154679` (PR #144). Phase 7.58 advisor-depth-complete. Audit: `docs/_execution/2026-05-05_depth_wave_audit.md`. | `phase_7_58/phase_7_58_depth_wave_plan.md` |
 | `7.61` (closed) | all 4 non-deferred slices accepted | `docs/archive/phases/phase_7_61/` |
 | `10.5` (closed) | all 4 slices accepted | `docs/archive/phases/phase_10_5/` |
 | `10a` | `.0`/`.1`/`.2` + `UX.0`/`UX.1` accepted; `.3`/`.4`/`.5` queued | `phase_10a/*` |
@@ -88,15 +88,15 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 
 Codex on master; Claude in `.claude/worktrees/<lane>`. Multiple phases may run in parallel. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Worktrees".
 
-**Current sprint — Phase 7.58 depth wave (queued 2026-05-05).** Five renderer + analyzer slices that surface Bold by Design + Jim Taylor depth inside existing chrome. **Core app logic is preserved** — `LaborModel.determineLever`, `LaborModel.attributeDollarImpactByAxis`, `ShiftFactBuilder`, persistence, sync, Concern A all unchanged. Slices: `7.58.UX.6` (DOLLAR IMPACT relabel) · `7.58.UX.8` (OPZ-aware row adornment) · `7.58.cross-axis.0` (engine analyzer + sibling catalog) · `10.5.6` (Shift Dashboard OPZ matrix grid + cross-axis sub-label) run in parallel; `7.58.UX.7+9` (Learn coverage caption + carousel swap) ships sequentially after `.cross-axis.0` lands. Plan: `docs/phases/phase_7_58/phase_7_58_depth_wave_plan.md`. Contract: `docs/contracts/phase_7_58_primary_driver_contract.md` "Depth Surfaces" section.
+**Phase 7.58 depth wave CLOSED 2026-05-05** on master @ `699a45f`. All 5 slices ACCEPT (`.UX.6`/`.UX.8`/`.cross-axis.0`/`10.5.6`/`.UX.7+9`); `.UX.6` legacy widget-test follow-up closed via `3154679` (PR #144) — `flutter test test/variance_history_widget_test.dart` → 70/70 PASS. Bold by Design + Jim Taylor depth now surfaces inside existing chrome (DOLLAR IMPACT triplet footer, OPZ-aware row adornment, OPZ matrix grid on Shift whole-day, cross-axis pair catalog + Learn carousel swap, coverage caption on Learn snapshot). **Core app logic preserved**: `LaborModel.determineLever`, `attributeDollarImpactByAxis`, `theoreticalLaborPct`, `ShiftFactBuilder`, persistence, sync, Concern A all signature-stable. Audit: `docs/_execution/2026-05-05_depth_wave_audit.md`. Plan: `docs/phases/phase_7_58/phase_7_58_depth_wave_plan.md`. Contract: `docs/contracts/phase_7_58_primary_driver_contract.md` "Depth Surfaces" section.
 
-Prior sprint — `8.spine-bridge` ACCEPTED 2026-05-05. All 11 sub-lanes landed; `.4` proof gate PASSED 27/27. Phase 8 / 8R / 8.S engineering-complete on master. Evidence: `docs/_execution/2026-05-05_8_integration_mobile_proof_v2_execution.md`. `8.spine-bridge-sink-fanout` paused 2026-05-05 per operator decision; resume via explicit prompt.
+Phase 8 / 8R / 8.S engineering-complete on master (mobile-proof.v2 PASSED 2026-05-05; evidence: `docs/_execution/2026-05-05_8_integration_mobile_proof_v2_execution.md`). `8.spine-bridge-sink-fanout` paused 2026-05-05; resume via explicit prompt.
 
 **Wave D — rolling `*.live.*` slices** fire individually as credentials arrive (`<vendor_id>.live.sandbox` → `sandbox_verified`; `<vendor_id>.live.prod` → `production_credentialed`). Tracker: `phase_8_live_rollout/phase_8_live_rollout_plan.md`.
 
 **Operator parallel critical path (no engineering)**: sandbox provisioning across 17 vendors; DNS+TLS for `app.forgeflow.app` + `mail.forgeflow.app`; SendGrid + DKIM/SPF/DMARC; partnership applications; legal review of inbound T&Cs; Production1 unfreeze decision. None blocks Wave B engineering.
 
-**Queued (in-scope, sequencing intent)**: Phase 7.58 depth wave (active sprint above); `8.live.connected-device-smoke` (cleared 2026-05-05; trio credentials gating); `cutover.0b`–`5`; Phase 11W Waves B/C (deferred); Phase 11A `10`; `9.8` inbound T&Cs (legal-gated); `8.spine-bridge-sink-fanout` (paused 2026-05-05).
+**Queued (in-scope, sequencing intent)**: 11W/11A parallel waves (Wave 1: `11W.1` + `11A.12` Members; Wave 2: `11W.2`+`11W.3`+`11W.4`+`11A.13` Roles/Hierarchy/Sessions; Wave 3: `11W.5`+`11W.6`+`11A.14` Audit/Security/Support); `8.live.connected-device-smoke` (cleared; trio credentials gating); `cutover.0b`–`5`; Phase 11A `10`; `9.8` inbound T&Cs (legal-gated); `8.spine-bridge-sink-fanout` (paused 2026-05-05).
 
 **Skip until unfreeze**: see Now block paused lists.
 
