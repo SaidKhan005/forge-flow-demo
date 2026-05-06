@@ -59,6 +59,7 @@ class _PerLocationDataAccuracyScreenState
   List<DataAccuracyAdminAuditEvent> _auditEvents =
       const <DataAccuracyAdminAuditEvent>[];
   late AdminOperatorLocationScopeIntent? _scope = widget.initialScope;
+  int _refreshGeneration = 0;
 
   @override
   void initState() {
@@ -75,18 +76,24 @@ class _PerLocationDataAccuracyScreenState
   }
 
   Future<void> _refresh() async {
+    final generation = ++_refreshGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
-      final rows = await widget.gateway.listDataAccuracyRows();
+      final results = await Future.wait<Object>([
+        widget.gateway.listDataAccuracyRows(),
+        widget.gateway.listAuditHistory(),
+      ]);
+      if (generation != _refreshGeneration) return;
+      final rows = results[0] as List<DataAccuracyAdminRow>;
       // Tab 1's audit panel surfaces only data-accuracy override
       // events. The shared audit log buffer also records Tab 2 events
       // (`admin.polling_tier_*`, `admin.margin_rollup.export_csv`)
       // which belong on Tab 2's own Card 5; filtering here prevents
       // cross-surface audit bleed.
-      final events = await widget.gateway.listAuditHistory();
+      final events = results[1] as List<DataAccuracyAdminAuditEvent>;
       final filtered = events
           .where((e) => e.eventType.startsWith('admin.data_accuracy.'))
           .toList(growable: false);

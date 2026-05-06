@@ -69,6 +69,7 @@ class _PollingAndPricingAdminScreenState
   String? _locationCountFilter;
   String _operatorNameFilter = '';
   late AdminOperatorLocationScopeIntent? _scope = widget.initialScope;
+  int _refreshGeneration = 0;
 
   @override
   void initState() {
@@ -85,20 +86,29 @@ class _PollingAndPricingAdminScreenState
   }
 
   Future<void> _refresh() async {
+    final generation = ++_refreshGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
-      final defs = await widget.gateway.listTierDefinitions();
-      final assignments = await widget.gateway.listTierAssignments();
-      final rollup = await widget.gateway.summarizeMargin();
-      final changes = await widget.gateway.listTierChangeRequests();
+      final results = await Future.wait<Object>([
+        widget.gateway.listTierDefinitions(),
+        widget.gateway.listTierAssignments(),
+        widget.gateway.summarizeMargin(),
+        widget.gateway.listTierChangeRequests(),
+        widget.gateway.listAuditHistory(),
+      ]);
+      if (generation != _refreshGeneration) return;
+      final defs = results[0] as List<TierDefinition>;
+      final assignments = results[1] as List<TierAssignmentAdminRow>;
+      final rollup = results[2] as TierMarginRollup;
+      final changes = results[3] as List<TierChangeRequest>;
       // Tab 2 Card 5 (audit history) surfaces only the polling-tier
       // events: tier definition edits, tier assignments, change
       // request resolutions, and CSV exports. Data-accuracy override
       // events stay on Tab 1.
-      final allEvents = await widget.gateway.listAuditHistory();
+      final allEvents = results[4] as List<DataAccuracyAdminAuditEvent>;
       final tierEvents = allEvents
           .where(
             (e) =>

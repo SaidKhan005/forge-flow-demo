@@ -214,8 +214,7 @@ class RolesHierarchySessionsForbiddenException implements Exception {
   final String message;
 
   @override
-  String toString() =>
-      'RolesHierarchySessionsForbiddenException: $message';
+  String toString() => 'RolesHierarchySessionsForbiddenException: $message';
 }
 
 class RolesHierarchySessionsGatewayError implements Exception {
@@ -320,6 +319,13 @@ abstract class RolesHierarchySessionsAdminGateway {
   });
 }
 
+class _HierarchyEnvelope {
+  const _HierarchyEnvelope({required this.orgUnits, required this.locations});
+
+  final List<OrgUnitAdminNode> orgUnits;
+  final List<HierarchyLocationLeaf> locations;
+}
+
 class HttpRolesHierarchySessionsAdminGateway
     implements RolesHierarchySessionsAdminGateway {
   HttpRolesHierarchySessionsAdminGateway({
@@ -334,6 +340,8 @@ class HttpRolesHierarchySessionsAdminGateway
   final RolesHierarchySessionsBearerTokenProvider bearerTokenProvider;
   final http.Client _httpClient;
   final Duration _timeout;
+  final Map<String, Future<_HierarchyEnvelope>> _hierarchyInFlight =
+      <String, Future<_HierarchyEnvelope>>{};
 
   static const String rolesPath = '/v1/admin/auth/roles';
   static const String orgUnitsPath = '/v1/admin/auth/org-units';
@@ -357,35 +365,45 @@ class HttpRolesHierarchySessionsAdminGateway
   Future<List<OrgUnitAdminNode>> listOrgUnits({
     required String operatorId,
   }) async {
-    final body = await _send(
-      method: 'GET',
-      path: orgUnitsPath,
-      queryParameters: <String, String>{'operator_id': operatorId},
-    );
-    final units = (body['org_units'] as List?) ?? const [];
-    return <OrgUnitAdminNode>[
-      for (final unit in units)
-        _orgUnitFromJson((unit as Map).cast<String, Object?>()),
-    ];
+    final hierarchy = await _loadHierarchy(operatorId);
+    return hierarchy.orgUnits;
   }
 
   @override
   Future<List<HierarchyLocationLeaf>> listHierarchyLocations({
     required String operatorId,
   }) async {
+    final hierarchy = await _loadHierarchy(operatorId);
+    return hierarchy.locations;
+  }
+
+  Future<_HierarchyEnvelope> _loadHierarchy(String operatorId) {
+    final existing = _hierarchyInFlight[operatorId];
+    if (existing != null) return existing;
+    final next = _fetchHierarchy(operatorId);
+    _hierarchyInFlight[operatorId] = next;
+    next.whenComplete(() => _hierarchyInFlight.remove(operatorId));
+    return next;
+  }
+
+  Future<_HierarchyEnvelope> _fetchHierarchy(String operatorId) async {
     final body = await _send(
       method: 'GET',
       path: orgUnitsPath,
-      queryParameters: <String, String>{
-        'operator_id': operatorId,
-        'include': 'locations',
-      },
+      queryParameters: <String, String>{'operator_id': operatorId},
     );
+    final units = (body['org_units'] as List?) ?? const [];
     final locations = (body['locations'] as List?) ?? const [];
-    return <HierarchyLocationLeaf>[
-      for (final loc in locations)
-        _locationLeafFromJson((loc as Map).cast<String, Object?>()),
-    ];
+    return _HierarchyEnvelope(
+      orgUnits: <OrgUnitAdminNode>[
+        for (final unit in units)
+          _orgUnitFromJson((unit as Map).cast<String, Object?>()),
+      ],
+      locations: <HierarchyLocationLeaf>[
+        for (final loc in locations)
+          _locationLeafFromJson((loc as Map).cast<String, Object?>()),
+      ],
+    );
   }
 
   @override
@@ -520,8 +538,7 @@ class HttpRolesHierarchySessionsAdminGateway
     _requireAdminReason(adminReason, 'moveLocation');
     final body = await _send(
       method: 'POST',
-      path:
-          '/v1/admin/auth/locations/${Uri.encodeComponent(locationId)}/move',
+      path: '/v1/admin/auth/locations/${Uri.encodeComponent(locationId)}/move',
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
@@ -701,7 +718,8 @@ SessionAdminRow _sessionRowFromJson(Map<String, Object?> json) {
   return SessionAdminRow(
     sessionId: _stringField(json, 'session_id'),
     userId: _stringField(json, 'user_id'),
-    userDisplayName: _firstOptionalStringField(json, const <String>[
+    userDisplayName:
+        _firstOptionalStringField(json, const <String>[
           'user_display_name',
           'display_name',
           'user_email',
