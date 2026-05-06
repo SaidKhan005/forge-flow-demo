@@ -42,9 +42,11 @@ import 'operator_web/auth/operator_web_auth_source.dart';
 import 'operator_web/operator_web_app.dart';
 import 'operator_web/router/operator_web_router.dart';
 import 'operator_web/services/demo_team_fixtures.dart';
+import 'operator_web/services/demo_team_hierarchy_gateway.dart';
 import 'operator_web/services/demo_team_sessions_gateway.dart';
 import 'operator_web/services/demo_team_users_gateway.dart';
 import 'operator_web/services/operator_web_proxy_client.dart';
+import 'operator_web/services/web_team_hierarchy_gateway.dart';
 import 'operator_web/services/web_team_sessions_gateway.dart';
 import 'operator_web/services/web_team_users_gateway.dart';
 import 'services/auth/firebase_auth_client_sdk.dart';
@@ -100,11 +102,10 @@ Future<OperatorWebAuthSource> _resolveAuthSource() async {
   if (_kOperatorWebDemoAuth) {
     // Demo flavor: extend the demo auth source so the router can pick
     // up the in-memory `DemoWebTeamUsersGateway` +
-    // `DemoWebTeamSessionsGateway` via the
-    // `OperatorWebTeamUsersGatewayProvider` +
-    // `OperatorWebTeamSessionsGatewayProvider` mixins. Live flavor
-    // wires `package:http`-backed gateways against the same proxy
-    // client in the `11W.x.live` follow-ups (mirrors the
+    // `DemoWebTeamHierarchyGateway` + `DemoWebTeamSessionsGateway`
+    // via the matching provider mixins. Live flavor wires
+    // `package:http`-backed gateways against the same proxy client
+    // in the `11W.x.live` follow-ups (mirrors the
     // gateway-follows-shell pattern Phase 11A used).
     return _DemoOperatorWebAuthSourceWithMembers();
   }
@@ -148,23 +149,29 @@ String? _parseMagicLinkToken() {
 
 /// Demo flavor wrapper that mixes
 /// [OperatorWebTeamUsersGatewayProvider] +
+/// [OperatorWebTeamHierarchyGatewayProvider] +
 /// [OperatorWebTeamSessionsGatewayProvider] onto the demo auth
-/// source. The router reads the gateways off this interface so the
-/// Members + Sessions surfaces show the shared demo fixture data
-/// set during the walkthrough. Live mode binds the live HTTP impls
-/// in `11W.x.live`.
+/// source. The router reads the gateways off these interfaces so the
+/// Members + Locations + Sessions surfaces show the shared demo
+/// fixture data set during the walkthrough. Live mode binds the
+/// live HTTP impls in `11W.x.live`.
 class _DemoOperatorWebAuthSourceWithMembers
     extends DemoOperatorWebAuthSource
     implements
         OperatorWebTeamUsersGatewayProvider,
+        OperatorWebTeamHierarchyGatewayProvider,
         OperatorWebTeamSessionsGatewayProvider {
   _DemoOperatorWebAuthSourceWithMembers()
       : teamUsersGateway = DemoWebTeamUsersGateway(),
+        teamHierarchyGateway = DemoWebTeamHierarchyGateway(),
         teamSessionsGateway = DemoWebTeamSessionsGateway(),
         super(initial: const OperatorWebNeedsToken());
 
   @override
   final WebTeamUsersGateway teamUsersGateway;
+
+  @override
+  final WebTeamHierarchyGateway teamHierarchyGateway;
 
   @override
   final WebTeamSessionsGateway teamSessionsGateway;

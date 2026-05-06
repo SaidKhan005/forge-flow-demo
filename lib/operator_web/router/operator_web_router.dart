@@ -27,13 +27,16 @@ import 'package:flutter/material.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../account/operator_web_account_actions.dart';
+import '../services/demo_team_hierarchy_gateway.dart';
 import '../services/demo_team_sessions_gateway.dart';
 import '../services/demo_team_users_gateway.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
+import '../services/web_team_hierarchy_gateway.dart';
 import '../services/web_team_sessions_gateway.dart';
 import '../services/web_team_users_gateway.dart';
 import '../screens/account_screen.dart';
 import '../screens/data_accuracy_screen.dart';
+import '../screens/hierarchy_screen.dart';
 import '../screens/members_screen.dart';
 import '../screens/mfa_enrollment_screen.dart';
 import '../screens/password_setup_screen.dart';
@@ -49,6 +52,7 @@ import '../../theme/app_theme.dart';
 /// links key off these.
 const String kOperatorWebNavAccount = 'account';
 const String kOperatorWebNavMembers = 'members';
+const String kOperatorWebNavLocations = 'locations';
 const String kOperatorWebNavSessions = 'sessions';
 const String kOperatorWebNavVendorConnections = 'vendor_connections';
 const String kOperatorWebNavDataAccuracy = 'data_accuracy';
@@ -60,6 +64,15 @@ const String kOperatorWebNavDataAccuracy = 'data_accuracy';
 /// `package:http` impl.
 abstract class OperatorWebTeamUsersGatewayProvider {
   WebTeamUsersGateway get teamUsersGateway;
+}
+
+/// Sentinel the operator-web shell stamps on the auth source when it
+/// can supply a [WebTeamHierarchyGateway] for the `/locations`
+/// surface. Demo auth source mixes this in with
+/// [DemoWebTeamHierarchyGateway]; `11W.3.live` will mix it in on the
+/// live source with the `package:http` impl.
+abstract class OperatorWebTeamHierarchyGatewayProvider {
+  WebTeamHierarchyGateway get teamHierarchyGateway;
 }
 
 /// Sentinel the operator-web shell stamps on the auth source when it
@@ -298,6 +311,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.group_outlined,
       ),
       OperatorWebNavItem(
+        id: kOperatorWebNavLocations,
+        title: 'Locations',
+        icon: Icons.account_tree_outlined,
+      ),
+      OperatorWebNavItem(
         id: kOperatorWebNavSessions,
         title: 'Sessions',
         icon: Icons.devices_outlined,
@@ -319,6 +337,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         body = MembersScreen(
           session: session,
           gateway: _teamUsersGateway,
+        );
+        break;
+      case kOperatorWebNavLocations:
+        body = HierarchyScreen(
+          session: session,
+          gateway: _teamHierarchyGateway,
         );
         break;
       case kOperatorWebNavSessions:
@@ -381,6 +405,21 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   }
 
   DemoWebTeamUsersGateway? _routerOwnedDemoGateway;
+
+  WebTeamHierarchyGateway get _teamHierarchyGateway {
+    final source = widget.source;
+    if (source is OperatorWebTeamHierarchyGatewayProvider) {
+      return (source as OperatorWebTeamHierarchyGatewayProvider)
+          .teamHierarchyGateway;
+    }
+    // Live source without a gateway mixin still gets a working
+    // surface for the slice walkthrough; the `11W.3.live` follow-up
+    // mixes the live HTTP gateway in via
+    // `OperatorWebTeamHierarchyGatewayProvider`.
+    return _routerOwnedDemoHierarchyGateway ??= DemoWebTeamHierarchyGateway();
+  }
+
+  DemoWebTeamHierarchyGateway? _routerOwnedDemoHierarchyGateway;
 
   WebTeamSessionsGateway get _teamSessionsGateway {
     final source = widget.source;
