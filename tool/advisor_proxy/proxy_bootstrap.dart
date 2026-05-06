@@ -19,6 +19,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_login_attempts_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/feature_flags_repository.dart';
@@ -48,8 +49,12 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transa
 import 'package:forge_and_flow/auth/permission_effect.dart';
 import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/auth/permission_resolution.dart';
+import 'package:forge_and_flow/domain/models/business_timing_profile.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
+import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
+import 'package:forge_and_flow/domain/services/business_timing_profile_resolver.dart';
 import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
@@ -147,6 +152,7 @@ class ProxyProductionBindings {
     required this.mfaRemovalWorker,
     required this.mobilePushTokenGateway,
     required this.mobilePushSelfTestGateway,
+    required this.mobileOperationalSyncGateway,
     required this.operatorLocationAdminGateway,
     required this.pricingTierAdminGateway,
     required this.dataAccuracyAdminGateway,
@@ -198,6 +204,7 @@ class ProxyProductionBindings {
   final MfaRemovalWorker mfaRemovalWorker;
   final MobilePushTokenGateway? mobilePushTokenGateway;
   final MobilePushSelfTestGateway? mobilePushSelfTestGateway;
+  final MobileOperationalSyncProxyGateway mobileOperationalSyncGateway;
   final OperatorLocationAdminProxyGateway operatorLocationAdminGateway;
   final PricingTierAdminProxyGateway pricingTierAdminGateway;
   final DataAccuracyAdminProxyGateway dataAccuracyAdminGateway;
@@ -596,6 +603,9 @@ ProxyProductionBindings buildProxyProductionBindings(
     ),
     mobilePushTokenGateway: mobilePushTokenGateway,
     mobilePushSelfTestGateway: mobilePushSelfTestGateway,
+    mobileOperationalSyncGateway: RepositoryMobileOperationalSyncProxyGateway(
+      tenantWrapper: tenantWrapper,
+    ),
     // Phase 11A.1 — operator/location admin gateway. The repos run
     // through the admin pool (POSTGRES_ADMIN_URL) because the F&F
     // admin console scans / writes across operators; per-tenant RLS
@@ -1196,6 +1206,482 @@ Future<void> probeProxyStartupConnectivity(
       rethrow;
     }
   }
+}
+
+class RepositoryMobileOperationalSyncProxyGateway
+    implements MobileOperationalSyncProxyGateway {
+  RepositoryMobileOperationalSyncProxyGateway({
+    required TenantTransactionWrapper tenantWrapper,
+  }) : _tenantWrapper = tenantWrapper,
+       _timingProfilesRepository = BusinessTimingProfilesRepository(
+         tenantWrapper,
+       );
+
+  final TenantTransactionWrapper _tenantWrapper;
+  final BusinessTimingProfilesRepository _timingProfilesRepository;
+
+  @override
+  Future<Map<String, Object?>> fetchShiftRecords({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String? modifiedSince,
+    required int pageSize,
+  }) {
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final params = <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'limit': pageSize + 1,
+      };
+      final cursorSql = _modifiedSinceSql(modifiedSince, params);
+      final rows = await exec.query(
+        'select '
+        'restaurant_id, week_id, day_label, daypart, status, '
+        'business_date::text as business_date, '
+        'covers, forecast_covers, ppa, cplh, splh, '
+        'foh_hours, boh_hours, '
+        'foh_labor_dollar, boh_labor_dollar, '
+        'theoretical_labor_pct, primary_lever, '
+        'target_profile_id::text as target_profile_id, '
+        'target_profile_version_id::text as target_profile_version_id, '
+        'target_source_type, target_cplh, target_splh, target_ppa, '
+        'target_foh_wage, target_boh_wage, '
+        'opz_floor_cplh, opz_ceiling_cplh, '
+        'theoretical_foh_labor_pct, theoretical_boh_labor_pct, '
+        'source_system, source_shift_id, updated_at '
+        'from public.shift_records '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        '$cursorSql'
+        'order by updated_at asc, business_date asc, daypart asc '
+        'limit @limit',
+        parameters: params,
+      );
+      return _pagePayload(
+        key: 'shift_records',
+        rows: rows,
+        pageSize: pageSize,
+        mapper: _shiftRecordJson,
+      );
+    });
+  }
+
+  @override
+  Future<Map<String, Object?>> fetchOpenShiftSnapshots({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String? modifiedSince,
+    required int pageSize,
+  }) {
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final params = <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'limit': pageSize + 1,
+      };
+      final cursorSql = _modifiedSinceSql(modifiedSince, params);
+      final rows = await exec.query(
+        'select '
+        'location_id::text as restaurant_id, week_id, day_label, '
+        'service_period_key as daypart, status, '
+        'business_date::text as business_date, '
+        'forecast_covers, current_covers, scheduled_foh_hours, '
+        'scheduled_boh_hours, current_ppa, current_cplh, current_splh, '
+        'blended_wage, time_label, service_elapsed_label, source_system, '
+        'source_shift_id, last_event_at, updated_at '
+        'from public.open_shift_snapshots '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        '$cursorSql'
+        'order by updated_at asc, business_date asc, snapshot_scope asc, '
+        'service_period_key asc '
+        'limit @limit',
+        parameters: params,
+      );
+      return _pagePayload(
+        key: 'open_shift_snapshots',
+        rows: rows,
+        pageSize: pageSize,
+        mapper: _openShiftSnapshotJson,
+      );
+    });
+  }
+
+  @override
+  Future<Map<String, Object?>> fetchResolvedTimingConfig({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String? businessDate,
+  }) async {
+    final effectiveDate = businessDate ?? _todayUtcDate();
+    final candidates = await _timingProfilesRepository
+        .listCandidateProfilesForLocation(
+          operatorId: operatorId,
+          locationId: locationId,
+          businessDate: effectiveDate,
+          userId: _uuidOrNull(scope.userId),
+        );
+    if (candidates.isEmpty) {
+      return const <String, Object?>{'timing_config': null};
+    }
+
+    try {
+      final resolved = BusinessTimingProfileResolver.resolve(
+        <BusinessTimingProfile>[
+          for (final row in candidates) _timingProfile(row),
+        ],
+      );
+      final newest = candidates
+          .map((row) => row.updatedAt)
+          .reduce((a, b) => a.isAfter(b) ? a : b);
+      final config = resolved.toRestaurantTimingConfig(
+        restaurantId: locationId,
+        createdAt: candidates.first.createdAt.toUtc().toIso8601String(),
+        updatedAt: newest.toUtc().toIso8601String(),
+      );
+      return <String, Object?>{'timing_config': _timingConfigJson(config)};
+    } on BusinessTimingProfileResolutionException {
+      return const <String, Object?>{'timing_config': null};
+    }
+  }
+
+  @override
+  Future<Map<String, Object?>> fetchDemoModeStates({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  }) {
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final rows = await exec.query(
+        'select operator_id::text as operator_id, '
+        'location_id::text as location_id, category, is_demo, '
+        'flipped_to_live_at, flipped_by_connection_id::text '
+        'as flipped_by_connection_id '
+        'from public.demo_mode_state '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'order by category asc',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      return <String, Object?>{
+        'demo_mode_states': <Map<String, Object?>>[
+          for (final row in rows) _demoModeJson(row),
+        ],
+      };
+    });
+  }
+
+  @override
+  Future<Map<String, Object?>> fetchDataAccuracySettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  }) {
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final rows = await exec.query(
+        'select operator_id::text as operator_id, '
+        'location_id::text as location_id, covers_source_lunch, '
+        'covers_source_dinner, covers_source_late_night, '
+        'covers_manual_entries, wage_source, updated_at '
+        'from public.data_accuracy_settings '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      return <String, Object?>{
+        'data': rows.isEmpty ? null : _dataAccuracyJson(rows.single),
+      };
+    });
+  }
+
+  @override
+  Future<Map<String, Object?>> fetchPollingTierAssignment({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  }) {
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final rows = await exec.query(
+        'select operator_id::text as operator_id, '
+        'location_id::text as location_id, tier_key, '
+        'polling_cadence_per_vendor_seconds, monthly_price_cents, '
+        'effective_at '
+        'from public.forge_flow_polling_tier_assignment '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'and effective_until is null '
+        'order by effective_at desc '
+        'limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      return <String, Object?>{
+        'assignment': rows.isEmpty ? null : _pollingAssignmentJson(rows.single),
+      };
+    });
+  }
+
+  Future<T> _tenantRead<T>(
+    OperatorContext scope,
+    String operatorId,
+    String locationId,
+    Future<T> Function(PostgresExecutor exec) body,
+  ) {
+    return _tenantWrapper.runInTenantContext(
+      TenantContext(
+        operatorId: operatorId,
+        locationId: locationId,
+        userId: _uuidOrNull(scope.userId),
+      ),
+      body,
+    );
+  }
+
+  static String _modifiedSinceSql(
+    String? modifiedSince,
+    Map<String, Object?> params,
+  ) {
+    if (modifiedSince == null) return '';
+    params['modified_since'] = DateTime.parse(
+      modifiedSince,
+    ).toUtc().toIso8601String();
+    return 'and updated_at > @modified_since::timestamptz ';
+  }
+
+  static Map<String, Object?> _pagePayload({
+    required String key,
+    required List<PostgresRow> rows,
+    required int pageSize,
+    required Map<String, Object?> Function(PostgresRow row) mapper,
+  }) {
+    final hasMore = rows.length > pageSize;
+    final pageRows = hasMore ? rows.take(pageSize).toList() : rows;
+    return <String, Object?>{
+      key: <Map<String, Object?>>[for (final row in pageRows) mapper(row)],
+      'next_cursor': hasMore ? _dateJson(pageRows.last['updated_at']) : null,
+    };
+  }
+
+  static Map<String, Object?> _shiftRecordJson(PostgresRow row) {
+    return <String, Object?>{
+      'restaurant_id': row['restaurant_id'],
+      'week_id': row['week_id'],
+      'day_label': row['day_label'],
+      'daypart': row['daypart'],
+      'status': row['status'],
+      'covers': _asInt(row['covers']),
+      'forecast_covers': _asInt(row['forecast_covers']),
+      'ppa': _asDouble(row['ppa']),
+      'cplh': _asDouble(row['cplh']),
+      'splh': _asDouble(row['splh']),
+      'foh_hours': _asInt(row['foh_hours']),
+      'boh_hours': _asInt(row['boh_hours']),
+      'theoretical_labor_pct': _asDouble(row['theoretical_labor_pct']),
+      'primary_lever': row['primary_lever'],
+      'foh_labor_dollar': _nullableDouble(row['foh_labor_dollar']),
+      'boh_labor_dollar': _nullableDouble(row['boh_labor_dollar']),
+      'target_profile_id': row['target_profile_id'],
+      'target_profile_version_id': row['target_profile_version_id'],
+      'target_source_type': row['target_source_type'],
+      'target_cplh': _nullableDouble(row['target_cplh']),
+      'target_splh': _nullableDouble(row['target_splh']),
+      'target_ppa': _nullableDouble(row['target_ppa']),
+      'target_foh_wage': _nullableDouble(row['target_foh_wage']),
+      'target_boh_wage': _nullableDouble(row['target_boh_wage']),
+      'opz_floor_cplh': _nullableDouble(row['opz_floor_cplh']),
+      'opz_ceiling_cplh': _nullableDouble(row['opz_ceiling_cplh']),
+      'theoretical_foh_labor_pct': _nullableDouble(
+        row['theoretical_foh_labor_pct'],
+      ),
+      'theoretical_boh_labor_pct': _nullableDouble(
+        row['theoretical_boh_labor_pct'],
+      ),
+      'business_date': _dateOnly(row['business_date']),
+      'source_system': row['source_system'],
+      'source_shift_id': row['source_shift_id'],
+    };
+  }
+
+  static Map<String, Object?> _openShiftSnapshotJson(PostgresRow row) {
+    return <String, Object?>{
+      'restaurant_id': row['restaurant_id'],
+      'week_id': row['week_id'],
+      'day_label': row['day_label'],
+      'daypart': row['daypart'],
+      'status': row['status'],
+      'business_date': _dateOnly(row['business_date']),
+      'forecast_covers': _asInt(row['forecast_covers']),
+      'current_covers': _asInt(row['current_covers']),
+      'scheduled_foh_hours': _asInt(row['scheduled_foh_hours']),
+      'scheduled_boh_hours': _asInt(row['scheduled_boh_hours']),
+      'current_ppa': _asDouble(row['current_ppa']),
+      'current_cplh': _asDouble(row['current_cplh']),
+      'current_splh': _asDouble(row['current_splh']),
+      'blended_wage': _asDouble(row['blended_wage']),
+      'time_label': row['time_label'] as String? ?? '',
+      'service_elapsed_label': row['service_elapsed_label'] as String? ?? '',
+      'source_system': row['source_system'],
+      'source_shift_id': row['source_shift_id'],
+      'last_event_at': _dateJson(row['last_event_at']),
+      'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
+    };
+  }
+
+  static BusinessTimingProfile _timingProfile(BusinessTimingProfileRow row) {
+    return BusinessTimingProfile(
+      profileId: row.profileId,
+      scope: BusinessTimingScope.fromValue(row.scopeType),
+      scopeId: row.scopeId,
+      businessTimezone: row.locationTimezone,
+      businessDayStartLocalTime: row.businessDayStartLocalTime,
+      weekStartDay: row.weekStartDay,
+      servicePeriodDefinitions: row.servicePeriods.isEmpty
+          ? null
+          : <ServicePeriodDefinition>[
+              for (final period in row.servicePeriods)
+                ServicePeriodDefinition(
+                  id: period.servicePeriodKey,
+                  label: period.label,
+                  shortLabel: period.shortLabel,
+                  sortOrder: period.sortOrder,
+                  startLocalTime: period.startLocalTime,
+                  endLocalTime: period.endLocalTime,
+                  rollsPastMidnight: period.rollsPastMidnight,
+                  applicableDays: period.applicableWeekdays,
+                ),
+            ],
+      shiftCloseAuthority: ShiftCloseAuthority.fromValue(row.closeAuthority),
+      localCloseFallback: row.localCloseFallbackTime,
+    );
+  }
+
+  static Map<String, Object?> _timingConfigJson(RestaurantTimingConfig config) {
+    return <String, Object?>{
+      'restaurant_id': config.restaurantId,
+      'business_timezone': config.businessTimezone,
+      'business_day_start_local_time': config.businessDayStartLocalTime,
+      'week_start_day': config.weekStartDay,
+      'shift_close_authority': config.shiftCloseAuthority.value,
+      'local_close_fallback': config.localCloseFallback,
+      'created_at': config.createdAt,
+      'updated_at': config.updatedAt,
+      'service_period_definitions': <Map<String, Object?>>[
+        for (final period in config.servicePeriodDefinitions) period.toMap(),
+      ],
+    };
+  }
+
+  static Map<String, Object?> _demoModeJson(PostgresRow row) {
+    return <String, Object?>{
+      'operator_id': row['operator_id'],
+      'location_id': row['location_id'],
+      'category': row['category'],
+      'is_demo': row['is_demo'],
+      'flipped_to_live_at': _dateJson(row['flipped_to_live_at']),
+      'flipped_by_connection_id': row['flipped_by_connection_id'],
+    };
+  }
+
+  static Map<String, Object?> _dataAccuracyJson(PostgresRow row) {
+    return <String, Object?>{
+      'operator_id': row['operator_id'],
+      'location_id': row['location_id'],
+      'covers_source_lunch': row['covers_source_lunch'] ?? 'vendor',
+      'covers_source_dinner': row['covers_source_dinner'] ?? 'vendor',
+      'covers_source_late_night': row['covers_source_late_night'] ?? 'vendor',
+      'covers_manual_entries': _jsonMap(row['covers_manual_entries']),
+      'wage_source': row['wage_source'] ?? 'vendor',
+      'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
+    };
+  }
+
+  static Map<String, Object?> _pollingAssignmentJson(PostgresRow row) {
+    return <String, Object?>{
+      'operator_id': row['operator_id'],
+      'location_id': row['location_id'],
+      'tier_key': row['tier_key'],
+      'polling_cadence_per_vendor_seconds': _intMap(
+        _jsonMap(row['polling_cadence_per_vendor_seconds']),
+      ),
+      'monthly_price_cents': row['monthly_price_cents'],
+      'effective_at': _dateJson(row['effective_at']) ?? _todayUtcInstant(),
+    };
+  }
+
+  static Map<String, Object?> _jsonMap(Object? value) {
+    if (value is Map<String, Object?>) return value;
+    if (value is Map) return Map<String, Object?>.from(value);
+    if (value is String && value.isNotEmpty) {
+      final decoded = jsonDecode(value);
+      if (decoded is Map) return Map<String, Object?>.from(decoded);
+    }
+    return const <String, Object?>{};
+  }
+
+  static Map<String, int> _intMap(Map<String, Object?> value) {
+    return <String, int>{
+      for (final entry in value.entries) entry.key: _asInt(entry.value),
+    };
+  }
+
+  static int _asInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static double _asDouble(Object? value) => _nullableDouble(value) ?? 0.0;
+
+  static double? _nullableDouble(Object? value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  static String? _dateJson(Object? value) {
+    if (value == null) return null;
+    if (value is DateTime) return value.toUtc().toIso8601String();
+    if (value is String && value.isNotEmpty) {
+      return DateTime.parse(value).toUtc().toIso8601String();
+    }
+    return null;
+  }
+
+  static String? _dateOnly(Object? value) {
+    if (value == null) return null;
+    if (value is DateTime) {
+      return value.toUtc().toIso8601String().substring(0, 10);
+    }
+    if (value is String && value.isNotEmpty) {
+      return value.length >= 10 ? value.substring(0, 10) : value;
+    }
+    return null;
+  }
+
+  static String _todayUtcDate() =>
+      DateTime.now().toUtc().toIso8601String().substring(0, 10);
+
+  static String _todayUtcInstant() => DateTime.now().toUtc().toIso8601String();
+
+  static String? _uuidOrNull(String value) {
+    return _uuidPattern.hasMatch(value) ? value : null;
+  }
+
+  static final RegExp _uuidPattern = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+  );
 }
 
 /// Production [OperatorLocationAdminProxyGateway] backed by

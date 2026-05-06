@@ -10,6 +10,7 @@ class SqliteRestaurantScopeRepository implements RestaurantScopeRepository {
       SqliteRestaurantScopeRepository._();
 
   RestaurantScopeDao? _dao;
+  String? _runtimeActiveRestaurantId;
 
   Future<RestaurantScopeDao> get _daoReady async {
     if (_dao != null) return _dao!;
@@ -21,9 +22,11 @@ class SqliteRestaurantScopeRepository implements RestaurantScopeRepository {
   @override
   Future<RestaurantLocation> getOrCreateActiveRestaurant() async {
     final dao = await _daoReady;
-    final existing = await dao.getRestaurant(DemoScope.restaurantId);
+    final activeId = _runtimeActiveRestaurantId ?? DemoScope.restaurantId;
+    final existing = await dao.getRestaurant(activeId);
     if (existing != null) {
-      if (existing.displayName == 'Forge & Flow Demo') {
+      if (activeId == DemoScope.restaurantId &&
+          existing.displayName == 'Forge & Flow Demo') {
         final normalized = RestaurantLocation(
           restaurantId: existing.restaurantId,
           displayName: DemoScope.displayName,
@@ -47,6 +50,21 @@ class SqliteRestaurantScopeRepository implements RestaurantScopeRepository {
     );
     await dao.insertRestaurant(location);
     return location;
+  }
+
+  Future<void> activateRuntimeRestaurant(RestaurantLocation location) async {
+    final dao = await _daoReady;
+    final existing = await dao.getRestaurant(location.restaurantId);
+    if (existing == null) {
+      await dao.insertRestaurant(location);
+    } else {
+      await dao.updateRestaurant(location);
+    }
+    _runtimeActiveRestaurantId = location.restaurantId;
+  }
+
+  void clearRuntimeRestaurantOverride() {
+    _runtimeActiveRestaurantId = null;
   }
 
   @override
