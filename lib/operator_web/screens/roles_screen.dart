@@ -198,9 +198,9 @@ class _RolesScreenState extends State<RolesScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyMutationError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyMutationError(error))));
     } finally {
       if (mounted) {
         setState(() => _busyRoleIds.remove(role.roleId));
@@ -423,80 +423,87 @@ class _RolesHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final title = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  const Icon(
-                    Icons.shield_outlined,
-                    size: 22,
-                    color: AppColors.sunsetDark,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Roles',
-                    style: AppTextStyles.display20(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Roles decide what each teammate can do in Forge & Flow. '
-                'Use a seeded role for the standard mix, or build a custom '
-                'role when you need a different set of permissions.',
-                key: const Key('operator_web_roles_subtitle'),
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 16),
-        Wrap(
-          spacing: 10,
-          runSpacing: 8,
-          alignment: WrapAlignment.end,
+        Row(
           children: <Widget>[
-            SizedBox(
-              height: 38,
-              child: OutlinedButton.icon(
-                key: const Key('operator_web_roles_open_explainer'),
-                onPressed: onOpenExplainer,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.sunsetDark,
-                  side: const BorderSide(
-                    color: AppColors.sunsetDark,
-                    width: 1,
-                  ),
-                ),
-                icon: const Icon(Icons.help_outline, size: 16),
-                label: const Text('Permission Explainer'),
-              ),
+            const Icon(
+              Icons.shield_outlined,
+              size: 22,
+              color: AppColors.sunsetDark,
             ),
-            SizedBox(
-              height: 38,
-              child: FilledButton.icon(
-                key: const Key('operator_web_roles_new_role'),
-                onPressed: canWrite ? onCreateRole : null,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                  disabledBackgroundColor: AppColors.borderSubtle,
-                  disabledForegroundColor: AppColors.textMuted,
-                ),
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('New role'),
-              ),
+            const SizedBox(width: 10),
+            Text(
+              'Roles',
+              style: AppTextStyles.display20(color: AppColors.textPrimary),
             ),
           ],
         ),
+        const SizedBox(height: 6),
+        Text(
+          'Roles decide what each teammate can do in Forge & Flow. '
+          'Use a seeded role for the standard mix, or build a custom '
+          'role when you need a different set of permissions.',
+          key: const Key('operator_web_roles_subtitle'),
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
       ],
+    );
+
+    final actions = Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      alignment: WrapAlignment.end,
+      children: <Widget>[
+        SizedBox(
+          height: 38,
+          child: OutlinedButton.icon(
+            key: const Key('operator_web_roles_open_explainer'),
+            onPressed: onOpenExplainer,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.sunsetDark,
+              side: const BorderSide(color: AppColors.sunsetDark, width: 1),
+            ),
+            icon: const Icon(Icons.help_outline, size: 16),
+            label: const Text('Permission Explainer'),
+          ),
+        ),
+        SizedBox(
+          height: 38,
+          child: FilledButton.icon(
+            key: const Key('operator_web_roles_new_role'),
+            onPressed: canWrite ? onCreateRole : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.sunset,
+              foregroundColor: AppColors.backgroundSurface,
+              disabledBackgroundColor: AppColors.borderSubtle,
+              disabledForegroundColor: AppColors.textMuted,
+            ),
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('New role'),
+          ),
+        ),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 560) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[title, const SizedBox(height: 12), actions],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(child: title),
+            const SizedBox(width: 16),
+            actions,
+          ],
+        );
+      },
     );
   }
 }
@@ -629,8 +636,7 @@ class _RoleTile extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       role.roleKey,
-                      style:
-                          AppTextStyles.mono12(color: AppColors.textMuted),
+                      style: AppTextStyles.mono12(color: AppColors.textMuted),
                     ),
                     if (role.description.trim().isNotEmpty) ...<Widget>[
                       const SizedBox(height: 6),

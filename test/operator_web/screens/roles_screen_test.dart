@@ -32,20 +32,20 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   /// Editor is itself a Scaffold + AppBar — wrap it without a parent
   /// Scaffold so the AppBar back button does not trip on a missing
   /// Navigator stack and the form's first-render layout matches what
   /// the router mounts in production.
   Widget wrapBare(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: child,
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: child,
+  );
 
   Future<void> sizeViewport(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
@@ -59,18 +59,17 @@ void main() {
   OperatorWebSession sessionWithRole(
     String role, {
     Set<String> permissions = const <String>{},
-  }) =>
-      OperatorWebSession(
-        uid: 'session-$role',
-        email: 'sam.owner@demobistro.test',
-        displayName: 'Sam Patel',
-        operatorId: kDemoOperatorIdFixture,
-        businessName: kDemoOperatorBusinessNameFixture,
-        primaryLocationId: 'demo-loc-downtown',
-        primaryLocationName: 'Downtown',
-        roles: <String>[role],
-        permissions: permissions,
-      );
+  }) => OperatorWebSession(
+    uid: 'session-$role',
+    email: 'sam.owner@demobistro.test',
+    displayName: 'Sam Patel',
+    operatorId: kDemoOperatorIdFixture,
+    businessName: kDemoOperatorBusinessNameFixture,
+    primaryLocationId: 'demo-loc-downtown',
+    primaryLocationName: 'Downtown',
+    roles: <String>[role],
+    permissions: permissions,
+  );
 
   Future<void> pumpScreen(
     WidgetTester tester, {
@@ -110,10 +109,7 @@ void main() {
         const Key('operator_web_roles_new_role'),
       );
       expect(newRoleButton, findsOneWidget);
-      expect(
-        tester.widget<FilledButton>(newRoleButton).onPressed,
-        isNotNull,
-      );
+      expect(tester.widget<FilledButton>(newRoleButton).onPressed, isNotNull);
       expect(
         find.byKey(const Key('operator_web_roles_seeded_group')),
         findsOneWidget,
@@ -125,6 +121,31 @@ void main() {
       // Floor Captain custom row from the demo fixture set.
       expect(
         find.byKey(const Key('operator_web_role_tile_role-floor-captain')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('narrow header keeps title and subtitle readable', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(360, 1200));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+
+      final titleSize = tester.getSize(find.text('Roles'));
+      expect(titleSize.width, greaterThan(50));
+      expect(titleSize.height, lessThan(40));
+
+      final subtitleSize = tester.getSize(
+        find.byKey(const Key('operator_web_roles_subtitle')),
+      );
+      expect(subtitleSize.width, greaterThan(250));
+      expect(subtitleSize.height, lessThan(220));
+      expect(
+        find.byKey(const Key('operator_web_roles_open_explainer')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_roles_new_role')),
         findsOneWidget,
       );
     });
@@ -168,23 +189,18 @@ void main() {
       tester,
     ) async {
       await sizeViewport(tester, const Size(1280, 800));
-      await pumpScreen(
-        tester,
-        session: sessionWithRole('operator_supervisor'),
-      );
+      await pumpScreen(tester, session: sessionWithRole('operator_supervisor'));
       expect(
         find.byKey(const Key('operator_web_roles_forbidden')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const Key('operator_web_roles_screen')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('operator_web_roles_screen')), findsNothing);
     });
 
     testWidgets('permission-key snapshot overrides role tier (location_manager '
-        'with team.roles.view + no create_custom -> read-only)',
-        (tester) async {
+        'with team.roles.view + no create_custom -> read-only)', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 800));
       await pumpScreen(
         tester,
@@ -203,10 +219,7 @@ void main() {
         const Key('operator_web_roles_new_role'),
       );
       expect(newRoleButton, findsOneWidget);
-      expect(
-        tester.widget<FilledButton>(newRoleButton).onPressed,
-        isNull,
-      );
+      expect(tester.widget<FilledButton>(newRoleButton).onPressed, isNull);
       expect(
         find.byKey(const Key('operator_web_role_edit_role-floor-captain')),
         findsNothing,
@@ -215,8 +228,9 @@ void main() {
   });
 
   group('RolesScreen sub-route hooks', () {
-    testWidgets('Permission Explainer button fires onOpenExplainer hook',
-        (tester) async {
+    testWidgets('Permission Explainer button fires onOpenExplainer hook', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 800));
       var fired = false;
       await pumpScreen(
@@ -231,8 +245,9 @@ void main() {
       expect(fired, isTrue);
     });
 
-    testWidgets('New role button fires onOpenEditor hook with null target',
-        (tester) async {
+    testWidgets('New role button fires onOpenEditor hook with null target', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 800));
       TeamRoleCatalogEntry? capturedTarget;
       var firedTimes = 0;
@@ -250,8 +265,9 @@ void main() {
       expect(capturedTarget, isNull);
     });
 
-    testWidgets('Edit on a custom role fires onOpenEditor with that role',
-        (tester) async {
+    testWidgets('Edit on a custom role fires onOpenEditor with that role', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1200));
       TeamRoleCatalogEntry? capturedTarget;
       await pumpScreen(
@@ -269,8 +285,9 @@ void main() {
   });
 
   group('CustomRoleEditorScreen builder + validation', () {
-    testWidgets('renders metadata + permission picker for create mode',
-        (tester) async {
+    testWidgets('renders metadata + permission picker for create mode', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1200));
       await tester.pumpWidget(
         wrapBare(
@@ -339,8 +356,9 @@ void main() {
       );
     });
 
-    testWidgets('idempotency-key factory threads through createRole on save',
-        (tester) async {
+    testWidgets('idempotency-key factory threads through createRole on save', (
+      tester,
+    ) async {
       // Tall viewport so the editor's metadata + permission picker
       // + save bar all fit without needing to scroll the picker.
       await sizeViewport(tester, const Size(1280, 8000));
@@ -374,9 +392,7 @@ void main() {
       // hit-test lands on the toggle target rather than the
       // surrounding description text.
       final permRow = find.byKey(
-        const Key(
-          'operator_web_custom_role_editor_perm_forgeflow.shift.view',
-        ),
+        const Key('operator_web_custom_role_editor_perm_forgeflow.shift.view'),
       );
       await tester.ensureVisible(permRow);
       await tester.pumpAndSettle();
@@ -401,8 +417,7 @@ void main() {
   });
 
   group('DemoWebTeamRolesGateway business rules', () {
-    test('listRoles surfaces both seeded + custom roles by default',
-        () async {
+    test('listRoles surfaces both seeded + custom roles by default', () async {
       final gateway = DemoWebTeamRolesGateway();
       final result = await gateway.listRoles(
         const TeamRoleCatalogListCommand(
@@ -415,10 +430,7 @@ void main() {
       final custom = result.roles.where((r) => !r.isSeeded).toList();
       expect(seeded, isNotEmpty);
       expect(custom, isNotEmpty);
-      expect(
-        custom.map((r) => r.roleKey),
-        contains('floor_captain'),
-      );
+      expect(custom.map((r) => r.roleKey), contains('floor_captain'));
     });
 
     test('listRoles filters to seeded with scope=seeded', () async {
@@ -434,80 +446,84 @@ void main() {
       expect(result.roles.every((r) => r.isSeeded), isTrue);
     });
 
-    test('createRole + listRoles round-trip exposes the new custom role',
-        () async {
-      final gateway = DemoWebTeamRolesGateway();
-      final created = await gateway.createRole(
-        const TeamRoleCreateCommand(
+    test(
+      'createRole + listRoles round-trip exposes the new custom role',
+      () async {
+        final gateway = DemoWebTeamRolesGateway();
+        final created = await gateway.createRole(
+          const TeamRoleCreateCommand(
+            actorUserId: 'actor',
+            operatorId: kDemoOperatorIdFixture,
+            locationId: 'demo-loc-downtown',
+            roleKey: 'closer',
+            displayName: 'Closer',
+            description: 'Late-shift floor lead.',
+            permissions: <TeamRolePermissionUpdate>[
+              TeamRolePermissionUpdate(
+                permissionKey: 'forgeflow.shift.view',
+                effect: 'allow',
+              ),
+              TeamRolePermissionUpdate(
+                permissionKey: 'forgeflow.variance.view',
+                effect: 'allow',
+              ),
+            ],
+          ),
+          idempotencyKey: 'create-key-1',
+        );
+        expect(created.role.roleKey, 'closer');
+        expect(created.role.isSeeded, isFalse);
+        expect(created.role.isEditable, isTrue);
+        final listed = await gateway.listRoles(
+          const TeamRoleCatalogListCommand(
+            actorUserId: 'actor',
+            operatorId: kDemoOperatorIdFixture,
+            locationId: 'demo-loc-downtown',
+            scope: 'custom',
+          ),
+        );
+        expect(
+          listed.roles.map((r) => r.roleKey),
+          containsAll(<String>['floor_captain', 'closer']),
+        );
+      },
+    );
+
+    test(
+      'createRole replays from cache on duplicate idempotency key',
+      () async {
+        final gateway = DemoWebTeamRolesGateway();
+        const cmd = TeamRoleCreateCommand(
           actorUserId: 'actor',
           operatorId: kDemoOperatorIdFixture,
           locationId: 'demo-loc-downtown',
-          roleKey: 'closer',
-          displayName: 'Closer',
-          description: 'Late-shift floor lead.',
+          roleKey: 'replay_test',
+          displayName: 'Replay Test',
           permissions: <TeamRolePermissionUpdate>[
             TeamRolePermissionUpdate(
               permissionKey: 'forgeflow.shift.view',
               effect: 'allow',
             ),
-            TeamRolePermissionUpdate(
-              permissionKey: 'forgeflow.variance.view',
-              effect: 'allow',
-            ),
           ],
-        ),
-        idempotencyKey: 'create-key-1',
-      );
-      expect(created.role.roleKey, 'closer');
-      expect(created.role.isSeeded, isFalse);
-      expect(created.role.isEditable, isTrue);
-      final listed = await gateway.listRoles(
-        const TeamRoleCatalogListCommand(
-          actorUserId: 'actor',
-          operatorId: kDemoOperatorIdFixture,
-          locationId: 'demo-loc-downtown',
-          scope: 'custom',
-        ),
-      );
-      expect(
-        listed.roles.map((r) => r.roleKey),
-        containsAll(<String>['floor_captain', 'closer']),
-      );
-    });
-
-    test('createRole replays from cache on duplicate idempotency key',
-        () async {
-      final gateway = DemoWebTeamRolesGateway();
-      const cmd = TeamRoleCreateCommand(
-        actorUserId: 'actor',
-        operatorId: kDemoOperatorIdFixture,
-        locationId: 'demo-loc-downtown',
-        roleKey: 'replay_test',
-        displayName: 'Replay Test',
-        permissions: <TeamRolePermissionUpdate>[
-          TeamRolePermissionUpdate(
-            permissionKey: 'forgeflow.shift.view',
-            effect: 'allow',
+        );
+        const key = 'create-replay-key';
+        final first = await gateway.createRole(cmd, idempotencyKey: key);
+        final second = await gateway.createRole(cmd, idempotencyKey: key);
+        expect(first.role.roleId, second.role.roleId);
+        final listed = await gateway.listRoles(
+          const TeamRoleCatalogListCommand(
+            actorUserId: 'actor',
+            operatorId: kDemoOperatorIdFixture,
+            locationId: 'demo-loc-downtown',
+            scope: 'custom',
           ),
-        ],
-      );
-      const key = 'create-replay-key';
-      final first = await gateway.createRole(cmd, idempotencyKey: key);
-      final second = await gateway.createRole(cmd, idempotencyKey: key);
-      expect(first.role.roleId, second.role.roleId);
-      final listed = await gateway.listRoles(
-        const TeamRoleCatalogListCommand(
-          actorUserId: 'actor',
-          operatorId: kDemoOperatorIdFixture,
-          locationId: 'demo-loc-downtown',
-          scope: 'custom',
-        ),
-      );
-      final replays = listed.roles
-          .where((r) => r.roleKey == 'replay_test')
-          .toList();
-      expect(replays, hasLength(1));
-    });
+        );
+        final replays = listed.roles
+            .where((r) => r.roleKey == 'replay_test')
+            .toList();
+        expect(replays, hasLength(1));
+      },
+    );
 
     test('patchRole on seeded role throws role_not_editable', () async {
       final gateway = DemoWebTeamRolesGateway();
@@ -556,34 +572,36 @@ void main() {
       );
     });
 
-    test('createRoleGrant + revokeRoleGrant round-trip + idempotency replay',
-        () async {
-      final gateway = DemoWebTeamRolesGateway();
-      const cmd = TeamRoleGrantCreateCommand(
-        actorUserId: 'actor',
-        operatorId: kDemoOperatorIdFixture,
-        locationId: 'demo-loc-downtown',
-        targetUserId: 'demo-user-downtown-manager',
-        roleId: 'role-floor-captain',
-        scopeType: 'location',
-        targetLocationId: 'demo-loc-downtown',
-      );
-      const key = 'grant-create-key';
-      final first = await gateway.createRoleGrant(cmd, idempotencyKey: key);
-      final second = await gateway.createRoleGrant(cmd, idempotencyKey: key);
-      expect(first.userRoleId, second.userRoleId);
-      final revoked = await gateway.revokeRoleGrant(
-        TeamRoleGrantRevokeCommand(
+    test(
+      'createRoleGrant + revokeRoleGrant round-trip + idempotency replay',
+      () async {
+        final gateway = DemoWebTeamRolesGateway();
+        const cmd = TeamRoleGrantCreateCommand(
           actorUserId: 'actor',
           operatorId: kDemoOperatorIdFixture,
           locationId: 'demo-loc-downtown',
-          userRoleId: first.userRoleId,
           targetUserId: 'demo-user-downtown-manager',
-        ),
-        idempotencyKey: 'grant-revoke-key',
-      );
-      expect(revoked.revoked, isTrue);
-    });
+          roleId: 'role-floor-captain',
+          scopeType: 'location',
+          targetLocationId: 'demo-loc-downtown',
+        );
+        const key = 'grant-create-key';
+        final first = await gateway.createRoleGrant(cmd, idempotencyKey: key);
+        final second = await gateway.createRoleGrant(cmd, idempotencyKey: key);
+        expect(first.userRoleId, second.userRoleId);
+        final revoked = await gateway.revokeRoleGrant(
+          TeamRoleGrantRevokeCommand(
+            actorUserId: 'actor',
+            operatorId: kDemoOperatorIdFixture,
+            locationId: 'demo-loc-downtown',
+            userRoleId: first.userRoleId,
+            targetUserId: 'demo-user-downtown-manager',
+          ),
+          idempotencyKey: 'grant-revoke-key',
+        );
+        expect(revoked.revoked, isTrue);
+      },
+    );
   });
 
   group('Demo fixture re-seeds across instances', () {
@@ -615,10 +633,7 @@ void main() {
           scope: 'custom',
         ),
       );
-      expect(
-        listed.roles.map((r) => r.roleKey),
-        isNot(contains('temp_role')),
-      );
+      expect(listed.roles.map((r) => r.roleKey), isNot(contains('temp_role')));
     });
   });
 }

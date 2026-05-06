@@ -30,6 +30,13 @@
 #   scripts/deploy_operator_web.ps1 -DryRun
 #   scripts/deploy_operator_web.ps1 -DemoMode -Service forge-flow-operator-web-sandbox
 #
+# Preview deploys whose service name follows
+# `forge-flow-preview-<name>-operator-web` automatically update the matching
+# `forge-flow-preview-<name>-proxy` CORS allow-list with the operator-web
+# Cloud Run origin, then verify `/v1/auth/account` preflight. Pass
+# `-SkipProxyCorsUpdate` to opt out, or `-ProxyCorsService` for a
+# non-standard preview proxy name.
+#
 # Notes:
 # - Cloud Build is invoked with `Dockerfile.operator_web`. The
 #   Dockerfile overlays the operator-web web shell (`web/operator/*`)
@@ -49,8 +56,10 @@ param(
   [string] $ServiceAccount = 'forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com',
   [string] $ArtifactRepository = 'forge-flow-cloud-run',
   [string] $ProxyBaseUri = $env:FORGE_FLOW_OPERATOR_WEB_PROXY_BASE_URI,
+  [string] $ProxyCorsService = '',
   [string] $SecretsFile = (Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1'),
   [switch] $DemoMode,
+  [switch] $SkipProxyCorsUpdate,
   [switch] $SkipApiEnable,
   [switch] $PrintCommandOnly,
   [switch] $DryRun
@@ -59,9 +68,136 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$gcloud = Join-Path $HOME 'AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd'
+$gcloud = Join-Path $HOME 'AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.ps1'
+if (-not (Test-Path -LiteralPath $gcloud)) {
+  $gcloud = Join-Path $HOME 'AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd'
+}
 if (-not (Test-Path -LiteralPath $gcloud)) {
   $gcloud = 'gcloud'
+}
+
+function Resolve-PreviewProxyCorsServiceName {
+  param([string] $OperatorWebService)
+
+  $prefix = 'forge-flow-preview-'
+  $suffix = '-operator-web'
+  if (
+    $OperatorWebService.StartsWith($prefix, [System.StringComparison]::Ordinal) -and
+    $OperatorWebService.EndsWith($suffix, [System.StringComparison]::Ordinal)
+  ) {
+    return $OperatorWebService.Substring(
+      0,
+      $OperatorWebService.Length - $suffix.Length
+    ) + '-proxy'
+  }
+  return ''
+}
+
+function Join-CorsOriginList {
+  param([string[]] $Origins)
+
+  $seen = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal
+  )
+  $clean = [System.Collections.Generic.List[string]]::new()
+  foreach ($entry in $Origins) {
+    foreach ($candidate in (([string] $entry) -split ',')) {
+      $origin = $candidate.Trim()
+      if ([string]::IsNullOrWhiteSpace($origin)) { continue }
+      if ($seen.Add($origin)) {
+        $clean.Add($origin)
+      }
+    }
+  }
+  return ($clean -join ',')
+}
+
+function Get-ProxyCorsAllowedOrigins {
+  param([string] $ServiceName)
+
+  $serviceJson = & $gcloud run services describe $ServiceName `
+    --project $Project `
+    --region $Region `
+    --format json
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  $service = ($serviceJson -join "`n") | ConvertFrom-Json
+  $envRows = @($service.spec.template.spec.containers[0].env)
+  $corsRow = $envRows |
+    Where-Object { $_.name -eq 'ADMIN_CORS_ALLOWED_ORIGINS' } |
+    Select-Object -First 1
+  if ($null -eq $corsRow) {
+    return ''
+  }
+  return [string] $corsRow.value
+}
+
+function Assert-OperatorWebProxyCors {
+  param(
+    [string] $ProxyUrl,
+    [string] $OperatorWebUrl
+  )
+
+  $preflightHeaders = @{
+    Origin = $OperatorWebUrl
+    'Access-Control-Request-Method' = 'GET'
+    'Access-Control-Request-Headers' = 'authorization,content-type'
+  }
+  try {
+    $preflight = Invoke-WebRequest `
+      -UseBasicParsing `
+      -Method OPTIONS `
+      -Uri "$ProxyUrl/v1/auth/account" `
+      -Headers $preflightHeaders
+  } catch {
+    Write-Host 'BLOCKED: operator-web proxy CORS preflight failed.'
+    Write-Host " - proxy URL: $ProxyUrl"
+    Write-Host " - operator-web origin: $OperatorWebUrl"
+    if ($_.Exception.Response) {
+      Write-Host " - status: $([int] $_.Exception.Response.StatusCode)"
+    }
+    exit 1
+  }
+  if ($preflight.StatusCode -ne 204) {
+    Write-Host "BLOCKED: operator-web proxy CORS preflight returned $($preflight.StatusCode)."
+    exit 1
+  }
+  if ($preflight.Headers['Access-Control-Allow-Origin'] -ne $OperatorWebUrl) {
+    Write-Host 'BLOCKED: operator-web proxy CORS preflight did not echo the operator-web origin.'
+    Write-Host " - allow-origin: $($preflight.Headers['Access-Control-Allow-Origin'])"
+    exit 1
+  }
+}
+
+function Update-ProxyCorsForOperatorWeb {
+  param(
+    [string] $ServiceName,
+    [string] $OperatorWebUrl
+  )
+
+  $currentOrigins = Get-ProxyCorsAllowedOrigins -ServiceName $ServiceName
+  $nextOrigins = Join-CorsOriginList -Origins @(
+    $currentOrigins,
+    $OperatorWebUrl
+  )
+  if ([string]::IsNullOrWhiteSpace($nextOrigins)) {
+    Write-Host 'BLOCKED: cannot update proxy CORS with an empty origin list.'
+    exit 1
+  }
+  if ($nextOrigins.Contains('@')) {
+    Write-Host 'BLOCKED: CORS origin list contains the Cloud SDK env delimiter "@".'
+    exit 1
+  }
+
+  # Cloud SDK dictionary flags need an alternate delimiter because the CORS
+  # value is itself comma-separated. Use `@` so Windows shells do not treat the
+  # delimiter as a command separator.
+  $updateEnvVarsArg = "^@^ADMIN_CORS_ALLOWED_ORIGINS=$nextOrigins"
+  & $gcloud run services update $ServiceName `
+    --project $Project `
+    --region $Region `
+    --update-env-vars $updateEnvVarsArg `
+    --quiet
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 if (Test-Path -LiteralPath $SecretsFile) {
@@ -239,5 +375,26 @@ if ([string]::IsNullOrWhiteSpace($serviceUri)) {
 if ($DemoMode) {
   Write-Host "Operator Web Console (DEMO AUTH) deployed: $serviceUri"
 } else {
+  if ($SkipProxyCorsUpdate) {
+    Write-Host 'Operator-web proxy CORS update skipped.'
+  } else {
+    $effectiveProxyCorsService = $ProxyCorsService
+    if ([string]::IsNullOrWhiteSpace($effectiveProxyCorsService)) {
+      $effectiveProxyCorsService =
+        Resolve-PreviewProxyCorsServiceName -OperatorWebService $Service
+    }
+    if ([string]::IsNullOrWhiteSpace($effectiveProxyCorsService)) {
+      Write-Host 'Operator-web proxy CORS update not inferred; pass -ProxyCorsService to update a non-preview proxy.'
+    } else {
+      Write-Host "Updating operator-web proxy CORS on $effectiveProxyCorsService."
+      Update-ProxyCorsForOperatorWeb `
+        -ServiceName $effectiveProxyCorsService `
+        -OperatorWebUrl $serviceUri
+      Assert-OperatorWebProxyCors `
+        -ProxyUrl $ProxyBaseUri `
+        -OperatorWebUrl $serviceUri
+      Write-Host 'Operator-web CORS preflight: 204'
+    }
+  }
   Write-Host "Operator Web Console (live Firebase auth) deployed: $serviceUri"
 }
