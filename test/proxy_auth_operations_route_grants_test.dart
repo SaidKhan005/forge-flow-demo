@@ -83,28 +83,78 @@ void main() {
       },
     );
 
+    test('backward-compat: zero-grant users still serialize without breaking '
+        'existing callers', () async {
+      await _withRealHttp(() async {
+        final gateway = _GrantsRecordingAuthOperationsGateway(
+          emitGrants: false,
+        );
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: _RecordingAdminGuard(),
+        );
+        try {
+          final response = await harness.get(adminAuthUsersPath);
+
+          expect(response.statusCode, equals(200));
+          final users = response.json['users'] as List<Object?>;
+          final user = Map<String, Object?>.from(users.single as Map);
+          // The grants key is always present (additive field) but
+          // the array is empty so existing callers see a no-op shape.
+          expect(user['grants'], equals(const <Object?>[]));
+          // Existing fields untouched.
+          expect(user['user_id'], equals('zero-grant-user'));
+          expect(user['user_role_id'], isNull);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('self-service alias serializes the same grants payload', () async {
+      await _withRealHttp(() async {
+        final gateway = _GrantsRecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: _RecordingAdminGuard(),
+        );
+        try {
+          final response = await harness.get(authTeamUsersPath);
+
+          expect(response.statusCode, equals(200));
+          final users = response.json['users'] as List<Object?>;
+          expect(users, hasLength(1));
+          final user = Map<String, Object?>.from(users.single as Map);
+          expect(user['user_id'], equals('multi-grant-user'));
+          expect(user['grants'], isA<List<Object?>>());
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
     test(
-      'backward-compat: zero-grant users still serialize without breaking '
-      'existing callers',
+      'self-service role and hierarchy aliases route to auth operations',
       () async {
         await _withRealHttp(() async {
-          final gateway = _GrantsRecordingAuthOperationsGateway(emitGrants: false);
+          final gateway = _GrantsRecordingAuthOperationsGateway();
           final harness = await _RouteHarness.start(
             authOperationsGateway: gateway,
             adminPermissionGuard: _RecordingAdminGuard(),
           );
           try {
-            final response = await harness.get(adminAuthUsersPath);
+            final rolesResponse = await harness.get(authTeamRolesPath);
+            expect(rolesResponse.statusCode, equals(200));
+            final roles = rolesResponse.json['roles'] as List<Object?>;
+            expect(
+              Map<String, Object?>.from(roles.single as Map)['display_name'],
+              equals('Owner'),
+            );
 
-            expect(response.statusCode, equals(200));
-            final users = response.json['users'] as List<Object?>;
-            final user = Map<String, Object?>.from(users.single as Map);
-            // The grants key is always present (additive field) but
-            // the array is empty so existing callers see a no-op shape.
-            expect(user['grants'], equals(const <Object?>[]));
-            // Existing fields untouched.
-            expect(user['user_id'], equals('zero-grant-user'));
-            expect(user['user_role_id'], isNull);
+            final hierarchyResponse = await harness.get(authTeamOrgUnitsPath);
+            expect(hierarchyResponse.statusCode, equals(200));
+            expect(hierarchyResponse.json['org_units'], isA<List<Object?>>());
+            expect(hierarchyResponse.json['locations'], isA<List<Object?>>());
           } finally {
             await harness.close();
           }
@@ -162,10 +212,7 @@ class _RouteHarness {
     final decoded = body.isEmpty
         ? const <String, Object?>{}
         : Map<String, Object?>.from(jsonDecode(body) as Map);
-    return _HarnessResponse(
-      statusCode: response.statusCode,
-      json: decoded,
-    );
+    return _HarnessResponse(statusCode: response.statusCode, json: decoded);
   }
 
   Future<void> close() async {
@@ -250,10 +297,7 @@ class _GrantsRecordingAuthOperationsGateway implements AuthOperationsGateway {
               scopeType: 'org_unit',
               orgUnitId: 'unit-east',
               sourceOrgUnitId: 'unit-east',
-              effectiveLocationIds: <String>[
-                'loc-vancouver',
-                'loc-burnaby',
-              ],
+              effectiveLocationIds: <String>['loc-vancouver', 'loc-burnaby'],
             ),
             TeamGrantSnapshot(
               userRoleId: 'grant-loc-1',
@@ -270,6 +314,55 @@ class _GrantsRecordingAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   // ── Other AuthOperationsGateway methods are not exercised here ──
+
+  @override
+  Future<TeamRoleCatalogListed> listRoles(
+    TeamRoleCatalogListCommand command,
+  ) async {
+    return const TeamRoleCatalogListed(
+      roles: <TeamRoleCatalogEntry>[
+        TeamRoleCatalogEntry(
+          roleId: _roleId,
+          roleKey: 'operator_owner',
+          displayName: 'Owner',
+          description: 'Can manage the operator account.',
+          isSeeded: true,
+          isEditable: false,
+          permissions: <TeamRolePermissionRule>[
+            TeamRolePermissionRule(
+              permissionKey: 'team.users.view',
+              effect: 'allow',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<TeamOrgHierarchyListed> listOrgHierarchy(
+    TeamOrgHierarchyListCommand command,
+  ) async {
+    return const TeamOrgHierarchyListed(
+      orgUnits: <TeamOrgUnitEntry>[
+        TeamOrgUnitEntry(
+          orgUnitId: 'unit-root',
+          parentOrgUnitId: null,
+          unitType: 'operator',
+          path: 'root',
+          label: 'Operator root',
+        ),
+      ],
+      locations: <TeamOrgLocationEntry>[
+        TeamOrgLocationEntry(
+          locationId: _locationId,
+          parentOrgUnitId: 'unit-root',
+          orgUnitPath: 'root',
+          label: 'Primary location',
+        ),
+      ],
+    );
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) {

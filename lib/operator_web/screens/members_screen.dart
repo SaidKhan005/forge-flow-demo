@@ -26,7 +26,7 @@
 //                  Force sign-out is deferred to Phase 11W.4
 //                  Sessions, which owns the session-revocation path
 //                  (`team.session.force_logout` writes through
-//                  `/v1/auth/team/sessions/revoke`, not the team-
+//                  `/v1/auth/session/revoke`, not the team-
 //                  users surface). Suspend already cuts the user's
 //                  ability to sign in; Force sign-out is the
 //                  separate "end every active session right now"
@@ -135,7 +135,7 @@ class MembersScreen extends StatefulWidget {
 
   /// Role + location dropdown catalogs. Demo build defaults to the
   /// shared fixture set; live build will pass the operator's own
-  /// catalog from `/v1/admin/auth/roles` + the hierarchy gateway in
+  /// catalog from `/v1/auth/team/roles` + the hierarchy gateway in
   /// the `11W.1.live` follow-up.
   final List<DemoTeamRoleFixture> roleOptions;
   final List<DemoTeamLocationFixture> locationOptions;
@@ -317,7 +317,10 @@ class _MembersScreenState extends State<MembersScreen> {
     final filtered = _filteredUsers;
     final pageStart = _controller.pageIndex * _controller.pageSize;
     if (pageStart >= filtered.length) return const <TeamUserListEntry>[];
-    final pageEnd = (pageStart + _controller.pageSize).clamp(0, filtered.length);
+    final pageEnd = (pageStart + _controller.pageSize).clamp(
+      0,
+      filtered.length,
+    );
     return filtered.sublist(pageStart, pageEnd);
   }
 
@@ -337,9 +340,9 @@ class _MembersScreenState extends State<MembersScreen> {
     if (result == null || !mounted) return;
     await _loadAll();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Invite sent.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Invite sent.')));
   }
 
   Future<void> _runStatusAction({
@@ -347,7 +350,8 @@ class _MembersScreenState extends State<MembersScreen> {
     required Future<TeamUserStatusUpdated> Function(
       TeamUserStatusCommand command, {
       required String idempotencyKey,
-    }) action,
+    })
+    action,
     required String confirmTitle,
     required String confirmBody,
     required String confirmCta,
@@ -374,14 +378,14 @@ class _MembersScreenState extends State<MembersScreen> {
       );
       await _loadAll();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(successCopy)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(successCopy)));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyMutationError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyMutationError(error))));
     } finally {
       if (mounted) {
         setState(() => _busyUserIds.remove(user.userId));
@@ -392,7 +396,8 @@ class _MembersScreenState extends State<MembersScreen> {
   Future<void> _resetPassword(TeamUserListEntry user) async {
     final confirmed = await _confirm(
       title: 'Send password reset email',
-      body: 'Send a password reset email to ${user.email}? They can set a '
+      body:
+          'Send a password reset email to ${user.email}? They can set a '
           'new password from the link in the email.',
       cta: 'Send email',
     );
@@ -414,9 +419,9 @@ class _MembersScreenState extends State<MembersScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyMutationError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyMutationError(error))));
     } finally {
       if (mounted) {
         setState(() => _busyUserIds.remove(user.userId));
@@ -455,9 +460,9 @@ class _MembersScreenState extends State<MembersScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyMutationError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyMutationError(error))));
     } finally {
       if (mounted) {
         setState(() => _busyUserIds.remove(user.userId));
@@ -603,8 +608,7 @@ class _MembersScreenState extends State<MembersScreen> {
               user: user,
               action: widget.gateway.reactivateUser,
               confirmTitle: 'Reactivate member',
-              confirmBody:
-                  'Restore sign-in for ${user.email}?',
+              confirmBody: 'Restore sign-in for ${user.email}?',
               confirmCta: 'Reactivate',
               reasonCode: 'op_web_members_reactivate',
               successCopy: 'Member reactivated.',
@@ -690,8 +694,7 @@ class _MembersHeader extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.sunset,
               foregroundColor: AppColors.backgroundSurface,
-              disabledBackgroundColor:
-                  AppColors.borderSubtle,
+              disabledBackgroundColor: AppColors.borderSubtle,
               disabledForegroundColor: AppColors.textMuted,
             ),
             icon: const Icon(Icons.person_add_alt_1_outlined, size: 16),
@@ -836,14 +839,8 @@ class _MembersFilterRail extends StatelessWidget {
               onChanged: controller.setMfaEnrolled,
               items: const <DropdownMenuItem<bool?>>[
                 DropdownMenuItem<bool?>(value: null, child: Text('Any')),
-                DropdownMenuItem<bool?>(
-                  value: true,
-                  child: Text('On'),
-                ),
-                DropdownMenuItem<bool?>(
-                  value: false,
-                  child: Text('Off'),
-                ),
+                DropdownMenuItem<bool?>(value: true, child: Text('On')),
+                DropdownMenuItem<bool?>(value: false, child: Text('Off')),
               ],
             ),
           ),
@@ -1070,10 +1067,7 @@ class _MembersTableRow extends StatelessWidget {
               style: AppTextStyles.body13(color: AppColors.textPrimary),
             ),
           ),
-          Expanded(
-            flex: 2,
-            child: _StatusChip(status: user.status),
-          ),
+          Expanded(flex: 2, child: _StatusChip(status: user.status)),
           Expanded(
             flex: 2,
             child: Text(
@@ -1121,7 +1115,9 @@ class _MembersTableRow extends StatelessWidget {
                             value: _MembersRowAction.reactivate,
                             child: Text('Reactivate'),
                           ),
-                        if (!isSoftDeleted) ...<PopupMenuEntry<_MembersRowAction>>[
+                        if (!isSoftDeleted) ...<
+                          PopupMenuEntry<_MembersRowAction>
+                        >[
                           const PopupMenuItem<_MembersRowAction>(
                             key: Key('members_row_action_reset_password'),
                             value: _MembersRowAction.resetPassword,
@@ -1142,15 +1138,15 @@ class _MembersTableRow extends StatelessWidget {
                     },
                   )
                 : busy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.sunsetDark,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.sunsetDark,
+                    ),
+                  )
+                : const SizedBox.shrink(),
           ),
         ],
       ),
@@ -1294,27 +1290,21 @@ class _PendingInvitesPanel extends StatelessWidget {
                     flex: 4,
                     child: Text(
                       invite.email,
-                      style: AppTextStyles.body13(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),
                   ),
                   Expanded(
                     flex: 2,
                     child: Text(
                       invite.roleLabel,
-                      style: AppTextStyles.body13(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),
                   ),
                   Expanded(
                     flex: 2,
                     child: Text(
                       invite.locationLabel ?? 'All locations',
-                      style: AppTextStyles.body13(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),
                   ),
                 ],

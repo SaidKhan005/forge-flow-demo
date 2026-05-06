@@ -6,6 +6,7 @@
 // returns.
 
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
+import '../../integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'operator_web_proxy_client.dart';
 
@@ -24,36 +25,11 @@ class OperatorWebHttpVendorConnectionsGateway
   final OperatorWebProxyClient _proxyClient;
   final Future<String?> Function() _idTokenProvider;
 
-  static const List<VendorPickerEntry> _catalog = <VendorPickerEntry>[
-    VendorPickerEntry(
-      vendorId: 'lightspeed_lsk',
-      displayName: 'Lightspeed Restaurant K-Series',
-      category: VendorCategory.pos,
-      authMode: VendorAuthMode.oauth,
-      lifecycle: VendorLifecycle.productionCredentialed,
-      coversFieldExposed: true,
-      requiresModule: false,
-    ),
-    VendorPickerEntry(
-      vendorId: 'libro',
-      displayName: 'Libro',
-      category: VendorCategory.reservation,
-      authMode: VendorAuthMode.oauth,
-      lifecycle: VendorLifecycle.productionCredentialed,
-      coversFieldExposed: true,
-      requiresModule: false,
-    ),
-    VendorPickerEntry(
-      vendorId: 'quickbooks_time',
-      displayName: 'QuickBooks Time',
-      category: VendorCategory.labor,
-      authMode: VendorAuthMode.oauth,
-      lifecycle: VendorLifecycle.productionCredentialed,
-      coversFieldExposed: false,
-      requiresModule: true,
-      modules: <String>['time', 'accounting', 'payroll'],
-    ),
-  ];
+  // The live operator-web picker must reflect implemented adapter lifecycle
+  // truth, not a smaller credentialed-demo subset. Reuse the tested catalog
+  // and keep connect actions disabled until a vendor promotes past documented.
+  static const List<VendorPickerEntry> _catalog =
+      InMemoryVendorConnectionsGateway.vendorCatalog;
 
   @override
   Future<VendorConnectionsBundle> loadBundle({

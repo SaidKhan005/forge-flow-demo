@@ -5899,11 +5899,21 @@ const String adminAuthRolesPath = '/v1/admin/auth/roles';
 const String adminAuthRolePrefix = '$adminAuthRolesPath/';
 const String adminAuthRoleGrantsPath = '/v1/admin/auth/role-grants';
 const String adminAuthRoleGrantPrefix = '$adminAuthRoleGrantsPath/';
+const String authTeamInvitesPath = '/v1/auth/team/invites';
+const String authTeamInvitePrefix = '$authTeamInvitesPath/';
+const String authTeamUsersPath = '/v1/auth/team/users';
+const String authTeamUsersPrefix = '/v1/auth/team/users/';
+const String authTeamRolesPath = '/v1/auth/team/roles';
+const String authTeamRolePrefix = '$authTeamRolesPath/';
+const String authTeamRoleGrantsPath = '/v1/auth/team/role-grants';
+const String authTeamRoleGrantPrefix = '$authTeamRoleGrantsPath/';
 // Phase 9.UX.4 — org hierarchy admin routes. Reads gate on
 // `team.users.view`, mutations on `team.roles.assign` (per the
 // hierarchy-touches-grants posture from `phase_9_auth_plan.md`).
 const String adminAuthOrgUnitsPath = '/v1/admin/auth/org-units';
 const String adminAuthLocationsPrefix = '/v1/admin/auth/locations/';
+const String authTeamOrgUnitsPath = '/v1/auth/team/org-units';
+const String authTeamLocationsPrefix = '/v1/auth/team/locations/';
 const String adminServicePrincipalsPath = '/v1/admin/service-principals';
 const String adminServicePrincipalsPrefix = '$adminServicePrincipalsPath/';
 
@@ -8541,6 +8551,7 @@ Future<void> routeRequest(
         }
 
         if (_isAdminAuthOperation(path, request.method)) {
+          final authOperationPath = _canonicalAuthOperationPath(path);
           if (authOperationsGateway == null) {
             _writeJson(response, 503, <String, Object?>{
               'error': 'auth_operations_not_configured',
@@ -8579,7 +8590,8 @@ Future<void> routeRequest(
           }
 
           try {
-            if (request.method == 'GET' && path == adminAuthRolesPath) {
+            if (request.method == 'GET' &&
+                authOperationPath == adminAuthRolesPath) {
               if (!await requirePermission('team.roles.view')) return;
               final listed = await authOperationsGateway.listRoles(
                 TeamRoleCatalogListCommand(
@@ -8595,7 +8607,8 @@ Future<void> routeRequest(
               return;
             }
 
-            if (request.method == 'GET' && path == adminAuthUsersPath) {
+            if (request.method == 'GET' &&
+                authOperationPath == adminAuthUsersPath) {
               if (!await requirePermission('team.users.view')) return;
               final listed = await authOperationsGateway.listUsers(
                 TeamUserListCommand(
@@ -8610,7 +8623,8 @@ Future<void> routeRequest(
               return;
             }
 
-            if (request.method == 'POST' && path == adminAuthRolesPath) {
+            if (request.method == 'POST' &&
+                authOperationPath == adminAuthRolesPath) {
               if (!await requirePermission('team.roles.create_custom')) return;
               final roleKey = _nonBlankString(body['role_key']);
               final displayName = _nonBlankString(body['display_name']);
@@ -8640,9 +8654,12 @@ Future<void> routeRequest(
             }
 
             if (request.method == 'PATCH' &&
-                path.startsWith(adminAuthRolePrefix)) {
+                authOperationPath.startsWith(adminAuthRolePrefix)) {
               if (!await requirePermission('team.roles.create_custom')) return;
-              final roleId = _pathSuffix(path, adminAuthRolePrefix);
+              final roleId = _pathSuffix(
+                authOperationPath,
+                adminAuthRolePrefix,
+              );
               if (roleId == null) {
                 _writeJson(response, 404, <String, Object?>{
                   'error': 'not found',
@@ -8671,9 +8688,12 @@ Future<void> routeRequest(
             }
 
             if (request.method == 'DELETE' &&
-                path.startsWith(adminAuthRolePrefix)) {
+                authOperationPath.startsWith(adminAuthRolePrefix)) {
               if (!await requirePermission('team.roles.create_custom')) return;
-              final roleId = _pathSuffix(path, adminAuthRolePrefix);
+              final roleId = _pathSuffix(
+                authOperationPath,
+                adminAuthRolePrefix,
+              );
               if (roleId == null) {
                 _writeJson(response, 404, <String, Object?>{
                   'error': 'not found',
@@ -8698,7 +8718,8 @@ Future<void> routeRequest(
               return;
             }
 
-            if (request.method == 'POST' && path == adminAuthInvitesPath) {
+            if (request.method == 'POST' &&
+                authOperationPath == adminAuthInvitesPath) {
               if (!await requirePermission('team.users.invite')) return;
               final email = _nonBlankString(body['email']);
               final roleId = _nonBlankString(body['role_id']);
@@ -8730,7 +8751,8 @@ Future<void> routeRequest(
               return;
             }
 
-            if (request.method == 'GET' && path == adminAuthInvitesPath) {
+            if (request.method == 'GET' &&
+                authOperationPath == adminAuthInvitesPath) {
               if (!await requirePermission('team.users.view')) return;
               final listed = await authOperationsGateway.listInvites(
                 TeamInviteListCommand(
@@ -8746,9 +8768,12 @@ Future<void> routeRequest(
             }
 
             if (request.method == 'DELETE' &&
-                path.startsWith(adminAuthInvitePrefix)) {
+                authOperationPath.startsWith(adminAuthInvitePrefix)) {
               if (!await requirePermission('team.users.invite')) return;
-              final inviteId = _pathSuffix(path, adminAuthInvitePrefix);
+              final inviteId = _pathSuffix(
+                authOperationPath,
+                adminAuthInvitePrefix,
+              );
               if (inviteId == null) {
                 _writeJson(response, 404, <String, Object?>{
                   'error': 'not found',
@@ -8773,8 +8798,8 @@ Future<void> routeRequest(
             }
 
             if (request.method == 'POST' &&
-                path.startsWith(adminAuthUsersPrefix)) {
-              final action = _userActionFromPath(path);
+                authOperationPath.startsWith(adminAuthUsersPrefix)) {
+              final action = _userActionFromPath(authOperationPath);
               if (action == null) {
                 _writeJson(response, 404, <String, Object?>{
                   'error': 'not found',
@@ -8910,7 +8935,8 @@ Future<void> routeRequest(
               return;
             }
 
-            if (request.method == 'POST' && path == adminAuthRoleGrantsPath) {
+            if (request.method == 'POST' &&
+                authOperationPath == adminAuthRoleGrantsPath) {
               if (!await requirePermission('team.roles.assign')) return;
               final targetUserId = _nonBlankString(body['user_id']);
               final roleId = _nonBlankString(body['role_id']);
@@ -8942,9 +8968,12 @@ Future<void> routeRequest(
             }
 
             if (request.method == 'DELETE' &&
-                path.startsWith(adminAuthRoleGrantPrefix)) {
+                authOperationPath.startsWith(adminAuthRoleGrantPrefix)) {
               if (!await requirePermission('team.roles.revoke')) return;
-              final userRoleId = _pathSuffix(path, adminAuthRoleGrantPrefix);
+              final userRoleId = _pathSuffix(
+                authOperationPath,
+                adminAuthRoleGrantPrefix,
+              );
               final targetUserId = _nonBlankString(body['user_id']);
               if (userRoleId == null || targetUserId == null) {
                 _writeJson(response, 400, <String, Object?>{
@@ -8971,7 +9000,8 @@ Future<void> routeRequest(
               return;
             }
 
-            if (request.method == 'GET' && path == adminAuthOrgUnitsPath) {
+            if (request.method == 'GET' &&
+                authOperationPath == adminAuthOrgUnitsPath) {
               if (!await requirePermission('team.users.view')) return;
               final listed = await authOperationsGateway.listOrgHierarchy(
                 TeamOrgHierarchyListCommand(
@@ -8991,7 +9021,8 @@ Future<void> routeRequest(
               return;
             }
 
-            if (request.method == 'POST' && path == adminAuthOrgUnitsPath) {
+            if (request.method == 'POST' &&
+                authOperationPath == adminAuthOrgUnitsPath) {
               if (!await requirePermission('team.roles.assign')) return;
               final parentOrgUnitId = _nonBlankString(
                 body['parent_org_unit_id'],
@@ -9028,10 +9059,12 @@ Future<void> routeRequest(
             }
 
             if (request.method == 'PATCH' &&
-                path.startsWith(adminAuthLocationsPrefix) &&
-                path.endsWith('/org-unit')) {
+                authOperationPath.startsWith(adminAuthLocationsPrefix) &&
+                authOperationPath.endsWith('/org-unit')) {
               if (!await requirePermission('team.roles.assign')) return;
-              final targetLocationId = _orgUnitLocationIdFromPath(path);
+              final targetLocationId = _orgUnitLocationIdFromPath(
+                authOperationPath,
+              );
               final parentOrgUnitId = _nonBlankString(
                 body['parent_org_unit_id'],
               );
@@ -12792,29 +12825,81 @@ String _freshAuthProofId({
 }
 
 bool _isAdminAuthOperation(String path, String method) {
-  if (method == 'GET' && path == adminAuthRolesPath) return true;
-  if (method == 'POST' && path == adminAuthRolesPath) return true;
-  if (method == 'PATCH' && path.startsWith(adminAuthRolePrefix)) return true;
-  if (method == 'DELETE' && path.startsWith(adminAuthRolePrefix)) return true;
-  if (method == 'GET' && path == adminAuthUsersPath) return true;
-  if (method == 'GET' && path == adminAuthInvitesPath) return true;
-  if (method == 'POST' && path == adminAuthInvitesPath) return true;
-  if (method == 'DELETE' && path.startsWith(adminAuthInvitePrefix)) {
+  final authOperationPath = _canonicalAuthOperationPath(path);
+  if (method == 'GET' && authOperationPath == adminAuthRolesPath) {
     return true;
   }
-  if (method == 'POST' && path.startsWith(adminAuthUsersPrefix)) return true;
-  if (method == 'POST' && path == adminAuthRoleGrantsPath) return true;
-  if (method == 'DELETE' && path.startsWith(adminAuthRoleGrantPrefix)) {
+  if (method == 'POST' && authOperationPath == adminAuthRolesPath) {
     return true;
   }
-  if (method == 'GET' && path == adminAuthOrgUnitsPath) return true;
-  if (method == 'POST' && path == adminAuthOrgUnitsPath) return true;
+  if (method == 'PATCH' && authOperationPath.startsWith(adminAuthRolePrefix)) {
+    return true;
+  }
+  if (method == 'DELETE' && authOperationPath.startsWith(adminAuthRolePrefix)) {
+    return true;
+  }
+  if (method == 'GET' && authOperationPath == adminAuthUsersPath) {
+    return true;
+  }
+  if (method == 'GET' && authOperationPath == adminAuthInvitesPath) {
+    return true;
+  }
+  if (method == 'POST' && authOperationPath == adminAuthInvitesPath) {
+    return true;
+  }
+  if (method == 'DELETE' &&
+      authOperationPath.startsWith(adminAuthInvitePrefix)) {
+    return true;
+  }
+  if (method == 'POST' && authOperationPath.startsWith(adminAuthUsersPrefix)) {
+    return true;
+  }
+  if (method == 'POST' && authOperationPath == adminAuthRoleGrantsPath) {
+    return true;
+  }
+  if (method == 'DELETE' &&
+      authOperationPath.startsWith(adminAuthRoleGrantPrefix)) {
+    return true;
+  }
+  if (method == 'GET' && authOperationPath == adminAuthOrgUnitsPath) {
+    return true;
+  }
+  if (method == 'POST' && authOperationPath == adminAuthOrgUnitsPath) {
+    return true;
+  }
   if (method == 'PATCH' &&
-      path.startsWith(adminAuthLocationsPrefix) &&
-      path.endsWith('/org-unit')) {
+      authOperationPath.startsWith(adminAuthLocationsPrefix) &&
+      authOperationPath.endsWith('/org-unit')) {
     return true;
   }
   return false;
+}
+
+String _canonicalAuthOperationPath(String path) {
+  if (path == authTeamRolesPath) return adminAuthRolesPath;
+  if (path.startsWith(authTeamRolePrefix)) {
+    return '$adminAuthRolePrefix${path.substring(authTeamRolePrefix.length)}';
+  }
+  if (path == authTeamRoleGrantsPath) return adminAuthRoleGrantsPath;
+  if (path.startsWith(authTeamRoleGrantPrefix)) {
+    return '$adminAuthRoleGrantPrefix'
+        '${path.substring(authTeamRoleGrantPrefix.length)}';
+  }
+  if (path == authTeamUsersPath) return adminAuthUsersPath;
+  if (path.startsWith(authTeamUsersPrefix)) {
+    return '$adminAuthUsersPrefix${path.substring(authTeamUsersPrefix.length)}';
+  }
+  if (path == authTeamInvitesPath) return adminAuthInvitesPath;
+  if (path.startsWith(authTeamInvitePrefix)) {
+    return '$adminAuthInvitePrefix'
+        '${path.substring(authTeamInvitePrefix.length)}';
+  }
+  if (path == authTeamOrgUnitsPath) return adminAuthOrgUnitsPath;
+  if (path.startsWith(authTeamLocationsPrefix)) {
+    return '$adminAuthLocationsPrefix'
+        '${path.substring(authTeamLocationsPrefix.length)}';
+  }
+  return path;
 }
 
 String? _orgUnitLocationIdFromPath(String path) {
@@ -13374,7 +13459,13 @@ const List<String> kAdminFeatureFlagsCorsMethods = <String>[
 const List<String> kAdminDebugConsoleCorsMethods = <String>['GET', 'OPTIONS'];
 const List<String> kAdminObservabilityCorsMethods = <String>['GET', 'OPTIONS'];
 const List<String> kAdminHealthCorsMethods = <String>['GET', 'OPTIONS'];
-const List<String> kAuthCorsMethods = <String>['GET', 'POST', 'OPTIONS'];
+const List<String> kAuthCorsMethods = <String>[
+  'GET',
+  'POST',
+  'PATCH',
+  'DELETE',
+  'OPTIONS',
+];
 
 /// HARD-C — sole origin-decision site for admin CORS.
 ///
