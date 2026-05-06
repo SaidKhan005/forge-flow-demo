@@ -21,12 +21,14 @@ class OperatorWebNavItem {
     required this.id,
     required this.title,
     required this.icon,
+    required this.group,
     this.placeholder = false,
   });
 
   final String id;
   final String title;
   final IconData icon;
+  final String group;
   final bool placeholder;
 }
 
@@ -255,16 +257,51 @@ class _SideNav extends StatelessWidget {
         itemBuilder: (context, index) {
           final item = items[index];
           final selected = item.id == selectedId;
-          return _NavItemTile(
-            key: Key('operator_web_nav_item_${item.id}'),
-            item: item,
-            selected: selected,
-            onTap: () => onSelect(item.id),
+          final groupStarts =
+              index == 0 || items[index - 1].group != item.group;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (groupStarts) _NavGroupHeader(label: item.group),
+              _NavItemTile(
+                key: Key('operator_web_nav_item_${item.id}'),
+                item: item,
+                selected: selected,
+                onTap: () => onSelect(item.id),
+              ),
+            ],
           );
         },
       ),
     );
   }
+}
+
+class _NavGroupHeader extends StatelessWidget {
+  const _NavGroupHeader({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      key: Key('operator_web_nav_group_${_groupKey(label)}'),
+      padding: const EdgeInsets.fromLTRB(10, 14, 10, 5),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppTextStyles.mono8(
+          color: AppColors.textMuted,
+        ).copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+
+  static String _groupKey(String label) => label
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
 }
 
 class _NavItemTile extends StatelessWidget {

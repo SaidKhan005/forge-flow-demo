@@ -175,3 +175,92 @@ Residual risks for this pass:
 - The preview remains staging-secret backed. This pass did not perform destructive live writes.
 - Browser Use still relies on visual/coordinate interaction for the Flutter canvas because the DOM snapshot exposes only the accessibility bootstrap button.
 - Broader Data Accuracy copy still has older "F&F" wording in lower/cards not visible in the first viewport; this pass corrected the route subtitle and first source cards only.
+
+## Operator Web Navigation Categorization Pass
+
+Date/time: 2026-05-06T20:10Z
+
+Source commit:
+
+- `eafbdf967646e48f45c9dcc47c5475b076a5cc2b` - grouped operator-web navigation by operator task.
+
+Research basis:
+
+- NN/g card sorting guidance: category groupings should match users' mental models, and categories/labels should be evaluated against findability rather than internal implementation ownership. Source: `https://www.nngroup.com/articles/card-sorting-definition/`
+- NN/g tree testing guidance: proposed menu labels/categories should be task-tested because otherwise category choices are guesses. Source: `https://www.nngroup.com/articles/tree-testing/`
+- GOV.UK user-needs guidance: service architecture and content should be based on valid user needs, task language, and words users recognize. Source: `https://www.gov.uk/guidance/content-design/user-needs`
+- Home Office navigation guidance: clear signposting and consistent navigation order/placement help users understand where they are in a journey. Source: `https://design.homeoffice.gov.uk/accessibility/page-structure/navigation`
+- Flutter/Material NavigationDrawer guidance: persistent drawers are a convenient way to switch between primary app destinations, and their child list can mix destinations with other widgets such as headers/dividers. Source: `https://api.flutter.dev/flutter/material/NavigationDrawer-class.html`
+
+Category decision:
+
+| Group | Routes | Reason |
+| --- | --- | --- |
+| Business | Account, Business setup, Locations | Start with the business record, operating setup, and physical hierarchy before team controls. |
+| People & access | Members, Roles, Security, Sessions, Audit log | Keep people, permissions, sign-in safety, active access, and historical access evidence together. |
+| Data & integrations | Vendor connections, Data accuracy | Keep data sources and data-quality rules together because both answer "where do the numbers come from?" |
+
+Final preview deployment:
+
+| Surface | Service | URL | Revision | Traffic |
+| --- | --- | --- | --- | --- |
+| Operator web | `forge-flow-preview-backend-surface-additions-operator-web` | `https://forge-flow-preview-backend-surface-additions-oper-rf7nosnoka-pd.a.run.app` | `forge-flow-preview-backend-surface-additions-operator-00012-67p` | 100% |
+| Preview proxy | `forge-flow-preview-backend-surface-additions-proxy` | `https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app` | `forge-flow-preview-backend-surface-additions-proxy-00037-8tp` | 100% |
+
+Database mode: proxy still uses `forge-flow-staging-` Secret Manager values (`POSTGRES_URL`, `POSTGRES_ADMIN_URL`, Firebase, and service-principal secrets), so this preview remains staging-secret backed. No shared staging or production service was deployed.
+
+Framework results:
+
+- UX Adjustment Framework: pass. The side nav now has three plain-language task groups and a more logical route order. Route IDs, route bodies, and permission gates are unchanged.
+- Performance Framework: pass. The grouping change adds local header widgets only; it does not add network calls, polling, refresh behavior, or unbounded lists. Enforced probe passed at `build\perf_gate\operator_web_ia_nav_pass.json`.
+- Mobile Web Console E2E Framework: pass for browser-safe web flows. Browser Use exercised the preview sign-in shell and the signed-in demo-auth web flow with fresh cache-bust URLs. Mobile push source was not touched, so the APK debug build gate was not required.
+
+Browser Use evidence:
+
+- Evidence root: `build\reports\operator_web_ia_nav_pass_20260506T2008Z`
+- Live preview shell: `001_preview_load.png`
+- Live preview credential stop: `002_after_sign_in.png`, `003_after_secret_sign_in.png`, `004_after_clean_sign_in.png`. Both the user-provided password and the local smoke secret returned "Email or password is incorrect"; no staging auth password reset was performed for this nav-label pass.
+- Local demo-auth onboarding evidence: `010_local_demo_welcome.png`, `011_local_demo_password_step.png`, `012_local_demo_mfa_step.png`, `013_local_demo_mfa_confirm.png`, `014_local_demo_terms_step.png`
+- Grouped shell evidence: `020_local_demo_grouped_shell.png`
+- Route screenshots: `03_account.png`, `03_business_setup.png`, `03_locations.png`, `03_members.png`, `03_roles.png`, `03_security.png`, `03_sessions.png`, `03_audit_log.png`, `03_vendor_connections.png`, `03_data_accuracy.png`
+- Route and console summary: `route_evidence.json`. Local demo console had one Flutter viewport-meta warning and no app errors.
+
+Bugs or UX issues fixed in this pass:
+
+1. The operator-web drawer was a flat list of ten destinations, which made unrelated setup, access, audit, and data tasks feel mixed together.
+2. Locations appeared after Roles even though it is part of the business structure setup flow.
+3. Security appeared after Audit log even though operators generally configure security before reviewing sessions and history.
+4. Router tests did not pin the intended task-based nav order; the completed-shell test now asserts group headers and the route sequence.
+
+Intentionally unsurfaced or gated items:
+
+- No new backend capability was invented or surfaced.
+- Existing route IDs and keys were preserved.
+- Existing role gates and read-only behavior, including `location_manager`, remain unchanged.
+- The preview credential mismatch was documented rather than "fixed" by resetting staging auth for a categorization pass.
+
+Commands run for this pass:
+
+```powershell
+flutter test test\operator_web\operator_web_router_test.dart
+flutter analyze
+flutter test test\operator_web
+$env:OPERATOR_WEB_PROXY_BASE_URI='https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app'; flutter build web --release --target=lib\main_operator_web.dart
+powershell -ExecutionPolicy Bypass -File scripts\deploy_operator_web.ps1 -Service forge-flow-preview-backend-surface-additions-operator-web -ProxyBaseUri https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app -SkipApiEnable
+dart run tool\perf_gate\staging_console_probe.dart --run --enforce-budgets --admin-url=https://forge-flow-preview-backend-surface-additions-oper-rf7nosnoka-pd.a.run.app --proxy-url=https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app --admin-revision=forge-flow-preview-backend-surface-additions-operator-00012-67p --proxy-revision=forge-flow-preview-backend-surface-additions-proxy-00037-8tp --label=operator-web-ia-nav-pass --write-json=build\perf_gate\operator_web_ia_nav_pass.json
+```
+
+Results:
+
+- `flutter test test\operator_web\operator_web_router_test.dart`: pass, 12 tests.
+- `flutter analyze`: pass.
+- `flutter test test\operator_web`: pass, 266 tests.
+- Release operator web build: pass.
+- Preview deploy: pass; operator revision `forge-flow-preview-backend-surface-additions-operator-00012-67p`.
+- Enforced performance probe: pass. `admin_index_c1` p95 316.0 ms; `admin_index_c4` p95 193.2 ms; `admin_mainjs_gzip_c4` p95 1010.7 ms; `proxy_readyz_c1` p95 212.7 ms; `proxy_readyz_c4` p95 188.1 ms.
+
+Residual risks for this pass:
+
+- Signed-in live-preview Browser Use remains blocked until a known-valid preview operator credential is available or an explicit password reset is approved for that exact account.
+- The Flutter canvas still limits DOM-based Browser Use selectors, so the route sweep used visible coordinate clicks plus screenshots.
+- This pass improves top-level IA only. It does not rework the internal layout of each screen.
