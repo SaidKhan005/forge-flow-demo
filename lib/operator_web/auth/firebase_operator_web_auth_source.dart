@@ -8,8 +8,8 @@ import 'package:crypto/crypto.dart';
 import '../../services/auth/account_info_gateway.dart';
 import '../../services/auth/firebase_auth_client.dart';
 import '../account/operator_web_account_actions.dart';
-import '../router/operator_web_router.dart';
 import '../services/operator_web_proxy_client.dart';
+import '../services/operator_web_team_gateway_providers.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
 import '../services/web_security_gateway.dart';
 import '../services/web_team_audit_log_gateway.dart';
@@ -429,6 +429,16 @@ class FirebaseOperatorWebAuthSource
 
   void _emit(OperatorWebAuthState next) {
     if (_closed) return;
+    // Lifecycle invariant: every path back to the sign-in surface clears
+    // the cached session id so a re-sign-in by a different user (same
+    // browser) cannot mark the wrong row as `(this session)` on the
+    // sessions screen. Centralizing the reset here keeps the invariant
+    // in one place — every emit path (token refresh failure, scope
+    // mismatch, completeCredential exception, signOut, etc.) flows
+    // through `_emit` and inherits the cleanup automatically.
+    if (next is OperatorWebNeedsSignIn) {
+      _currentSessionId = null;
+    }
     _state = next;
     _controller.add(next);
   }
