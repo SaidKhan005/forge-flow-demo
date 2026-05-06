@@ -1,7 +1,7 @@
 # Phase 11W: Operator Web Console
 
-Updated: 2026-05-05 (Members/Roles/Hierarchy/Sessions/Audit/Security un-deferred; sequenced after Phase 7 + Phase 10 close per `project_role_hierarchy_web_migration_sequencing.md`)
-Status: Active. V1 launch ships 3 slices (`11W.0` shell, `11W.7` Account, `11W.8` Vendor connections mount). Six self-service Settings parity slices (`11W.1` Members, `11W.2` Roles, `11W.3` Hierarchy, `11W.4` Sessions, `11W.5` Audit Log, `11W.6` Security) are un-deferred and queued to start after Phase 7 + Phase 10 close. `11W.9` Outbound Integrations remains deferred while Phase 8.5 is paused.
+Updated: 2026-05-06
+Status: Active. **Six self-service Settings parity slices ACCEPT 2026-05-06**: `11W.1` Members (`ec127961`), `11W.2` Roles + Permission Explainer + custom-role builder (`256ce6fb`), `11W.3` Locations / hierarchy (`c6b36081`), `11W.4` Sessions w/ team revoke + signOut on self (`66c78262`), `11W.5` Audit Log (`fd6fe4df`), `11W.6` Security (`aab0eddf`). `team.audit_log.export` permission key landed via `99b36ddc` (catalog reconciliation, total now 99). 159/159 operator-web screen tests PASS; `dart analyze` clean against `lib/main_operator_web.dart`. **Still queued for V1 launch**: `11W.0` shell + magic-link onboarding, `11W.7` Account / Business setup (must route business timing writes through operator-scoped routes, not admin gateways), `11W.8` Vendor connections mount. `11W.9` Outbound Integrations remains deferred while Phase 8.5 is paused.
 Owner: Operator web lane
 
 ## Why this exists

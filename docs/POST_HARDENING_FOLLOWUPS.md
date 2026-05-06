@@ -1,48 +1,23 @@
-# Post-Hardening Follow-ups (2026-05-02)
+# Post-Hardening Follow-ups
 
-Audit log of items surfaced by the 2026-05-02 deep audit that were **not**
-in scope of HARD-A through HARD-H but warrant attention before launch. Each
-open item has a single owner-suggested next action; none are launch-blocking
-unless flagged.
-
-Resolved items are archived to
-`docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`. The
-2026-05-03 staging remediation evidence lives in
-`docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`.
-Open items below are the current remainder.
+Updated: 2026-05-06.
+Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`. Staging remediation evidence in `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`.
 
 ## P0 - Production1 Migration Apply Gap
 
-**5 migrations pending Production1/staging apply**:
-`202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`,
-`202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`,
-`202605060000_mobile_push_notifications.sql`,
-`202605060000_phase_business_timing_live_schema.sql`, and
-`202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql`.
-It restores read-only Debug Console request-log inspection by granting
-`forge_admin` explicit `SELECT` on `public.proxy_requests`. The migration
-was applied to staging and Browser Use verified on 2026-05-03; it was not
-part of the 27-file Production1 apply completed earlier the same day.
-The operator/location admin grant restores `forge_admin` DML on
-`public.operators`, `public.locations`, and `public.operator_admins`; it was
-applied and Browser Use verified on staging on 2026-05-04 after operator and
-location edit routes returned live 200s.
-The mobile push migration adds encrypted FCM/APNs token storage plus a
-durable push delivery sidecar; it is code-ready, but still requires staging
-apply, connected-device proof, and explicit Production1 approval before it is
-described as production-ready. The business timing migration adds canonical
-scoped timing profile tables and server-side `open_shift_snapshots`; it requires
-staging/review apply before timing runtime surfaces can claim live schema parity.
-The 11A.14 reset-MFA permission key migration is additive (single seed row +
-default grants for `super_admin` and `ff_support`); apply it on staging before
-the Audited support actions admin Reset-MFA path is exercised live, then carry
-into the next Production1 batch.
+**7 migrations pending Production1/staging apply** (chronological):
 
-**Action:** include these files in the next Production1 apply event under
-`runbooks/phase_9_production1_migration_apply_runbook.md`. Until that apply
-and direct grant verification complete, Debug Console request-log inspection,
-operator/location admin writes, mobile OS push delivery, and business timing
-live schema are staging-ready only and must not be described as production-ready.
+| Migration | Origin | Staging status |
+|---|---|---|
+| `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` | 11A.5 Debug Console SELECT grant | applied + Browser Use verified 2026-05-03 |
+| `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql` | 11A operator/location admin DML | applied + Browser Use verified 2026-05-04 |
+| `202605060000_mobile_push_notifications.sql` | Mobile FCM/APNs + delivery sidecar | code-ready; needs staging apply + connected-device proof |
+| `202605060000_phase_business_timing_live_schema.sql` | `business_timing_profiles` + `open_shift_snapshots` | code-ready; needs staging/review apply |
+| `202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql` | 11A.14 audited support actions | code-ready (additive seed + grants) |
+| `202605061500_hardening_phase_8_email_index_leading_column_rekey.sql` | 5-index `operator_id` rekey (2026-05-06 audit follow-up) | code-ready; uses `CONCURRENTLY` |
+| `202605061600_phase_11W_5_team_audit_log_export_key.sql` | 11W.5 `team.audit_log.export` key + grants | code-ready |
+
+**Action:** apply all 7 in next Production1 event per `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied + verified, the corresponding feature is **staging-ready only**.
 
 ## P1 - Live Admin Operational Gates
 

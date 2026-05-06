@@ -1,8 +1,8 @@
 # Phase 11A - F&F Operations Console
 
-Updated: 2026-05-05 (`11A.12`/`13`/`14` cross-operator parity un-deferred per `project_role_hierarchy_web_migration_sequencing.md`; sequenced after Phase 7 + Phase 10 close, in lockstep with `11W.1`–`11W.6`)
-Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`5`/`6`/`7`/`UX.health` accepted.
-Remaining: `11A.8`/`9`/`10` not started; `11A.12`/`13`/`14` un-deferred and queued behind Phase 7 + Phase 10 close.
+Updated: 2026-05-06
+Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`5`/`6`/`7`/`UX.health` accepted. **Cross-operator parity slices ACCEPT 2026-05-06**: `11A.12` Members + Invites admin parity (`f84424db`), `11A.13` Roles + Hierarchy + Sessions admin parity (`d26425b3`), `11A.14` cross-operator audit log + audited support actions (`bbc6e134`; ships new `admin.users.reset_mfa_factors` permission key, hash-chained audit row shape). 348 admin tests PASS. Audit follow-up `45bdd734` cleared remaining drift on authority docs.
+Remaining: `11A.8` (support audit), `11A.9` (cross-operator reads), `11A.10` (user impersonation) — not started; deferred post-launch unless escalated.
 Owner: F&F admin / operations lane
 
 ## Phase 9 Foundation Dependencies (status as of 2026-05-03)

@@ -14,4 +14,5 @@ Removed entries live in git history; do not keep a "resolved" section here.
 
 | File | Notes | Discovered | Owning slice |
 |------|-------|------------|--------------|
-| _None_ | No known failing tests are currently tracked. | 2026-05-03 | n/a |
+| `test/settings_permission_explainer_test.dart` | "location-scoped grant excluded at non-matching scope resolves to Not granted" — finder reports 0 widgets matching "No — grant excluded at this scope". Copy or scope-resolution drift in `SettingsPermissionExplainer`; pre-existing on master at the 2026-05-06 alignment-pass close. Single test in 14-case file; rest pass. | 2026-05-06 | follow-up — bounded test pin OR copy alignment in `lib/screens/settings/settings_permission_explainer.dart` |
+| `test/admin/tier_definition_edit_audit_test.dart` | "Tab 2 tier definition edit round-trips with audit row standard tier description + price update writes admin.polling_tier_definition.update" — PASSES in isolation; fails only when run alongside other admin tests (cross-test interference / shared state). Discovered during 2026-05-06 deep-audit pass. | 2026-05-06 | follow-up — test isolation fix (likely shared mock state in `setUp` of sibling admin tests) |
