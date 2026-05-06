@@ -29,6 +29,16 @@ class ShiftFact {
   /// Service period: "lunch" | "dinner" | "late_night".
   final String daypart;
 
+  /// Timing profile used to bucket this closed row. Nullable for legacy rows.
+  final String? businessTimingProfileId;
+
+  /// Stable timing version key. Lane 0 maps this to the profile id for now.
+  final String? businessTimingProfileVersionId;
+
+  /// Stable service-period key captured at bucket time. Mutable labels are
+  /// display only.
+  final String? servicePeriodKey;
+
   // ── Volume source facts ───────────────────────────────────────────────────
 
   final int covers;
@@ -79,6 +89,9 @@ class ShiftFact {
     required this.weekId,
     required this.dayLabel,
     required this.daypart,
+    this.businessTimingProfileId,
+    this.businessTimingProfileVersionId,
+    this.servicePeriodKey,
     required this.covers,
     required this.forecastCovers,
     required this.actualSales,
@@ -133,14 +146,14 @@ class ShiftFact {
   // Positive = over model (unfavorable). Negative = under model (favorable).
 
   double get dollarGap => LaborModel.dollarGap(
-        totalLaborDollars,
-        covers,
-        ppa,
-        targetCPLH: targetSnapshot.targetCPLH,
-        targetSPLH: targetSnapshot.targetSPLH,
-        fohWage: targetSnapshot.fohWage,
-        bohWage: targetSnapshot.bohWage,
-      );
+    totalLaborDollars,
+    covers,
+    ppa,
+    targetCPLH: targetSnapshot.targetCPLH,
+    targetSPLH: targetSnapshot.targetSPLH,
+    fohWage: targetSnapshot.fohWage,
+    bohWage: targetSnapshot.bohWage,
+  );
 
   // ── Schedule variance hours ───────────────────────────────────────────────
 
@@ -163,8 +176,8 @@ class ShiftFact {
 
   String get _vendorProvenance =>
       sourceSystem == null || sourceSystem!.trim().isEmpty
-          ? 'vendor_unknown'
-          : 'vendor_$sourceSystem';
+      ? 'vendor_unknown'
+      : 'vendor_$sourceSystem';
 
   /// Covers state. `unavailable` when covers is zero AND the input
   /// did not declare a vendor (no source system) — that combination

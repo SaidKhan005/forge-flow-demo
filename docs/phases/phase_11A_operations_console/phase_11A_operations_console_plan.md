@@ -104,8 +104,12 @@ B43 tracks). The migration is replay-safe via unschedule-then-reschedule and
 NOTICE-and-return guarded for the Azure pg_cron split-DB case. Apply on
 staging before claiming daily-cadence-from-Postgres observability parity for
 the 11A audit-log review surfaces, then carry into the next Production1
-apply. The current Production1 follow-up cutoff is therefore
-`202605061700_hardening_audit_anchor_daily_schedule.sql`.
+apply.
+Phase 8 timing provenance also adds
+`202605061700_phase_8_timing_provenance_shift_records.sql`; it is not an 11A
+surface, but it moves the shared Production1 follow-up cutoff watched by this
+plan. The current Production1 follow-up cutoff is therefore
+`202605061700_phase_8_timing_provenance_shift_records.sql`.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin

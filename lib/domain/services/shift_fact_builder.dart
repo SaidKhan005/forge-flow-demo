@@ -31,12 +31,15 @@ class ShiftFactBuilder {
     // false` so the renderer can resolve cplhProvenance /
     // blendedWageProvenance as `fallback` per the contract — never
     // a phantom-live number.
-    final laborDollarsFromVendor = input.actualFohLaborDollars != null &&
+    final laborDollarsFromVendor =
+        input.actualFohLaborDollars != null &&
         input.actualBohLaborDollars != null;
-    final resolvedFohLaborDollars = input.actualFohLaborDollars ??
+    final resolvedFohLaborDollars =
+        input.actualFohLaborDollars ??
         input.actualFohHours * targetSnapshot.fohWage;
 
-    final resolvedBohLaborDollars = input.actualBohLaborDollars ??
+    final resolvedBohLaborDollars =
+        input.actualBohLaborDollars ??
         input.actualBohHours * targetSnapshot.bohWage;
 
     // ── Derive rate metrics needed for lever detection ────────────────────
@@ -57,8 +60,14 @@ class ShiftFactBuilder {
         : null;
 
     // ── Determine primary lever ───────────────────────────────────────────
-    final modelFoh = LaborModel.modelFohHours(input.covers, targetSnapshot.targetCPLH);
-    final modelBoh = LaborModel.modelBohHoursFromSales(input.actualSales, targetSnapshot.targetSPLH);
+    final modelFoh = LaborModel.modelFohHours(
+      input.covers,
+      targetSnapshot.targetCPLH,
+    );
+    final modelBoh = LaborModel.modelBohHoursFromSales(
+      input.actualSales,
+      targetSnapshot.targetSPLH,
+    );
 
     final primaryLeverId = LaborModel.determineLever(
       actualCovers: input.covers,
@@ -85,6 +94,9 @@ class ShiftFactBuilder {
       weekId: input.weekId,
       dayLabel: input.dayLabel,
       daypart: input.daypart,
+      businessTimingProfileId: input.businessTimingProfileId,
+      businessTimingProfileVersionId: input.businessTimingProfileVersionId,
+      servicePeriodKey: input.servicePeriodKey,
       covers: input.covers,
       forecastCovers: input.forecastCovers,
       actualSales: input.actualSales,

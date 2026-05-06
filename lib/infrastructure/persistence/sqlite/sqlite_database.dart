@@ -43,7 +43,7 @@ class SqliteDatabase {
   String? _overrideDbPath;
 
   /// Current schema version.
-  static const int schemaVersion = 26;
+  static const int schemaVersion = 27;
 
   Future<Database> get database async {
     _db ??= await _initDb();
@@ -122,8 +122,6 @@ class SqliteDatabase {
 
   // ── Seed helpers ────────────────────────────────────────────────────────
 
-
-
   /// Compatibility helper: builds an ActiveTargetProfile from current
   /// BaselineData.
   ///
@@ -158,7 +156,8 @@ class SqliteDatabase {
     double? opzCeilingOverride,
     String? sourceTypeOverride,
   }) {
-    final sourceType = sourceTypeOverride ??
+    final sourceType =
+        sourceTypeOverride ??
         (BaselineData.hasManagerOverride
             ? 'manager_override'
             : 'system_baseline');
@@ -248,6 +247,9 @@ class SqliteDatabase {
     if (oldV < 26) {
       await _migrateToV26(db);
     }
+    if (oldV < 27) {
+      await _migrateToV27(db);
+    }
   }
 
   // Phase 7.55q.5: add preserved locked plan hour columns to week_records.
@@ -285,24 +287,25 @@ class SqliteDatabase {
   /// or null if none is set.
   Future<String?> getMockReplayBusinessDate(String restaurantId) async {
     final db = await database;
-    final rows = await db.query('mock_replay_state',
-        where: 'restaurant_id = ?', whereArgs: [restaurantId]);
+    final rows = await db.query(
+      'mock_replay_state',
+      where: 'restaurant_id = ?',
+      whereArgs: [restaurantId],
+    );
     if (rows.isEmpty) return null;
     return rows.first['current_business_date'] as String?;
   }
 
   /// Persists the mock replay business date for [restaurantId].
   Future<void> setMockReplayBusinessDate(
-      String restaurantId, String isoDate) async {
+    String restaurantId,
+    String isoDate,
+  ) async {
     final db = await database;
-    await db.insert(
-      'mock_replay_state',
-      {
-        'restaurant_id': restaurantId,
-        'current_business_date': isoDate,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('mock_replay_state', {
+      'restaurant_id': restaurantId,
+      'current_business_date': isoDate,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   // ── Reseed ──────────────────────────────────────────────────────────────
@@ -321,7 +324,8 @@ class SqliteDatabase {
     await db.delete('target_cycles');
     await db.delete('app_notifications');
     await reseedMockReplayForBusinessDate(
-        MockIntegrationReplaySeed.defaultBusinessDate);
+      MockIntegrationReplaySeed.defaultBusinessDate,
+    );
   }
 
   /// Reseeds all operational tables for an arbitrary mock replay business date.
@@ -357,8 +361,11 @@ class SqliteDatabase {
     // full two-category classification.
 
     // Ensure restaurant exists
-    final existing = await db.query('restaurant_locations',
-        where: 'restaurant_id = ?', whereArgs: [DemoScope.restaurantId]);
+    final existing = await db.query(
+      'restaurant_locations',
+      where: 'restaurant_id = ?',
+      whereArgs: [DemoScope.restaurantId],
+    );
     if (existing.isEmpty) {
       await _seedDemoRestaurant(db);
     }
@@ -374,9 +381,11 @@ class SqliteDatabase {
     // with a fresh demo-cycle projection. Only seed a new demo cycle/profile
     // when no cycle is preserved (e.g., after reseedDemo clears target_cycles).
     // (7.55l.6b3)
-    final preservedCycles = await db.query('target_cycles',
-        where: 'restaurant_id = ? AND deactivated_at IS NULL',
-        whereArgs: [DemoScope.restaurantId]);
+    final preservedCycles = await db.query(
+      'target_cycles',
+      where: 'restaurant_id = ? AND deactivated_at IS NULL',
+      whereArgs: [DemoScope.restaurantId],
+    );
     if (preservedCycles.isEmpty) {
       await _seedDemoActiveTargetProfile(
         db,
@@ -413,4 +422,3 @@ class SqliteDatabase {
     BaselineData.clearManagerOverride();
   }
 }
-
