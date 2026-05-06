@@ -41,6 +41,7 @@ import 'operator_web/auth/firebase_operator_web_auth_source.dart';
 import 'operator_web/auth/operator_web_auth_source.dart';
 import 'operator_web/operator_web_app.dart';
 import 'operator_web/router/operator_web_router.dart';
+import 'operator_web/services/demo_security_gateway.dart';
 import 'operator_web/services/demo_team_audit_log_gateway.dart';
 import 'operator_web/services/demo_team_fixtures.dart';
 import 'operator_web/services/demo_team_hierarchy_gateway.dart';
@@ -48,6 +49,7 @@ import 'operator_web/services/demo_team_roles_gateway.dart';
 import 'operator_web/services/demo_team_sessions_gateway.dart';
 import 'operator_web/services/demo_team_users_gateway.dart';
 import 'operator_web/services/operator_web_proxy_client.dart';
+import 'operator_web/services/web_security_gateway.dart';
 import 'operator_web/services/web_team_audit_log_gateway.dart';
 import 'operator_web/services/web_team_hierarchy_gateway.dart';
 import 'operator_web/services/web_team_roles_gateway.dart';
@@ -156,11 +158,13 @@ String? _parseMagicLinkToken() {
 /// [OperatorWebTeamRolesGatewayProvider] +
 /// [OperatorWebTeamHierarchyGatewayProvider] +
 /// [OperatorWebTeamSessionsGatewayProvider] +
-/// [OperatorWebTeamAuditLogGatewayProvider] onto the demo auth
-/// source. The router reads each gateway off these interfaces so the
-/// Members + Roles + Locations + Sessions + Audit Log surfaces share
-/// the demo fixture data set during the walkthrough. Live mode binds
-/// the live HTTP impls in their `11W.x.live` follow-ups.
+/// [OperatorWebTeamAuditLogGatewayProvider] +
+/// [OperatorWebSecurityGatewayProvider] onto the demo auth source.
+/// The router reads each gateway off these interfaces so the
+/// Members + Roles + Locations + Sessions + Audit Log + Security
+/// surfaces share the demo fixture data set during the walkthrough.
+/// Live mode binds the live HTTP impls in their `11W.x.live`
+/// follow-ups.
 class _DemoOperatorWebAuthSourceWithTeamSurfaces
     extends DemoOperatorWebAuthSource
     implements
@@ -168,13 +172,15 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
         OperatorWebTeamRolesGatewayProvider,
         OperatorWebTeamHierarchyGatewayProvider,
         OperatorWebTeamSessionsGatewayProvider,
-        OperatorWebTeamAuditLogGatewayProvider {
+        OperatorWebTeamAuditLogGatewayProvider,
+        OperatorWebSecurityGatewayProvider {
   _DemoOperatorWebAuthSourceWithTeamSurfaces()
       : teamUsersGateway = DemoWebTeamUsersGateway(),
         teamRolesGateway = DemoWebTeamRolesGateway(),
         teamHierarchyGateway = DemoWebTeamHierarchyGateway(),
         teamSessionsGateway = DemoWebTeamSessionsGateway(),
         teamAuditLogGateway = DemoWebTeamAuditLogGateway(),
+        securityGateway = DemoWebSecurityGateway(),
         super(initial: const OperatorWebNeedsToken());
 
   @override
@@ -191,6 +197,9 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
 
   @override
   final WebTeamAuditLogGateway teamAuditLogGateway;
+
+  @override
+  final WebSecurityGateway securityGateway;
 
   /// Demo walkthrough pins the operator-web row to the fixture id so
   /// `(this session)` lights up on a known row. Live mode hydrates

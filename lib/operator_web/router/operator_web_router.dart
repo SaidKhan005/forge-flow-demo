@@ -29,12 +29,14 @@ import '../../services/auth/auth_operations_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../account/operator_web_account_actions.dart';
 import '../services/business_timing_gateway.dart';
+import '../services/demo_security_gateway.dart';
 import '../services/demo_team_audit_log_gateway.dart';
 import '../services/demo_team_hierarchy_gateway.dart';
 import '../services/demo_team_roles_gateway.dart';
 import '../services/demo_team_sessions_gateway.dart';
 import '../services/demo_team_users_gateway.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
+import '../services/web_security_gateway.dart';
 import '../services/web_team_audit_log_gateway.dart';
 import '../services/web_team_hierarchy_gateway.dart';
 import '../services/web_team_roles_gateway.dart';
@@ -51,6 +53,7 @@ import '../screens/mfa_enrollment_screen.dart';
 import '../screens/password_setup_screen.dart';
 import '../screens/permission_explainer_screen.dart';
 import '../screens/roles_screen.dart';
+import '../screens/security_screen.dart';
 import '../screens/sessions_screen.dart';
 import '../screens/sign_in_screen.dart';
 import '../screens/tos_accept_screen.dart';
@@ -68,6 +71,7 @@ const String kOperatorWebNavRoles = 'roles';
 const String kOperatorWebNavLocations = 'locations';
 const String kOperatorWebNavSessions = 'sessions';
 const String kOperatorWebNavAuditLog = 'audit_log';
+const String kOperatorWebNavSecurity = 'security';
 const String kOperatorWebNavVendorConnections = 'vendor_connections';
 const String kOperatorWebNavDataAccuracy = 'data_accuracy';
 
@@ -139,6 +143,15 @@ abstract class OperatorWebTeamSessionsGatewayProvider {
 /// `package:http` impl.
 abstract class OperatorWebTeamAuditLogGatewayProvider {
   WebTeamAuditLogGateway get teamAuditLogGateway;
+}
+
+/// Sentinel the operator-web shell stamps on the auth source when it
+/// can supply a [WebSecurityGateway] for the Security surface. Demo
+/// auth source mixes this in with [DemoWebSecurityGateway];
+/// `11W.6.live` will mix it in on the live source with the
+/// `package:http` impl.
+abstract class OperatorWebSecurityGatewayProvider {
+  WebSecurityGateway get securityGateway;
 }
 
 /// Default nav surface the shell lands on after onboarding completes.
@@ -440,6 +453,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.fact_check_outlined,
       ),
       OperatorWebNavItem(
+        id: kOperatorWebNavSecurity,
+        title: 'Security',
+        icon: Icons.shield_outlined,
+      ),
+      OperatorWebNavItem(
         id: kOperatorWebNavVendorConnections,
         title: 'Vendor connections',
         icon: Icons.cable_outlined,
@@ -486,6 +504,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         body = AuditLogScreen(
           session: session,
           gateway: _teamAuditLogGateway,
+        );
+        break;
+      case kOperatorWebNavSecurity:
+        body = SecurityScreen(
+          session: session,
+          gateway: _securityGateway,
         );
         break;
       case kOperatorWebNavVendorConnections:
@@ -638,6 +662,20 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   }
 
   DemoWebTeamAuditLogGateway? _routerOwnedAuditLogGateway;
+
+  WebSecurityGateway get _securityGateway {
+    final source = widget.source;
+    if (source is OperatorWebSecurityGatewayProvider) {
+      return (source as OperatorWebSecurityGatewayProvider).securityGateway;
+    }
+    // Live source without a gateway mixin still gets a working
+    // surface for the slice walkthrough; the `11W.6.live` follow-up
+    // mixes the live HTTP gateway in via
+    // `OperatorWebSecurityGatewayProvider`.
+    return _routerOwnedSecurityGateway ??= DemoWebSecurityGateway();
+  }
+
+  DemoWebSecurityGateway? _routerOwnedSecurityGateway;
 
   String? get _currentSessionId {
     final source = widget.source;
