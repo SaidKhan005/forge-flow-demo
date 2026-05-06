@@ -1,6 +1,6 @@
 # Business Timing + Live Shift Implementation Plan
 
-Status: implementation slice executed; live producer/proxy write paths still gated  
+Status: foundation + UI shell merged; live producer/proxy write paths still gated
 Owner: Codex  
 Branch: `codex/business-timing-live`  
 Worktree: `C:\Git Local Repos\forge_flow_demo\.codex_worktrees\business-timing-live`
@@ -14,6 +14,8 @@ surface reads:
 - Admin Console is the support/internal editor with audited overrides.
 - Mobile shows the resolved effective timing and uses it on Shift.
 - Server-side Postgres is the source of truth.
+- Timing uses normalized tables in the same Azure Postgres database; it is
+  not a separate store.
 - Mobile SQLite stores only the resolved effective timing and live snapshots it
   needs to render instantly.
 
@@ -31,18 +33,20 @@ district wins over region, and region wins over the operator default.
 1. Timing is operator-scoped and RLS-ready.
 2. Every timing write is effective-dated.
 3. Closed `ShiftRecord` rows are never re-bucketed silently.
-4. A live open business day locks the timing profile it opened with unless an
+4. Closed records persist the timing profile/version id and stable
+   `service_period_key` used at bucket time; display labels may change later.
+5. A live open business day locks the timing profile it opened with unless an
    admin schedules a next-business-day effective change.
-5. Location timezone is the final authority used by live bucketing. It may be
+6. Location timezone is the final authority used by live bucketing. It may be
    seeded from a higher level, but the effective location timing must carry an
    IANA timezone before any live facts are bucketed.
-6. Service period names are configurable.
-7. An effective business day may have 1-4 service periods.
-8. Service periods use 15-minute increments.
-9. Service periods may not overlap on the same business date.
-10. Gaps are allowed and render as `non_service`.
-11. At most one service period may roll past midnight.
-12. Business-day start may not fall inside a service period.
+7. Service period names are configurable.
+8. An effective business day may have 1-4 service periods.
+9. Service periods use 15-minute increments.
+10. Service periods may not overlap on the same business date.
+11. Gaps are allowed and render as `non_service`.
+12. At most one service period may roll past midnight.
+13. Business-day start may not fall inside a service period.
 
 ## Implementation Slices
 
@@ -128,12 +132,14 @@ the proxy.
 Replace the current split “Whole Day / Daypart” feel with a unified selector:
 
 ```text
-Whole Day | Lunch | Dinner | Late Night
+Whole Day | <configured period 1> | <configured period 2> | ...
 ```
 
 Whole Day is the rollup. Each period uses the same card grammar and model
-language as Whole Day. Active period chips render `ACTIVE NOW`; future periods
-render projected/unavailable states without borrowing a closed driver.
+language as Whole Day. The labels come from the resolved effective timing
+profile, while rows are keyed by stable `service_period_key`. Active period
+chips render `ACTIVE NOW`; future periods render projected/unavailable states
+without borrowing a closed driver.
 
 ### 7. Console UX
 

@@ -1,12 +1,13 @@
 # Data Accuracy Settings Contract
 
 Status: **Active authority** (Tier-2 contract)
-Updated: 2026-05-04
+Updated: 2026-05-06
 Owner: Phase 8 spine-bridge sprint
 Authority position:
 
 - Below `docs/contracts/core_app_architecture.md` (Layer 2 + Layer 6
-  bind to this contract for operator-controlled accuracy overrides)
+  bind to this contract for accuracy-source overrides and F&F-controlled
+  polling tier resolution)
 - Below `docs/contracts/metric_card_honesty_contract.md` (provenance
   rules; this contract specifies the exact provenance strings)
 - Beside `docs/contracts/integration_spine_architecture_contract.md`
@@ -16,12 +17,14 @@ When this doc and a slice doc conflict, this doc wins.
 
 ## Why this exists
 
-The architecture exposes three operator-controlled accuracy seams that
-sit at the canonical-fact resolution boundary in the integration spine:
+The architecture exposes three accuracy seams that sit at the canonical-fact
+resolution boundary in the integration spine. Covers and wage source are
+operator-controlled; polling cadence is F&F-controlled through tier
+assignment:
 
 1. **Covers source** - when the POS vendor doesn't expose covers, the
    operator chooses between (a) F&F-derived forecast covers
-   substitution and (b) manual entry per (business_date, daypart).
+   substitution and (b) manual entry per (business_date, service_period_key).
 2. **Wage source** - when the labor vendor doesn't expose dollars, the
    operator chooses between (a) target wage × hours substitution and
    (b) manual wage-mix from `wage_role_rows`.
@@ -175,10 +178,10 @@ The tab carries four cards in this order:
    uses)". Vendor relativity label: "This setting applies when your
    labor vendor (currently: <vendor_displayname>) does not expose
    per-shift dollars. Vendors that do not expose dollars at V1: <list>."
-2. **Covers source card** - per-effective-service-period toggle. Three states: vendor /
-   forecast / manual. Current V1 storage exposes the canonical lunch / dinner /
-   late_night columns; configurable-period support must use the compatibility
-   rule below before any location exceeds those canonical period keys. When
+2. **Covers source card** - per-effective-service-period toggle. Three states:
+   vendor / forecast / manual. V1 storage uses keyed
+   `data_accuracy_service_period_settings` rows; hardcoded lunch / dinner /
+   late_night columns are not a valid new implementation path. When
    `manual` is chosen, the inline editor stores manual covers for that
    business date and service-period key. Vendor relativity label: "This setting
    applies when your POS vendor (currently: <vendor_displayname>) does not
@@ -222,7 +225,7 @@ assignment + cost / margin rollup).
 #### Tab 1: Data Accuracy (per-location overrides)
 
 - Per-location data accuracy settings table (operator, location, covers
-  source per daypart, wage source, walk-in handling mode, last modified
+  source per service_period_key, wage source, walk-in handling mode, last modified
   by, last modified at).
 - Audit history of admin overrides per operator.
 
@@ -327,44 +330,32 @@ payload.
 ## Business timing compatibility amendment (2026-05-06)
 
 Business timing makes service periods restaurant-configurable. Data Accuracy
-settings therefore resolve by stable `service_period_key`, not by display label.
-The existing `covers_source_lunch` / `covers_source_dinner` /
-`covers_source_late_night` columns are a V1 compatibility shape for locations
-whose effective timing profile uses the canonical keys `lunch`, `dinner`, and
-`late_night`.
+settings therefore resolve by stable `service_period_key`, not by display label
+or by the old canonical trio. The hardcoded `covers_source_lunch` /
+`covers_source_dinner` / `covers_source_late_night` shape is now a rejected
+legacy compatibility shape for new implementation work.
 
-Before an operator can configure a fourth period or rename/re-key away from the
-canonical three, the data-accuracy lane must add a keyed child table such as
-`data_accuracy_service_period_settings(operator_id, location_id, service_period_key, covers_source, manual_entries)`.
+The V1 implementation target is a keyed child table:
+`data_accuracy_service_period_settings(operator_id, location_id, service_period_key, covers_source, covers_manual_entries)`.
+That table supports 1-4 configured service periods without schema churn.
 Closed and live aggregators must persist/use the stable key captured from the
 timing profile in force at bucket time. Labels may change; keys and provenance
 must remain stable.
 
 ## Schema
 
-Single new table `public.data_accuracy_settings`:
+Two tables are required:
+
+- `public.data_accuracy_settings` carries location-level wage source and audit
+  metadata.
+- `public.data_accuracy_service_period_settings` carries one covers-source row
+  per stable `service_period_key`.
 
 ```sql
 create table if not exists public.data_accuracy_settings (
   setting_id uuid primary key default gen_random_uuid(),
   operator_id uuid not null,
   location_id uuid not null,
-
-  -- ── Covers source per daypart ─────────────────────────────────────
-  -- One of: 'vendor' (default), 'forecast', 'manual'.
-  covers_source_lunch text not null default 'vendor'
-    check (covers_source_lunch in ('vendor', 'forecast', 'manual')),
-  covers_source_dinner text not null default 'vendor'
-    check (covers_source_dinner in ('vendor', 'forecast', 'manual')),
-  covers_source_late_night text not null default 'vendor'
-    check (covers_source_late_night in ('vendor', 'forecast', 'manual')),
-
-  -- Manual entries per (business_date, daypart) when covers_source = 'manual'.
-  -- jsonb shape: {"2026-05-04": {"lunch": 87, "dinner": 187, "late_night": 12}, ...}
-  -- Sparse - only populated dates need entries. Missing date + manual setting =
-  -- aggregator returns null for that daypart (no ShiftRecord written).
-  covers_manual_entries jsonb not null default '{}'::jsonb
-    check (jsonb_typeof(covers_manual_entries) = 'object'),
 
   -- ── Wage source ────────────────────────────────────────────────────
   -- 'vendor' (default; use labor vendor dollars when exposed) OR
@@ -418,6 +409,69 @@ create policy "data_accuracy_settings_per_tenant"
 revoke all on public.data_accuracy_settings from public;
 grant select, insert, update on public.data_accuracy_settings to service_role;
 grant select, insert, update on public.data_accuracy_settings to forge_admin;
+
+create table if not exists public.data_accuracy_service_period_settings (
+  setting_id uuid primary key default gen_random_uuid(),
+  operator_id uuid not null,
+  location_id uuid not null,
+  service_period_key text not null
+    check (service_period_key ~ '^[a-z][a-z0-9_]{0,63}$'),
+
+  -- One of: 'vendor' (default), 'forecast', 'manual'.
+  covers_source text not null default 'vendor'
+    check (covers_source in ('vendor', 'forecast', 'manual')),
+
+  -- Manual entries per business_date when covers_source = 'manual'.
+  -- jsonb shape: {"2026-05-04": 187, "2026-05-05": 201, ...}
+  -- Sparse - only populated dates need entries. Missing date + manual setting =
+  -- aggregator returns null for that service period (no ShiftRecord written).
+  covers_manual_entries jsonb not null default '{}'::jsonb
+    check (jsonb_typeof(covers_manual_entries) = 'object'),
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by text,
+
+  constraint data_accuracy_service_period_location_fk
+    foreign key (operator_id, location_id)
+    references public.locations(operator_id, location_id)
+    on delete cascade
+);
+
+create unique index if not exists data_accuracy_service_period_unique_idx
+  on public.data_accuracy_service_period_settings (
+    operator_id,
+    location_id,
+    service_period_key
+  );
+
+create index if not exists data_accuracy_service_period_operator_idx
+  on public.data_accuracy_service_period_settings (
+    operator_id,
+    location_id,
+    service_period_key
+  );
+
+alter table public.data_accuracy_service_period_settings enable row level security;
+
+drop policy if exists "data_accuracy_service_period_settings_per_tenant"
+  on public.data_accuracy_service_period_settings;
+create policy "data_accuracy_service_period_settings_per_tenant"
+  on public.data_accuracy_service_period_settings for all to service_role
+  using (
+    operator_id = public.app_current_operator()
+    and location_id = public.app_current_location()
+  )
+  with check (
+    operator_id = public.app_current_operator()
+    and location_id = public.app_current_location()
+  );
+
+revoke all on public.data_accuracy_service_period_settings from public;
+grant select, insert, update on public.data_accuracy_service_period_settings
+  to service_role;
+grant select, insert, update on public.data_accuracy_service_period_settings
+  to forge_admin;
 ```
 
 ### Polling tier assignment table (NEW 2026-05-05)
@@ -507,19 +561,22 @@ assignment via tier_key='custom' + explicit JSONB.
 ## Resolver contract
 
 The aggregator (`8.spine-bridge.2`) reads
-`data_accuracy_settings` for the (operator, location) at aggregation
-time and applies the resolution rules below. Sync worker reads it for
-polling cadence (`8.spine-bridge.0a`).
+`data_accuracy_settings` plus
+`data_accuracy_service_period_settings` for the (operator, location,
+service_period_key) at aggregation time and applies the resolution rules
+below. Sync worker reads `forge_flow_polling_tier_assignment` for polling
+cadence (`8.spine-bridge.0a`).
 
-### Covers source resolution (per daypart)
+### Covers source resolution (per service period)
 
 ```text
-Given (operator, location, business_date, daypart):
+Given (operator, location, business_date, service_period_key):
 
-  setting = data_accuracy_settings.covers_source_<daypart>
+  setting = data_accuracy_service_period_settings.covers_source
+            for service_period_key
 
   if setting == 'manual':
-    manual_value = covers_manual_entries[business_date][daypart]
+    manual_value = covers_manual_entries[business_date]
     if manual_value is null:
       // Operator chose manual but did not enter a value for this date.
       // Aggregator returns null - no ShiftRecord written; dashboard
@@ -531,19 +588,19 @@ Given (operator, location, business_date, daypart):
     sourceSystem = 'operator_manual_entry'
 
   elif setting == 'vendor' AND vendor_facts have covers populated:
-    covers = SUM(cover_facts.covers for this daypart)
+    covers = SUM(cover_facts.covers for this service period)
     coversSource = 'vendor_<id>'
     sourceSystem = vendor_<id>
 
   elif setting == 'vendor' AND vendor doesn't expose covers (capabilityProfile.coversFieldExposed=false):
     // Falls through to forecast substitution.
-    covers = forecastSnapshot.coversFor(business_date, daypart)
+    covers = forecastSnapshot.coversFor(business_date, service_period_key)
     coversSource = 'vendor_<id>_covers_unavailable_app_forecast_substituted'
     sourceSystem = vendor_<id>
 
   elif setting == 'forecast':
     // Operator explicitly chose forecast even when vendor exposes covers.
-    covers = forecastSnapshot.coversFor(business_date, daypart)
+    covers = forecastSnapshot.coversFor(business_date, service_period_key)
     coversSource = 'app_forecast_60_day_avg'
     sourceSystem = 'app_forecast'
 
@@ -760,8 +817,7 @@ A slice that touches any data accuracy seam ships only when:
 ## Cross-references
 
 - `docs/contracts/core_app_architecture.md` - Layer 2 (canonical
-  facts), Layer 6 (forecast is F&F-computed), the operator-controlled
-  accuracy seam section
+  facts), Layer 6 (forecast is F&F-computed), the accuracy seam section
 - `docs/contracts/metric_card_honesty_contract.md` - provenance string
   rules; renderer chrome rules
 - `docs/contracts/integration_spine_architecture_contract.md` - spine

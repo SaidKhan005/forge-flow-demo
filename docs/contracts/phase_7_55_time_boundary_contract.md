@@ -349,6 +349,11 @@ top-down and lower scope wins: operator default -> org-unit ancestors ->
 location. The resolved location profile is the authority used by live
 bucketing, closed aggregation, and mobile read models.
 
+Closed operational rows must persist the timing profile/version id and stable
+`service_period_key` used at bucket time. Display labels can be renamed and
+lower scopes can override future timing, but closed history remains tied to
+the effective timing profile that classified the original row.
+
 ### Rule 10 - Learn teaches only from closed truth with time provenance
 
 Learn must teach from:

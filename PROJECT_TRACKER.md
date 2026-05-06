@@ -72,7 +72,8 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 | `8.S` (Scheduling) | engineering-complete (PASS 2026-05-05 via `mobile-proof.v2`); Wave B `documented` for 6 adapters; lifecycle promotion via `phase_8_live_rollout` | `phase_8S/*` |
 | `8.spine-bridge` | accepted 2026-05-05 — 11 sub-lanes landed (`.0` / `.0a` / `.1.OR` / `.1.QBT` / `.1.LB` / `.2` / `.3` / `.A` / `.B` / `.C` / `.7S.upgrade`); `.4` proof v2 PASSED 27/27 | `phase_8/phase_8_spine_bridge_plan.md`, `docs/_execution/2026-05-05_8_integration_mobile_proof_v2_execution.md` |
 | `8.spine-bridge-sink-fanout` | queued — 14 file-disjoint Postgres sink lanes for the remaining vendors (cleared by `mobile-proof.v2` PASS 2026-05-05) | `phase_8/phase_8_spine_bridge_plan.md` |
-| `business-timing-live` | running - schema/domain/resolved timing/mobile read surfaces drafted; live producer/proxy writes gated behind `8.spine-bridge-live` | `phase_business_timing_live/business_timing_live_plan.md` |
+| `business-timing-live` | foundation + UI shell merged; canonical timing source is same-DB `business_timing_profiles`/service periods; live producer/proxy/write proof remains gated | `phase_business_timing_live/business_timing_live_plan.md` |
+| `8.spine-bridge-live` | queued - explicit live lane after sink fanout + timing schema review: OpenShiftSnapshotProjector -> open_shift_snapshots -> proxy pull -> mobile SQLite -> Shift selectors | `phase_8/phase_8_spine_bridge_plan.md`, `phase_business_timing_live/business_timing_live_plan.md` |
 | `8.live` (lifecycle rollout) | open — 17 `*.live.sandbox` + 17 `*.live.prod` slices; closes when last vendor reaches `production_credentialed` | `phase_8_live_rollout/phase_8_live_rollout_plan.md` |
 | `8.5` (Outbound finance) | paused (outward-vendor) | `phase_8_5_external_integrations/*` |
 | `11b`/`.1`/`.2` | paused (AI) | `phase_11b/*` |

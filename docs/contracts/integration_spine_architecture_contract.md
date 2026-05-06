@@ -237,19 +237,21 @@ binds to this shape:
    - Idempotent: subsequent flips are no-ops
    - Disconnect does NOT auto-revert
 
-6. Daypart-complete signal triggers aggregator
-   - Trigger: poll tick / webhook batch finalises a (business_date, daypart) bucket
+6. Service-period-complete signal triggers aggregator
+   - Trigger: poll tick / webhook batch finalises a
+     (business_date, service_period_key) bucket
    - Aggregator file: lib/services/integration/canonical_fact_to_closed_shift_input.dart (NEW — 8.spine-bridge.2)
    - Walks operator-scoped Postgres cover_facts + labor_punches + reservation_facts
    - Resolves covers source via 4-way decision per
      `data_accuracy_settings_contract.md` (Concern B — sanctioned
      concession to core_app_architecture.md Layer 2):
-       1. operator manual entry for this (business_date, daypart) ->
+       1. operator manual entry for this
+          (business_date, service_period_key) ->
           covers source = `operator_manual_entry_per_daypart`
        2. else, POS adapter declared coversFieldExposed=true AND vendor
           fact populated -> covers source = `vendor_<id>` (live truth)
        3. else, fall back to F&F-derived forecast covers from
-          DemandForecastContext for that daypart -> covers source =
+          DemandForecastContext for that service period -> covers source =
           `vendor_<id>_covers_unavailable_app_forecast_substituted`.
           The forecast itself is F&F-computed (Layer 6), never vendor-
           supplied; the provenance string makes that explicit.
@@ -277,7 +279,10 @@ binds to this shape:
        4. else, vendor exposes neither dollars nor rates -> fall back
           to target wage × hours; provenance =
           `vendor_<id>_dollars_unavailable_target_wage_substituted`.
-   - Resolves daypart per restaurant_timing_configs.service_period_definitions
+   - Resolves service_period_key per the server-side effective
+     business_timing_profiles / business_timing_service_periods snapshot
+     in force at bucket time. Mobile RestaurantTimingConfig rows are resolved
+     read models only.
 
 7. ShiftFactBuilder.fromClosedShiftInput runs (existing pure function; do not modify)
    - Pure, deterministic; no I/O
@@ -293,16 +298,19 @@ binds to this shape:
      arrives and the aggregator overwrites a previously-written
      ShiftRecord for the same slot), the writer MUST read the existing
      row's `target_profile_version_id` and re-use it. Only a first-
-     time aggregation for a brand-new daypart mints a fresh
+     time aggregation for a brand-new service period mints a fresh
      `TargetProfileVersion` from the current `ActiveTargetProfile`.
      Vendor corrections never re-grade closed history under a newer
      cycle. The aggregator surfaces `priorTargetProfileVersionId` (or
      null for first-time) on its return value so the writer can apply
-     this rule deterministically.
+     this rule deterministically. The writer also persists the
+     timing_profile_version_id and service_period_key used to bucket the row,
+     so closed history remains unambiguous after timing edits or renames.
 
 9. NOTIFY emits change row → Pub/Sub → WebSocket bridge
    - Existing Phase 10a infrastructure
-   - Topic: shift_record_changed; payload: { operator_id, location_id, business_date, daypart }
+   - Topic: shift_record_changed; payload: { operator_id, location_id,
+     business_date, service_period_key }
 
 ─── mobile ─────────────────────────────────────────────────────────────
 10. Mobile WebSocket consumer receives signal
@@ -341,9 +349,9 @@ Wave layout:
   for `.0` — see Lane `.0a` below.
 - Lane `.0a` (NEW, sequential after `.0`) — small additive lane that
   gives the running sync worker a per-(operator, location, vendor)
-  polling cadence override hook. Reads from the new
-  `data_accuracy_settings` table (created by Lane `.A`). File-disjoint
-  with everything else.
+  polling cadence resolver. Reads F&F-owned tier assignments from
+  `forge_flow_polling_tier_assignment` (created by Lane `.A`). Operators
+  never set cadence directly. File-disjoint with everything else.
 - Lanes `.1.OR` / `.1.QBT` / `.1.LB` / `.2` / `.3` / `.A` / `.B` / `.C`
   run in parallel (file-disjoint) after `.0` lands.
 - Lane `.4` (`8.integration-mobile-proof.v2`) runs sequentially after
@@ -454,7 +462,8 @@ Writes to `reservation_facts`. Webhook + poll inputs both supported
 **Files NEW.**
 
 - `db/migrations/<YYYYMMDD>_phase_8_data_accuracy_settings.sql` —
-  creates `data_accuracy_settings` table per
+  creates `data_accuracy_settings`, `data_accuracy_service_period_settings`,
+  and `forge_flow_polling_tier_assignment` tables per
   `data_accuracy_settings_contract.md` schema section.
 - `lib/services/data_accuracy/data_accuracy_settings_repository.dart` —
   read/write seam over the new table. RLS-scoped via
@@ -470,13 +479,15 @@ Writes to `reservation_facts`. Webhook + poll inputs both supported
   `(operator_id, location_id)`; B-tree index leads with `operator_id`;
   4 wrapper-only RLS policies.
 - Schema columns per `data_accuracy_settings_contract.md` (REVERSED
-  2026-05-05 — operator-cadence-override columns NOT shipped; F&F
-  controls cadence via the sibling `forge_flow_polling_tier_assignment`
-  table):
-    * `data_accuracy_settings`: covers_source_lunch / _dinner /
-      _late_night (enum: vendor / forecast / manual);
-      covers_manual_entries (jsonb: per-business-date sparse map);
-      wage_source (enum: vendor / manual_mix).
+  2026-05-05 and amended 2026-05-06 — operator-cadence-override columns
+  NOT shipped; F&F controls cadence via
+  `forge_flow_polling_tier_assignment`; covers source is keyed by
+  service period):
+    * `data_accuracy_settings`: wage_source (enum: vendor / manual_mix)
+      plus audit metadata.
+    * `data_accuracy_service_period_settings`: service_period_key,
+      covers_source (enum: vendor / forecast / manual), and
+      covers_manual_entries (jsonb: per-business-date sparse map).
     * `forge_flow_polling_tier_assignment` (NEW table):
       tier_key (enum: standard / premium / custom);
       polling_cadence_per_vendor_seconds (jsonb);
@@ -487,7 +498,7 @@ Writes to `reservation_facts`. Webhook + poll inputs both supported
       policy admits `service_role` (read-only) +
       `forge_admin` (read/write).
 - Repository: `DataAccuracySettingsRepository` — idempotent upsert
-  on (operator_id, location_id); per-daypart partial updates
+  on (operator_id, location_id); per-service-period partial updates
   supported. `ForgeFlowPollingTierRepository` — readCurrentAssignment
   / assignTier (closes prior current row + inserts new in single tx)
   / listAssignmentHistory / summarizeMargin.
@@ -495,9 +506,9 @@ Writes to `reservation_facts`. Webhook + poll inputs both supported
 **Tests required.**
 
 - A. RLS round-trip: operator A write isolated from operator B reads.
-- B. Per-daypart partial update: writing `lunch=manual` does not affect
-  `dinner` setting.
-- C. Polling cadence override JSON validation: invalid vendor id ->
+- B. Per-service-period partial update: writing one `service_period_key`
+  to manual does not affect another key.
+- C. Polling tier assignment JSON validation: invalid vendor id ->
   rejection at repository boundary.
 - D. Banned-items grep.
 
@@ -506,21 +517,21 @@ Writes to `reservation_facts`. Webhook + poll inputs both supported
 **Files NEW.**
 
 - `lib/operator_web/screens/data_accuracy_screen.dart` — the new tab.
-- `lib/operator_web/widgets/covers_source_toggle.dart` — per-daypart
+- `lib/operator_web/widgets/covers_source_toggle.dart` — per-service-period
   picker (vendor / forecast / manual).
-- `lib/operator_web/widgets/covers_manual_entry_card.dart` — daypart-
-  shaped manual entry (lunch / dinner / late_night per business date).
+- `lib/operator_web/widgets/covers_manual_entry_card.dart` —
+  service-period-keyed manual entry per business date.
 - `lib/operator_web/widgets/wage_source_toggle.dart` — surfaces the
   existing wage adjuster (currently in mobile Settings) on web.
-- `lib/operator_web/widgets/polling_cadence_picker.dart` — per-vendor
-  cadence picker with cost projection.
+- `lib/operator_web/widgets/polling_tier_request_card.dart` — display-only
+  tier/cadence summary plus request-change flow.
 - `lib/operator_web/widgets/vendor_relativity_label.dart` — labels each
   setting with the vendors it applies to (e.g., "covers manual entry
   applies to: Square, Clover").
 - `test/operator_web/screens/data_accuracy_screen_test.dart`.
 - `test/operator_web/widgets/covers_source_toggle_test.dart`.
 - `test/operator_web/widgets/wage_source_toggle_test.dart`.
-- `test/operator_web/widgets/polling_cadence_picker_test.dart`.
+- `test/operator_web/widgets/polling_tier_request_card_test.dart`.
 
 Files MODIFY:
 
@@ -536,19 +547,20 @@ Files MODIFY:
 - Vendor relativity labels per
   `data_accuracy_settings_contract.md` (covers settings apply to
   Square + Clover; wage settings apply to QBT + Humanity + Agendrix +
-  any labor vendor not exposing dollars; polling cadence applies per
-  vendor).
-- Cost projection on polling cadence picker per
-  `data_accuracy_settings_contract.md` "Costing surface" section.
+  any labor vendor not exposing dollars; polling cadence is display-only
+  and applies only to poll-only vendors).
+- No operator cadence picker. The polling card may request a tier change;
+  actual cadence/cost/margin controls live in F&F Ops Console.
 
 **Tests required.**
 
 - A. Render with default settings (vendor source, no overrides).
 - B. Toggle covers source from vendor -> manual; assert manual entry
-  card appears with three daypart slots.
-- C. Manual entry validates non-negative integers per daypart.
+  card appears for the configured service-period keys.
+- C. Manual entry validates non-negative integers per service period.
 - D. Wage source toggle round-trips with the repository.
-- E. Polling cadence picker shows cost projection in dollars/month.
+- E. Polling tier card is display-only and surfaces request-change copy,
+  not cadence controls or vendor cost projection.
 - F. Vendor relativity label correctly names the affected vendors.
 - G. Banned-items grep.
 
@@ -658,11 +670,16 @@ to re-roll — they pass nothing and the resolver path stays inert.
 
 - Aggregator walks operator-scoped Postgres `cover_facts` +
   `labor_punches` + `reservation_facts` for
-  `(operator_id, location_id, business_date, daypart)`.
-- Resolves daypart per `restaurant_timing_configs`.
+  `(operator_id, location_id, business_date, service_period_key)`.
+- Resolves `service_period_key` per the effective
+  `business_timing_profiles` / `business_timing_service_periods` snapshot.
+  `restaurant_timing_configs` is a mobile/read-model projection, not the
+  server source of truth.
 - **Reads `data_accuracy_settings` via Lane `.A` repository** for the
-  (operator, location) — covers source preference per daypart, wage
-  source preference, polling cadence override.
+  (operator, location) and `data_accuracy_service_period_settings` for the
+  stable service_period_key — covers source preference per service period
+  and wage source preference. Polling cadence comes from the F&F tier
+  resolver, not this row.
 - Resolves covers source via 4-way decision (per Concern B + Layer 6
   in `core_app_architecture.md`):
     * `operator_manual_entry_per_daypart` -> use the manual value;
@@ -672,7 +689,7 @@ to re-roll — they pass nothing and the resolver path stays inert.
     * `vendor_<id>_covers_unavailable_app_forecast_substituted` ->
       use F&F-derived forecast covers from
       `DemandForecastContext.resolvedWeeklyForecastCovers` allocated
-      to this daypart per the existing daypart split rule; provenance
+      to this service period per the business-timing split rule; provenance
       string makes vendor-unavailable + F&F-substituted explicit.
     * No source available -> aggregator returns null; no ShiftRecord
       written; dashboard renders MetricCardNotYetAvailable.
@@ -685,7 +702,10 @@ to re-roll — they pass nothing and the resolver path stays inert.
       use target wage × hours from active TargetSnapshot.
 - Emits `ClosedShiftInput` matching the existing typed shape, plus a
   sibling `ProvenanceContext` carrying the per-metric provenance
-  strings the writer attaches to ShiftRecord.
+  strings the writer attaches to ShiftRecord. The emitted row must also
+  carry the timing profile/version id and `service_period_key` used for
+  bucketing, so closed history survives later timing label changes or
+  overrides.
 - Aggregator returns `priorTargetProfileVersionId`: the
   `target_profile_version_id` of the prior ShiftRecord at this slot if
   one exists; null if first-time aggregation.
@@ -697,26 +717,27 @@ to re-roll — they pass nothing and the resolver path stays inert.
   manual.
 - **Concern A (binding):** Replace-for-slot semantics — re-aggregation
   overwrites the prior `ShiftRecord` for the same
-  `(operator_id, location_id, business_date, daypart)` AND **preserves
-  the prior `target_profile_version_id`** when the aggregator's
-  `priorTargetProfileVersionId` is non-null. Only first-time
-  aggregations mint a fresh `TargetProfileVersion`. This is a hard
-  rule that protects `core_app_architecture.md` Layer 4 + Layer 11 +
-  Layer 12 + the "What never rewrites" non-negotiables.
+  `(operator_id, location_id, business_date, service_period_key)` AND
+  **preserves the prior `target_profile_version_id` and timing provenance**
+  when the aggregator's prior row is non-null. Only first-time aggregations
+  mint a fresh `TargetProfileVersion`; timing labels may update in future
+  rows but closed rows keep the profile/version/key captured at bucket time.
+  This is a hard rule that protects `core_app_architecture.md` Layer 4 +
+  Layer 11 + Layer 12 + the "What never rewrites" non-negotiables.
 
 **Tests required.**
 
 - A. Single-vendor trio (Oracle + QBT + Libro): canonical-fact dicts in
   → ShiftRecord written with correct numeric values.
-- B. Multi-vendor merge: same daypart fed by two POS adapters fails
-  loudly (one POS per daypart per V1 contract).
+- B. Multi-vendor merge: same service period fed by two POS adapters fails
+  loudly (one POS source per service period per V1 contract).
 - C. Covers source = vendor when POS adapter exposed covers (Toast).
 - D. Covers source = forecast substitution when POS adapter declared
   `coversFieldExposed = false` (Square); provenance string =
   `vendor_square_covers_unavailable_app_forecast_substituted`.
 - E. Covers source = manual entry when DataAccuracySettings has
-  `covers_source_per_daypart[dinner] == 'manual'` AND
-  `covers_manual_per_daypart.dinner == 187` for the date; assert
+  `service_period_key='dinner'` has covers_source == 'manual' AND
+  `covers_manual_entries['2026-05-04'] == 187`; assert
   ShiftRecord.covers == 187; provenance = `operator_manual_entry_per_daypart`.
 - F. Labor dollars source = vendor when labor adapter populated
   `actual_foh_labor_dollars` AND wage source preference = vendor.
@@ -728,6 +749,9 @@ to re-roll — they pass nothing and the resolver path stays inert.
   set wage_role_rows mix.
 - I. **Concern A test (target_profile_version_id preservation).**
   First-time aggregation writes ShiftRecord with target_profile_version_id="tpv_X".
+  Re-aggregation after a timing label/profile edit preserves the prior
+  target profile id plus the closed row's timing profile/version id and
+  service_period_key.
   TargetCycle rolls; ActiveTargetProfile points at "tpv_Y". Corrected
   vendor fact arrives; aggregator re-runs; assert: aggregator returns
   `priorTargetProfileVersionId == "tpv_X"`; writer reuses "tpv_X" on
