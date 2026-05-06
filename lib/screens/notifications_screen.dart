@@ -13,6 +13,8 @@ import '../theme/app_theme.dart';
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
+  static const routeName = '/notifications';
+
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
