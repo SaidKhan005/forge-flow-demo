@@ -49,15 +49,6 @@ are external; engineering can run in parallel.
       (Intuit sandbox).
       _Effort: 2–3 days. Soft-blocks: `*.live.sandbox` slices._
 
-### Engineering decision (You, single signal)
-
-- [ ] **Unpause `8.spine-bridge-sink-fanout`.** 14 file-disjoint Postgres sink
-      lanes for the remaining Wave B vendors. Without these, "engineering-
-      complete Phase 8" doesn't translate into operator data on launch day.
-      Plan: `docs/phases/phase_8/phase_8_spine_bridge_plan.md`.
-      _Effort: 3–4 days parallel. Blocks: cutover.0b perf gate (which needs
-      real data in production Postgres for the Tier-M load test)._
-
 ### Engineering kickoff (Eng)
 
 - [ ] **Generate prompts + spin up worktrees for `11W.0`, `11W.7`, `11W.8`.**
@@ -170,11 +161,12 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
       (`connector_sync_log`, `inbound_webhook_dead_letter`, `sanity_log`) now
       carry denormalized `business_date DATE` with operator-leading indexes
       and BEFORE-INSERT triggers.
-- [ ] **`8.spine-bridge-sink-fanout` (13 of 14 lanes remain).** Aloha
-      (`.1.AL`) ACCEPT 2026-05-06; remaining: Toast, Clover, Lightspeed LSK,
-      Revel, Square (POS); ADP, Agendrix, Humanity, Push Operations, 7shifts
-      (labor); OpenTable, SevenRooms, Tock (reservation). File-disjoint;
-      parallelizable.
+- [ ] **`8.spine-bridge-sink-fanout` (7 of 14 lanes remain).** Aloha
+      (`.1.AL`), Tock (`.TC`), Humanity (`.HM`), Square (`.SQ`), Toast
+      (`.TS`), Push Operations (`.PU`), Agendrix (`.AG`) all ACCEPT 2026-05-06.
+      Remaining: Clover, Lightspeed LSK, Revel, Oracle Simphony (POS); ADP,
+      7shifts `/reports/hours_and_wages` upgrade (labor); OpenTable,
+      SevenRooms (reservation). File-disjoint; parallelizable.
 - [ ] **`8.spine-bridge-live` — live Shift snapshots.** Foundation
       (`9e6fca84` schema + UI shell + contract amendments) ACCEPT 2026-05-06;
       `OpenShiftSnapshotProjector` itself queued. Builds

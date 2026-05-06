@@ -30,7 +30,7 @@ Prefer `.mcp.json` servers for orientation: `forgeflow_docs`, `forgeflow_sqlite_
 - **AI paused** — `11b/.1/.2`, `12.*`, `11A.3/.3.x`, `11A.11`, `9.8` AI portion, `10b`. See `memory/project_phase_pause_2026_05_03.md`.
 - **Outward-vendor paused** — `8.5`, `11W.9`. See `memory/project_phase_pause_2026_05_03.md`.
 - **Barrio paused** — `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart`. See `memory/project_barrio_paused.md`.
-- **In scope** — `8.spine-bridge-sink-fanout` (13 of 14 lanes remain after `.1.AL`), `8.spine-bridge-live` (projector queued post-foundation), `11W.0`/`.7`/`.8` (V1 web shell), `11A.10` (impersonation), `9.8` inbound T&Cs + email, business-timing-live projector, Cutover.
+- **In scope** — `8.spine-bridge-sink-fanout` (7 of 14 lanes remain after `.1.AL`/`.TC`/`.HM`/`.SQ`/`.TS`/`.PU`/`.AG`), `8.spine-bridge-live` (projector + writer routes queued post-foundation), `11W.0`/`.7`/`.8` (V1 web shell), `11A.10` (impersonation), `9.8` inbound T&Cs + email, business-timing-live writer + projector, Cutover.
 - **Production1 paused** (2026-05-03). Pending Production1/staging apply queue (7 migrations) tracked in `docs/POST_HARDENING_FOLLOWUPS.md` "P0 - Production1 Migration Apply Gap". Baseline: `docs/phases/phase_production_cutover/production1_staging_parity_baseline_2026-05-03.md`.
 - **Mobile push end-to-end** (PR #149, code-ready as of `db7ce131`): staging-proof checklist owned by the Production1 apply runbook. Production proof gated on staging-green + explicit approval. Flutter clients never carry Firebase Admin credentials / FCM server keys (lint-enforced via `test/services/mobile_push_sender_test.dart`).
 - **Staging runtime/perf carry-forward** (2026-05-03): `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`; durable rules in `docs/contracts/slice_runtime_acceptance_contract.md`.
@@ -93,7 +93,7 @@ Codex on master; Claude in `.claude/worktrees/<lane>`. Multiple phases may run i
 
 **Master state 2026-05-06**: deep audit + alignment pass closed all REJECT-level structural defects from the 11+10 parallel sprint window. All 4 hardening lints clean (`index_leading_column_lint`, `migration_cutoff_lint`, `rls_policy_lint`, `postgres_import_lint`). Permission catalog reconciled to 99 keys; `team.audit_log.export` migration landed via `99b36ddc`; index rekey via `2e619e3a`; history-analyzer test re-pinned to post-7.58.4 seed via `bb604cd2`; admin shell + corpus + settings MFA tests aligned via `768117ea`; 11A.14 audit doc drift cleared via `45bdd734`. Audit reports: see `docs/_execution/`.
 
-**Currently running**: `8.spine-bridge-sink-fanout` (13 of 14 lanes outstanding); `business-timing-live` projector (queued post-foundation review); V1 web shell (`11W.0` / `.7` / `.8`).
+**Currently running**: `8.spine-bridge-sink-fanout` (7 of 14 lanes outstanding — Aloha + Tock + Humanity + Square + Toast + Push Operations + Agendrix landed; remaining: Clover · Lightspeed LSK · Revel · Oracle Simphony · ADP · 7shifts upgrade · OpenTable · SevenRooms); `business-timing-live` writer + projector (queued post-foundation review); V1 web shell (`11W.0` / `.7` / `.8`).
 
 **Wave D — rolling `*.live.*` slices** fire individually as credentials arrive. Tracker: `phase_8_live_rollout/phase_8_live_rollout_plan.md`.
 
