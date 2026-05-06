@@ -111,10 +111,13 @@ Do not re-open stale findings unless the repo regresses:
   read-only fallback until every read path migrates). Originally added under
   the `202605061700_…` basename (commit `4655b484`); renumbered on
   2026-05-06 to break the same-second prefix collision with the audit-anchor
-  + timing-provenance migrations. Apply on staging first, then carry into
-  the next Production1 batch. The current Production1 follow-up cutoff is
+  + timing-provenance migrations. Phase 8 mobile core then queues
+  `202605061800_phase_8_first_connection_backfill_jobs.sql`, the additive
+  operator-scoped durable first-connection backfill job table that later
+  connect/worker/status lanes consume. Apply both on staging first, then carry
+  into the next Production1 batch. The current Production1 follow-up cutoff is
   therefore
-  `202605061701_phase_8_data_accuracy_service_period_settings.sql`.
+  `202605061800_phase_8_first_connection_backfill_jobs.sql`.
 
 ## Remaining Live-Closeout Gates
 

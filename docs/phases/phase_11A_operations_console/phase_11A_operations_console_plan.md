@@ -118,7 +118,10 @@ again. Originally added under the `202605061700_…` basename (commit
 `4655b484`); renumbered on 2026-05-06 to break the same-second prefix
 collision with the audit-anchor + timing-provenance migrations. The current
 Production1 follow-up cutoff is therefore
-`202605061701_phase_8_data_accuracy_service_period_settings.sql`.
+`202605061800_phase_8_first_connection_backfill_jobs.sql` after the Phase 8
+mobile core first-connection backfill job table landed as an additive
+server-side queue/claim seam. That table is not an 11A surface, but it moves
+the shared cutoff watched by this plan.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin
