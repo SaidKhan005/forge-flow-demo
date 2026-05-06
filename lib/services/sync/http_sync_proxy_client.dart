@@ -9,11 +9,15 @@ import '../../domain/models/service_period_definition.dart';
 import '../../models/shift_record.dart';
 import '../integration/demo_mode_state.dart';
 import '../integration/integration_adapter_common.dart';
+import '../star_target_selection_write_service.dart';
 import 'star_target_sync_resources.dart';
 import 'sync_proxy_client.dart';
 
 class HttpSyncProxyClient
-    implements SyncProxyClient, StarTargetSyncProxyClient {
+    implements
+        SyncProxyClient,
+        StarTargetSyncProxyClient,
+        StarTargetSelectionWriteClient {
   HttpSyncProxyClient({
     required this.proxyBaseUri,
     required Future<String?> Function() idTokenProvider,
@@ -238,6 +242,32 @@ class HttpSyncProxyClient
   }
 
   @override
+  Future<void> submitSelectedStarDecision({
+    required String operatorId,
+    required String locationId,
+    required StarTargetSelectionWriteAction action,
+    required String idempotencyKey,
+    required Map<String, Object?> body,
+  }) async {
+    try {
+      await _postJson(
+        _locationPath(operatorId, locationId, <String>[
+          'selected_star_shift_decisions',
+          action == StarTargetSelectionWriteAction.clear ? 'clear' : 'select',
+        ]),
+        body: body,
+        idempotencyKey: idempotencyKey,
+      );
+    } on SyncProxyClientException catch (error) {
+      throw StarTargetSelectionWriteException(
+        code: error.code,
+        message: error.message,
+        statusCode: error.statusCode,
+      );
+    }
+  }
+
+  @override
   Future<TargetCycleSyncPage> fetchTargetCycles({
     required String operatorId,
     required String locationId,
@@ -381,6 +411,32 @@ class HttpSyncProxyClient
     }
   }
 
+  Future<Map<String, Object?>> _postJson(
+    List<String> tailSegments, {
+    required Map<String, Object?> body,
+    required String idempotencyKey,
+  }) async {
+    final firstAttempt = await _attemptPost(
+      tailSegments,
+      body: body,
+      idempotencyKey: idempotencyKey,
+    );
+    if (firstAttempt.statusCode != 401 || _refreshIdToken == null) {
+      return _interpret(firstAttempt);
+    }
+    try {
+      await _refreshIdToken();
+    } catch (_) {
+      return _interpret(firstAttempt);
+    }
+    final retry = await _attemptPost(
+      tailSegments,
+      body: body,
+      idempotencyKey: idempotencyKey,
+    );
+    return _interpret(retry);
+  }
+
   Future<_HttpAttemptResult> _attemptGet(
     List<String> tailSegments, {
     Map<String, String>? queryParameters,
@@ -400,6 +456,31 @@ class HttpSyncProxyClient
       'accept': 'application/json',
       'authorization': 'Bearer $token',
     });
+    final streamed = await _httpClient.send(request).timeout(_timeout);
+    final raw = await streamed.stream.bytesToString().timeout(_timeout);
+    return _HttpAttemptResult(streamed.statusCode, raw);
+  }
+
+  Future<_HttpAttemptResult> _attemptPost(
+    List<String> tailSegments, {
+    required Map<String, Object?> body,
+    required String idempotencyKey,
+  }) async {
+    final token = (await _idTokenProvider())?.trim();
+    if (token == null || token.isEmpty) {
+      throw const SyncProxyClientException(
+        code: 'missing_auth_token',
+        message: 'The sync proxy client has no live auth token.',
+      );
+    }
+    final request = http.Request('POST', _resolve(tailSegments));
+    request.headers.addAll(<String, String>{
+      'accept': 'application/json',
+      'authorization': 'Bearer $token',
+      'content-type': 'application/json',
+      'idempotency-key': idempotencyKey,
+    });
+    request.body = jsonEncode(body);
     final streamed = await _httpClient.send(request).timeout(_timeout);
     final raw = await streamed.stream.bytesToString().timeout(_timeout);
     return _HttpAttemptResult(streamed.statusCode, raw);

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import '../services/demand_forecast_context_service.dart';
+import '../services/star_target_selection_write_service.dart';
 import '../services/target_cycle_service.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../models/baseline_candidate_shift.dart';
@@ -27,8 +28,8 @@ export 'baseline_manager/baseline_manager_preview.dart'
 class BaselineManagerScreen extends StatefulWidget {
   /// Production constructor — loads candidates from DB on init.
   const BaselineManagerScreen({super.key})
-      : initialCandidates = null,
-        initialDemandCovers = null;
+    : initialCandidates = null,
+      initialDemandCovers = null;
 
   /// Test-only constructor: skips async DB load and uses the supplied list.
   /// [initialDemandCovers] bypasses the async demand context load for tests.
@@ -81,13 +82,15 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
   }
 
   Future<void> _loadCandidates() async {
-    final candidates =
-        await BaselineManagerService.instance.getCandidateShifts();
+    final candidates = await BaselineManagerService.instance
+        .getCandidateShifts();
     if (!mounted) return;
     setState(() {
       _candidates = candidates;
-      _draftKeys =
-          candidates.where((c) => c.isSelected).map((c) => c.recordKey).toSet();
+      _draftKeys = candidates
+          .where((c) => c.isSelected)
+          .map((c) => c.recordKey)
+          .toSet();
       _loading = false;
       _buildCalendarData();
     });
@@ -95,8 +98,7 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
   }
 
   Future<void> _loadDemandContext() async {
-    final ctx =
-        await DemandForecastContextService.instance.getCurrentContext();
+    final ctx = await DemandForecastContextService.instance.getCurrentContext();
     if (!mounted) return;
     setState(() {
       _demandWeeklyAvgCovers = ctx.historicalWeeklyAvgCovers;
@@ -127,16 +129,18 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
     final start = DateTime(anchor.year, anchor.month, anchor.day - 59);
 
     _windowDates = List.generate(60, (i) {
-      return formatIsoDate(
-          DateTime(start.year, start.month, start.day + i));
+      return formatIsoDate(DateTime(start.year, start.month, start.day + i));
     });
 
     // Sort candidates within each date by service-period definition order
     const defs = ServicePeriodDefinitionResolver.demoDefinitions;
     for (final list in _shiftsByDate.values) {
-      list.sort((a, b) =>
-          ServicePeriodDefinitionResolver.sortIndex(defs, a.daypart)
-              .compareTo(ServicePeriodDefinitionResolver.sortIndex(defs, b.daypart)));
+      list.sort(
+        (a, b) => ServicePeriodDefinitionResolver.sortIndex(
+          defs,
+          a.daypart,
+        ).compareTo(ServicePeriodDefinitionResolver.sortIndex(defs, b.daypart)),
+      );
     }
   }
 
@@ -187,9 +191,44 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
         ),
       );
       return;
+    } on StarTargetSelectionWriteException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _serverWriteErrorMessage(error),
+            style: AppTextStyles.mono11(color: AppColors.textPrimary),
+          ),
+          backgroundColor: AppColors.backgroundMid,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      return;
     }
     if (!mounted) return;
     Navigator.of(context).pop();
+  }
+
+  String _serverWriteErrorMessage(StarTargetSelectionWriteException error) {
+    switch (error.code) {
+      case 'permission_denied':
+      case 'admin_decision_source_forbidden':
+        return 'You do not have permission to change shared star shifts.';
+      case 'selected_star_target_unavailable':
+      case 'star_target_proxy_route_not_found':
+      case 'sync_proxy_request_failed':
+        return 'Star target server truth is unavailable. Sync again before changing star shifts.';
+      case 'auth_session_required':
+      case 'missing_auth_token':
+        return 'Sign in again before changing shared star shifts.';
+      case 'candidate_business_date_missing':
+      case 'candidate_not_in_server_window':
+        return error.message;
+      default:
+        return error.message.isEmpty
+            ? 'Star shift selection could not be saved to server truth.'
+            : error.message;
+    }
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -202,8 +241,11 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
         backgroundColor: AppColors.backgroundDeep,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios,
-              size: 18, color: AppColors.textMuted),
+          icon: const Icon(
+            Icons.arrow_back_ios,
+            size: 18,
+            color: AppColors.textMuted,
+          ),
           onPressed: _cancel,
         ),
         title: Text('Choose Star Shifts', style: AppTextStyles.mono11()),
@@ -211,25 +253,23 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
       ),
       body: _loading
           ? const Center(
-              child: CircularProgressIndicator(color: AppColors.sunset))
+              child: CircularProgressIndicator(color: AppColors.sunset),
+            )
           : Column(
               children: [
                 PreviewPanel(
                   selected: _draftSelected,
                   historicalWeeklyAvgCovers: _demandWeeklyAvgCovers,
                 ),
-                if (_draftKeys.isNotEmpty)
-                  ClearAllBar(onClearAll: _clearAll),
+                if (_draftKeys.isNotEmpty) ClearAllBar(onClearAll: _clearAll),
                 Expanded(
                   child: _selectedDate != null
                       ? DayDetail(
                           date: _selectedDate!,
-                          candidates:
-                              _shiftsByDate[_selectedDate!] ?? [],
+                          candidates: _shiftsByDate[_selectedDate!] ?? [],
                           draftKeys: _draftKeys,
                           onToggle: _toggle,
-                          onBack: () =>
-                              setState(() => _selectedDate = null),
+                          onBack: () => setState(() => _selectedDate = null),
                         )
                       : CalendarGrid(
                           windowDates: _windowDates,
@@ -239,10 +279,7 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
                               setState(() => _selectedDate = date),
                         ),
                 ),
-                BottomBar(
-                  onCancel: _cancel,
-                  onDone: _done,
-                ),
+                BottomBar(onCancel: _cancel, onDone: _done),
               ],
             ),
     );

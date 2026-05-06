@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
+import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
 import 'package:forge_and_flow/services/sync/http_sync_proxy_client.dart';
 
 void main() {
@@ -39,6 +40,53 @@ void main() {
     expect(page.records.single.weekId, '2026-W18');
     expect(page.nextCursor, 'cursor-2');
   });
+
+  test(
+    'submitSelectedStarDecision posts scoped body with idempotency key',
+    () async {
+      late http.Request seen;
+      final client = HttpSyncProxyClient(
+        proxyBaseUri: Uri.parse('https://proxy.example/base/'),
+        idTokenProvider: () async => 'token-1',
+        httpClient: http_testing.MockClient((request) async {
+          seen = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'decision': <String, Object?>{'decision_id': 'decision-1'},
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      await client.submitSelectedStarDecision(
+        operatorId: 'op',
+        locationId: 'loc',
+        action: StarTargetSelectionWriteAction.select,
+        idempotencyKey: 'idem-1',
+        body: const <String, Object?>{
+          'restaurant_id': 'restaurant-1',
+          'record_key': '2026-W19|Wed|dinner',
+          'week_id': '2026-W19',
+          'day_label': 'Wed',
+          'daypart': 'dinner',
+          'business_date': '2026-05-06',
+        },
+      );
+
+      expect(seen.method, 'POST');
+      expect(
+        seen.url.path,
+        '/base/v1/operators/op/locations/loc/'
+        'selected_star_shift_decisions/select',
+      );
+      expect(seen.headers['authorization'], 'Bearer token-1');
+      expect(seen.headers['idempotency-key'], 'idem-1');
+      final body = jsonDecode(seen.body) as Map<String, Object?>;
+      expect(body['record_key'], '2026-W19|Wed|dinner');
+    },
+  );
 
   test('parses open snapshots, timing config, and aux snapshots', () async {
     final requests = <String>[];

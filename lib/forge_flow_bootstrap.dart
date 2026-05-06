@@ -10,6 +10,7 @@ import 'services/auth/auth_session_ledger_writer.dart';
 import 'services/mobile_push/mobile_push_notification_service.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/secure_session_storage.dart';
+import 'services/star_target_selection_write_service.dart';
 import 'services/sync/mobile_operational_sync_runtime.dart';
 import 'services/sync/sync_proxy_client.dart';
 import 'services/target_cycle_service.dart';
@@ -39,6 +40,7 @@ Future<void> bootstrapAndRunApp(
   AuthSessionLedgerWriter? authSessionLedgerWriter,
   RealtimeSubscription? realtimeSubscription,
   SyncProxyClient? syncProxyClient,
+  StarTargetSelectionWriteClient? starTargetSelectionWriteClient,
   MobilePushNotificationService? mobilePushNotifications,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,6 +68,13 @@ Future<void> bootstrapAndRunApp(
     storage: storage,
     ledgerWriter: ledgerWriter,
   );
+  BaselineManagerService.instance.serverSelectionWriter =
+      starTargetSelectionWriteClient == null
+      ? null
+      : AuthSessionStarTargetSelectionWriter(
+          client: starTargetSelectionWriteClient,
+          authSessionProvider: () => authNotifier.session,
+        );
   final mobilePush =
       mobilePushNotifications ?? const NoopMobilePushNotificationService();
   _bindMobilePushRegistrationToAuth(mobilePush, authNotifier);
