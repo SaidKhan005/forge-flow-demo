@@ -112,9 +112,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text(
-          'Configuring connections for Brio - Chicago Loop (primary location).',
-        ),
+        find.text('Manage the services connected to Brio - Chicago Loop.'),
         findsOneWidget,
       );
     });
@@ -247,7 +245,7 @@ void main() {
       );
     });
 
-    testWidgets('non-primary location id renders the bare label', (
+    testWidgets('non-primary location id uses plain location copy', (
       tester,
     ) async {
       await sizeViewport(tester, const Size(1280, 800));
@@ -262,7 +260,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('Configuring connections for location brio-other-location.'),
+        find.text('Manage the services connected to this location.'),
         findsOneWidget,
       );
     });
@@ -337,6 +335,45 @@ void main() {
         expect(
           captureGateway.loadBundleCalls.single.locationId,
           equals('brio-other-location'),
+        );
+      },
+    );
+
+    testWidgets(
+      'route changes refresh the shared widget with the new location',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 800));
+        final captureGateway = _CaptureGateway();
+        await tester.pumpWidget(
+          wrap(
+            VendorConnectionsScreen(
+              session: adminSession,
+              locationId: adminSession.primaryLocationId,
+              gateway: captureGateway,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.pumpWidget(
+          wrap(
+            VendorConnectionsScreen(
+              session: adminSession,
+              locationId: 'brio-other-location',
+              gateway: captureGateway,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(captureGateway.loadBundleCalls, hasLength(2));
+        expect(
+          captureGateway.loadBundleCalls.map((call) => call.locationId),
+          equals(<String>['brio-chicago-loop', 'brio-other-location']),
+        );
+        expect(
+          find.text('Manage the services connected to this location.'),
+          findsOneWidget,
         );
       },
     );

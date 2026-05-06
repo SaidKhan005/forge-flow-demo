@@ -177,7 +177,7 @@ void main() {
       );
       expect(subtitle.data, isNotNull);
       expect(
-        subtitle.data!.contains('Brio - Chicago Loop (primary location)'),
+        subtitle.data!.contains('Brio - Chicago Loop'),
         isTrue,
         reason: 'Subtitle should name the primary location explicitly.',
       );

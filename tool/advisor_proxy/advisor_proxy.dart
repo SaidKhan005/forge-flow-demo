@@ -6906,6 +6906,17 @@ const String authRefreshTokensRevokeAllPath =
 // surface adds a list endpoint plus reuses those routes for revokes.
 const String authSessionsListPath = '/v1/auth/sessions';
 
+// Phase 11W.8 live-closeout — operator self-service vendor connections
+// read projection. Operator web must use `/v1/auth/*`, not admin-only
+// `/v1/admin/*`, for authenticated operator surfaces. V1 exposes the
+// implemented vendor catalog and current connection/demo state; when
+// live credentials are not promoted, connect buttons remain disabled by
+// adapter lifecycle in the Flutter widget.
+const String authLocationIntegrationsPrefix = '/v1/auth/locations/';
+final RegExp authLocationIntegrationsPattern = RegExp(
+  r'^/v1/auth/locations/([^/]+)/integrations$',
+);
+
 // Phase 9.UX.6 — self-service Audit Log read projection. Auth-gated;
 // the proxy resolves user_id from the verified Firebase bearer token
 // and ignores any client-supplied user_id. The WHERE clause pins
@@ -9484,6 +9495,82 @@ Future<void> routeRequest(
               'message': 'active sessions are unavailable; please retry',
             });
           }
+          return;
+        }
+
+        final authLocationIntegrationsMatch = authLocationIntegrationsPattern
+            .firstMatch(path);
+        if (request.method == 'GET' && authLocationIntegrationsMatch != null) {
+          if (permissionSnapshotResolver == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'permission_snapshot_not_configured',
+              'message':
+                  'route requires a ProxyPermissionSnapshotResolver to be installed',
+            });
+            return;
+          }
+
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+
+          final locationId = Uri.decodeComponent(
+            authLocationIntegrationsMatch.group(1)!,
+          );
+          if (locationId != scope.locationId) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'location_scope_mismatch',
+              'message':
+                  'integration status can only be read for the signed-in location',
+            });
+            return;
+          }
+
+          ProxyPermissionSnapshot snapshot;
+          try {
+            snapshot = await permissionSnapshotResolver.load(scope);
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'permission_snapshot_unavailable',
+              'message': 'permissions are unavailable; please retry',
+            });
+            return;
+          }
+          final canReadIntegrations = snapshot.permissions.entries.any(
+            (entry) =>
+                entry.value == PermissionEffect.allow &&
+                (entry.key == PermissionKeys.integrationsConfigure ||
+                    entry.key.startsWith('integration.')),
+          );
+          if (!canReadIntegrations) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'an integration permission is required to view vendor connections',
+            });
+            return;
+          }
+
+          _writeJson(response, 200, <String, Object?>{
+            'operator_id': scope.operatorId,
+            'location_id': locationId,
+            'connections': const <Object?>[],
+            'demo_flags': const <String, Object?>{
+              'pos': true,
+              'labor': true,
+              'reservation': true,
+            },
+          });
           return;
         }
 

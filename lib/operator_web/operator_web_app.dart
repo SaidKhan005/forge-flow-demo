@@ -41,7 +41,7 @@ class _OperatorWebAppState extends State<OperatorWebApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Forge & Flow — Operator Web Console',
+      title: 'Forge & Flow - Operator Web Console',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.themeData,
       home: OperatorWebRouter(

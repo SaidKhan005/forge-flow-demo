@@ -66,7 +66,8 @@ void main() {
       find.byKey(const Key('operator_web_business_timing_safe_dialog')),
       findsOneWidget,
     );
-    expect(find.textContaining('No timing change was written'), findsOneWidget);
+    expect(find.text('Timing changes are not live yet'), findsOneWidget);
+    expect(find.textContaining('Nothing was changed'), findsOneWidget);
   });
 
   testWidgets('location managers get read-only effective timing', (

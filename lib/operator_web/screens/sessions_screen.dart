@@ -106,8 +106,9 @@ class SessionsScreen extends StatefulWidget {
 
   bool get _canViewTeamSessions {
     if (session.permissions.isNotEmpty) {
-      return session.permissions
-          .contains(kSessionsTeamForceLogoutPermissionKey);
+      return session.permissions.contains(
+        kSessionsTeamForceLogoutPermissionKey,
+      );
     }
     return session.roles.any(kSessionsTeamForceLogoutAdmittedRoles.contains);
   }
@@ -128,6 +129,7 @@ class SessionsScreen extends StatefulWidget {
 class _SessionsScreenState extends State<SessionsScreen> {
   bool _loading = true;
   String? _loadError;
+  String? _teamLoadError;
   List<WebTeamSessionEntry> _ownSessions = const <WebTeamSessionEntry>[];
   List<WebTeamSessionEntry> _teamSessions = const <WebTeamSessionEntry>[];
   final Set<String> _busySessionIds = <String>{};
@@ -151,24 +153,24 @@ class _SessionsScreenState extends State<SessionsScreen> {
     setState(() {
       _loading = true;
       _loadError = null;
+      _teamLoadError = null;
     });
     try {
-      final ownFuture = widget.gateway.listOwnSessions();
-      final teamFuture = widget._canViewTeamSessions
-          ? widget.gateway.listTeamSessions()
-          : Future<WebTeamSessionsListed>.value(
-              const WebTeamSessionsListed(
-                sessions: <WebTeamSessionEntry>[],
-              ),
-            );
-      final results = await Future.wait<WebTeamSessionsListed>([
-        ownFuture,
-        teamFuture,
-      ]);
+      final own = await widget.gateway.listOwnSessions();
+      var team = const WebTeamSessionsListed(sessions: <WebTeamSessionEntry>[]);
+      String? teamLoadError;
+      if (widget._canViewTeamSessions) {
+        try {
+          team = await widget.gateway.listTeamSessions();
+        } catch (error) {
+          teamLoadError = _friendlyTeamLoadError(error);
+        }
+      }
       if (!mounted) return;
       setState(() {
-        _ownSessions = results[0].sessions;
-        _teamSessions = results[1].sessions;
+        _ownSessions = own.sessions;
+        _teamSessions = team.sessions;
+        _teamLoadError = teamLoadError;
         _loading = false;
       });
     } catch (error) {
@@ -178,6 +180,15 @@ class _SessionsScreenState extends State<SessionsScreen> {
         _loadError = _friendlyLoadError(error);
       });
     }
+  }
+
+  String _friendlyTeamLoadError(Object error) {
+    if (error is WebTeamSessionsError) {
+      return 'Team sessions are not available in this preview '
+          '(${error.code}). Your own sessions are still shown.';
+    }
+    return 'Team sessions are not available in this preview. Your own '
+        'sessions are still shown.';
   }
 
   String _friendlyLoadError(Object error) {
@@ -191,17 +202,16 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
   Future<void> _revoke(WebTeamSessionEntry entry) async {
     if (_busySessionIds.contains(entry.sessionId)) return;
-    final isCurrent = widget.currentSessionId != null &&
+    final isCurrent =
+        widget.currentSessionId != null &&
         entry.sessionId == widget.currentSessionId;
     final confirmed = await _confirm(
-      title: isCurrent
-          ? 'Sign out this session?'
-          : 'Sign out this device?',
+      title: isCurrent ? 'Sign out this session?' : 'Sign out this device?',
       body: isCurrent
           ? 'Signing out this session will return you to the welcome screen. '
-              'You can sign back in anytime.'
+                'You can sign back in anytime.'
           : 'Signing out ${_describeRow(entry)} will end that session right '
-              'away. You can sign back in on that device anytime.',
+                'away. You can sign back in on that device anytime.',
       cta: isCurrent ? 'Sign out this session' : 'Sign out',
     );
     if (!confirmed || !mounted) return;
@@ -237,18 +247,16 @@ class _SessionsScreenState extends State<SessionsScreen> {
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Signed out ${_describeRow(entry)}.'),
-        ),
+        SnackBar(content: Text('Signed out ${_describeRow(entry)}.')),
       );
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _busySessionIds.remove(entry.sessionId);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyMutationError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyMutationError(error))));
     }
   }
 
@@ -337,9 +345,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
               children: [
                 Text(
                   'Sessions could not load',
-                  style: AppTextStyles.display20(
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -403,6 +409,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
               busySessionIds: _busySessionIds,
               onRevoke: _revoke,
               renderTargetUser: true,
+              loadError: _teamLoadError,
             ),
           ],
         ],
@@ -466,6 +473,7 @@ class _SessionsSection extends StatelessWidget {
     required this.busySessionIds,
     required this.onRevoke,
     required this.renderTargetUser,
+    this.loadError,
   });
 
   final Key sectionKey;
@@ -481,6 +489,7 @@ class _SessionsSection extends StatelessWidget {
   final Set<String> busySessionIds;
   final Future<void> Function(WebTeamSessionEntry entry) onRevoke;
   final bool renderTargetUser;
+  final String? loadError;
 
   @override
   Widget build(BuildContext context) {
@@ -514,7 +523,16 @@ class _SessionsSection extends StatelessWidget {
               ],
             ),
           ),
-          if (sessions.isEmpty)
+          if (loadError != null)
+            Padding(
+              key: Key('${keyPrefix}_unavailable'),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              child: Text(
+                loadError!,
+                style: AppTextStyles.body13(color: AppColors.textMuted),
+              ),
+            )
+          else if (sessions.isEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
               child: Text(
@@ -532,7 +550,8 @@ class _SessionsSection extends StatelessWidget {
               _SessionsRow(
                 keyPrefix: keyPrefix,
                 entry: sessions[i],
-                isCurrent: !renderTargetUser &&
+                isCurrent:
+                    !renderTargetUser &&
                     currentSessionId != null &&
                     sessions[i].sessionId == currentSessionId,
                 busy: busySessionIds.contains(sessions[i].sessionId),
@@ -597,9 +616,7 @@ class _SessionsRow extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 2),
                     child: Text(
                       entry.targetUserDisplayName!,
-                      style: AppTextStyles.body13(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),
                   ),
                 Row(
@@ -632,9 +649,7 @@ class _SessionsRow extends StatelessWidget {
                         ),
                         child: Text(
                           '(this session)',
-                          style: AppTextStyles.mono7(
-                            color: AppColors.positive,
-                          ),
+                          style: AppTextStyles.mono7(color: AppColors.positive),
                         ),
                       ),
                     ],
@@ -667,9 +682,7 @@ class _SessionsRow extends StatelessWidget {
             )
           else
             TextButton(
-              key: Key(
-                '${keyPrefix}_revoke_${entry.sessionId}',
-              ),
+              key: Key('${keyPrefix}_revoke_${entry.sessionId}'),
               onPressed: () => onRevoke(entry),
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(

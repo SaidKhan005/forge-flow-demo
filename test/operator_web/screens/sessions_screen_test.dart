@@ -33,10 +33,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   Future<void> sizeViewport(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
@@ -50,18 +50,17 @@ void main() {
   OperatorWebSession sessionWithRole(
     String role, {
     Set<String> permissions = const <String>{},
-  }) =>
-      OperatorWebSession(
-        uid: 'demo-user-owner',
-        email: 'sam.owner@demobistro.test',
-        displayName: 'Sam Patel',
-        operatorId: kDemoOperatorIdFixture,
-        businessName: kDemoOperatorBusinessNameFixture,
-        primaryLocationId: 'demo-loc-downtown',
-        primaryLocationName: 'Downtown',
-        roles: <String>[role],
-        permissions: permissions,
-      );
+  }) => OperatorWebSession(
+    uid: 'demo-user-owner',
+    email: 'sam.owner@demobistro.test',
+    displayName: 'Sam Patel',
+    operatorId: kDemoOperatorIdFixture,
+    businessName: kDemoOperatorBusinessNameFixture,
+    primaryLocationId: 'demo-loc-downtown',
+    primaryLocationName: 'Downtown',
+    roles: <String>[role],
+    permissions: permissions,
+  );
 
   Future<List<String>> pumpScreen(
     WidgetTester tester, {
@@ -75,8 +74,8 @@ void main() {
       wrap(
         SessionsScreen(
           session: session,
-          gateway: gateway ??
-              DemoWebTeamSessionsGateway(actorUserId: session.uid),
+          gateway:
+              gateway ?? DemoWebTeamSessionsGateway(actorUserId: session.uid),
           currentSessionId: currentSessionId,
           idempotencyKeyFactory: idempotencyKeyFactory,
           onSignOut: () async {
@@ -95,8 +94,9 @@ void main() {
   }
 
   group('SessionsScreen layout', () {
-    testWidgets('operator_owner sees both Your sessions and Team sessions',
-        (tester) async {
+    testWidgets('operator_owner sees both Your sessions and Team sessions', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1200));
       await pumpScreen(tester, session: sessionWithRole('operator_owner'));
 
@@ -117,10 +117,7 @@ void main() {
     testWidgets('operator_supervisor without team.session.force_logout sees '
         'only Your sessions', (tester) async {
       await sizeViewport(tester, const Size(1280, 1200));
-      await pumpScreen(
-        tester,
-        session: sessionWithRole('operator_supervisor'),
-      );
+      await pumpScreen(tester, session: sessionWithRole('operator_supervisor'));
 
       expect(
         find.byKey(const Key('operator_web_sessions_own_section')),
@@ -139,9 +136,7 @@ void main() {
         tester,
         session: sessionWithRole(
           'custom_floor_captain',
-          permissions: const <String>{
-            kSessionsTeamForceLogoutPermissionKey,
-          },
+          permissions: const <String>{kSessionsTeamForceLogoutPermissionKey},
         ),
       );
 
@@ -152,8 +147,9 @@ void main() {
     });
 
     testWidgets('permission snapshot WITHOUT team.session.force_logout '
-        'suppresses the team section even for the operator_owner role',
-        (tester) async {
+        'suppresses the team section even for the operator_owner role', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1200));
       await pumpScreen(
         tester,
@@ -165,6 +161,35 @@ void main() {
 
       expect(
         find.byKey(const Key('operator_web_sessions_team_section')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('team sessions route failure leaves own sessions visible', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(
+        tester,
+        session: sessionWithRole('operator_owner'),
+        gateway: _TeamSessionsUnavailableGateway(),
+      );
+
+      expect(
+        find.byKey(const Key('operator_web_sessions_own_section')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_sessions_team_section')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_sessions_team_unavailable')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('team_sessions_not_routed'), findsOneWidget);
+      expect(
+        find.byKey(const Key('operator_web_sessions_load_error')),
         findsNothing,
       );
     });
@@ -191,9 +216,7 @@ void main() {
           of: find.byKey(
             Key('operator_web_sessions_row_$kDemoTeamSessionThisSessionId'),
           ),
-          matching: find.byKey(
-            const Key('operator_web_sessions_this_chip'),
-          ),
+          matching: find.byKey(const Key('operator_web_sessions_this_chip')),
         ),
         findsOneWidget,
       );
@@ -220,7 +243,9 @@ void main() {
     testWidgets('revoking a non-current session does NOT trigger signOut and '
         'refreshes the list without that row', (tester) async {
       await sizeViewport(tester, const Size(1280, 1200));
-      final gateway = DemoWebTeamSessionsGateway(actorUserId: 'demo-user-owner');
+      final gateway = DemoWebTeamSessionsGateway(
+        actorUserId: 'demo-user-owner',
+      );
       final signOutCalls = await pumpScreen(
         tester,
         session: sessionWithRole('operator_owner'),
@@ -256,7 +281,9 @@ void main() {
     testWidgets('revoking the current session triggers signOut AFTER the '
         'gateway returns', (tester) async {
       await sizeViewport(tester, const Size(1280, 1200));
-      final gateway = DemoWebTeamSessionsGateway(actorUserId: 'demo-user-owner');
+      final gateway = DemoWebTeamSessionsGateway(
+        actorUserId: 'demo-user-owner',
+      );
       final signOutCalls = await pumpScreen(
         tester,
         session: sessionWithRole('operator_owner'),
@@ -282,8 +309,9 @@ void main() {
       );
     });
 
-    testWidgets('idempotency key from the screen flows through the gateway',
-        (tester) async {
+    testWidgets('idempotency key from the screen flows through the gateway', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1200));
       final gateway = _RecordingDemoSessionsGateway();
       await pumpScreen(
@@ -378,7 +406,7 @@ void main() {
 /// HTTP layer.
 class _RecordingDemoSessionsGateway implements WebTeamSessionsGateway {
   _RecordingDemoSessionsGateway()
-      : _delegate = DemoWebTeamSessionsGateway(actorUserId: 'demo-user-owner');
+    : _delegate = DemoWebTeamSessionsGateway(actorUserId: 'demo-user-owner');
 
   final DemoWebTeamSessionsGateway _delegate;
   String? lastRevokeKey;
@@ -401,6 +429,35 @@ class _RecordingDemoSessionsGateway implements WebTeamSessionsGateway {
   }) {
     lastRevokeKey = idempotencyKey;
     lastRevokeSessionId = command.sessionId;
+    return _delegate.revokeSession(command, idempotencyKey: idempotencyKey);
+  }
+}
+
+class _TeamSessionsUnavailableGateway implements WebTeamSessionsGateway {
+  _TeamSessionsUnavailableGateway()
+    : _delegate = DemoWebTeamSessionsGateway(actorUserId: 'demo-user-owner');
+
+  final DemoWebTeamSessionsGateway _delegate;
+
+  @override
+  Future<WebTeamSessionsListed> listOwnSessions() {
+    return _delegate.listOwnSessions();
+  }
+
+  @override
+  Future<WebTeamSessionsListed> listTeamSessions() {
+    throw const WebTeamSessionsError(
+      code: 'team_sessions_not_routed',
+      message: 'Team sessions are not routed in this preview.',
+      statusCode: 501,
+    );
+  }
+
+  @override
+  Future<WebTeamSessionRevoked> revokeSession(
+    WebTeamSessionRevokeCommand command, {
+    required String idempotencyKey,
+  }) {
     return _delegate.revokeSession(command, idempotencyKey: idempotencyKey);
   }
 }

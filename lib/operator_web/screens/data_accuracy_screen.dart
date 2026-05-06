@@ -138,9 +138,8 @@ class DataAccuracyScreen extends StatefulWidget {
   /// [showPollingTierChangeRequestDialog].
   final Future<String?> Function(BuildContext)? onRequestTierChange;
 
-  bool get _canEditDataAccuracy => session.roles.any(
-        kOperatorWebDataAccuracyAdmittedRoles.contains,
-      );
+  bool get _canEditDataAccuracy =>
+      session.roles.any(kOperatorWebDataAccuracyAdmittedRoles.contains);
 
   @override
   State<DataAccuracyScreen> createState() => _DataAccuracyScreenState();
@@ -150,6 +149,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   late VendorConnectionsGateway _gateway;
   VendorConnectionsBundle? _bundle;
   bool _loading = true;
+  int _loadGeneration = 0;
 
   // In-memory editable working copy of the settings. Materialized
   // back into `DataAccuracySettings` on save.
@@ -168,23 +168,24 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     final seed = widget.initialSettings;
     _coversSourceLunch = seed?.coversSourceLunch ?? CoversSource.vendor;
     _coversSourceDinner = seed?.coversSourceDinner ?? CoversSource.vendor;
-    _coversSourceLateNight =
-        seed?.coversSourceLateNight ?? CoversSource.vendor;
+    _coversSourceLateNight = seed?.coversSourceLateNight ?? CoversSource.vendor;
     _wageSource = seed?.wageSource ?? WageSource.vendor;
     _manualEntries = <String, Map<String, int>>{
       for (final e in (seed?.coversManualEntries ?? const {}).entries)
         e.key: Map<String, int>.from(e.value),
     };
-    _walkInMode = widget.walkInModeOverride ?? WalkInHandlingMode.reservationsOnly;
+    _walkInMode =
+        widget.walkInModeOverride ?? WalkInHandlingMode.reservationsOnly;
     _loadBundle();
   }
 
   Future<void> _loadBundle() async {
+    final generation = ++_loadGeneration;
     final bundle = await _gateway.loadBundle(
       operatorId: widget.session.operatorId,
       locationId: widget.locationId,
     );
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration) return;
     setState(() {
       _bundle = bundle;
       _loading = false;
@@ -195,7 +196,8 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   void didUpdateWidget(covariant DataAccuracyScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.gateway != widget.gateway ||
-        oldWidget.locationId != widget.locationId) {
+        oldWidget.locationId != widget.locationId ||
+        oldWidget.session.operatorId != widget.session.operatorId) {
       _gateway = widget.gateway ?? InMemoryVendorConnectionsGateway();
       setState(() => _loading = true);
       _loadBundle();
@@ -256,10 +258,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   void _handleManualEntry(Daypart d, int? covers) {
     setState(() {
       final today = widget.businessDateIso;
-      final dayMap = _manualEntries.putIfAbsent(
-        today,
-        () => <String, int>{},
-      );
+      final dayMap = _manualEntries.putIfAbsent(today, () => <String, int>{});
       if (covers == null) {
         dayMap.remove(d.wire);
         if (dayMap.isEmpty) _manualEntries.remove(today);
@@ -301,7 +300,8 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   }
 
   Future<void> _handleRequestTierChange() async {
-    final opener = widget.onRequestTierChange ??
+    final opener =
+        widget.onRequestTierChange ??
         (BuildContext ctx) => showPollingTierChangeRequestDialog(ctx);
     await opener(context);
   }
@@ -350,8 +350,8 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     final tier = widget.tierStatus ?? _kDefaultStandardTier(_bundle);
     final settings = _materialize();
     final locationLabel = widget.locationId == widget.session.primaryLocationId
-        ? '${widget.session.primaryLocationName} (primary location)'
-        : 'location ${widget.locationId}';
+        ? widget.session.primaryLocationName
+        : 'this location';
     return SingleChildScrollView(
       key: const Key('operator_web_data_accuracy_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -376,7 +376,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Tell F&F where your numbers come from for $locationLabel. '
+            'Choose where Forge & Flow reads numbers for $locationLabel. '
             'These settings keep your dashboard honest when a vendor '
             'does not expose every field directly.',
             key: const Key('operator_web_data_accuracy_subtitle'),
@@ -514,9 +514,7 @@ class _ForbiddenSurface extends StatelessWidget {
                       'Location managers can keep reading dashboards '
                       'and shift views in the mobile app — most '
                       'day-to-day actions live there.',
-                      style: AppTextStyles.body13(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),
                   ],
                 ),
@@ -528,4 +526,3 @@ class _ForbiddenSurface extends StatelessWidget {
     );
   }
 }
-

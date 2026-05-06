@@ -34,6 +34,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
   BusinessTimingBundle? _bundle;
   String? _loadError;
   bool _loading = true;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -54,6 +55,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
   }
 
   Future<void> _loadTiming() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
@@ -65,13 +67,13 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         operatorName: widget.session.businessName,
         locationName: _locationName(),
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _bundle = bundle;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loadError = 'Could not load business timing: $error';
         _loading = false;
@@ -83,7 +85,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
     if (widget.locationId == widget.session.primaryLocationId) {
       return widget.session.primaryLocationName;
     }
-    return 'location ${widget.locationId}';
+    return 'this location';
   }
 
   Future<void> _showSafeTimingDialog(String actionLabel) {
@@ -93,15 +95,15 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         key: const Key('operator_web_business_timing_safe_dialog'),
         backgroundColor: AppColors.backgroundSurface,
         title: Text(
-          'Timing editor not connected yet',
+          'Timing changes are not live yet',
           style: AppTextStyles.display20(color: AppColors.textPrimary),
         ),
         content: SizedBox(
           width: 420,
           child: Text(
-            '$actionLabel is prepared for owner/admin access, but this '
-            'skeleton does not call a backend timing route. No timing '
-            'change was written.',
+            '$actionLabel is available for owner/admin review in this '
+            'preview, but it is not connected to a timing write route yet. '
+            'Nothing was changed.',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
         ),
@@ -184,8 +186,9 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Timing for ${bundle.scopeLabel}. Inherited values are shown '
-            'first so every Shift view can explain which profile is active.',
+            'Review the timing rules used by Shift views for '
+            '${bundle.locationName}. Inherited values show where each rule '
+            'comes from.',
             key: const Key('operator_web_business_setup_subtitle'),
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
@@ -194,9 +197,9 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
             _TimingEditControls(
               bundle: bundle,
               onEdit: () => _showSafeTimingDialog('Edit timing'),
-              onSchedule: () => _showSafeTimingDialog('Schedule change'),
+              onSchedule: () => _showSafeTimingDialog('Schedule timing'),
               onReset: bundle.hasLocationOverride
-                  ? () => _showSafeTimingDialog('Reset override')
+                  ? () => _showSafeTimingDialog('Reset timing')
                   : null,
             )
           else
@@ -242,7 +245,7 @@ class _TimingEditControls extends StatelessWidget {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           _TimingStatusPill(
-            label: bundle.writesAvailable ? 'Live editor' : 'Read-only demo',
+            label: bundle.writesAvailable ? 'Live editor' : 'Read-only preview',
             color: bundle.writesAvailable
                 ? AppColors.peacockDark
                 : AppColors.sunsetDark,
@@ -257,13 +260,13 @@ class _TimingEditControls extends StatelessWidget {
             key: const Key('operator_web_business_timing_schedule_button'),
             onPressed: onSchedule,
             icon: const Icon(Icons.event_outlined, size: 15),
-            label: const Text('Schedule change'),
+            label: const Text('Schedule timing'),
           ),
           OutlinedButton.icon(
             key: const Key('operator_web_business_timing_reset_button'),
             onPressed: onReset,
             icon: const Icon(Icons.undo_outlined, size: 15),
-            label: const Text('Reset override'),
+            label: const Text('Reset timing'),
           ),
         ],
       ),
@@ -484,39 +487,57 @@ class _EffectiveFieldRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final source = _TimingStatusPill(
+      label: field.inherited
+          ? 'Inherited from ${field.sourceLabel}'
+          : field.sourceLabel,
+      color: field.inherited ? AppColors.textMuted : AppColors.peacockDark,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              field.label,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              field.value,
-              style: AppTextStyles.body14(color: AppColors.textPrimary),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: _TimingStatusPill(
-                label: field.inherited
-                    ? 'Inherited from ${field.sourceLabel}'
-                    : field.sourceLabel,
-                color: field.inherited
-                    ? AppColors.textMuted
-                    : AppColors.peacockDark,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 520) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  field.label,
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  field.value,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 6),
+                source,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: Text(
+                  field.label,
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
               ),
-            ),
-          ),
-        ],
+              Expanded(
+                flex: 2,
+                child: Text(
+                  field.value,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Align(alignment: Alignment.centerLeft, child: source),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
