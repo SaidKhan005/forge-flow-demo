@@ -265,12 +265,12 @@ class FirebaseOperatorWebAuthSource
         email: credential.email,
       );
       _currentSessionId = ledger.sessionId;
-      final account = await _proxyClient.loadAccountInfo(
-        idToken: credential.idToken,
-      );
-      final snapshot = await _proxyClient.loadPermissionSnapshot(
-        idToken: credential.idToken,
-      );
+      final profileResults = await Future.wait<Object>([
+        _proxyClient.loadAccountInfo(idToken: credential.idToken),
+        _proxyClient.loadPermissionSnapshot(idToken: credential.idToken),
+      ]);
+      final account = profileResults[0] as AccountInfo;
+      final snapshot = profileResults[1] as OperatorWebPermissionSnapshot;
       if (snapshot.userId != ledger.userId ||
           snapshot.operatorId != ledger.operatorId ||
           snapshot.locationId != ledger.locationId) {

@@ -49,6 +49,62 @@ class AuditLogRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final action = WebAuditLogActionLabels.labelFor(entry.action);
     final timestamp = _formatLocal(entry.createdAt);
+    final payloadToggle = TextButton(
+      key: Key('operator_web_audit_log_row_${entry.entryId}_payload_toggle'),
+      onPressed: onTogglePayload,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        minimumSize: const Size(0, 0),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      ),
+      child: Text(
+        expanded ? 'Hide payload' : 'View payload',
+        style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+      ),
+    );
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            Flexible(
+              child: Text(
+                action,
+                style: AppTextStyles.mono12(
+                  color: AppColors.textPrimary,
+                  weight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _ActorKindChip(kind: entry.actorKind),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Text(
+          _actorLine(entry),
+          style: AppTextStyles.body12(color: AppColors.textMuted),
+        ),
+        if (entry.targetId != null) ...[
+          const SizedBox(height: 4),
+          _TargetRow(
+            targetKind: entry.targetKind,
+            targetId: entry.targetId!,
+            rowKey: entry.entryId,
+            onCopy: onCopyTargetId ?? _defaultCopy,
+          ),
+        ],
+        if (entry.adminReason != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Admin reason: ${entry.adminReason}',
+            style: AppTextStyles.body12(color: AppColors.textPrimary),
+          ),
+        ],
+      ],
+    );
     return Container(
       key: Key('operator_web_audit_log_row_${entry.entryId}'),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -60,89 +116,49 @@ class AuditLogRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              SizedBox(
-                width: 160,
-                child: Text(
-                  timestamp,
-                  style: AppTextStyles.mono11(color: AppColors.textMuted),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 620;
+              if (compact) {
+                return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: <Widget>[
-                        Flexible(
-                          child: Text(
-                            action,
-                            style: AppTextStyles.mono12(
-                              color: AppColors.textPrimary,
-                              weight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _ActorKindChip(kind: entry.actorKind),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
                     Text(
-                      _actorLine(entry),
-                      style: AppTextStyles.body12(color: AppColors.textMuted),
+                      timestamp,
+                      style: AppTextStyles.mono11(color: AppColors.textMuted),
                     ),
-                    if (entry.targetId != null) ...[
-                      const SizedBox(height: 4),
-                      _TargetRow(
-                        targetKind: entry.targetKind,
-                        targetId: entry.targetId!,
-                        rowKey: entry.entryId,
-                        onCopy: onCopyTargetId ?? _defaultCopy,
-                      ),
-                    ],
-                    if (entry.adminReason != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Admin reason: ${entry.adminReason}',
-                        style: AppTextStyles.body12(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
+                    const SizedBox(height: 8),
+                    details,
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: payloadToggle,
+                    ),
                   ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              TextButton(
-                key: Key(
-                  'operator_web_audit_log_row_${entry.entryId}_payload_toggle',
-                ),
-                onPressed: onTogglePayload,
-                style: TextButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  minimumSize: const Size(0, 0),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                ),
-                child: Text(
-                  expanded ? 'Hide payload' : 'View payload',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-                ),
-              ),
-            ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  SizedBox(
+                    width: 160,
+                    child: Text(
+                      timestamp,
+                      style: AppTextStyles.mono11(color: AppColors.textMuted),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: details),
+                  const SizedBox(width: 8),
+                  payloadToggle,
+                ],
+              );
+            },
           ),
           if (expanded) ...[
             const SizedBox(height: 8),
             Container(
-              key: Key(
-                'operator_web_audit_log_row_${entry.entryId}_payload',
-              ),
+              key: Key('operator_web_audit_log_row_${entry.entryId}_payload'),
               width: double.infinity,
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -202,17 +218,16 @@ class _ActorKindChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, fg, bg) = _styleFor(kind);
     return Container(
-      key: Key('operator_web_audit_log_actor_kind_${webAuditLogActorKindWire(kind)}'),
+      key: Key(
+        'operator_web_audit_log_actor_kind_${webAuditLogActorKindWire(kind)}',
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: bg,
         border: Border.all(color: fg.withValues(alpha: 0.5)),
         borderRadius: BorderRadius.circular(2),
       ),
-      child: Text(
-        label,
-        style: AppTextStyles.mono7(color: fg),
-      ),
+      child: Text(label, style: AppTextStyles.mono7(color: fg)),
     );
   }
 

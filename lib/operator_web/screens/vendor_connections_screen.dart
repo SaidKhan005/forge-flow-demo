@@ -61,6 +61,7 @@ import 'package:flutter/material.dart';
 
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_url_launcher.dart';
+import '../widgets/operator_web_summary_strip.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
 import '../../theme/app_theme.dart';
@@ -150,6 +151,38 @@ class VendorConnectionsScreen extends StatelessWidget {
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 20),
+          OperatorWebSummaryStrip(
+            key: const Key('operator_web_vendor_connections_summary'),
+            items: [
+              OperatorWebSummaryItem(
+                icon: Icons.place_outlined,
+                label: 'Location',
+                value: locationLabel,
+                helper: 'connections are location-scoped',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.admin_panel_settings_outlined,
+                label: 'Access',
+                value: 'Owner/Admin',
+                helper: 'writes vendor credentials',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.open_in_new_outlined,
+                label: 'Connect flow',
+                value: gateway == null ? 'Demo' : 'Live',
+                helper: gateway == null
+                    ? 'fixture catalog'
+                    : 'opens vendor auth',
+              ),
+              const OperatorWebSummaryItem(
+                icon: Icons.notifications_none_outlined,
+                label: 'Notify me',
+                value: 'Documented',
+                helper: 'waiting on shared widget hook',
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
           Container(
             key: const Key('operator_web_vendor_connections_widget_host'),
             decoration: BoxDecoration(

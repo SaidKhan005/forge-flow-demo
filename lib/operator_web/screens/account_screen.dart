@@ -24,6 +24,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
+import '../widgets/operator_web_summary_strip.dart';
 
 const Set<String> _kAccountEditRoles = <String>{
   'operator_owner',
@@ -33,11 +34,7 @@ const Set<String> _kAccountEditRoles = <String>{
 const String _kAccountEditPermission = 'account.configure';
 
 class AccountScreen extends StatefulWidget {
-  const AccountScreen({
-    super.key,
-    required this.session,
-    this.gateway,
-  });
+  const AccountScreen({super.key, required this.session, this.gateway});
 
   final OperatorWebSession session;
 
@@ -168,6 +165,18 @@ class _AccountScreenState extends State<AccountScreen> {
     });
   }
 
+  String _valueOrUnset(String value) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? 'Not set' : trimmed;
+  }
+
+  String _capitalize(String value) {
+    if (value.isEmpty) return value;
+    return value[0].toUpperCase() + value.substring(1);
+  }
+
+  String _formatRollover(int hour) => '${hour.toString().padLeft(2, '0')}:00';
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -177,6 +186,40 @@ class _AccountScreenState extends State<AccountScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _Header(),
+          const SizedBox(height: 18),
+          OperatorWebSummaryStrip(
+            key: const Key('operator_web_account_summary'),
+            items: [
+              OperatorWebSummaryItem(
+                icon: Icons.business_outlined,
+                label: 'Business name',
+                value: _valueOrUnset(_businessName.text),
+                helper: 'shown across the console',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.public_outlined,
+                label: 'Region',
+                value: _currencyCode ?? 'Not set',
+                helper: _localeTag ?? 'locale not set',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.calendar_today_outlined,
+                label: 'Business week',
+                value: _weekStartDay == null
+                    ? 'Not set'
+                    : _capitalize(_weekStartDay!),
+                helper: 'first day of week',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.schedule_outlined,
+                label: 'Rollover',
+                value: _rolloverHour == null
+                    ? 'Not set'
+                    : _formatRollover(_rolloverHour!),
+                helper: 'business day boundary',
+              ),
+            ],
+          ),
           const SizedBox(height: 18),
           if (!_hasGateway) const _UnavailableBanner(),
           if (!_hasGateway) const SizedBox(height: 14),
@@ -198,8 +241,7 @@ class _AccountScreenState extends State<AccountScreen> {
             currencies: _currencies,
             locales: _locales,
             enabled: widget.canEdit && !_submitting,
-            onCurrencyChanged: (value) =>
-                setState(() => _currencyCode = value),
+            onCurrencyChanged: (value) => setState(() => _currencyCode = value),
             onLocaleChanged: (value) => setState(() => _localeTag = value),
           ),
           const SizedBox(height: 14),
@@ -210,8 +252,7 @@ class _AccountScreenState extends State<AccountScreen> {
             enabled: widget.canEdit && !_submitting,
             onWeekStartChanged: (value) =>
                 setState(() => _weekStartDay = value),
-            onRolloverChanged: (value) =>
-                setState(() => _rolloverHour = value),
+            onRolloverChanged: (value) => setState(() => _rolloverHour = value),
           ),
           const SizedBox(height: 18),
           if (_errorMessage != null)
@@ -356,11 +397,7 @@ class _UnavailableBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.info_outline,
-            size: 18,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.info_outline, size: 18, color: AppColors.textMuted),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -390,11 +427,7 @@ class _ReadOnlyBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.lock_outline,
-            size: 18,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.lock_outline, size: 18, color: AppColors.textMuted),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

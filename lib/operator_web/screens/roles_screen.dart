@@ -33,6 +33,7 @@ import '../../auth/permission_keys.dart';
 import '../../services/auth/auth_operations_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
+import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 import 'custom_role_editor_screen.dart';
 import 'permission_explainer_screen.dart';
@@ -117,6 +118,7 @@ class _RolesScreenState extends State<RolesScreen> {
   bool _loading = true;
   String? _loadError;
   final Set<String> _busyRoleIds = <String>{};
+  int _loadGeneration = 0;
   int _idempotencySeq = 0;
 
   @override
@@ -134,6 +136,7 @@ class _RolesScreenState extends State<RolesScreen> {
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
@@ -146,13 +149,13 @@ class _RolesScreenState extends State<RolesScreen> {
           locationId: widget.session.primaryLocationId,
         ),
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _roles = result.roles;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _loadError = _friendlyLoadError(error);
@@ -361,6 +364,13 @@ class _RolesScreenState extends State<RolesScreen> {
     }
     seeded.sort((a, b) => a.displayName.compareTo(b.displayName));
     custom.sort((a, b) => a.displayName.compareTo(b.displayName));
+    final mfaProtectedCount = _roles
+        .where(
+          (role) => role.permissions.any(
+            (rule) => PermissionKeys.requiresMfa.contains(rule.permissionKey),
+          ),
+        )
+        .length;
     return SingleChildScrollView(
       key: const Key('operator_web_roles_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -371,6 +381,36 @@ class _RolesScreenState extends State<RolesScreen> {
             canWrite: widget._canWrite,
             onOpenExplainer: _openExplainer,
             onCreateRole: () => _openEditor(null),
+          ),
+          const SizedBox(height: 18),
+          OperatorWebSummaryStrip(
+            key: const Key('operator_web_roles_summary'),
+            items: [
+              OperatorWebSummaryItem(
+                icon: Icons.admin_panel_settings_outlined,
+                label: 'Total roles',
+                value: _roles.length.toString(),
+                helper: 'available to assign',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.edit_note_outlined,
+                label: 'Custom',
+                value: custom.length.toString(),
+                helper: 'owned by this operator',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.verified_outlined,
+                label: 'Seeded',
+                value: seeded.length.toString(),
+                helper: 'Forge & Flow defaults',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.lock_outline,
+                label: 'MFA protected',
+                value: mfaProtectedCount.toString(),
+                helper: 'roles with sensitive permissions',
+              ),
+            ],
           ),
           const SizedBox(height: 18),
           if (custom.isEmpty)
