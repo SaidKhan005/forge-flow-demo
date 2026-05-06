@@ -14,8 +14,13 @@ final _weekIdPattern = RegExp(r'^\d{4}-W\d{2}$');
 
 String? _businessDateFromWeekDay(String weekId, String dayLabel) {
   const dayOffset = {
-    'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3,
-    'Fri': 4, 'Sat': 5, 'Sun': 6,
+    'Mon': 0,
+    'Tue': 1,
+    'Wed': 2,
+    'Thu': 3,
+    'Fri': 4,
+    'Sat': 5,
+    'Sun': 6,
   };
   if (!dayOffset.containsKey(dayLabel)) return null;
   if (!_weekIdPattern.hasMatch(weekId)) return null;
@@ -31,14 +36,12 @@ String? _businessDateFromWeekDay(String weekId, String dayLabel) {
 }
 
 Future<void> _migrateToV21(Database db) async {
-  if (!await _columnExists(
-      db, 'week_records', 'locked_required_foh_hours')) {
+  if (!await _columnExists(db, 'week_records', 'locked_required_foh_hours')) {
     await db.execute(
       'ALTER TABLE week_records ADD COLUMN locked_required_foh_hours INTEGER',
     );
   }
-  if (!await _columnExists(
-      db, 'week_records', 'locked_required_boh_hours')) {
+  if (!await _columnExists(db, 'week_records', 'locked_required_boh_hours')) {
     await db.execute(
       'ALTER TABLE week_records ADD COLUMN locked_required_boh_hours INTEGER',
     );
@@ -57,21 +60,25 @@ Future<void> _migrateToV22(Database db) async {
     );
   }
   if (!await _columnExists(db, 'week_records', 'closed_at')) {
-    await db.execute(
-      'ALTER TABLE week_records ADD COLUMN closed_at TEXT',
-    );
+    await db.execute('ALTER TABLE week_records ADD COLUMN closed_at TEXT');
   }
 }
 
 Future<void> _migrateToV23(Database db) async {
   if (!await _columnExists(
-      db, 'week_records', 'target_calibration_window_start')) {
+    db,
+    'week_records',
+    'target_calibration_window_start',
+  )) {
     await db.execute(
       'ALTER TABLE week_records ADD COLUMN target_calibration_window_start TEXT',
     );
   }
   if (!await _columnExists(
-      db, 'week_records', 'target_calibration_window_end')) {
+    db,
+    'week_records',
+    'target_calibration_window_end',
+  )) {
     await db.execute(
       'ALTER TABLE week_records ADD COLUMN target_calibration_window_end TEXT',
     );
@@ -82,7 +89,8 @@ Future<void> _migrateToV23(Database db) async {
   // When an active demo cycle exists, backfill the new display metadata from
   // that preserved cycle so upgraded demo DBs show the same range contract
   // after restart. This is intentionally scoped to the demo restaurant.
-  await db.execute('''
+  await db.execute(
+    '''
     UPDATE week_records
     SET
       target_calibration_window_start = (
@@ -104,11 +112,9 @@ Future<void> _migrateToV23(Database db) async {
         target_calibration_window_start IS NULL OR
         target_calibration_window_end IS NULL
       )
-  ''', [
-    DemoScope.restaurantId,
-    DemoScope.restaurantId,
-    DemoScope.restaurantId,
-  ]);
+  ''',
+    [DemoScope.restaurantId, DemoScope.restaurantId, DemoScope.restaurantId],
+  );
 }
 
 /// HARD-H — boundary monitor durable backlog.
@@ -167,8 +173,25 @@ Future<void> _migrateToV26(Database db) async {
   ''');
 }
 
+Future<void> _migrateToV27(Database db) async {
+  for (final column in <String>[
+    'business_timing_profile_id TEXT',
+    'business_timing_profile_version_id TEXT',
+    'service_period_key TEXT',
+  ]) {
+    final name = column.split(' ').first;
+    if (!await _columnExists(db, 'shift_records', name)) {
+      await db.execute('ALTER TABLE shift_records ADD COLUMN $column');
+    }
+    if (!await _columnExists(db, 'open_shift_snapshots', name)) {
+      await db.execute('ALTER TABLE open_shift_snapshots ADD COLUMN $column');
+    }
+  }
+}
+
 Future<void> _migrateToV24(Database db) async {
-  await db.execute('''
+  await db.execute(
+    '''
     UPDATE week_records
     SET
       target_calibration_window_start = (
@@ -190,11 +213,9 @@ Future<void> _migrateToV24(Database db) async {
         target_calibration_window_start IS NULL OR
         target_calibration_window_end IS NULL
       )
-  ''', [
-    DemoScope.restaurantId,
-    DemoScope.restaurantId,
-    DemoScope.restaurantId,
-  ]);
+  ''',
+    [DemoScope.restaurantId, DemoScope.restaurantId, DemoScope.restaurantId],
+  );
 }
 
 Future<void> _migrateToV10(Database db) async {
@@ -222,15 +243,15 @@ Future<void> _migrateToV11(Database db) async {
     )
   ''');
   await _seedReservationBookSnapshotsFromReplay(
-      db, MockIntegrationReplaySeed.output);
+    db,
+    MockIntegrationReplaySeed.output,
+  );
 }
 
 Future<void> _migrateToV12(Database db) async {
   // Add business_date column to shift_records if missing.
   if (!await _columnExists(db, 'shift_records', 'business_date')) {
-    await db.execute(
-      'ALTER TABLE shift_records ADD COLUMN business_date TEXT',
-    );
+    await db.execute('ALTER TABLE shift_records ADD COLUMN business_date TEXT');
   }
   // Backfill null business_date from existing week_id + day_label.
   final nullRows = await db.rawQuery(
@@ -363,11 +384,17 @@ Future<void> _migrateToV18(Database db) async {
     )
   ''');
   // Backfill demo timing config if restaurant exists but timing row doesn't.
-  final existing = await db.query('restaurant_timing_configs',
-      where: 'restaurant_id = ?', whereArgs: [DemoScope.restaurantId]);
+  final existing = await db.query(
+    'restaurant_timing_configs',
+    where: 'restaurant_id = ?',
+    whereArgs: [DemoScope.restaurantId],
+  );
   if (existing.isEmpty) {
-    final restaurants = await db.query('restaurant_locations',
-        where: 'restaurant_id = ?', whereArgs: [DemoScope.restaurantId]);
+    final restaurants = await db.query(
+      'restaurant_locations',
+      where: 'restaurant_id = ?',
+      whereArgs: [DemoScope.restaurantId],
+    );
     if (restaurants.isNotEmpty) {
       final now = nowIsoUtc();
       final demoServicePeriods = [
@@ -582,7 +609,8 @@ Future<void> _migrateToV8(Database db) async {
     'created_at': nowIsoUtc(),
   }, conflictAlgorithm: ConflictAlgorithm.ignore);
 
-  await db.execute('''
+  await db.execute(
+    '''
     UPDATE shift_records SET
       target_profile_id = ?,
       target_profile_version_id = ?,
@@ -597,22 +625,25 @@ Future<void> _migrateToV8(Database db) async {
       theoretical_foh_labor_pct = ?,
       theoretical_boh_labor_pct = ?
     WHERE target_cplh IS NULL AND restaurant_id = ?
-  ''', [
-    profile.targetProfileId,
-    compatVersionId,
-    profile.sourceType,
-    profile.targetCPLH,
-    profile.targetSPLH,
-    profile.targetPPA,
-    profile.fohWage,
-    profile.bohWage,
-    profile.opzFloorCPLH,
-    profile.opzCeilingCPLH,
-    profile.theoreticalFohLaborPct,
-    profile.theoreticalBohLaborPct,
-    DemoScope.restaurantId,
-  ]);
-  await db.execute('''
+  ''',
+    [
+      profile.targetProfileId,
+      compatVersionId,
+      profile.sourceType,
+      profile.targetCPLH,
+      profile.targetSPLH,
+      profile.targetPPA,
+      profile.fohWage,
+      profile.bohWage,
+      profile.opzFloorCPLH,
+      profile.opzCeilingCPLH,
+      profile.theoreticalFohLaborPct,
+      profile.theoreticalBohLaborPct,
+      DemoScope.restaurantId,
+    ],
+  );
+  await db.execute(
+    '''
     UPDATE week_records SET
       target_source_type = ?,
       target_cplh = ?,
@@ -623,31 +654,32 @@ Future<void> _migrateToV8(Database db) async {
       theoretical_foh_labor_pct = ?,
       theoretical_boh_labor_pct = ?
     WHERE target_cplh IS NULL AND restaurant_id = ?
-  ''', [
-    profile.sourceType,
-    profile.targetCPLH,
-    profile.targetSPLH,
-    profile.targetPPA,
-    profile.fohWage,
-    profile.bohWage,
-    profile.theoreticalFohLaborPct,
-    profile.theoreticalBohLaborPct,
-    DemoScope.restaurantId,
-  ]);
+  ''',
+    [
+      profile.sourceType,
+      profile.targetCPLH,
+      profile.targetSPLH,
+      profile.targetPPA,
+      profile.fohWage,
+      profile.bohWage,
+      profile.theoreticalFohLaborPct,
+      profile.theoreticalBohLaborPct,
+      DemoScope.restaurantId,
+    ],
+  );
 
   // ── 6. Provenance repair for partially migrated rows ─────────────────
-  await db.execute('''
+  await db.execute(
+    '''
     UPDATE shift_records SET
       target_profile_id = ?,
       target_profile_version_id = ?
     WHERE restaurant_id = ?
       AND target_cplh IS NOT NULL
       AND (target_profile_id IS NULL OR target_profile_version_id IS NULL)
-  ''', [
-    profile.targetProfileId,
-    compatVersionId,
-    DemoScope.restaurantId,
-  ]);
+  ''',
+    [profile.targetProfileId, compatVersionId, DemoScope.restaurantId],
+  );
 }
 
 Future<void> _migrateToV7(Database db) async {
@@ -698,7 +730,11 @@ Future<void> _migrateToV7(Database db) async {
   }
 
   if (await _tableExists(db, 'baseline_selected_records')) {
-    if (!await _columnExists(db, 'baseline_selected_records', 'restaurant_id')) {
+    if (!await _columnExists(
+      db,
+      'baseline_selected_records',
+      'restaurant_id',
+    )) {
       final oldKeys = await db.query('baseline_selected_records');
       await db.execute('DROP TABLE baseline_selected_records');
       await db.execute('''
@@ -748,12 +784,13 @@ Future<void> _rebuildWeekRecordsForScope(Database db) async {
 
 Future<bool> _tableExists(Database db, String table) async {
   final rows = await db.rawQuery(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name=?", [table]);
+    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+    [table],
+  );
   return rows.isNotEmpty;
 }
 
-Future<bool> _columnExists(
-    Database db, String table, String column) async {
+Future<bool> _columnExists(Database db, String table, String column) async {
   final rows = await db.rawQuery('PRAGMA table_info($table)');
   return rows.any((r) => r['name'] == column);
 }
@@ -769,12 +806,15 @@ Future<void> _dedupeConnectorConfigs(Database db) async {
   for (final duplicate in duplicates) {
     final restaurantId = duplicate['restaurant_id'] as String;
     final sourceType = duplicate['source_type'] as String;
-    final rows = await db.rawQuery('''
+    final rows = await db.rawQuery(
+      '''
       SELECT connector_id
       FROM connector_configs
       WHERE restaurant_id = ? AND source_type = ?
       ORDER BY updated_at DESC, rowid DESC
-    ''', [restaurantId, sourceType]);
+    ''',
+      [restaurantId, sourceType],
+    );
 
     for (final row in rows.skip(1)) {
       await db.delete(
@@ -785,4 +825,3 @@ Future<void> _dedupeConnectorConfigs(Database db) async {
     }
   }
 }
-

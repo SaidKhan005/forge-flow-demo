@@ -99,8 +99,11 @@ Do not re-open stale findings unless the repo regresses:
   replay-safe via unschedule-then-reschedule and NOTICE-and-return guarded for
   the Azure pg_cron split-DB topology); apply on staging before claiming
   daily-cadence-from-Postgres observability parity, then carry into the next
-  Production1 batch. The current Production1 follow-up cutoff is therefore
-  `202605061700_hardening_audit_anchor_daily_schedule.sql`.
+  Production1 batch. Phase 8 timing provenance also queues
+  `202605061700_phase_8_timing_provenance_shift_records.sql` for nullable
+  closed `shift_records` timing keys plus the live snapshot version key. The
+  current Production1 follow-up cutoff is therefore
+  `202605061700_phase_8_timing_provenance_shift_records.sql`.
 
 ## Remaining Live-Closeout Gates
 

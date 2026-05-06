@@ -27,6 +27,16 @@ class ClosedShiftInput {
   /// Service period: "lunch" | "dinner" | "late_night".
   final String daypart;
 
+  /// Timing profile used to bucket this closed row. Nullable for legacy rows.
+  final String? businessTimingProfileId;
+
+  /// Stable timing version key. Lane 0 maps this to the profile id for now.
+  final String? businessTimingProfileVersionId;
+
+  /// Stable service-period key captured at bucket time. Mutable labels are
+  /// display only.
+  final String? servicePeriodKey;
+
   // ── POS source facts ──────────────────────────────────────────────────────
 
   /// Actual guests served (from POS).
@@ -74,6 +84,9 @@ class ClosedShiftInput {
     required this.weekId,
     required this.dayLabel,
     required this.daypart,
+    this.businessTimingProfileId,
+    this.businessTimingProfileVersionId,
+    this.servicePeriodKey,
     required this.covers,
     required this.forecastCovers,
     required this.actualSales,

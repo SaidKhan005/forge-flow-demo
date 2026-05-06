@@ -76,6 +76,9 @@ class CurrentWeekState {
       snapshotBlendedWage: s.blendedWage,
       planForecastSales: planForecastSales,
       businessDate: s.businessDate,
+      businessTimingProfileId: s.businessTimingProfileId,
+      businessTimingProfileVersionId: s.businessTimingProfileVersionId,
+      servicePeriodKey: s.servicePeriodKey,
       sourceSystem: s.sourceSystem,
       sourceShiftId: s.sourceShiftId,
     );

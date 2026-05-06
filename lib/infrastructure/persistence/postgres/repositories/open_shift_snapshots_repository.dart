@@ -18,6 +18,8 @@ class OpenShiftSnapshotsRepository extends OperatorScopedRepository {
       'operator_id::text as operator_id, '
       'location_id::text as location_id, '
       'business_timing_profile_id::text as business_timing_profile_id, '
+      'business_timing_profile_version_id::text as '
+      'business_timing_profile_version_id, '
       'business_date::text as business_date, '
       'week_start_date::text as week_start_date, '
       'week_id, '
@@ -59,6 +61,7 @@ class OpenShiftSnapshotsRepository extends OperatorScopedRepository {
       final rows = await exec.query(
         'insert into public.open_shift_snapshots ('
         '  operator_id, location_id, business_timing_profile_id, '
+        '  business_timing_profile_version_id, '
         '  business_date, week_start_date, week_id, day_label, '
         '  snapshot_scope, service_period_key, service_period_label, '
         '  status, forecast_covers, current_covers, scheduled_foh_hours, '
@@ -67,7 +70,9 @@ class OpenShiftSnapshotsRepository extends OperatorScopedRepository {
         '  source_shift_id, provenance, last_event_at'
         ') values ('
         '  @operator_id::uuid, @location_id::uuid, '
-        '  @business_timing_profile_id::uuid, @business_date::date, '
+        '  @business_timing_profile_id::uuid, '
+        '  @business_timing_profile_version_id::uuid, '
+        '  @business_date::date, '
         '  @week_start_date::date, @week_id, @day_label, @snapshot_scope, '
         '  @service_period_key, @service_period_label, @status, '
         '  @forecast_covers, @current_covers, @scheduled_foh_hours, '
@@ -80,6 +85,8 @@ class OpenShiftSnapshotsRepository extends OperatorScopedRepository {
         'open_shift_snapshots_location_business_day_scope_uq '
         'do update set '
         '  business_timing_profile_id = excluded.business_timing_profile_id, '
+        '  business_timing_profile_version_id = '
+        'excluded.business_timing_profile_version_id, '
         '  week_start_date = excluded.week_start_date, '
         '  week_id = excluded.week_id, '
         '  day_label = excluded.day_label, '
@@ -185,6 +192,7 @@ class OpenShiftSnapshotPostgresWrite {
     required this.operatorId,
     required this.locationId,
     required this.businessTimingProfileId,
+    String? businessTimingProfileVersionId,
     required this.businessDate,
     required this.weekStartDate,
     required this.weekId,
@@ -207,11 +215,13 @@ class OpenShiftSnapshotPostgresWrite {
     this.sourceShiftId,
     this.provenance = const <String, Object?>{},
     this.lastEventAt,
-  });
+  }) : businessTimingProfileVersionId =
+           businessTimingProfileVersionId ?? businessTimingProfileId;
 
   final String operatorId;
   final String locationId;
   final String businessTimingProfileId;
+  final String businessTimingProfileVersionId;
   final String businessDate;
   final String weekStartDate;
   final String weekId;
@@ -239,6 +249,7 @@ class OpenShiftSnapshotPostgresWrite {
     'operator_id': operatorId,
     'location_id': locationId,
     'business_timing_profile_id': businessTimingProfileId,
+    'business_timing_profile_version_id': businessTimingProfileVersionId,
     'business_date': businessDate,
     'week_start_date': weekStartDate,
     'week_id': weekId,
@@ -270,6 +281,7 @@ class OpenShiftSnapshotPostgresRow {
     required this.operatorId,
     required this.locationId,
     required this.businessTimingProfileId,
+    required this.businessTimingProfileVersionId,
     required this.businessDate,
     required this.weekStartDate,
     required this.weekId,
@@ -300,6 +312,7 @@ class OpenShiftSnapshotPostgresRow {
   final String operatorId;
   final String locationId;
   final String businessTimingProfileId;
+  final String businessTimingProfileVersionId;
   final String businessDate;
   final String weekStartDate;
   final String weekId;
@@ -330,6 +343,7 @@ class OpenShiftSnapshotPostgresRow {
     'operator_id': operatorId,
     'location_id': locationId,
     'business_timing_profile_id': businessTimingProfileId,
+    'business_timing_profile_version_id': businessTimingProfileVersionId,
     'business_date': businessDate,
     'week_start_date': weekStartDate,
     'week_id': weekId,
@@ -363,6 +377,9 @@ OpenShiftSnapshotPostgresRow _snapshotRowFromMap(PostgresRow row) {
     operatorId: row['operator_id']! as String,
     locationId: row['location_id']! as String,
     businessTimingProfileId: row['business_timing_profile_id']! as String,
+    businessTimingProfileVersionId:
+        row['business_timing_profile_version_id'] as String? ??
+        row['business_timing_profile_id']! as String,
     businessDate: _dateString(row['business_date'])!,
     weekStartDate: _dateString(row['week_start_date'])!,
     weekId: row['week_id']! as String,
