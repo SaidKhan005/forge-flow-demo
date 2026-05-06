@@ -5,6 +5,7 @@ import 'services/auth/firebase_auth_runtime_bindings.dart';
 import 'services/mobile_push/firebase_mobile_push_runtime.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/realtime/web_socket_channel_realtime_transport.dart';
+import 'services/sync/http_sync_proxy_client.dart';
 
 Future<void> main() async {
   if (const bool.fromEnvironment('FORGE_FLOW_USE_FIREBASE_AUTH')) {
@@ -37,8 +38,14 @@ Future<void> main() async {
         : RealtimeSubscription(
             proxyBaseUri: _toWebSocketUri(proxyBaseUri),
             transport: const WebSocketChannelRealtimeTransport(),
-            watermarkStore:
-                SqliteRealtimeSubscriptionWatermarkStore.instance,
+            watermarkStore: SqliteRealtimeSubscriptionWatermarkStore.instance,
+          );
+    final syncProxyClient =
+        proxyBaseUri == null || bindings.idTokenProvider == null
+        ? null
+        : HttpSyncProxyClient(
+            proxyBaseUri: proxyBaseUri,
+            idTokenProvider: bindings.idTokenProvider!,
           );
     final mobilePushNotifications = createFirebaseMobilePushNotificationService(
       tokenGateway: bindings.mobilePushTokenGateway,
@@ -67,6 +74,7 @@ Future<void> main() async {
       secureSessionStorage: bindings.secureSessionStorage,
       authSessionLedgerWriter: bindings.authSessionLedgerWriter,
       realtimeSubscription: realtimeSubscription,
+      syncProxyClient: syncProxyClient,
       mobilePushNotifications: mobilePushNotifications,
     );
     return;

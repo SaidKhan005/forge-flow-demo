@@ -5891,6 +5891,7 @@ const String authMobilePushTokenRegisterPath =
 const String authMobilePushTokenRevokePath =
     '/v1/auth/mobile/push-token/revoke';
 const String authMobilePushTestPath = '/v1/auth/mobile/push/test';
+const String mobileOperatorsPrefix = '/v1/operators/';
 const String adminAuthInvitesPath = '/v1/admin/auth/invites';
 const String adminAuthInvitePrefix = '$adminAuthInvitesPath/';
 const String adminAuthUsersPath = '/v1/admin/auth/users';
@@ -6076,6 +6077,72 @@ abstract class PricingTierAdminProxyGateway {
     required String tierKey,
     required String adminReason,
   });
+}
+
+/// Read-only mobile operational sync gateway.
+///
+/// Native operator apps call `/v1/operators/:operatorId/locations/:locationId/*`
+/// with a Firebase bearer token. The route layer verifies that the URL scope
+/// exactly matches the token scope before delegating here; implementations must
+/// still run through tenant-scoped Postgres transactions so RLS remains the
+/// backup defense.
+abstract class MobileOperationalSyncProxyGateway {
+  Future<Map<String, Object?>> fetchShiftRecords({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String? modifiedSince,
+    required int pageSize,
+  });
+
+  Future<Map<String, Object?>> fetchOpenShiftSnapshots({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String? modifiedSince,
+    required int pageSize,
+  });
+
+  Future<Map<String, Object?>> fetchResolvedTimingConfig({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String? businessDate,
+  });
+
+  Future<Map<String, Object?>> fetchDemoModeStates({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  });
+
+  Future<Map<String, Object?>> fetchDataAccuracySettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  });
+
+  Future<Map<String, Object?>> fetchPollingTierAssignment({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  });
+}
+
+class MobileOperationalSyncProxyGatewayException implements Exception {
+  const MobileOperationalSyncProxyGatewayException({
+    required this.statusCode,
+    required this.code,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String code;
+  final String message;
+
+  @override
+  String toString() =>
+      'MobileOperationalSyncProxyGatewayException($statusCode/$code)';
 }
 
 class DataAccuracyAdminGatewayValidationError implements Exception {
@@ -6946,6 +7013,7 @@ Future<void> routeRequest(
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
   MobilePushTokenGateway? mobilePushTokenGateway,
   MobilePushSelfTestGateway? mobilePushSelfTestGateway,
+  MobileOperationalSyncProxyGateway? mobileOperationalSyncGateway,
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
   PricingTierAdminProxyGateway? pricingTierAdminGateway,
   DataAccuracyAdminProxyGateway? dataAccuracyAdminGateway,
@@ -7201,6 +7269,18 @@ Future<void> routeRequest(
               'message': 'tripwire status is unavailable; please retry',
             });
           }
+          return;
+        }
+
+        final mobileOperationalPath = _mobileOperationalPath(path);
+        if (request.method == 'GET' && mobileOperationalPath != null) {
+          await _routeMobileOperationalSync(
+            request: request,
+            response: response,
+            authGuard: authGuard,
+            gateway: mobileOperationalSyncGateway,
+            target: mobileOperationalPath,
+          );
           return;
         }
 
@@ -12729,6 +12809,169 @@ Future<ProxyJwtClaims?> _resolveVerifiedClaimsOrWrite(
     });
     return null;
   }
+}
+
+Future<void> _routeMobileOperationalSync({
+  required HttpRequest request,
+  required HttpResponse response,
+  required ProxyRequestGuard authGuard,
+  required MobileOperationalSyncProxyGateway? gateway,
+  required _MobileOperationalPath target,
+}) async {
+  if (gateway == null) {
+    _writeJson(response, 503, <String, Object?>{
+      'error': 'mobile_operational_sync_not_configured',
+      'message':
+          'route requires a MobileOperationalSyncProxyGateway to be installed',
+    });
+    return;
+  }
+
+  final scope = await _resolveOperatorContextOrWrite(
+    request,
+    response,
+    authGuard,
+  );
+  if (scope == null) return;
+
+  if (scope.operatorId != target.operatorId ||
+      scope.locationId != target.locationId) {
+    _writeJson(response, 403, <String, Object?>{
+      'error': 'permission_denied',
+      'message': 'requested mobile sync scope does not match caller scope',
+    });
+    return;
+  }
+
+  final params = request.uri.queryParameters;
+  final pageSize = _mobileSyncPageSizeOrWrite(response, params['page_size']);
+  if (pageSize == null) return;
+  final modifiedSince =
+      _nonBlankString(params['modified_since']) ??
+      _nonBlankString(params['cursor']);
+  if (!_mobileSyncCursorValidOrWrite(response, modifiedSince)) return;
+
+  try {
+    final payload = switch (target.resource) {
+      'shift_records' => await gateway.fetchShiftRecords(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+        modifiedSince: modifiedSince,
+        pageSize: pageSize,
+      ),
+      'open_shift_snapshots' => await gateway.fetchOpenShiftSnapshots(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+        modifiedSince: modifiedSince,
+        pageSize: pageSize,
+      ),
+      'timing/resolved' => await gateway.fetchResolvedTimingConfig(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+        businessDate: _nonBlankString(params['business_date']),
+      ),
+      'demo_mode_states' => await gateway.fetchDemoModeStates(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+      ),
+      'data_accuracy_settings' => await gateway.fetchDataAccuracySettings(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+      ),
+      'polling_tier_assignment' => await gateway.fetchPollingTierAssignment(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+      ),
+      _ => throw const MobileOperationalSyncProxyGatewayException(
+        statusCode: 404,
+        code: 'mobile_sync_route_not_found',
+        message: 'mobile sync route not found',
+      ),
+    };
+    _writeJson(response, 200, payload);
+  } on MobileOperationalSyncProxyGatewayException catch (error) {
+    _writeJson(response, error.statusCode, <String, Object?>{
+      'error': error.code,
+      'message': error.message,
+    });
+  } catch (error, stackTrace) {
+    if (_maybeWriteDependencyTimeout(response, error)) return;
+    _logProxyUnhandled(
+      surface: 'mobile_operational_sync',
+      method: request.method,
+      path: request.uri.path,
+      error: error,
+      stackTrace: stackTrace,
+    );
+    _writeJson(response, 503, <String, Object?>{
+      'error': 'mobile_operational_sync_unavailable',
+      'message': 'mobile operational sync is unavailable; please retry',
+    });
+  }
+}
+
+int? _mobileSyncPageSizeOrWrite(HttpResponse response, String? raw) {
+  if (raw == null || raw.trim().isEmpty) return 200;
+  final parsed = int.tryParse(raw);
+  if (parsed == null || parsed <= 0 || parsed > 500) {
+    _writeJson(response, 400, <String, Object?>{
+      'error': 'invalid_page_size',
+      'message': 'page_size must be a positive integer no greater than 500',
+    });
+    return null;
+  }
+  return parsed;
+}
+
+bool _mobileSyncCursorValidOrWrite(HttpResponse response, String? cursor) {
+  if (cursor == null) return true;
+  if (DateTime.tryParse(cursor) != null) return true;
+  _writeJson(response, 400, <String, Object?>{
+    'error': 'invalid_modified_since',
+    'message': 'modified_since must be an ISO-8601 timestamp',
+  });
+  return false;
+}
+
+_MobileOperationalPath? _mobileOperationalPath(String path) {
+  if (!path.startsWith(mobileOperatorsPrefix)) return null;
+  final tail = path.substring(mobileOperatorsPrefix.length);
+  final parts = tail.split('/');
+  if (parts.length < 4 || parts[1] != 'locations') return null;
+  final resource = parts.sublist(3).join('/');
+  if (resource.isEmpty) return null;
+  switch (resource) {
+    case 'shift_records':
+    case 'open_shift_snapshots':
+    case 'timing/resolved':
+    case 'demo_mode_states':
+    case 'data_accuracy_settings':
+    case 'polling_tier_assignment':
+      return _MobileOperationalPath(
+        operatorId: Uri.decodeComponent(parts[0]),
+        locationId: Uri.decodeComponent(parts[2]),
+        resource: resource,
+      );
+  }
+  return null;
+}
+
+class _MobileOperationalPath {
+  const _MobileOperationalPath({
+    required this.operatorId,
+    required this.locationId,
+    required this.resource,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String resource;
 }
 
 Future<OperatorContext?> _resolveOperatorContextOrWrite(

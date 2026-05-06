@@ -10,6 +10,8 @@ import 'services/auth/auth_session_ledger_writer.dart';
 import 'services/mobile_push/mobile_push_notification_service.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/secure_session_storage.dart';
+import 'services/sync/mobile_operational_sync_runtime.dart';
+import 'services/sync/sync_proxy_client.dart';
 import 'services/target_cycle_service.dart';
 import 'services/wage_standard_context_service.dart';
 import 'state/auth_session_notifier.dart';
@@ -36,6 +38,7 @@ Future<void> bootstrapAndRunApp(
   SecureSessionStorage? secureSessionStorage,
   AuthSessionLedgerWriter? authSessionLedgerWriter,
   RealtimeSubscription? realtimeSubscription,
+  SyncProxyClient? syncProxyClient,
   MobilePushNotificationService? mobilePushNotifications,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -89,7 +92,12 @@ Future<void> bootstrapAndRunApp(
         value: realtimeSubscription,
         child: ChangeNotifierProvider<AuthSessionNotifier>.value(
           value: authNotifier,
-          child: RealtimeAuthBridge(child: app),
+          child: RealtimeAuthBridge(
+            child: MobileOperationalSyncHost(
+              syncClient: syncProxyClient,
+              child: app,
+            ),
+          ),
         ),
       ),
     ),
