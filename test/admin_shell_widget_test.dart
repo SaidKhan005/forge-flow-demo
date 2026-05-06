@@ -414,4 +414,46 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('operator action buttons keep the same scope for Team', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(AdminShell(session: superAdmin, authSource: source)),
+    );
+    await tester.pumpAndSettle();
+
+    final dataAccuracyButton = find.byKey(
+      const Key(
+        'admin_operator_data_accuracy_00000000-0000-4000-8000-000000000001',
+      ),
+    );
+    await tester.ensureVisible(dataAccuracyButton);
+    await tester.pumpAndSettle();
+    await tester.tap(dataAccuracyButton);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_data_accuracy_screen')), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const Key('admin_nav_item_members')));
+    await tester.tap(find.byKey(const Key('admin_nav_item_members')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_members_screen')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_members_no_operator_state')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

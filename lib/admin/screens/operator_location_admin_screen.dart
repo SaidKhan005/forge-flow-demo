@@ -704,6 +704,20 @@ class _OperatorDetail extends StatelessWidget {
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
   final bool editingEnabled;
 
+  AdminOperatorLocationScopeIntent get _primaryScope {
+    final primaryLocation = bundle.primaryLocation;
+    final fallbackLocation = bundle.locations.isEmpty
+        ? null
+        : bundle.locations.first;
+    final location = primaryLocation ?? fallbackLocation;
+    return AdminOperatorLocationScopeIntent(
+      operatorId: bundle.operator.operatorId,
+      operatorName: bundle.operator.businessName,
+      locationId: location?.locationId,
+      locationName: location?.name,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final operator = bundle.operator;
@@ -782,12 +796,7 @@ class _OperatorDetail extends StatelessWidget {
                       ),
                       onPressed: onOpenDataAccuracy == null
                           ? null
-                          : () => onOpenDataAccuracy!(
-                              AdminOperatorLocationScopeIntent(
-                                operatorId: operator.operatorId,
-                                operatorName: operator.businessName,
-                              ),
-                            ),
+                          : () => onOpenDataAccuracy!(_primaryScope),
                       icon: const Icon(Icons.fact_check_outlined, size: 14),
                       label: const Text('Data accuracy'),
                     ),
@@ -797,12 +806,7 @@ class _OperatorDetail extends StatelessWidget {
                       ),
                       onPressed: onOpenPollingPricing == null
                           ? null
-                          : () => onOpenPollingPricing!(
-                              AdminOperatorLocationScopeIntent(
-                                operatorId: operator.operatorId,
-                                operatorName: operator.businessName,
-                              ),
-                            ),
+                          : () => onOpenPollingPricing!(_primaryScope),
                       icon: const Icon(Icons.payments_outlined, size: 14),
                       label: const Text('Polling & pricing'),
                     ),
