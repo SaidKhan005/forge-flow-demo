@@ -94,8 +94,22 @@ CONCURRENTLY-rekeys five Phase 8 / Phase 9.8 fact-table indexes to lead with
 `operator_owner`/`operator_admin` so the 11W.5 audit-log export gate has
 catalog parity. Apply both on staging before claiming index hygiene parity or
 live audit-log export readiness, then carry into the next Production1 apply.
-The current Production1 follow-up cutoff is therefore
-`202605061600_phase_11W_5_team_audit_log_export_key.sql`.
+The Hardening Wave B3 audit-anchor cron follow-up (punchlist §5) adds
+`202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron
+registration for `forge_audit_anchor_daily` at `0 2 * * *` UTC; the kickoff
+function `public.audit_anchor_run_daily()` is NOTIFY-only on channel
+`audit_anchor_tick` and does NOT perform the anchor work — the Cloud Run
+binary at `tool/audit_anchor/main.dart` remains the production executor that
+B43 tracks). The migration is replay-safe via unschedule-then-reschedule and
+NOTICE-and-return guarded for the Azure pg_cron split-DB case. Apply on
+staging before claiming daily-cadence-from-Postgres observability parity for
+the 11A audit-log review surfaces, then carry into the next Production1
+apply.
+Phase 8 timing provenance also adds
+`202605061700_phase_8_timing_provenance_shift_records.sql`; it is not an 11A
+surface, but it moves the shared Production1 follow-up cutoff watched by this
+plan. The current Production1 follow-up cutoff is therefore
+`202605061700_phase_8_timing_provenance_shift_records.sql`.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin

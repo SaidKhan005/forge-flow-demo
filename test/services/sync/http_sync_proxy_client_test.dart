@@ -55,27 +55,27 @@ void main() {
               'open_shift_snapshots': <Object?>[_openSnapshotRow()],
             },
           '/base/v1/operators/op/locations/loc/timing/resolved' =>
-              <String, Object?>{
-            'timing_config': <String, Object?>{
-              'restaurant_id': 'loc',
-              'location_timezone': 'America/St_Johns',
-              'business_day_start_local_time': '05:00:00',
-              'week_start_day': 1,
-              'close_authority': 'vendor_finalization',
-              'service_period_definitions_json': jsonEncode(<Object?>[
-                <String, Object?>{
-                  'service_period_key': 'brunch',
-                  'label': 'Brunch',
-                  'short_label': 'B',
-                  'sort_order': 1,
-                  'start_local_time': '09:00:00',
-                  'end_local_time': '13:00:00',
-                  'rolls_past_midnight': false,
-                  'applicable_weekdays': <int>[6, 7],
-                },
-              ]),
+            <String, Object?>{
+              'timing_config': <String, Object?>{
+                'restaurant_id': 'loc',
+                'location_timezone': 'America/St_Johns',
+                'business_day_start_local_time': '05:00:00',
+                'week_start_day': 1,
+                'close_authority': 'vendor_finalization',
+                'service_period_definitions_json': jsonEncode(<Object?>[
+                  <String, Object?>{
+                    'service_period_key': 'brunch',
+                    'label': 'Brunch',
+                    'short_label': 'B',
+                    'sort_order': 1,
+                    'start_local_time': '09:00:00',
+                    'end_local_time': '13:00:00',
+                    'rolls_past_midnight': false,
+                    'applicable_weekdays': <int>[6, 7],
+                  },
+                ]),
+              },
             },
-          },
           '/base/v1/operators/op/locations/loc/demo_mode_states' =>
             <String, Object?>{
               'demo_mode_states': <Object?>[
@@ -146,6 +146,9 @@ void main() {
     );
 
     expect(open.snapshots.single.daypart, 'lunch');
+    expect(open.snapshots.single.businessTimingProfileId, 'profile-1');
+    expect(open.snapshots.single.businessTimingProfileVersionId, 'profile-1');
+    expect(open.snapshots.single.servicePeriodKey, 'lunch');
     expect(timing!.businessDayStartLocalTime, '05:00');
     expect(timing.businessTimezone, 'America/St_Johns');
     expect(timing.servicePeriodDefinitions.single.id, 'brunch');
@@ -167,48 +170,80 @@ void main() {
       expect(
         url,
         startsWith('https://proxy.example/base/v1/operators/op/locations/loc/'),
-        reason:
-            'every request URL must preserve the configured /base/ prefix',
+        reason: 'every request URL must preserve the configured /base/ prefix',
       );
     }
   });
 
-  test('non-root proxyBaseUri without trailing slash also keeps the prefix',
-      () async {
-    late http.Request seen;
-    final client = HttpSyncProxyClient(
-      // Note: no trailing slash on the base URI.
-      proxyBaseUri: Uri.parse('https://proxy.example/api'),
-      idTokenProvider: () async => 'tok',
-      httpClient: http_testing.MockClient((request) async {
-        seen = request;
-        return http.Response(
-          jsonEncode(<String, Object?>{
-            'records': const <Object?>[],
-            'next_cursor': null,
-          }),
-          200,
-        );
-      }),
-    );
+  test(
+    'legacy open snapshot row without timing provenance still parses',
+    () async {
+      final client = HttpSyncProxyClient(
+        proxyBaseUri: Uri.parse('https://proxy.example'),
+        idTokenProvider: () async => 'token-1',
+        httpClient: http_testing.MockClient((_) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'open_shift_snapshots': <Object?>[_legacyOpenSnapshotRow()],
+            }),
+            200,
+          );
+        }),
+      );
 
-    await client.fetchShiftRecords(
-      operatorId: 'op',
-      locationId: 'loc',
-      cursor: null,
-      pageSize: 10,
-    );
+      final page = await client.fetchOpenShiftSnapshots(
+        operatorId: 'op',
+        locationId: 'loc',
+        cursor: null,
+        pageSize: 25,
+      );
 
-    expect(
-      seen.url.toString(),
-      startsWith(
-        'https://proxy.example/api/v1/operators/op/locations/loc/shift_records',
-      ),
-      reason:
-          'BUG 3: prefix path on proxyBaseUri must be preserved even when '
-          'the base URI is supplied without a trailing slash',
-    );
-  });
+      final snapshot = page.snapshots.single;
+      expect(snapshot.daypart, 'lunch');
+      expect(snapshot.businessTimingProfileId, isNull);
+      expect(snapshot.businessTimingProfileVersionId, isNull);
+      expect(snapshot.servicePeriodKey, 'lunch');
+    },
+  );
+
+  test(
+    'non-root proxyBaseUri without trailing slash also keeps the prefix',
+    () async {
+      late http.Request seen;
+      final client = HttpSyncProxyClient(
+        // Note: no trailing slash on the base URI.
+        proxyBaseUri: Uri.parse('https://proxy.example/api'),
+        idTokenProvider: () async => 'tok',
+        httpClient: http_testing.MockClient((request) async {
+          seen = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'records': const <Object?>[],
+              'next_cursor': null,
+            }),
+            200,
+          );
+        }),
+      );
+
+      await client.fetchShiftRecords(
+        operatorId: 'op',
+        locationId: 'loc',
+        cursor: null,
+        pageSize: 10,
+      );
+
+      expect(
+        seen.url.toString(),
+        startsWith(
+          'https://proxy.example/api/v1/operators/op/locations/loc/shift_records',
+        ),
+        reason:
+            'BUG 3: prefix path on proxyBaseUri must be preserved even when '
+            'the base URI is supplied without a trailing slash',
+      );
+    },
+  );
 
   test('retries once after a 401 by force-refreshing the id token', () async {
     final tokens = <String>['stale-token', 'fresh-token'];
@@ -251,53 +286,52 @@ void main() {
     );
 
     expect(refreshCount, 1, reason: 'refresh hook is invoked exactly once');
-    expect(requestTokens, <String>[
-      'Bearer stale-token',
-      'Bearer fresh-token',
-    ]);
+    expect(requestTokens, <String>['Bearer stale-token', 'Bearer fresh-token']);
     expect(page.records, isEmpty);
   });
 
-  test('does not retry past one refresh attempt; surfaces 401 on retry too',
-      () async {
-    var refreshCount = 0;
-    var requestCount = 0;
-    final client = HttpSyncProxyClient(
-      proxyBaseUri: Uri.parse('https://proxy.example'),
-      idTokenProvider: () async => 'still-stale',
-      refreshIdToken: () async {
-        refreshCount++;
-      },
-      httpClient: http_testing.MockClient((_) async {
-        requestCount++;
-        return http.Response(
-          jsonEncode(<String, Object?>{
-            'error': 'unauthorized',
-            'message': 'token expired',
-          }),
-          401,
-        );
-      }),
-    );
+  test(
+    'does not retry past one refresh attempt; surfaces 401 on retry too',
+    () async {
+      var refreshCount = 0;
+      var requestCount = 0;
+      final client = HttpSyncProxyClient(
+        proxyBaseUri: Uri.parse('https://proxy.example'),
+        idTokenProvider: () async => 'still-stale',
+        refreshIdToken: () async {
+          refreshCount++;
+        },
+        httpClient: http_testing.MockClient((_) async {
+          requestCount++;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'error': 'unauthorized',
+              'message': 'token expired',
+            }),
+            401,
+          );
+        }),
+      );
 
-    await expectLater(
-      client.fetchShiftRecords(
-        operatorId: 'op',
-        locationId: 'loc',
-        cursor: null,
-        pageSize: 10,
-      ),
-      throwsA(
-        isA<SyncProxyClientException>().having(
-          (error) => error.statusCode,
-          'statusCode',
-          401,
+      await expectLater(
+        client.fetchShiftRecords(
+          operatorId: 'op',
+          locationId: 'loc',
+          cursor: null,
+          pageSize: 10,
         ),
-      ),
-    );
-    expect(requestCount, 2, reason: 'one initial + one retry, no more');
-    expect(refreshCount, 1);
-  });
+        throwsA(
+          isA<SyncProxyClientException>().having(
+            (error) => error.statusCode,
+            'statusCode',
+            401,
+          ),
+        ),
+      );
+      expect(requestCount, 2, reason: 'one initial + one retry, no more');
+      expect(refreshCount, 1);
+    },
+  );
 
   test('throws a diagnostic-safe error when token is absent', () async {
     final client = HttpSyncProxyClient(
@@ -344,6 +378,9 @@ Map<String, Object?> _openSnapshotRow() => <String, Object?>{
   'daypart': 'lunch',
   'status': 'open',
   'business_date': '2026-05-05',
+  'business_timing_profile_id': 'profile-1',
+  'business_timing_profile_version_id': 'profile-1',
+  'service_period_key': 'lunch',
   'forecast_covers': 100,
   'current_covers': 40,
   'scheduled_foh_hours': 6,
@@ -354,3 +391,11 @@ Map<String, Object?> _openSnapshotRow() => <String, Object?>{
   'blended_wage': 22.0,
   'updated_at': '2026-05-06T12:00:00Z',
 };
+
+Map<String, Object?> _legacyOpenSnapshotRow() {
+  final row = Map<String, Object?>.from(_openSnapshotRow());
+  row.remove('business_timing_profile_id');
+  row.remove('business_timing_profile_version_id');
+  row.remove('service_period_key');
+  return row;
+}

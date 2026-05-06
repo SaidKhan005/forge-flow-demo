@@ -216,3 +216,165 @@ Three open items left after the sink + test landed on
    7shifts `/reports/hours_and_wages` upgrade path), promote the
    adapter to `perEmployeeWithRates` and drop the NULL bind in
    favor of the vendor value.
+
+---
+
+# Sink Follow-Up — `8.spine-bridge-sink-fanout.SR` (SevenRooms)
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-SR`:
+
+1. **CI verification of the sink suite.** The worktree environment has
+   no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `sevenrooms_reservation_postgres_sink_test.dart` suite (Tests A–H,
+   including G's CANCELLED → `cancelled_at` round-trip), and the
+   `sevenrooms_reservation_adapter_test.dart` regression were not run
+   locally. CI (subosito/flutter-action) must run all three before
+   merge; any failures are bounded fixes inside the two new files.
+
+2. **Bespoke gateway tenant widening.** `SevenRoomsReservationGateway.
+   updateWatermark` and `appendSyncLog` only carry `connectionId`, so
+   the sink resolves `(operator_id, location_id)` via a `withSystem`
+   lookup against `connector_connection` before the tenant-scoped
+   write. A future lane should widen those gateway methods to accept
+   the tenant tuple directly (matching Libro's shape) so the
+   per-call lookup + RLS-bypass round-trip drops out.
+
+3. **Worker dispatcher wiring.** The unified `CanonicalSink` view is
+   exposed via `asCanonicalSink({connectionIdResolver})` but no
+   integration sync worker dispatch currently routes SevenRooms
+   reservation facts through it — the Wave B adapter still writes
+   through the bespoke gateway only. The follow-up `8.spine-bridge.2`
+   aggregator lane wires the dispatcher and lights up the demo-flip
+   auto-evaluator on the unified surface.
+
+## `8.spine-bridge.1.RV` (Revel Systems) — open items
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-RV`:
+
+1. **CI verification of the sink suite.** The worktree environment had
+   no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `revel_pos_postgres_sink_test.dart` suite (tests A–H), and the
+   `revel_pos_adapter_test.dart` regression were not run locally. CI
+   (subosito/flutter-action) must run all three before any downstream
+   slice depends on the sink; any failures are bounded fixes inside
+   the two new files.
+
+2. **`upsertConnection` end-to-end exercise.** The sink implements
+   `RevelGateway.upsertConnection` (writes `connector_connection`),
+   but the test suite only exercises the canonical-fact + watermark
+   + demo-flip + readAccessToken paths. The connect lifecycle test
+   from `revel_pos_adapter_test.dart` runs against the adapter's fake
+   gateway, not this Postgres-backed sink. `8.RV.live.sandbox` should
+   add a connect → backfill → poll → disconnect smoke against the
+   real sink to prove the SQL on `connector_connection` round-trips
+   the metadata + status enum casts.
+
+3. **LS (Lightspeed) fanout sink.** The next lane in the sink-fanout
+   wave — `8.spine-bridge-sink-fanout.LS` — lands the Lightspeed
+   K-Series → `cover_facts` Postgres sink in the same shape as `.RV`.
+   Same bespoke + unified surface widening, same idempotency partial
+   UNIQUE, same demo-flip auto-evaluator. Schedule directly after RV
+   merges.
+
+---
+
+# Sink Follow-Up — `8.spine-bridge-sink-fanout.ADP` (ADP Workforce Now / Workforce Manager)
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-ADP`:
+
+1. **CI verification of the sink suite.** The worktree environment has
+   no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `adp_postgres_sink_test.dart` suite (Tests A–H), and the
+   `adp_labor_adapter_test.dart` regression were not run locally. CI
+   (subosito/flutter-action) must run all three before merge; any
+   failures are bounded fixes inside the two new files.
+
+2. **Adapter-side hours_worked propagation.** The sink derives
+   `hours_worked = (shift_end - shift_start)` and falls back to `0`
+   for open punches, but `AdpLaborAdapter._canonicalize` does not
+   yet emit an explicit `hours_worked` field on
+   `AdpCanonicalTimePunchFact`. `8.S.ADP.live.sandbox` should add
+   the field once the live ADP payload confirms whether ADP exposes
+   a precomputed duration anywhere on `time_event`; until then the
+   sink's derivation is the single source.
+
+3. **Wage-dollar lane (post-V1).** V1 wage class is `hoursOnly`; the
+   sink leaves the wage-dollar columns NULL and the per-file
+   banned-grep enforces it. A post-V1 slice
+   (`8.S.ADP.wage_dollars`) must lift the banned-grep tokens, widen
+   the column list, and decide whether ADP wage rates flow through
+   the adapter (rate × duration) or directly via a payroll-side
+   join. Schedule only after the V1 launch ledger clears.
+
+---
+
+# Sink Follow-Up — `8.spine-bridge-sink-fanout.CL` (Clover)
+
+Three open items left after the sink + test landed on
+`claude/cool-spence-df5231`:
+
+1. **CI verification of the sink suite.** The worktree environment has
+   no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `clover_pos_postgres_sink_test.dart` suite (tests A–H), and the
+   `clover_pos_adapter_test.dart` regression were not run locally. CI
+   (subosito/flutter-action) must run all three before merge; any
+   failures are bounded fixes inside the two new files.
+
+2. **Webhook-teardown coordination on disconnect.** The sink's
+   `wipeCredentialsPreserveWatermark` returns `webhookUnregistered: true`
+   unconditionally to keep the framework disconnect contract uniform,
+   but Clover supports auto-registered webhooks via
+   `CloverWebhookRegistry.unregister`. The framework's overall
+   disconnect path needs to AND the sink's flag with the registry
+   result so a failed `DELETE /v3/apps/{aId}/webhooks/{id}` surfaces
+   to the operator. This lane intentionally kept the sink uniform and
+   left the AND wiring to a future framework slice.
+
+3. **LSK (Lightspeed K-Series) fanout sink.** The next lane in the
+   sink-fanout wave — `8.spine-bridge-sink-fanout.LSK` — lands the
+   Lightspeed K-Series → `cover_facts` Postgres sink in the same shape
+   as `.AL` / `.CL`. Same bespoke + unified surface widening, same
+   idempotency partial UNIQUE, same demo-flip auto-evaluator. Schedule
+   directly after CL merges.
+
+# Sink Follow-Up — `8.spine-bridge.1.LSK` (Lightspeed Restaurant K-Series)
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-LSK`:
+
+1. **CI verification of the sink suite.** Same SDK gap as the AL
+   lane: no Flutter/Dart on the worktree PATH, so `dart analyze`,
+   `lightspeed_lsk_pos_postgres_sink_test.dart`, and the
+   `lightspeed_lsk_pos_adapter_test.dart` regression were not run
+   locally. CI must run all three before merge; analyze especially
+   matters for the `appendSyncLog` override (widens `operatorId` /
+   `locationId` from required-`String` on `CanonicalSink` to
+   nullable optional, mirroring the OR sink's `connectionId`
+   widening pattern).
+
+2. **Webhook-path canonical write through the sink.**
+   `LightspeedLskPosAdapter.handleWebhook` already drives the same
+   bespoke `gateway.writeSalesFact` seam, so the new sink covers it
+   transitively, but the test suite only smokes `pollIncremental`
+   (test F). `8.LSK.live.sandbox` should add a webhook-flavored
+   smoke that walks `InboundWebhookHandler.dispatch` →
+   signature verifier → `gateway.writeSalesFact` to pin the
+   webhook lane against the same `cover_facts` idempotency partial
+   UNIQUE on a real arrival.
+
+3. **`_resolveTenantFromConnection` audit shape.** The bespoke
+   `updateWatermark` / `appendSyncLog` calls carry only
+   `connectionId`; the sink resolves `(operator_id, location_id)`
+   via `withSystem` with reason
+   `'lightspeed_lsk_postgres_sink._resolveTenantFromConnection'`.
+   Each bespoke watermark advance therefore opens an extra
+   system-scoped transaction. The follow-up is to teach the LSK
+   adapter to thread `operatorId` / `locationId` through the
+   gateway calls (matches the OR adapter's seam) so the unified
+   path is cache-warm and the system fallback only fires on cold
+   resume — bounded edit on
+   `lib/integrations/pos/lightspeed_lsk_pos_adapter.dart`,
+   intentionally out of this lane's scope.

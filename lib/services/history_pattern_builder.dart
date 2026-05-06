@@ -13,6 +13,7 @@
 import '../data/app_defaults.dart';
 import '../models/history_pattern_record.dart';
 import '../models/shift_record.dart';
+import '../services/closed_timing_label_resolver.dart';
 import '../services/labor_model.dart';
 
 class HistoryPatternBuilder {
@@ -29,8 +30,9 @@ class HistoryPatternBuilder {
   /// Falls back to the raw weekId when no label is found.
   static List<HistoryPatternRecord> fromClosedShifts(
     List<ShiftRecord> shifts,
-    Map<String, String> weekLabelsById,
-  ) {
+    Map<String, String> weekLabelsById, {
+    ClosedTimingLabelResolver? timingLabelResolver,
+  }) {
     final validLeverIds = LeverCards.all.map((l) => l.id).toSet();
 
     final result = <HistoryPatternRecord>[];
@@ -41,14 +43,17 @@ class HistoryPatternBuilder {
       if (leverId == 'on_model') continue;
       if (!validLeverIds.contains(leverId)) continue;
 
-      result.add(HistoryPatternRecord(
-        weekId: shift.weekId,
-        weekLabel: weekLabelsById[shift.weekId] ?? shift.weekId,
-        dayLabel: shift.dayLabel,
-        daypart: shift.daypart,
-        leverId: leverId,
-        isBenchmark: LaborModel.isFavorableLever(leverId),
-      ));
+      result.add(
+        HistoryPatternRecord(
+          weekId: shift.weekId,
+          weekLabel: weekLabelsById[shift.weekId] ?? shift.weekId,
+          dayLabel: shift.dayLabel,
+          daypart: timingLabelResolver?.bucketKeyFor(shift) ?? shift.daypart,
+          servicePeriodLabel: timingLabelResolver?.labelFor(shift),
+          leverId: leverId,
+          isBenchmark: LaborModel.isFavorableLever(leverId),
+        ),
+      );
     }
     return result;
   }

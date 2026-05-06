@@ -22,6 +22,12 @@ class DaypartPatternSummary {
   /// Service-period ID (e.g. 'lunch', 'dinner', 'late_night').
   final String daypart;
 
+  /// Display label resolved from the closed row's saved timing identity.
+  ///
+  /// Null for legacy rows and older callers; [daypartLabel] then falls back
+  /// to the legacy daypart formatter.
+  final String? servicePeriodLabel;
+
   // ── Counts ──────────────────────────────────────────────────────────────
 
   /// Total closed shifts in this bucket.
@@ -65,6 +71,7 @@ class DaypartPatternSummary {
     required this.restaurantId,
     required this.dayLabel,
     required this.daypart,
+    this.servicePeriodLabel,
     required this.closedShiftCount,
     required this.benchmarkCount,
     required this.leakCount,
@@ -88,6 +95,9 @@ class DaypartPatternSummary {
 
   /// Display label for the service period.
   String get daypartLabel {
+    if (servicePeriodLabel != null && servicePeriodLabel!.trim().isNotEmpty) {
+      return servicePeriodLabel!;
+    }
     switch (daypart) {
       case 'lunch':
         return 'Lunch';

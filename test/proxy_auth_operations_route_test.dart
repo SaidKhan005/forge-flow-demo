@@ -486,6 +486,7 @@ void main() {
           final response = await harness.postJson(
             '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}/reset-mfa',
             const <String, Object?>{},
+            idempotencyKey: 'idem-reset-mfa-1',
           );
 
           expect(response.statusCode, equals(200));
@@ -532,6 +533,7 @@ void main() {
           final response = await harness.postJson(
             '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}/reset-mfa',
             const <String, Object?>{},
+            idempotencyKey: 'idem-reset-mfa-reject-1',
           );
 
           expect(response.statusCode, equals(403));
@@ -560,6 +562,7 @@ void main() {
           final response = await harness.postJson(
             '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}/cancel-mfa-removal',
             const <String, Object?>{'request_id': 'removal-request-1'},
+            idempotencyKey: 'idem-cancel-mfa-removal-1',
           );
 
           expect(response.statusCode, equals(200));

@@ -11,6 +11,7 @@ import '../domain/canonical_day_order.dart';
 import '../models/daypart_pattern_summary.dart';
 import '../models/history_benchmark_daypart_summary.dart';
 import '../models/shift_record.dart';
+import '../services/closed_timing_label_resolver.dart';
 import '../services/daypart_evidence_visibility_policy.dart';
 import '../services/daypart_pattern_summary_builder.dart';
 
@@ -35,14 +36,19 @@ class HistoryBenchmarkDaypartReadService {
   /// Only buckets with at least one favorable-lever shift are included.
   /// Ranking: benchmarkCount descending, then closedShiftCount descending,
   /// then canonical day order (Mon–Sun), then service-period order.
-  List<HistoryBenchmarkDaypartSummary> build(List<ShiftRecord> closedShifts) {
+  List<HistoryBenchmarkDaypartSummary> build(
+    List<ShiftRecord> closedShifts, {
+    ClosedTimingLabelResolver? timingLabelResolver,
+  }) {
     final summaries = DaypartPatternSummaryBuilder.fromClosedShifts(
       closedShifts,
+      timingLabelResolver: timingLabelResolver,
     );
 
     // Filter to buckets with benchmark evidence.
-    final benchmarkBuckets =
-        summaries.where((s) => s.benchmarkCount > 0).toList();
+    final benchmarkBuckets = summaries
+        .where((s) => s.benchmarkCount > 0)
+        .toList();
 
     // Rank: benchmarkCount desc, closedShiftCount desc, then explicit
     // canonical day/daypart order for deterministic tie-breaking.
@@ -79,14 +85,10 @@ class HistoryBenchmarkDaypartReadService {
 
     // Strong first, then fill remaining slots with early signals.
     final prioritized = [...strong, ...earlySignal];
-    return prioritized
-        .take(maxResults)
-        .map((s) => _toReadModel(s))
-        .toList();
+    return prioritized.take(maxResults).map((s) => _toReadModel(s)).toList();
   }
 
-  static HistoryBenchmarkDaypartSummary _toReadModel(
-      DaypartPatternSummary s) {
+  static HistoryBenchmarkDaypartSummary _toReadModel(DaypartPatternSummary s) {
     return HistoryBenchmarkDaypartSummary(
       label: s.fullLabel,
       benchmarkCount: s.benchmarkCount,

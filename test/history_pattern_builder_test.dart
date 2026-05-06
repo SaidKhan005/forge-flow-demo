@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
+import 'package:forge_and_flow/services/closed_timing_label_resolver.dart';
 import 'package:forge_and_flow/services/history_pattern_builder.dart';
 
 // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -17,6 +18,9 @@ ShiftRecord _shift({
   double splh = 180.0,
   int fohHours = 40,
   int bohHours = 42,
+  String? businessTimingProfileId,
+  String? businessTimingProfileVersionId,
+  String? servicePeriodKey,
 }) {
   return ShiftRecord(
     weekId: weekId,
@@ -31,6 +35,9 @@ ShiftRecord _shift({
     fohHours: fohHours,
     bohHours: bohHours,
     primaryLever: primaryLever,
+    businessTimingProfileId: businessTimingProfileId,
+    businessTimingProfileVersionId: businessTimingProfileVersionId,
+    servicePeriodKey: servicePeriodKey,
   );
 }
 
@@ -241,8 +248,9 @@ void main() {
             primaryLever: 'CPLH_DOWN',
           ),
         ];
-        final result = HistoryPatternBuilder.fromClosedShifts(
-            shifts, {'2026-W12': 'Mar 17'});
+        final result = HistoryPatternBuilder.fromClosedShifts(shifts, {
+          '2026-W12': 'Mar 17',
+        });
         expect(result.first.weekLabel, 'Mar 17');
       });
 
@@ -279,6 +287,39 @@ void main() {
       });
     });
 
+    group('closed timing label provenance', () {
+      test('fullLabel comes from saved timing identity when provided', () {
+        final resolver = ClosedTimingLabelResolver(const [
+          ClosedTimingLabelSnapshot(
+            businessTimingProfileVersionId: 'profile-v1',
+            servicePeriodKey: 'dinner',
+            label: 'Supper',
+          ),
+        ]);
+        final shifts = [
+          _shift(
+            weekId: '2026-W09',
+            dayLabel: 'Thu',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
+            businessTimingProfileId: 'profile-v1',
+            businessTimingProfileVersionId: 'profile-v1',
+            servicePeriodKey: 'dinner',
+          ),
+        ];
+
+        final result = HistoryPatternBuilder.fromClosedShifts(
+          shifts,
+          {},
+          timingLabelResolver: resolver,
+        );
+
+        expect(result.single.daypart, 'dinner');
+        expect(result.single.fullLabel, 'Thu Supper');
+      });
+    });
+
     group('empty and mixed input', () {
       test('empty input returns empty list', () {
         final result = HistoryPatternBuilder.fromClosedShifts([], {});
@@ -287,21 +328,48 @@ void main() {
 
       test('mix of eligible and ineligible shifts filters correctly', () {
         final shifts = [
-          _shift(weekId: '2026-W12', dayLabel: 'Tue', daypart: 'dinner',
-              status: 'closed',    primaryLever: 'CPLH_DOWN'),   // âœ“ eligible
-          _shift(weekId: '2026-W12', dayLabel: 'Wed', daypart: 'dinner',
-              status: 'projected', primaryLever: 'CPLH_UP'),    // âœ— not closed
-          _shift(weekId: '2026-W12', dayLabel: 'Thu', daypart: 'dinner',
-              status: 'closed',    primaryLever: 'ON_MODEL'),    // âœ— on_model
-          _shift(weekId: '2026-W12', dayLabel: 'Fri', daypart: 'dinner',
-              status: 'closed',    primaryLever: 'UNKNOWN'),     // âœ— unknown id
-          _shift(weekId: '2026-W12', dayLabel: 'Sat', daypart: 'dinner',
-              status: 'closed',    primaryLever: 'SPLH_DOWN'),   // âœ“ eligible
+          _shift(
+            weekId: '2026-W12',
+            dayLabel: 'Tue',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
+          ), // âœ“ eligible
+          _shift(
+            weekId: '2026-W12',
+            dayLabel: 'Wed',
+            daypart: 'dinner',
+            status: 'projected',
+            primaryLever: 'CPLH_UP',
+          ), // âœ— not closed
+          _shift(
+            weekId: '2026-W12',
+            dayLabel: 'Thu',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'ON_MODEL',
+          ), // âœ— on_model
+          _shift(
+            weekId: '2026-W12',
+            dayLabel: 'Fri',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'UNKNOWN',
+          ), // âœ— unknown id
+          _shift(
+            weekId: '2026-W12',
+            dayLabel: 'Sat',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'SPLH_DOWN',
+          ), // âœ“ eligible
         ];
         final result = HistoryPatternBuilder.fromClosedShifts(shifts, {});
         expect(result, hasLength(2));
-        expect(result.map((r) => r.leverId).toList(),
-            containsAll(['cplh_down', 'splh_down']));
+        expect(
+          result.map((r) => r.leverId).toList(),
+          containsAll(['cplh_down', 'splh_down']),
+        );
       });
     });
   });

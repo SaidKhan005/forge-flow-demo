@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
+import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 
 import '../tool/advisor_proxy/advisor_proxy.dart';
 
@@ -482,6 +483,188 @@ void main() {
       });
     });
   });
+
+  // Audit follow-up to commit 76021d28 — the user-actions sub-route
+  // (POST /v1/admin/auth/users/{id}/{action}) is the parallel write
+  // surface that escaped the original 9-branch sweep. Same Hard Promise
+  // applies: every proxy write must be idempotent, so each of the six
+  // actions (suspend, reactivate, soft-delete, reset-password,
+  // reset-mfa, cancel-mfa-removal) must reject requests without an
+  // `Idempotency-Key` header and replay a cached response on key reuse.
+  group('user-actions sub-route enforces Idempotency-Key', () {
+    test('POST suspend rejects missing Idempotency-Key', () async {
+      await _withRealHttp(() async {
+        final gateway = _IdempotencyRecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: _RecordingAdminGuard(),
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}/suspend',
+            const <String, Object?>{'reason': 'no-show'},
+          );
+          expect(response.statusCode, equals(400));
+          expect(response.json['error'], equals('missing_idempotency_key'));
+          expect(gateway.userSuspends, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST reactivate rejects missing Idempotency-Key', () async {
+      await _withRealHttp(() async {
+        final gateway = _IdempotencyRecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: _RecordingAdminGuard(),
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}'
+            '/reactivate',
+            const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(400));
+          expect(response.json['error'], equals('missing_idempotency_key'));
+          expect(gateway.userReactivates, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST soft-delete rejects missing Idempotency-Key', () async {
+      await _withRealHttp(() async {
+        final gateway = _IdempotencyRecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: _RecordingAdminGuard(),
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}'
+            '/soft-delete',
+            const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(400));
+          expect(response.json['error'], equals('missing_idempotency_key'));
+          expect(gateway.userSoftDeletes, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST reset-password rejects missing Idempotency-Key', () async {
+      await _withRealHttp(() async {
+        final gateway = _IdempotencyRecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: _RecordingAdminGuard(),
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}'
+            '/reset-password',
+            const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(400));
+          expect(response.json['error'], equals('missing_idempotency_key'));
+          expect(gateway.passwordResetRequests, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST reset-mfa rejects missing Idempotency-Key', () async {
+      await _withRealHttp(() async {
+        final authGateway = _IdempotencyRecordingAuthOperationsGateway();
+        final mfaGateway = _IdempotencyRecordingMfaOperationsGateway();
+        // Pin clock + verifier so freshAuth passes (1-min difference,
+        // well within the 5-min window) and the request reaches the
+        // idempotency check.
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: authGateway,
+          mfaOperationsGateway: mfaGateway,
+          adminPermissionGuard: _RecordingAdminGuard(),
+          verifier: _StaticVerifier(
+            lastFreshAuthAt: DateTime.utc(2026, 4, 28, 11, 59),
+          ),
+          now: () => DateTime.utc(2026, 4, 28, 12),
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}'
+            '/reset-mfa',
+            const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(400));
+          expect(response.json['error'], equals('missing_idempotency_key'));
+          expect(mfaGateway.resetUserFactors, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST cancel-mfa-removal rejects missing Idempotency-Key', () async {
+      await _withRealHttp(() async {
+        final authGateway = _IdempotencyRecordingAuthOperationsGateway();
+        final mfaGateway = _IdempotencyRecordingMfaOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: authGateway,
+          mfaOperationsGateway: mfaGateway,
+          adminPermissionGuard: _RecordingAdminGuard(),
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}'
+            '/cancel-mfa-removal',
+            const <String, Object?>{'request_id': 'removal-request-1'},
+          );
+          expect(response.statusCode, equals(400));
+          expect(response.json['error'], equals('missing_idempotency_key'));
+          expect(mfaGateway.cancels, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST suspend replays cached response on key reuse', () async {
+      await _withRealHttp(() async {
+        final gateway = _IdempotencyRecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: _RecordingAdminGuard(),
+        );
+        try {
+          final first = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}/suspend',
+            const <String, Object?>{'reason': 'no-show'},
+            idempotencyKey: 'idem-user-suspend-1',
+          );
+          final second = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}/suspend',
+            const <String, Object?>{'reason': 'no-show'},
+            idempotencyKey: 'idem-user-suspend-1',
+          );
+          expect(first.statusCode, equals(200));
+          expect(second.statusCode, equals(200));
+          expect(first.json, equals(second.json));
+          // Gateway invoked exactly once across the two retries — the
+          // second call replayed the cached body without re-firing
+          // the suspend write.
+          expect(gateway.userSuspends, hasLength(1));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+  });
 }
 
 Future<T> _withRealHttp<T>(Future<T> Function() body) async {
@@ -508,15 +691,20 @@ class _RouteHarness {
   static Future<_RouteHarness> start({
     AuthOperationsGateway? authOperationsGateway,
     ProxyAdminPermissionGuard? adminPermissionGuard,
+    MfaOperationsGateway? mfaOperationsGateway,
+    ProxyJwtVerifier? verifier,
+    DateTime Function()? now,
   }) async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    final guard = ProxyRequestGuard(verifier: _StaticVerifier());
+    final guard = ProxyRequestGuard(verifier: verifier ?? _StaticVerifier());
     server.listen((request) async {
       await routeRequest(
         request,
         guard,
         authOperationsGateway: authOperationsGateway,
         adminPermissionGuard: adminPermissionGuard,
+        mfaOperationsGateway: mfaOperationsGateway,
+        now: now,
       );
     });
     final baseUri = Uri.parse('http://${server.address.host}:${server.port}');
@@ -595,6 +783,11 @@ class _HarnessResponse {
 }
 
 class _StaticVerifier implements ProxyJwtVerifier {
+  _StaticVerifier({DateTime? lastFreshAuthAt})
+    : lastFreshAuthAt = lastFreshAuthAt ?? DateTime.utc(2026, 4, 28, 11, 59);
+
+  final DateTime lastFreshAuthAt;
+
   @override
   Future<ProxyJwtClaims> verify(String bearerToken) async {
     return ProxyJwtClaims(
@@ -604,7 +797,7 @@ class _StaticVerifier implements ProxyJwtVerifier {
       locationId: _locationId,
       roles: const <String>['roles_version:7'],
       rolesVersion: 7,
-      lastFreshAuthAt: DateTime.utc(2026, 4, 28, 11, 59),
+      lastFreshAuthAt: lastFreshAuthAt,
     );
   }
 }
@@ -755,6 +948,10 @@ class _IdempotencyRecordingAuthOperationsGateway
   final roleGrantRevokes = <TeamRoleGrantRevokeCommand>[];
   final orgUnitCreates = <TeamOrgUnitCreateCommand>[];
   final locationOrgUnitMoves = <TeamLocationOrgUnitMoveCommand>[];
+  final userSuspends = <TeamUserStatusCommand>[];
+  final userReactivates = <TeamUserStatusCommand>[];
+  final userSoftDeletes = <TeamUserStatusCommand>[];
+  final passwordResetRequests = <TeamPasswordResetCommand>[];
 
   static const TeamRoleCatalogEntry _role = TeamRoleCatalogEntry(
     roleId: _roleId,
@@ -834,6 +1031,75 @@ class _IdempotencyRecordingAuthOperationsGateway
   ) async {
     locationOrgUnitMoves.add(command);
     return const TeamLocationOrgUnitMoved(moved: true);
+  }
+
+  @override
+  Future<TeamUserStatusUpdated> suspendUser(
+    TeamUserStatusCommand command,
+  ) async {
+    userSuspends.add(command);
+    return const TeamUserStatusUpdated(updated: true);
+  }
+
+  @override
+  Future<TeamUserStatusUpdated> reactivateUser(
+    TeamUserStatusCommand command,
+  ) async {
+    userReactivates.add(command);
+    return const TeamUserStatusUpdated(updated: true);
+  }
+
+  @override
+  Future<TeamUserStatusUpdated> softDeleteUser(
+    TeamUserStatusCommand command,
+  ) async {
+    userSoftDeletes.add(command);
+    return const TeamUserStatusUpdated(updated: true);
+  }
+
+  @override
+  Future<TeamPasswordResetQueued> requestPasswordReset(
+    TeamPasswordResetCommand command,
+  ) async {
+    passwordResetRequests.add(command);
+    return const TeamPasswordResetQueued();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    throw UnimplementedError(
+      'method ${invocation.memberName} is not exercised by the idempotency '
+      'tests',
+    );
+  }
+}
+
+/// Minimal MFA recording gateway for the user-actions idempotency
+/// tests. Enough to let `reset-mfa` and `cancel-mfa-removal` reach the
+/// idempotency check and (on the replay test) the gateway itself.
+class _IdempotencyRecordingMfaOperationsGateway
+    implements MfaOperationsGateway {
+  final resetUserFactors = <MfaRevokeUserFactorsCommand>[];
+  final cancels = <MfaCancelFactorRemovalCommand>[];
+
+  @override
+  Future<MfaRevokeUserFactorsCompleted> revokeUserFactors(
+    MfaRevokeUserFactorsCommand command,
+  ) async {
+    resetUserFactors.add(command);
+    return MfaRevokeUserFactorsCompleted(
+      requestedCount: 1,
+      requestIds: const <String>['removal-request-1'],
+      executeAfter: DateTime.utc(2026, 4, 28, 12, 30),
+    );
+  }
+
+  @override
+  Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
+    MfaCancelFactorRemovalCommand command,
+  ) async {
+    cancels.add(command);
+    return const MfaCancelFactorRemovalCompleted(cancelled: true);
   }
 
   @override

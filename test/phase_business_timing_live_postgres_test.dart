@@ -407,6 +407,7 @@ on public.open_shift_snapshots (
       expect(sql, contains('updated_at = now()'));
       final params = tx.parameters.last;
       expect(params['business_timing_profile_id'], equals(_profileId));
+      expect(params['business_timing_profile_version_id'], equals(_profileId));
       expect(params['business_date'], equals('2026-05-06'));
       expect(params['service_period_key'], equals('whole_day'));
       final provenance =
@@ -545,6 +546,7 @@ PostgresRow _snapshotRow() {
     'operator_id': _operatorId,
     'location_id': _locationId,
     'business_timing_profile_id': _profileId,
+    'business_timing_profile_version_id': _profileId,
     'business_date': '2026-05-06',
     'week_start_date': '2026-05-04',
     'week_id': '2026-W19',
