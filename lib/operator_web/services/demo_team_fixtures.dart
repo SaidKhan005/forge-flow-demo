@@ -118,11 +118,12 @@ const List<DemoTeamOrgUnitFixture> kDemoTeamOrgUnitsFixture =
   ),
 ];
 
-/// Seeded role catalog the parity slices project from. 11W.2 will
-/// expand this with permissions + add the Floor Captain custom role
-/// definition; for 11W.1 we only need the role keys + display labels
-/// so the Members filter rail and invite dialog can render the
-/// dropdown options.
+/// Seeded role catalog the parity slices project from. 11W.1 needed
+/// the role keys + display labels so the Members filter rail and
+/// invite dialog could render dropdowns. 11W.2 expands the fixture
+/// with the per-role permission set so the Roles screen + Permission
+/// Explainer can render against the same data the live gateway
+/// returns.
 class DemoTeamRoleFixture {
   const DemoTeamRoleFixture({
     required this.roleId,
@@ -130,6 +131,8 @@ class DemoTeamRoleFixture {
     required this.displayName,
     required this.isSeeded,
     this.isEditable = false,
+    this.description = '',
+    this.permissionKeys = const <String>[],
   });
 
   final String roleId;
@@ -137,7 +140,112 @@ class DemoTeamRoleFixture {
   final String displayName;
   final bool isSeeded;
   final bool isEditable;
+  final String description;
+
+  /// Frozen catalog keys this fixture role grants with `effect=allow`.
+  /// Demo data only - the live catalog ships the authoritative grants
+  /// via the `/v1/admin/auth/roles` projection.
+  final List<String> permissionKeys;
 }
+
+/// Allow-set per seeded role for the demo flavor. Mirrors the baseline
+/// grants documented in `docs/contracts/auth_permission_key_catalog.md`
+/// closely enough to drive a believable Roles + Permission Explainer
+/// walkthrough; live data still wins via the proxy projection.
+const List<String> _kDemoOperatorOwnerPermissions = <String>[
+  'product.forgeflow.access',
+  'forgeflow.shift.view',
+  'forgeflow.shift.edit',
+  'forgeflow.variance.view',
+  'forgeflow.variance.edit',
+  'forgeflow.schedule.view',
+  'forgeflow.schedule.edit',
+  'forgeflow.history.view',
+  'forgeflow.benchmark.view',
+  'forgeflow.target_profile.view',
+  'forgeflow.target_profile.manage',
+  'forgeflow.target_cycle.view',
+  'forgeflow.weekly_plan.view',
+  'forgeflow.weekly_plan.lock',
+  'forgeflow.settings.view',
+  'forgeflow.settings.manage',
+  'team.users.view',
+  'team.users.invite',
+  'team.users.deactivate',
+  'team.users.reactivate',
+  'team.users.soft_delete',
+  'team.users.reset_password',
+  'team.users.reset_mfa',
+  'team.roles.view',
+  'team.roles.create_custom',
+  'team.roles.assign',
+  'team.roles.revoke',
+  'team.audit_log.view',
+  'team.session.force_logout',
+  'billing.invoice.view',
+  'billing.usage.view',
+  'integrations.configure',
+];
+
+const List<String> _kDemoOperatorManagerPermissions = <String>[
+  'product.forgeflow.access',
+  'forgeflow.shift.view',
+  'forgeflow.shift.edit',
+  'forgeflow.variance.view',
+  'forgeflow.variance.edit',
+  'forgeflow.schedule.view',
+  'forgeflow.schedule.edit',
+  'forgeflow.history.view',
+  'forgeflow.weekly_plan.view',
+  'forgeflow.settings.view',
+  'team.users.view',
+  'team.users.invite',
+  'team.users.reactivate',
+  'team.users.reset_password',
+  'team.roles.view',
+  'team.roles.assign',
+  'team.roles.revoke',
+  'team.audit_log.view',
+  'team.session.force_logout',
+];
+
+const List<String> _kDemoOperatorSupervisorPermissions = <String>[
+  'product.forgeflow.access',
+  'forgeflow.shift.view',
+  'forgeflow.variance.view',
+  'forgeflow.schedule.view',
+  'forgeflow.history.view',
+  'barrio.supervisor_content.view',
+];
+
+const List<String> _kDemoOperatorStaffPermissions = <String>[
+  'product.forgeflow.access',
+  'forgeflow.shift.view',
+  'barrio.handbook.view',
+  'barrio.learning.complete_unit',
+  'barrio.streak.view',
+];
+
+const List<String> _kDemoLocationManagerPermissions = <String>[
+  'product.forgeflow.access',
+  'forgeflow.shift.view',
+  'forgeflow.shift.edit',
+  'forgeflow.variance.view',
+  'forgeflow.schedule.view',
+  'forgeflow.history.view',
+  'team.users.view',
+  'team.roles.view',
+];
+
+/// Custom-role allow-set for the demo Floor Captain. Mirrors the
+/// "1 custom role with a 4-permission subset" description in the
+/// parity contract demo-fixture rules.
+const List<String> _kDemoFloorCaptainPermissions = <String>[
+  'forgeflow.shift.view',
+  'forgeflow.shift.edit',
+  'forgeflow.variance.view',
+  'forgeflow.history.view',
+];
 
 const List<DemoTeamRoleFixture> kDemoTeamRolesFixture = <DemoTeamRoleFixture>[
   DemoTeamRoleFixture(
@@ -145,30 +253,43 @@ const List<DemoTeamRoleFixture> kDemoTeamRolesFixture = <DemoTeamRoleFixture>[
     roleKey: 'operator_owner',
     displayName: 'Owner',
     isSeeded: true,
+    description:
+        'Operator owner. Full operational + operator-scoped admin + '
+        'integrations.',
+    permissionKeys: _kDemoOperatorOwnerPermissions,
   ),
   DemoTeamRoleFixture(
     roleId: 'role-operator-manager',
     roleKey: 'operator_manager',
     displayName: 'Manager',
     isSeeded: true,
+    description:
+        'Manager-level operator user. Broad operational; limited admin.',
+    permissionKeys: _kDemoOperatorManagerPermissions,
   ),
   DemoTeamRoleFixture(
     roleId: 'role-operator-supervisor',
     roleKey: 'operator_supervisor',
     displayName: 'Supervisor',
     isSeeded: true,
+    description: 'Supervisor-level. Selected operational + supervisor learning.',
+    permissionKeys: _kDemoOperatorSupervisorPermissions,
   ),
   DemoTeamRoleFixture(
     roleId: 'role-operator-staff',
     roleKey: 'operator_staff',
     displayName: 'Staff',
     isSeeded: true,
+    description: 'Line-level. Barrio learning surfaces only by default.',
+    permissionKeys: _kDemoOperatorStaffPermissions,
   ),
   DemoTeamRoleFixture(
     roleId: 'role-location-manager',
     roleKey: 'location_manager',
     displayName: 'Location manager',
     isSeeded: true,
+    description: 'Single-location manager. Read-only roles + members.',
+    permissionKeys: _kDemoLocationManagerPermissions,
   ),
   DemoTeamRoleFixture(
     roleId: 'role-floor-captain',
@@ -176,8 +297,124 @@ const List<DemoTeamRoleFixture> kDemoTeamRolesFixture = <DemoTeamRoleFixture>[
     displayName: 'Floor Captain',
     isSeeded: false,
     isEditable: true,
+    description:
+        'Custom role for the lead server on duty. Reads shift, variance, '
+        'and history; can edit shift assignments mid-service.',
+    permissionKeys: _kDemoFloorCaptainPermissions,
   ),
 ];
+
+/// Existing role-grant fixtures the walkthrough needs alongside user
+/// rows. The 11W.2 walkthrough creates a fresh custom role + assigns
+/// it during the session, so this fixture only carries the seeded
+/// grants the Members + Roles screens read on first paint. Each entry
+/// matches a row in [kDemoTeamUsersFixture] so the demo gateway can
+/// project user grants without a second lookup.
+@immutable
+class DemoTeamRoleGrantFixture {
+  const DemoTeamRoleGrantFixture({
+    required this.userRoleId,
+    required this.userId,
+    required this.roleId,
+    required this.scopeType,
+    this.locationId,
+    this.orgUnitId,
+  });
+
+  final String userRoleId;
+  final String userId;
+  final String roleId;
+
+  /// One of `'operator_wide'`, `'org_unit'`, or `'location'`.
+  final String scopeType;
+  final String? locationId;
+  final String? orgUnitId;
+}
+
+const List<DemoTeamRoleGrantFixture> kDemoTeamRoleGrantsFixture =
+    <DemoTeamRoleGrantFixture>[
+  DemoTeamRoleGrantFixture(
+    userRoleId: 'demo-grant-owner',
+    userId: 'demo-user-owner',
+    roleId: 'role-operator-owner',
+    scopeType: 'operator_wide',
+  ),
+  DemoTeamRoleGrantFixture(
+    userRoleId: 'demo-grant-downtown-manager',
+    userId: 'demo-user-downtown-manager',
+    roleId: 'role-operator-manager',
+    scopeType: 'location',
+    locationId: 'demo-loc-downtown',
+  ),
+  DemoTeamRoleGrantFixture(
+    userRoleId: 'demo-grant-northloop-locmgr',
+    userId: 'demo-user-northloop-locmgr',
+    roleId: 'role-location-manager',
+    scopeType: 'location',
+    locationId: 'demo-loc-north-loop',
+  ),
+  DemoTeamRoleGrantFixture(
+    userRoleId: 'demo-grant-riverside-supervisor',
+    userId: 'demo-user-riverside-supervisor',
+    roleId: 'role-operator-supervisor',
+    scopeType: 'location',
+    locationId: 'demo-loc-riverside',
+  ),
+  DemoTeamRoleGrantFixture(
+    userRoleId: 'demo-grant-riverside-staff',
+    userId: 'demo-user-riverside-staff',
+    roleId: 'role-operator-staff',
+    scopeType: 'location',
+    locationId: 'demo-loc-riverside',
+  ),
+  DemoTeamRoleGrantFixture(
+    userRoleId: 'demo-grant-floor-captain',
+    userId: 'demo-user-downtown-floor-captain',
+    roleId: 'role-floor-captain',
+    scopeType: 'location',
+    locationId: 'demo-loc-downtown',
+  ),
+];
+
+/// Project a [DemoTeamRoleFixture] into the gateway's
+/// [TeamRoleCatalogEntry] shape. Demo gateways feed their fixture map
+/// through this helper so live + demo render the same row contract.
+TeamRoleCatalogEntry teamRoleEntryFromFixture(DemoTeamRoleFixture fixture) {
+  return TeamRoleCatalogEntry(
+    roleId: fixture.roleId,
+    roleKey: fixture.roleKey,
+    displayName: fixture.displayName,
+    description: fixture.description,
+    isSeeded: fixture.isSeeded,
+    isEditable: fixture.isEditable,
+    operatorId: fixture.isSeeded ? null : kDemoOperatorIdFixture,
+    permissions: List<TeamRolePermissionRule>.unmodifiable(
+      fixture.permissionKeys.map(
+        (key) => TeamRolePermissionRule(permissionKey: key, effect: 'allow'),
+      ),
+    ),
+  );
+}
+
+/// Project a [DemoTeamRoleGrantFixture] into the gateway's
+/// [TeamGrantSnapshot] shape so the Members surface + role detail
+/// panels reuse the same row contract as the live gateway.
+TeamGrantSnapshot teamGrantSnapshotFromFixture(
+  DemoTeamRoleGrantFixture fixture, {
+  String? roleLabel,
+}) {
+  return TeamGrantSnapshot(
+    userRoleId: fixture.userRoleId,
+    roleId: fixture.roleId,
+    roleLabel: roleLabel,
+    scopeType: fixture.scopeType,
+    orgUnitId: fixture.orgUnitId,
+    locationId: fixture.locationId,
+    effectiveLocationIds: fixture.locationId == null
+        ? const <String>[]
+        : <String>[fixture.locationId!],
+  );
+}
 
 /// Six demo users covering each non-admin seeded role plus one
 /// custom-role holder. The owner holds an operator-wide grant; the

@@ -43,10 +43,12 @@ import 'operator_web/operator_web_app.dart';
 import 'operator_web/router/operator_web_router.dart';
 import 'operator_web/services/demo_team_fixtures.dart';
 import 'operator_web/services/demo_team_hierarchy_gateway.dart';
+import 'operator_web/services/demo_team_roles_gateway.dart';
 import 'operator_web/services/demo_team_sessions_gateway.dart';
 import 'operator_web/services/demo_team_users_gateway.dart';
 import 'operator_web/services/operator_web_proxy_client.dart';
 import 'operator_web/services/web_team_hierarchy_gateway.dart';
+import 'operator_web/services/web_team_roles_gateway.dart';
 import 'operator_web/services/web_team_sessions_gateway.dart';
 import 'operator_web/services/web_team_users_gateway.dart';
 import 'services/auth/firebase_auth_client_sdk.dart';
@@ -102,12 +104,12 @@ Future<OperatorWebAuthSource> _resolveAuthSource() async {
   if (_kOperatorWebDemoAuth) {
     // Demo flavor: extend the demo auth source so the router can pick
     // up the in-memory `DemoWebTeamUsersGateway` +
-    // `DemoWebTeamHierarchyGateway` + `DemoWebTeamSessionsGateway`
-    // via the matching provider mixins. Live flavor wires
-    // `package:http`-backed gateways against the same proxy client
-    // in the `11W.x.live` follow-ups (mirrors the
+    // `DemoWebTeamRolesGateway` + `DemoWebTeamHierarchyGateway` +
+    // `DemoWebTeamSessionsGateway` via the matching provider mixins.
+    // Live flavor wires `package:http`-backed gateways against the
+    // same proxy client in the `11W.x.live` follow-ups (mirrors the
     // gateway-follows-shell pattern Phase 11A used).
-    return _DemoOperatorWebAuthSourceWithMembers();
+    return _DemoOperatorWebAuthSourceWithTeamSurfaces();
   }
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(options: kOperatorWebFirebaseOptions);
@@ -149,26 +151,32 @@ String? _parseMagicLinkToken() {
 
 /// Demo flavor wrapper that mixes
 /// [OperatorWebTeamUsersGatewayProvider] +
+/// [OperatorWebTeamRolesGatewayProvider] +
 /// [OperatorWebTeamHierarchyGatewayProvider] +
 /// [OperatorWebTeamSessionsGatewayProvider] onto the demo auth
-/// source. The router reads the gateways off these interfaces so the
-/// Members + Locations + Sessions surfaces show the shared demo
+/// source. The router reads each gateway off these interfaces so the
+/// Members + Roles + Locations + Sessions surfaces share the demo
 /// fixture data set during the walkthrough. Live mode binds the
-/// live HTTP impls in `11W.x.live`.
-class _DemoOperatorWebAuthSourceWithMembers
+/// live HTTP impls in their `11W.x.live` follow-ups.
+class _DemoOperatorWebAuthSourceWithTeamSurfaces
     extends DemoOperatorWebAuthSource
     implements
         OperatorWebTeamUsersGatewayProvider,
+        OperatorWebTeamRolesGatewayProvider,
         OperatorWebTeamHierarchyGatewayProvider,
         OperatorWebTeamSessionsGatewayProvider {
-  _DemoOperatorWebAuthSourceWithMembers()
+  _DemoOperatorWebAuthSourceWithTeamSurfaces()
       : teamUsersGateway = DemoWebTeamUsersGateway(),
+        teamRolesGateway = DemoWebTeamRolesGateway(),
         teamHierarchyGateway = DemoWebTeamHierarchyGateway(),
         teamSessionsGateway = DemoWebTeamSessionsGateway(),
         super(initial: const OperatorWebNeedsToken());
 
   @override
   final WebTeamUsersGateway teamUsersGateway;
+
+  @override
+  final WebTeamRolesGateway teamRolesGateway;
 
   @override
   final WebTeamHierarchyGateway teamHierarchyGateway;

@@ -25,21 +25,27 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
+import '../../services/auth/auth_operations_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../account/operator_web_account_actions.dart';
 import '../services/demo_team_hierarchy_gateway.dart';
+import '../services/demo_team_roles_gateway.dart';
 import '../services/demo_team_sessions_gateway.dart';
 import '../services/demo_team_users_gateway.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
 import '../services/web_team_hierarchy_gateway.dart';
+import '../services/web_team_roles_gateway.dart';
 import '../services/web_team_sessions_gateway.dart';
 import '../services/web_team_users_gateway.dart';
 import '../screens/account_screen.dart';
+import '../screens/custom_role_editor_screen.dart';
 import '../screens/data_accuracy_screen.dart';
 import '../screens/hierarchy_screen.dart';
 import '../screens/members_screen.dart';
 import '../screens/mfa_enrollment_screen.dart';
 import '../screens/password_setup_screen.dart';
+import '../screens/permission_explainer_screen.dart';
+import '../screens/roles_screen.dart';
 import '../screens/sessions_screen.dart';
 import '../screens/sign_in_screen.dart';
 import '../screens/tos_accept_screen.dart';
@@ -52,10 +58,21 @@ import '../../theme/app_theme.dart';
 /// links key off these.
 const String kOperatorWebNavAccount = 'account';
 const String kOperatorWebNavMembers = 'members';
+const String kOperatorWebNavRoles = 'roles';
 const String kOperatorWebNavLocations = 'locations';
 const String kOperatorWebNavSessions = 'sessions';
 const String kOperatorWebNavVendorConnections = 'vendor_connections';
 const String kOperatorWebNavDataAccuracy = 'data_accuracy';
+
+/// Sub-route names mounted under the Roles nav surface. The router
+/// keeps a small state machine here rather than registering full
+/// `MaterialPageRoute` entries because the operator-web shell is a
+/// single-Navigator shell; the names mirror the parity-contract paths
+/// so `/roles`, `/roles/explainer`, and `/roles/edit/:id` line up
+/// with the URL bar once URL synchronization lands in a follow-up.
+const String kOperatorWebRolesPath = '/roles';
+const String kOperatorWebRolesExplainerPath = '/roles/explainer';
+const String kOperatorWebRolesEditPath = '/roles/edit';
 
 /// Sentinel the operator-web shell stamps on the auth source when it
 /// can supply a [WebTeamUsersGateway] for the Members surface. Demo
@@ -64,6 +81,15 @@ const String kOperatorWebNavDataAccuracy = 'data_accuracy';
 /// `package:http` impl.
 abstract class OperatorWebTeamUsersGatewayProvider {
   WebTeamUsersGateway get teamUsersGateway;
+}
+
+/// Sentinel the operator-web shell stamps on the auth source when it
+/// can supply a [WebTeamRolesGateway] for the Roles surface. Demo
+/// auth source mixes this in with [DemoWebTeamRolesGateway];
+/// `11W.2.live` will mix it in on the live source with the
+/// `package:http` impl.
+abstract class OperatorWebTeamRolesGatewayProvider {
+  WebTeamRolesGateway get teamRolesGateway;
 }
 
 /// Sentinel the operator-web shell stamps on the auth source when it
@@ -129,6 +155,20 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   late String _selectedNavId;
   bool _busy = false;
 
+  /// Sub-route name within the Roles surface. `null` means the list
+  /// view (`/roles`); other values mirror the parity-contract paths
+  /// `/roles/explainer` and `/roles/edit/:id`.
+  String? _rolesSubRoute;
+
+  /// Role being edited at `/roles/edit/:id`. `null` when the editor
+  /// is mounted in create mode (`/roles/edit/new`).
+  TeamRoleCatalogEntry? _rolesEditTarget;
+
+  /// Bumps to force a fresh Roles list state when the editor returns.
+  /// Drives a `ValueKey` on [RolesScreen] so the list reloads from
+  /// the gateway after a create / patch / delete.
+  int _rolesListSeq = 0;
+
   @override
   void initState() {
     super.initState();
@@ -169,8 +209,49 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   }
 
   void _selectNav(String id) {
-    if (id == _selectedNavId) return;
-    setState(() => _selectedNavId = id);
+    if (id == _selectedNavId) {
+      // Re-tap on Roles returns to the list view from a sub-route.
+      if (id == kOperatorWebNavRoles && _rolesSubRoute != null) {
+        setState(() {
+          _rolesSubRoute = null;
+          _rolesEditTarget = null;
+        });
+      }
+      return;
+    }
+    setState(() {
+      _selectedNavId = id;
+      // Switching to a different top-level nav exits any roles
+      // sub-route.
+      if (id != kOperatorWebNavRoles) {
+        _rolesSubRoute = null;
+        _rolesEditTarget = null;
+      }
+    });
+  }
+
+  void _openRolesExplainer() {
+    setState(() {
+      _selectedNavId = kOperatorWebNavRoles;
+      _rolesSubRoute = kOperatorWebRolesExplainerPath;
+      _rolesEditTarget = null;
+    });
+  }
+
+  void _openRolesEditor(TeamRoleCatalogEntry? target) {
+    setState(() {
+      _selectedNavId = kOperatorWebNavRoles;
+      _rolesSubRoute = kOperatorWebRolesEditPath;
+      _rolesEditTarget = target;
+    });
+  }
+
+  void _closeRolesSubRoute({bool reload = false}) {
+    setState(() {
+      _rolesSubRoute = null;
+      _rolesEditTarget = null;
+      if (reload) _rolesListSeq += 1;
+    });
   }
 
   @override
@@ -311,6 +392,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.group_outlined,
       ),
       OperatorWebNavItem(
+        id: kOperatorWebNavRoles,
+        title: 'Roles',
+        icon: Icons.shield_outlined,
+      ),
+      OperatorWebNavItem(
         id: kOperatorWebNavLocations,
         title: 'Locations',
         icon: Icons.account_tree_outlined,
@@ -338,6 +424,9 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           session: session,
           gateway: _teamUsersGateway,
         );
+        break;
+      case kOperatorWebNavRoles:
+        body = _buildRolesBody(session);
         break;
       case kOperatorWebNavLocations:
         body = HierarchyScreen(
@@ -381,6 +470,36 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     );
   }
 
+  Widget _buildRolesBody(OperatorWebSession session) {
+    switch (_rolesSubRoute) {
+      case kOperatorWebRolesExplainerPath:
+        return PermissionExplainerScreen(
+          key: const Key('operator_web_roles_explainer_route'),
+          onClose: () => _closeRolesSubRoute(),
+        );
+      case kOperatorWebRolesEditPath:
+        return CustomRoleEditorScreen(
+          key: ValueKey(
+            'operator_web_roles_editor_'
+            '${_rolesEditTarget?.roleId ?? "new"}',
+          ),
+          session: session,
+          gateway: _teamRolesGateway,
+          existing: _rolesEditTarget,
+          onSaved: (_) => _closeRolesSubRoute(reload: true),
+          onClose: () => _closeRolesSubRoute(),
+        );
+      default:
+        return RolesScreen(
+          key: ValueKey('operator_web_roles_list_$_rolesListSeq'),
+          session: session,
+          gateway: _teamRolesGateway,
+          onOpenExplainer: _openRolesExplainer,
+          onOpenEditor: _openRolesEditor,
+        );
+    }
+  }
+
   OperatorWebAccountActions? get _accountActions =>
       widget.source is OperatorWebAccountActions
       ? widget.source as OperatorWebAccountActions
@@ -404,7 +523,20 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     return _routerOwnedDemoGateway ??= DemoWebTeamUsersGateway();
   }
 
+  WebTeamRolesGateway get _teamRolesGateway {
+    final source = widget.source;
+    if (source is OperatorWebTeamRolesGatewayProvider) {
+      return (source as OperatorWebTeamRolesGatewayProvider).teamRolesGateway;
+    }
+    // Live source without a gateway mixin still gets a working
+    // surface for the slice walkthrough; the `11W.2.live` follow-up
+    // mixes the live HTTP gateway in via
+    // `OperatorWebTeamRolesGatewayProvider`.
+    return _routerOwnedDemoRolesGateway ??= DemoWebTeamRolesGateway();
+  }
+
   DemoWebTeamUsersGateway? _routerOwnedDemoGateway;
+  DemoWebTeamRolesGateway? _routerOwnedDemoRolesGateway;
 
   WebTeamHierarchyGateway get _teamHierarchyGateway {
     final source = widget.source;
