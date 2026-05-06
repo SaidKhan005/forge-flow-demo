@@ -65,6 +65,16 @@ FROM nginx:1.27-alpine
 
 COPY --from=build /workspace/build/web /usr/share/nginx/html
 
+# Precompress the Flutter web bundle at image build time so nginx can serve
+# the large admin assets without spending request-path CPU on gzip work.
+RUN find /usr/share/nginx/html -type f \( \
+        -name '*.js' -o \
+        -name '*.css' -o \
+        -name '*.json' -o \
+        -name '*.wasm' -o \
+        -name '*.svg' \
+    \) -exec sh -c 'gzip -9 -c "$1" > "$1.gz"' _ {} \;
+
 # Cloud Run honours $PORT; rewrite the default nginx listener so the
 # container binds wherever Cloud Run schedules it. Index fallback
 # keeps Flutter's hash-based deep links working when an admin
@@ -74,6 +84,7 @@ RUN printf '%s\n' \
         '    listen 0.0.0.0:8080;' \
         '    listen [::]:8080;' \
         '    gzip on;' \
+        '    gzip_static on;' \
         '    gzip_comp_level 6;' \
         '    gzip_min_length 1024;' \
         '    gzip_proxied any;' \
