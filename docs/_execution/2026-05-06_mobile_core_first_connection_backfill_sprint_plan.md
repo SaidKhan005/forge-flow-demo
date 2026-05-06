@@ -3,7 +3,7 @@
 Date: 2026-05-06
 Branch: `codex/mobile-core-first-connect-backfill-plan`
 Baseline: `origin/master` at `52ac1f4c`
-Status: planning packet
+Status: accepted 2026-05-06 after Lane 5 fixture proof
 
 ## Plain English
 
@@ -15,6 +15,19 @@ seeding.
 
 This sprint closes that first-connection path before moving into stars,
 targets, and plans.
+
+## Closeout Evidence
+
+Lane 5 proof lives at:
+
+- `tool/first_connection_backfill_harness/main.dart`
+- `tool/first_connection_backfill_harness/README.md`
+- `docs/_execution/2026-05-06_8_first_connection_backfill_proof.md`
+- `docs/_walkthroughs/8.first-connect-backfill.md`
+
+The proof is fixture-backed. It names live provider calls, live Postgres apply,
+Cloud Run invocation, connected-device proof, push notification proof, and the
+large pressure suite as out of scope for this sprint.
 
 ## Drill-Down Verdicts
 
