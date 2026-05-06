@@ -121,3 +121,38 @@ Three open items left after the sink + test landed on
    on `(operator_id, vendor_id, vendor_entity_id, vendor_modified_at)`,
    demo-flip auto-evaluator on watermark advance. Schedule the
    next lane directly after SQ merges.
+
+---
+
+# Sink Follow-Up — `8.spine-bridge.1.TS` (Toast)
+
+Three open items left after the sink + test landed on
+`claude/relaxed-shirley-d886c5`:
+
+1. **CI verification of the sink suite.** No Flutter/Dart SDK was
+   available on the worktree harness, so `dart analyze`, the new
+   `toast_pos_postgres_sink_test.dart` suite (tests A–H), and the
+   `toast_pos_adapter_test.dart` regression were not run locally.
+   CI (subosito/flutter-action) must run all three before merge;
+   any failures are bounded fixes inside the two new files.
+
+2. **Adapter-side disconnect → sink wipe wiring.** The sink exposes
+   `wipeCredentialsPreserveWatermark` for symmetry with the OR sink,
+   but `ToastPosAdapter.disconnect` still routes only through
+   `transport.unregisterWebhook` and reports `credentialsWiped: true`
+   without actually invoking the sink helper. A follow-up in
+   `8.TS.live.sandbox` should thread the sink call through the
+   adapter's disconnect path so credential ciphertexts are blanked
+   in `vendor_credentials` on operator-initiated disconnect. The
+   slice prompt explicitly pinned the adapter as off-limits, so this
+   was deliberately deferred.
+
+3. **Spine-bridge dispatcher binding.** The Toast sink now satisfies
+   `CanonicalSink`, but the sync worker dispatcher
+   (`tool/integration_sync_worker/dispatch.dart`) does not yet route
+   Toast through the unified surface. The next lane wires
+   `kToastVendorId` into the dispatcher's POS map alongside
+   `oracle_micros_simphony` and `aloha_ncr_voyix` so the worker can
+   call `upsertCoverFact` / `advanceWatermark` with an explicit
+   `connectionId`. Schedule after `.TS` merges and before the next
+   POS fanout sink.
