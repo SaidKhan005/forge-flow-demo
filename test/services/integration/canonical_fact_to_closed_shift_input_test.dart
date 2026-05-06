@@ -839,6 +839,309 @@ void main() {
     });
   });
 
+  // ─────────────────── N — keyed Data Accuracy service-period settings ────
+  //
+  // Hardening Wave B1: covers-source resolution must prefer the
+  // keyed `data_accuracy_service_period_settings` row when present
+  // and fall back to the legacy `covers_source_*` column otherwise.
+  group(
+      'aggregator — N. Hardening Wave B1 keyed service-period settings '
+      'preference',
+      () {
+    test(
+      'keyed setting present (covers_source=manual) overrides legacy '
+      'column (covers_source_dinner=vendor); manual entry from the '
+      'legacy jsonb still resolves; provenance + sourceSystem reflect '
+      'operator manual entry',
+      () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        // Legacy column says vendor; keyed setting flips to manual.
+        pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+          'setting_id': 'das_001',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'covers_source_lunch': 'vendor',
+          'covers_source_dinner': 'vendor',
+          'covers_source_late_night': 'vendor',
+          'covers_manual_entries': <String, Map<String, int>>{
+            _businessDateIso: <String, int>{'dinner': 142},
+          },
+          'wage_source': 'vendor',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 4),
+          'updated_by': null,
+        };
+        // Keyed setting wins: covers_source=manual for service period
+        // 'dinner' effective from 2026-05-01 (≤ business_date 2026-05-04).
+        pool.dataAccuracyServicePeriodSettingsByTenant[
+            '$_opA|$_locA|dinner'] = <String, Object?>{
+          'id': '99999999-9999-9999-9999-999999999999',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'service_period_key': 'dinner',
+          'covers_source': 'manual',
+          'wage_source': 'manual_mix',
+          'effective_at_business_date': '2026-05-01',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 1),
+          'updated_by': null,
+        };
+        // POS row exists but operator manual preference must win.
+        pool.coverFactsByOperatorLocation[
+            '$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'square',
+            'vendor_entity_id': 'order_001',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 0,
+            'covers_source': 'forecast_fallback',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 250.00,
+          },
+        ];
+
+        final aggregator = CanonicalFactToClosedShiftInputAggregator(
+          TenantTransactionWrapper(pool),
+        );
+        final result = await aggregator.aggregate(
+          operatorId: _opA,
+          locationId: _locA,
+          restaurantId: _restaurantA,
+          businessDate: _businessDate,
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          daypart: Daypart.dinner,
+          periodDefinition: _dinnerPeriod,
+        );
+        expect(result, isNotNull);
+        expect(
+          result!.input.covers,
+          142,
+          reason: 'keyed covers_source=manual must promote the legacy '
+              'manual jsonb value over the legacy column preference',
+        );
+        expect(result.input.sourceSystem, 'operator_manual_entry');
+        expect(
+          result.provenance.coversProvenance,
+          'operator_manual_entry_per_daypart',
+        );
+      },
+    );
+
+    test(
+      'no keyed row present — aggregator falls back to legacy '
+      'covers_source_dinner column (vendor) and emits the vendor '
+      'provenance with the POS-supplied covers',
+      () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        // Legacy column says vendor; keyed table is empty for this
+        // (operator, location, service_period_key).
+        pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+          'setting_id': 'das_001',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'covers_source_lunch': 'vendor',
+          'covers_source_dinner': 'vendor',
+          'covers_source_late_night': 'vendor',
+          'covers_manual_entries': const <String, Map<String, int>>{},
+          'wage_source': 'vendor',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 4),
+          'updated_by': null,
+        };
+        // POS supplies covers; vendor preference flows through stage 2.
+        pool.coverFactsByOperatorLocation[
+            '$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_001',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 73,
+            'covers_source': 'direct',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 1184.50,
+          },
+        ];
+
+        final aggregator = CanonicalFactToClosedShiftInputAggregator(
+          TenantTransactionWrapper(pool),
+        );
+        final result = await aggregator.aggregate(
+          operatorId: _opA,
+          locationId: _locA,
+          restaurantId: _restaurantA,
+          businessDate: _businessDate,
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          daypart: Daypart.dinner,
+          periodDefinition: _dinnerPeriod,
+        );
+        expect(result, isNotNull);
+        expect(result!.input.covers, 73);
+        expect(result.input.sourceSystem, 'oracle_micros_simphony');
+        expect(
+          result.provenance.coversProvenance,
+          'vendor_oracle_micros_simphony',
+        );
+      },
+    );
+
+    test(
+      'forward-staged keyed row (effective_at AFTER the business_date) '
+      'must NOT short-circuit the legacy fallback — the at-or-before '
+      'lookup keeps a 2026-06-01 manual switch from gating a '
+      '2026-05-04 close',
+      () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+          'setting_id': 'das_001',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'covers_source_lunch': 'vendor',
+          'covers_source_dinner': 'vendor',
+          'covers_source_late_night': 'vendor',
+          'covers_manual_entries': const <String, Map<String, int>>{},
+          'wage_source': 'vendor',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 4),
+          'updated_by': null,
+        };
+        // Forward-staged keyed setting: effective from 2026-06-01.
+        pool.dataAccuracyServicePeriodSettingsByTenant[
+            '$_opA|$_locA|dinner'] = <String, Object?>{
+          'id': '99999999-9999-9999-9999-999999999999',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'service_period_key': 'dinner',
+          'covers_source': 'manual',
+          'wage_source': 'manual_mix',
+          'effective_at_business_date': '2026-06-01',
+          'created_at': DateTime.utc(2026, 5, 31),
+          'updated_at': DateTime.utc(2026, 5, 31),
+          'updated_by': null,
+        };
+        pool.coverFactsByOperatorLocation[
+            '$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_001',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 51,
+            'covers_source': 'direct',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 812.00,
+          },
+        ];
+
+        final aggregator = CanonicalFactToClosedShiftInputAggregator(
+          TenantTransactionWrapper(pool),
+        );
+        final result = await aggregator.aggregate(
+          operatorId: _opA,
+          locationId: _locA,
+          restaurantId: _restaurantA,
+          businessDate: _businessDate, // 2026-05-04
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          daypart: Daypart.dinner,
+          periodDefinition: _dinnerPeriod,
+        );
+        expect(result, isNotNull);
+        expect(
+          result!.input.covers,
+          51,
+          reason: 'forward-staged keyed row must not short-circuit '
+              'the legacy vendor preference for a historical close',
+        );
+        expect(
+          result.provenance.coversProvenance,
+          'vendor_oracle_micros_simphony',
+        );
+      },
+    );
+
+    test(
+      'cross-tenant isolation — operator A\'s keyed row must NOT be '
+      'reachable from operator B\'s tenant context (the fake pool '
+      'partitions by operator_id, mirroring production RLS)',
+      () async {
+        final pool = _FakePool()
+          ..seedLocation(_opA, _locA)
+          ..seedLocation(_opB, _locA);
+        // Keyed setting only seeded for operator A.
+        pool.dataAccuracyServicePeriodSettingsByTenant[
+            '$_opA|$_locA|dinner'] = <String, Object?>{
+          'id': '99999999-9999-9999-9999-999999999999',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'service_period_key': 'dinner',
+          'covers_source': 'manual',
+          'wage_source': 'manual_mix',
+          'effective_at_business_date': '2026-05-01',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 1),
+          'updated_by': null,
+        };
+        // Operator B has only the legacy default + a vendor POS row.
+        pool.dataAccuracySettingsByTenant['$_opB|$_locA'] = <String, Object?>{
+          'setting_id': 'das_002',
+          'operator_id': _opB,
+          'location_id': _locA,
+          'covers_source_lunch': 'vendor',
+          'covers_source_dinner': 'vendor',
+          'covers_source_late_night': 'vendor',
+          'covers_manual_entries': const <String, Map<String, int>>{},
+          'wage_source': 'vendor',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 4),
+          'updated_by': null,
+        };
+        pool.coverFactsByOperatorLocation[
+            '$_opB|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_001',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 28,
+            'covers_source': 'direct',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 412.50,
+          },
+        ];
+
+        final aggregator = CanonicalFactToClosedShiftInputAggregator(
+          TenantTransactionWrapper(pool),
+        );
+        final result = await aggregator.aggregate(
+          operatorId: _opB,
+          locationId: _locA,
+          restaurantId: _restaurantA,
+          businessDate: _businessDate,
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          daypart: Daypart.dinner,
+          periodDefinition: _dinnerPeriod,
+        );
+        expect(result, isNotNull);
+        // Operator B sees vendor covers, NOT operator A's manual mode.
+        expect(result!.input.covers, 28);
+        expect(result.input.sourceSystem, 'oracle_micros_simphony');
+        expect(
+          result.provenance.coversProvenance,
+          'vendor_oracle_micros_simphony',
+        );
+      },
+    );
+  });
+
   // ─────────────────── M — banned-items grep ──────────────────────────────
   group('aggregator — M. banned-items grep', () {
     test('aggregator + sidecar source contain zero V1 lean cut 2 banned '
@@ -890,6 +1193,14 @@ class _FakePool implements PostgresPool {
 
   /// Keyed by `(operator_id, location_id)`.
   final Map<String, Map<String, Object?>> dataAccuracySettingsByTenant =
+      <String, Map<String, Object?>>{};
+
+  /// Hardening Wave B1 — keyed by `(operator_id, location_id,
+  /// service_period_key)`. The fake returns the row when
+  /// `effective_at_business_date <= @business_date`; tests pre-seed
+  /// rows whose effective date should win the at-or-before lookup.
+  final Map<String, Map<String, Object?>>
+      dataAccuracyServicePeriodSettingsByTenant =
       <String, Map<String, Object?>>{};
 
   /// Keyed by `(operator_id, location_id, business_date_iso)`.
@@ -952,6 +1263,23 @@ class _FakeTransaction implements PostgresTransaction {
     if (sql.contains('select set_config(')) {
       _captureSetConfig(sql, parameters);
       return const <PostgresRow>[];
+    }
+    if (sql.contains(
+        'from public.data_accuracy_service_period_settings')) {
+      final operatorId = parameters['operator_id'] as String;
+      final locationId = parameters['location_id'] as String;
+      final servicePeriodKey = parameters['service_period_key'] as String;
+      final businessDate = parameters['business_date'] as String;
+      final row = pool.dataAccuracyServicePeriodSettingsByTenant[
+          '$operatorId|$locationId|$servicePeriodKey'];
+      if (row == null) return const <PostgresRow>[];
+      // Honour the at-or-before contract — if the seeded effective
+      // date is AFTER the queried business_date, return no row.
+      final effectiveAt = row['effective_at_business_date'];
+      if (effectiveAt is String && effectiveAt.compareTo(businessDate) > 0) {
+        return const <PostgresRow>[];
+      }
+      return <PostgresRow>[row];
     }
     if (sql.contains('from data_accuracy_settings')) {
       final operatorId = parameters['operator_id'] as String;
