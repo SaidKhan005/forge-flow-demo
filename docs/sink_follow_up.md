@@ -339,3 +339,42 @@ Three open items left after the sink + test landed on
    as `.AL` / `.CL`. Same bespoke + unified surface widening, same
    idempotency partial UNIQUE, same demo-flip auto-evaluator. Schedule
    directly after CL merges.
+
+# Sink Follow-Up — `8.spine-bridge.1.LSK` (Lightspeed Restaurant K-Series)
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-LSK`:
+
+1. **CI verification of the sink suite.** Same SDK gap as the AL
+   lane: no Flutter/Dart on the worktree PATH, so `dart analyze`,
+   `lightspeed_lsk_pos_postgres_sink_test.dart`, and the
+   `lightspeed_lsk_pos_adapter_test.dart` regression were not run
+   locally. CI must run all three before merge; analyze especially
+   matters for the `appendSyncLog` override (widens `operatorId` /
+   `locationId` from required-`String` on `CanonicalSink` to
+   nullable optional, mirroring the OR sink's `connectionId`
+   widening pattern).
+
+2. **Webhook-path canonical write through the sink.**
+   `LightspeedLskPosAdapter.handleWebhook` already drives the same
+   bespoke `gateway.writeSalesFact` seam, so the new sink covers it
+   transitively, but the test suite only smokes `pollIncremental`
+   (test F). `8.LSK.live.sandbox` should add a webhook-flavored
+   smoke that walks `InboundWebhookHandler.dispatch` →
+   signature verifier → `gateway.writeSalesFact` to pin the
+   webhook lane against the same `cover_facts` idempotency partial
+   UNIQUE on a real arrival.
+
+3. **`_resolveTenantFromConnection` audit shape.** The bespoke
+   `updateWatermark` / `appendSyncLog` calls carry only
+   `connectionId`; the sink resolves `(operator_id, location_id)`
+   via `withSystem` with reason
+   `'lightspeed_lsk_postgres_sink._resolveTenantFromConnection'`.
+   Each bespoke watermark advance therefore opens an extra
+   system-scoped transaction. The follow-up is to teach the LSK
+   adapter to thread `operatorId` / `locationId` through the
+   gateway calls (matches the OR adapter's seam) so the unified
+   path is cache-warm and the system fallback only fires on cold
+   resume — bounded edit on
+   `lib/integrations/pos/lightspeed_lsk_pos_adapter.dart`,
+   intentionally out of this lane's scope.
