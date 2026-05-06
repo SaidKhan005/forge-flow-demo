@@ -1,5 +1,6 @@
 import 'forge_flow_app.dart';
 import 'forge_flow_bootstrap.dart';
+import 'infrastructure/persistence/sqlite/repositories/sqlite_realtime_subscription_watermark_store.dart';
 import 'services/auth/firebase_auth_runtime_bindings.dart';
 import 'services/mobile_push/firebase_mobile_push_runtime.dart';
 import 'services/realtime/realtime_subscription.dart';
@@ -24,11 +25,20 @@ Future<void> main() async {
     // the operator-facing [SyncStateBadge] renders Live /
     // Reconnecting chrome. The shell's auth bridge calls
     // `setTenantContext` on the active session.
+    //
+    // Phase 10a.5 — pass the durable per-(operator, topic) watermark
+    // store so the very first connect after a process restart resumes
+    // against any events the operator missed during the cold-start
+    // window (capped by the route's 5-minute replay floor; older
+    // cursors trip a `replay_truncated` control envelope and a full
+    // refresh).
     final realtimeSubscription = proxyBaseUri == null
         ? null
         : RealtimeSubscription(
             proxyBaseUri: _toWebSocketUri(proxyBaseUri),
             transport: const WebSocketChannelRealtimeTransport(),
+            watermarkStore:
+                SqliteRealtimeSubscriptionWatermarkStore.instance,
           );
     final mobilePushNotifications = createFirebaseMobilePushNotificationService(
       tokenGateway: bindings.mobilePushTokenGateway,

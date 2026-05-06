@@ -403,6 +403,31 @@ Future<void> _createAllTables(Database db) async {
     ON boundary_event_outbox(delivered_at, picked_up_at, restaurant_id, id)
   ''');
 
+  // ── Realtime subscription watermark (10a.5) ──────────────────────────
+  // Per-device cache of the most recent `event_id` the realtime client
+  // has surfaced on each `(operator_id, topic)` pair. The subscription
+  // advances the row inside the same transaction that delivers the
+  // event to the UI; on reconnect, the subscription picks the newest
+  // watermark across topics and forwards it as `?last_event_id=...`
+  // so the proxy route replays anything missed during the disconnect
+  // window. V1 is per-device only — cross-device sync lands in 10b.
+  await db.execute('''
+    CREATE TABLE realtime_subscription_watermark (
+      operator_id  TEXT NOT NULL,
+      topic        TEXT NOT NULL,
+      event_id     TEXT NOT NULL,
+      occurred_at  TEXT NOT NULL,
+      updated_at   TEXT NOT NULL,
+      PRIMARY KEY (operator_id, topic)
+    )
+  ''');
+  // Reconnect hydrate reads the newest watermark per operator first —
+  // the trailing DESC on occurred_at lets the index serve that probe
+  // without an extra sort.
+  await db.execute('''
+    CREATE INDEX ix_realtime_subscription_watermark_recent
+    ON realtime_subscription_watermark(operator_id, occurred_at DESC)
+  ''');
 }
 
 Future<void> _createTableIfNotExists(
