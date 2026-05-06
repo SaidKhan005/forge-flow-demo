@@ -183,6 +183,20 @@ void main() {
           find.byKey(const Key('operator_web_nav_group_data_integrations')),
           findsOneWidget,
         );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('operator_web_nav_item_roles')),
+            matching: find.byIcon(Icons.admin_panel_settings_outlined),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('operator_web_nav_item_security')),
+            matching: find.byIcon(Icons.lock_outlined),
+          ),
+          findsOneWidget,
+        );
         final navOrder = [
           'account',
           'business_setup',

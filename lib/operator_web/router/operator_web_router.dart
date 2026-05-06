@@ -444,13 +444,13 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       OperatorWebNavItem(
         id: kOperatorWebNavRoles,
         title: 'Roles',
-        icon: Icons.shield_outlined,
+        icon: Icons.admin_panel_settings_outlined,
         group: 'People & access',
       ),
       OperatorWebNavItem(
         id: kOperatorWebNavSecurity,
         title: 'Security',
-        icon: Icons.shield_outlined,
+        icon: Icons.lock_outlined,
         group: 'People & access',
       ),
       OperatorWebNavItem(
