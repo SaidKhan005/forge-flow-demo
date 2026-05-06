@@ -244,8 +244,13 @@ void main() {
   });
 
   group('EmailTemplateIds.all', () {
-    test('lists exactly the 8 V1 templates from the slice doc', () {
-      expect(EmailTemplateIds.all, hasLength(8));
+    test('lists the V1 templates from the slice doc + V1.E fan-out '
+        'template', () {
+      // Phase 9.8 shipped 8 V1 templates; Phase 8 V1.E added a 9th
+      // (`vendor_now_available`) for the lifecycle-promotion fan-out.
+      // Source:
+      // `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md` V1.E.
+      expect(EmailTemplateIds.all, hasLength(9));
       expect(EmailTemplateIds.all, contains('operator_invite_first_admin'));
       expect(EmailTemplateIds.all, contains('operator_admin_invite'));
       expect(EmailTemplateIds.all, contains('password_reset_request'));
@@ -260,6 +265,7 @@ void main() {
         contains('vendor_connection_auto_disabled'),
       );
       expect(EmailTemplateIds.all, contains('tos_version_updated_notice'));
+      expect(EmailTemplateIds.all, contains('vendor_now_available'));
     });
 
     test('every V1 template has a matching .md file on disk', () {
