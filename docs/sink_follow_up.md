@@ -308,3 +308,34 @@ Three open items left after the sink + test landed on
    the column list, and decide whether ADP wage rates flow through
    the adapter (rate × duration) or directly via a payroll-side
    join. Schedule only after the V1 launch ledger clears.
+
+---
+
+# Sink Follow-Up — `8.spine-bridge-sink-fanout.CL` (Clover)
+
+Three open items left after the sink + test landed on
+`claude/cool-spence-df5231`:
+
+1. **CI verification of the sink suite.** The worktree environment has
+   no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `clover_pos_postgres_sink_test.dart` suite (tests A–H), and the
+   `clover_pos_adapter_test.dart` regression were not run locally. CI
+   (subosito/flutter-action) must run all three before merge; any
+   failures are bounded fixes inside the two new files.
+
+2. **Webhook-teardown coordination on disconnect.** The sink's
+   `wipeCredentialsPreserveWatermark` returns `webhookUnregistered: true`
+   unconditionally to keep the framework disconnect contract uniform,
+   but Clover supports auto-registered webhooks via
+   `CloverWebhookRegistry.unregister`. The framework's overall
+   disconnect path needs to AND the sink's flag with the registry
+   result so a failed `DELETE /v3/apps/{aId}/webhooks/{id}` surfaces
+   to the operator. This lane intentionally kept the sink uniform and
+   left the AND wiring to a future framework slice.
+
+3. **LSK (Lightspeed K-Series) fanout sink.** The next lane in the
+   sink-fanout wave — `8.spine-bridge-sink-fanout.LSK` — lands the
+   Lightspeed K-Series → `cover_facts` Postgres sink in the same shape
+   as `.AL` / `.CL`. Same bespoke + unified surface widening, same
+   idempotency partial UNIQUE, same demo-flip auto-evaluator. Schedule
+   directly after CL merges.
