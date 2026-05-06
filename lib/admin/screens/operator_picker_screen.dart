@@ -1,4 +1,4 @@
-﻿// Phase 11A.3a follow-up - Operator + location picker.
+// Phase 11A.3a follow-up - Operator + location picker.
 //
 // The Corpus admin "Graph candidates" tab needs a real
 // (operator_id, location_id) target before it can commit graph
@@ -93,7 +93,7 @@ class OperatorPickerScreen extends StatelessWidget {
         elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.textSecondary),
         title: Text(
-          'Pick operator',
+          'Choose operator',
           style: AppTextStyles.display20(color: AppColors.textPrimary),
         ),
       ),
@@ -288,7 +288,7 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Add an operator before applying relationship decisions.',
+                  'Add an operator before choosing Operations context.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 16),
@@ -326,8 +326,8 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Pick the operator and location for approved relationship decisions. Selection is remembered '
-              'for the rest of this admin session.',
+              'Choose the operator and location you are helping. This context '
+              'is remembered for the rest of this admin session.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 18),

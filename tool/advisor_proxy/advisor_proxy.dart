@@ -8652,22 +8652,12 @@ Future<void> routeRequest(
             return;
           }
 
-          final scope = await _resolveOperatorContextOrWrite(
+          final callerScope = await _resolveOperatorContextOrWrite(
             request,
             response,
             authGuard,
           );
-          if (scope == null) return;
-
-          Future<bool> requirePermission(String permissionKey) {
-            return _requireAdminPermissionOrWrite(
-              response: response,
-              guard: adminPermissionGuard,
-              scope: scope,
-              permissionKey: permissionKey,
-              requestedAt: clock().toUtc(),
-            );
-          }
+          if (callerScope == null) return;
 
           Map<String, Object?> body;
           try {
@@ -8687,6 +8677,37 @@ Future<void> routeRequest(
           // require an `Idempotency-Key` header so a retry collapses
           // to a single back-end mutation. Reads (`GET`) skip this
           // check.
+          final scope = _effectiveAdminAuthScope(
+            request: request,
+            body: body,
+            callerScope: callerScope,
+          );
+          final crossOperatorScope = scope.operatorId != callerScope.operatorId;
+
+          Future<bool> requirePermission(String permissionKey) {
+            if (crossOperatorScope) {
+              final requiredRoles = request.method == 'GET'
+                  ? const <String>{'super_admin', 'ff_support'}
+                  : const <String>{'super_admin'};
+              if (_operatorContextHasAnyRole(callerScope, requiredRoles)) {
+                return Future<bool>.value(true);
+              }
+              _writeJson(response, 403, <String, Object?>{
+                'error': 'permission_denied',
+                'message': 'admin role claim required for requested operator',
+                'required_roles': requiredRoles.toList(),
+              });
+              return Future<bool>.value(false);
+            }
+            return _requireAdminPermissionOrWrite(
+              response: response,
+              guard: adminPermissionGuard,
+              scope: scope,
+              permissionKey: permissionKey,
+              requestedAt: clock().toUtc(),
+            );
+          }
+
           final authOpsCache =
               authIdempotencyCache ?? _defaultAuthIdempotencyCache;
           String? readIdempotencyKeyOrFail() {
@@ -8870,8 +8891,21 @@ Future<void> routeRequest(
                 authOperationPath == adminAuthInvitesPath) {
               if (!await requirePermission('team.users.invite')) return;
               final email = _nonBlankString(body['email']);
-              final roleId = _nonBlankString(body['role_id']);
-              final scopeType = _nonBlankString(body['scope_type']);
+              final displayName = _nonBlankString(body['display_name']);
+              final roleId =
+                  _nonBlankString(body['role_id']) ??
+                  _nonBlankString(body['role_key']);
+              final targetLocationId =
+                  _nonBlankString(body['location_id']) ??
+                  _nonBlankString(body['primary_location_id']);
+              final targetOrgUnitId = _nonBlankString(body['org_unit_id']);
+              final scopeType =
+                  _nonBlankString(body['scope_type']) ??
+                  (targetOrgUnitId != null
+                      ? 'org_unit'
+                      : targetLocationId != null
+                      ? 'location'
+                      : null);
               if (email == null || roleId == null || scopeType == null) {
                 _writeJson(response, 400, <String, Object?>{
                   'error': 'missing_invite_fields',
@@ -8893,18 +8927,34 @@ Future<void> routeRequest(
                       email: email,
                       roleId: roleId,
                       scopeType: scopeType,
-                      targetLocationId: _nonBlankString(body['location_id']),
-                      targetOrgUnitId: _nonBlankString(body['org_unit_id']),
+                      targetLocationId: targetLocationId,
+                      targetOrgUnitId: targetOrgUnitId,
                     ),
                   );
+                  final createdAt = clock().toUtc().toIso8601String();
+                  final invite = <String, Object?>{
+                    'invite_id': created.inviteId,
+                    'email': email,
+                    if (displayName != null) 'display_name': displayName,
+                    'role_id': roleId,
+                    if (_nonBlankString(body['role_key']) != null)
+                      'role_key': _nonBlankString(body['role_key']),
+                    'scope_type': scopeType,
+                    if (targetLocationId != null) ...<String, Object?>{
+                      'location_id': targetLocationId,
+                      'primary_location_id': targetLocationId,
+                    },
+                    if (targetOrgUnitId != null) 'org_unit_id': targetOrgUnitId,
+                    'expires_at': created.expiresAt.toUtc().toIso8601String(),
+                    'created_at': createdAt,
+                  };
                   return CachedProxyResponse(
                     statusCode: 201,
                     body: <String, Object?>{
                       'invite_id': created.inviteId,
-                      'expires_at': created.expiresAt
-                          .toUtc()
-                          .toIso8601String(),
+                      'expires_at': created.expiresAt.toUtc().toIso8601String(),
                       if (created.userId != null) 'user_id': created.userId,
+                      'invite': invite,
                     },
                   );
                 },
@@ -9195,9 +9245,7 @@ Future<void> routeRequest(
                   );
                   return CachedProxyResponse(
                     statusCode: 201,
-                    body: <String, Object?>{
-                      'user_role_id': created.userRoleId,
-                    },
+                    body: <String, Object?>{'user_role_id': created.userRoleId},
                   );
                 },
               );
@@ -9310,9 +9358,7 @@ Future<void> routeRequest(
                   );
                   return CachedProxyResponse(
                     statusCode: 201,
-                    body: <String, Object?>{
-                      'org_unit_id': created.orgUnitId,
-                    },
+                    body: <String, Object?>{'org_unit_id': created.orgUnitId},
                   );
                 },
               );
@@ -9341,8 +9387,7 @@ Future<void> routeRequest(
               final idempotencyKey = readIdempotencyKeyOrFail();
               if (idempotencyKey == null) return;
               final cached = await authOpsCache.runOrReplay(
-                route:
-                    '$adminAuthLocationsPrefix$targetLocationId/org-unit',
+                route: '$adminAuthLocationsPrefix$targetLocationId/org-unit',
                 key: idempotencyKey,
                 compute: () async {
                   final moved = await authOperationsGateway
@@ -9357,10 +9402,7 @@ Future<void> routeRequest(
                       );
                   return CachedProxyResponse(
                     statusCode: 200,
-                    body: <String, Object?>{
-                      'ok': true,
-                      'moved': moved.moved,
-                    },
+                    body: <String, Object?>{'ok': true, 'moved': moved.moved},
                   );
                 },
               );
@@ -11525,7 +11567,7 @@ bool _isAdminIntegrationsPath(String path) {
 }
 
 bool _isAuthCorsPath(String path) {
-  return path.startsWith('/v1/auth/');
+  return path.startsWith('/v1/auth/') || path.startsWith('/v1/admin/auth/');
 }
 
 bool _isAdminIntegrationsOperation(String path, String method) {
@@ -13263,6 +13305,50 @@ Future<OperatorContext?> _resolveOperatorContextOrWrite(
     });
     return null;
   }
+}
+
+OperatorContext _effectiveAdminAuthScope({
+  required HttpRequest request,
+  required Map<String, Object?> body,
+  required OperatorContext callerScope,
+}) {
+  final params = request.uri.queryParameters;
+  final operatorId =
+      _nonBlankString(body['operator_id']) ??
+      _nonBlankString(params['operator_id']) ??
+      callerScope.operatorId;
+  final locationId =
+      _nonBlankString(body['location_id']) ??
+      _nonBlankString(body['primary_location_id']) ??
+      _nonBlankString(body['target_location_id']) ??
+      _nonBlankString(params['location_id']) ??
+      callerScope.locationId;
+  if (operatorId == callerScope.operatorId &&
+      locationId == callerScope.locationId) {
+    return callerScope;
+  }
+  bindOperatorIdToLogContext(operatorId);
+  return OperatorContext(
+    userId: callerScope.userId,
+    operatorId: operatorId,
+    locationId: locationId,
+    roles: callerScope.roles,
+    actorKind: callerScope.actorKind,
+    servicePrincipalId: callerScope.servicePrincipalId,
+    firebaseUid: callerScope.firebaseUid,
+    rolesVersion: callerScope.rolesVersion,
+    lastFreshAuthAt: callerScope.lastFreshAuthAt,
+  );
+}
+
+bool _operatorContextHasAnyRole(
+  OperatorContext scope,
+  Set<String> allowedRoles,
+) {
+  for (final role in scope.roles) {
+    if (allowedRoles.contains(role)) return true;
+  }
+  return false;
 }
 
 bool _requireFreshAuthenticationOrWrite({

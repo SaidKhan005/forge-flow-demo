@@ -17,21 +17,22 @@ import 'package:forge_and_flow/admin/screens/invite_member_admin_dialog.dart';
 import 'package:forge_and_flow/admin/screens/members_admin_screen.dart';
 import 'package:forge_and_flow/admin/screens/operator_picker_screen.dart';
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/members_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   OperatorPickerResult demoPick() => const OperatorPickerResult(
-        operatorId: kDemoDinerOperatorId,
-        locationId: kDemoDinerLocationToronto,
-        operatorBusinessName: 'Demo Diner Co.',
-        locationName: 'Toronto Yorkville',
-      );
+    operatorId: kDemoDinerOperatorId,
+    locationId: kDemoDinerLocationToronto,
+    operatorBusinessName: 'Demo Diner Co.',
+    locationName: 'Toronto Yorkville',
+  );
 
   /// Sets a wide viewport for tests that need every filter chip + the
   /// member rows to fit without wrap. Smaller viewports are exercised
@@ -46,8 +47,9 @@ void main() {
   }
 
   group('MembersAdminScreen render + filter chips', () {
-    testWidgets('renders members + invites table with locked filters',
-        (tester) async {
+    testWidgets('renders members + invites table with locked filters', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = InMemoryMembersAdminGateway(
         membersByOperator: kDemoMembersByOperator(),
@@ -90,9 +92,7 @@ void main() {
 
       // Demo Diner has 4 seeded members.
       expect(
-        find.byKey(
-          const Key('admin_members_row_demo-user-diner-owner'),
-        ),
+        find.byKey(const Key('admin_members_row_demo-user-diner-owner')),
         findsOneWidget,
       );
       expect(
@@ -103,8 +103,9 @@ void main() {
       );
     });
 
-    testWidgets('filter mfa_enrolled = false narrows to unenrolled rows',
-        (tester) async {
+    testWidgets('filter mfa_enrolled = false narrows to unenrolled rows', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = InMemoryMembersAdminGateway(
         membersByOperator: kDemoMembersByOperator(),
@@ -129,15 +130,11 @@ void main() {
       // Owner has MFA on; everyone else (manager / supervisor / archived)
       // is unenrolled.
       expect(
-        find.byKey(
-          const Key('admin_members_row_demo-user-diner-owner'),
-        ),
+        find.byKey(const Key('admin_members_row_demo-user-diner-owner')),
         findsNothing,
       );
       expect(
-        find.byKey(
-          const Key('admin_members_row_demo-user-diner-manager'),
-        ),
+        find.byKey(const Key('admin_members_row_demo-user-diner-manager')),
         findsOneWidget,
       );
     });
@@ -178,28 +175,111 @@ void main() {
           );
           await tester.pumpAndSettle();
         }
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpAndSettle();
 
         // Final typed value matches and the table is filtered to the
         // single matching row.
-        final controller = (tester.widget(
-          find.byKey(const Key('admin_members_filter_search')),
-        ) as TextField)
-            .controller!;
+        final controller =
+            (tester.widget(find.byKey(const Key('admin_members_filter_search')))
+                    as TextField)
+                .controller!;
         expect(controller.text, equals('Mira'));
         expect(
-          find.byKey(
-            const Key('admin_members_row_demo-user-diner-manager'),
-          ),
+          find.byKey(const Key('admin_members_row_demo-user-diner-manager')),
           findsOneWidget,
         );
         expect(
-          find.byKey(
-            const Key('admin_members_row_demo-user-diner-owner'),
-          ),
+          find.byKey(const Key('admin_members_row_demo-user-diner-owner')),
           findsNothing,
         );
       },
     );
+
+    testWidgets('local filters still narrow when the proxy returns all rows', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = _UnfilteredMembersGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('admin_members_filter_search')),
+        'Mira',
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_members_row_demo-user-diner-manager')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_members_row_demo-user-diner-owner')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('rapid search typing is debounced into one refresh', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = _CountingMembersGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.listMembersCalls, 1);
+
+      await tester.enterText(
+        find.byKey(const Key('admin_members_filter_search')),
+        'M',
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.enterText(
+        find.byKey(const Key('admin_members_filter_search')),
+        'Mi',
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.enterText(
+        find.byKey(const Key('admin_members_filter_search')),
+        'Mira',
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(gateway.listMembersCalls, 1);
+
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      expect(gateway.listMembersCalls, 2);
+      expect(gateway.searches.last, 'Mira');
+      expect(
+        find.byKey(const Key('admin_members_row_demo-user-diner-manager')),
+        findsOneWidget,
+      );
+    });
   });
 
   group('admin-only action asymmetry vs operator self-service', () {
@@ -329,8 +409,7 @@ void main() {
             expect(
               find.byKey(Key('admin_members_action_${action}_$user')),
               findsNothing,
-              reason:
-                  'view-only mode must hide $action affordance on $user',
+              reason: 'view-only mode must hide $action affordance on $user',
             );
           }
         }
@@ -379,10 +458,7 @@ void main() {
         // Submit empty - the locked validation copy renders.
         await tester.tap(find.byKey(const Key('admin_members_reason_submit')));
         await tester.pumpAndSettle();
-        expect(
-          find.text('Add a reason before continuing.'),
-          findsOneWidget,
-        );
+        expect(find.text('Add a reason before continuing.'), findsOneWidget);
 
         await tester.enterText(
           find.byKey(const Key('admin_members_reason_field')),
@@ -498,11 +574,13 @@ void main() {
         expect(fresh.roleKey, equals('operator_manager'));
         expect(fresh.invitedBy, equals('demo-super-admin'));
 
-        final auditActions =
-            gateway.capturedAuditEvents.map((e) => e.action).toList();
+        final auditActions = gateway.capturedAuditEvents
+            .map((e) => e.action)
+            .toList();
         expect(auditActions, contains('team.users.invite'));
-        final inviteEvent = gateway.capturedAuditEvents
-            .firstWhere((e) => e.action == 'team.users.invite');
+        final inviteEvent = gateway.capturedAuditEvents.firstWhere(
+          (e) => e.action == 'team.users.invite',
+        );
         expect(inviteEvent.adminReason, equals('support-onboarding'));
         expect(inviteEvent.actorKind, equals('forge_admin'));
       },
@@ -510,8 +588,9 @@ void main() {
   });
 
   group('InviteMemberAdminDialog locked validation copy', () {
-    testWidgets('empty email surfaces the contract-locked copy',
-        (tester) async {
+    testWidgets('empty email surfaces the contract-locked copy', (
+      tester,
+    ) async {
       String? captured;
       await tester.pumpWidget(
         wrap(
@@ -525,10 +604,7 @@ void main() {
                     builder: (_) => const InviteMemberAdminDialog(
                       operatorBusinessName: 'Demo',
                       locations: <MemberLocationRef>[
-                        MemberLocationRef(
-                          locationId: 'loc-1',
-                          name: 'Loc 1',
-                        ),
+                        MemberLocationRef(locationId: 'loc-1', name: 'Loc 1'),
                       ],
                     ),
                   );
@@ -562,10 +638,7 @@ void main() {
                   builder: (_) => const InviteMemberAdminDialog(
                     operatorBusinessName: 'Demo',
                     locations: <MemberLocationRef>[
-                      MemberLocationRef(
-                        locationId: 'loc-1',
-                        name: 'Loc 1',
-                      ),
+                      MemberLocationRef(locationId: 'loc-1', name: 'Loc 1'),
                     ],
                     existingEmails: <String>{'taken@op.test'},
                   ),
@@ -606,10 +679,7 @@ void main() {
                   builder: (_) => const InviteMemberAdminDialog(
                     operatorBusinessName: 'Demo',
                     locations: <MemberLocationRef>[
-                      MemberLocationRef(
-                        locationId: 'loc-1',
-                        name: 'Loc 1',
-                      ),
+                      MemberLocationRef(locationId: 'loc-1', name: 'Loc 1'),
                     ],
                   ),
                 ),
@@ -634,46 +704,98 @@ void main() {
   });
 
   group('viewport regression at typical admin shell size', () {
-    testWidgets(
-      'composes without overflow at the typical 1440x1024 viewport',
-      (tester) async {
-        // Pinned to mirror `debug_console_admin_screen_test.dart` /
-        // `health_admin_screen_test.dart` — the typical admin shell
-        // viewport. The previous Stack-overlay layout collided
-        // "Change operator" with "Invite member" at this size; the
-        // header-trailing layout fixes it.
-        tester.view.physicalSize = const Size(1440, 1024);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(() {
-          tester.view.resetPhysicalSize();
-          tester.view.resetDevicePixelRatio();
-        });
-        final gateway = InMemoryMembersAdminGateway(
-          membersByOperator: kDemoMembersByOperator(),
-          invitesByOperator: kDemoInvitesByOperator(),
-        );
-        await tester.pumpWidget(
-          wrap(
-            MembersAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-              onChangeOperator: () {},
-            ),
+    testWidgets('composes without overflow at the typical 1440x1024 viewport', (
+      tester,
+    ) async {
+      // Pinned to mirror `debug_console_admin_screen_test.dart` /
+      // `health_admin_screen_test.dart` — the typical admin shell
+      // viewport. The previous Stack-overlay layout collided
+      // "Change operator" with "Invite member" at this size; the
+      // header-trailing layout fixes it.
+      tester.view.physicalSize = const Size(1440, 1024);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final gateway = InMemoryMembersAdminGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            onChangeOperator: () {},
           ),
-        );
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-        // Both header buttons render side by side without collision.
-        expect(
-          find.byKey(const Key('admin_members_invite_button')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_members_change_operator')),
-          findsOneWidget,
-        );
-      },
-    );
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      // Both header buttons render side by side without collision.
+      expect(
+        find.byKey(const Key('admin_members_invite_button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_members_change_operator')),
+        findsOneWidget,
+      );
+    });
   });
+}
+
+class _UnfilteredMembersGateway extends InMemoryMembersAdminGateway {
+  _UnfilteredMembersGateway({
+    required super.membersByOperator,
+    required super.invitesByOperator,
+  });
+
+  @override
+  Future<List<MemberAdminRow>> listMembers({
+    required String operatorId,
+    MemberStatus? status,
+    String? roleKey,
+    String? locationId,
+    String? contextLocationId,
+    bool? mfaEnrolled,
+    String? search,
+  }) {
+    return super.listMembers(operatorId: operatorId);
+  }
+}
+
+class _CountingMembersGateway extends InMemoryMembersAdminGateway {
+  _CountingMembersGateway({
+    required super.membersByOperator,
+    required super.invitesByOperator,
+  });
+
+  int listMembersCalls = 0;
+  final searches = <String?>[];
+
+  @override
+  Future<List<MemberAdminRow>> listMembers({
+    required String operatorId,
+    MemberStatus? status,
+    String? roleKey,
+    String? locationId,
+    String? contextLocationId,
+    bool? mfaEnrolled,
+    String? search,
+  }) {
+    listMembersCalls += 1;
+    searches.add(search);
+    return super.listMembers(
+      operatorId: operatorId,
+      status: status,
+      roleKey: roleKey,
+      locationId: locationId,
+      contextLocationId: contextLocationId,
+      mfaEnrolled: mfaEnrolled,
+      search: search,
+    );
+  }
 }

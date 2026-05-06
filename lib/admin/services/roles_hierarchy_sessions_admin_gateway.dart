@@ -643,9 +643,22 @@ RoleAdminRow _roleRowFromJson(Map<String, Object?> json) {
         if (p is String) p,
   ];
   return RoleAdminRow(
-    roleId: _stringField(json, 'role_id'),
-    roleKey: _stringField(json, 'role_key'),
-    displayName: _stringField(json, 'display_name'),
+    roleId: _firstStringField(json, const <String>[
+      'role_id',
+      'id',
+      'role_key',
+    ]),
+    roleKey: _firstStringField(json, const <String>[
+      'role_key',
+      'key',
+      'role_id',
+    ]),
+    displayName: _firstStringField(json, const <String>[
+      'display_name',
+      'role_label',
+      'name',
+      'role_key',
+    ]),
     description: (json['description'] as String?) ?? '',
     isSeeded: _boolField(json, 'is_seeded'),
     permissionKeys: List<String>.unmodifiable(permissions),
@@ -655,32 +668,51 @@ RoleAdminRow _roleRowFromJson(Map<String, Object?> json) {
 
 OrgUnitAdminNode _orgUnitFromJson(Map<String, Object?> json) {
   return OrgUnitAdminNode(
-    orgUnitId: _stringField(json, 'org_unit_id'),
-    name: _stringField(json, 'name'),
-    operatorId: _stringField(json, 'operator_id'),
+    orgUnitId: _firstStringField(json, const <String>['org_unit_id', 'id']),
+    name: _firstStringField(json, const <String>[
+      'name',
+      'display_name',
+      'label',
+      'org_unit_name',
+    ]),
+    operatorId: _optionalString(json['operator_id']) ?? '',
     parentOrgUnitId: _optionalString(json['parent_org_unit_id']),
   );
 }
 
 HierarchyLocationLeaf _locationLeafFromJson(Map<String, Object?> json) {
   return HierarchyLocationLeaf(
-    locationId: _stringField(json, 'location_id'),
-    name: _stringField(json, 'name'),
-    operatorId: _stringField(json, 'operator_id'),
-    orgUnitId: _stringField(json, 'org_unit_id'),
+    locationId: _firstStringField(json, const <String>['location_id', 'id']),
+    name: _firstStringField(json, const <String>[
+      'name',
+      'display_name',
+      'label',
+      'location_label',
+    ]),
+    operatorId: _optionalString(json['operator_id']) ?? '',
+    orgUnitId: _optionalString(json['org_unit_id']) ?? '',
   );
 }
 
 SessionAdminRow _sessionRowFromJson(Map<String, Object?> json) {
+  final lastActiveAt =
+      _optionalDateTime(json['last_active_at']) ??
+      DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
   return SessionAdminRow(
     sessionId: _stringField(json, 'session_id'),
     userId: _stringField(json, 'user_id'),
-    userDisplayName: _stringField(json, 'user_display_name'),
+    userDisplayName: _firstOptionalStringField(json, const <String>[
+          'user_display_name',
+          'display_name',
+          'user_email',
+        ]) ??
+        'Unknown user',
     userEmail: _stringField(json, 'user_email'),
-    deviceFingerprint: _stringField(json, 'device_fingerprint'),
-    ipGeoCity: _stringField(json, 'ip_geo_city'),
-    lastActiveAt: _dateTimeField(json, 'last_active_at'),
-    createdAt: _dateTimeField(json, 'created_at'),
+    deviceFingerprint:
+        _optionalString(json['device_fingerprint']) ?? 'Unknown device',
+    ipGeoCity: _optionalString(json['ip_geo_city']) ?? 'Unknown location',
+    lastActiveAt: lastActiveAt,
+    createdAt: _optionalDateTime(json['created_at']) ?? lastActiveAt,
   );
 }
 
@@ -696,6 +728,23 @@ String _stringField(Map<String, Object?> json, String key) {
   throw StateError('missing string field $key');
 }
 
+String _firstStringField(Map<String, Object?> json, List<String> keys) {
+  final value = _firstOptionalStringField(json, keys);
+  if (value != null) return value;
+  throw StateError('missing string field ${keys.join('/')}');
+}
+
+String? _firstOptionalStringField(
+  Map<String, Object?> json,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    final value = _optionalString(json[key]);
+    if (value != null) return value;
+  }
+  return null;
+}
+
 bool _boolField(Map<String, Object?> json, String key) {
   final value = json[key];
   if (value is bool) return value;
@@ -709,13 +758,12 @@ String? _optionalString(Object? value) {
   return trimmed.isEmpty ? null : trimmed;
 }
 
-DateTime _dateTimeField(Map<String, Object?> json, String key) {
-  final value = json[key];
+DateTime? _optionalDateTime(Object? value) {
   if (value is DateTime) return value.toUtc();
   if (value is String && value.isNotEmpty) {
     return DateTime.parse(value).toUtc();
   }
-  throw StateError('missing datetime field $key');
+  return null;
 }
 
 /// Display labels for the seeded role keys. Mirrors

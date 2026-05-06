@@ -3,10 +3,9 @@
 //
 // Cross-operator audit-log review + support-side MFA / password
 // operations + paired-approval erasure. Mounted in the admin shell at
-// `/admin/audited-support-actions` and reached AFTER the operator
-// picker - the picker's [OperatorPickerResult] is the screen's input.
-// The route shell in `admin_routes.dart` handles the picker hand-off
-// identically to the 11A.12 / 11A.13 surfaces.
+// `/admin/audited-support-actions`. The shell passes the shared
+// Operations operator context when one exists; the picker is only
+// opened when the admin needs to choose or change operator.
 //
 // Two regions:
 //
@@ -109,6 +108,7 @@ class _AuditedSupportActionsAdminScreenState
   String? _nextCursor;
   List<SupportActionsMember> _members = const <SupportActionsMember>[];
   AuditLogFilters _filters = AuditLogFilters.empty;
+  int _refreshGeneration = 0;
 
   int _idempotencyCounter = 0;
 
@@ -127,17 +127,20 @@ class _AuditedSupportActionsAdminScreenState
   }
 
   Future<void> _refresh() async {
+    final generation = ++_refreshGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
       final operatorId = widget.pickedOperator.operatorId;
-      final page = await widget.gateway.listAuditLog(
-        operatorId: operatorId,
-        filters: _filters,
-      );
-      final members = await widget.gateway.listMembers(operatorId: operatorId);
+      final results = await Future.wait<Object>([
+        widget.gateway.listAuditLog(operatorId: operatorId, filters: _filters),
+        widget.gateway.listMembers(operatorId: operatorId),
+      ]);
+      if (generation != _refreshGeneration) return;
+      final page = results[0] as AuditLogPage;
+      final members = results[1] as List<SupportActionsMember>;
       if (!mounted) return;
       setState(() {
         _rows = page.rows;
@@ -247,22 +250,18 @@ class _AuditedSupportActionsAdminScreenState
   }
 
   Future<void> _onExportCsv() async {
-    final reason =
-        await _promptAdminReason('Export the filtered audit log');
+    final reason = await _promptAdminReason('Export the filtered audit log');
     if (reason == null) return;
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.exportAuditLogCsv(
-          operatorId: widget.pickedOperator.operatorId,
-          filters: _filters,
-          idempotencyKey: _nextIdempotencyKey('audit-log-export'),
-          actorUserId: widget.actorUserId,
-          actorIsForgeAdmin: widget.editingEnabled,
-          adminReason: reason,
-        );
-      },
-      successHint: 'Export queued. Audit row written.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.exportAuditLogCsv(
+        operatorId: widget.pickedOperator.operatorId,
+        filters: _filters,
+        idempotencyKey: _nextIdempotencyKey('audit-log-export'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: reason,
+      );
+    }, successHint: 'Export queued. Audit row written.');
   }
 
   // --- Actions panel actions ---------------------------------------------
@@ -289,9 +288,7 @@ class _AuditedSupportActionsAdminScreenState
   }
 
   Future<void> _onPasswordReset() async {
-    final member = await _pickMember(
-      'Send a password reset to which member?',
-    );
+    final member = await _pickMember('Send a password reset to which member?');
     if (member == null) return;
     final reason = await _promptAdminReason(
       'Send a password reset to ${member.displayName}',
@@ -318,47 +315,44 @@ class _AuditedSupportActionsAdminScreenState
       'Issue paired-approval erasure for ${member.displayName}',
     );
     if (reason == null) return;
-    await _runAndRefresh(
-      () async {
-        final first = await widget.gateway.issuePairedApprovalErasure(
-          operatorId: widget.pickedOperator.operatorId,
-          targetUserId: member.userId,
-          idempotencyKey: _nextIdempotencyKey('erasure-request'),
-          actorUserId: widget.actorUserId,
-          actorIsForgeAdmin: widget.editingEnabled,
-          adminReason: reason,
-        );
-        if (!first.pendingSecondApproval) {
-          // The proxy returned a single-call confirmation already
-          // (e.g. tests); nothing more to do.
-          return;
-        }
-        if (!mounted) return;
-        final secondAdminUid = await showDialog<String>(
-          context: context,
-          builder: (_) => _SecondApproverDialog(
-            firstApproverUserId: first.firstApproverUserId,
-          ),
-        );
-        if (secondAdminUid == null) return;
-        if (secondAdminUid.trim() == widget.actorUserId) {
-          setState(() {
-            _actionError = SupportActionsValidationCopy.cannotSelfPair;
-          });
-          return;
-        }
-        await widget.gateway.issuePairedApprovalErasure(
-          operatorId: widget.pickedOperator.operatorId,
-          targetUserId: member.userId,
-          idempotencyKey: _nextIdempotencyKey('erasure-confirm'),
-          actorUserId: secondAdminUid.trim(),
-          actorIsForgeAdmin: widget.editingEnabled,
-          adminReason: reason,
-          confirmRequestId: first.requestId,
-        );
-      },
-      successHint: 'Erasure recorded for ${member.displayName}.',
-    );
+    await _runAndRefresh(() async {
+      final first = await widget.gateway.issuePairedApprovalErasure(
+        operatorId: widget.pickedOperator.operatorId,
+        targetUserId: member.userId,
+        idempotencyKey: _nextIdempotencyKey('erasure-request'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: reason,
+      );
+      if (!first.pendingSecondApproval) {
+        // The proxy returned a single-call confirmation already
+        // (e.g. tests); nothing more to do.
+        return;
+      }
+      if (!mounted) return;
+      final secondAdminUid = await showDialog<String>(
+        context: context,
+        builder: (_) => _SecondApproverDialog(
+          firstApproverUserId: first.firstApproverUserId,
+        ),
+      );
+      if (secondAdminUid == null) return;
+      if (secondAdminUid.trim() == widget.actorUserId) {
+        setState(() {
+          _actionError = SupportActionsValidationCopy.cannotSelfPair;
+        });
+        return;
+      }
+      await widget.gateway.issuePairedApprovalErasure(
+        operatorId: widget.pickedOperator.operatorId,
+        targetUserId: member.userId,
+        idempotencyKey: _nextIdempotencyKey('erasure-confirm'),
+        actorUserId: secondAdminUid.trim(),
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: reason,
+        confirmRequestId: first.requestId,
+      );
+    }, successHint: 'Erasure recorded for ${member.displayName}.');
   }
 
   // --- Build ------------------------------------------------------------
@@ -384,9 +378,7 @@ class _AuditedSupportActionsAdminScreenState
             ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)
-              const _ReadOnlyBanner(
-                key: Key('admin_asa_readonly_banner'),
-              ),
+              const _ReadOnlyBanner(key: Key('admin_asa_readonly_banner')),
             if (_actionError != null)
               _ErrorBanner(
                 key: const Key('admin_asa_action_error'),
@@ -597,10 +589,7 @@ class _ActionRow extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: AppColors.backgroundSurface,
-                    border: Border.all(
-                      color: AppColors.borderSubtle,
-                      width: 1,
-                    ),
+                    border: Border.all(color: AppColors.borderSubtle, width: 1),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Row(
@@ -614,8 +603,7 @@ class _ActionRow extends StatelessWidget {
                       const SizedBox(width: 4),
                       Text(
                         'MFA',
-                        style:
-                            AppTextStyles.mono11(color: AppColors.textMuted),
+                        style: AppTextStyles.mono11(color: AppColors.textMuted),
                       ),
                     ],
                   ),
@@ -682,8 +670,9 @@ class _AuditLogCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Audit log',
-                  style:
-                      AppTextStyles.sectionTitle(color: AppColors.textPrimary),
+                  style: AppTextStyles.sectionTitle(
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
               if (canExport)
@@ -770,8 +759,9 @@ class _FiltersBar extends StatefulWidget {
 
 class _FiltersBarState extends State<_FiltersBar> {
   late AuditLogFilters _draft = widget.filters;
-  late final TextEditingController _targetIdController =
-      TextEditingController(text: widget.filters.targetId ?? '');
+  late final TextEditingController _targetIdController = TextEditingController(
+    text: widget.filters.targetId ?? '',
+  );
 
   @override
   void dispose() {
@@ -814,8 +804,7 @@ class _FiltersBarState extends State<_FiltersBar> {
 
   @override
   Widget build(BuildContext context) {
-    final showCustomRange =
-        _draft.timeWindow == AuditLogTimeWindow.customRange;
+    final showCustomRange = _draft.timeWindow == AuditLogTimeWindow.customRange;
     return Column(
       key: const Key('admin_asa_filters'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -864,10 +853,7 @@ class _FiltersBarState extends State<_FiltersBar> {
                     value: null,
                     child: Text('Any kind'),
                   ),
-                  DropdownMenuItem<String?>(
-                    value: 'user',
-                    child: Text('User'),
-                  ),
+                  DropdownMenuItem<String?>(value: 'user', child: Text('User')),
                   DropdownMenuItem<String?>(
                     value: 'auth_session',
                     child: Text('Session'),
@@ -1049,10 +1035,7 @@ const List<String> kAuditLogFilterableActions = <String>[
 ];
 
 class _ActorKindMultiSelect extends StatelessWidget {
-  const _ActorKindMultiSelect({
-    required this.value,
-    required this.onChanged,
-  });
+  const _ActorKindMultiSelect({required this.value, required this.onChanged});
 
   final List<AuditActorKind> value;
   final ValueChanged<List<AuditActorKind>> onChanged;
@@ -1104,9 +1087,9 @@ class _AuditRowTileState extends State<_AuditRowTile> {
   Future<void> _copyTargetId() async {
     await Clipboard.setData(ClipboardData(text: widget.row.targetId));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Copied target ID to clipboard.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Copied target ID to clipboard.')));
   }
 
   @override
@@ -1141,10 +1124,7 @@ class _AuditRowTileState extends State<_AuditRowTile> {
                   ),
                   decoration: BoxDecoration(
                     color: AppColors.backgroundSurface,
-                    border: Border.all(
-                      color: AppColors.borderSubtle,
-                      width: 1,
-                    ),
+                    border: Border.all(color: AppColors.borderSubtle, width: 1),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -1170,9 +1150,7 @@ class _AuditRowTileState extends State<_AuditRowTile> {
                 Expanded(
                   child: Text(
                     'Target: ${row.targetKind} / ${row.targetId}',
-                    style: AppTextStyles.body13(
-                      color: AppColors.textSecondary,
-                    ),
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                 ),
                 IconButton(
@@ -1210,16 +1188,11 @@ class _AuditRowTileState extends State<_AuditRowTile> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
-                  key: Key(
-                    'admin_asa_audit_row_payload_toggle_${row.eventId}',
-                  ),
-                  onPressed: () => setState(
-                    () => _payloadExpanded = !_payloadExpanded,
-                  ),
+                  key: Key('admin_asa_audit_row_payload_toggle_${row.eventId}'),
+                  onPressed: () =>
+                      setState(() => _payloadExpanded = !_payloadExpanded),
                   icon: Icon(
-                    _payloadExpanded
-                        ? Icons.expand_less
-                        : Icons.expand_more,
+                    _payloadExpanded ? Icons.expand_less : Icons.expand_more,
                     size: 16,
                   ),
                   label: Text(
@@ -1234,17 +1207,12 @@ class _AuditRowTileState extends State<_AuditRowTile> {
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: AppColors.backgroundDeep,
-                    border: Border.all(
-                      color: AppColors.borderSubtle,
-                      width: 1,
-                    ),
+                    border: Border.all(color: AppColors.borderSubtle, width: 1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: SelectableText(
                     formatPayload(row.payload),
-                    style: AppTextStyles.mono11(
-                      color: AppColors.textSecondary,
-                    ),
+                    style: AppTextStyles.mono11(color: AppColors.textSecondary),
                   ),
                 ),
             ],
@@ -1480,10 +1448,7 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
 }
 
 class _MemberPickerDialog extends StatefulWidget {
-  const _MemberPickerDialog({
-    required this.title,
-    required this.members,
-  });
+  const _MemberPickerDialog({required this.title, required this.members});
 
   final String title;
   final List<SupportActionsMember> members;
@@ -1514,8 +1479,7 @@ class _MemberPickerDialogState extends State<_MemberPickerDialog> {
     return AlertDialog(
       key: const Key('admin_asa_member_picker_dialog'),
       backgroundColor: AppColors.backgroundSurface,
-      title:
-          Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
+      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
       content: SizedBox(
         width: 460,
         child: widget.members.isEmpty

@@ -150,15 +150,13 @@ const String kAdminMembersRouteId = 'members';
 /// surface. Mounted after the operator picker; same pattern as
 /// `kAdminMembersRouteId` — the F&F admin opens this route, picks an
 /// operator, and lands on a three-tab screen scoped to that operator.
-const String kAdminRolesHierarchySessionsRouteId =
-    'roles-hierarchy-sessions';
+const String kAdminRolesHierarchySessionsRouteId = 'roles-hierarchy-sessions';
 
 /// Phase 11A.14 - cross-operator Audited support actions surface
 /// (audit log review + Reset MFA / password reset / paired-approval
 /// erasure). Mounted after the operator picker; same shell pattern
 /// as `kAdminMembersRouteId` and `kAdminRolesHierarchySessionsRouteId`.
-const String kAdminAuditedSupportActionsRouteId =
-    'audited-support-actions';
+const String kAdminAuditedSupportActionsRouteId = 'audited-support-actions';
 
 /// Canonical operator-picker route ID (11A.3a follow-up; reused by
 /// 11A.12). The picker is reached via Navigator.push from any host
@@ -271,35 +269,31 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminMembersRouteId,
-    title: 'Members',
+    title: 'Team',
     path: '/admin/members',
     icon: Icons.people_alt_outlined,
     section: AdminRouteSection.operations,
-    subtitle:
-        'Pick an operator, then review members, invites, and admin actions.',
+    subtitle: 'Review members, invites, and admin actions for one operator.',
     builder: _buildMembers,
   ),
   AdminRoute(
     id: kAdminRolesHierarchySessionsRouteId,
-    title: 'Roles, hierarchy, and sessions',
+    title: 'Access',
     path: '/admin/roles-hierarchy-sessions',
     icon: Icons.account_tree_outlined,
     section: AdminRouteSection.operations,
     subtitle:
-        'Pick an operator, then inspect the role catalog, org-unit '
-        'hierarchy, and active sessions.',
+        'Review roles, hierarchy, and sessions for the selected operator.',
     builder: _buildRolesHierarchySessions,
   ),
   AdminRoute(
     id: kAdminAuditedSupportActionsRouteId,
-    title: 'Audit log and support actions',
+    title: 'Audit & support',
     path: '/admin/audited-support-actions',
     icon: Icons.history_outlined,
     section: AdminRouteSection.operations,
     subtitle:
-        'Pick an operator, then review the audit log and run support '
-        'actions like MFA reset, password reset, and paired-approval '
-        'erasure.',
+        'Review audit history and gated support actions for one operator.',
     builder: _buildAuditedSupportActions,
   ),
 ];
@@ -340,6 +334,16 @@ Widget _buildOperators(BuildContext context) {
               handoff.onSelectRoute(
                 AdminRouteIntent(
                   routeId: kAdminPollingPricingRouteId,
+                  operatorLocationScope: scope,
+                ),
+              );
+            },
+      onSelectOperatorScope: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: handoff.selectedRouteId,
                   operatorLocationScope: scope,
                 ),
               );
@@ -568,12 +572,52 @@ Widget _buildPollingPricing(BuildContext context) {
   );
 }
 
+OperatorPickerResult? _pickerResultFromScope(
+  AdminOperatorLocationScopeIntent? scope,
+) {
+  if (scope == null || scope.locationId == null) return null;
+  return OperatorPickerResult(
+    operatorId: scope.operatorId,
+    locationId: scope.locationId!,
+    operatorBusinessName: scope.operatorName ?? 'Selected operator',
+    locationName: scope.locationName ?? 'Selected location',
+  );
+}
+
+AdminOperatorLocationScopeIntent _scopeFromPickerResult(
+  OperatorPickerResult result,
+) {
+  return AdminOperatorLocationScopeIntent(
+    operatorId: result.operatorId,
+    locationId: result.locationId,
+    operatorName: result.operatorBusinessName,
+    locationName: result.locationName,
+  );
+}
+
+bool _samePickerResult(OperatorPickerResult? a, OperatorPickerResult? b) {
+  return a?.operatorId == b?.operatorId &&
+      a?.locationId == b?.locationId &&
+      a?.operatorBusinessName == b?.operatorBusinessName &&
+      a?.locationName == b?.locationName;
+}
+
 Widget _buildMembers(BuildContext context) {
   final gateway = AdminConsoleServicesScope.membersAdminGatewayOf(context);
   final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
     context,
   );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final initialPicked = _pickerResultFromScope(handoff?.operatorLocationScope);
+  void rememberPickedOperator(OperatorPickerResult result) {
+    handoff?.onSelectRoute(
+      AdminRouteIntent(
+        routeId: kAdminMembersRouteId,
+        operatorLocationScope: _scopeFromPickerResult(result),
+      ),
+    );
+  }
 
   Future<OperatorPickerResult?> openPicker(
     BuildContext routeContext,
@@ -595,7 +639,9 @@ Widget _buildMembers(BuildContext context) {
       actorUserId: 'demo-super-admin',
       editingEnabled: true,
       adminUid: null,
+      initialPicked: initialPicked,
       openPicker: openPicker,
+      onOperatorPicked: rememberPickedOperator,
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -610,7 +656,9 @@ Widget _buildMembers(BuildContext context) {
         actorUserId: session?.uid ?? 'unknown',
         editingEnabled: canEdit,
         adminUid: session?.uid,
+        initialPicked: initialPicked,
         openPicker: openPicker,
+        onOperatorPicked: rememberPickedOperator,
       );
     },
   );
@@ -622,17 +670,22 @@ class _MembersAdminRouteShell extends StatefulWidget {
     required this.actorUserId,
     required this.editingEnabled,
     required this.adminUid,
+    required this.initialPicked,
     required this.openPicker,
+    required this.onOperatorPicked,
   });
 
   final MembersAdminGateway gateway;
   final String actorUserId;
   final bool editingEnabled;
   final String? adminUid;
+  final OperatorPickerResult? initialPicked;
   final Future<OperatorPickerResult?> Function(
     BuildContext context,
     String? adminUid,
-  ) openPicker;
+  )
+  openPicker;
+  final ValueChanged<OperatorPickerResult> onOperatorPicked;
 
   @override
   State<_MembersAdminRouteShell> createState() =>
@@ -651,10 +704,16 @@ class _MembersAdminRouteShellState extends State<_MembersAdminRouteShell> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _picked != null) return;
-      _openPicker();
-    });
+    _picked = widget.initialPicked;
+  }
+
+  @override
+  void didUpdateWidget(covariant _MembersAdminRouteShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_samePickerResult(widget.initialPicked, oldWidget.initialPicked) &&
+        !_samePickerResult(widget.initialPicked, _picked)) {
+      setState(() => _picked = widget.initialPicked);
+    }
   }
 
   Future<void> _openPicker() async {
@@ -665,9 +724,10 @@ class _MembersAdminRouteShellState extends State<_MembersAdminRouteShell> {
       if (!mounted) return;
       if (result != null) {
         setState(() => _picked = result);
+        widget.onOperatorPicked(result);
       } else {
-        // Cancel: stay on the no-operator state. The user can re-
-        // open via the inline `Pick operator` button.
+        // Cancel: stay on the no-operator state. The user can reopen
+        // the picker via the inline button.
         setState(() {});
       }
     } finally {
@@ -692,25 +752,24 @@ class _MembersAdminRouteShellState extends State<_MembersAdminRouteShell> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'Pick an operator',
+                    'Choose an operator',
                     style: AppTextStyles.display20(
                       color: AppColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Members and invites are scoped to one operator at a time. '
-                    'Pick the operator you are helping.',
-                    style: AppTextStyles.body13(
-                      color: AppColors.textSecondary,
-                    ),
+                    'Team work is scoped to one operator. Choose an operator '
+                    'once, then move between Team, Access, and Audit without '
+                    'choosing again.',
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     key: const Key('admin_members_open_picker'),
                     onPressed: _openPicker,
                     icon: const Icon(Icons.business_outlined, size: 16),
-                    label: const Text('Pick operator'),
+                    label: const Text('Choose operator'),
                   ),
                 ],
               ),
@@ -742,6 +801,16 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
     context,
   );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final initialPicked = _pickerResultFromScope(handoff?.operatorLocationScope);
+  void rememberPickedOperator(OperatorPickerResult result) {
+    handoff?.onSelectRoute(
+      AdminRouteIntent(
+        routeId: kAdminRolesHierarchySessionsRouteId,
+        operatorLocationScope: _scopeFromPickerResult(result),
+      ),
+    );
+  }
 
   Future<OperatorPickerResult?> openPicker(
     BuildContext routeContext,
@@ -767,7 +836,9 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
       // wires `canEditSeededRoles` from MFA-required admin claims.
       canEditSeededRoles: false,
       adminUid: null,
+      initialPicked: initialPicked,
       openPicker: openPicker,
+      onOperatorPicked: rememberPickedOperator,
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -793,7 +864,9 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
         editingEnabled: canEdit,
         canEditSeededRoles: canEditSeeded,
         adminUid: session?.uid,
+        initialPicked: initialPicked,
         openPicker: openPicker,
+        onOperatorPicked: rememberPickedOperator,
       );
     },
   );
@@ -806,7 +879,9 @@ class _RolesHierarchySessionsRouteShell extends StatefulWidget {
     required this.editingEnabled,
     required this.canEditSeededRoles,
     required this.adminUid,
+    required this.initialPicked,
     required this.openPicker,
+    required this.onOperatorPicked,
   });
 
   final RolesHierarchySessionsAdminGateway gateway;
@@ -814,10 +889,13 @@ class _RolesHierarchySessionsRouteShell extends StatefulWidget {
   final bool editingEnabled;
   final bool canEditSeededRoles;
   final String? adminUid;
+  final OperatorPickerResult? initialPicked;
   final Future<OperatorPickerResult?> Function(
     BuildContext context,
     String? adminUid,
-  ) openPicker;
+  )
+  openPicker;
+  final ValueChanged<OperatorPickerResult> onOperatorPicked;
 
   @override
   State<_RolesHierarchySessionsRouteShell> createState() =>
@@ -832,10 +910,16 @@ class _RolesHierarchySessionsRouteShellState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _picked != null) return;
-      _openPicker();
-    });
+    _picked = widget.initialPicked;
+  }
+
+  @override
+  void didUpdateWidget(covariant _RolesHierarchySessionsRouteShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_samePickerResult(widget.initialPicked, oldWidget.initialPicked) &&
+        !_samePickerResult(widget.initialPicked, _picked)) {
+      setState(() => _picked = widget.initialPicked);
+    }
   }
 
   Future<void> _openPicker() async {
@@ -846,6 +930,7 @@ class _RolesHierarchySessionsRouteShellState
       if (!mounted) return;
       if (result != null) {
         setState(() => _picked = result);
+        widget.onOperatorPicked(result);
       } else {
         setState(() {});
       }
@@ -871,25 +956,24 @@ class _RolesHierarchySessionsRouteShellState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'Pick an operator',
+                    'Choose an operator',
                     style: AppTextStyles.display20(
                       color: AppColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Roles, hierarchy, and sessions are scoped to one '
-                    'operator at a time. Pick the operator you are helping.',
-                    style: AppTextStyles.body13(
-                      color: AppColors.textSecondary,
-                    ),
+                    'Access work is scoped to one operator. Choose an operator '
+                    'once, then move between Team, Access, and Audit without '
+                    'choosing again.',
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     key: const Key('admin_rhs_open_picker'),
                     onPressed: _openPicker,
                     icon: const Icon(Icons.business_outlined, size: 16),
-                    label: const Text('Pick operator'),
+                    label: const Text('Choose operator'),
                   ),
                 ],
               ),
@@ -911,12 +995,23 @@ class _RolesHierarchySessionsRouteShellState
 }
 
 Widget _buildAuditedSupportActions(BuildContext context) {
-  final gateway =
-      AdminConsoleServicesScope.auditedSupportActionsAdminGatewayOf(context);
+  final gateway = AdminConsoleServicesScope.auditedSupportActionsAdminGatewayOf(
+    context,
+  );
   final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
     context,
   );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final initialPicked = _pickerResultFromScope(handoff?.operatorLocationScope);
+  void rememberPickedOperator(OperatorPickerResult result) {
+    handoff?.onSelectRoute(
+      AdminRouteIntent(
+        routeId: kAdminAuditedSupportActionsRouteId,
+        operatorLocationScope: _scopeFromPickerResult(result),
+      ),
+    );
+  }
 
   Future<OperatorPickerResult?> openPicker(
     BuildContext routeContext,
@@ -945,7 +1040,9 @@ Widget _buildAuditedSupportActions(BuildContext context) {
       canIssuePairedErasure: false,
       canExportAuditLog: false,
       adminUid: null,
+      initialPicked: initialPicked,
       openPicker: openPicker,
+      onOperatorPicked: rememberPickedOperator,
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -973,7 +1070,9 @@ Widget _buildAuditedSupportActions(BuildContext context) {
         canIssuePairedErasure: canIssuePairedErasure,
         canExportAuditLog: canExportAuditLog,
         adminUid: session?.uid,
+        initialPicked: initialPicked,
         openPicker: openPicker,
+        onOperatorPicked: rememberPickedOperator,
       );
     },
   );
@@ -988,7 +1087,9 @@ class _AuditedSupportActionsRouteShell extends StatefulWidget {
     required this.canIssuePairedErasure,
     required this.canExportAuditLog,
     required this.adminUid,
+    required this.initialPicked,
     required this.openPicker,
+    required this.onOperatorPicked,
   });
 
   final AuditedSupportActionsAdminGateway gateway;
@@ -998,10 +1099,13 @@ class _AuditedSupportActionsRouteShell extends StatefulWidget {
   final bool canIssuePairedErasure;
   final bool canExportAuditLog;
   final String? adminUid;
+  final OperatorPickerResult? initialPicked;
   final Future<OperatorPickerResult?> Function(
     BuildContext context,
     String? adminUid,
-  ) openPicker;
+  )
+  openPicker;
+  final ValueChanged<OperatorPickerResult> onOperatorPicked;
 
   @override
   State<_AuditedSupportActionsRouteShell> createState() =>
@@ -1016,10 +1120,16 @@ class _AuditedSupportActionsRouteShellState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _picked != null) return;
-      _openPicker();
-    });
+    _picked = widget.initialPicked;
+  }
+
+  @override
+  void didUpdateWidget(covariant _AuditedSupportActionsRouteShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_samePickerResult(widget.initialPicked, oldWidget.initialPicked) &&
+        !_samePickerResult(widget.initialPicked, _picked)) {
+      setState(() => _picked = widget.initialPicked);
+    }
   }
 
   Future<void> _openPicker() async {
@@ -1030,6 +1140,7 @@ class _AuditedSupportActionsRouteShellState
       if (!mounted) return;
       if (result != null) {
         setState(() => _picked = result);
+        widget.onOperatorPicked(result);
       } else {
         setState(() {});
       }
@@ -1055,25 +1166,24 @@ class _AuditedSupportActionsRouteShellState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'Pick an operator',
+                    'Choose an operator',
                     style: AppTextStyles.display20(
                       color: AppColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'The audit log and support actions are scoped to one '
-                    'operator at a time. Pick the operator you are helping.',
-                    style: AppTextStyles.body13(
-                      color: AppColors.textSecondary,
-                    ),
+                    'Audit and support work is scoped to one operator. Choose '
+                    'an operator once, then move between Team, Access, and '
+                    'Audit without choosing again.',
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     key: const Key('admin_asa_open_picker'),
                     onPressed: _openPicker,
                     icon: const Icon(Icons.business_outlined, size: 16),
-                    label: const Text('Pick operator'),
+                    label: const Text('Choose operator'),
                   ),
                 ],
               ),
@@ -1319,8 +1429,9 @@ class AdminConsoleServicesScope extends InheritedWidget {
         _defaultRolesHierarchySessionsAdminDemoGateway;
   }
 
-  static AuditedSupportActionsAdminGateway
-  auditedSupportActionsAdminGatewayOf(BuildContext context) {
+  static AuditedSupportActionsAdminGateway auditedSupportActionsAdminGatewayOf(
+    BuildContext context,
+  ) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
     return scope?.auditedSupportActionsAdminGateway ??

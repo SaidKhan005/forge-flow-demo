@@ -248,11 +248,16 @@ abstract class MembersAdminGateway {
     MemberStatus? status,
     String? roleKey,
     String? locationId,
+    String? contextLocationId,
     bool? mfaEnrolled,
     String? search,
   });
 
-  Future<List<MemberInviteRow>> listInvites({required String operatorId});
+  Future<List<MemberInviteRow>> listInvites({
+    required String operatorId,
+    String? contextLocationId,
+    String? locationId,
+  });
 
   Future<MemberAdminRow> suspendMember({
     required String operatorId,
@@ -372,9 +377,11 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
     MemberStatus? status,
     String? roleKey,
     String? locationId,
+    String? contextLocationId,
     bool? mfaEnrolled,
     String? search,
   }) async {
+    final routedLocationId = locationId ?? contextLocationId;
     final body = await _send(
       method: 'GET',
       path: usersPath,
@@ -382,8 +389,8 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
         'operator_id': operatorId,
         if (status != null) 'status': status.wire,
         if (roleKey != null && roleKey.isNotEmpty) 'role_key': roleKey,
-        if (locationId != null && locationId.isNotEmpty)
-          'location_id': locationId,
+        if (routedLocationId != null && routedLocationId.isNotEmpty)
+          'location_id': routedLocationId,
         if (mfaEnrolled != null) 'mfa_enrolled': mfaEnrolled.toString(),
         if (search != null && search.trim().isNotEmpty) 'q': search.trim(),
       },
@@ -391,18 +398,26 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
     final users = (body['users'] as List?) ?? const [];
     return <MemberAdminRow>[
       for (final user in users)
-        _memberRowFromJson((user as Map).cast<String, Object?>()),
+        if (user is Map && !_isInviteOnlyUserRow(user.cast<String, Object?>()))
+          _memberRowFromJson(user.cast<String, Object?>()),
     ];
   }
 
   @override
   Future<List<MemberInviteRow>> listInvites({
     required String operatorId,
+    String? contextLocationId,
+    String? locationId,
   }) async {
+    final routedLocationId = locationId ?? contextLocationId;
     final body = await _send(
       method: 'GET',
       path: invitesPath,
-      queryParameters: <String, String>{'operator_id': operatorId},
+      queryParameters: <String, String>{
+        'operator_id': operatorId,
+        if (routedLocationId != null && routedLocationId.isNotEmpty)
+          'location_id': routedLocationId,
+      },
     );
     final invites = (body['invites'] as List?) ?? const [];
     return <MemberInviteRow>[
@@ -508,8 +523,7 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
     _requireAdminReason(adminReason, operation);
     final body = await _send(
       method: 'POST',
-      path:
-          '$usersPath/${Uri.encodeComponent(userId)}/$pathSegment',
+      path: '$usersPath/${Uri.encodeComponent(userId)}/$pathSegment',
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
@@ -532,8 +546,7 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
     _requireAdminReason(adminReason, 'resetPassword');
     await _send(
       method: 'POST',
-      path:
-          '$usersPath/${Uri.encodeComponent(userId)}/reset-password',
+      path: '$usersPath/${Uri.encodeComponent(userId)}/reset-password',
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
@@ -557,8 +570,7 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
     // (§ "Permission gate cheat sheet" line 203).
     await _send(
       method: 'POST',
-      path:
-          '$usersPath/${Uri.encodeComponent(userId)}/reset-mfa-factors',
+      path: '$usersPath/${Uri.encodeComponent(userId)}/reset-mfa-factors',
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
@@ -580,8 +592,7 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
     _requireAdminReason(adminReason, 'forceLogout');
     await _send(
       method: 'POST',
-      path:
-          '$usersPath/${Uri.encodeComponent(userId)}/force-logout',
+      path: '$usersPath/${Uri.encodeComponent(userId)}/force-logout',
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
@@ -641,16 +652,39 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
         'operator_id': operatorId,
         'email': email.trim(),
         'display_name': displayName.trim(),
+        // The live auth proxy accepts role ids, but its repository
+        // binding resolves visible role keys too. Keep role_key for
+        // admin-console readability while sending the contract fields
+        // needed by the routed invite mutation.
+        'role_id': roleKey,
         'role_key': roleKey,
+        'scope_type': orgUnitId != null && orgUnitId.isNotEmpty
+            ? 'org_unit'
+            : 'location',
+        'location_id': primaryLocationId,
         'primary_location_id': primaryLocationId,
-        if (orgUnitId != null && orgUnitId.isNotEmpty)
-          'org_unit_id': orgUnitId,
+        if (orgUnitId != null && orgUnitId.isNotEmpty) 'org_unit_id': orgUnitId,
         if (welcomeNote != null && welcomeNote.trim().isNotEmpty)
           'welcome_note': welcomeNote.trim(),
         'admin_reason': adminReason,
       },
     );
-    return _inviteRowFromJson(_asMap(body['invite']));
+    final invite = _asMap(body['invite']);
+    if (invite.isNotEmpty) return _inviteRowFromJson(invite);
+    return _inviteRowFromJson(<String, Object?>{
+      'invite_id': _stringField(body, 'invite_id'),
+      'email': email.trim(),
+      'display_name': displayName.trim(),
+      'role_key': roleKey,
+      'primary_location_id': primaryLocationId,
+      'created_at':
+          _optionalString(body['created_at']) ??
+          DateTime.now().toUtc().toIso8601String(),
+      'invited_by': actorUserId,
+      if (orgUnitId != null && orgUnitId.isNotEmpty) 'org_unit_id': orgUnitId,
+      if (welcomeNote != null && welcomeNote.trim().isNotEmpty)
+        'welcome_note': welcomeNote.trim(),
+    });
   }
 
   void _requireEditable(bool actorIsForgeAdmin, String operation) {
@@ -704,8 +738,7 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
       throw MembersAdminGatewayError(
         statusCode: 408,
         errorCode: 'timeout',
-        message:
-            'admin members proxy timed out after ${_timeout.inSeconds}s',
+        message: 'admin members proxy timed out after ${_timeout.inSeconds}s',
       );
     }
     final raw = utf8.decode(response.bodyBytes);
@@ -732,34 +765,76 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
 }
 
 MemberAdminRow _memberRowFromJson(Map<String, Object?> json) {
+  final timestamp =
+      _optionalDateTime(json['last_active_at']) ??
+      _optionalDateTime(json['updated_at']) ??
+      DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  final primaryLocationId = _firstOptionalStringField(json, const <String>[
+    'primary_location_id',
+    'location_id',
+  ]);
+  final primaryLocationName = _firstOptionalStringField(json, const <String>[
+    'primary_location_name',
+    'location_label',
+  ]);
   return MemberAdminRow(
     userId: _stringField(json, 'user_id'),
     email: _stringField(json, 'email'),
     displayName: _stringField(json, 'display_name'),
-    roleKey: _stringField(json, 'role_key'),
-    primaryLocationId: _stringField(json, 'primary_location_id'),
-    primaryLocationName: _stringField(json, 'primary_location_name'),
+    roleKey: _firstStringField(json, const <String>[
+      'role_key',
+      'role_label',
+      'role_id',
+    ]),
+    primaryLocationId: primaryLocationId ?? '',
+    primaryLocationName:
+        primaryLocationName ?? primaryLocationId ?? 'Unassigned',
     status: MemberStatusWire.fromWire(_stringField(json, 'status')),
     mfaEnrolled: _boolField(json, 'mfa_enrolled'),
-    lastActiveAt: _dateTimeField(json, 'last_active_at'),
-    createdAt: _dateTimeField(json, 'created_at'),
-    updatedAt: _dateTimeField(json, 'updated_at'),
+    lastActiveAt: timestamp,
+    createdAt: _optionalDateTime(json['created_at']) ?? timestamp,
+    updatedAt: _optionalDateTime(json['updated_at']) ?? timestamp,
     createdBy: _optionalString(json['created_by']),
     updatedBy: _optionalString(json['updated_by']),
     orgUnitId: _optionalString(json['org_unit_id']),
   );
 }
 
+bool _isInviteOnlyUserRow(Map<String, Object?> json) {
+  // The live preview auth proxy can include invited-but-not-accepted rows
+  // in the users envelope. The admin members contract keeps invited rows
+  // on the invites surface, so filter that duplicate state out here.
+  return _optionalString(json['status']) == 'invited';
+}
+
 MemberInviteRow _inviteRowFromJson(Map<String, Object?> json) {
+  final invitedAt =
+      _optionalDateTime(json['invited_at']) ??
+      _optionalDateTime(json['created_at']) ??
+      DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  final primaryLocationId = _firstOptionalStringField(json, const <String>[
+    'primary_location_id',
+    'location_id',
+  ]);
+  final primaryLocationName = _firstOptionalStringField(json, const <String>[
+    'primary_location_name',
+    'location_label',
+  ]);
   return MemberInviteRow(
     inviteId: _stringField(json, 'invite_id'),
     email: _stringField(json, 'email'),
-    displayName: _stringField(json, 'display_name'),
-    roleKey: _stringField(json, 'role_key'),
-    primaryLocationId: _stringField(json, 'primary_location_id'),
-    primaryLocationName: _stringField(json, 'primary_location_name'),
-    invitedAt: _dateTimeField(json, 'invited_at'),
-    invitedBy: _stringField(json, 'invited_by'),
+    displayName:
+        _optionalString(json['display_name']) ?? _stringField(json, 'email'),
+    roleKey: _firstStringField(json, const <String>[
+      'role_key',
+      'role_label',
+      'role_id',
+    ]),
+    primaryLocationId: primaryLocationId ?? '',
+    primaryLocationName:
+        primaryLocationName ?? primaryLocationId ?? 'Unassigned',
+    invitedAt: invitedAt,
+    invitedBy: _optionalString(json['invited_by']) ?? '',
     orgUnitId: _optionalString(json['org_unit_id']),
     welcomeNote: _optionalString(json['welcome_note']),
   );
@@ -777,6 +852,23 @@ String _stringField(Map<String, Object?> json, String key) {
   throw StateError('missing string field $key');
 }
 
+String _firstStringField(Map<String, Object?> json, List<String> keys) {
+  final value = _firstOptionalStringField(json, keys);
+  if (value != null) return value;
+  throw StateError('missing string field ${keys.join('/')}');
+}
+
+String? _firstOptionalStringField(
+  Map<String, Object?> json,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    final value = _optionalString(json[key]);
+    if (value != null) return value;
+  }
+  return null;
+}
+
 bool _boolField(Map<String, Object?> json, String key) {
   final value = json[key];
   if (value is bool) return value;
@@ -790,13 +882,12 @@ String? _optionalString(Object? value) {
   return trimmed.isEmpty ? null : trimmed;
 }
 
-DateTime _dateTimeField(Map<String, Object?> json, String key) {
-  final value = json[key];
+DateTime? _optionalDateTime(Object? value) {
   if (value is DateTime) return value.toUtc();
   if (value is String && value.isNotEmpty) {
     return DateTime.parse(value).toUtc();
   }
-  throw StateError('missing datetime field $key');
+  return null;
 }
 
 /// Locked validation copy mirrored from the parity contract's

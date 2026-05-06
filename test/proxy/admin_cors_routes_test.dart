@@ -420,6 +420,68 @@ void main() {
     });
   });
 
+  group('admin route CORS - admin auth', () {
+    test('OPTIONS allowed origin echoes origin for members routes', () async {
+      await _withRealHttp(() async {
+        final ctx = await _spinUp();
+        try {
+          final res = await _options(
+            ctx.client,
+            ctx.baseUri.resolve(adminAuthUsersPath),
+            requestMethod: 'GET',
+            origin: _adminOrigin,
+          );
+          _expectAllowed(res);
+          final methods =
+              res.headers.value('access-control-allow-methods') ?? '';
+          expect(methods.toUpperCase(), contains('GET'));
+          expect(methods.toUpperCase(), contains('POST'));
+          expect(methods.toUpperCase(), contains('OPTIONS'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('OPTIONS allowed origin echoes origin for role hierarchy routes',
+        () async {
+      await _withRealHttp(() async {
+        final ctx = await _spinUp();
+        try {
+          final res = await _options(
+            ctx.client,
+            ctx.baseUri.resolve(adminAuthRolesPath),
+            requestMethod: 'GET',
+            origin: _adminOrigin,
+          );
+          _expectAllowed(res);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('OPTIONS disallowed origin -> 403 on admin auth paths', () async {
+      await _withRealHttp(() async {
+        final ctx = await _spinUp();
+        try {
+          final res = await _options(
+            ctx.client,
+            ctx.baseUri.resolve(adminAuthUsersPath),
+            requestMethod: 'GET',
+            origin: _attackerOrigin,
+          );
+          _expectDisallowed(res);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+  });
+
   group('admin route CORS - deep health', () {
     test('OPTIONS allowed origin echoes origin and announces GET', () async {
       await _withRealHttp(() async {

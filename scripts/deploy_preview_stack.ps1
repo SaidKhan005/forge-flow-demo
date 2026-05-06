@@ -147,19 +147,30 @@ function Assert-PreviewRuntimeChecks {
     'Access-Control-Request-Method' = 'GET'
     'Access-Control-Request-Headers' = 'authorization,content-type'
   }
-  $preflight = Invoke-WebRequest `
+  $operatorPreflight = Invoke-WebRequest `
     -UseBasicParsing `
     -Method OPTIONS `
     -Uri "$ProxyUrl/v1/admin/operators" `
     -Headers $preflightHeaders
-  if ($preflight.StatusCode -ne 204) {
-    Write-Host "BLOCKED: preview CORS preflight returned $($preflight.StatusCode)"
+  if ($operatorPreflight.StatusCode -ne 204) {
+    Write-Host "BLOCKED: preview operator CORS preflight returned $($operatorPreflight.StatusCode)"
+    exit 1
+  }
+
+  $adminAuthPreflight = Invoke-WebRequest `
+    -UseBasicParsing `
+    -Method OPTIONS `
+    -Uri "$ProxyUrl/v1/admin/auth/users" `
+    -Headers $preflightHeaders
+  if ($adminAuthPreflight.StatusCode -ne 204) {
+    Write-Host "BLOCKED: preview admin-auth CORS preflight returned $($adminAuthPreflight.StatusCode)"
     exit 1
   }
 
   [pscustomobject] @{
     ReadyzStatusCode = $readyz.StatusCode
-    CorsPreflightStatusCode = $preflight.StatusCode
+    CorsPreflightStatusCode = $operatorPreflight.StatusCode
+    AdminAuthCorsPreflightStatusCode = $adminAuthPreflight.StatusCode
   }
 }
 
@@ -288,5 +299,6 @@ Write-Host " - admin traffic: $($adminTuple.TrafficRevision) / $($adminTuple.Tra
 Write-Host " - admin URL: $adminUrl"
 Write-Host " - proxy /readyz: $($runtimeChecks.ReadyzStatusCode)"
 Write-Host " - admin CORS preflight: $($runtimeChecks.CorsPreflightStatusCode)"
+Write-Host " - admin-auth CORS preflight: $($runtimeChecks.AdminAuthCorsPreflightStatusCode)"
 Write-Host " - proxy base env var: $proxyEnvName"
-Write-Host " - share/test URL: $adminUrl?cache_bust=preview-$safeName-$(Get-Date -Format yyyyMMddHHmmss)"
+Write-Host " - share/test URL: ${adminUrl}?cache_bust=preview-$safeName-$(Get-Date -Format yyyyMMddHHmmss)"

@@ -17,15 +17,16 @@
 // `admin_reason`. Operator self-service (`11W.1`) does NOT expose
 // either action; the parity contract pins the asymmetry.
 //
-// The screen mounts in the admin shell at `/admin/members` and is
-// reached AFTER the operator picker - the picker's
-// [OperatorPickerResult] is the screen's input. F&F admin opens the
-// route, picks an operator, and lands on this surface scoped to the
-// chosen operator.
+// The screen mounts in the admin shell at `/admin/members`. The shell
+// passes the shared Operations operator context when one exists; the
+// picker is only opened when the admin needs to choose or change
+// operator.
 //
 // Authority: docs/contracts/team_roles_hierarchy_console_parity_contract.md
 // "§ Members + Invites (11W.1 + 11A.12)" + "§ Operator self-service
 // vs F&F admin path" + "§ Idempotency keys" + "§ Audit-row shape".
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -82,6 +83,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   String? _actionError;
   List<MemberAdminRow> _members = const <MemberAdminRow>[];
   List<MemberInviteRow> _invites = const <MemberInviteRow>[];
+  Timer? _searchDebounce;
+  int _refreshGeneration = 0;
 
   // Filter state. Mirrors the parity-contract filter set verbatim.
   MemberStatus? _statusFilter;
@@ -106,26 +109,42 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     _refresh();
   }
 
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
   Future<void> _refresh() async {
+    final generation = ++_refreshGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
-      final members = await widget.gateway.listMembers(
-        operatorId: widget.pickedOperator.operatorId,
-        status: _statusFilter,
-        roleKey: _roleFilter,
-        locationId: _locationFilter,
-        mfaEnrolled: _mfaEnrolledFilter,
-        search: _searchQuery,
-      );
-      final invites = await widget.gateway.listInvites(
-        operatorId: widget.pickedOperator.operatorId,
-      );
+      final results = await Future.wait<Object>([
+        widget.gateway.listMembers(
+          operatorId: widget.pickedOperator.operatorId,
+          status: _statusFilter,
+          roleKey: _roleFilter,
+          locationId: _locationFilter,
+          contextLocationId: widget.pickedOperator.locationId,
+          mfaEnrolled: _mfaEnrolledFilter,
+          search: _searchQuery,
+        ),
+        widget.gateway.listInvites(
+          operatorId: widget.pickedOperator.operatorId,
+          locationId: _locationFilter,
+          contextLocationId: widget.pickedOperator.locationId,
+        ),
+      ]);
+      if (generation != _refreshGeneration) return;
+      final members = results[0] as List<MemberAdminRow>;
+      final invites = results[1] as List<MemberInviteRow>;
+      final visibleMembers = _applyLocalFilters(members);
       if (!mounted) return;
       setState(() {
-        _members = members;
+        _members = visibleMembers;
         _invites = invites;
         _loading = false;
       });
@@ -148,6 +167,65 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         _loading = false;
       });
     }
+  }
+
+  void _refreshAfterSearchPause() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _refresh();
+    });
+  }
+
+  List<MemberAdminRow> _applyLocalFilters(List<MemberAdminRow> rows) {
+    final query = _searchQuery.trim().toLowerCase();
+    final roleFilter = _roleFilter;
+    final locationFilter = _locationFilter;
+    return rows
+        .where((row) {
+          if (_statusFilter != null && row.status != _statusFilter) {
+            return false;
+          }
+          if (roleFilter != null &&
+              roleFilter.isNotEmpty &&
+              !_roleMatches(row.roleKey, roleFilter)) {
+            return false;
+          }
+          if (locationFilter != null &&
+              locationFilter.isNotEmpty &&
+              row.primaryLocationId != locationFilter) {
+            return false;
+          }
+          if (_mfaEnrolledFilter != null &&
+              row.mfaEnrolled != _mfaEnrolledFilter) {
+            return false;
+          }
+          if (query.isNotEmpty && !_rowMatchesQuery(row, query)) {
+            return false;
+          }
+          return true;
+        })
+        .toList(growable: false);
+  }
+
+  bool _roleMatches(String rowRoleKey, String filterRoleKey) {
+    final rowRaw = rowRoleKey.toLowerCase();
+    final filterRaw = filterRoleKey.toLowerCase();
+    if (rowRaw == filterRaw) return true;
+    return memberRoleLabel(rowRoleKey).toLowerCase() ==
+        memberRoleLabel(filterRoleKey).toLowerCase();
+  }
+
+  bool _rowMatchesQuery(MemberAdminRow row, String query) {
+    final haystack = <String>[
+      row.email,
+      row.displayName,
+      row.roleKey,
+      memberRoleLabel(row.roleKey),
+      row.primaryLocationName,
+      row.status.wire,
+    ].join(' ').toLowerCase();
+    return haystack.contains(query);
   }
 
   Future<void> _runAndRefresh(
@@ -231,7 +309,9 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   }
 
   Future<void> _onResetPassword(MemberAdminRow row) async {
-    final reason = await _promptAdminReason('Reset password for ${row.displayName}');
+    final reason = await _promptAdminReason(
+      'Reset password for ${row.displayName}',
+    );
     if (reason == null) return;
     await _runAndRefresh(
       () => widget.gateway.resetPassword(
@@ -242,8 +322,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: reason,
       ),
-      successHint:
-          'Sent ${row.displayName} a password-reset email.',
+      successHint: 'Sent ${row.displayName} a password-reset email.',
     );
   }
 
@@ -276,8 +355,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: reason,
       ),
-      successHint:
-          '${row.displayName} has been signed out of every device.',
+      successHint: '${row.displayName} has been signed out of every device.',
     );
   }
 
@@ -392,9 +470,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
             ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)
-              const _ReadOnlyBanner(
-                key: Key('admin_members_readonly_banner'),
-              ),
+              const _ReadOnlyBanner(key: Key('admin_members_readonly_banner')),
             if (_actionError != null)
               _ErrorBanner(
                 key: const Key('admin_members_action_error'),
@@ -425,7 +501,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
               },
               onSearchChanged: (v) {
                 setState(() => _searchQuery = v);
-                _refresh();
+                _refreshAfterSearchPause();
               },
             ),
             const SizedBox(height: 12),
@@ -547,8 +623,9 @@ class _MembersFilterBar extends StatefulWidget {
 }
 
 class _MembersFilterBarState extends State<_MembersFilterBar> {
-  late final TextEditingController _searchController =
-      TextEditingController(text: widget.searchQuery);
+  late final TextEditingController _searchController = TextEditingController(
+    text: widget.searchQuery,
+  );
 
   @override
   void didUpdateWidget(covariant _MembersFilterBar oldWidget) {
@@ -854,11 +931,7 @@ class _MemberRowTile extends StatelessWidget {
             ),
             if (editingEnabled) ...[
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: _buildActionButtons(),
-              ),
+              Wrap(spacing: 6, runSpacing: 6, children: _buildActionButtons()),
             ],
           ],
         ),
@@ -869,57 +942,73 @@ class _MemberRowTile extends StatelessWidget {
   List<Widget> _buildActionButtons() {
     final buttons = <Widget>[];
     if (row.status == MemberStatus.active) {
-      buttons.add(_RowAction(
-        keyValue: 'admin_members_action_suspend_${row.userId}',
-        label: 'Suspend',
-        onPressed: () => onSuspend(row),
-      ));
-      buttons.add(_RowAction(
-        keyValue: 'admin_members_action_soft_delete_${row.userId}',
-        label: 'Soft delete',
-        onPressed: () => onSoftDelete(row),
-      ));
+      buttons.add(
+        _RowAction(
+          keyValue: 'admin_members_action_suspend_${row.userId}',
+          label: 'Suspend',
+          onPressed: () => onSuspend(row),
+        ),
+      );
+      buttons.add(
+        _RowAction(
+          keyValue: 'admin_members_action_soft_delete_${row.userId}',
+          label: 'Soft delete',
+          onPressed: () => onSoftDelete(row),
+        ),
+      );
     }
     if (row.status == MemberStatus.suspended ||
         row.status == MemberStatus.dormant30) {
-      buttons.add(_RowAction(
-        keyValue: 'admin_members_action_reactivate_${row.userId}',
-        label: 'Reactivate',
-        onPressed: () => onReactivate(row),
-      ));
+      buttons.add(
+        _RowAction(
+          keyValue: 'admin_members_action_reactivate_${row.userId}',
+          label: 'Reactivate',
+          onPressed: () => onReactivate(row),
+        ),
+      );
     }
     if (row.status == MemberStatus.softDeleted) {
       // Admin-only action. Operator self-service (11W.1) does NOT
       // expose Restore - the parity contract pins this asymmetry.
-      buttons.add(_RowAction(
-        keyValue: 'admin_members_action_restore_${row.userId}',
-        label: 'Restore soft-deleted',
-        onPressed: () => onRestoreSoftDeleted(row),
-      ));
+      buttons.add(
+        _RowAction(
+          keyValue: 'admin_members_action_restore_${row.userId}',
+          label: 'Restore soft-deleted',
+          onPressed: () => onRestoreSoftDeleted(row),
+        ),
+      );
     } else {
-      buttons.add(_RowAction(
-        keyValue: 'admin_members_action_reset_password_${row.userId}',
-        label: 'Reset password',
-        onPressed: () => onResetPassword(row),
-      ));
-      buttons.add(_RowAction(
-        keyValue: 'admin_members_action_reset_mfa_${row.userId}',
-        label: 'Reset MFA',
-        onPressed: () => onResetMfa(row),
-      ));
-      buttons.add(_RowAction(
-        keyValue: 'admin_members_action_force_logout_${row.userId}',
-        label: 'Force logout',
-        onPressed: () => onForceLogout(row),
-      ));
+      buttons.add(
+        _RowAction(
+          keyValue: 'admin_members_action_reset_password_${row.userId}',
+          label: 'Reset password',
+          onPressed: () => onResetPassword(row),
+        ),
+      );
+      buttons.add(
+        _RowAction(
+          keyValue: 'admin_members_action_reset_mfa_${row.userId}',
+          label: 'Reset MFA',
+          onPressed: () => onResetMfa(row),
+        ),
+      );
+      buttons.add(
+        _RowAction(
+          keyValue: 'admin_members_action_force_logout_${row.userId}',
+          label: 'Force logout',
+          onPressed: () => onForceLogout(row),
+        ),
+      );
       // Admin-only action. Operator self-service (11W.1) routes role
       // changes through the normal `team.roles.assign` workflow; the
       // override path lives only on the admin surface.
-      buttons.add(_RowAction(
-        keyValue: 'admin_members_action_override_role_${row.userId}',
-        label: 'Override role grant',
-        onPressed: () => onOverrideRoleGrant(row),
-      ));
+      buttons.add(
+        _RowAction(
+          keyValue: 'admin_members_action_override_role_${row.userId}',
+          label: 'Override role grant',
+          onPressed: () => onOverrideRoleGrant(row),
+        ),
+      );
     }
     return buttons;
   }
@@ -1162,10 +1251,7 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
     return AlertDialog(
       key: const Key('admin_members_reason_dialog'),
       backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        widget.title,
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
+      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
       content: SizedBox(
         width: 460,
         child: Column(
@@ -1187,9 +1273,7 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
               decoration: InputDecoration(
                 labelText: 'Reason',
                 border: const OutlineInputBorder(),
-                errorText: _violated
-                    ? 'Add a reason before continuing.'
-                    : null,
+                errorText: _violated ? 'Add a reason before continuing.' : null,
               ),
             ),
           ],
@@ -1249,9 +1333,9 @@ class _OverrideRoleDialogState extends State<_OverrideRoleDialog> {
       setState(() => _violated = true);
       return;
     }
-    Navigator.of(context).pop(
-      _OverrideRoleResult(roleKey: _selectedRole, adminReason: reason),
-    );
+    Navigator.of(
+      context,
+    ).pop(_OverrideRoleResult(roleKey: _selectedRole, adminReason: reason));
   }
 
   @override
@@ -1305,9 +1389,7 @@ class _OverrideRoleDialogState extends State<_OverrideRoleDialog> {
               decoration: InputDecoration(
                 labelText: 'Reason',
                 border: const OutlineInputBorder(),
-                errorText: _violated
-                    ? 'Add a reason before continuing.'
-                    : null,
+                errorText: _violated ? 'Add a reason before continuing.' : null,
               ),
             ),
           ],
