@@ -75,7 +75,11 @@ import '../advisor_corpus/advisor_corpus.dart'
 import 'health_operation_budget.dart';
 import 'log.dart';
 import 'proxy_idempotency_cache.dart';
-import 'realtime_route.dart' show handleRealtimeUpgrade, realtimeSubscribePath;
+import 'realtime_route.dart'
+    show
+        handleRealtimeUpgrade,
+        RealtimeReplayFetcher,
+        realtimeSubscribePath;
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
     show DependencyTimeoutException;
 export 'log.dart'
@@ -6860,6 +6864,12 @@ Future<void> routeRequest(
   // probes still work and existing tests do not need to plumb a
   // publisher through every routeRequest call site.
   InProcessRealtimePublisher? realtimePublisher,
+  // Phase 10a.5 — server-side replay fetcher invoked when a client
+  // reconnects with `?last_event_id=<uuid>`. Optional: when null,
+  // the route falls back to live frames only and existing tests stay
+  // green. Production binds this to a `RealtimeReplayResolver` over
+  // the publisher's recent-events ring buffer.
+  RealtimeReplayFetcher? realtimeReplayFetcher,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -7040,6 +7050,7 @@ Future<void> routeRequest(
             request: request,
             authGuard: authGuard,
             publisher: realtimePublisher,
+            replayFetcher: realtimeReplayFetcher,
           );
           return;
         }

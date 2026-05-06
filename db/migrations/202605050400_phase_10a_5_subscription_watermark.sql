@@ -1,0 +1,48 @@
+-- Phase 10a.5 — realtime subscription watermark.
+--
+-- THIS FILE IS A SQLITE-ONLY SCHEMA REGISTRATION PLACEHOLDER.
+-- It exists so the proxy's migration catalog
+-- (`tool/advisor_proxy/main.dart::loadProxyMigrationFilenames` →
+-- `recordProxyStartupMigrations`) records the slice in
+-- `public.proxy_migrations_applied` for cross-environment drift
+-- accounting, but it INTENTIONALLY contains no Postgres DDL.
+--
+-- The actual table lives on the per-device SQLite cache and is
+-- created by the `_migrateToV26` helper in
+-- `lib/infrastructure/persistence/sqlite/sqlite_database_migrations.dart`
+-- (and on fresh installs by `_createAllTables` in
+-- `sqlite_database_schema.dart`). V1 watermark is per-device only;
+-- cross-device sync is Phase 10b. The realtime subscription
+-- (`lib/services/realtime/realtime_subscription.dart`) writes the
+-- per-(operator_id, topic) cursor inside the same transaction that
+-- surfaces the event to the UI; on reconnect, it picks the freshest
+-- cursor for the operator and forwards it as `?last_event_id=<uuid>`
+-- on the WebSocket upgrade URI so the route's
+-- `RealtimeReplayResolver` can replay events missed during the
+-- disconnect window (default 5 minutes).
+--
+-- Authority:
+--   * docs/contracts/event_outbox_contract.md — `event_id` for
+--     consumer dedupe, `occurred_at` for ordering.
+--   * docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md
+--     "WebSocket lifecycle" — replay window default 5 min.
+--
+-- Hard rules carried from CLAUDE.md and the contract:
+--
+--   1. Per-device only. The watermark MUST NOT live in Postgres
+--      until Phase 10b promotes it to cross-device. A Postgres
+--      column for this in V1 would create a per-device write
+--      hotspot the contract has not yet sized for.
+--
+--   2. Operator scoping is on the primary key. Two different
+--      operators signing in on the same device get separate rows;
+--      the realtime subscription's `setTenantContext` hydrates only
+--      the rows whose `operator_id` matches the active tenant.
+--
+--   3. Empty Postgres effect. This migration is a no-op against the
+--      Postgres pool; the proxy's startup registry writer records
+--      the filename without running any DDL. The migration drift
+--      scanner sees the file in `db/migrations/`; the schema
+--      contract verifier (`AdminProxySchemaContractVerifier`) does
+--      NOT reference this slice's table because it does not exist
+--      in Postgres.
