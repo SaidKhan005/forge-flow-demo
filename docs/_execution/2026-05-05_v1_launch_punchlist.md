@@ -19,51 +19,85 @@ are external; engineering can run in parallel.
 
 ### Operator (You)
 
-- [ ] **Start GCP/Firebase Production1 provisioning.** Cloud Run service +
-      static egress VPC + Firebase apps (mobile + web) + GCP Secret Manager
-      namespace `forge-flow-production-*`. Spec:
-      `docs/phases/phase_production_cutover/production1_staging_parity_baseline_2026-05-03.md`.
-      _Effort: 5–7 days. Blocks: cutover.0._
-- [ ] **Apply 12 pending Postgres migrations to Production1/staging as scoped.**
-      Full table in `docs/POST_HARDENING_FOLLOWUPS.md` "P0 - Production1
-      Migration Apply Gap". Runbook:
-      `runbooks/phase_9_production1_migration_apply_runbook.md`. First two
-      are already staging-applied (2026-05-03/-04); the remaining ten
-      (mobile_push, business_timing_live, 11A.14 MFA reset, index rekey,
-      11W.5 audit_log_export, audit-anchor daily cron, timing provenance
-      shift_records, data accuracy keyed service-period settings, first
-      connection backfill jobs, 11W.7 operator account write-fields) are
-      code-ready and need staging apply before Production1.
-      _Effort: 1–2 days. Blocks: production admin console writes, mobile
-      OS push delivery, live timing runtime, audit log CSV export, keyed
-      Data Accuracy editor, first-connection backfill orchestration,
-      operator-web Account editor writes._
-- [ ] **Escalate inbound T&Cs to lawyer.** Draft is in `docs/phases/phase_9_8/`.
-      Set explicit deadlines: first pass 2026-05-10, final 2026-05-13. Without
-      signed T&Cs there is no `tos_acceptances` row → `cutover.2` cannot run.
+Production1 runtime is already live behind staging-style chrome. Detail
++ resume-after-context-break in
+`docs/_execution/2026-05-06_v1_operator_punchlist_execution.md`.
+
+**Done (no operator action needed):**
+
+- [x] GCP / Cloud Run / Secret Manager / VPC provisioning.
+- [x] Firebase project (`forge-flow-production1`) + mobile + web +
+      admin app registration.
+- [x] Production1 Postgres CMK (`forge-flow-production1-pg-cmk`,
+      Canada Central, PG 16); `cutover.0a` / `0a.pg` closed
+      2026-05-01.
+- [x] DNS + TLS for `app.forgeflow.app` (operator-web production
+      domain) and `mail.forgeflow.app` (production email domain).
+- [x] SendGrid domain auth + DKIM / SPF / DMARC for the production
+      sender. `noreply@feflow.org` is already clean enough for V1;
+      no rebrand to `noreply@forgeflow.app` is required.
+- [x] 10 of 12 follow-up Postgres migrations applied + verified on
+      staging.
+
+**Main remaining DNS action — Firebase Auth action-domain switch:**
+
+- [ ] **Repoint `auth.feflow.org` from `forge-flow-staging.web.app`
+      to `forge-flow-production1.web.app`.** DNS provider change;
+      typical 15–60 min propagation.
+- [ ] **Set Firebase Auth `callbackUri = https://auth.feflow.org/auth/action`**
+      in the `forge-flow-production1` Firebase console once DNS has
+      propagated.
+- [ ] **Validate (4 checks):**
+      (a) `https://auth.feflow.org/auth/action` loads the branded
+      production action page (not staging chrome).
+      (b) `firebase-config.js` on that domain resolves to
+      `forge-flow-production1`.
+      (c) A password reset email's link opens the branded production
+      action page.
+      (d) Completing the password reset hits the production proxy
+      URL (not staging).
+      _Effort: ~1 hr active + DNS propagation. Blocks: cutover.0
+      pre-flight._
+      _Cosmetic: Firebase email-template body styling is a nice-to-have
+      gated on Firebase's email-template gate; not launch-blocking._
+
+**Remaining non-DNS blockers:**
+
+- [ ] **Decide and approve the 2 remaining Production1 migration
+      applies.** 10 of 12 are staging-verified; only
+      `202605061800_phase_8_first_connection_backfill_jobs.sql` and
+      `202605070000_phase_11W_7_operator_account_fields.sql` need an
+      explicit operator decision before staging-apply +
+      Production1-apply runs. Runbook:
+      `runbooks/phase_9_production1_migration_apply_runbook.md`.
+      _Effort: 1–2 hrs after decision. Blocks: first-connect-backfill
+      orchestration on production + operator-web Account editor writes
+      on production._
+- [ ] **Escalate inbound-vendor T&Cs to counsel.** Draft is in
+      `docs/phases/phase_9_8/`. Suggested deadlines: first pass
+      2026-05-10, final 2026-05-13. Without signed T&Cs there is no
+      `tos_acceptances` row → `cutover.2` cannot run.
       _Effort: 3–7 days external. Blocks: cutover.2._
-- [ ] **Provision DNS + TLS for `app.forgeflow.app` and `mail.forgeflow.app`.**
-      Required for operator web console + SendGrid domain auth.
-      _Effort: 1–2 days. Blocks: 11W shell + email sends._
-- [ ] **Stand up SendGrid domain + DKIM/SPF/DMARC.** Free tier (100 emails/day)
-      covers V1. PR #88 already wired the email provider gateway.
-      _Effort: 1–2 days. Blocks: operator invitations._
-- [ ] **Provision sandbox credentials for the live trio:** Lightspeed K-Series
-      (developer.lightspeedhq.com), Libro (test account), QuickBooks Time
-      (Intuit sandbox).
-      _Effort: 2–3 days. Soft-blocks: `*.live.sandbox` slices._
+- [ ] **Provision sandbox credentials for the live trio:** Lightspeed
+      K-Series (developer.lightspeedhq.com), Libro (test account),
+      QuickBooks Time (Intuit sandbox). Store each in GCP Secret
+      Manager namespace `forge-flow-production-*` per the credential
+      rotation runbook.
+      _Effort: 2–3 days, mostly waiting on vendor turnaround.
+      Soft-blocks: `8.LSK.live.sandbox`, `8.LB.live.sandbox`,
+      `8.QBT.live.sandbox`._
 
 ### Engineering kickoff (Eng)
 
-- [ ] **Generate prompts + spin up worktrees for `11W.0`, `11W.7`, `11W.8`.**
-      Web shell + magic-link onboarding · Account / Business setup · Vendor
-      Connections widget mount. Three lanes parallel; web shell is a separate
-      Flutter Web entry (`lib/main_operator_web.dart` mirroring
-      `lib/main_admin.dart`), not a web build of the mobile app. The `11W.7`
-      prompt must route business timing writes through operator-scoped routes,
-      not admin gateways.
-      _Effort: 15–20 days across 3 lanes. Blocks: cutover.2 operator
-      onboarding._
+- [x] **`11W.0` / `.7` / `.8` ACCEPT 2026-05-06.** Operator web
+      shell + Account / Business Timing editors + Vendor Connections
+      mount all merged + live-wiring fix landed. See
+      `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md`.
+- [~] **Claude V1 closure dispatch (V1.A/B/E/F/G running NOW;
+      V1.C/D queued post-Codex).** See dispatch plan for the seven
+      file-disjoint lanes Claude is running on top of (a) the user's
+      sink-fanout work and (b) Codex's `8.star-target-server-truth`
+      sprint.
 
 ---
 
