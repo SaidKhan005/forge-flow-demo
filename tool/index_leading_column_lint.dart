@@ -118,6 +118,20 @@ const Set<String> _defaultExemptions = <String>{
   // drops and recreates it as operator-leading; the legacy CREATE
   // INDEX text remains here for shipped-migration immutability.
   '202605020452_hardening_auth_login_attempts.sql:auth_login_attempts_idx_ip_hash_failures',
+
+  // 202605040000 / 202605040200 — five Phase 8 + Phase 9.8 V1
+  // indexes that were created before the operator-leading lint
+  // covered these tables. Follow-up migration
+  // `202605061500_hardening_phase_8_email_index_leading_column_rekey.sql`
+  // DROPs each one CONCURRENTLY and CREATEs an operator-leading
+  // replacement under the same name. The legacy CREATE INDEX text
+  // remains in the shipped Phase 8 / 9.8 migrations because we never
+  // edit shipped migrations; the offending index is gone at runtime.
+  '202605040000_phase_8_0_integration_framework.sql:vendor_credentials_expiring_idx',
+  '202605040000_phase_8_0_integration_framework.sql:connector_sync_watermark_unique_idx',
+  '202605040000_phase_8_0_integration_framework.sql:connector_sync_log_connection_recent_idx',
+  '202605040000_phase_8_0_integration_framework.sql:inbound_webhook_idempotency_unique_idx',
+  '202605040200_phase_9_8_email_provider.sql:email_outbox_provider_message_id_idx',
 };
 
 /// Severity of a lint finding.
