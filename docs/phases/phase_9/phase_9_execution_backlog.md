@@ -101,9 +101,20 @@ Do not re-open stale findings unless the repo regresses:
   daily-cadence-from-Postgres observability parity, then carry into the next
   Production1 batch. Phase 8 timing provenance also queues
   `202605061700_phase_8_timing_provenance_shift_records.sql` for nullable
-  closed `shift_records` timing keys plus the live snapshot version key. The
-  current Production1 follow-up cutoff is therefore
-  `202605061700_phase_8_timing_provenance_shift_records.sql`.
+  closed `shift_records` timing keys plus the live snapshot version key.
+  Hardening Wave B1 queues
+  `202605061701_phase_8_data_accuracy_service_period_settings.sql`, an
+  additive keyed child table per
+  `(operator_id, location_id, service_period_key, effective_at_business_date)`
+  that replaces the hardcoded `covers_source_lunch`/`_dinner`/`_late_night`
+  columns on `public.data_accuracy_settings` (legacy columns retained as a
+  read-only fallback until every read path migrates). Originally added under
+  the `202605061700_…` basename (commit `4655b484`); renumbered on
+  2026-05-06 to break the same-second prefix collision with the audit-anchor
+  + timing-provenance migrations. Apply on staging first, then carry into
+  the next Production1 batch. The current Production1 follow-up cutoff is
+  therefore
+  `202605061701_phase_8_data_accuracy_service_period_settings.sql`.
 
 ## Remaining Live-Closeout Gates
 

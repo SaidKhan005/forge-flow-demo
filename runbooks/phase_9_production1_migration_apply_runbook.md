@@ -7,7 +7,7 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605061700_phase_8_timing_provenance_shift_records.sql`. This
+`202605061701_phase_8_data_accuracy_service_period_settings.sql`. This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -49,7 +49,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (9 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (10 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -60,6 +60,7 @@ Pending follow-up scope (9 migrations; staging status varies, Production1 pendin
 - `db/migrations/202605061600_phase_11W_5_team_audit_log_export_key.sql`
 - `db/migrations/202605061700_hardening_audit_anchor_daily_schedule.sql`
 - `db/migrations/202605061700_phase_8_timing_provenance_shift_records.sql`
+- `db/migrations/202605061701_phase_8_data_accuracy_service_period_settings.sql`
 
 Out of scope:
 
@@ -69,7 +70,7 @@ Out of scope:
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
-  anything later than `202605061700_phase_8_timing_provenance_shift_records.sql`
+  anything later than `202605061701_phase_8_data_accuracy_service_period_settings.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
@@ -105,6 +106,17 @@ Current known post-cutoff staging additions:
   adds the stable timing provenance columns for closed `shift_records` and the
   version key for `open_shift_snapshots`. It is code-ready and remains
   staging/Production1 apply gated with the rest of the follow-up batch.
+- `db/migrations/202605061701_phase_8_data_accuracy_service_period_settings.sql`
+  adds the keyed Hardening Wave B1 child table replacing the hardcoded
+  `covers_source_lunch` / `_dinner` / `_late_night` columns on
+  `public.data_accuracy_settings` with one row per
+  `(operator_id, location_id, service_period_key, effective_at_business_date)`.
+  Legacy columns remain as a read-only fallback until every read path migrates.
+  It is code-ready and remains staging/Production1 apply gated with the rest
+  of the follow-up batch. Originally added under the
+  `202605061700_phase_8_data_accuracy_service_period_settings.sql` basename
+  (commit `4655b484`); renumbered on 2026-05-06 to break the same-second
+  prefix collision with the audit-anchor + timing-provenance migrations.
 
 Migration drift automation:
 
@@ -175,6 +187,7 @@ Current pending follow-up order:
 7. `202605061600_phase_11W_5_team_audit_log_export_key.sql`
 8. `202605061700_hardening_audit_anchor_daily_schedule.sql`
 9. `202605061700_phase_8_timing_provenance_shift_records.sql`
+10. `202605061701_phase_8_data_accuracy_service_period_settings.sql`
 
 Dependency notes:
 
@@ -527,7 +540,7 @@ until the post-tuning monitor window is clean.
   `build/phase_9_production1_apply/2026-05-03_second_batch/` and intentionally
   stay uncommitted.
 
-### Next follow-up - pending (cutoff `202605061700_phase_8_timing_provenance_shift_records.sql`)
+### Next follow-up - pending (cutoff `202605061701_phase_8_data_accuracy_service_period_settings.sql`)
 
 - `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` is
   applied and Browser Use verified on staging. Apply it to Production1 under
@@ -573,6 +586,17 @@ until the post-tuning monitor window is clean.
   timing provenance columns to closed `shift_records` and the live snapshot
   timing version key. Apply on staging first; carry into the next Production1
   batch with the rest of the follow-up migrations.
+- `202605061701_phase_8_data_accuracy_service_period_settings.sql` adds the
+  keyed Hardening Wave B1 child table for
+  `(operator_id, location_id, service_period_key, effective_at_business_date)`
+  Data Accuracy settings, replacing the hardcoded
+  `covers_source_lunch`/`_dinner`/`_late_night` columns. RLS-enabled at table
+  creation, wrapper-only policy body, tenant-leading B-tree indexes,
+  `if not exists` everywhere so re-applies are no-ops. Originally added under
+  the `202605061700_…` basename (commit `4655b484`); renumbered on 2026-05-06
+  to break the same-second prefix collision with the audit-anchor +
+  timing-provenance migrations. Apply on staging first; carry into the next
+  Production1 batch with the rest of the follow-up migrations.
 - One-shot apply plan once approved: confirm staging parity for the same files,
   confirm fresh backup/restore point, run analyzer/lints/focused tests, apply
   the approved files to Production1, verify the `forge_admin`
