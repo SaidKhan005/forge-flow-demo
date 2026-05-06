@@ -114,10 +114,13 @@ Do not re-open stale findings unless the repo regresses:
   + timing-provenance migrations. Phase 8 mobile core then queues
   `202605061800_phase_8_first_connection_backfill_jobs.sql`, the additive
   operator-scoped durable first-connection backfill job table that later
-  connect/worker/status lanes consume. Apply both on staging first, then carry
+  connect/worker/status lanes consume. Phase 11W.7 then queues
+  `202605070000_phase_11W_7_operator_account_fields.sql`, additive operator
+  account identity/regional default fields and validation constraints for
+  Operator Web Account settings. Apply these on staging first, then carry
   into the next Production1 batch. The current Production1 follow-up cutoff is
   therefore
-  `202605061800_phase_8_first_connection_backfill_jobs.sql`.
+  `202605070000_phase_11W_7_operator_account_fields.sql`.
 
 ## Remaining Live-Closeout Gates
 

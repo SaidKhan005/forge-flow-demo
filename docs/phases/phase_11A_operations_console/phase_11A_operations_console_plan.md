@@ -116,12 +116,16 @@ that replaces the hardcoded `covers_source_lunch`/`_dinner`/`_late_night`
 columns; it is not an 11A surface either, but it moves the shared cutoff
 again. Originally added under the `202605061700_…` basename (commit
 `4655b484`); renumbered on 2026-05-06 to break the same-second prefix
-collision with the audit-anchor + timing-provenance migrations. The current
-Production1 follow-up cutoff is therefore
-`202605061800_phase_8_first_connection_backfill_jobs.sql` after the Phase 8
-mobile core first-connection backfill job table landed as an additive
-server-side queue/claim seam. That table is not an 11A surface, but it moves
-the shared cutoff watched by this plan.
+collision with the audit-anchor + timing-provenance migrations. Phase 8
+mobile core then added
+`202605061800_phase_8_first_connection_backfill_jobs.sql`, an additive
+server-side queue/claim seam for first-connection backfill jobs. That table is
+not an 11A surface, but it moved the shared cutoff watched by this plan.
+Phase 11W.7 also adds
+`202605070000_phase_11W_7_operator_account_fields.sql` for operator-web
+Account settings identity/regional defaults and validation constraints. It is
+not an 11A surface either, but it is now the shared cutoff watched by this
+plan.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin
