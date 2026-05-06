@@ -79,6 +79,12 @@ void main() {
             (jsonDecode(shift.body) as Map<String, Object?>)['next_cursor'],
             '2026-05-06T12:30:00.000Z',
           );
+          // V1.A regression guard: closed shift_records payloads must
+          // carry the timing-provenance triplet so mobile renders
+          // history with stable boundaries.
+          expect(shift.body, contains('business_timing_profile_id'));
+          expect(shift.body, contains('business_timing_profile_version_id'));
+          expect(shift.body, contains('service_period_key'));
 
           final open = await _httpGet(
             ctx.client,
@@ -298,6 +304,15 @@ class _FakeMobileOperationalSyncGateway
           'day_label': 'Tue',
           'daypart': 'dinner',
           'status': 'closed',
+          'business_date': '2026-05-05',
+          // V1.A: closed shift_records carry the same timing triplet
+          // as open snapshots so mobile's ClosedTimingLabelResolver
+          // never falls back to mutable `daypart` when the operator
+          // changes service-period boundaries later.
+          'business_timing_profile_id': '11111111-1111-1111-1111-111111111111',
+          'business_timing_profile_version_id':
+              '11111111-1111-1111-1111-111111111111',
+          'service_period_key': 'dinner',
           'covers': 120,
           'forecast_covers': 110,
           'ppa': 42.0,
