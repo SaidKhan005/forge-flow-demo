@@ -84,6 +84,18 @@ permission-key seed for the new `admin.users.reset_mfa_factors` key plus
 default grants for `super_admin`/`ff_support`; apply on staging before
 exercising the Reset-MFA admin path live, then carry into the next
 Production1 apply.
+The 2026-05-06 audit follow-up adds two additional migrations watched by this
+plan's cutoff sentinel:
+`202605061500_hardening_phase_8_email_index_leading_column_rekey.sql`
+CONCURRENTLY-rekeys five Phase 8 / Phase 9.8 fact-table indexes to lead with
+`operator_id` (preserves UNIQUE constraints + partial WHERE clauses), and
+`202605061600_phase_11W_5_team_audit_log_export_key.sql` seeds the
+`team.audit_log.export` permission key plus default grants for
+`operator_owner`/`operator_admin` so the 11W.5 audit-log export gate has
+catalog parity. Apply both on staging before claiming index hygiene parity or
+live audit-log export readiness, then carry into the next Production1 apply.
+The current Production1 follow-up cutoff is therefore
+`202605061600_phase_11W_5_team_audit_log_export_key.sql`.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin

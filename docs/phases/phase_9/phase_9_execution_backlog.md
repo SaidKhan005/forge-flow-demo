@@ -81,7 +81,17 @@ Do not re-open stale findings unless the repo regresses:
   `202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql` (additive
   permission-key catalog row + default grants for `super_admin`/`ff_support`);
   apply on staging before exercising the Reset-MFA admin path live, then carry
-  into the next Production1 batch.
+  into the next Production1 batch. The 2026-05-06 audit follow-up adds
+  `202605061500_hardening_phase_8_email_index_leading_column_rekey.sql`
+  (CONCURRENTLY-rekeys five Phase 8 / Phase 9.8 fact-table indexes to lead with
+  `operator_id`, preserving UNIQUE constraints + WHERE clauses) and
+  `202605061600_phase_11W_5_team_audit_log_export_key.sql` (seeds the
+  `team.audit_log.export` permission key + default grants for
+  `operator_owner`/`operator_admin` so the 11W.5 audit-log export gate has
+  catalog parity); apply both on staging before claiming index hygiene parity
+  or live audit-log export readiness, then carry into the next Production1
+  batch. The current Production1 follow-up cutoff is therefore
+  `202605061600_phase_11W_5_team_audit_log_export_key.sql`.
 
 ## Remaining Live-Closeout Gates
 

@@ -7,7 +7,7 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql`. This
+`202605061600_phase_11W_5_team_audit_log_export_key.sql`. This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -49,13 +49,15 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (5 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (7 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
 - `db/migrations/202605060000_mobile_push_notifications.sql`
 - `db/migrations/202605060000_phase_business_timing_live_schema.sql`
 - `db/migrations/202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql`
+- `db/migrations/202605061500_hardening_phase_8_email_index_leading_column_rekey.sql`
+- `db/migrations/202605061600_phase_11W_5_team_audit_log_export_key.sql`
 
 Out of scope:
 
@@ -65,7 +67,7 @@ Out of scope:
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
-  anything later than `202605060000_phase_business_timing_live_schema.sql`
+  anything later than `202605061600_phase_11W_5_team_audit_log_export_key.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
@@ -155,6 +157,10 @@ Current pending follow-up order:
 1. `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 2. `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
 3. `202605060000_mobile_push_notifications.sql`
+4. `202605060000_phase_business_timing_live_schema.sql`
+5. `202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql`
+6. `202605061500_hardening_phase_8_email_index_leading_column_rekey.sql`
+7. `202605061600_phase_11W_5_team_audit_log_export_key.sql`
 
 Dependency notes:
 
@@ -507,7 +513,7 @@ until the post-tuning monitor window is clean.
   `build/phase_9_production1_apply/2026-05-03_second_batch/` and intentionally
   stay uncommitted.
 
-### Next follow-up - pending (cutoff `202605060000_phase_business_timing_live_schema.sql`)
+### Next follow-up - pending (cutoff `202605061600_phase_11W_5_team_audit_log_export_key.sql`)
 
 - `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` is
   applied and Browser Use verified on staging. Apply it to Production1 under
@@ -525,15 +531,31 @@ until the post-tuning monitor window is clean.
   Business Timing Live slice. Apply and verify it on staging before review
   runtime proof; then include it in the next Production1 apply batch before
   calling live business timing / open-shift snapshots production-ready.
+- `202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql` is the
+  additive permission-key seed for `admin.users.reset_mfa_factors` plus default
+  grants for `super_admin`/`ff_support`. Apply on staging before exercising the
+  Reset-MFA admin path live; carry into the next Production1 apply.
+- `202605061500_hardening_phase_8_email_index_leading_column_rekey.sql` rekeys
+  five fact-table indexes (Phase 8 integration framework + Phase 9.8 email
+  provider) to lead with `operator_id`. Uses `DROP INDEX CONCURRENTLY` /
+  `CREATE INDEX CONCURRENTLY`; preserves UNIQUE constraints and partial WHERE
+  clauses. Apply on staging first; carry into the next Production1 batch.
+- `202605061600_phase_11W_5_team_audit_log_export_key.sql` seeds the new
+  `team.audit_log.export` permission key plus default grants for
+  `operator_owner`/`operator_admin` so the 11W.5 audit log export gate has
+  catalog parity. Apply on staging first; carry into the next Production1 batch.
 - One-shot apply plan once approved: confirm staging parity for the same files,
   confirm fresh backup/restore point, run analyzer/lints/focused tests, apply
   the approved files to Production1, verify the `forge_admin`
   `proxy_requests` `SELECT` privilege plus operator/location/admin-grant DML
   privileges directly, verify mobile push schema only after staging
-  device proof is complete, and verify business timing table/trigger/RLS
-  presence directly. Then run RLS lint, update this history and the
-  production cutoff docs. Do not perform production runtime setup as part of
-  this database apply.
+  device proof is complete, verify business timing table/trigger/RLS
+  presence directly, verify the rekeyed Phase 8 / Phase 9.8 indexes lead
+  with `operator_id` via `pg_indexes`, and verify the
+  `admin.users.reset_mfa_factors` and `team.audit_log.export` permission keys
+  exist in `permission_keys` with the expected default role grants. Then run
+  RLS lint, update this history and the production cutoff docs. Do not perform
+  production runtime setup as part of this database apply.
 
 ## Apply Report Template
 
