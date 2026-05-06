@@ -29,7 +29,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
+import 'package:forge_and_flow/services/integration/integration_adapter_common.dart'
+    as integration;
 
 /// Inbound idempotency / routing surface for the proxy. Production
 /// wires a Postgres-backed gateway; tests pass a fake.
@@ -107,6 +110,27 @@ abstract class IntegrationRoutesGateway {
   });
 }
 
+/// Lane 1 seam for creating durable first-connection backfill work after
+/// credentials and `connector_connection` have already been persisted.
+abstract class FirstConnectionBackfillEnqueueGateway {
+  Future<FirstConnectionBackfillJob> enqueueFirstBackfill({
+    required String operatorId,
+    required String locationId,
+    required String connectionId,
+    required String vendorId,
+    required integration.IntegrationCategory category,
+    required DateTime windowStart,
+    required DateTime windowEnd,
+    String? actorUserId,
+  });
+}
+
+typedef IntegrationCategoryResolver =
+    integration.IntegrationCategory? Function(
+      String vendorId,
+      Map<String, Object?> connectResult,
+    );
+
 /// Authenticated context resolved from the inbound JWT.
 class AdminActorContext {
   const AdminActorContext({
@@ -121,9 +145,8 @@ class AdminActorContext {
 }
 
 /// Resolves an admin actor from an inbound `Authorization` header.
-typedef AdminActorResolver = Future<AdminActorContext?> Function(
-  HttpRequest request,
-);
+typedef AdminActorResolver =
+    Future<AdminActorContext?> Function(HttpRequest request);
 
 /// Bindings holder so the marked-region call in main.dart can stay
 /// a one-liner. Production main.dart sets these once at startup;
@@ -132,6 +155,9 @@ abstract class Phase80IntegrationRoutesBindingsHolder {
   IntegrationRoutesGateway get gateway;
   AdminActorResolver get actorResolver;
   InboundWebhookHandler get webhookHandler;
+  FirstConnectionBackfillEnqueueGateway? get firstBackfillEnqueueGateway =>
+      null;
+  IntegrationCategoryResolver? get integrationCategoryResolver => null;
 }
 
 /// Phase 8.0 router. Top-level entry point is [tryHandle].
@@ -140,6 +166,8 @@ class Phase80IntegrationRoutes {
     required this.gateway,
     required this.actorResolver,
     required this.webhookHandler,
+    this.firstBackfillEnqueueGateway,
+    this.integrationCategoryResolver,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
@@ -161,6 +189,8 @@ class Phase80IntegrationRoutes {
       gateway: bindings.gateway,
       actorResolver: bindings.actorResolver,
       webhookHandler: bindings.webhookHandler,
+      firstBackfillEnqueueGateway: bindings.firstBackfillEnqueueGateway,
+      integrationCategoryResolver: bindings.integrationCategoryResolver,
     );
     return router.tryHandle(request);
   }
@@ -168,6 +198,8 @@ class Phase80IntegrationRoutes {
   final IntegrationRoutesGateway gateway;
   final AdminActorResolver actorResolver;
   final InboundWebhookHandler webhookHandler;
+  final FirstConnectionBackfillEnqueueGateway? firstBackfillEnqueueGateway;
+  final IntegrationCategoryResolver? integrationCategoryResolver;
   // Reserved for future per-request log timestamp injection.
   // ignore: unused_field
   final DateTime Function() _now;
@@ -252,10 +284,8 @@ class Phase80IntegrationRoutes {
     if (method == 'POST' && oauthStartMatch != null) {
       final vendorId = oauthStartMatch.group(1)!;
       final body = await _readJsonBody(request);
-      final operatorId =
-          _stringField(body, 'operator_id') ?? actor.operatorId;
-      final locationId =
-          _stringField(body, 'location_id') ?? actor.locationId;
+      final operatorId = _stringField(body, 'operator_id') ?? actor.operatorId;
+      final locationId = _stringField(body, 'location_id') ?? actor.locationId;
       if (!_actorScopeOk(
         actor: actor,
         operatorId: operatorId,
@@ -283,7 +313,11 @@ class Phase80IntegrationRoutes {
         vendorId: vendorId,
         queryParameters: request.uri.queryParameters,
       );
-      _writeJson(request.response, 200, result);
+      final response = await _withFirstBackfillStatus(
+        connectResult: result,
+        vendorId: vendorId,
+      );
+      _writeJson(request.response, 200, response);
       return;
     }
 
@@ -292,10 +326,8 @@ class Phase80IntegrationRoutes {
     if (method == 'POST' && connectKeyMatch != null) {
       final vendorId = connectKeyMatch.group(1)!;
       final body = await _readJsonBody(request);
-      final operatorId =
-          _stringField(body, 'operator_id') ?? actor.operatorId;
-      final locationId =
-          _stringField(body, 'location_id') ?? actor.locationId;
+      final operatorId = _stringField(body, 'operator_id') ?? actor.operatorId;
+      final locationId = _stringField(body, 'location_id') ?? actor.locationId;
       if (!_actorScopeOk(
         actor: actor,
         operatorId: operatorId,
@@ -320,7 +352,14 @@ class Phase80IntegrationRoutes {
         username: _stringField(body, 'username'),
         module: _stringField(body, 'module'),
       );
-      _writeJson(request.response, 200, result);
+      final response = await _withFirstBackfillStatus(
+        connectResult: result,
+        vendorId: vendorId,
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: actor.userId,
+      );
+      _writeJson(request.response, 200, response);
       return;
     }
 
@@ -329,10 +368,8 @@ class Phase80IntegrationRoutes {
     if (method == 'POST' && testMatch != null) {
       final vendorId = testMatch.group(1)!;
       final body = await _readJsonBody(request);
-      final operatorId =
-          _stringField(body, 'operator_id') ?? actor.operatorId;
-      final locationId =
-          _stringField(body, 'location_id') ?? actor.locationId;
+      final operatorId = _stringField(body, 'operator_id') ?? actor.operatorId;
+      final locationId = _stringField(body, 'location_id') ?? actor.locationId;
       if (!_actorScopeOk(
         actor: actor,
         operatorId: operatorId,
@@ -356,10 +393,8 @@ class Phase80IntegrationRoutes {
     if (method == 'POST' && disconnectMatch != null) {
       final vendorId = disconnectMatch.group(1)!;
       final body = await _readJsonBody(request);
-      final operatorId =
-          _stringField(body, 'operator_id') ?? actor.operatorId;
-      final locationId =
-          _stringField(body, 'location_id') ?? actor.locationId;
+      final operatorId = _stringField(body, 'operator_id') ?? actor.operatorId;
+      final locationId = _stringField(body, 'location_id') ?? actor.locationId;
       if (!_actorScopeOk(
         actor: actor,
         operatorId: operatorId,
@@ -415,7 +450,9 @@ class Phase80IntegrationRoutes {
     final path = request.uri.path;
     final match = _webhookPattern.firstMatch(path);
     if (match == null) {
-      _writeJson(request.response, 404, <String, Object?>{'error': 'not_found'});
+      _writeJson(request.response, 404, <String, Object?>{
+        'error': 'not_found',
+      });
       return;
     }
     final vendorId = match.group(1)!;
@@ -502,6 +539,132 @@ class Phase80IntegrationRoutes {
         _logsPattern.hasMatch(path);
   }
 
+  Future<Map<String, Object?>> _withFirstBackfillStatus({
+    required Map<String, Object?> connectResult,
+    required String vendorId,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+  }) async {
+    final adapterStarted =
+        _boolField(connectResult, 'firstBackfillStarted') ??
+        _boolField(connectResult, 'first_backfill_started') ??
+        false;
+    if (!adapterStarted) {
+      return <String, Object?>{
+        ...connectResult,
+        'first_backfill_status': 'not_enqueued',
+        'first_backfill': const <String, Object?>{
+          'status': 'not_enqueued',
+          'reason': 'adapter_reported_first_backfill_not_started',
+        },
+      };
+    }
+
+    final enqueueGateway = firstBackfillEnqueueGateway;
+    if (enqueueGateway == null) {
+      return <String, Object?>{
+        ...connectResult,
+        'first_backfill_status': 'unavailable',
+        'first_backfill': const <String, Object?>{
+          'status': 'unavailable',
+          'reason': 'first_backfill_enqueue_gateway_not_configured',
+        },
+      };
+    }
+
+    final resolvedOperatorId =
+        operatorId ??
+        _stringFromResultAny(connectResult, const <String>[
+          'operator_id',
+          'operatorId',
+        ]);
+    final resolvedLocationId =
+        locationId ??
+        _stringFromResultAny(connectResult, const <String>[
+          'location_id',
+          'locationId',
+        ]);
+    final connectionId = _stringFromResultAny(connectResult, const <String>[
+      'connection_id',
+      'connectionId',
+    ]);
+    final category =
+        _categoryFromResult(connectResult) ??
+        integrationCategoryResolver?.call(vendorId, connectResult);
+
+    if (resolvedOperatorId == null ||
+        resolvedLocationId == null ||
+        connectionId == null ||
+        category == null) {
+      return <String, Object?>{
+        ...connectResult,
+        'first_backfill_status': 'unavailable',
+        'first_backfill': const <String, Object?>{
+          'status': 'unavailable',
+          'reason': 'connect_response_missing_backfill_metadata',
+        },
+      };
+    }
+
+    final windowEnd =
+        _timestampFromResultAny(connectResult, const <String>[
+          'connected_at',
+          'connectedAt',
+        ]) ??
+        _timestampFromResultAny(connectResult, const <String>[
+          'created_at',
+          'createdAt',
+        ]) ??
+        _timestampFromResultAny(connectResult, const <String>[
+          'updated_at',
+          'updatedAt',
+        ]) ??
+        _now().toUtc();
+    final window = FirstConnectionBackfillWindow.lastSixtyDays(windowEnd);
+    final job = await enqueueGateway.enqueueFirstBackfill(
+      operatorId: resolvedOperatorId,
+      locationId: resolvedLocationId,
+      connectionId: connectionId,
+      vendorId: vendorId,
+      category: category,
+      windowStart: window.windowStart,
+      windowEnd: window.windowEnd,
+      actorUserId:
+          actorUserId ??
+          _stringFromResultAny(connectResult, const <String>[
+            'actor_user_id',
+            'actorUserId',
+          ]),
+    );
+
+    return <String, Object?>{
+      ...connectResult,
+      'first_backfill_status': 'enqueued',
+      'first_backfill': <String, Object?>{
+        'status': 'enqueued',
+        'job': _jobToJson(job),
+      },
+    };
+  }
+
+  static Map<String, Object?> _jobToJson(FirstConnectionBackfillJob job) =>
+      <String, Object?>{
+        'job_id': job.jobId,
+        'operator_id': job.operatorId,
+        'location_id': job.locationId,
+        'connection_id': job.connectionId,
+        'vendor_id': job.vendorId,
+        'category': job.category.backfillWire,
+        'window_start': job.windowStart.toIso8601String(),
+        'window_end': job.windowEnd.toIso8601String(),
+        'status': job.status.wire,
+        'cursor_token': job.cursorToken,
+        'attempt_count': job.attemptCount,
+        'created_at': job.createdAt.toIso8601String(),
+        'updated_at': job.updatedAt.toIso8601String(),
+      };
+
   static final RegExp _locationIntegrationsListPattern = RegExp(
     r'^/v1/admin/operators/([0-9a-fA-F-]{36})/locations/([0-9a-fA-F-]{36})/integrations$',
   );
@@ -549,11 +712,96 @@ class Phase80IntegrationRoutes {
     return null;
   }
 
-  static void _writeJson(HttpResponse response, int statusCode,
-      Map<String, Object?> payload) {
+  static String? _stringFromResult(Map<String, Object?> result, String key) {
+    final direct = result[key];
+    if (direct is String && direct.trim().isNotEmpty) return direct.trim();
+    final connection = result['connection'];
+    if (connection is Map) {
+      final nested = connection[key];
+      if (nested is String && nested.trim().isNotEmpty) return nested.trim();
+    }
+    return null;
+  }
+
+  static String? _stringFromResultAny(
+    Map<String, Object?> result,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = _stringFromResult(result, key);
+      if (value != null) return value;
+    }
+    return null;
+  }
+
+  static bool? _boolField(Map<String, Object?> result, String key) {
+    final direct = result[key];
+    if (direct is bool) return direct;
+    final connection = result['connection'];
+    if (connection is Map) {
+      final nested = connection[key];
+      if (nested is bool) return nested;
+    }
+    return null;
+  }
+
+  static DateTime? _timestampFromResult(
+    Map<String, Object?> result,
+    String key,
+  ) {
+    final direct = result[key];
+    final parsedDirect = _timestampFromValue(direct);
+    if (parsedDirect != null) return parsedDirect;
+    final connection = result['connection'];
+    if (connection is Map) return _timestampFromValue(connection[key]);
+    return null;
+  }
+
+  static DateTime? _timestampFromResultAny(
+    Map<String, Object?> result,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = _timestampFromResult(result, key);
+      if (value != null) return value;
+    }
+    return null;
+  }
+
+  static DateTime? _timestampFromValue(Object? value) {
+    if (value is DateTime) return value.toUtc();
+    if (value is String && value.trim().isNotEmpty) {
+      return DateTime.parse(value).toUtc();
+    }
+    return null;
+  }
+
+  static integration.IntegrationCategory? _categoryFromResult(
+    Map<String, Object?> result,
+  ) {
+    final raw =
+        _stringFromResult(result, 'category') ??
+        _stringFromResult(result, 'integrationCategory') ??
+        _stringFromResult(result, 'integration_category');
+    if (raw == null) return null;
+    try {
+      return FirstConnectionBackfillCategoryWire.fromWire(raw);
+    } on ArgumentError {
+      return null;
+    }
+  }
+
+  static void _writeJson(
+    HttpResponse response,
+    int statusCode,
+    Map<String, Object?> payload,
+  ) {
     response.statusCode = statusCode;
-    response.headers.contentType = ContentType('application', 'json',
-        charset: 'utf-8');
+    response.headers.contentType = ContentType(
+      'application',
+      'json',
+      charset: 'utf-8',
+    );
     response.write(jsonEncode(payload));
     response.close();
   }
@@ -563,4 +811,3 @@ class Phase80IntegrationRoutes {
     return frames.isEmpty ? '' : frames.first.trim();
   }
 }
-

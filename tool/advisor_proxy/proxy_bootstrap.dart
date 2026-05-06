@@ -20,6 +20,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_login_attempts_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_backfill_job_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_account_repository.dart';
 import 'package:forge_and_flow/services/business_timing/production_operator_write_audit_sink.dart';
 import 'package:forge_and_flow/services/business_timing/repository_operator_write_gateways.dart';
@@ -80,6 +81,7 @@ import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_removal_worker.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart'
     as integration;
+import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
 import 'package:forge_and_flow/services/integration/polling_tier_presets.dart';
 
 import '../advisor_corpus/advisor_corpus.dart'
@@ -91,6 +93,7 @@ import '../advisor_corpus/advisor_corpus.dart'
         graphifyEdgeCandidatesFileName,
         graphifyNodeCandidatesFileName;
 import 'advisor_proxy.dart';
+import 'admin_integrations_routes.dart';
 import 'anthropic_http_complete_fn.dart';
 import 'health_producers/producer_registry.dart';
 import 'log.dart';
@@ -163,6 +166,8 @@ class ProxyProductionBindings {
     required this.graphCandidatesGateway,
     required this.integrationAdminGateway,
     required this.integrationAdminActorResolver,
+    required this.firstConnectionBackfillEnqueueGateway,
+    required this.integrationCategoryResolver,
     required this.featureFlagsAdminGateway,
     required this.debugConsoleAdminGateway,
     required this.observabilityAdminGateway,
@@ -216,6 +221,9 @@ class ProxyProductionBindings {
   final GraphCandidatesProxyGateway graphCandidatesGateway;
   final IntegrationAdminProxyGateway integrationAdminGateway;
   final IntegrationAdminActorResolver integrationAdminActorResolver;
+  final FirstConnectionBackfillEnqueueGateway
+  firstConnectionBackfillEnqueueGateway;
+  final IntegrationCategoryResolver integrationCategoryResolver;
 
   /// Phase 11A.7 — feature flags admin gateway. Backed by
   /// [FeatureFlagsRepository] (admin pool, system scope) plus the
@@ -754,6 +762,11 @@ ProxyProductionBindings buildProxyProductionBindings(
     // surface uses, so the cutover fan-out into hash-chained
     // `audit_logs` lights up automatically when the
     // `audit_logs_cutover_enabled` flag is on.
+    firstConnectionBackfillEnqueueGateway:
+        RepositoryFirstConnectionBackfillEnqueueGateway(
+          repository: ConnectorBackfillJobRepository(tenantWrapper),
+        ),
+    integrationCategoryResolver: resolveAdminVisibleIntegrationCategory,
     featureFlagsAdminGateway: RepositoryFeatureFlagsAdminProxyGateway(
       featureFlagsRepository: FeatureFlagsRepository(adminWrapper),
       auditRepository: adminAudit,
@@ -4314,6 +4327,46 @@ const Map<String, Object?> _kIntegrationDefaultEmailProvider =
       'status_label': 'placeholder',
       'detail_message': 'Email provider lands in Phase 9.8.',
     };
+
+integration.IntegrationCategory? resolveAdminVisibleIntegrationCategory(
+  String vendorId,
+  Map<String, Object?> connectResult,
+) {
+  for (final profile in vendor_status.kAdminVisibleVendorCapabilityProfiles) {
+    if (profile.vendorId == vendorId) return profile.category;
+  }
+  return null;
+}
+
+class RepositoryFirstConnectionBackfillEnqueueGateway
+    implements FirstConnectionBackfillEnqueueGateway {
+  RepositoryFirstConnectionBackfillEnqueueGateway({required this.repository});
+
+  final ConnectorBackfillJobRepository repository;
+
+  @override
+  Future<FirstConnectionBackfillJob> enqueueFirstBackfill({
+    required String operatorId,
+    required String locationId,
+    required String connectionId,
+    required String vendorId,
+    required integration.IntegrationCategory category,
+    required DateTime windowStart,
+    required DateTime windowEnd,
+    String? actorUserId,
+  }) {
+    return repository.enqueueFirstBackfill(
+      operatorId: operatorId,
+      locationId: locationId,
+      connectionId: connectionId,
+      vendorId: vendorId,
+      category: category,
+      windowStart: windowStart,
+      windowEnd: windowEnd,
+      actorUserId: actorUserId,
+    );
+  }
+}
 
 /// Production [IntegrationAdminProxyGateway] backed by
 /// [ProviderCredentialsRepository] + [KmsProvider]. Translates the
