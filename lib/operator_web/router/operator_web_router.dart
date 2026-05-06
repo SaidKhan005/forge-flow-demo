@@ -421,51 +421,61 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         id: kOperatorWebNavAccount,
         title: 'Account',
         icon: Icons.business_outlined,
+        group: 'Business',
       ),
       OperatorWebNavItem(
         id: kOperatorWebNavBusinessSetup,
         title: 'Business setup',
         icon: Icons.storefront_outlined,
-      ),
-      OperatorWebNavItem(
-        id: kOperatorWebNavMembers,
-        title: 'Members',
-        icon: Icons.group_outlined,
-      ),
-      OperatorWebNavItem(
-        id: kOperatorWebNavRoles,
-        title: 'Roles',
-        icon: Icons.shield_outlined,
+        group: 'Business',
       ),
       OperatorWebNavItem(
         id: kOperatorWebNavLocations,
         title: 'Locations',
         icon: Icons.account_tree_outlined,
+        group: 'Business',
       ),
       OperatorWebNavItem(
-        id: kOperatorWebNavSessions,
-        title: 'Sessions',
-        icon: Icons.devices_outlined,
+        id: kOperatorWebNavMembers,
+        title: 'Members',
+        icon: Icons.group_outlined,
+        group: 'People & access',
       ),
       OperatorWebNavItem(
-        id: kOperatorWebNavAuditLog,
-        title: 'Audit log',
-        icon: Icons.fact_check_outlined,
+        id: kOperatorWebNavRoles,
+        title: 'Roles',
+        icon: Icons.shield_outlined,
+        group: 'People & access',
       ),
       OperatorWebNavItem(
         id: kOperatorWebNavSecurity,
         title: 'Security',
         icon: Icons.shield_outlined,
+        group: 'People & access',
+      ),
+      OperatorWebNavItem(
+        id: kOperatorWebNavSessions,
+        title: 'Sessions',
+        icon: Icons.devices_outlined,
+        group: 'People & access',
+      ),
+      OperatorWebNavItem(
+        id: kOperatorWebNavAuditLog,
+        title: 'Audit log',
+        icon: Icons.fact_check_outlined,
+        group: 'People & access',
       ),
       OperatorWebNavItem(
         id: kOperatorWebNavVendorConnections,
         title: 'Vendor connections',
         icon: Icons.cable_outlined,
+        group: 'Data & integrations',
       ),
       OperatorWebNavItem(
         id: kOperatorWebNavDataAccuracy,
         title: 'Data accuracy',
         icon: Icons.tune_outlined,
+        group: 'Data & integrations',
       ),
     ];
     final Widget body;
@@ -478,10 +488,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         );
         break;
       case kOperatorWebNavMembers:
-        body = MembersScreen(
-          session: session,
-          gateway: _teamUsersGateway,
-        );
+        body = MembersScreen(session: session, gateway: _teamUsersGateway);
         break;
       case kOperatorWebNavRoles:
         body = _buildRolesBody(session);
@@ -501,16 +508,10 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         );
         break;
       case kOperatorWebNavAuditLog:
-        body = AuditLogScreen(
-          session: session,
-          gateway: _teamAuditLogGateway,
-        );
+        body = AuditLogScreen(session: session, gateway: _teamAuditLogGateway);
         break;
       case kOperatorWebNavSecurity:
-        body = SecurityScreen(
-          session: session,
-          gateway: _securityGateway,
-        );
+        body = SecurityScreen(session: session, gateway: _securityGateway);
         break;
       case kOperatorWebNavVendorConnections:
         body = VendorConnectionsScreen(

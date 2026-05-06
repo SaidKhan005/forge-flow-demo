@@ -2,7 +2,7 @@
 //
 // Verifies the router renders the right surface for each
 // `OperatorWebAuthState` and that the post-onboarding shell hosts
-// the Account / Vendor connections placeholders behind the side
+// the operator-web route bodies behind the side
 // nav. Keeps the demo source as the driver so the click path runs
 // without Firebase.
 
@@ -171,6 +171,42 @@ void main() {
           find.byKey(const Key('operator_web_nav_item_vendor_connections')),
           findsOneWidget,
         );
+        expect(
+          find.byKey(const Key('operator_web_nav_group_business')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_nav_group_people_access')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_nav_group_data_integrations')),
+          findsOneWidget,
+        );
+        final navOrder = [
+          'account',
+          'business_setup',
+          'locations',
+          'members',
+          'roles',
+          'security',
+          'sessions',
+          'audit_log',
+          'vendor_connections',
+          'data_accuracy',
+        ];
+        var previousY = -1.0;
+        for (final navId in navOrder) {
+          final y = tester
+              .getTopLeft(find.byKey(Key('operator_web_nav_item_$navId')))
+              .dy;
+          expect(
+            y,
+            greaterThan(previousY),
+            reason: '$navId should follow the UX task-based nav order',
+          );
+          previousY = y;
+        }
         // Default body is the real Account screen (11W.7).
         expect(
           find.byKey(const Key('operator_web_account_screen')),
