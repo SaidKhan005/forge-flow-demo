@@ -247,3 +247,33 @@ Three open items left after the sink + test landed on
    through the bespoke gateway only. The follow-up `8.spine-bridge.2`
    aggregator lane wires the dispatcher and lights up the demo-flip
    auto-evaluator on the unified surface.
+
+## `8.spine-bridge.1.RV` (Revel Systems) — open items
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-RV`:
+
+1. **CI verification of the sink suite.** The worktree environment had
+   no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `revel_pos_postgres_sink_test.dart` suite (tests A–H), and the
+   `revel_pos_adapter_test.dart` regression were not run locally. CI
+   (subosito/flutter-action) must run all three before any downstream
+   slice depends on the sink; any failures are bounded fixes inside
+   the two new files.
+
+2. **`upsertConnection` end-to-end exercise.** The sink implements
+   `RevelGateway.upsertConnection` (writes `connector_connection`),
+   but the test suite only exercises the canonical-fact + watermark
+   + demo-flip + readAccessToken paths. The connect lifecycle test
+   from `revel_pos_adapter_test.dart` runs against the adapter's fake
+   gateway, not this Postgres-backed sink. `8.RV.live.sandbox` should
+   add a connect → backfill → poll → disconnect smoke against the
+   real sink to prove the SQL on `connector_connection` round-trips
+   the metadata + status enum casts.
+
+3. **LS (Lightspeed) fanout sink.** The next lane in the sink-fanout
+   wave — `8.spine-bridge-sink-fanout.LS` — lands the Lightspeed
+   K-Series → `cover_facts` Postgres sink in the same shape as `.RV`.
+   Same bespoke + unified surface widening, same idempotency partial
+   UNIQUE, same demo-flip auto-evaluator. Schedule directly after RV
+   merges.
