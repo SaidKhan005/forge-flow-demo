@@ -60,12 +60,30 @@ retrieval assumption are archived to
 `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`. Live status
 is the remaining table above.
 
-## P3 - Unused Public Classes
+## P3 — Verified-keep API surfaces (verified 2026-05-06, Wave B4)
 
-- `AuditLogExportResult` (`lib/services/admin/audit_log_csv_export.dart`)
-- `MfaOverrideChange` (`lib/services/admin/mfa_policy_editor_controller.dart`)
-- `MatrixCellChange` (`lib/services/admin/role_permission_matrix_controller.dart`)
-- `CorpusCloudLoadResult` (`lib/services/advisor_corpus_admin_service.dart`)
+The 2026-05-02 audit flagged these as "unused public classes." The
+2026-05-06 verification sweep (Wave B4) found each one is the return
+type of a unit-tested method on a sibling class in the same file —
+none are deletable in isolation:
 
-**Action:** delete on next sweep through each file, or leave in place if
-they are forward-compatible API shapes that have not been wired yet.
+- `AuditLogExportResult` — return type of `AuditLogCsvExport.export(...)`;
+  tests in `test/admin_console_test.dart` consume `.csvBody`,
+  `.rowCount`, `.exportEvent`.
+- `MfaOverrideChange` — value type of `MfaPolicyEditorState.diff()`'s
+  `Map<String, MfaOverrideChange>` return; consumed by
+  `test/admin_console_test.dart`.
+- `MatrixCellChange` — element type of
+  `RolePermissionMatrixController.diff()`'s `List<MatrixCellChange>`
+  return; tests access `.roleId`, `.permissionKey`, `.from`, `.to`.
+- `CorpusCloudLoadResult` — return type of
+  `AdvisorCorpusAdminService.attemptCloudLoad(...)`; reachable from
+  the ADVISOR CORPUS Settings section
+  (`lib/screens/settings/settings_advisor_corpus_section.dart`,
+  wired in `lib/forge_flow_app.dart`) and tested in
+  `test/advisor_corpus_admin_service_test.dart`.
+
+**Status:** keep all four. They are tested public-API shapes awaiting
+proxy / production wiring, not dead code. Re-evaluate only if the
+sibling method (`export`, `diff`, `attemptCloudLoad`) is itself
+removed in a wider lane.

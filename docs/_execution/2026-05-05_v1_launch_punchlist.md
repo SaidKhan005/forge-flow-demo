@@ -195,12 +195,13 @@ arrival. Tracker: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md
 - [ ] **18 of 29 Postgres repositories without dedicated tests** (per
       `docs/POST_HARDENING_FOLLOWUPS.md` P2). Chip away during routine
       slices.
-- [ ] **Delete 4 confirmed unused public classes** (P3 in
-      POST_HARDENING_FOLLOWUPS):
-      - `AuditLogExportResult` in `lib/services/admin/audit_log_csv_export.dart`
-      - `MfaOverrideChange` in `lib/services/admin/mfa_policy_editor_controller.dart`
-      - `MatrixCellChange` in `lib/services/admin/role_permission_matrix_controller.dart`
-      - `CorpusCloudLoadResult` in `lib/services/advisor_corpus_admin_service.dart`
+- [x] **4 "unused public classes" — verified-keep, not dead** (Wave B4,
+      2026-05-06; see updated P3 in `docs/POST_HARDENING_FOLLOWUPS.md`).
+      Each class is the return type of a unit-tested sibling method
+      (`AuditLogCsvExport.export`, `MfaPolicyEditorState.diff`,
+      `RolePermissionMatrixController.diff`,
+      `AdvisorCorpusAdminService.attemptCloudLoad`); deleting any in
+      isolation would break test compilation.
 - [ ] **Large UI screens (>2000 LOC) — extract components** when next
       touched: `team_settings_section.dart` (2810), `corpus_admin_screen.dart`
       (2427), `observability_admin_screen.dart` (2353),
