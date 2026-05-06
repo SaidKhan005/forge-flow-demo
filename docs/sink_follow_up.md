@@ -62,3 +62,32 @@ Three open items left after the sink + test landed on
    `connector_sync_watermark` rows fragment across two resource keys
    on a single connection. Worth a focused dispatcher-side test once
    the dispatcher slice picks this lane up.
+
+# Sink Follow-Up — `8.spine-bridge.1.HM` (Humanity TCP)
+
+Three open items left after the sink + test landed on
+`claude/8-spine-bridge-sink-fanout-HM`:
+
+1. **CI verification of the sink suite.** The worktree environment
+   has no Flutter/Dart SDK on PATH, so `dart analyze`, the new
+   `humanity_postgres_sink_test.dart` suite, and the
+   `humanity_labor_adapter_test.dart` regression were not run
+   locally. CI (subosito/flutter-action) must run all three before
+   merge; any failures are bounded fixes inside the two new files.
+
+2. **`HumanityWatermarkRow` connection-id widening.** The gateway
+   path `HumanityPostgresSink.writeWatermark` currently SELECTs
+   `connector_connection.connection_id` per call to bridge the
+   gap between the typed `HumanityGateway` shape (no connection
+   id) and the watermark table's `(connection_id, resource)`
+   UNIQUE. A future lane should widen `HumanityWatermarkRow` /
+   `HumanityGateway.writeWatermark` to carry `connection_id`
+   end-to-end and drop the per-write SELECT. This lane
+   intentionally left the adapter alone per the slice prompt.
+
+3. **`8.S.HM.live.sandbox` is unblocked.** With the canonical
+   sink on master, the live sandbox slice can diff documented vs
+   observed Humanity v1 responses against a real partner sandbox,
+   promote the adapter from `documented` → `sandboxVerified`, and
+   flag any field-mapping drift as bounded fixes inside the
+   adapter (not slice rebuilds). Schedule directly after HM merges.
