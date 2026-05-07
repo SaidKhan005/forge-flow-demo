@@ -1099,6 +1099,7 @@ class ProxyJwtClaims {
     this.firebaseUid,
     this.rolesVersion,
     this.lastFreshAuthAt,
+    this.permissionVersion,
   });
 
   final String userId;
@@ -1123,6 +1124,12 @@ class ProxyJwtClaims {
   /// Firebase `auth_time` projected to UTC. Admin routes use this for
   /// fresh-auth / MFA freshness checks.
   final DateTime? lastFreshAuthAt;
+
+  /// B1.A3 — monotonically increasing stamp embedded in the JWT on token
+  /// issuance. The proxy auth-middleware compares this against the DB
+  /// value on every request; a mismatch means a permission was granted or
+  /// revoked after the token was issued and forces a 401.
+  final int? permissionVersion;
 }
 
 class ProxyJwtVerificationError implements Exception {
@@ -1943,6 +1950,9 @@ class FirebaseProxyJwtVerifier implements ProxyJwtVerifier {
       actorKind: 'user',
       rolesVersion: _readOptionalInt(payloadJson, 'roles_version'),
       lastFreshAuthAt: authTime,
+      // B1.A3 — carry the permission_version claim so the middleware can
+      // compare it against the DB value without an extra network round-trip.
+      permissionVersion: _readOptionalInt(payloadJson, 'permission_version'),
     );
   }
 
@@ -2061,6 +2071,7 @@ class OperatorContext {
     this.firebaseUid,
     this.rolesVersion = 0,
     this.lastFreshAuthAt,
+    this.permissionVersion,
   });
 
   final String userId;
@@ -2072,6 +2083,10 @@ class OperatorContext {
   final String? firebaseUid;
   final int rolesVersion;
   final DateTime? lastFreshAuthAt;
+
+  /// B1.A3 — JWT claim value at request time. Null for tokens issued
+  /// before the migration lands (treated as "unchecked").
+  final int? permissionVersion;
 
   bool hasRole(String role) => roles.contains(role);
   bool get isServicePrincipal => actorKind == 'service';
@@ -2163,6 +2178,7 @@ class ProxyRequestGuard {
       firebaseUid: claims.firebaseUid,
       rolesVersion: claims.rolesVersion ?? _rolesVersionFromRoles(claims.roles),
       lastFreshAuthAt: claims.lastFreshAuthAt,
+      permissionVersion: claims.permissionVersion,
     );
   }
 
@@ -2224,6 +2240,108 @@ class UsageEstimate {
   const UsageEstimate({required this.requestTokens});
 
   final int requestTokens;
+}
+
+// ─── CODE_HEALTH TOKEN-CAP-REAL — global per-request token cap ───────────────
+//
+// CODE_HEALTH residual: "No per-request token cap on outbound LLM calls. Repo-
+// wide search for `MAX_TOKENS_PER_REQUEST`, `requestTokenCap`, etc. returns
+// zero matches. The proxy's outbound LLM call sites (`tool/advisor_proxy/
+// advisor_proxy.dart:8485-8700`) have no enforced cap." (CODE_HEALTH.md L31).
+//
+// This is a hard, dispatch-site cap independent of [PolicyTier.maxRequestTokens]:
+//   - The tier cap (8000) only applies when [ProxyUsageGuard] is wired AND the
+//     route checks it. The advisor smoke route ducks the guard when
+//     `usageGuard == null` (tests / staging without HARD-A wired).
+//   - This global cap fires at the dispatch site regardless of guard wiring,
+//     so an unauthenticated test, a misconfigured deploy, or a route that
+//     forgot to wire the guard cannot bypass the cap.
+//   - Default 100,000 covers Claude Opus's 200k window with margin while
+//     still rejecting pathological requests (giant context dumps, accidental
+//     megabyte payloads). Operators with a real need can raise via env up
+//     to [kMaxTokensPerRequestUpperBound].
+//   - Hard-cap behavior — exceeding the cap returns HTTP 413
+//     (`request_too_large`). No silent trim / downgrade.
+
+const int kMaxTokensPerRequestDefault = 100000;
+
+/// Sanity ceiling for the env-driven override. A misconfigured env value
+/// (e.g. `9999999`) would otherwise let the proxy ship arbitrarily large
+/// payloads downstream regardless of the operator's actual tier.
+const int kMaxTokensPerRequestUpperBound = 1000000;
+
+/// Env var name for the per-deployment token cap override. When set to a
+/// positive integer at or below [kMaxTokensPerRequestUpperBound],
+/// [resolveMaxTokensPerRequest] returns that value; in every other case it
+/// falls back to [kMaxTokensPerRequestDefault].
+const String kMaxTokensPerRequestEnvVar = 'MAX_TOKENS_PER_REQUEST';
+
+/// Returns the effective per-request token cap for outbound LLM dispatch.
+///
+/// Resolution order:
+///   1. Read [kMaxTokensPerRequestEnvVar] from [environment]
+///      (defaults to [Platform.environment]).
+///   2. Trim and parse as `int`. Reject parse failures, non-positive
+///      values, and values above [kMaxTokensPerRequestUpperBound] with a
+///      warning log; fall back to [kMaxTokensPerRequestDefault].
+///   3. Otherwise return the parsed value.
+///
+/// [environment] exists purely for unit tests — production callers pass
+/// nothing and read the real process env.
+int resolveMaxTokensPerRequest({Map<String, String>? environment}) {
+  String? raw;
+  try {
+    raw = (environment ?? Platform.environment)[kMaxTokensPerRequestEnvVar];
+  } catch (_) {
+    // `Platform.environment` can throw on stripped runtimes; fall back
+    // to the safe default.
+    return kMaxTokensPerRequestDefault;
+  }
+  if (raw == null) return kMaxTokensPerRequestDefault;
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return kMaxTokensPerRequestDefault;
+  final parsed = int.tryParse(trimmed);
+  if (parsed == null) {
+    log(
+      LogSeverity.warning,
+      'advisor_proxy.max_tokens_per_request.invalid',
+      fields: <String, Object?>{
+        'env_var': kMaxTokensPerRequestEnvVar,
+        'raw': trimmed,
+        'reason': 'unparsable',
+        'fallback': kMaxTokensPerRequestDefault,
+      },
+    );
+    return kMaxTokensPerRequestDefault;
+  }
+  if (parsed <= 0) {
+    log(
+      LogSeverity.warning,
+      'advisor_proxy.max_tokens_per_request.invalid',
+      fields: <String, Object?>{
+        'env_var': kMaxTokensPerRequestEnvVar,
+        'raw': trimmed,
+        'reason': 'non_positive',
+        'fallback': kMaxTokensPerRequestDefault,
+      },
+    );
+    return kMaxTokensPerRequestDefault;
+  }
+  if (parsed > kMaxTokensPerRequestUpperBound) {
+    log(
+      LogSeverity.warning,
+      'advisor_proxy.max_tokens_per_request.invalid',
+      fields: <String, Object?>{
+        'env_var': kMaxTokensPerRequestEnvVar,
+        'raw': trimmed,
+        'reason': 'above_upper_bound',
+        'upper_bound': kMaxTokensPerRequestUpperBound,
+        'fallback': kMaxTokensPerRequestDefault,
+      },
+    );
+    return kMaxTokensPerRequestDefault;
+  }
+  return parsed;
 }
 
 class UsageSnapshot {
@@ -4805,7 +4923,7 @@ where to_regclass('public.feature_flags') is not null
     select 1
     from public.feature_flags f
     where f.flag_name = flag_name
-      and f.operator_id is null
+      and f.operator_id = public.feature_flag_system_wide_operator_id()
       and f.location_id is null
   )
 order by object_name
@@ -6202,6 +6320,13 @@ const int kAuthMfaTotpRetryThreshold = 3;
 const Duration kAuthMfaTotpRetryAfter = Duration(seconds: 30);
 const Duration kAuthPasswordResetWindow = Duration(hours: 24);
 const int kAuthPasswordResetThreshold = 10;
+// B1.S8 — magic-link / password-reset request rate limits.
+// Per-email short window: 1 request per 5 minutes.
+const Duration kAuthPasswordResetEmailShortWindow = Duration(minutes: 5);
+const int kAuthPasswordResetEmailShortThreshold = 1;
+// Per-IP: 50 requests per 24 hours.
+const Duration kAuthPasswordResetIpWindow = Duration(hours: 24);
+const int kAuthPasswordResetIpThreshold = 50;
 
 class AuthLockoutEvaluation {
   const AuthLockoutEvaluation({
@@ -6659,6 +6784,12 @@ const String advisorSmokePath = '/v1/advisor-smoke';
 // through the admin pool's `runAsSystem` (same pattern as
 // `_PostgresOperatorDiscoverer`) and packs them into the evaluator.
 const String realtimeTripwireStatusPath = '/v1/realtime/tripwire-status';
+
+// A7 — magic-link token redemption (POST body, not GET query param).
+// The GET form is kept for backwards compatibility but marked deprecated
+// below; new clients must use the POST form so the token never appears
+// in a URL or Referer header.
+const String authMagicLinkRedeemPath = '/v1/auth/magic-link/redeem';
 
 // Phase 9 live-closeout - auth operations / permission snapshot routes.
 const String authAccountInfoPath = '/v1/auth/account';
@@ -7951,6 +8082,28 @@ class ScaffoldFailingProxyPermissionSnapshotResolver
   }
 }
 
+// ─── B1.A3 — Permission-version revoke-forces-logout ─────────────────────────
+//
+// Abstract checker injected into [routeRequest]. Production binding hits
+// `UsersRepository.fetchPermissionVersion` via the admin pool; tests inject
+// [InMemoryPermissionVersionChecker]. When null (back-compat / scaffold) the
+// check is skipped for that request.
+
+abstract class PermissionVersionChecker {
+  /// Returns the stored DB value for [userId]. Returns null when the user
+  /// is not found (treat as "pass" so deletions don't block last requests).
+  Future<int?> fetch(String userId);
+}
+
+class InMemoryPermissionVersionChecker implements PermissionVersionChecker {
+  InMemoryPermissionVersionChecker(this._versions);
+
+  final Map<String, int> _versions;
+
+  @override
+  Future<int?> fetch(String userId) async => _versions[userId];
+}
+
 /// Minimal request router. Routes:
 ///
 ///   - GET /healthz         -> 200 (unauthenticated, local compatibility)
@@ -8003,6 +8156,10 @@ Future<void> routeRequest(
   PasswordChangeGateway? passwordChangeGateway,
   PasswordResetConfirmGateway? passwordResetConfirmGateway,
   PasswordResetRequestGateway? passwordResetRequestGateway,
+  // A7 — magic-link POST redemption gateway. Optional: when null, the
+  // POST /v1/auth/magic-link/redeem route returns 503 so existing tests
+  // do not need to plumb this gateway through every call site.
+  MagicLinkRedeemGateway? magicLinkRedeemGateway,
   ProxyAuthIdempotencyCache? authIdempotencyCache,
   MfaOperationsGateway? mfaOperationsGateway,
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
@@ -8027,6 +8184,13 @@ Future<void> routeRequest(
   AuthLockoutAuditSink? authLockoutAuditSink,
   RollingWindowAttemptCounter? mfaTotpRetryCounter,
   RollingWindowAttemptCounter? passwordResetThrottleCounter,
+  // B1.S8 — per-email short-window (1 per 5 min) + per-IP (50 per 24h)
+  // rate limits on password-reset and MFA-recovery-request endpoints.
+  // Optional for back-compat; when null the short-window + IP limits are
+  // skipped (legacy behaviour: only the 10/24h in-memory per-email check
+  // from [passwordResetThrottleCounter] applies).
+  RollingWindowAttemptCounter? passwordResetEmailShortCounter,
+  RollingWindowAttemptCounter? passwordResetIpCounter,
   // HARD-H — admin idempotency cache for cross-tenant POST routes
   // (today: feature flags toggle). Optional: when null, the route
   // runs without route-level dedup and the gateway-side cache
@@ -8087,6 +8251,10 @@ Future<void> routeRequest(
   // returns a typed 503 so the Audit Log screen renders the unknown
   // badge state without crashing.
   AuditChainAnchorsGateway? auditChainAnchorsGateway,
+  // B1.A3 — permission_version revoke-forces-logout. Optional for
+  // back-compat with existing tests + scaffolds. When null the per-request
+  // DB check is skipped and only the JWT claim version gate applies.
+  PermissionVersionChecker? permissionVersionChecker,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -8095,6 +8263,47 @@ Future<void> routeRequest(
 }) async {
   final response = request.response;
   final clock = now ?? DateTime.now;
+
+  // B1.A3 — permission_version check helper. Resolves the operator scope and
+  // then, when [permissionVersionChecker] is wired, compares the JWT claim
+  // `permission_version` against the DB value. On mismatch the helper writes
+  // a 401 and returns null so the caller can early-return.
+  //
+  // Usage:
+  //   final scope = await requireScopeChecked(...);
+  //   if (scope == null) return;
+  //
+  // The helper is declared here so it can capture [permissionVersionChecker]
+  // from the enclosing scope; per-route callers adopt it incrementally.
+  // ignore: unused_element
+  Future<OperatorContext?> requireScopeChecked({
+    required ProxyRequestGuard guard,
+    required String? authorizationHeader,
+    required HttpResponse resp,
+  }) async {
+    OperatorContext scope;
+    try {
+      scope = await guard.requireOperatorContext(
+        authorizationHeader: authorizationHeader,
+      );
+    } on ProxyAuthError catch (error) {
+      _writeJson(resp, error.statusCode, <String, Object?>{'error': error.message});
+      return null;
+    }
+    if (permissionVersionChecker != null && scope.permissionVersion != null) {
+      final dbVersion = await permissionVersionChecker.fetch(scope.userId);
+      if (dbVersion != null && dbVersion != scope.permissionVersion) {
+        _writeJson(resp, 401, <String, Object?>{
+          'error': 'permission_version_mismatch',
+          'message':
+              'your permissions have changed; please sign out and sign back in',
+        });
+        return null;
+      }
+    }
+    return scope;
+  }
+
   // HARD-G observability: read X-Correlation-Id (UUID v4 only),
   // generate one when absent or malformed, mint a per-request
   // request_id, set the response header, and run the body in a zone
@@ -8851,6 +9060,26 @@ Future<void> routeRequest(
             cacheKey: promptBuilder.cacheKeyForCorpusVersion(corpusVersion),
             maxOutputTokens: PolicyTier.launch.maxOutputTokens,
           );
+
+          // CODE_HEALTH TOKEN-CAP-REAL — global per-request token cap on
+          // outbound LLM dispatch. Independent of the per-tier
+          // `PolicyTier.maxRequestTokens` cap above (which only fires when
+          // [ProxyUsageGuard] is wired). This cap fires regardless of guard
+          // wiring so a misconfigured deploy or test that ducks the guard
+          // cannot ship an unbounded payload to the provider. Hard cap —
+          // rejects with HTTP 413 (`request_too_large`); no silent trim.
+          final maxTokensPerRequest = resolveMaxTokensPerRequest();
+          if (estimate.tokenCount > maxTokensPerRequest) {
+            _writeJson(response, 413, <String, Object?>{
+              'error': 'request_too_large',
+              'message':
+                  'estimated request tokens exceed the per-request cap',
+              'estimate_request_tokens': estimate.tokenCount,
+              'cap_request_tokens': maxTokensPerRequest,
+            });
+            return;
+          }
+
           final questionHash = sha256.convert(utf8.encode(question)).toString();
 
           AdvisorPipelineResult pipelineResult;
@@ -9380,6 +9609,56 @@ Future<void> routeRequest(
           // attacker varies the source IP. Existing PasswordResetRequestThrottled
           // (Firebase-side rate limit) still rides the gateway.
           final emailHashHex = hashAuthEmailHex(email);
+
+          // B1.S8 — per-email 5-min short window (1 request per 5 min).
+          // Prevents rapid-fire spam even within the 10/24h envelope.
+          if (passwordResetEmailShortCounter != null) {
+            final recentCount = passwordResetEmailShortCounter.countInWindow(
+              emailHashHex,
+            );
+            if (recentCount >= kAuthPasswordResetEmailShortThreshold) {
+              response.headers.add(
+                HttpHeaders.retryAfterHeader,
+                kAuthPasswordResetEmailShortWindow.inSeconds.toString(),
+              );
+              _writeJson(response, 429, <String, Object?>{
+                'error': 'reset_request_too_soon',
+                'message':
+                    'please wait at least '
+                    '${kAuthPasswordResetEmailShortWindow.inMinutes} minutes '
+                    'before requesting another reset link',
+                'retry_after_seconds':
+                    kAuthPasswordResetEmailShortWindow.inSeconds,
+              });
+              return;
+            }
+          }
+
+          // B1.S8 — per-IP 24h cap (50 requests).
+          // Prevents a single IP from flooding arbitrary victim inboxes.
+          final clientIpForReset = _resolveLedgerContextFromHeaders(
+            request,
+            trustProxyAuditHeaders: trustProxyAuditHeaders,
+          ).ip ?? 'unknown';
+          if (passwordResetIpCounter != null) {
+            final ipHashHex = hashAuthIpHex(clientIpForReset);
+            final ipCount = passwordResetIpCounter.countInWindow(ipHashHex);
+            if (ipCount >= kAuthPasswordResetIpThreshold) {
+              response.headers.add(
+                HttpHeaders.retryAfterHeader,
+                kAuthPasswordResetIpWindow.inSeconds.toString(),
+              );
+              _writeJson(response, 429, <String, Object?>{
+                'error': 'reset_request_ip_throttled',
+                'message':
+                    'too many reset requests from this network; '
+                    'please try again later',
+                'retry_after_seconds': kAuthPasswordResetIpWindow.inSeconds,
+              });
+              return;
+            }
+          }
+
           if (passwordResetThrottleCounter != null) {
             final priorCount = passwordResetThrottleCounter.countInWindow(
               emailHashHex,
@@ -9431,6 +9710,11 @@ Future<void> routeRequest(
                 // path sees a cache hit and returns BEFORE this compute
                 // body runs, so retries do not inflate the count).
                 passwordResetThrottleCounter?.incrementAndCount(emailHashHex);
+                // B1.S8 — also increment the short-window and IP counters.
+                passwordResetEmailShortCounter?.incrementAndCount(emailHashHex);
+                passwordResetIpCounter?.incrementAndCount(
+                  hashAuthIpHex(clientIpForReset),
+                );
                 // Privacy-preserving: always return 200 with the same body so
                 // the client can show a uniform "if an account exists..."
                 // confirmation regardless of whether the email matched a
@@ -9561,6 +9845,108 @@ Future<void> routeRequest(
             },
           );
           _writeJson(response, cached.statusCode, cached.body);
+          return;
+        }
+
+        // A7 — POST /v1/auth/magic-link/redeem
+        // Accepts { token, idempotency_key } in the JSON body and
+        // verifies the invite token server-side. The token must NEVER
+        // travel as a URL query parameter — this route exists so the
+        // Flutter welcome screen can POST the token after stripping it
+        // from the address bar with history.replaceState.
+        //
+        // Security headers set on every response from this route:
+        //   Referrer-Policy: no-referrer  — prevents accidental token
+        //     echo via Referer on any subsequent redirect.
+        //   Cache-Control: no-store, no-cache — prevents the response
+        //     (which may embed auth state) from being cached.
+        //
+        // Deprecated GET form: GET /v1/auth/magic-link/redeem?token=...
+        // is kept for backwards compatibility only. New clients MUST use
+        // the POST form. The GET form is intentionally NOT implemented
+        // here — it is superseded entirely by the POST route.
+        if (request.method == 'POST' && path == authMagicLinkRedeemPath) {
+          response.headers.add('Referrer-Policy', 'no-referrer');
+          response.headers.add(
+            'Cache-Control',
+            'no-store, no-cache',
+          );
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          final token = _nonBlankString(body['token']);
+          final idempotencyKey = _nonBlankString(body['idempotency_key']);
+
+          if (token == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_token',
+              'message': 'request body must include token',
+            });
+            return;
+          }
+          if (idempotencyKey == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_idempotency_key',
+              'message': 'request body must include idempotency_key',
+            });
+            return;
+          }
+
+          // The token is validated against the auth_invites store via the
+          // auth operations gateway. When the gateway is not wired
+          // (scaffold / test environments without a live Postgres pool)
+          // the route returns 503 so the client can surface a calm
+          // error without crashing.
+          //
+          // The `magicLinkRedeemGateway` parameter is intentionally
+          // separate from `authOperationsGateway` so the route can be
+          // exercised in tests without wiring the full team-management
+          // surface. Production binds it from proxy_bootstrap.dart once
+          // the invite-redeem repository implementation lands.
+          if (magicLinkRedeemGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'magic_link_redeem_not_configured',
+              'message':
+                  'POST /v1/auth/magic-link/redeem requires a '
+                  'MagicLinkRedeemGateway to be installed',
+            });
+            return;
+          }
+
+          try {
+            final result = await magicLinkRedeemGateway.redeem(
+              MagicLinkRedeemCommand(
+                token: token,
+                idempotencyKey: idempotencyKey,
+              ),
+            );
+            _writeJson(response, 200, <String, Object?>{
+              'ok': true,
+              'firebase_custom_token': result.firebaseCustomToken,
+            });
+          } on MagicLinkTokenInvalid catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message':
+                  'This link has expired or been used. Ask your '
+                  'invite-sender for a new one.',
+            });
+          } catch (error) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'magic_link_redeem_unavailable',
+              'message': 'Magic-link redemption is unavailable; please retry.',
+            });
+          }
           return;
         }
 

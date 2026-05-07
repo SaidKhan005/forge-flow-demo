@@ -142,9 +142,15 @@ void main() {
             reason: 'wage-dollar column must not appear in INSERT column list');
         expect(
           insertSql,
-          contains('on conflict (operator_id, vendor_id, '
-              'vendor_entity_id, vendor_modified_at) do nothing'),
-          reason: 'idempotency UNIQUE shape per spine contract',
+          contains(
+            'on conflict (operator_id, location_id, vendor_id, vendor_entity_id)',
+          ),
+          reason: 'idempotency UNIQUE shape per spine contract (A1 rekey)',
+        );
+        expect(
+          insertSql,
+          contains('do update set'),
+          reason: 'A1: upsert uses DO UPDATE with >= guard, not DO NOTHING',
         );
 
         final insertParams = tx.parameters.firstWhere(

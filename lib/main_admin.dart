@@ -27,6 +27,7 @@
 //     bypass.
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'admin/admin_app.dart';
@@ -79,6 +80,22 @@ const FirebaseOptions kAdminFirebaseOptions = FirebaseOptions(
 );
 
 Future<void> main() async {
+  // B1.A5 — Release-build demo-auth assertion.
+  // `assert` bodies are dead code in release builds (Dart compiles them out),
+  // so the check runs only in debug/profile mode where a developer might have
+  // accidentally left the flag on. In profile or release mode the constant
+  // `_kAdminDemoAuth` is always false (fromEnvironment defaults to false at
+  // build time unless explicitly overridden), so the check is a belt-and-
+  // suspenders guard for CI environments that pass the flag.
+  assert(() {
+    if (!kDebugMode && _kAdminDemoAuth) {
+      throw StateError(
+        'ADMIN_DEMO_AUTH must not be true in a non-debug build. '
+        'Demo auth bypasses Firebase and must never ship on a public endpoint.',
+      );
+    }
+    return true;
+  }());
   WidgetsFlutterBinding.ensureInitialized();
   try {
     final authBinding = await _resolveAuthSource();

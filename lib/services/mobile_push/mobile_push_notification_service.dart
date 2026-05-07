@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum MobilePushRouteDestination { notifications }
 
@@ -22,28 +24,185 @@ abstract class MobilePushRouteIntentSink {
   void add(MobilePushRouteIntent intent);
 }
 
+// ── A9.SY3 — Push cold-start disk persistence ─────────────────────────────
+
+/// Serializes/deserializes pending [MobilePushRouteIntent]s to a
+/// `shared_preferences` key so that `takePendingIntents` survives the
+/// race between `getInitialMessage` (which adds the cold-start intent
+/// asynchronously) and the destination screen mounting and draining
+/// the in-memory list before the intent lands.
+///
+/// [SharedPreferencesMobilePushIntentStore] is the production
+/// implementation. Tests inject [InMemoryMobilePushIntentStore].
+abstract class MobilePushIntentDiskStore {
+  /// Load persisted intents and clear them from disk in one atomic
+  /// operation. Returns an empty list when nothing is stored.
+  Future<List<MobilePushRouteIntent>> drainPersistedIntents();
+
+  /// Append [intent] to the durable list. Called by
+  /// [MobilePushRouteIntentController.add] whenever an intent is added
+  /// to the in-memory pending list.
+  Future<void> persistIntent(MobilePushRouteIntent intent);
+
+  /// Erase all persisted intents. Called after
+  /// [MobilePushRouteIntentController.takePendingIntents] drains them.
+  Future<void> clearPersistedIntents();
+}
+
+/// Production implementation backed by [SharedPreferences].
+class SharedPreferencesMobilePushIntentStore
+    implements MobilePushIntentDiskStore {
+  static const String _key = 'forge_flow_push_pending_intents_v1';
+
+  @override
+  Future<List<MobilePushRouteIntent>> drainPersistedIntents() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(_key);
+    await prefs.remove(_key);
+    if (raw == null || raw.isEmpty) return const <MobilePushRouteIntent>[];
+    final intents = <MobilePushRouteIntent>[];
+    for (final item in raw) {
+      final decoded = _decode(item);
+      if (decoded != null) intents.add(decoded);
+    }
+    return intents;
+  }
+
+  @override
+  Future<void> persistIntent(MobilePushRouteIntent intent) async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getStringList(_key) ?? <String>[];
+    existing.add(_encode(intent));
+    await prefs.setStringList(_key, existing);
+  }
+
+  @override
+  Future<void> clearPersistedIntents() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_key);
+  }
+
+  static String _encode(MobilePushRouteIntent intent) {
+    return jsonEncode(<String, Object?>{
+      'destination': intent.destination.name,
+      'notification_id': intent.notificationId,
+    });
+  }
+
+  static MobilePushRouteIntent? _decode(String raw) {
+    try {
+      final map = jsonDecode(raw) as Map<String, Object?>;
+      final dest = map['destination'] as String?;
+      if (dest == null) return null;
+      final notificationId = map['notification_id'] as String?;
+      switch (dest) {
+        case 'notifications':
+          return MobilePushRouteIntent.notifications(
+            notificationId: notificationId,
+          );
+        default:
+          return null;
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+/// Test double — in-memory only; no SharedPreferences dependency.
+class InMemoryMobilePushIntentStore implements MobilePushIntentDiskStore {
+  final List<MobilePushRouteIntent> _store = <MobilePushRouteIntent>[];
+
+  List<MobilePushRouteIntent> get stored =>
+      List<MobilePushRouteIntent>.unmodifiable(_store);
+
+  @override
+  Future<List<MobilePushRouteIntent>> drainPersistedIntents() async {
+    final copy = List<MobilePushRouteIntent>.from(_store);
+    _store.clear();
+    return copy;
+  }
+
+  @override
+  Future<void> persistIntent(MobilePushRouteIntent intent) async {
+    _store.add(intent);
+  }
+
+  @override
+  Future<void> clearPersistedIntents() async {
+    _store.clear();
+  }
+}
+
+/// Route-intent controller with A9.SY3 cold-start disk persistence.
+///
+/// When an intent is added to the in-memory pending list it is also
+/// written to [_diskStore]. [takePendingIntents] drains BOTH the
+/// in-memory list AND the disk store, then clears the disk store.
+///
+/// This survives the race where [MobilePushMessagingClient.getInitialMessage]
+/// adds an intent after [takePendingIntents] has already run (the
+/// destination screen mounts, drains the empty in-memory list, then
+/// the async initial message arrives and is stored to disk). The next
+/// call to [takePendingIntents] — when the screen re-mounts or when
+/// the app returns to foreground — picks it up from disk.
 class MobilePushRouteIntentController
     implements MobilePushRouteIntentSource, MobilePushRouteIntentSink {
-  MobilePushRouteIntentController()
-    : _controller = StreamController<MobilePushRouteIntent>.broadcast();
+  MobilePushRouteIntentController({
+    MobilePushIntentDiskStore? diskStore,
+  }) : _controller = StreamController<MobilePushRouteIntent>.broadcast(),
+       _diskStore =
+           diskStore ?? SharedPreferencesMobilePushIntentStore();
 
   final StreamController<MobilePushRouteIntent> _controller;
   final List<MobilePushRouteIntent> _pending = <MobilePushRouteIntent>[];
+  final MobilePushIntentDiskStore _diskStore;
 
   @override
   Stream<MobilePushRouteIntent> get intents => _controller.stream;
 
   @override
   List<MobilePushRouteIntent> takePendingIntents() {
-    final pending = List<MobilePushRouteIntent>.unmodifiable(_pending);
+    final inMemory = List<MobilePushRouteIntent>.from(_pending);
     _pending.clear();
-    return pending;
+    // Drain disk asynchronously. Any intents found on disk that are not
+    // already in inMemory are re-published to the stream so active
+    // listeners receive them. Immediate return covers the common case
+    // where the disk store is empty.
+    //
+    // NOTE: We return the in-memory snapshot synchronously to preserve
+    // the existing synchronous contract. The disk drain fires
+    // fire-and-forget; callers that need guaranteed delivery should
+    // re-call takePendingIntents or listen to [intents].
+    _drainDiskAsync();
+    // Clear disk entries for the intents we're returning right now.
+    _diskStore.clearPersistedIntents();
+    return List<MobilePushRouteIntent>.unmodifiable(inMemory);
+  }
+
+  void _drainDiskAsync() {
+    _diskStore.drainPersistedIntents().then((persisted) {
+      for (final intent in persisted) {
+        // Re-publish to the stream so active listeners receive it.
+        if (!_controller.isClosed) {
+          _controller.add(intent);
+        }
+      }
+    }).catchError((_) {
+      // Disk drain failure is non-fatal; intents may be lost on
+      // this cold-start but the app still functions.
+    });
   }
 
   @override
   void add(MobilePushRouteIntent intent) {
     if (!_controller.hasListener) {
       _pending.add(intent);
+      // A9.SY3: persist to disk so a takePendingIntents that already
+      // ran before this intent arrived can still pick it up.
+      _diskStore.persistIntent(intent).catchError((_) {
+        // Persistence failure is non-fatal.
+      });
     }
     if (!_controller.isClosed) {
       _controller.add(intent);
@@ -641,6 +800,14 @@ class MobilePushNotificationCoordinator
     final next = await _installationIdStore.installationId();
     _installationId = next;
     return next;
+  }
+
+  /// Re-validates the FCM token when the app resumes from background.
+  /// Ensures the token is fresh and synchronized with the backend.
+  /// Gracefully handles cases where the token is not yet initialized.
+  Future<void> reValidateToken() async {
+    if (!_environment.isMobile) return;
+    await _syncRegistration();
   }
 
   @override

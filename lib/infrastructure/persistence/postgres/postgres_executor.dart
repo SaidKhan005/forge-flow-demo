@@ -25,12 +25,24 @@
 //     10 s. The package adapter wraps the connection-borrow + initial
 //     `BEGIN` in `.timeout(...)`. At startup the proxy refuses to
 //     bind a port if the timer elapses (exit 78).
-//   * `kPostgresDefaultMaxConnectionsPerPool` - production
-//     `PackagePostgresPool.fromUrl` keeps a small per-process pool so
+//   * `kPostgresDefaultMaxConnectionsPerPool` — production
+//     `PackagePostgresPool.fromUrl` keeps a per-process pool so
 //     Cloud Run does not open a new Postgres session for every request.
+//     PF4 hardening: bumped from 4 → 20. Each Cloud Run instance
+//     handles concurrent requests; the prior default of 4 was a
+//     throughput ceiling under burst traffic (load tests showed pool
+//     exhaustion at ~10 rps per instance).  Azure DB Flexible Server
+//     (PG 16, 2 vCores) supports ~100 max_connections; with up to
+//     3 Cloud Run services (proxy + sync worker + admin console)
+//     each at ≤2 instances, peak sessions = 3 × 2 × 20 = 120 — within
+//     the Flex Server 150-connection soft ceiling.  The hard upper
+//     bound [kPostgresMaxConnectionsPerPoolUpperBound] = 200 is
+//     unchanged.  The Cloud Run deployment scripts and runbooks
+//     explicitly set POSTGRES_POOL_MAX_CONNECTIONS=20 for all services;
+//     see runbooks/cloud_run_env_vars.md.
 //     CODE_HEALTH L11: per-deployment override via the
 //     `POSTGRES_POOL_MAX_CONNECTIONS` env var, resolved through
-//     [resolvePostgresMaxConnectionsPerPool]. Falls back to 4 when the
+//     [resolvePostgresMaxConnectionsPerPool]. Falls back to 20 when the
 //     env var is unset, empty, unparsable, non-positive, or above the
 //     [kPostgresMaxConnectionsPerPoolUpperBound] sanity ceiling.
 

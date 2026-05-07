@@ -14,18 +14,25 @@
 //     always emits the salted family below.
 //
 //   * `sha256-salted` — SHA-256(pepper_bytes || salt_bytes || operator
-//     || user || candidate). The pepper is a deploy-time secret
-//     injected via the `PASSWORD_HISTORY_PEPPER` env var (rotation key
-//     identified by [pepperId]); the salt is a 16-byte CSPRNG value
-//     drawn per row. Both bytes are mixed in BEFORE the operator-id +
-//     user-id + candidate string the legacy family already binds, so
-//     the legacy fingerprint-isolation property carries over while the
-//     salted family also resists offline rainbow-table reconstruction
-//     against a single (operator_id, user_id) pair on table leak.
+//     || user || candidate). The pepper is fetched at runtime via
+//     [PepperResolver] (rotation key identified by [pepperId]); the
+//     salt is a 16-byte CSPRNG value drawn per row. Both bytes are
+//     mixed in BEFORE the operator-id + user-id + candidate string the
+//     legacy family already binds, so the legacy fingerprint-isolation
+//     property carries over while the salted family also resists offline
+//     rainbow-table reconstruction against a single (operator_id,
+//     user_id) pair on table leak.
 //
 // Verification dispatches on the row's `password_hash_algo` column.
 // Constant-time digest comparison runs over the entire digest with no
 // early break.
+//
+// fix(M2.pepper-runtime): pepper is now resolved at runtime via
+// [PepperResolver] so a rotation does not require a redeploy. The
+// compile-time `String.fromEnvironment` constant has been removed.
+// [PasswordHistoryPepperConfig] is kept as the synchronous value type
+// for test injection; the [PepperResolver] abstraction is the
+// production path.
 
 import 'dart:convert';
 import 'dart:math';
@@ -36,6 +43,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import '../../infrastructure/persistence/postgres/repositories/password_history_repository.dart';
 import '../../infrastructure/persistence/postgres/tenant_context.dart';
 import 'password_history_check.dart';
+import 'pepper_resolver.dart';
 
 /// Hashes a password candidate into the canonical legacy
 /// `password_history` hash form (algo = `sha256-legacy`). Production
@@ -109,23 +117,23 @@ class _DefaultSecureSaltSource implements PasswordHistorySaltSource {
 /// schema-compatible if a future hardening lane raises this.
 const int _saltLengthBytes = 16;
 
-/// Reads the global pepper from the env at construction time.
-/// `--dart-define=PASSWORD_HISTORY_PEPPER=...` in production; in tests
-/// callers either pass [PasswordHistoryPepperConfig.test] (which uses
-/// a deterministic pepper) or run under `kDemoMode = true`.
-const String _pepperEnvVar = 'PASSWORD_HISTORY_PEPPER';
+// NOTE: The compile-time `_envPepper` constant has been removed in
+// fix(M2.pepper-runtime). Pepper is now resolved at runtime via
+// [PepperResolver] so a rotation does not require a rebuild + redeploy.
+// The [PasswordHistoryPepperConfig] value type is retained for test
+// injection; the [EnvPepperResolver] wraps the old behaviour for
+// callers that have not yet migrated.
 
-/// Read once at compile time. `String.fromEnvironment` returns '' when
-/// the define is not provided.
-const String _envPepper = String.fromEnvironment(_pepperEnvVar);
+const String _pepperEnvVar = 'PASSWORD_HISTORY_PEPPER';
 
 /// Read once at compile time. Mirrors the [kDemoMode] convention used
 /// elsewhere in the repo (e.g. `lib/services/app_data_status_service.dart`).
 const bool _envDemoMode = bool.fromEnvironment('kDemoMode');
 
 /// Typed startup error thrown when `PASSWORD_HISTORY_PEPPER` is missing
-/// in non-demo mode. The proxy must surface this as a hard refusal at
-/// startup rather than silently writing un-peppered rows.
+/// in non-demo mode AND no [PepperResolver] is supplied. The proxy must
+/// surface this as a hard refusal at startup rather than silently
+/// writing un-peppered rows.
 class PasswordHistoryPepperMissingError extends Error {
   PasswordHistoryPepperMissingError();
 
@@ -134,12 +142,18 @@ class PasswordHistoryPepperMissingError extends Error {
       'PasswordHistoryPepperMissingError: '
       '`$_pepperEnvVar` is required in non-demo mode. '
       'Inject the pepper via --dart-define=$_pepperEnvVar=<value> '
-      '(production) or set --dart-define=kDemoMode=true (demo).';
+      '(production) or set --dart-define=kDemoMode=true (demo), '
+      'or supply a PepperResolver to the constructor.';
 }
 
 /// Pepper configuration consumed by [RepositoryPasswordHistoryCheck].
-/// Production binds [PasswordHistoryPepperConfig.fromEnv]; tests bind
-/// [PasswordHistoryPepperConfig.literal] for deterministic salting.
+/// Production now passes a [PepperResolver] instead; this class is
+/// kept for backwards compatibility with tests that inject a literal
+/// pepper value.
+///
+/// When a [PepperResolver] is supplied to the constructor, it takes
+/// precedence over any [PasswordHistoryPepperConfig] that is also
+/// passed.
 class PasswordHistoryPepperConfig {
   const PasswordHistoryPepperConfig._({
     required this.pepperBytes,
@@ -161,8 +175,14 @@ class PasswordHistoryPepperConfig {
   /// empty AND not in demo mode, throws [PasswordHistoryPepperMissingError].
   /// In demo mode, returns a degenerate config that uses an empty
   /// pepper and a fixed id so the walkthrough stays deterministic.
+  ///
+  /// Prefer passing a [PepperResolver] to [RepositoryPasswordHistoryCheck]
+  /// for production code. This factory is retained for callers that have
+  /// not yet migrated.
   factory PasswordHistoryPepperConfig.fromEnv() {
-    final raw = _envPepper;
+    // Read at call time (not compile time) so tests that override
+    // the dart-define after warm-up still work.
+    const raw = String.fromEnvironment(_pepperEnvVar);
     if (raw.isEmpty) {
       if (!_envDemoMode) {
         throw PasswordHistoryPepperMissingError();
@@ -199,6 +219,31 @@ class PasswordHistoryPepperConfig {
   }
 }
 
+/// Adapts a [PasswordHistoryPepperConfig] (synchronous value type used
+/// in tests) to the [PepperResolver] interface so both code paths share
+/// the same async machinery in [RepositoryPasswordHistoryCheck].
+class _ConfigPepperResolver implements PepperResolver {
+  const _ConfigPepperResolver(this._config);
+
+  final PasswordHistoryPepperConfig _config;
+
+  @override
+  Future<String> resolveActive() async =>
+      utf8.decode(_config.pepperBytes, allowMalformed: true);
+
+  @override
+  Future<String?> resolveById(String pepperId) async {
+    // The config resolver only knows one pepper. If the id matches,
+    // return it; otherwise return null so the row is treated as
+    // un-verifiable (correct: the caller holds the wrong key).
+    if (pepperId == _config.pepperId) {
+      return utf8.decode(_config.pepperBytes, allowMalformed: true);
+    }
+    // Unknown id — un-verifiable.
+    return null;
+  }
+}
+
 /// Production [PasswordHistoryCheck] backed by the Postgres
 /// `password_history` table via [PasswordHistoryRepository].
 ///
@@ -207,10 +252,23 @@ class PasswordHistoryPepperConfig {
 /// constructor. That keeps the existing service interface stable
 /// while still routing every read through the tenant-scoped
 /// transaction wrapper.
+///
+/// fix(M2.pepper-runtime): the [pepperResolver] parameter accepts a
+/// [PepperResolver] so the pepper is fetched at runtime rather than
+/// read from a compile-time dart-define. The legacy [pepper]
+/// parameter (a [PasswordHistoryPepperConfig]) is still accepted for
+/// backwards compatibility with tests; it is wrapped in a
+/// [_ConfigPepperResolver] internally.
+///
+/// Priority: pepperResolver > pepper > PasswordHistoryPepperConfig.fromEnv().
 class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
+  /// [pepperResolver] is the preferred way to supply the pepper in
+  /// production code. When non-null it takes priority over [pepper].
+  ///
   /// [pepper] defaults to reading the `PASSWORD_HISTORY_PEPPER` env
-  /// var; the constructor throws [PasswordHistoryPepperMissingError]
-  /// at construction time if the env var is missing in non-demo mode.
+  /// var when neither [pepperResolver] nor [pepper] is given; the
+  /// constructor throws [PasswordHistoryPepperMissingError] at
+  /// construction time if the env var is missing in non-demo mode.
   /// Tests should pass `pepper: PasswordHistoryPepperConfig.literal(...)`.
   ///
   /// [saltSource] defaults to a `Random.secure()`-backed 16-byte
@@ -220,6 +278,7 @@ class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
     required PasswordHistoryHasher hasher,
     required String operatorId,
     required String locationId,
+    PepperResolver? pepperResolver,
     PasswordHistoryPepperConfig? pepper,
     PasswordHistorySaltSource? saltSource,
     int retentionCount = PasswordHistoryRepository.defaultRetentionCount,
@@ -227,7 +286,10 @@ class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
        _legacyHasher = hasher,
        _operatorId = operatorId,
        _locationId = locationId,
-       _pepper = pepper ?? PasswordHistoryPepperConfig.fromEnv(),
+       _pepperResolver = pepperResolver ??
+           _ConfigPepperResolver(
+             pepper ?? PasswordHistoryPepperConfig.fromEnv(),
+           ),
        _saltSource = saltSource ?? _DefaultSecureSaltSource(),
        _retentionCount = retentionCount;
 
@@ -235,7 +297,7 @@ class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
   final PasswordHistoryHasher _legacyHasher;
   final String _operatorId;
   final String _locationId;
-  final PasswordHistoryPepperConfig _pepper;
+  final PepperResolver _pepperResolver;
   final PasswordHistorySaltSource _saltSource;
   final int _retentionCount;
 
@@ -256,7 +318,7 @@ class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
     final entries = await _readLatestEntries(userId: userId);
     for (final entry in entries) {
       final expected = entry.passwordHash;
-      final actual = _hashCandidateForEntry(
+      final actual = await _hashCandidateForEntry(
         userId: userId,
         candidate: candidate,
         entry: entry,
@@ -277,15 +339,17 @@ class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
     required String candidate,
   }) async {
     final salt = _saltSource.nextSalt();
-    final hashHex = _saltedHashHex(
+    final hashHex = await _saltedHashHex(
       userId: userId,
       candidate: candidate,
       salt: salt,
     );
+    final activePepperId = await _activePepperId();
     await _writeSaltedRow(
       userId: userId,
       passwordHashHex: hashHex,
       salt: salt,
+      pepperId: activePepperId,
     );
     await _repository.prune(
       operatorId: _operatorId,
@@ -293,6 +357,18 @@ class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
       userId: userId,
       n: _retentionCount,
     );
+  }
+
+  /// Returns the id for the currently-active pepper by deriving it
+  /// from the pepper bytes. The pepper id stored per row is the
+  /// SHA-256 prefix of the pepper bytes (computed once on write); we
+  /// derive it here so we do not need the proxy to return the id
+  /// separately from the bytes.
+  Future<String> _activePepperId() async {
+    final pepperStr = await _pepperResolver.resolveActive();
+    if (pepperStr.isEmpty) return 'demo';
+    final bytes = utf8.encode(pepperStr);
+    return PasswordHistoryPepperConfig._derivePepperId(bytes);
   }
 
   /// Custom INSERT that populates `password_hash_salt`,
@@ -305,6 +381,7 @@ class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
     required String userId,
     required String passwordHashHex,
     required Uint8List salt,
+    required String pepperId,
   }) async {
     final ctx = TenantContext(
       operatorId: _operatorId,
@@ -322,7 +399,7 @@ class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
           'user_id': userId,
           'hash': passwordHashHex,
           'salt': salt,
-          'pepper_id': _pepper.pepperId,
+          'pepper_id': pepperId,
           'algo': saltedAlgo,
         },
       );
@@ -370,14 +447,15 @@ class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
   /// `sha256-legacy` rows route to the injected [PasswordHistoryHasher]
   /// (so legacy rows stay verifiable without rehashing); every other
   /// algo (today: `sha256-salted`) recomputes the salted hash with the
-  /// row's stored salt + the active pepper. Unknown algos fall back to
-  /// a digest that cannot match any stored value (we return a string
-  /// of the wrong length so `_constantTimeHexEquals` short-circuits).
-  String _hashCandidateForEntry({
+  /// row's stored salt + the pepper keyed by the row's pepper_id.
+  /// Unknown algos fall back to a digest that cannot match any stored
+  /// value (we return a string of the wrong length so
+  /// `_constantTimeHexEquals` short-circuits).
+  Future<String> _hashCandidateForEntry({
     required String userId,
     required String candidate,
     required _HistoryEntry entry,
-  }) {
+  }) async {
     final algo = entry.algo;
     if (algo == legacyAlgo) {
       return _legacyHasher.hash(
@@ -394,7 +472,25 @@ class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
         // than booting a NoSuchElement.
         return '';
       }
-      return _saltedHashHex(
+      // Resolve the pepper that was used when this row was written.
+      // If the pepper id is unknown (rotation scenario where the old
+      // pepper env var was removed), return '' — the row cannot be
+      // verified but the system stays alive.
+      final rowPepperId = entry.pepperId;
+      final String? pepperStr;
+      if (rowPepperId != null && rowPepperId.isNotEmpty) {
+        pepperStr = await _pepperResolver.resolveById(rowPepperId);
+      } else {
+        // No pepper id on the row — fall back to the active pepper
+        // (pre-rotation writes that omitted pepper_id).
+        pepperStr = await _pepperResolver.resolveActive();
+      }
+      if (pepperStr == null) {
+        // Unknown pepper id — row un-verifiable after rotation.
+        return '';
+      }
+      return _saltedHashHexFromPepperStr(
+        pepperStr: pepperStr,
         userId: userId,
         candidate: candidate,
         salt: salt,
@@ -402,6 +498,23 @@ class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
     }
     // Unknown algo — return a sentinel that cannot match any digest.
     return '';
+  }
+
+  /// Async wrapper that resolves the active pepper then delegates to
+  /// [_saltedHashHexFromPepperStr]. Used by [recordAndPrune] for
+  /// new writes.
+  Future<String> _saltedHashHex({
+    required String userId,
+    required String candidate,
+    required Uint8List salt,
+  }) async {
+    final pepperStr = await _pepperResolver.resolveActive();
+    return _saltedHashHexFromPepperStr(
+      pepperStr: pepperStr,
+      userId: userId,
+      candidate: candidate,
+      salt: salt,
+    );
   }
 
   /// Salted hash construction:
@@ -414,13 +527,15 @@ class RepositoryPasswordHistoryCheck implements PasswordHistoryCheck {
   /// re-prove a plaintext under the new family doesn't need to know
   /// any internal salt-application detail beyond "prefix the legacy
   /// input with pepper_bytes || salt_bytes".
-  String _saltedHashHex({
+  String _saltedHashHexFromPepperStr({
+    required String pepperStr,
     required String userId,
     required String candidate,
     required Uint8List salt,
   }) {
+    final pepperBytes = utf8.encode(pepperStr);
     final builder = BytesBuilder(copy: false);
-    builder.add(_pepper.pepperBytes);
+    builder.add(pepperBytes);
     builder.add(salt);
     builder.add(utf8.encode('$_operatorId|$userId|$candidate'));
     return crypto.sha256.convert(builder.takeBytes()).toString();

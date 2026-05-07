@@ -20,6 +20,11 @@
 ///   * `partial`     ⟹ provenance names a vendor + partial qualifier.
 ///   * `fallback`    ⟹ provenance names the substitution source.
 ///   * `unavailable` ⟹ provenance is `provenanceNone`.
+///
+/// Additional states for [MetricPill] widget surface:
+///   * `stale`       ⟹ data previously live; vendor sync lapsed.
+///   * `empty`       ⟹ vendor connected but no rows yet (new operator).
+///   * `demo`        ⟹ demo / seed data, not real operator numbers.
 enum MetricState {
   /// Vendor data flowing, all required inputs present, computation
   /// is the real number.
@@ -37,8 +42,28 @@ enum MetricState {
   fallback,
 
   /// No inputs present, computation is undefined. The renderer MUST
-  /// switch to `MetricCardNotYetAvailable`. Never a phantom zero.
+  /// switch to `MetricCardNotYetAvailable` / `MetricPill` empty state.
+  /// Never a phantom zero.
   unavailable,
+
+  // ── Additional states used by [MetricPill] ───────────────────────
+
+  /// Data was previously live but the vendor sync has lapsed (e.g.,
+  /// last successful pull > threshold ago). The stale value is still
+  /// shown but visually flagged; never silently treated as fresh.
+  stale,
+
+  /// Vendor is connected and healthy but has returned zero rows for
+  /// this metric (e.g., a brand-new operator who opened yesterday).
+  /// Distinct from [unavailable]: the pipeline is wired; the data
+  /// simply has not accumulated yet. Renders "No data yet" — never
+  /// a numeric zero.
+  empty,
+
+  /// Value comes from seeded demo data, not from real operator
+  /// operations. Renders the number with a visible "Demo" chip so
+  /// the operator is never confused about provenance.
+  demo,
 }
 
 /// Sentinel provenance for `unavailable` state.

@@ -15,6 +15,11 @@
 //   * Constant-time best-effort: 1000 iterations of mismatch at byte
 //     0 vs byte 31 produce mean timings within a coarse threshold so
 //     a partial-prefix oracle is not trivially exploitable.
+//   * PepperResolver injection: inject a fake [PepperResolver] so the
+//     class does not require a dart-define at test time.
+//   * Pepper rotation: a row written with pepper_id=A verifies
+//     correctly when pepper_id=B is now active (legacy rows survive
+//     rotation).
 
 import 'dart:typed_data';
 
@@ -23,6 +28,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/password_history_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/services/auth/pepper_resolver.dart';
 import 'package:forge_and_flow/services/auth/repository_password_history_check.dart';
 
 const String _validOpId = '11111111-1111-1111-1111-111111111111';
@@ -269,7 +275,7 @@ void main() {
               hasher: const Sha256PasswordHistoryHasher(),
               operatorId: _validOpId,
               locationId: _validLocId,
-              // Intentionally no `pepper:` override.
+              // Intentionally no `pepper:` or `pepperResolver:` override.
             ),
             throwsA(isA<PasswordHistoryPepperMissingError>()),
           );
@@ -291,6 +297,153 @@ void main() {
               pepper: PasswordHistoryPepperConfig.literal('pepper-test'),
             ),
             returnsNormally,
+          );
+        },
+      );
+
+      test(
+        'PepperResolver injection bypasses the env-var check',
+        () {
+          expect(
+            () => RepositoryPasswordHistoryCheck(
+              repository: PasswordHistoryRepository(
+                TenantTransactionWrapper(_FakePool()),
+              ),
+              hasher: const Sha256PasswordHistoryHasher(),
+              operatorId: _validOpId,
+              locationId: _validLocId,
+              pepperResolver: const EnvPepperResolver(
+                pepper: 'injected-pepper',
+                demoMode: false,
+              ),
+            ),
+            returnsNormally,
+          );
+        },
+      );
+    });
+
+    group('pepper rotation (fix(M2.pepper-runtime))', () {
+      test(
+        'row written with pepper_id=A verifies correctly when pepper_id=B '
+        'is now active (legacy rows survive rotation)',
+        () async {
+          // pepperA is the old pepper; pepperB is the new active pepper.
+          const pepperA = 'pepper-rotation-A';
+          const pepperB = 'pepper-rotation-B';
+
+          // Write with pepperA as the active pepper.
+          final writeResolver = _FixedPepperResolver(activePepper: pepperA);
+          final writePool = _FakePool(returningEntryId: _validEntryId);
+          final writeCheck = _newCheckWithResolver(writePool, writeResolver);
+
+          await writeCheck.recordAndPrune(
+            userId: _validUserId,
+            candidate: 'rotation-pw',
+          );
+
+          final insertParams = _insertParams(writePool);
+          final salt = insertParams['salt'] as Uint8List;
+          final hashHex = insertParams['hash'] as String;
+          final writtenPepperId = insertParams['pepper_id'] as String;
+
+          // Confirm the row was written with pepperA's derived id.
+          expect(writtenPepperId, isNot(equals('demo')));
+          expect(writtenPepperId, startsWith('sha256:'));
+
+          // Now rotate: pepperB is active but pepperA is still known
+          // (so the old row can be verified).
+          final rotatedResolver = _RotatedPepperResolver(
+            activePepper: pepperB,
+            retiredPeppers: <String, String>{writtenPepperId: pepperA},
+          );
+
+          final readPool = _FakePool(
+            historyRows: <PostgresRow>[
+              <String, Object?>{
+                'entry_id': 'e-rotated',
+                'password_hash': hashHex,
+                'password_hash_salt': salt,
+                'password_hash_pepper_id': writtenPepperId,
+                'password_hash_algo': 'sha256-salted',
+                'set_at': DateTime.utc(2026, 5, 7, 12),
+              },
+            ],
+          );
+          final readCheck = _newCheckWithResolver(readPool, rotatedResolver);
+
+          // Must verify correctly using the old pepperA for the old row.
+          expect(
+            await readCheck.isReusedPassword(
+              userId: _validUserId,
+              candidate: 'rotation-pw',
+            ),
+            isTrue,
+            reason: 'old row with pepperA must verify after pepperB rotation',
+          );
+
+          // New candidates that do NOT match must still return false.
+          expect(
+            await readCheck.isReusedPassword(
+              userId: _validUserId,
+              candidate: 'different-pw',
+            ),
+            isFalse,
+          );
+        },
+      );
+
+      test(
+        'row written with pepper_id=A returns false (un-verifiable) when '
+        'pepperA is no longer available after rotation',
+        () async {
+          const pepperA = 'pepper-gone-A';
+          const pepperB = 'pepper-new-B';
+
+          final writeResolver = _FixedPepperResolver(activePepper: pepperA);
+          final writePool = _FakePool(returningEntryId: _validEntryId);
+          final writeCheck = _newCheckWithResolver(writePool, writeResolver);
+
+          await writeCheck.recordAndPrune(
+            userId: _validUserId,
+            candidate: 'gone-pw',
+          );
+
+          final insertParams = _insertParams(writePool);
+          final salt = insertParams['salt'] as Uint8List;
+          final hashHex = insertParams['hash'] as String;
+          final writtenPepperId = insertParams['pepper_id'] as String;
+
+          // Rotate: pepperA is completely removed from the store.
+          final rotatedResolver = _RotatedPepperResolver(
+            activePepper: pepperB,
+            retiredPeppers: const <String, String>{}, // pepperA not available
+          );
+
+          final readPool = _FakePool(
+            historyRows: <PostgresRow>[
+              <String, Object?>{
+                'entry_id': 'e-un-verifiable',
+                'password_hash': hashHex,
+                'password_hash_salt': salt,
+                'password_hash_pepper_id': writtenPepperId,
+                'password_hash_algo': 'sha256-salted',
+                'set_at': DateTime.utc(2026, 5, 7, 12),
+              },
+            ],
+          );
+          final readCheck = _newCheckWithResolver(readPool, rotatedResolver);
+
+          // The row is un-verifiable (returns false, not crash).
+          expect(
+            await readCheck.isReusedPassword(
+              userId: _validUserId,
+              candidate: 'gone-pw',
+            ),
+            isFalse,
+            reason:
+                'row with unknown pepper_id should not crash — '
+                'returns false (un-verifiable)',
           );
         },
       );
@@ -392,6 +545,19 @@ RepositoryPasswordHistoryCheck _newCheck(_FakePool pool) {
   );
 }
 
+RepositoryPasswordHistoryCheck _newCheckWithResolver(
+  _FakePool pool,
+  PepperResolver resolver,
+) {
+  return RepositoryPasswordHistoryCheck(
+    repository: PasswordHistoryRepository(TenantTransactionWrapper(pool)),
+    hasher: const Sha256PasswordHistoryHasher(),
+    operatorId: _validOpId,
+    locationId: _validLocId,
+    pepperResolver: resolver,
+  );
+}
+
 Map<String, Object?> _insertParams(_FakePool pool) {
   for (final tx in pool.transactions) {
     for (var i = 0; i < tx.executedSql.length; i++) {
@@ -402,6 +568,42 @@ Map<String, Object?> _insertParams(_FakePool pool) {
   }
   fail('expected an insert into password_history but none was issued');
 }
+
+// ─── Fake PepperResolvers ─────────────────────────────────────────────
+
+/// A resolver that always returns one known pepper as active.
+class _FixedPepperResolver implements PepperResolver {
+  const _FixedPepperResolver({required this.activePepper});
+  final String activePepper;
+
+  @override
+  Future<String> resolveActive() async => activePepper;
+
+  @override
+  Future<String?> resolveById(String pepperId) async => activePepper;
+}
+
+/// A resolver that returns a new active pepper and resolves retired
+/// peppers by id. Returns `null` for unknown ids so the row is treated
+/// as un-verifiable.
+class _RotatedPepperResolver implements PepperResolver {
+  const _RotatedPepperResolver({
+    required this.activePepper,
+    required this.retiredPeppers,
+  });
+
+  final String activePepper;
+  final Map<String, String> retiredPeppers;
+
+  @override
+  Future<String> resolveActive() async => activePepper;
+
+  @override
+  Future<String?> resolveById(String pepperId) async =>
+      retiredPeppers[pepperId];
+}
+
+// ─── Fake Postgres pool / transaction ────────────────────────────────
 
 class _FakePool implements PostgresPool {
   _FakePool({

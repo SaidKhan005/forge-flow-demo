@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 import 'forge_flow_app.dart';
 import 'forge_flow_bootstrap.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_realtime_subscription_watermark_store.dart';
 import 'services/auth/firebase_auth_runtime_bindings.dart';
 import 'services/mobile_push/firebase_mobile_push_runtime.dart';
+import 'services/mobile_push/mobile_push_notification_service.dart';
 import 'services/observability/crash_reporter.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/realtime/web_socket_channel_realtime_transport.dart';
@@ -104,4 +108,32 @@ Uri _toWebSocketUri(Uri httpUri) {
     _ => httpUri.scheme,
   };
   return httpUri.replace(scheme: scheme);
+}
+
+/// Observer that re-validates the FCM token when the app resumes from
+/// background. Ensures the push token is fresh and registered with the
+/// backend after the app becomes active again.
+class FcmTokenRevalidationObserver extends WidgetsBindingObserver {
+  FcmTokenRevalidationObserver({
+    required MobilePushNotificationService mobilePushService,
+  }) : _mobilePushService = mobilePushService;
+
+  final MobilePushNotificationService _mobilePushService;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Re-validate the FCM token on app resume to ensure the token is
+      // still valid and synchronized with the backend.
+      unawaited(_reValidateToken());
+    }
+  }
+
+  Future<void> _reValidateToken() async {
+    // Invoke reValidateToken if the implementation has it, otherwise
+    // this is a graceful no-op for the noop service.
+    if (_mobilePushService case MobilePushNotificationCoordinator coordinator) {
+      await coordinator.reValidateToken();
+    }
+  }
 }

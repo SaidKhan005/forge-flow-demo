@@ -15,6 +15,22 @@
 // parameter required (rather than optional/derived) means typos and
 // missed call sites break loudly at compile time, and tests can
 // assert the value flows into the SQL parameter map.
+//
+// Code-health PCACHE-FANOUT-PRODUCERS: every roles_version bump in
+// this file is paired with an in-transaction
+// `pg_notify('permission_cache_invalidate', ...)` so other Cloud Run
+// proxy instances drop the affected user's cached snapshot on commit.
+// The payload shape mirrors
+// `PermissionCacheInvalidation.fromPayload` byte-for-byte:
+// `{ "user_id": "<uuid>", "operator_id": "<uuid>", "location_id":
+// null }`. The JSON is parameter-bound (jsonEncode at call site) —
+// never string-concatenated — so payloads can never inject SQL.
+// Postgres queues NOTIFY until COMMIT, so emitting inside the txn
+// keeps the signal atomic with the write: a rollback discards the
+// queued notification automatically. The per-entry TTL on
+// `PermissionCache` is the catch-all when NOTIFY is dropped.
+
+import 'dart:convert' show jsonEncode;
 
 import '../operator_scoped_repository.dart';
 import '../tenant_context.dart';
@@ -253,14 +269,34 @@ class UserRolesRepository extends OperatorScopedRepository {
       if (id is! String || id.isEmpty) {
         throw StateError('user_roles insert returned a malformed user_role_id');
       }
-      // Bump roles_version atomically inside the same transaction so
-      // the proxy's permission cache invalidates exactly when the
-      // grant lands.
+      // Bump roles_version + permission_version atomically inside the same
+      // transaction so the proxy's permission cache invalidates exactly when
+      // the grant lands, and the per-request permission_version check
+      // forces a 401 on any live token that predates this grant.
       await exec.execute(
         'update users '
-        'set roles_version = roles_version + 1 '
+        'set roles_version = roles_version + 1, '
+        'permission_version = permission_version + 1 '
         'where user_id = @user_id::uuid',
         parameters: <String, Object?>{'user_id': targetUserId},
+      );
+      // Cross-instance fan-out: queue a NOTIFY on
+      // `permission_cache_invalidate` so peer proxies drop this
+      // user's cached permission snapshot the moment the grant
+      // commits. Payload shape is the byte-for-byte contract from
+      // `PermissionCacheInvalidation.fromPayload`. JSON is bound as
+      // an `@payload` parameter — never concatenated — so the payload
+      // is data, not SQL. NOTIFY is queued by Postgres until COMMIT,
+      // so a rollback discards it.
+      await exec.execute(
+        "select pg_notify('permission_cache_invalidate', @payload)",
+        parameters: <String, Object?>{
+          'payload': jsonEncode(<String, Object?>{
+            'user_id': targetUserId,
+            'operator_id': operatorId,
+            'location_id': null,
+          }),
+        },
       );
       return id;
     });
@@ -294,11 +330,30 @@ class UserRolesRepository extends OperatorScopedRepository {
         },
       );
       if (affected > 0) {
+        // Bump both roles_version and permission_version on revoke.
+        // B1.A3: the permission_version bump ensures any live JWT for this
+        // user fails the per-request DB check on the very next request,
+        // closing the ~5-minute window between revoke and token expiry.
         await exec.execute(
           'update users '
-          'set roles_version = roles_version + 1 '
+          'set roles_version = roles_version + 1, '
+          'permission_version = permission_version + 1 '
           'where user_id = @user_id::uuid',
           parameters: <String, Object?>{'user_id': targetUserId},
+        );
+        // Cross-instance fan-out — see [insertGrant] for contract.
+        // Skipped when affected == 0 because no semantic change
+        // happened (revoke hit an already-revoked grant); peers do
+        // not need to drop a snapshot.
+        await exec.execute(
+          "select pg_notify('permission_cache_invalidate', @payload)",
+          parameters: <String, Object?>{
+            'payload': jsonEncode(<String, Object?>{
+              'user_id': targetUserId,
+              'operator_id': operatorId,
+              'location_id': null,
+            }),
+          },
         );
       }
       return affected;
@@ -320,7 +375,11 @@ class UserRolesRepository extends OperatorScopedRepository {
       userId: actorUserId,
     );
     return withTenant<int>(ctx, (exec) async {
-      return exec.execute(
+      // RETURNING gives us each bumped user_id so we can fan out one
+      // NOTIFY per affected user — the listener contract requires a
+      // user_id per event, and a custom-role permission edit can
+      // touch many users at once.
+      final rows = await exec.query(
         'update users '
         'set roles_version = roles_version + 1, updated_at = now() '
         'where operator_id = @operator_id::uuid '
@@ -332,12 +391,30 @@ class UserRolesRepository extends OperatorScopedRepository {
         '  and user_roles.revoked_at is null '
         '  and (user_roles.valid_until is null or user_roles.valid_until > now()) '
         '  and user_roles.valid_from <= now()'
-        ')',
+        ') '
+        'returning user_id::text as user_id',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'role_id': roleId,
         },
       );
+      // Cross-instance fan-out — one NOTIFY per bumped user. See
+      // [insertGrant] for the payload + transaction-atomicity contract.
+      for (final row in rows) {
+        final bumpedUserId = row['user_id'];
+        if (bumpedUserId is! String || bumpedUserId.isEmpty) continue;
+        await exec.execute(
+          "select pg_notify('permission_cache_invalidate', @payload)",
+          parameters: <String, Object?>{
+            'payload': jsonEncode(<String, Object?>{
+              'user_id': bumpedUserId,
+              'operator_id': operatorId,
+              'location_id': null,
+            }),
+          },
+        );
+      }
+      return rows.length;
     });
   }
 

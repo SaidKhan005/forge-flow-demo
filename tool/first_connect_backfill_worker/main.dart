@@ -824,7 +824,9 @@ class WorkerCanonicalSink implements CanonicalSink {
         'last_synced_at = excluded.last_synced_at, '
         'last_modified_seen = excluded.last_modified_seen, '
         'cursor_token = excluded.cursor_token, '
-        'updated_at = now()',
+        'updated_at = now() '
+        'where excluded.last_synced_at >= '
+        'public.connector_sync_watermark.last_synced_at',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,
@@ -1142,8 +1144,12 @@ class BackfillWorkerLoop {
 typedef WorkerPoolFactory = PostgresPool Function(String connectionString);
 
 /// Default pool factory mirrors the audit_anchor pattern.
+// Honor POSTGRES_POOL_MAX_CONNECTIONS env override; falls back to default 4.
 PostgresPool _defaultPoolFactory(String connectionString) =>
-    PackagePostgresPool.fromUrl(connectionString);
+    PackagePostgresPool.fromUrl(
+      connectionString,
+      maxConnectionCount: resolvePostgresMaxConnectionsPerPool(),
+    );
 
 /// Bundle returned by [buildWorkerRuntime]. Tests may inject a
 /// pre-built [BackfillJobStore] / [CanonicalSink] / [WorkerScopeReader]

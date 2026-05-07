@@ -1,0 +1,310 @@
+# Forge & Flow — Vendor Health Dashboard
+#
+# Cloud Monitoring dashboard configuration for per-vendor adapter observability.
+# Shows connection status, sync success rate, sync latency, OAuth refresh health,
+# and webhook signature integrity — all broken down per vendor slug.
+#
+# Platform: Google Cloud Monitoring (Dashboard API v1).
+# Deploy: gcloud monitoring dashboards create --config-from-file=infrastructure/monitoring/dashboards/vendor_health_dashboard.yaml
+#
+# All custom metrics referenced here are emitted by the proxy via structured
+# log-based metrics. See infrastructure/monitoring/alerts/ for alert definitions
+# that fire when any of these signals cross thresholds.
+#
+# Placeholder: __PROJECT__ — replaced at deploy time with the GCP project ID.
+---
+displayName: "Forge & Flow — Vendor Health (Per-Vendor)"
+labels:
+  forge-flow.dev/component: vendor-adapter
+  forge-flow.dev/phase: v1-launch
+mosaicLayout:
+  columns: 12
+  tiles:
+
+    # ── Row 0: Summary header tiles ─────────────────────────────────────────
+
+    - width: 4
+      height: 3
+      widget:
+        title: "Active Vendor Connections"
+        scorecard:
+          timeSeriesQuery:
+            timeSeriesFilterRatio:
+              numerator:
+                filter: >
+                  metric.type="custom.googleapis.com/forgeflow/vendor_adapter/connection_count"
+                  AND metric.labels.status="connected"
+              denominator:
+                filter: >
+                  metric.type="custom.googleapis.com/forgeflow/vendor_adapter/connection_count"
+            aggregation:
+              alignmentPeriod: 60s
+              perSeriesAligner: ALIGN_MEAN
+              crossSeriesReducer: REDUCE_SUM
+          sparkChartView:
+            sparkChartType: SPARK_CHART_TYPE_LINE
+          thresholds:
+            - value: 0.9
+              color: YELLOW
+              direction: BELOW
+            - value: 0.8
+              color: RED
+              direction: BELOW
+
+    - width: 4
+      height: 3
+      widget:
+        title: "Overall Sync Success Rate (24h)"
+        scorecard:
+          timeSeriesQuery:
+            timeSeriesFilterRatio:
+              numerator:
+                filter: >
+                  metric.type="custom.googleapis.com/forgeflow/vendor_adapter/request_count"
+                  AND metric.labels.status="success"
+              denominator:
+                filter: >
+                  metric.type="custom.googleapis.com/forgeflow/vendor_adapter/request_count"
+            aggregation:
+              alignmentPeriod: 86400s
+              perSeriesAligner: ALIGN_SUM
+              crossSeriesReducer: REDUCE_SUM
+          sparkChartView:
+            sparkChartType: SPARK_CHART_TYPE_LINE
+          thresholds:
+            - value: 0.95
+              color: YELLOW
+              direction: BELOW
+            - value: 0.90
+              color: RED
+              direction: BELOW
+
+    - width: 4
+      height: 3
+      widget:
+        title: "OAuth Refresh Success Rate (24h)"
+        scorecard:
+          timeSeriesQuery:
+            timeSeriesFilterRatio:
+              numerator:
+                filter: >
+                  metric.type="custom.googleapis.com/forgeflow/oauth/refresh_count"
+                  AND metric.labels.status="success"
+              denominator:
+                filter: >
+                  metric.type="custom.googleapis.com/forgeflow/oauth/refresh_count"
+            aggregation:
+              alignmentPeriod: 86400s
+              perSeriesAligner: ALIGN_SUM
+              crossSeriesReducer: REDUCE_SUM
+          sparkChartView:
+            sparkChartType: SPARK_CHART_TYPE_LINE
+          thresholds:
+            - value: 0.99
+              color: YELLOW
+              direction: BELOW
+            - value: 0.95
+              color: RED
+              direction: BELOW
+
+    # ── Row 1: Connection count + status mix per vendor ──────────────────────
+
+    - yPos: 3
+      width: 6
+      height: 4
+      widget:
+        title: "Connection Count by Vendor + Status"
+        xyChart:
+          chartOptions:
+            mode: COLOR
+          dataSets:
+            - legendTemplate: "${metric.labels.vendor_slug} — ${metric.labels.status}"
+              plotType: STACKED_BAR
+              timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: >
+                    metric.type="custom.googleapis.com/forgeflow/vendor_adapter/connection_count"
+                  aggregation:
+                    alignmentPeriod: 300s
+                    perSeriesAligner: ALIGN_MEAN
+                    crossSeriesReducer: REDUCE_SUM
+                    groupByFields:
+                      - metric.labels.vendor_slug
+                      - metric.labels.status
+          timeshiftDuration: 0s
+          yAxis:
+            scale: LINEAR
+            label: "Connections"
+
+    - yPos: 3
+      xPos: 6
+      width: 6
+      height: 4
+      widget:
+        title: "Sync Success Rate per Vendor (Last 24h)"
+        xyChart:
+          chartOptions:
+            mode: COLOR
+          dataSets:
+            - legendTemplate: "${metric.labels.vendor_slug}"
+              plotType: LINE
+              timeSeriesQuery:
+                timeSeriesFilterRatio:
+                  numerator:
+                    filter: >
+                      metric.type="custom.googleapis.com/forgeflow/vendor_adapter/request_count"
+                      AND metric.labels.status="success"
+                  denominator:
+                    filter: >
+                      metric.type="custom.googleapis.com/forgeflow/vendor_adapter/request_count"
+                  aggregation:
+                    alignmentPeriod: 3600s
+                    perSeriesAligner: ALIGN_SUM
+                    crossSeriesReducer: REDUCE_SUM
+                    groupByFields:
+                      - metric.labels.vendor_slug
+          yAxis:
+            scale: LINEAR
+            label: "Success Rate (0–1)"
+          thresholds:
+            - value: 0.95
+              color: RED
+              direction: BELOW
+
+    # ── Row 2: p95 sync latency per vendor ───────────────────────────────────
+
+    - yPos: 7
+      width: 6
+      height: 4
+      widget:
+        title: "p95 Sync Latency per Vendor (ms)"
+        xyChart:
+          chartOptions:
+            mode: COLOR
+          dataSets:
+            - legendTemplate: "${metric.labels.vendor_slug} p95"
+              plotType: LINE
+              timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: >
+                    metric.type="custom.googleapis.com/forgeflow/vendor_adapter/sync_latency_ms"
+                  aggregation:
+                    alignmentPeriod: 300s
+                    perSeriesAligner: ALIGN_PERCENTILE_95
+                    crossSeriesReducer: REDUCE_MAX
+                    groupByFields:
+                      - metric.labels.vendor_slug
+          yAxis:
+            scale: LINEAR
+            label: "Latency (ms)"
+          thresholds:
+            - value: 30000   # 30 seconds = concerning
+              color: YELLOW
+              direction: ABOVE
+            - value: 60000   # 60 seconds = critical
+              color: RED
+              direction: ABOVE
+
+    # ── Row 2 (right): OAuth refresh success rate per vendor ─────────────────
+
+    - yPos: 7
+      xPos: 6
+      width: 6
+      height: 4
+      widget:
+        title: "OAuth Refresh Success Rate per Vendor"
+        xyChart:
+          chartOptions:
+            mode: COLOR
+          dataSets:
+            - legendTemplate: "${metric.labels.vendor_slug}"
+              plotType: LINE
+              timeSeriesQuery:
+                timeSeriesFilterRatio:
+                  numerator:
+                    filter: >
+                      metric.type="custom.googleapis.com/forgeflow/oauth/refresh_count"
+                      AND metric.labels.status="success"
+                  denominator:
+                    filter: >
+                      metric.type="custom.googleapis.com/forgeflow/oauth/refresh_count"
+                  aggregation:
+                    alignmentPeriod: 3600s
+                    perSeriesAligner: ALIGN_SUM
+                    crossSeriesReducer: REDUCE_SUM
+                    groupByFields:
+                      - metric.labels.vendor_slug
+          yAxis:
+            scale: LINEAR
+            label: "Success Rate (0–1)"
+          thresholds:
+            - value: 0.95
+              color: RED
+              direction: BELOW
+
+    # ── Row 3: Webhook signature failures ────────────────────────────────────
+
+    - yPos: 11
+      width: 6
+      height: 4
+      widget:
+        title: "Webhook Signature Failures per Vendor"
+        xyChart:
+          chartOptions:
+            mode: COLOR
+          dataSets:
+            - legendTemplate: "${metric.labels.vendor_slug}"
+              plotType: LINE
+              timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: >
+                    metric.type="custom.googleapis.com/forgeflow/webhook/signature_failure_count"
+                  aggregation:
+                    alignmentPeriod: 300s
+                    perSeriesAligner: ALIGN_RATE
+                    crossSeriesReducer: REDUCE_SUM
+                    groupByFields:
+                      - metric.labels.vendor_slug
+          yAxis:
+            scale: LINEAR
+            label: "Failures / min"
+          thresholds:
+            - value: 1
+              color: YELLOW
+              direction: ABOVE
+            - value: 10
+              color: RED
+              direction: ABOVE
+
+    # ── Row 3 (right): Outbox backlog depth ──────────────────────────────────
+
+    - yPos: 11
+      xPos: 6
+      width: 6
+      height: 4
+      widget:
+        title: "Event Outbox Pending Depth (Total)"
+        xyChart:
+          chartOptions:
+            mode: COLOR
+          dataSets:
+            - legendTemplate: "Outbox pending rows"
+              plotType: LINE
+              timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: >
+                    metric.type="custom.googleapis.com/forgeflow/event_outbox/pending_row_count"
+                  aggregation:
+                    alignmentPeriod: 60s
+                    perSeriesAligner: ALIGN_MAX
+                    crossSeriesReducer: REDUCE_SUM
+          yAxis:
+            scale: LINEAR
+            label: "Rows"
+          thresholds:
+            - value: 1000
+              color: YELLOW
+              direction: ABOVE
+            - value: 10000
+              color: RED
+              direction: ABOVE

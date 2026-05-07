@@ -1,0 +1,67 @@
+# Forge & Flow — Alert Policy: Event Outbox Backlog Depth
+#
+# Fires when the event_outbox table row count exceeds 10,000 unprocessed
+# events. The outbox is the durable delivery buffer for all vendor-adapter
+# webhooks, notification dispatches, and integration sync triggers. A deep
+# backlog indicates the consumer is wedged or overwhelmed, causing stale
+# data in downstream vendor integrations.
+#
+# Platform: Google Cloud Monitoring.
+# Severity: P2 (P1 if count > 50K — field-level threshold variant below).
+# Notification channel: PagerDuty.
+# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
+---
+apiVersion: monitoring.googleapis.com/v3
+kind: AlertPolicy
+metadata:
+  name: forge-flow-outbox-backlog-depth
+  labels:
+    component: event-outbox
+    severity: P2
+    phase: v1-launch
+  annotations:
+    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
+    forge-flow.dev/slo: docs/contracts/v1_launch_slos.md#vendor-adapter-success-slo
+spec:
+  displayName: "[P2] Event Outbox Backlog > 10K rows"
+  documentation:
+    content: |
+      The event_outbox table has > 10,000 unprocessed rows.
+
+      Likely causes:
+      - Vendor adapter consumer crashed or is rejecting events (check error logs).
+      - Postgres connection pool saturated (see pool saturation alert).
+      - A single vendor is producing events faster than the consumer processes them.
+
+      Immediate actions:
+      1. Query backlog by vendor: SELECT vendor_slug, status, count(*) FROM event_outbox WHERE status != 'delivered' GROUP BY vendor_slug, status ORDER BY count DESC;
+      2. Check consumer Cloud Run logs for error patterns.
+      3. If a single vendor is overrepresented, consider pausing that vendor's poller temporarily.
+      4. If total > 50K, escalate to P1 immediately.
+
+      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
+    mimeType: text/markdown
+  conditions:
+    - displayName: Outbox row count > 10K
+      conditionPrometheusQueryLanguage:
+        # Log-based metric: custom/forgeflow/event_outbox/pending_row_count
+        # Emitted by the proxy health producer every 60s.
+        query: |
+          fetch generic_task::custom.googleapis.com/forgeflow/event_outbox/pending_row_count
+          | filter resource.labels.service_name = 'forge-flow-proxy'
+          | group_by [], max(value.pending_row_count)
+          | condition val() > 10000
+        duration: 180s  # 3 minutes sustained
+        evaluationInterval: 60s
+  alertStrategy:
+    autoClose: 3600s
+    notificationRateLimit:
+      period: 600s
+  combiner: OR
+  severity: WARNING
+  notificationChannels:
+    - projects/__PROJECT__/notificationChannels/__PAGERDUTY_CHANNEL_ID__
+  userLabels:
+    routing: pagerduty
+    severity: P2
+    component: event-outbox
