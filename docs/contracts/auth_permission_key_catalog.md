@@ -308,6 +308,43 @@ Deny wins. Default deny. The `users.roles_version` column is the cache
 invalidation key; bumping it on any role change drops the entry from
 the JWT custom-claim cache and the in-process permission cache.
 
+## Pending additions (flagged by Wave 5 W5-PKEYS)
+
+Surfaced by the 2026-05-06 CODE_HEALTH audit; flagged again by Wave 5
+W5-PKEYS ([#362](https://github.com/SaidKhan005/forge-flow-demo/pull/362))
+during the operator-web permission-key sweep. Historical context:
+`docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`.
+
+Three operator-web screens hand-type permission strings in **two new
+namespaces** that are NOT yet in this catalog:
+
+- `lib/screens/account_screen.dart` — uses `account.configure`.
+- `lib/screens/business_setup_screen.dart` — uses
+  `business_timing.configure`.
+- `lib/screens/business_timing_editor_screen.dart` — uses
+  `business_timing.configure`.
+
+The catalog is frozen and mirrors `lib/auth/permission_keys.dart` plus
+the seed migration (see "Keep in sync" above). Adding these constants
+requires the three coordinated edits documented at the top of this
+file:
+
+1. Catalog doc here — add rows to a new `account.*` category and
+   extend the seeded grants for the right baseline roles, plus a row
+   for `business_timing.configure` either in a new namespace or under
+   the appropriate existing category.
+2. `lib/auth/permission_keys.dart` — add the constants and include them
+   in `PermissionKeys.all` (and `requiresMfa` if applicable).
+3. An additive migration in `db/migrations/` that seeds the new keys
+   and any default role grants.
+4. The screen swaps that replace the hand-typed string literals with
+   the new constants.
+
+Track as a small lane when the team that owns the relevant
+operator-web settings work is ready to coordinate the tri-mirror
+change. Until then the screens carry hand-typed strings against
+namespaces this catalog does not list.
+
 ## Out of catalog scope
 
 - Vendor-specific operator-scoped permissions (e.g., overriding a

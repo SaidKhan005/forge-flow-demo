@@ -129,6 +129,28 @@ admin connects vendor
 -> proxy/mobile sync pulls server truth
 ```
 
+## Deferred from CODE_HEALTH remediation
+
+Surfaced by the 2026-05-06 audit; deferred from Wave 5 because the fix
+shape exceeds a one-file diff. Historical context:
+`docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`.
+
+### Worker watermark not transactional with adapter writes
+
+Evidence: `tool/integration_sync_worker/dispatch.dart:268`. The
+watermark advance must join the same transaction as the adapter write
+so a crash between the two does not redo work.
+
+Wave 5 W5-DISPATCH ([#363](https://github.com/SaidKhan005/forge-flow-demo/pull/363))
+STOPPED on this sub-task because executor threading would need to flow
+through `PollIncrementalCommand` → 17 vendor adapters → bespoke sinks →
+`CanonicalSink.advanceWatermark`. That is well beyond a one-file diff.
+
+Action: phase doc that designs the executor-threading approach and
+sequences the 17-adapter migration. Lands after the sink-fanout +
+business-timing-live wave so the executor seam is shared by every
+sink rather than retrofitted per vendor.
+
 ## Out of scope (binding)
 
 - First-connection backfill and live/closed production wire-in ->
