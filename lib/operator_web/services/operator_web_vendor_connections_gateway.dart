@@ -67,9 +67,17 @@ class OperatorWebHttpVendorConnectionsGateway
         remediation: 'Pick a vendor from the connection dialog.',
       ),
     );
-    final path = entry.authMode == VendorAuthMode.keyPaste
-        ? '/v1/auth/integrations/$vendorId/connect-key'
-        : '/v1/auth/integrations/oauth/$vendorId/start';
+    // PR #283 wired the operator-facing connect routes on the proxy:
+    //   * OAuth vendors  → POST /v1/integrations/oauth/{vendor}/begin
+    //                      response: {authorization_url, state_token, ...}
+    //   * key-paste vendors → POST /v1/integrations/api-key/{vendor}/connect
+    //                      response: {connection_id, status, ...}
+    // The client sends only `location_id` + optional `module`; the
+    // proxy resolves operator_id from the bearer token's scope.
+    final isKeyPaste = entry.authMode == VendorAuthMode.keyPaste;
+    final path = isKeyPaste
+        ? '/v1/integrations/api-key/$vendorId/connect'
+        : '/v1/integrations/oauth/$vendorId/begin';
     final body = await _postJson(
       path,
       body: <String, Object?>{
@@ -77,7 +85,15 @@ class OperatorWebHttpVendorConnectionsGateway
         if (module != null && module.trim().isNotEmpty) 'module': module,
       },
     );
-    final redirectUrl = _readString(body['redirect_url']);
+    // OAuth begin returns `authorization_url`; the api-key connect path
+    // does not return a redirect URL because it persists the credential
+    // synchronously. The widget treats a non-empty redirect URL as an
+    // OAuth handoff, so api-key vendors fall back to a stub URL the
+    // widget recognizes as the locally-rendered key-paste form.
+    final redirectUrl =
+        _readString(body['authorization_url']) ??
+        _readString(body['redirect_url']) ??
+        (isKeyPaste ? '' : null);
     if (redirectUrl == null) {
       throw VendorConnectionsGatewayError(
         message: 'The proxy did not return a connection URL.',
@@ -88,7 +104,7 @@ class OperatorWebHttpVendorConnectionsGateway
     }
     return VendorConnectFlowStart(
       redirectUrl: redirectUrl,
-      flowKind: entry.authMode == VendorAuthMode.keyPaste
+      flowKind: isKeyPaste
           ? VendorConnectFlowKind.keyPasteForm
           : VendorConnectFlowKind.oauthRedirect,
     );
@@ -101,7 +117,7 @@ class OperatorWebHttpVendorConnectionsGateway
     required String vendorId,
   }) async {
     final body = await _postJson(
-      '/v1/auth/integrations/$vendorId/test-connection',
+      '/v1/integrations/$vendorId/test-connection',
       body: <String, Object?>{'location_id': locationId},
     );
     final fieldMapping = <String, String>{};
@@ -129,7 +145,7 @@ class OperatorWebHttpVendorConnectionsGateway
     required String reason,
   }) async {
     await _postJson(
-      '/v1/auth/integrations/$vendorId/disconnect',
+      '/v1/integrations/$vendorId/disconnect',
       body: <String, Object?>{'location_id': locationId, 'reason': reason},
     );
   }
@@ -141,19 +157,13 @@ class OperatorWebHttpVendorConnectionsGateway
     required String vendorId,
     int limit = 100,
   }) async {
-    final body = await _getJson(
-      '/v1/auth/integrations/$vendorId/logs',
-      queryParameters: <String, String>{
-        'location_id': locationId,
-        'limit': '$limit',
-      },
+    // The operator-facing sync-log route ships in a follow-up slice.
+    // Throw a typed gateway error so the UI surfaces the missing
+    // surface gracefully rather than 404'ing the operator.
+    throw VendorConnectionsGatewayError(
+      message: 'Vendor sync logs are not available yet.',
+      remediation: 'Vendor sync logs ship in a follow-up slice.',
     );
-    final logs = body['logs'];
-    if (logs is! List) return const <VendorSyncLogEntry>[];
-    return logs
-        .whereType<Map<Object?, Object?>>()
-        .map(_syncLogFromJson)
-        .toList(growable: false);
   }
 
   Future<Map<String, Object?>> _getJson(
@@ -287,16 +297,6 @@ class OperatorWebHttpVendorConnectionsGateway
       webhookUrl: _readString(json['webhook_url']),
       recordsLast24h: _readInt(json['records_last_24h']),
       errorsLast24h: _readInt(json['errors_last_24h']),
-    );
-  }
-
-  static VendorSyncLogEntry _syncLogFromJson(Map<Object?, Object?> raw) {
-    final json = Map<Object?, Object?>.from(raw);
-    return VendorSyncLogEntry(
-      occurredAt: _readDate(json['occurred_at']) ?? DateTime.now().toUtc(),
-      eventKind: _readString(json['event_kind']) ?? 'sync_event',
-      recordsCount: _readInt(json['records_count']),
-      errorMessage: _readString(json['error_message']),
     );
   }
 

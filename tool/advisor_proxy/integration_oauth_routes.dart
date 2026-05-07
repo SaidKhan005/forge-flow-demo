@@ -329,6 +329,16 @@ class IntegrationOAuthRoutes {
         await _handleApiKeyConnect(request, apiKeyMatch.group(1)!);
         return true;
       }
+      final testMatch = _testConnectionPattern.firstMatch(path);
+      if (method == 'POST' && testMatch != null) {
+        await _handleTestConnection(request, testMatch.group(1)!);
+        return true;
+      }
+      final disconnectMatch = _disconnectPattern.firstMatch(path);
+      if (method == 'POST' && disconnectMatch != null) {
+        await _handleDisconnect(request, disconnectMatch.group(1)!);
+        return true;
+      }
       _writeJson(request.response, 405, <String, Object?>{
         'error': 'method_not_allowed',
         'method': method,
@@ -830,6 +840,169 @@ class IntegrationOAuthRoutes {
     });
   }
 
+  // ─── Test connection ───────────────────────────────────────────────
+
+  /// `POST /v1/integrations/{vendor}/test-connection`
+  ///
+  /// Operator-facing diagnostic. Resolves the operator/location from
+  /// the bearer token (defense-in-depth: any explicit body fields must
+  /// match the JWT scope), then delegates to the same
+  /// [IntegrationRoutesGateway] used by the admin surface so the
+  /// existing decrypt + executor + audit-log path is reused.
+  ///
+  /// Vendors without a wired test-connection executor return 503
+  /// `test_connection_executor_not_configured`. The operator UI
+  /// renders a "diagnostics not yet available" message in that case;
+  /// V1 plug-and-play does not gate connect lifecycle on this surface.
+  Future<void> _handleTestConnection(HttpRequest request, String vendorId) async {
+    OperatorContext scope;
+    try {
+      scope = await requestGuard.requireOperatorContext(
+        authorizationHeader:
+            request.headers.value(HttpHeaders.authorizationHeader),
+      );
+    } on ProxyAuthError catch (error) {
+      _writeJson(request.response, error.statusCode, <String, Object?>{
+        'error': 'unauthorized',
+        'message': error.message,
+      });
+      return;
+    }
+
+    final body = await _readJsonBody(request);
+    final operatorId = _stringField(body, 'operator_id') ?? scope.operatorId;
+    final locationId = _stringField(body, 'location_id') ?? scope.locationId;
+    if (operatorId != scope.operatorId || locationId != scope.locationId) {
+      _writeJson(request.response, 403, <String, Object?>{
+        'error': 'forbidden',
+        'message':
+            'JWT scope does not match the requested (operator, location)',
+      });
+      return;
+    }
+
+    final startedAt = _now();
+    try {
+      final result = await integrationRoutesGateway.testConnection(
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: scope.userId,
+        vendorId: vendorId,
+      );
+      final elapsedMs = _now().difference(startedAt).inMilliseconds;
+      final ok = result['auth_valid'] == true;
+      final note = result['note'];
+      _writeJson(request.response, 200, <String, Object?>{
+        'ok': ok,
+        'message': ok
+            ? 'Vendor responded successfully.'
+            : (note is String && note.isNotEmpty
+                ? note
+                : 'Vendor rejected the credential.'),
+        'latency_ms': result['elapsed_ms'] is int
+            ? result['elapsed_ms']
+            : elapsedMs,
+        'auth_valid': ok,
+        if (result['sample'] != null) 'sample': result['sample'],
+        if (result['field_mapping'] != null)
+          'field_mapping': result['field_mapping'],
+        if (note != null) 'note': note,
+      });
+    } on IntegrationGatewayPermissionDenied catch (error) {
+      _writeJson(request.response, 403, <String, Object?>{
+        'error': 'permission_denied',
+        'message': error.message,
+      });
+    } on IntegrationGatewayNotFound catch (error) {
+      _writeJson(request.response, 404, <String, Object?>{
+        'error': 'not_found',
+        'message': error.message,
+      });
+    } on IntegrationGatewayUnavailable catch (error) {
+      _writeJson(request.response, 503, <String, Object?>{
+        'error': error.message,
+      });
+    } on IntegrationGatewayDecryptError catch (error) {
+      _writeJson(request.response, 500, <String, Object?>{
+        'error': 'credential_decrypt_failed',
+        'message': error.message,
+      });
+    } on IntegrationGatewayConflict catch (error) {
+      _writeJson(request.response, 200, <String, Object?>{
+        'ok': false,
+        'message': error.message,
+        'latency_ms': _now().difference(startedAt).inMilliseconds,
+        'auth_valid': false,
+      });
+    }
+  }
+
+  // ─── Disconnect ────────────────────────────────────────────────────
+
+  /// `POST /v1/integrations/{vendor}/disconnect`
+  ///
+  /// Operator-facing disconnect. Soft-disables the row, wipes the
+  /// credential ciphertext, and writes audit + sync-log entries. Best-
+  /// effort vendor-side revoke is NOT performed here at V1 — the
+  /// majority of supported vendors do not expose a self-service revoke
+  /// endpoint, and the credential ciphertext wipe + connection status
+  /// flip are sufficient to terminate the F&F-side vendor session.
+  /// A dedicated revoke seam can ship in a follow-up slice when an
+  /// individual vendor's revoke endpoint is documented.
+  Future<void> _handleDisconnect(HttpRequest request, String vendorId) async {
+    OperatorContext scope;
+    try {
+      scope = await requestGuard.requireOperatorContext(
+        authorizationHeader:
+            request.headers.value(HttpHeaders.authorizationHeader),
+      );
+    } on ProxyAuthError catch (error) {
+      _writeJson(request.response, error.statusCode, <String, Object?>{
+        'error': 'unauthorized',
+        'message': error.message,
+      });
+      return;
+    }
+
+    final body = await _readJsonBody(request);
+    final operatorId = _stringField(body, 'operator_id') ?? scope.operatorId;
+    final locationId = _stringField(body, 'location_id') ?? scope.locationId;
+    if (operatorId != scope.operatorId || locationId != scope.locationId) {
+      _writeJson(request.response, 403, <String, Object?>{
+        'error': 'forbidden',
+        'message':
+            'JWT scope does not match the requested (operator, location)',
+      });
+      return;
+    }
+    final reason = _stringField(body, 'reason') ?? 'operator_action';
+
+    try {
+      final result = await integrationRoutesGateway.disconnect(
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: scope.userId,
+        vendorId: vendorId,
+        reason: reason,
+      );
+      _writeJson(request.response, 200, <String, Object?>{
+        'ok': true,
+        ...result,
+        'vendor_id': vendorId,
+      });
+    } on IntegrationGatewayPermissionDenied catch (error) {
+      _writeJson(request.response, 403, <String, Object?>{
+        'error': 'permission_denied',
+        'message': error.message,
+      });
+    } on IntegrationGatewayNotFound catch (error) {
+      _writeJson(request.response, 404, <String, Object?>{
+        'error': 'not_found',
+        'message': error.message,
+      });
+    }
+  }
+
   // ─── Helpers ───────────────────────────────────────────────────────
 
   Uri _buildAuthorizeUrl({
@@ -995,7 +1168,9 @@ class IntegrationOAuthRoutes {
   bool _isOperatorOAuthPath(String path) {
     return _beginPattern.hasMatch(path) ||
         _callbackPattern.hasMatch(path) ||
-        _apiKeyConnectPattern.hasMatch(path);
+        _apiKeyConnectPattern.hasMatch(path) ||
+        _testConnectionPattern.hasMatch(path) ||
+        _disconnectPattern.hasMatch(path);
   }
 
   static final RegExp _beginPattern = RegExp(
@@ -1006,6 +1181,12 @@ class IntegrationOAuthRoutes {
   );
   static final RegExp _apiKeyConnectPattern = RegExp(
     r'^/v1/integrations/api-key/([a-z0-9_]+)/connect$',
+  );
+  static final RegExp _testConnectionPattern = RegExp(
+    r'^/v1/integrations/([a-z0-9_]+)/test-connection$',
+  );
+  static final RegExp _disconnectPattern = RegExp(
+    r'^/v1/integrations/([a-z0-9_]+)/disconnect$',
   );
 
   static Future<Map<String, Object?>> _readJsonBody(HttpRequest request) async {

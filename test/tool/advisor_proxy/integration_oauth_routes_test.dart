@@ -14,6 +14,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart'
     as integration;
+import 'package:forge_and_flow/services/integration/repository_integration_routes_gateway.dart'
+    show
+        IntegrationGatewayNotFound,
+        IntegrationGatewayPermissionDenied,
+        IntegrationGatewayUnavailable;
 
 import '../../../tool/advisor_proxy/admin_integrations_routes.dart' show
     FirstConnectionBackfillEnqueueGateway,
@@ -390,6 +395,245 @@ void main() {
           'operator_id': _operatorB,
           'location_id': _locationB,
           'api_key': 'whatever',
+        },
+        headers: <String, String>{
+          HttpHeaders.authorizationHeader: 'Bearer test-jwt',
+        },
+      );
+      await routes.tryHandle(request);
+      expect(request.response.statusCode, 403);
+    });
+  });
+
+  group('IntegrationOAuthRoutes — test-connection', () {
+    test('happy path: 200 with ok=true + latency_ms', () async {
+      final gateway = _RecordingIntegrationRoutesGateway(
+        testConnectionResult: <String, Object?>{
+          'auth_valid': true,
+          'elapsed_ms': 7,
+          'sample': <String, Object?>{'order_id': 'abc'},
+          'field_mapping': <String, Object?>{'covers': 'guests'},
+        },
+      );
+      final routes = _buildRoutes(integrationRoutesGateway: gateway);
+      final request = _StubHttpRequest(
+        method: 'POST',
+        uri: Uri.parse(
+          'http://localhost/v1/integrations/toast/test-connection',
+        ),
+        bodyJson: <String, Object?>{
+          'operator_id': _operatorA,
+          'location_id': _locationA,
+        },
+        headers: <String, String>{
+          HttpHeaders.authorizationHeader: 'Bearer test-jwt',
+        },
+      );
+      await routes.tryHandle(request);
+      expect(request.response.statusCode, 200);
+      final body =
+          jsonDecode(request.response.bodyText) as Map<String, Object?>;
+      expect(body['ok'], isTrue);
+      expect(body['auth_valid'], isTrue);
+      expect(body['latency_ms'], isA<int>());
+      expect(gateway.testConnectionCalls, hasLength(1));
+      expect(gateway.testConnectionCalls.single.vendorId, 'toast');
+    });
+
+    test('missing bearer → 401', () async {
+      final routes = _buildRoutes();
+      final request = _StubHttpRequest(
+        method: 'POST',
+        uri: Uri.parse(
+          'http://localhost/v1/integrations/toast/test-connection',
+        ),
+        bodyJson: <String, Object?>{
+          'operator_id': _operatorA,
+          'location_id': _locationA,
+        },
+      );
+      await routes.tryHandle(request);
+      expect(request.response.statusCode, 401);
+    });
+
+    test('JWT scope mismatch → 403', () async {
+      final routes = _buildRoutes();
+      final request = _StubHttpRequest(
+        method: 'POST',
+        uri: Uri.parse(
+          'http://localhost/v1/integrations/toast/test-connection',
+        ),
+        bodyJson: <String, Object?>{
+          'operator_id': _operatorB,
+          'location_id': _locationB,
+        },
+        headers: <String, String>{
+          HttpHeaders.authorizationHeader: 'Bearer test-jwt',
+        },
+      );
+      await routes.tryHandle(request);
+      expect(request.response.statusCode, 403);
+    });
+
+    test('unknown vendor (gateway raises NotFound) → 404', () async {
+      final gateway = _RecordingIntegrationRoutesGateway(
+        testConnectionThrows:
+            const _GatewayThrow(_GatewayThrowKind.notFound, 'no_row'),
+      );
+      final routes = _buildRoutes(integrationRoutesGateway: gateway);
+      final request = _StubHttpRequest(
+        method: 'POST',
+        uri: Uri.parse(
+          'http://localhost/v1/integrations/unknown_vendor/test-connection',
+        ),
+        bodyJson: <String, Object?>{
+          'operator_id': _operatorA,
+          'location_id': _locationA,
+        },
+        headers: <String, String>{
+          HttpHeaders.authorizationHeader: 'Bearer test-jwt',
+        },
+      );
+      await routes.tryHandle(request);
+      expect(request.response.statusCode, 404);
+    });
+
+    test('permission denied → 403', () async {
+      final gateway = _RecordingIntegrationRoutesGateway(
+        testConnectionThrows: const _GatewayThrow(
+          _GatewayThrowKind.permissionDenied,
+          'integrations.configure_required',
+        ),
+      );
+      final routes = _buildRoutes(integrationRoutesGateway: gateway);
+      final request = _StubHttpRequest(
+        method: 'POST',
+        uri: Uri.parse(
+          'http://localhost/v1/integrations/toast/test-connection',
+        ),
+        bodyJson: <String, Object?>{
+          'operator_id': _operatorA,
+          'location_id': _locationA,
+        },
+        headers: <String, String>{
+          HttpHeaders.authorizationHeader: 'Bearer test-jwt',
+        },
+      );
+      await routes.tryHandle(request);
+      expect(request.response.statusCode, 403);
+    });
+  });
+
+  group('IntegrationOAuthRoutes — disconnect', () {
+    test('happy path: 200 with ok=true', () async {
+      final gateway = _RecordingIntegrationRoutesGateway(
+        disconnectResult: <String, Object?>{
+          'connection_id': 'conn-1',
+          'status': 'disconnected',
+          'disconnect_reason': 'operator_action',
+          'already_disconnected': false,
+        },
+      );
+      final routes = _buildRoutes(integrationRoutesGateway: gateway);
+      final request = _StubHttpRequest(
+        method: 'POST',
+        uri: Uri.parse(
+          'http://localhost/v1/integrations/toast/disconnect',
+        ),
+        bodyJson: <String, Object?>{
+          'operator_id': _operatorA,
+          'location_id': _locationA,
+          'reason': 'operator_action',
+        },
+        headers: <String, String>{
+          HttpHeaders.authorizationHeader: 'Bearer test-jwt',
+        },
+      );
+      await routes.tryHandle(request);
+      expect(request.response.statusCode, 200);
+      final body =
+          jsonDecode(request.response.bodyText) as Map<String, Object?>;
+      expect(body['ok'], isTrue);
+      expect(body['status'], 'disconnected');
+      expect(gateway.disconnectCalls, hasLength(1));
+      expect(gateway.disconnectCalls.single.vendorId, 'toast');
+      expect(gateway.disconnectCalls.single.reason, 'operator_action');
+    });
+
+    test('missing bearer → 401', () async {
+      final routes = _buildRoutes();
+      final request = _StubHttpRequest(
+        method: 'POST',
+        uri: Uri.parse(
+          'http://localhost/v1/integrations/toast/disconnect',
+        ),
+        bodyJson: <String, Object?>{
+          'operator_id': _operatorA,
+          'location_id': _locationA,
+        },
+      );
+      await routes.tryHandle(request);
+      expect(request.response.statusCode, 401);
+    });
+
+    test('JWT scope mismatch → 403', () async {
+      final routes = _buildRoutes();
+      final request = _StubHttpRequest(
+        method: 'POST',
+        uri: Uri.parse(
+          'http://localhost/v1/integrations/toast/disconnect',
+        ),
+        bodyJson: <String, Object?>{
+          'operator_id': _operatorB,
+          'location_id': _locationB,
+        },
+        headers: <String, String>{
+          HttpHeaders.authorizationHeader: 'Bearer test-jwt',
+        },
+      );
+      await routes.tryHandle(request);
+      expect(request.response.statusCode, 403);
+    });
+
+    test('unknown connection (gateway raises NotFound) → 404', () async {
+      final gateway = _RecordingIntegrationRoutesGateway(
+        disconnectThrows:
+            const _GatewayThrow(_GatewayThrowKind.notFound, 'no_row'),
+      );
+      final routes = _buildRoutes(integrationRoutesGateway: gateway);
+      final request = _StubHttpRequest(
+        method: 'POST',
+        uri: Uri.parse(
+          'http://localhost/v1/integrations/unknown_vendor/disconnect',
+        ),
+        bodyJson: <String, Object?>{
+          'operator_id': _operatorA,
+          'location_id': _locationA,
+        },
+        headers: <String, String>{
+          HttpHeaders.authorizationHeader: 'Bearer test-jwt',
+        },
+      );
+      await routes.tryHandle(request);
+      expect(request.response.statusCode, 404);
+    });
+
+    test('permission denied → 403', () async {
+      final gateway = _RecordingIntegrationRoutesGateway(
+        disconnectThrows: const _GatewayThrow(
+          _GatewayThrowKind.permissionDenied,
+          'integrations.configure_required',
+        ),
+      );
+      final routes = _buildRoutes(integrationRoutesGateway: gateway);
+      final request = _StubHttpRequest(
+        method: 'POST',
+        uri: Uri.parse(
+          'http://localhost/v1/integrations/toast/disconnect',
+        ),
+        bodyJson: <String, Object?>{
+          'operator_id': _operatorA,
+          'location_id': _locationA,
         },
         headers: <String, String>{
           HttpHeaders.authorizationHeader: 'Bearer test-jwt',
@@ -789,7 +1033,22 @@ class _RecordingBackfillEnqueueGateway
 }
 
 class _RecordingIntegrationRoutesGateway implements IntegrationRoutesGateway {
+  _RecordingIntegrationRoutesGateway({
+    this.testConnectionResult,
+    this.testConnectionThrows,
+    this.disconnectResult,
+    this.disconnectThrows,
+  });
+
   final List<_ConnectKeyCall> connectKeyCalls = <_ConnectKeyCall>[];
+  final List<_TestConnectionCall> testConnectionCalls =
+      <_TestConnectionCall>[];
+  final List<_DisconnectCall> disconnectCalls = <_DisconnectCall>[];
+
+  final Map<String, Object?>? testConnectionResult;
+  final _GatewayThrow? testConnectionThrows;
+  final Map<String, Object?>? disconnectResult;
+  final _GatewayThrow? disconnectThrows;
 
   @override
   Future<Map<String, Object?>> connectViaKeyPaste({
@@ -823,7 +1082,17 @@ class _RecordingIntegrationRoutesGateway implements IntegrationRoutesGateway {
     required String actorUserId,
     required String vendorId,
     required String reason,
-  }) async => <String, Object?>{};
+  }) async {
+    disconnectCalls.add(_DisconnectCall(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: vendorId,
+      reason: reason,
+    ));
+    final thrown = disconnectThrows;
+    if (thrown != null) thrown.throwIt();
+    return disconnectResult ?? const <String, Object?>{};
+  }
 
   @override
   Future<Map<String, Object?>> handleOAuthCallback({
@@ -867,7 +1136,16 @@ class _RecordingIntegrationRoutesGateway implements IntegrationRoutesGateway {
     required String locationId,
     required String actorUserId,
     required String vendorId,
-  }) async => <String, Object?>{};
+  }) async {
+    testConnectionCalls.add(_TestConnectionCall(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: vendorId,
+    ));
+    final thrown = testConnectionThrows;
+    if (thrown != null) thrown.throwIt();
+    return testConnectionResult ?? const <String, Object?>{};
+  }
 }
 
 class _ConnectKeyCall {
@@ -881,6 +1159,49 @@ class _ConnectKeyCall {
   final String locationId;
   final String vendorId;
   final String apiKey;
+}
+
+class _TestConnectionCall {
+  _TestConnectionCall({
+    required this.operatorId,
+    required this.locationId,
+    required this.vendorId,
+  });
+  final String operatorId;
+  final String locationId;
+  final String vendorId;
+}
+
+class _DisconnectCall {
+  _DisconnectCall({
+    required this.operatorId,
+    required this.locationId,
+    required this.vendorId,
+    required this.reason,
+  });
+  final String operatorId;
+  final String locationId;
+  final String vendorId;
+  final String reason;
+}
+
+enum _GatewayThrowKind { notFound, permissionDenied, unavailable }
+
+class _GatewayThrow {
+  const _GatewayThrow(this.kind, this.message);
+  final _GatewayThrowKind kind;
+  final String message;
+
+  Never throwIt() {
+    switch (kind) {
+      case _GatewayThrowKind.notFound:
+        throw IntegrationGatewayNotFound(message);
+      case _GatewayThrowKind.permissionDenied:
+        throw IntegrationGatewayPermissionDenied(message);
+      case _GatewayThrowKind.unavailable:
+        throw IntegrationGatewayUnavailable(message);
+    }
+  }
 }
 
 // ─── Stub HttpRequest / HttpResponse ──────────────────────────────────
