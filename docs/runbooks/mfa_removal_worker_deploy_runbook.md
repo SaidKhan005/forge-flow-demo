@@ -94,6 +94,7 @@ before processing any rows.
 | `SERVICE_PRINCIPAL_JWT_SECRET` | yes (config gate) | Secret Manager | Loaded by `ProxyConfig.fromEnvironment` even though the worker never issues `sp:` tokens. Absent → startup error. |
 | `ANTHROPIC_API_KEY` | yes (config gate) | Secret Manager | Same — loaded but unused by the worker. Pin to the same secret the advisor proxy uses. |
 | `VOYAGE_API_KEY` | yes (config gate) | Secret Manager | Same. |
+| `PGCRYPTO_ENVELOPE_KEY` | yes (config gate) | Secret Manager | Required by `ProxySecretNames.required` since PR #260. Loaded but unused by this worker; pin to the same secret the advisor proxy uses. |
 | `GEMINI_API_KEY` | optional | Secret Manager | Loaded when present; unused by this worker. |
 | `MFA_REMOVAL_BATCH_SIZE` | optional | Cloud Run env (plain) | Defaults to 50 in the worker (see `_batchSize` in main.dart). |
 | `PORT` | unused | — | Cloud Run Jobs do not bind a port; the worker ignores `PORT`. |
@@ -131,6 +132,7 @@ gcloud run jobs deploy mfa-removal-worker \
   --set-secrets=SERVICE_PRINCIPAL_JWT_SECRET=${SECRET_PREFIX}service-principal-jwt-secret:latest \
   --set-secrets=ANTHROPIC_API_KEY=${SECRET_PREFIX}anthropic-api-key:latest \
   --set-secrets=VOYAGE_API_KEY=${SECRET_PREFIX}voyage-api-key:latest \
+  --set-secrets=PGCRYPTO_ENVELOPE_KEY=${SECRET_PREFIX}pgcrypto-envelope-key:latest \
   --vpc-connector=projects/${PROJECT_ID}/locations/northamerica-northeast2/connectors/${VPC_CONNECTOR} \
   --vpc-egress=all-traffic
 ```
@@ -163,7 +165,7 @@ SDK calls authenticated by the Cloud Run service account's ADC.
 
 | Role | Scope | Reason |
 | ---- | ----- | ------ |
-| `roles/secretmanager.secretAccessor` | each env-prefixed proxy secret (`${SECRET_PREFIX}postgres-url`, `${SECRET_PREFIX}postgres-admin-url`, `${SECRET_PREFIX}firebase-web-api-key`, `${SECRET_PREFIX}service-principal-jwt-secret`, `${SECRET_PREFIX}anthropic-api-key`, `${SECRET_PREFIX}voyage-api-key`) | Cloud Run injects `--set-secrets` values at boot; the SA must read each secret version. |
+| `roles/secretmanager.secretAccessor` | each env-prefixed proxy secret (`${SECRET_PREFIX}postgres-url`, `${SECRET_PREFIX}postgres-admin-url`, `${SECRET_PREFIX}firebase-web-api-key`, `${SECRET_PREFIX}service-principal-jwt-secret`, `${SECRET_PREFIX}anthropic-api-key`, `${SECRET_PREFIX}voyage-api-key`, `${SECRET_PREFIX}pgcrypto-envelope-key`) | Cloud Run injects `--set-secrets` values at boot; the SA must read each secret version. |
 | `roles/logging.logWriter` | project | stdout/stderr from the AOT binary lands in Cloud Logging. |
 | `roles/firebaseauth.admin` | Firebase project (same as `FIREBASE_PROJECT_ID`) | Identity Toolkit `accounts:update` + `accounts:lookup` to clear the Firebase MFA factor. Without this role, Identity Toolkit returns `PERMISSION_DENIED` and the worker reports `failed=N` per batch. |
 | (optional) `roles/cloudtrace.agent` | project | If Cloud Trace is wired into the proxy bindings later. Not required today. |
@@ -179,7 +181,8 @@ done
 
 for SECRET in ${SECRET_PREFIX}postgres-url ${SECRET_PREFIX}postgres-admin-url \
               ${SECRET_PREFIX}firebase-web-api-key ${SECRET_PREFIX}service-principal-jwt-secret \
-              ${SECRET_PREFIX}anthropic-api-key ${SECRET_PREFIX}voyage-api-key; do
+              ${SECRET_PREFIX}anthropic-api-key ${SECRET_PREFIX}voyage-api-key \
+              ${SECRET_PREFIX}pgcrypto-envelope-key; do
   gcloud secrets add-iam-policy-binding "${SECRET}" \
     --member="serviceAccount:mfa-removal-worker-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role=roles/secretmanager.secretAccessor
