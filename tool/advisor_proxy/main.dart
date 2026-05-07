@@ -42,6 +42,7 @@ import 'admin_email_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
 import 'advisor_response_cache.dart';
+import 'integration_oauth_routes.dart';
 import 'log.dart';
 import 'phase_8_production_binder.dart';
 import 'proxy_bootstrap.dart';
@@ -759,6 +760,22 @@ Future<void> main(List<String> args) async {
           // adapter map); until then `tryHandleStatic` is a noop
           // pass-through that returns false.
           if (await Phase80IntegrationRoutes.tryHandleStatic(request)) {
+            return;
+          }
+          // endregion
+          // region: phase_8_operator_oauth_routes
+          // Phase 8 — operator-facing OAuth begin/callback +
+          // API-key connect. Handles
+          // /v1/integrations/oauth/{vendor}/begin,
+          // /v1/integrations/oauth/{vendor}/callback,
+          // /v1/integrations/api-key/{vendor}/connect.
+          // Returns true when the path matched and was handled;
+          // returns false on non-matching paths so we fall through
+          // to the existing dispatcher. The bindings holder is set
+          // by a follow-up slice that wires per-vendor OAuth
+          // descriptors + token exchangers; until then
+          // `tryHandleStatic` returns false on every request.
+          if (await IntegrationOAuthRoutes.tryHandleStatic(request)) {
             return;
           }
           // endregion
