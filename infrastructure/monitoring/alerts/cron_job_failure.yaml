@@ -1,0 +1,85 @@
+# Forge & Flow — Alert Policy: Cron Job Failure
+#
+# Fires when any Cloud Run scheduled job OR pg_cron job exits with a
+# non-zero status. Covers: audit_anchor daily sweep, connector_backfill
+# jobs, pg_cron maintenance tasks (pg_partman partition maintenance,
+# audit log partition pruning, cost-window roll-up).
+#
+# Platform: Google Cloud Monitoring.
+# Severity: P1 for audit_anchor; P2 for all others.
+# Notification channel: PagerDuty.
+# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#audit-anchor-crash
+---
+apiVersion: monitoring.googleapis.com/v3
+kind: AlertPolicy
+metadata:
+  name: forge-flow-cron-job-failure
+  labels:
+    component: scheduled-jobs
+    severity: P1
+    phase: v1-launch
+  annotations:
+    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md
+spec:
+  displayName: "[P1/P2] Cron Job / Scheduled Job Non-Zero Exit"
+  documentation:
+    content: |
+      A Cloud Run Job or pg_cron task has exited with a non-zero status.
+
+      Severity escalation:
+      - job_name = 'forge-flow-audit-anchor' → P1 (compliance, SOC 2 gap risk).
+      - All other jobs → P2.
+
+      Immediate actions (Cloud Run jobs):
+      1. Identify job: check alert label `job_name`.
+      2. View recent executions: gcloud run jobs executions list --job=<job_name> --region=__REGION__ --limit=5
+      3. Read failure logs: gcloud logging read 'resource.type="cloud_run_job" resource.labels.job_name="<job_name>" severity>=ERROR' --limit=50
+      4. For audit_anchor: follow runbooks/audit_chain_verify_runbook.md triage section.
+      5. Trigger manual rerun once root cause is fixed: gcloud run jobs run <job_name> --region=__REGION__
+
+      Immediate actions (pg_cron):
+      1. Query failure log: SELECT jobid, runid, status, return_message FROM cron.job_run_details WHERE status = 'failed' ORDER BY start_time DESC LIMIT 10;
+      2. Identify the job command: SELECT jobid, command, schedule FROM cron.job WHERE jobid = <id>;
+      3. Fix the underlying cause and manually trigger if needed: SELECT cron.schedule_in_database(...)
+
+      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md
+    mimeType: text/markdown
+  conditions:
+    # Cloud Run Job failure condition
+    - displayName: Cloud Run Job non-zero exit
+      conditionThreshold:
+        filter: >
+          resource.type="cloud_run_job"
+          AND metric.type="run.googleapis.com/job/completed_task_attempt_count"
+          AND metric.labels.result="failed"
+        comparison: COMPARISON_GT
+        thresholdValue: 0
+        duration: 0s  # Fire immediately on any failure
+        aggregations:
+          - alignmentPeriod: 300s
+            perSeriesAligner: ALIGN_COUNT
+            crossSeriesReducer: REDUCE_SUM
+            groupByFields:
+              - resource.labels.job_name
+    # pg_cron failure condition (log-based metric)
+    - displayName: pg_cron job failed status
+      conditionPrometheusQueryLanguage:
+        # Log-based counter: custom/forgeflow/pgcron/job_failure_count
+        # Written by a pg_cron monitoring function that polls cron.job_run_details.
+        query: |
+          fetch generic_task::custom.googleapis.com/forgeflow/pgcron/job_failure_count
+          | condition val() > 0
+        duration: 0s
+        evaluationInterval: 60s
+  alertStrategy:
+    autoClose: 3600s
+    notificationRateLimit:
+      period: 300s
+  combiner: OR  # Either condition triggers the alert
+  severity: CRITICAL
+  notificationChannels:
+    - projects/__PROJECT__/notificationChannels/__PAGERDUTY_CHANNEL_ID__
+  userLabels:
+    routing: pagerduty
+    severity: P1
+    component: scheduled-jobs

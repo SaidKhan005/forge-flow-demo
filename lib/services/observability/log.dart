@@ -9,6 +9,8 @@
 //     "correlation_id":"…",
 //     "request_id":"…",
 //     "operator_id":"…",
+//     "trace_id":"…",   ← W3C trace-id from traceparent header
+//     "span_id":"…",    ← W3C span-id for this hop
 //     "fields":{ … domain payload … }
 //   }
 //
@@ -17,12 +19,19 @@
 // recovery codes, raw prompts, raw vendor payloads, JWT bodies, TOTP
 // secrets, MFA codes, and full email addresses. Plaintext from KMS
 // rotations is also dropped.
+//
+// Distributed tracing: [ProxyLogContext] carries an optional
+// [TraceContext]. When present, [log] emits `trace_id` and `span_id`
+// fields in every envelope, enabling cross-service trace correlation
+// in Cloud Logging and Cloud Trace.
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
+
+import 'trace_context.dart';
 
 /// Severity tier. Names map to Cloud Logging textual severity.
 enum LogSeverity {
@@ -54,22 +63,43 @@ enum LogSeverity {
 /// Per-request context. Set on the current zone via
 /// [withProxyLogContext] so every nested log call picks up the IDs
 /// without threading them through call sites.
+///
+/// [traceContext] carries the W3C `traceparent` state for the active
+/// request. When present, [log] emits `trace_id` and `span_id` in
+/// every log envelope. Bind it via [withTraceContext] after extracting
+/// the `traceparent` header from the inbound HTTP request.
 class ProxyLogContext {
   const ProxyLogContext({
     required this.correlationId,
     required this.requestId,
     this.operatorId,
+    this.traceContext,
   });
 
   final String correlationId;
   final String requestId;
   final String? operatorId;
 
+  /// W3C Trace Context for this request. Extracted from the inbound
+  /// `traceparent` header, or generated fresh if the header is absent.
+  final TraceContext? traceContext;
+
   ProxyLogContext withOperatorId(String? operatorId) {
     return ProxyLogContext(
       correlationId: correlationId,
       requestId: requestId,
       operatorId: operatorId,
+      traceContext: traceContext,
+    );
+  }
+
+  /// Returns a new [ProxyLogContext] with [traceContext] bound.
+  ProxyLogContext withTraceContext(TraceContext traceContext) {
+    return ProxyLogContext(
+      correlationId: correlationId,
+      requestId: requestId,
+      operatorId: operatorId,
+      traceContext: traceContext,
     );
   }
 }
@@ -146,6 +176,20 @@ void log(
       'request_id': effectiveContext.requestId,
       if (effectiveContext.operatorId != null)
         'operator_id': effectiveContext.operatorId,
+      // W3C Trace Context — emitted when a traceparent is active so Cloud
+      // Logging can correlate log lines to a distributed trace.
+      if (effectiveContext.traceContext != null) ...<String, Object?>{
+        'trace_id': effectiveContext.traceContext!.traceId,
+        'span_id': effectiveContext.traceContext!.spanId,
+        // Cloud Trace integration: the `logging.googleapis.com/trace` field
+        // links the log line to the Cloud Trace UI entry for this trace.
+        'logging.googleapis.com/trace':
+            'projects/__PROJECT__/traces/${effectiveContext.traceContext!.traceId}',
+        'logging.googleapis.com/spanId':
+            effectiveContext.traceContext!.spanId,
+        'logging.googleapis.com/traceSampled':
+            effectiveContext.traceContext!.sampled,
+      },
     },
     'fields': _redactFields(fields),
   };

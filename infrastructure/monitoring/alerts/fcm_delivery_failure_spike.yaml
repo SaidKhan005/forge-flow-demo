@@ -1,0 +1,76 @@
+# Forge & Flow — Alert Policy: FCM Delivery Failure Spike
+#
+# Fires when the FCM (Firebase Cloud Messaging) push notification delivery
+# success rate drops below 90% over a 1-hour rolling window.
+# Mobile push is the primary out-of-band channel for shift alerts and
+# compliance nudges; sustained delivery failure silently degrades
+# the manager on-the-floor experience.
+#
+# Platform: Google Cloud Monitoring.
+# Severity: P2.
+# Notification channel: PagerDuty.
+# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#fcm-mass-revocation
+---
+apiVersion: monitoring.googleapis.com/v3
+kind: AlertPolicy
+metadata:
+  name: forge-flow-fcm-delivery-failure-spike
+  labels:
+    component: mobile-push
+    severity: P2
+    phase: v1-launch
+  annotations:
+    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#fcm-mass-revocation
+spec:
+  displayName: "[P2] FCM Delivery Success Rate < 90% in 1h"
+  documentation:
+    content: |
+      FCM push notification delivery success rate has fallen below 90% over
+      the last hour. This indicates either mass token revocation (users
+      reinstalled the app) or an FCM service disruption.
+
+      Immediate actions:
+      1. Check FCM error distribution: filter logs for event=fcm.send.error and inspect fields.fcm_error_code.
+         - UNREGISTERED / NOT_FOUND: tokens stale — purge from mobile_push_tokens table.
+         - QUOTA_EXCEEDED: rate limiting — reduce batch send frequency.
+         - INTERNAL / UNAVAILABLE: FCM service disruption — check status.firebase.google.com.
+      2. If UNREGISTERED tokens are the dominant failure: run the token purge query:
+         DELETE FROM mobile_push_tokens WHERE last_fcm_error = 'UNREGISTERED' AND updated_at < now() - interval '7 days';
+      3. If FCM service is down: enable in-app polling fallback; notify affected operators.
+      4. Confirm FIREBASE_PROJECT_ID env var is set correctly on the proxy.
+
+      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#fcm-mass-revocation
+    mimeType: text/markdown
+  conditions:
+    - displayName: FCM success rate < 90% over 1h
+      conditionPrometheusQueryLanguage:
+        # Log-based metrics:
+        #   custom/forgeflow/fcm/send_success_count
+        #   custom/forgeflow/fcm/send_failure_count
+        query: |
+          fetch generic_task::custom.googleapis.com/forgeflow/fcm/send_success_count
+          | join
+              failures: {
+                fetch generic_task::custom.googleapis.com/forgeflow/fcm/send_failure_count
+              }
+          | group_by [], [
+              success_rate: safe_divide(
+                aggregate(val()),
+                aggregate(val()) + aggregate(failures.val())
+              ) * 100
+            ]
+          | condition val(success_rate) < 90
+        duration: 3600s
+        evaluationInterval: 60s
+  alertStrategy:
+    autoClose: 3600s
+    notificationRateLimit:
+      period: 900s
+  combiner: OR
+  severity: WARNING
+  notificationChannels:
+    - projects/__PROJECT__/notificationChannels/__PAGERDUTY_CHANNEL_ID__
+  userLabels:
+    routing: pagerduty
+    severity: P2
+    component: mobile-push
