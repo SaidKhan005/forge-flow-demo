@@ -304,4 +304,31 @@ A fourth remediation wave landed four parallel lanes against the residuals from 
 
 ## Wave 4 closeout PR
 
-- This archive PR — records Wave 4 closures and trims `/CODE_HEALTH.md` to remove the now-closed items.
+- [#354](https://github.com/SaidKhan005/forge-flow-demo/pull/354) — archive PR that recorded the Wave 4 closures and trimmed `/CODE_HEALTH.md`.
+
+---
+
+# Parallel-master delta recorded 2026-05-08
+
+A 2026-05-08 fact-check against `origin/master` confirmed all 8 active CODE_HEALTH residuals are still open in the same shape, with two things shifting on master between the Wave 4 closeout and 2026-05-08 that are worth recording here for the historical record:
+
+## Adjacent BYPASSRLS hardening (parallel work, not a CODE_HEALTH lane)
+
+PR [#304](https://github.com/SaidKhan005/forge-flow-demo/pull/304) (`ops-debt.bypassrls-predicates`) applied the same `operator_id`-predicate-on-BYPASSRLS-UPDATE pattern that L3 ([#251](https://github.com/SaidKhan005/forge-flow-demo/pull/251)) introduced on `users_repository.dart` to three additional tables: `auth_sessions`, `password_history`, `auth_invites`. The pattern is now applied across seven BYPASSRLS UPDATE surfaces, not the four L3 covered. Defense-in-depth posture got broader without a CODE_HEALTH lane asking for it.
+
+## Monolith refactor (parallel work, paid down significant debt)
+
+Between 2026-05-07 and 2026-05-08, `lib/forge_flow_app.dart` shrunk from **2,482 → 1,431 lines** (−1,051 lines in one refactor). Net reduction from audit baseline (2,160 lines) is now **−729 lines**. This is the first time a monolith line count has gone *down* during the remediation period — worth recording because the structural-risk pattern up to this point has been the opposite (steady growth in `advisor_proxy.dart` and `admin_routes.dart`).
+
+## Partial permission-key sweep
+
+The permission-key import count on `lib/operator_web/screens/**` improved from **3 of 23 → 7 of 26** between Wave 4 close and 2026-05-08, without a dedicated CODE_HEALTH lane. New correctly-importing screens: `audit_log_screen.dart`, `hierarchy_screen.dart`, `members_screen.dart`, `sessions_screen.dart`. Original three were `custom_role_editor_screen.dart`, `roles_screen.dart`, `permission_explainer_screen.dart`. Nineteen screens still hand-type permission strings — a future sweep candidate.
+
+## ProxyUsageCounterStore renamed/relocated
+
+The class cited in the "two-slot key vs counter store granularity mismatch" residual was renamed or moved between Wave 4 and 2026-05-08. Repo-wide search no longer finds `ProxyUsageCounterStore`. The residual concern is real but the new file:line cite needs a re-locate before being re-pinned in `/CODE_HEALTH.md`.
+
+## What grew on master between checks
+
+- `tool/advisor_proxy/advisor_proxy.dart`: 15,863 → 16,949 lines (+1,086 in one day; PR [#342](https://github.com/SaidKhan005/forge-flow-demo/pull/342) `vendor-capability-polish` is the main contributor).
+- `lib/admin/admin_routes.dart`: 1,953 → 2,204 lines (+251).
