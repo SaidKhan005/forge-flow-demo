@@ -25,7 +25,12 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/quickbooks_ti
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/integrations/labor/quickbooks_time_labor_adapter.dart'
-    show ModuleRefusalException;
+    show
+        ModuleRefusalException,
+        QuickBooksTimeCanonicalPunchFact,
+        QuickBooksTimeConnectionRow,
+        QuickBooksTimeWatermarkRow,
+        kQuickBooksModuleTime;
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 
 import '../../../integrations/labor/fixtures/quickbooks_time_punches_fixture.dart'
@@ -643,6 +648,489 @@ void main() {
     });
   });
 
+  group(
+    'QuickBooksTimeGateway — typed gateway methods (production binder seam)',
+    () {
+      test(
+        'writePunchFact translates the typed fact through the shared private '
+        'writer, runs the same module disambiguation, and INSERTs into '
+        'labor_punches with hours_worked derived from start/end',
+        () async {
+          final pool = _SinkPool(
+            connectorConnectionModule: 'time',
+            locationTimezoneRow: _toLocationsRow(),
+            insertAffected: 1,
+          );
+          final sink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(pool),
+            now: () => DateTime.utc(2026, 5, 4, 12, 0, 0),
+          );
+          final wrote = await sink.writePunchFact(
+            QuickBooksTimeCanonicalPunchFact(
+              operatorId: _opA,
+              locationId: _locA,
+              vendorEntityId: '901001',
+              vendorModifiedAt: DateTime.utc(2026, 5, 4, 19, 31, 12),
+              shiftStart: DateTime.utc(2026, 5, 4, 11, 0, 0),
+              shiftEnd: DateTime.utc(2026, 5, 4, 19, 30, 0),
+              roleName: 'server',
+              employeeId: '8001',
+              rawPayload: const <String, Object?>{'id': 901001},
+            ),
+          );
+          expect(wrote, isTrue);
+
+          final tx = pool.transactions.single;
+          // The typed fact path goes through the same INSERT shape as
+          // the canonical-fact dict path.
+          final insertParams = tx.parameters.firstWhere(
+            (p) => p.containsKey('employee_source_id'),
+          );
+          expect(insertParams['operator_id'], equals(_opA));
+          expect(insertParams['employee_source_id'], equals('8001'));
+          expect(insertParams['vendor_entity_id'], equals('901001'));
+          // 19:30 - 11:00 = 8h30 = 30600 seconds.
+          expect(insertParams['hours_worked'], equals(30600));
+          // The typed fact does not carry pay_rate; gateway path leaves
+          // the column NULL — Lane `.2`'s aggregator computes
+          // labor_dollars via rate × duration when both land.
+          expect(insertParams['pay_rate'], isNull);
+        },
+      );
+
+      test(
+        'writePunchFact obeys module disambiguation: connector_connection.'
+        'module="payroll" → ModuleRefusalException; the fact never lands',
+        () async {
+          final pool = _SinkPool(
+            connectorConnectionModule: 'payroll',
+            locationTimezoneRow: _toLocationsRow(),
+          );
+          final sink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(pool),
+          );
+          Object? thrown;
+          try {
+            await sink.writePunchFact(
+              QuickBooksTimeCanonicalPunchFact(
+                operatorId: _opA,
+                locationId: _locA,
+                vendorEntityId: '901001',
+                vendorModifiedAt: DateTime.utc(2026, 5, 4, 19, 31, 12),
+                shiftStart: DateTime.utc(2026, 5, 4, 11, 0, 0),
+                shiftEnd: DateTime.utc(2026, 5, 4, 19, 30, 0),
+                roleName: 'server',
+                employeeId: '8001',
+                rawPayload: const <String, Object?>{},
+              ),
+            );
+          } on ModuleRefusalException catch (error) {
+            thrown = error;
+          }
+          expect(thrown, isA<ModuleRefusalException>());
+          final tx = pool.transactions.single;
+          expect(
+            tx.executedSql
+                .any((s) => s.contains('insert into public.labor_punches')),
+            isFalse,
+            reason: 'module refusal must short-circuit before any '
+                'labor_punches INSERT runs on the typed gateway path too',
+          );
+        },
+      );
+
+      test(
+        'upsertConnection inserts into connector_connection with category='
+        'labor + module="time", uses the (operator,location,vendor,'
+        'coalesce(module,"")) ON CONFLICT key, and returns the row populated '
+        'with the server-generated connection_id',
+        () async {
+          const newId = '99999999-9999-9999-9999-999999999999';
+          final pool = _SinkPool(upsertConnectionReturnId: newId);
+          final sink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(pool),
+          );
+          final returned = await sink.upsertConnection(
+            row: const QuickBooksTimeConnectionRow(
+              connectionId: '00000000-0000-0000-0000-000000000000',
+              operatorId: _opA,
+              locationId: _locA,
+              intuitRealmId: 'realm-12345',
+              module: kQuickBooksModuleTime,
+              status: ConnectionStatus.connected,
+            ),
+          );
+          expect(returned.connectionId, equals(newId),
+              reason: 'returned row must carry the server-generated '
+                  'connection_id from the RETURNING clause');
+          expect(returned.operatorId, equals(_opA));
+          expect(returned.intuitRealmId, equals('realm-12345'));
+          expect(returned.module, equals(kQuickBooksModuleTime));
+
+          final tx = pool.transactions.single;
+          final insertSql = tx.executedSql.firstWhere(
+            (s) => s.contains('insert into public.connector_connection'),
+          );
+          expect(insertSql, contains("'labor'"),
+              reason: 'category is fixed to labor for QBT');
+          expect(insertSql,
+              contains("on conflict (operator_id, location_id, vendor_id, "
+                  "coalesce(module, '')) do update set"),
+              reason: 'unique key matches the connector_connection_unique_idx '
+                  'shape from the Phase 8.0 migration');
+          expect(insertSql, contains('returning connection_id'));
+
+          final params = tx.parameters.firstWhere(
+            (p) => p.containsKey('metadata'),
+          );
+          expect(params['operator_id'], equals(_opA));
+          expect(params['location_id'], equals(_locA));
+          expect(params['vendor_id'], equals('quickbooks_time'));
+          expect(params['module'], equals(kQuickBooksModuleTime));
+          expect(params['status'], equals('connected'));
+          // Metadata is JSON-encoded with intuit_realm_id key set.
+          expect(params['metadata'], isA<String>());
+          expect(
+            (params['metadata'] as String).contains('"intuit_realm_id"'),
+            isTrue,
+            reason: 'metadata must carry intuit_realm_id so reconnect '
+                'flows can read it back',
+          );
+        },
+      );
+
+      test(
+        'readWatermark returns null when no row exists; otherwise returns the '
+        'typed QuickBooksTimeWatermarkRow',
+        () async {
+          // Empty case.
+          final emptyPool = _SinkPool();
+          final emptySink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(emptyPool),
+          );
+          final empty = await emptySink.readWatermark(
+            operatorId: _opA,
+            locationId: _locA,
+          );
+          expect(empty, isNull);
+
+          // Populated case.
+          final populatedPool = _SinkPool(
+            connectorSyncWatermarkRow: <String, Object?>{
+              'cursor_token': '5',
+              'last_modified_seen': DateTime.utc(2026, 5, 4, 11, 30, 0),
+            },
+          );
+          final populatedSink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(populatedPool),
+          );
+          final populated = await populatedSink.readWatermark(
+            operatorId: _opA,
+            locationId: _locA,
+          );
+          expect(populated, isNotNull);
+          expect(populated!.cursorToken, equals('5'));
+          expect(populated.lastModifiedSeen,
+              equals(DateTime.utc(2026, 5, 4, 11, 30, 0)));
+        },
+      );
+
+      test(
+        'writeWatermark resolves connection_id from connector_connection '
+        'and UPSERTs into connector_sync_watermark',
+        () async {
+          final pool = _SinkPool(connectorConnectionId: _connId);
+          final sink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(pool),
+            now: () => DateTime.utc(2026, 5, 4, 12, 0, 0),
+          );
+          await sink.writeWatermark(
+            operatorId: _opA,
+            locationId: _locA,
+            row: QuickBooksTimeWatermarkRow(
+              cursorToken: '7',
+              lastModifiedSeen: DateTime.utc(2026, 5, 4, 11, 45, 0),
+            ),
+          );
+          final tx = pool.transactions.single;
+          // Connection id is resolved BEFORE the watermark UPSERT.
+          final lookupIdx = tx.executedSql.indexWhere(
+            (s) => s.contains('select connection_id from public.'
+                'connector_connection'),
+          );
+          final upsertIdx = tx.executedSql.indexWhere(
+            (s) =>
+                s.contains('insert into public.connector_sync_watermark'),
+          );
+          expect(lookupIdx, isNonNegative);
+          expect(upsertIdx, greaterThan(lookupIdx),
+              reason: 'connection_id lookup must run before the UPSERT '
+                  'so the foreign-key bind carries a real id');
+
+          final upsertParams = tx.parameters.firstWhere(
+            (p) =>
+                p['connection_id'] == _connId && p.containsKey('cursor_token'),
+          );
+          expect(upsertParams['cursor_token'], equals('7'));
+          expect(upsertParams['last_modified_seen'],
+              equals(DateTime.utc(2026, 5, 4, 11, 45, 0)));
+          expect(upsertParams['resource'], equals('labor_punches'));
+        },
+      );
+
+      test(
+        'writeWatermark throws StateError when the active tenant has no '
+        'connector_connection row (defensive: a watermark write before connect '
+        'is a router bug, not a silent no-op)',
+        () async {
+          final pool = _SinkPool();
+          final sink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(pool),
+          );
+          Object? thrown;
+          try {
+            await sink.writeWatermark(
+              operatorId: _opA,
+              locationId: _locA,
+              row: QuickBooksTimeWatermarkRow(
+                cursorToken: '1',
+                lastModifiedSeen: DateTime.utc(2026, 5, 4, 11, 0, 0),
+              ),
+            );
+          } on StateError catch (error) {
+            thrown = error;
+          }
+          expect(thrown, isA<StateError>());
+        },
+      );
+
+      test(
+        'readAccessToken pulls access_token_ciphertext from vendor_credentials '
+        'filtered by vendor_id and is_active=true',
+        () async {
+          // Empty case.
+          final emptyPool = _SinkPool();
+          final emptySink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(emptyPool),
+          );
+          final none = await emptySink.readAccessToken(
+            operatorId: _opA,
+            locationId: _locA,
+          );
+          expect(none, isNull);
+
+          // Populated case.
+          final pool = _SinkPool(
+            vendorCredentialsAccessToken: 'cipher-XYZ',
+          );
+          final sink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(pool),
+          );
+          final token = await sink.readAccessToken(
+            operatorId: _opA,
+            locationId: _locA,
+          );
+          expect(token, equals('cipher-XYZ'));
+
+          final tx = pool.transactions.single;
+          final selectSql = tx.executedSql.firstWhere(
+            (s) => s.contains('from public.vendor_credentials'),
+          );
+          expect(selectSql, contains('is_active = true'),
+              reason: 'inactive credentials must not surface');
+          final params = tx.parameters.firstWhere(
+            (p) => p['vendor_id'] == 'quickbooks_time',
+          );
+          expect(params['vendor_id'], equals('quickbooks_time'));
+        },
+      );
+
+      test(
+        'readIntuitRealmId reads metadata.intuit_realm_id from '
+        'connector_connection. Map metadata + JSON-string metadata both work',
+        () async {
+          // Map-shaped metadata (driver returns jsonb as Map directly).
+          final mapPool = _SinkPool(
+            connectorConnectionMetadata: <String, Object?>{
+              'intuit_realm_id': 'realm-mapped',
+              'module': 'time',
+            },
+          );
+          final mapSink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(mapPool),
+          );
+          final fromMap = await mapSink.readIntuitRealmId(
+            operatorId: _opA,
+            locationId: _locA,
+          );
+          expect(fromMap, equals('realm-mapped'));
+
+          // String-shaped metadata (some drivers surface jsonb as String).
+          final stringPool = _SinkPool(
+            connectorConnectionMetadata:
+                '{"intuit_realm_id":"realm-stringy","module":"time"}',
+          );
+          final stringSink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(stringPool),
+          );
+          final fromString = await stringSink.readIntuitRealmId(
+            operatorId: _opA,
+            locationId: _locA,
+          );
+          expect(fromString, equals('realm-stringy'));
+
+          // No row → null.
+          final emptySink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(_SinkPool()),
+          );
+          final none = await emptySink.readIntuitRealmId(
+            operatorId: _opA,
+            locationId: _locA,
+          );
+          expect(none, isNull);
+        },
+      );
+
+      test(
+        'wipeCredentials DELETEs the vendor_credentials row(s) for the '
+        'active tenant; watermark and labor_punches rows are preserved',
+        () async {
+          final pool = _SinkPool();
+          final sink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(pool),
+          );
+          await sink.wipeCredentials(operatorId: _opA, locationId: _locA);
+          final tx = pool.transactions.single;
+          final deleteSql = tx.executedSql.firstWhere(
+            (s) => s.contains('delete from public.vendor_credentials'),
+          );
+          expect(deleteSql, contains('vendor_id = @vendor_id'));
+          // Watermark rows are intentionally preserved across disconnect
+          // so reconnect resumes from the last cursor.
+          expect(
+            tx.executedSql.any(
+              (s) => s.contains('delete from public.connector_sync_watermark'),
+            ),
+            isFalse,
+            reason: 'wipeCredentials must not touch watermark — reconnect '
+                'resumes from the last cursor',
+          );
+          expect(
+            tx.executedSql
+                .any((s) => s.contains('delete from public.labor_punches')),
+            isFalse,
+            reason: 'wipeCredentials must never delete canonical fact rows',
+          );
+
+          final params = tx.parameters.firstWhere(
+            (p) => p.containsKey('vendor_id'),
+          );
+          expect(params['vendor_id'], equals('quickbooks_time'));
+        },
+      );
+
+      test(
+        'every gateway method runs through withTenant — SET LOCAL '
+        'app.operator_id / app.location_id GUCs are bound BEFORE the '
+        'business SQL on each path. Operator-scope isolation: a tenant B '
+        'call never bleeds A\'s GUC payload',
+        () async {
+          final pool = _SinkPool(
+            connectorConnectionModule: 'time',
+            locationTimezoneRow: _toLocationsRow(),
+            connectorConnectionId: _connId,
+            connectorConnectionMetadata: <String, Object?>{
+              'intuit_realm_id': 'realm-scoped',
+            },
+            vendorCredentialsAccessToken: 'tok-scoped',
+            connectorSyncWatermarkRow: <String, Object?>{
+              'cursor_token': '2',
+              'last_modified_seen': DateTime.utc(2026, 5, 4, 11, 0, 0),
+            },
+            upsertConnectionReturnId: _connId,
+            insertAffected: 1,
+          );
+          final sink = QuickBooksTimePostgresSink(
+            tenantWrapper: TenantTransactionWrapper(pool),
+            now: () => DateTime.utc(2026, 5, 4, 12, 0, 0),
+          );
+          // Run every gateway method as op A.
+          await sink.upsertConnection(
+            row: const QuickBooksTimeConnectionRow(
+              connectionId: '00000000-0000-0000-0000-000000000000',
+              operatorId: _opA,
+              locationId: _locA,
+              intuitRealmId: 'realm-1',
+              module: kQuickBooksModuleTime,
+              status: ConnectionStatus.connected,
+            ),
+          );
+          await sink.readWatermark(operatorId: _opA, locationId: _locA);
+          await sink.writeWatermark(
+            operatorId: _opA,
+            locationId: _locA,
+            row: QuickBooksTimeWatermarkRow(
+              cursorToken: '3',
+              lastModifiedSeen: DateTime.utc(2026, 5, 4, 11, 30, 0),
+            ),
+          );
+          await sink.writePunchFact(
+            QuickBooksTimeCanonicalPunchFact(
+              operatorId: _opA,
+              locationId: _locA,
+              vendorEntityId: '901001',
+              vendorModifiedAt: DateTime.utc(2026, 5, 4, 19, 31, 12),
+              shiftStart: DateTime.utc(2026, 5, 4, 11, 0, 0),
+              shiftEnd: DateTime.utc(2026, 5, 4, 19, 30, 0),
+              roleName: 'server',
+              employeeId: '8001',
+              rawPayload: const <String, Object?>{},
+            ),
+          );
+          await sink.readAccessToken(operatorId: _opA, locationId: _locA);
+          await sink.readIntuitRealmId(operatorId: _opA, locationId: _locA);
+          await sink.wipeCredentials(operatorId: _opA, locationId: _locA);
+
+          // Same sink instance, different operator: every transaction
+          // gets its own SET LOCAL payload bound parametrically.
+          await sink.readAccessToken(operatorId: _opB, locationId: _locA);
+
+          // 7 calls as A + 1 as B = 8 transactions; every one carries
+          // its own tenant SET LOCAL pair.
+          expect(pool.transactions, hasLength(8));
+          for (final tx in pool.transactions) {
+            expect(
+              tx.executedSql.where(
+                (s) => s.contains("set_config('app.operator_id'"),
+              ),
+              hasLength(1),
+              reason: 'tenant operator_id GUC must be set before business '
+                  'SQL on every gateway path',
+            );
+            expect(
+              tx.executedSql.where(
+                (s) => s.contains("set_config('app.location_id'"),
+              ),
+              hasLength(1),
+              reason: 'tenant location_id GUC must be set before business '
+                  'SQL on every gateway path',
+            );
+            expect(tx.commitCount, equals(1),
+                reason: 'happy path must commit cleanly');
+          }
+          // Tenant isolation: the last transaction's GUC payload binds
+          // op_B, not op_A — proves OperatorScopedRepository.withTenant
+          // holds the line even when both calls reuse the same sink.
+          final lastTx = pool.transactions.last;
+          final opBPayload = lastTx.parameters.firstWhere(
+            (p) => p['value'] == _opB,
+          );
+          expect(opBPayload['value'], equals(_opB));
+        },
+      );
+    },
+  );
+
   group('Test H — banned-items grep', () {
     test('sink source contains zero V1 lean cut 2 banned tokens', () {
       final source = File(
@@ -703,6 +1191,11 @@ class _SinkPool implements PostgresPool {
   _SinkPool({
     this.connectorConnectionModule,
     this.locationTimezoneRow,
+    this.connectorConnectionId,
+    this.connectorConnectionMetadata,
+    this.vendorCredentialsAccessToken,
+    this.connectorSyncWatermarkRow,
+    this.upsertConnectionReturnId,
     int? insertAffected,
     List<int>? insertAffectedSequence,
   })  : _insertAffectedSequence = insertAffectedSequence != null
@@ -720,6 +1213,27 @@ class _SinkPool implements PostgresPool {
   /// reaches business_date computation.
   final PostgresRow? locationTimezoneRow;
 
+  /// connection_id returned for `select connection_id from
+  /// public.connector_connection` SELECTs. Used by `writeWatermark`
+  /// gateway path.
+  final String? connectorConnectionId;
+
+  /// metadata jsonb returned for `select metadata from
+  /// public.connector_connection` SELECTs. Used by `readIntuitRealmId`.
+  final Object? connectorConnectionMetadata;
+
+  /// access_token_ciphertext returned for `select access_token_ciphertext
+  /// from public.vendor_credentials` SELECTs. Used by `readAccessToken`.
+  final String? vendorCredentialsAccessToken;
+
+  /// Row returned for `select cursor_token, last_modified_seen
+  /// from public.connector_sync_watermark` SELECTs. Used by `readWatermark`.
+  final PostgresRow? connectorSyncWatermarkRow;
+
+  /// connection_id returned by the `insert into public.connector_connection
+  /// ... returning connection_id` (UPSERT path inside `upsertConnection`).
+  final String? upsertConnectionReturnId;
+
   final List<int> _insertAffectedSequence;
 
   final List<_SinkTransaction> transactions = <_SinkTransaction>[];
@@ -734,6 +1248,11 @@ class _SinkPool implements PostgresPool {
     final tx = _SinkTransaction(
       connectorConnectionModule: connectorConnectionModule,
       locationTimezoneRow: locationTimezoneRow,
+      connectorConnectionId: connectorConnectionId,
+      connectorConnectionMetadata: connectorConnectionMetadata,
+      vendorCredentialsAccessToken: vendorCredentialsAccessToken,
+      connectorSyncWatermarkRow: connectorSyncWatermarkRow,
+      upsertConnectionReturnId: upsertConnectionReturnId,
       drainInsertAffected: _drainInsertAffected,
     );
     transactions.add(tx);
@@ -745,11 +1264,21 @@ class _SinkTransaction extends PostgresTransaction {
   _SinkTransaction({
     required this.connectorConnectionModule,
     required this.locationTimezoneRow,
+    required this.connectorConnectionId,
+    required this.connectorConnectionMetadata,
+    required this.vendorCredentialsAccessToken,
+    required this.connectorSyncWatermarkRow,
+    required this.upsertConnectionReturnId,
     required this.drainInsertAffected,
   });
 
   final String? connectorConnectionModule;
   final PostgresRow? locationTimezoneRow;
+  final String? connectorConnectionId;
+  final Object? connectorConnectionMetadata;
+  final String? vendorCredentialsAccessToken;
+  final PostgresRow? connectorSyncWatermarkRow;
+  final String? upsertConnectionReturnId;
   final int Function() drainInsertAffected;
 
   final List<String> executedSql = <String>[];
@@ -769,11 +1298,47 @@ class _SinkTransaction extends PostgresTransaction {
     if (sql.contains('select set_config')) {
       return const <PostgresRow>[];
     }
+    // INSERT ... RETURNING connection_id branch (upsertConnection path).
+    if (sql.contains('insert into public.connector_connection') &&
+        sql.contains('returning connection_id')) {
+      final id = upsertConnectionReturnId;
+      if (id == null) return const <PostgresRow>[];
+      return <PostgresRow>[
+        <String, Object?>{'connection_id': id},
+      ];
+    }
     if (sql.contains('from public.connector_connection')) {
+      // Distinguish by selected column.
+      if (sql.contains('select connection_id ')) {
+        final id = connectorConnectionId;
+        if (id == null) return const <PostgresRow>[];
+        return <PostgresRow>[
+          <String, Object?>{'connection_id': id},
+        ];
+      }
+      if (sql.contains('select metadata ')) {
+        if (connectorConnectionMetadata == null) return const <PostgresRow>[];
+        return <PostgresRow>[
+          <String, Object?>{'metadata': connectorConnectionMetadata},
+        ];
+      }
+      // Default: module SELECT.
       if (connectorConnectionModule == null) return const <PostgresRow>[];
       return <PostgresRow>[
         <String, Object?>{'module': connectorConnectionModule},
       ];
+    }
+    if (sql.contains('from public.vendor_credentials')) {
+      final token = vendorCredentialsAccessToken;
+      if (token == null) return const <PostgresRow>[];
+      return <PostgresRow>[
+        <String, Object?>{'access_token_ciphertext': token},
+      ];
+    }
+    if (sql.contains('from public.connector_sync_watermark')) {
+      final row = connectorSyncWatermarkRow;
+      if (row == null) return const <PostgresRow>[];
+      return <PostgresRow>[row];
     }
     if (sql.contains('from public.locations')) {
       final row = locationTimezoneRow;

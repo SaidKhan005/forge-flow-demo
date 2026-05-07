@@ -62,6 +62,10 @@ import 'dart:convert';
 import '../../../integrations/labor/quickbooks_time_labor_adapter.dart'
     show
         ModuleRefusalException,
+        QuickBooksTimeCanonicalPunchFact,
+        QuickBooksTimeConnectionRow,
+        QuickBooksTimeGateway,
+        QuickBooksTimeWatermarkRow,
         kQuickBooksModuleTime,
         kQuickBooksTimeVendorId;
 import '../../../services/integration/canonical_sink.dart';
@@ -79,7 +83,8 @@ import 'tenant_transaction.dart';
 /// without a vendor-side join.
 const String kQuickBooksTimeWatermarkResource = 'labor_punches';
 
-/// Postgres-backed [CanonicalSink] for QuickBooks Time.
+/// Postgres-backed [CanonicalSink] + [QuickBooksTimeGateway] for
+/// QuickBooks Time.
 ///
 /// Composes the bespoke `QuickBooksTimeGateway` shape onto the
 /// `labor_punches` canonical fact table and the framework's
@@ -96,7 +101,7 @@ const String kQuickBooksTimeWatermarkResource = 'labor_punches';
 /// router refactors that could miswire a labor connection's tick to
 /// a covers / reservation seam.
 class QuickBooksTimePostgresSink extends OperatorScopedRepository
-    implements CanonicalSink {
+    implements CanonicalSink, QuickBooksTimeGateway {
   QuickBooksTimePostgresSink({
     required TenantTransactionWrapper tenantWrapper,
     IanaTimezoneConverter? timezoneConverter,
@@ -179,6 +184,63 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     required String locationId,
     required Map<String, Object?> canonicalPunch,
   }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+    return withTenant<bool>(ctx, (exec) async {
+      return _upsertLaborPunchInternal(
+        exec: exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalPunch: canonicalPunch,
+      );
+    });
+  }
+
+  // ─── QuickBooksTimeGateway: typed punch-fact write ────────────────
+
+  /// Bespoke [QuickBooksTimeGateway.writePunchFact] entry — translates
+  /// the typed canonical fact into the dict shape and delegates to the
+  /// shared private writer. The fact carries hours only (QBT wage class
+  /// is `perEmployeeWithRates`); `pay_rate` is sourced separately from
+  /// the `Users` catalog and the dict shape's `pay_rate` key. The typed
+  /// fact does not carry `pay_rate`, so the gateway path leaves the
+  /// column NULL — Lane `.2`'s aggregator computes labor_dollars via
+  /// rate × duration when both land.
+  @override
+  Future<bool> writePunchFact(QuickBooksTimeCanonicalPunchFact fact) {
+    final ctx = TenantContext(
+      operatorId: fact.operatorId,
+      locationId: fact.locationId,
+    );
+    return withTenant<bool>(ctx, (exec) async {
+      return _upsertLaborPunchInternal(
+        exec: exec,
+        operatorId: fact.operatorId,
+        locationId: fact.locationId,
+        canonicalPunch: <String, Object?>{
+          'vendor_entity_id': fact.vendorEntityId,
+          'vendor_modified_at': fact.vendorModifiedAt,
+          'shift_start': fact.shiftStart,
+          'shift_end': fact.shiftEnd,
+          'employee_source_id': fact.employeeId,
+          'role_name': fact.roleName,
+          'hours_worked': _deriveSeconds(fact.shiftStart, fact.shiftEnd),
+          'raw_payload': fact.rawPayload,
+        },
+      );
+    });
+  }
+
+  // ─── Shared private writer ────────────────────────────────────────
+
+  Future<bool> _upsertLaborPunchInternal({
+    required PostgresExecutor exec,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalPunch,
+  }) async {
     final vendorEntityId = _requireString(canonicalPunch, 'vendor_entity_id');
     final vendorModifiedAt =
         _requireUtcInstant(canonicalPunch, 'vendor_modified_at');
@@ -191,60 +253,54 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     final payRate = _readNumber(canonicalPunch, 'pay_rate');
     final rawPayload = _readPayload(canonicalPunch, 'raw_payload');
 
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
-    return withTenant<bool>(ctx, (exec) async {
-      // Module disambiguation — refuse anything other than `time`.
-      final module = await _readConnectionModule(exec);
-      if (module != kQuickBooksModuleTime) {
-        throw ModuleRefusalException(
-          module: module ?? '',
-          message:
-              'QuickBooks Time sink received a punch row attributed to '
-              'connector_connection.module="${module ?? ''}"; only the '
-              '"time" module is supported. Reconnect from the QuickBooks '
-              'Time tile in the Vendor Connections widget.',
-        );
-      }
-
-      final businessDate = await _resolveBusinessDate(exec, shiftStart);
-      final affected = await exec.execute(
-        'insert into public.labor_punches ('
-        'operator_id, location_id, '
-        'employee_source_id, role_name, '
-        'shift_start, shift_end, hours_worked, pay_rate, '
-        'vendor_id, vendor_entity_id, vendor_modified_at, '
-        'raw_payload, business_date'
-        ') values ('
-        '@operator_id::uuid, @location_id::uuid, '
-        '@employee_source_id, @role_name, '
-        '@shift_start::timestamptz, @shift_end::timestamptz, '
-        '@hours_worked, @pay_rate, '
-        '@vendor_id, @vendor_entity_id, @vendor_modified_at::timestamptz, '
-        '@raw_payload::jsonb, @business_date::date'
-        ') '
-        'on conflict (operator_id, vendor_id, vendor_entity_id, '
-        'vendor_modified_at) do nothing',
-        parameters: <String, Object?>{
-          'operator_id': operatorId,
-          'location_id': locationId,
-          'employee_source_id': employeeSourceId,
-          'role_name': roleName,
-          'shift_start': shiftStart,
-          'shift_end': shiftEnd,
-          'hours_worked': hoursWorked,
-          'pay_rate': payRate,
-          'vendor_id': kQuickBooksTimeVendorId,
-          'vendor_entity_id': vendorEntityId,
-          'vendor_modified_at': vendorModifiedAt,
-          'raw_payload': jsonEncode(rawPayload),
-          'business_date': _formatDate(businessDate),
-        },
+    // Module disambiguation — refuse anything other than `time`.
+    final module = await _readConnectionModule(exec);
+    if (module != kQuickBooksModuleTime) {
+      throw ModuleRefusalException(
+        module: module ?? '',
+        message:
+            'QuickBooks Time sink received a punch row attributed to '
+            'connector_connection.module="${module ?? ''}"; only the '
+            '"time" module is supported. Reconnect from the QuickBooks '
+            'Time tile in the Vendor Connections widget.',
       );
-      return affected > 0;
-    });
+    }
+
+    final businessDate = await _resolveBusinessDate(exec, shiftStart);
+    final affected = await exec.execute(
+      'insert into public.labor_punches ('
+      'operator_id, location_id, '
+      'employee_source_id, role_name, '
+      'shift_start, shift_end, hours_worked, pay_rate, '
+      'vendor_id, vendor_entity_id, vendor_modified_at, '
+      'raw_payload, business_date'
+      ') values ('
+      '@operator_id::uuid, @location_id::uuid, '
+      '@employee_source_id, @role_name, '
+      '@shift_start::timestamptz, @shift_end::timestamptz, '
+      '@hours_worked, @pay_rate, '
+      '@vendor_id, @vendor_entity_id, @vendor_modified_at::timestamptz, '
+      '@raw_payload::jsonb, @business_date::date'
+      ') '
+      'on conflict (operator_id, vendor_id, vendor_entity_id, '
+      'vendor_modified_at) do nothing',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'employee_source_id': employeeSourceId,
+        'role_name': roleName,
+        'shift_start': shiftStart,
+        'shift_end': shiftEnd,
+        'hours_worked': hoursWorked,
+        'pay_rate': payRate,
+        'vendor_id': kQuickBooksTimeVendorId,
+        'vendor_entity_id': vendorEntityId,
+        'vendor_modified_at': vendorModifiedAt,
+        'raw_payload': jsonEncode(rawPayload),
+        'business_date': _formatDate(businessDate),
+      },
+    );
+    return affected > 0;
   }
 
   // ─── CanonicalSink: watermark advance ─────────────────────────────
@@ -270,30 +326,120 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
       locationId: locationId,
     );
     return withTenant<void>(ctx, (exec) async {
-      await exec.execute(
-        'insert into public.connector_sync_watermark ('
-        'operator_id, location_id, connection_id, resource, '
-        'last_synced_at, last_modified_seen, cursor_token'
-        ') values ('
-        '@operator_id::uuid, @location_id::uuid, @connection_id::uuid, '
-        '@resource, @last_synced_at::timestamptz, '
-        '@last_modified_seen::timestamptz, @cursor_token'
-        ') on conflict (connection_id, resource) do update set '
-        'last_synced_at = excluded.last_synced_at, '
-        'last_modified_seen = excluded.last_modified_seen, '
-        'cursor_token = excluded.cursor_token, '
-        'updated_at = now()',
-        parameters: <String, Object?>{
-          'operator_id': operatorId,
-          'location_id': locationId,
-          'connection_id': connectionId,
-          'resource': kQuickBooksTimeWatermarkResource,
-          'last_synced_at': _now().toUtc(),
-          'last_modified_seen': lastModifiedSeen.toUtc(),
-          'cursor_token': cursorToken,
-        },
+      await _writeWatermarkInternal(
+        exec: exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        connectionId: connectionId,
+        cursorToken: cursorToken,
+        lastModifiedSeen: lastModifiedSeen,
       );
     });
+  }
+
+  // ─── QuickBooksTimeGateway: watermark read / write ────────────────
+
+  @override
+  Future<QuickBooksTimeWatermarkRow?> readWatermark({
+    required String operatorId,
+    required String locationId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+    return withTenant<QuickBooksTimeWatermarkRow?>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select cursor_token, last_modified_seen '
+        'from public.connector_sync_watermark '
+        'where operator_id = public.app_current_operator() '
+        'and location_id = public.app_current_location() '
+        'and resource = @resource '
+        'order by updated_at desc '
+        'limit 1',
+        parameters: <String, Object?>{
+          'resource': kQuickBooksTimeWatermarkResource,
+        },
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final cursor = row['cursor_token'];
+      final modified = row['last_modified_seen'];
+      if (cursor is! String || modified is! DateTime) return null;
+      return QuickBooksTimeWatermarkRow(
+        cursorToken: cursor,
+        lastModifiedSeen: modified.toUtc(),
+      );
+    });
+  }
+
+  /// Sister-path to [advanceWatermark] for the bespoke gateway shape.
+  /// The gateway-side signature does not carry `connection_id`; the
+  /// sink resolves one from `connector_connection` for the (operator,
+  /// location, vendor=quickbooks_time) triple, then delegates to the
+  /// shared internal writer.
+  @override
+  Future<void> writeWatermark({
+    required String operatorId,
+    required String locationId,
+    required QuickBooksTimeWatermarkRow row,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+    return withTenant<void>(ctx, (exec) async {
+      final connectionId = await _resolveConnectionId(exec);
+      if (connectionId == null) {
+        throw StateError(
+          'QuickBooksTimePostgresSink.writeWatermark could not resolve a '
+          'connector_connection row for the active (operator, location, '
+          'vendor=quickbooks_time) tenant context. The adapter should '
+          'upsert the connection before any watermark write.',
+        );
+      }
+      await _writeWatermarkInternal(
+        exec: exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        connectionId: connectionId,
+        cursorToken: row.cursorToken,
+        lastModifiedSeen: row.lastModifiedSeen,
+      );
+    });
+  }
+
+  Future<void> _writeWatermarkInternal({
+    required PostgresExecutor exec,
+    required String operatorId,
+    required String locationId,
+    required String connectionId,
+    required String cursorToken,
+    required DateTime lastModifiedSeen,
+  }) async {
+    await exec.execute(
+      'insert into public.connector_sync_watermark ('
+      'operator_id, location_id, connection_id, resource, '
+      'last_synced_at, last_modified_seen, cursor_token'
+      ') values ('
+      '@operator_id::uuid, @location_id::uuid, @connection_id::uuid, '
+      '@resource, @last_synced_at::timestamptz, '
+      '@last_modified_seen::timestamptz, @cursor_token'
+      ') on conflict (connection_id, resource) do update set '
+      'last_synced_at = excluded.last_synced_at, '
+      'last_modified_seen = excluded.last_modified_seen, '
+      'cursor_token = excluded.cursor_token, '
+      'updated_at = now()',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'connection_id': connectionId,
+        'resource': kQuickBooksTimeWatermarkResource,
+        'last_synced_at': _now().toUtc(),
+        'last_modified_seen': lastModifiedSeen.toUtc(),
+        'cursor_token': cursorToken,
+      },
+    );
   }
 
   // ─── CanonicalSink: sync log append ───────────────────────────────
@@ -397,7 +543,169 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     });
   }
 
+  // ─── QuickBooksTimeGateway: connection / credential lookup + wipe ─
+
+  @override
+  Future<QuickBooksTimeConnectionRow> upsertConnection({
+    required QuickBooksTimeConnectionRow row,
+  }) {
+    final ctx = TenantContext(
+      operatorId: row.operatorId,
+      locationId: row.locationId,
+    );
+    return withTenant<QuickBooksTimeConnectionRow>(ctx, (exec) async {
+      final returning = await exec.query(
+        'insert into public.connector_connection ('
+        'operator_id, location_id, vendor_id, category, status, '
+        'module, metadata'
+        ') values ('
+        '@operator_id::uuid, @location_id::uuid, @vendor_id, '
+        "'labor', @status, @module, @metadata::jsonb"
+        ') on conflict (operator_id, location_id, vendor_id, '
+        "coalesce(module, '')) do update set "
+        'status = excluded.status, '
+        'metadata = excluded.metadata, '
+        'updated_at = now() '
+        'returning connection_id',
+        parameters: <String, Object?>{
+          'operator_id': row.operatorId,
+          'location_id': row.locationId,
+          'vendor_id': kQuickBooksTimeVendorId,
+          'status': row.status.name,
+          'module': row.module,
+          'metadata': jsonEncode(row.toMetadata()),
+        },
+      );
+      final connectionId = returning.isEmpty
+          ? row.connectionId
+          : (returning.single['connection_id']?.toString() ?? row.connectionId);
+      return QuickBooksTimeConnectionRow(
+        connectionId: connectionId,
+        operatorId: row.operatorId,
+        locationId: row.locationId,
+        intuitRealmId: row.intuitRealmId,
+        module: row.module,
+        status: row.status,
+      );
+    });
+  }
+
+  @override
+  Future<void> wipeCredentials({
+    required String operatorId,
+    required String locationId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+    return withTenant<void>(ctx, (exec) async {
+      // Wipe the credential ciphertext only; the watermark and
+      // canonical-fact rows are intentionally preserved so reconnect
+      // resumes from the last cursor.
+      await exec.execute(
+        'delete from public.vendor_credentials '
+        'where operator_id = public.app_current_operator() '
+        'and (location_id = public.app_current_location() '
+        '  or location_id is null) '
+        'and vendor_id = @vendor_id',
+        parameters: <String, Object?>{
+          'vendor_id': kQuickBooksTimeVendorId,
+        },
+      );
+    });
+  }
+
+  @override
+  Future<String?> readAccessToken({
+    required String operatorId,
+    required String locationId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+    return withTenant<String?>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select access_token_ciphertext '
+        'from public.vendor_credentials '
+        'where operator_id = public.app_current_operator() '
+        'and (location_id = public.app_current_location() '
+        '  or location_id is null) '
+        'and vendor_id = @vendor_id '
+        'and is_active = true '
+        'order by updated_at desc '
+        'limit 1',
+        parameters: <String, Object?>{
+          'vendor_id': kQuickBooksTimeVendorId,
+        },
+      );
+      if (rows.isEmpty) return null;
+      final value = rows.single['access_token_ciphertext'];
+      if (value is String) return value;
+      return null;
+    });
+  }
+
+  @override
+  Future<String?> readIntuitRealmId({
+    required String operatorId,
+    required String locationId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+    return withTenant<String?>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select metadata from public.connector_connection '
+        'where operator_id = public.app_current_operator() '
+        'and location_id = public.app_current_location() '
+        'and vendor_id = @vendor_id '
+        'limit 1',
+        parameters: <String, Object?>{
+          'vendor_id': kQuickBooksTimeVendorId,
+        },
+      );
+      if (rows.isEmpty) return null;
+      final metadata = rows.single['metadata'];
+      Map<Object?, Object?>? parsed;
+      if (metadata is Map) {
+        parsed = metadata;
+      } else if (metadata is String && metadata.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(metadata);
+          if (decoded is Map) parsed = decoded;
+        } catch (_) {
+          return null;
+        }
+      }
+      if (parsed == null) return null;
+      final value = parsed['intuit_realm_id'];
+      if (value is String && value.isNotEmpty) return value;
+      return null;
+    });
+  }
+
   // ─── Helpers ──────────────────────────────────────────────────────
+
+  Future<String?> _resolveConnectionId(PostgresExecutor exec) async {
+    final rows = await exec.query(
+      'select connection_id from public.connector_connection '
+      'where operator_id = public.app_current_operator() '
+      'and location_id = public.app_current_location() '
+      'and vendor_id = @vendor_id '
+      'order by updated_at desc '
+      'limit 1',
+      parameters: <String, Object?>{
+        'vendor_id': kQuickBooksTimeVendorId,
+      },
+    );
+    if (rows.isEmpty) return null;
+    final value = rows.single['connection_id'];
+    if (value is String) return value;
+    return value?.toString();
+  }
 
   Future<String?> _readConnectionModule(PostgresExecutor exec) async {
     final rows = await exec.query(
@@ -414,6 +722,12 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     final value = rows.single['module'];
     if (value is String) return value;
     return null;
+  }
+
+  static int _deriveSeconds(DateTime start, DateTime? end) {
+    if (end == null) return 0;
+    final delta = end.toUtc().difference(start.toUtc()).inSeconds;
+    return delta < 0 ? 0 : delta;
   }
 
   Future<DateTime> _resolveBusinessDate(
