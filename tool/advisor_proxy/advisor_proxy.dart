@@ -12746,7 +12746,7 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'graph_candidates_not_configured',
               'message':
-                  'route requires a GraphCandidatesProxyGateway to be installed',
+                  'Graphify candidates feature is paused during the AI freeze. Will return when phases 11b / 11A.3.x are unpaused. See PROJECT_TRACKER.md.',
             });
             return;
           }
@@ -12823,7 +12823,7 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'graph_candidates_unavailable',
               'message':
-                  'graph candidates operation is unavailable; please retry',
+                  'Graphify candidates feature is paused during the AI freeze. Will return when phases 11b / 11A.3.x are unpaused. See PROJECT_TRACKER.md.',
             });
           }
           return;
