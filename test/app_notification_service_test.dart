@@ -41,6 +41,7 @@ void main() {
             body             TEXT NOT NULL,
             business_date    TEXT NOT NULL,
             created_at       TEXT NOT NULL,
+            read_at          TEXT,
             UNIQUE(restaurant_id, event_key)
           )
         ''');

@@ -337,6 +337,17 @@ abstract class MobilePushNotificationService {
   Future<void> dispose();
 }
 
+/// W2.A — sink that lands a push-delivered notification into the in-app
+/// inbox so the existing notifications screen and bell badge mirror what
+/// the operator saw on the lockscreen.
+///
+/// The coordinator is messaging-only (no SQLite imports), so the actual
+/// inbox writer is injected. The runtime factory wires the production
+/// implementation, which resolves the active restaurant scope and calls
+/// `AppNotificationService.instance.emitPushDelivery`.
+typedef MobilePushInboxSink =
+    Future<void> Function(MobilePushRemoteMessage message);
+
 class NoopMobilePushRouteIntentSource implements MobilePushRouteIntentSource {
   const NoopMobilePushRouteIntentSource();
 
@@ -381,6 +392,7 @@ class MobilePushNotificationCoordinator
     required String appVariant,
     required String appEnvironment,
     void Function(String message)? log,
+    MobilePushInboxSink? inboxSink,
   }) : _environment = environment,
        _messaging = messaging,
        _foregroundNotifications = foregroundNotifications,
@@ -389,7 +401,8 @@ class MobilePushNotificationCoordinator
        _installationIdStore = installationIdStore,
        _appVariant = appVariant,
        _appEnvironment = appEnvironment,
-       _log = log;
+       _log = log,
+       _inboxSink = inboxSink;
 
   final MobilePushRuntimeEnvironment _environment;
   final MobilePushMessagingClient _messaging;
@@ -400,6 +413,7 @@ class MobilePushNotificationCoordinator
   final String _appVariant;
   final String _appEnvironment;
   final void Function(String message)? _log;
+  final MobilePushInboxSink? _inboxSink;
 
   StreamSubscription<MobilePushRemoteMessage>? _foregroundSubscription;
   StreamSubscription<MobilePushRemoteMessage>? _openedSubscription;
@@ -440,6 +454,10 @@ class MobilePushNotificationCoordinator
 
     final initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
+      // Terminated-state delivery: when the app launches from a tap on
+      // a push, persist the message into the inbox before routing so
+      // the operator lands on a populated list.
+      unawaited(_recordInboxDelivery(initialMessage));
       _handleMessageOpen(initialMessage);
     }
   }
@@ -555,14 +573,32 @@ class MobilePushNotificationCoordinator
         payload: message.notificationId,
       ),
     );
+    // Mirror the platform notification into the in-app inbox so the
+    // bell badge ticks up and the notifications screen carries the
+    // entry alongside locally-emitted events.
+    await _recordInboxDelivery(message);
   }
 
   void _handleMessageOpen(MobilePushRemoteMessage message) {
+    // Background-tap path: the OS already showed the platform
+    // notification — make sure the inbox row exists before the
+    // operator is routed to the list.
+    unawaited(_recordInboxDelivery(message));
     _routeIntents.add(
       MobilePushRouteIntent.notifications(
         notificationId: message.notificationId,
       ),
     );
+  }
+
+  Future<void> _recordInboxDelivery(MobilePushRemoteMessage message) async {
+    final sink = _inboxSink;
+    if (sink == null) return;
+    try {
+      await sink(message);
+    } catch (error) {
+      _log?.call('Mobile push inbox sink failed: $error');
+    }
   }
 
   void _openNotifications() {

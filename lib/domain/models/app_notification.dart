@@ -1,4 +1,6 @@
 // Phase 7.55p.4d — Persisted passive in-app notification.
+// W2.A — extended with `readAt` to support push-delivered inbox entries
+// and unread badge tracking.
 
 class AppNotification {
   final String notificationId;
@@ -10,6 +12,10 @@ class AppNotification {
   final String businessDate;
   final String createdAt;
 
+  /// ISO UTC timestamp when the operator viewed/dismissed this notification,
+  /// or `null` if still unread. Mirrors the `read_at` SQLite column.
+  final String? readAt;
+
   const AppNotification({
     required this.notificationId,
     required this.restaurantId,
@@ -19,6 +25,7 @@ class AppNotification {
     required this.body,
     required this.businessDate,
     required this.createdAt,
+    this.readAt,
   });
 
   Map<String, dynamic> toMap() => {
@@ -30,6 +37,7 @@ class AppNotification {
         'body': body,
         'business_date': businessDate,
         'created_at': createdAt,
+        'read_at': readAt,
       };
 
   factory AppNotification.fromMap(Map<String, dynamic> m) => AppNotification(
@@ -41,5 +49,6 @@ class AppNotification {
         body: m['body'] as String,
         businessDate: m['business_date'] as String,
         createdAt: m['created_at'] as String,
+        readAt: m['read_at'] as String?,
       );
 }

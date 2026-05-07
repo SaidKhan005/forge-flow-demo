@@ -3,6 +3,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../../domain/services/utc_metadata_timestamp.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
+import '../app_notification_service.dart';
 import 'mobile_push_notification_service.dart';
 
 const String kForgeFlowNotificationChannelId = 'forge_flow_app_notifications';
@@ -35,6 +38,7 @@ MobilePushNotificationService createFirebaseMobilePushNotificationService({
   String appVariant = 'forgeflow',
   String appEnvironment = 'staging',
   void Function(String message)? log,
+  MobilePushInboxSink? inboxSink,
 }) {
   final environment = FlutterMobilePushRuntimeEnvironment.current();
   if (!environment.isMobile || Firebase.apps.isEmpty) {
@@ -56,6 +60,34 @@ MobilePushNotificationService createFirebaseMobilePushNotificationService({
     appVariant: appVariant,
     appEnvironment: appEnvironment,
     log: log,
+    inboxSink: inboxSink ?? defaultMobilePushInboxSink,
+  );
+}
+
+/// Default [MobilePushInboxSink] used in production: resolves the active
+/// restaurant scope and lands the FCM message into the persisted in-app
+/// notifications inbox. Each FCM `data` payload field has a sensible
+/// fallback so messages without a structured envelope still land
+/// honestly under a generic `push_delivery` type.
+Future<void> defaultMobilePushInboxSink(
+  MobilePushRemoteMessage message,
+) async {
+  final restaurantId =
+      await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
+  final type = message.data['type'] ?? 'push_delivery';
+  final eventKey =
+      message.data['event_key'] ?? '${type}_${nowIsoUtc()}';
+  final title = message.title ?? message.data['title'] ?? 'Notification';
+  final body =
+      message.body ?? message.data['body'] ?? message.data['message'] ?? '';
+  final businessDate = message.data['business_date'] ?? '';
+  await AppNotificationService.instance.emitPushDelivery(
+    restaurantId: restaurantId,
+    type: type,
+    eventKey: eventKey,
+    title: title,
+    body: body,
+    businessDate: businessDate,
   );
 }
 

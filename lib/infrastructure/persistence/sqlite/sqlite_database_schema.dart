@@ -375,7 +375,10 @@ Future<void> _createAllTables(Database db) async {
     )
   ''');
 
-  // ── Passive app notifications (7.55p.4d) ─────────────────────────────
+  // ── Passive app notifications (7.55p.4d, +W2.A read tracking) ─────────
+  // `read_at` is nullable: NULL means unread; a non-NULL ISO UTC value
+  // is the moment the operator marked the notification (or all of them)
+  // read. The bell badge counts rows WHERE read_at IS NULL.
   await db.execute('''
     CREATE TABLE app_notifications (
       notification_id  TEXT PRIMARY KEY NOT NULL,
@@ -386,6 +389,7 @@ Future<void> _createAllTables(Database db) async {
       body             TEXT NOT NULL,
       business_date    TEXT NOT NULL,
       created_at       TEXT NOT NULL,
+      read_at          TEXT,
       UNIQUE(restaurant_id, event_key)
     )
   ''');
