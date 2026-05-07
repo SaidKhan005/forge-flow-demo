@@ -1086,6 +1086,7 @@ class ProxyJwtClaims {
     this.firebaseUid,
     this.rolesVersion,
     this.lastFreshAuthAt,
+    this.permissionVersion,
   });
 
   final String userId;
@@ -1110,6 +1111,12 @@ class ProxyJwtClaims {
   /// Firebase `auth_time` projected to UTC. Admin routes use this for
   /// fresh-auth / MFA freshness checks.
   final DateTime? lastFreshAuthAt;
+
+  /// B1.A3 — monotonically increasing stamp embedded in the JWT on token
+  /// issuance. The proxy auth-middleware compares this against the DB
+  /// value on every request; a mismatch means a permission was granted or
+  /// revoked after the token was issued and forces a 401.
+  final int? permissionVersion;
 }
 
 class ProxyJwtVerificationError implements Exception {
@@ -1930,6 +1937,9 @@ class FirebaseProxyJwtVerifier implements ProxyJwtVerifier {
       actorKind: 'user',
       rolesVersion: _readOptionalInt(payloadJson, 'roles_version'),
       lastFreshAuthAt: authTime,
+      // B1.A3 — carry the permission_version claim so the middleware can
+      // compare it against the DB value without an extra network round-trip.
+      permissionVersion: _readOptionalInt(payloadJson, 'permission_version'),
     );
   }
 
@@ -2048,6 +2058,7 @@ class OperatorContext {
     this.firebaseUid,
     this.rolesVersion = 0,
     this.lastFreshAuthAt,
+    this.permissionVersion,
   });
 
   final String userId;
@@ -2059,6 +2070,10 @@ class OperatorContext {
   final String? firebaseUid;
   final int rolesVersion;
   final DateTime? lastFreshAuthAt;
+
+  /// B1.A3 — JWT claim value at request time. Null for tokens issued
+  /// before the migration lands (treated as "unchecked").
+  final int? permissionVersion;
 
   bool hasRole(String role) => roles.contains(role);
   bool get isServicePrincipal => actorKind == 'service';
@@ -2150,6 +2165,7 @@ class ProxyRequestGuard {
       firebaseUid: claims.firebaseUid,
       rolesVersion: claims.rolesVersion ?? _rolesVersionFromRoles(claims.roles),
       lastFreshAuthAt: claims.lastFreshAuthAt,
+      permissionVersion: claims.permissionVersion,
     );
   }
 
@@ -6189,6 +6205,13 @@ const int kAuthMfaTotpRetryThreshold = 3;
 const Duration kAuthMfaTotpRetryAfter = Duration(seconds: 30);
 const Duration kAuthPasswordResetWindow = Duration(hours: 24);
 const int kAuthPasswordResetThreshold = 10;
+// B1.S8 — magic-link / password-reset request rate limits.
+// Per-email short window: 1 request per 5 minutes.
+const Duration kAuthPasswordResetEmailShortWindow = Duration(minutes: 5);
+const int kAuthPasswordResetEmailShortThreshold = 1;
+// Per-IP: 50 requests per 24 hours.
+const Duration kAuthPasswordResetIpWindow = Duration(hours: 24);
+const int kAuthPasswordResetIpThreshold = 50;
 
 class AuthLockoutEvaluation {
   const AuthLockoutEvaluation({
@@ -7938,6 +7961,28 @@ class ScaffoldFailingProxyPermissionSnapshotResolver
   }
 }
 
+// ─── B1.A3 — Permission-version revoke-forces-logout ─────────────────────────
+//
+// Abstract checker injected into [routeRequest]. Production binding hits
+// `UsersRepository.fetchPermissionVersion` via the admin pool; tests inject
+// [InMemoryPermissionVersionChecker]. When null (back-compat / scaffold) the
+// check is skipped for that request.
+
+abstract class PermissionVersionChecker {
+  /// Returns the stored DB value for [userId]. Returns null when the user
+  /// is not found (treat as "pass" so deletions don't block last requests).
+  Future<int?> fetch(String userId);
+}
+
+class InMemoryPermissionVersionChecker implements PermissionVersionChecker {
+  InMemoryPermissionVersionChecker(this._versions);
+
+  final Map<String, int> _versions;
+
+  @override
+  Future<int?> fetch(String userId) async => _versions[userId];
+}
+
 /// Minimal request router. Routes:
 ///
 ///   - GET /healthz         -> 200 (unauthenticated, local compatibility)
@@ -8014,6 +8059,13 @@ Future<void> routeRequest(
   AuthLockoutAuditSink? authLockoutAuditSink,
   RollingWindowAttemptCounter? mfaTotpRetryCounter,
   RollingWindowAttemptCounter? passwordResetThrottleCounter,
+  // B1.S8 — per-email short-window (1 per 5 min) + per-IP (50 per 24h)
+  // rate limits on password-reset and MFA-recovery-request endpoints.
+  // Optional for back-compat; when null the short-window + IP limits are
+  // skipped (legacy behaviour: only the 10/24h in-memory per-email check
+  // from [passwordResetThrottleCounter] applies).
+  RollingWindowAttemptCounter? passwordResetEmailShortCounter,
+  RollingWindowAttemptCounter? passwordResetIpCounter,
   // HARD-H — admin idempotency cache for cross-tenant POST routes
   // (today: feature flags toggle). Optional: when null, the route
   // runs without route-level dedup and the gateway-side cache
@@ -8068,6 +8120,10 @@ Future<void> routeRequest(
   // returns a typed 503 so the Audit Log screen renders the unknown
   // badge state without crashing.
   AuditChainAnchorsGateway? auditChainAnchorsGateway,
+  // B1.A3 — permission_version revoke-forces-logout. Optional for
+  // back-compat with existing tests + scaffolds. When null the per-request
+  // DB check is skipped and only the JWT claim version gate applies.
+  PermissionVersionChecker? permissionVersionChecker,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -8076,6 +8132,47 @@ Future<void> routeRequest(
 }) async {
   final response = request.response;
   final clock = now ?? DateTime.now;
+
+  // B1.A3 — permission_version check helper. Resolves the operator scope and
+  // then, when [permissionVersionChecker] is wired, compares the JWT claim
+  // `permission_version` against the DB value. On mismatch the helper writes
+  // a 401 and returns null so the caller can early-return.
+  //
+  // Usage:
+  //   final scope = await requireScopeChecked(...);
+  //   if (scope == null) return;
+  //
+  // The helper is declared here so it can capture [permissionVersionChecker]
+  // from the enclosing scope; per-route callers adopt it incrementally.
+  // ignore: unused_element
+  Future<OperatorContext?> requireScopeChecked({
+    required ProxyRequestGuard guard,
+    required String? authorizationHeader,
+    required HttpResponse resp,
+  }) async {
+    OperatorContext scope;
+    try {
+      scope = await guard.requireOperatorContext(
+        authorizationHeader: authorizationHeader,
+      );
+    } on ProxyAuthError catch (error) {
+      _writeJson(resp, error.statusCode, <String, Object?>{'error': error.message});
+      return null;
+    }
+    if (permissionVersionChecker != null && scope.permissionVersion != null) {
+      final dbVersion = await permissionVersionChecker.fetch(scope.userId);
+      if (dbVersion != null && dbVersion != scope.permissionVersion) {
+        _writeJson(resp, 401, <String, Object?>{
+          'error': 'permission_version_mismatch',
+          'message':
+              'your permissions have changed; please sign out and sign back in',
+        });
+        return null;
+      }
+    }
+    return scope;
+  }
+
   // HARD-G observability: read X-Correlation-Id (UUID v4 only),
   // generate one when absent or malformed, mint a per-request
   // request_id, set the response header, and run the body in a zone
@@ -9361,6 +9458,56 @@ Future<void> routeRequest(
           // attacker varies the source IP. Existing PasswordResetRequestThrottled
           // (Firebase-side rate limit) still rides the gateway.
           final emailHashHex = hashAuthEmailHex(email);
+
+          // B1.S8 — per-email 5-min short window (1 request per 5 min).
+          // Prevents rapid-fire spam even within the 10/24h envelope.
+          if (passwordResetEmailShortCounter != null) {
+            final recentCount = passwordResetEmailShortCounter.countInWindow(
+              emailHashHex,
+            );
+            if (recentCount >= kAuthPasswordResetEmailShortThreshold) {
+              response.headers.add(
+                HttpHeaders.retryAfterHeader,
+                kAuthPasswordResetEmailShortWindow.inSeconds.toString(),
+              );
+              _writeJson(response, 429, <String, Object?>{
+                'error': 'reset_request_too_soon',
+                'message':
+                    'please wait at least '
+                    '${kAuthPasswordResetEmailShortWindow.inMinutes} minutes '
+                    'before requesting another reset link',
+                'retry_after_seconds':
+                    kAuthPasswordResetEmailShortWindow.inSeconds,
+              });
+              return;
+            }
+          }
+
+          // B1.S8 — per-IP 24h cap (50 requests).
+          // Prevents a single IP from flooding arbitrary victim inboxes.
+          final clientIpForReset = _resolveLedgerContextFromHeaders(
+            request,
+            trustProxyAuditHeaders: trustProxyAuditHeaders,
+          ).ip ?? 'unknown';
+          if (passwordResetIpCounter != null) {
+            final ipHashHex = hashAuthIpHex(clientIpForReset);
+            final ipCount = passwordResetIpCounter.countInWindow(ipHashHex);
+            if (ipCount >= kAuthPasswordResetIpThreshold) {
+              response.headers.add(
+                HttpHeaders.retryAfterHeader,
+                kAuthPasswordResetIpWindow.inSeconds.toString(),
+              );
+              _writeJson(response, 429, <String, Object?>{
+                'error': 'reset_request_ip_throttled',
+                'message':
+                    'too many reset requests from this network; '
+                    'please try again later',
+                'retry_after_seconds': kAuthPasswordResetIpWindow.inSeconds,
+              });
+              return;
+            }
+          }
+
           if (passwordResetThrottleCounter != null) {
             final priorCount = passwordResetThrottleCounter.countInWindow(
               emailHashHex,
@@ -9412,6 +9559,11 @@ Future<void> routeRequest(
                 // path sees a cache hit and returns BEFORE this compute
                 // body runs, so retries do not inflate the count).
                 passwordResetThrottleCounter?.incrementAndCount(emailHashHex);
+                // B1.S8 — also increment the short-window and IP counters.
+                passwordResetEmailShortCounter?.incrementAndCount(emailHashHex);
+                passwordResetIpCounter?.incrementAndCount(
+                  hashAuthIpHex(clientIpForReset),
+                );
                 // Privacy-preserving: always return 200 with the same body so
                 // the client can show a uniform "if an account exists..."
                 // confirmation regardless of whether the email matched a

@@ -253,12 +253,14 @@ class UserRolesRepository extends OperatorScopedRepository {
       if (id is! String || id.isEmpty) {
         throw StateError('user_roles insert returned a malformed user_role_id');
       }
-      // Bump roles_version atomically inside the same transaction so
-      // the proxy's permission cache invalidates exactly when the
-      // grant lands.
+      // Bump roles_version + permission_version atomically inside the same
+      // transaction so the proxy's permission cache invalidates exactly when
+      // the grant lands, and the per-request permission_version check
+      // forces a 401 on any live token that predates this grant.
       await exec.execute(
         'update users '
-        'set roles_version = roles_version + 1 '
+        'set roles_version = roles_version + 1, '
+        'permission_version = permission_version + 1 '
         'where user_id = @user_id::uuid',
         parameters: <String, Object?>{'user_id': targetUserId},
       );
@@ -294,9 +296,14 @@ class UserRolesRepository extends OperatorScopedRepository {
         },
       );
       if (affected > 0) {
+        // Bump both roles_version and permission_version on revoke.
+        // B1.A3: the permission_version bump ensures any live JWT for this
+        // user fails the per-request DB check on the very next request,
+        // closing the ~5-minute window between revoke and token expiry.
         await exec.execute(
           'update users '
-          'set roles_version = roles_version + 1 '
+          'set roles_version = roles_version + 1, '
+          'permission_version = permission_version + 1 '
           'where user_id = @user_id::uuid',
           parameters: <String, Object?>{'user_id': targetUserId},
         );

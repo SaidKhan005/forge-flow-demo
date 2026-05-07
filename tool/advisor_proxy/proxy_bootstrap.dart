@@ -202,6 +202,9 @@ class ProxyProductionBindings {
     required this.connectorBackfillJobsRouter,
     required this.notificationPreferencesRouter,
     required this.wageRoleRowsRouter,
+    required this.passwordResetEmailShortCounter,
+    required this.passwordResetIpCounter,
+    required this.permissionVersionChecker,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -372,6 +375,26 @@ class ProxyProductionBindings {
   /// discipline as every other operator write. Wired through
   /// [RepositoryWageRoleRowsGateway] over [WageRoleRowsRepository].
   final WageRoleRowsRouter wageRoleRowsRouter;
+
+  /// B1.S8 — per-email 5-min short-window rolling counter for the
+  /// password-reset / magic-link request endpoint. Keyed by
+  /// SHA-256(normalised email). Volatile across proxy restarts; the
+  /// same counter instance is shared across all requests so the window
+  /// is server-process-wide.
+  final RollingWindowAttemptCounter passwordResetEmailShortCounter;
+
+  /// B1.S8 — per-IP 24h rolling counter for the password-reset /
+  /// magic-link request endpoint. Keyed by SHA-256(client IP).
+  /// Volatile across proxy restarts.
+  final RollingWindowAttemptCounter passwordResetIpCounter;
+
+  /// B1.A3 — production [PermissionVersionChecker] backed by the
+  /// admin-pool [UsersRepository]. On each authenticated request the
+  /// proxy compares the JWT `permission_version` claim against the DB
+  /// value; a mismatch (role revoked since token was issued) returns
+  /// 401 so the client re-authenticates and gets a fresh token that
+  /// reflects the updated permissions.
+  final PermissionVersionChecker permissionVersionChecker;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -962,6 +985,20 @@ ProxyProductionBindings buildProxyProductionBindings(
     passwordResetThrottleCounter: RollingWindowAttemptCounter(
       window: kAuthPasswordResetWindow,
     ),
+    // B1.S8 — per-email 5-min short-window + per-IP 24h rate limiters for
+    // password-reset and magic-link request endpoints. In-memory rolling
+    // counters keyed by SHA-256(email) and SHA-256(IP) respectively.
+    passwordResetEmailShortCounter: RollingWindowAttemptCounter(
+      window: kAuthPasswordResetEmailShortWindow,
+    ),
+    passwordResetIpCounter: RollingWindowAttemptCounter(
+      window: kAuthPasswordResetIpWindow,
+    ),
+    // B1.A3 — permission_version revoke-forces-logout. Hits the admin
+    // pool (BYPASSRLS) so the lookup is not blocked by per-tenant RLS.
+    permissionVersionChecker: _PostgresPermissionVersionChecker(
+      usersRepository: UsersRepository(adminWrapper),
+    ),
     operatorWriteRouter: operatorWriteRouter,
     // Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
     // Runs through the tenant transaction wrapper so the per-tenant
@@ -1219,6 +1256,25 @@ class AuthEventsAuditAuthLockoutAuditSink implements AuthLockoutAuditSink {
         'retry_after_seconds': retryAfter.inSeconds,
       },
       adminReason: 'auth.password_reset_throttled',
+    );
+  }
+}
+
+/// B1.A3 — Production [PermissionVersionChecker] backed by the admin-pool
+/// [UsersRepository]. Reads `permission_version` via BYPASSRLS (admin pool)
+/// so the lookup is not blocked by the per-tenant RLS policy. The check is
+/// fast: a single indexed point-read on `users(user_id, permission_version)`.
+class _PostgresPermissionVersionChecker implements PermissionVersionChecker {
+  _PostgresPermissionVersionChecker({required UsersRepository usersRepository})
+    : _usersRepository = usersRepository;
+
+  final UsersRepository _usersRepository;
+
+  @override
+  Future<int?> fetch(String userId) {
+    return _usersRepository.fetchPermissionVersion(
+      userId: userId,
+      adminReason: 'auth.permission_version_check',
     );
   }
 }
