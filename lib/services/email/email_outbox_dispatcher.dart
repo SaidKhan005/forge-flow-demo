@@ -356,13 +356,27 @@ class EmailOutboxDispatcher {
   /// Production calls this from a `pg_cron`-fired tick on the
   /// 1-minute cadence; admin "Test connection" calls it directly so
   /// the test send fires immediately.
+  ///
+  /// J5 race fix: the dead-letter alert is emitted ONLY after
+  /// [EmailOutboxRepository.recordOutcome] succeeds. If the
+  /// persistence layer throws after a successful provider send, the
+  /// alert is suppressed and the error is rethrown — the row stays
+  /// in `sending` state and the next tick re-drives it. This ensures
+  /// an operator never sees "send failed" for a message the recipient
+  /// actually received just because the persistence step crashed
+  /// mid-commit.
   Future<List<EmailDispatchOutcome>> drainBatch() async {
     final claimed = await _repository.claimPending(batchSize: _batchSize);
     final outcomes = <EmailDispatchOutcome>[];
     for (final row in claimed) {
       final outcome = await _dispatchOne(row);
-      outcomes.add(outcome);
+      // J5 fix: persist outcome BEFORE deciding dead-letter. If
+      // recordOutcome throws (e.g. mid-commit crash after a
+      // successful send), we surface the persistence error and do
+      // NOT emit a "failed" alert — the message was delivered; the
+      // row needs a manual or automatic reconciliation pass.
       await _repository.recordOutcome(outcome);
+      outcomes.add(outcome);
       if (outcome.statusKind == EmailDispatchStatusKind.failed) {
         // Code-Health L8 — failureKind is carried directly on the
         // outcome by the typed `_classifyProviderException` path; the

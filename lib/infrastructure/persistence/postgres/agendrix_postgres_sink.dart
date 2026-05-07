@@ -318,7 +318,9 @@ class AgendrixPostgresSink extends OperatorScopedRepository
         'last_synced_at = excluded.last_synced_at, '
         'last_modified_seen = excluded.last_modified_seen, '
         'cursor_token = excluded.cursor_token, '
-        'updated_at = now()',
+        'updated_at = now() '
+        'where excluded.last_synced_at >= '
+        'public.connector_sync_watermark.last_synced_at',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,

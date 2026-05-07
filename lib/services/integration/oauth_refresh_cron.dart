@@ -1,4 +1,4 @@
-// Phase 8.0 — OAuth refresh cron (V1 lean cut 2).
+// Phase 8.0 — OAuth refresh cron (V1 lean cut 2, B2 race fix).
 //
 // Production wiring lives in a `pg_cron` job at "5 minutes past every
 // hour" calling `proxy.refresh_expiring_inbound_vendor_tokens()`.
@@ -17,9 +17,24 @@
 //      `connector_connection.status = 'error'` and write an
 //      `audit_logs` row.
 //
+// B2 race fix (J4) — pg_advisory_xact_lock per (operator, vendor):
+//   Two Cloud Run pods scanning the same near-expiry window would
+//   both call the vendor's token endpoint. Some vendors auto-revoke
+//   the earlier token on the second refresh (e.g. Squarespace,
+//   some Clover environments). The advisory lock serialises concurrent
+//   refresh calls per (operator_id, vendor_id): the lock is
+//   transaction-scoped and releases on commit/rollback automatically.
+//   Lock id `8472002` is seeded by migration
+//   `202605080900_oauth_refresh_advisory_lock.sql`.
+//   [OAuthRefreshGateway.acquireAdvisoryLockForRefresh] is the seam;
+//   production wires a Postgres-backed implementation; tests pass a
+//   fake that records invocations and controls whether the lock is
+//   granted. The runner calls it BEFORE the vendor HTTP call so the
+//   acquired transaction serialises both the HTTP call and the
+//   subsequent credential persistence.
+//
 // V1 lean cut 2 changes from iter1:
-//   * NO `pg_advisory_lock` per (operator, vendor). One cron
-//     instance with low cadence has no contention at V1.
+//   * `pg_advisory_lock` is now RESTORED per J4 race fix (see above).
 //   * NO `email_outbox` emit on auto-disable. The cron writes
 //     audit_logs and flips status to `error`; operator sees the
 //     state in admin UI. Email alert wiring lands later when
@@ -108,6 +123,34 @@ abstract class OAuthRefreshGateway {
   Future<List<VendorCredentialRefreshRow>> findExpiringCredentials({
     required DateTime now,
     required Duration horizon,
+  });
+
+  /// Acquire a per-`(operatorId, vendorId)` Postgres advisory lock
+  /// (transaction-scoped via `pg_advisory_xact_lock`) before the
+  /// vendor HTTP call. Serialises concurrent pods that notice the
+  /// same near-expiry row (J4 race fix).
+  ///
+  /// The advisory lock id is `8472002` (seeded by migration
+  /// `202605080900_oauth_refresh_advisory_lock.sql`). The sub-key is
+  /// derived from `hashtextextended(operatorId || ':' || vendorId, 0)`
+  /// so each (operator, vendor) pair gets an independent lock slot.
+  ///
+  /// Returns `true` when the lock was acquired and the caller should
+  /// proceed with the refresh call. Returns `false` when another pod
+  /// holds the lock and the caller should skip this row for this tick
+  /// (the other pod will handle it). Production uses
+  /// `pg_try_advisory_xact_lock` (non-blocking) so a contended row
+  /// is skipped rather than serialised; the next hourly tick will
+  /// pick up any stragglers.
+  ///
+  /// The lock is transaction-scoped: it releases automatically on
+  /// the first `COMMIT` or `ROLLBACK` after acquisition — no
+  /// explicit unlock is needed. Implementations must run the gateway
+  /// call inside a database transaction for the lock to hold through
+  /// the credential persistence step.
+  Future<bool> acquireAdvisoryLockForRefresh({
+    required String operatorId,
+    required String vendorId,
   });
 
   /// Persist the new envelope on success; reset
@@ -204,6 +247,19 @@ class OAuthRefreshCronRunner {
         // No refresher registered (key-paste vendor with no
         // OAuth, or future vendor not yet wired). Skip without
         // counting as failure.
+        continue;
+      }
+      // J4 race fix: acquire a per-(operator, vendor) advisory lock
+      // before calling the vendor. Non-blocking: if another pod holds
+      // the lock for this pair, skip and let that pod finish. The
+      // next hourly tick re-evaluates.
+      final locked = await gateway.acquireAdvisoryLockForRefresh(
+        operatorId: row.operatorId,
+        vendorId: row.vendorId,
+      );
+      if (!locked) {
+        // Another pod is already refreshing this (operator, vendor)
+        // pair. Skip for this tick; that pod will persist the result.
         continue;
       }
       final outcome = await refresher.refresh(
