@@ -43,7 +43,7 @@ class SqliteDatabase {
   String? _overrideDbPath;
 
   /// Current schema version.
-  static const int schemaVersion = 29;
+  static const int schemaVersion = 30;
 
   Future<Database> get database async {
     _db ??= await _initDb();
@@ -255,6 +255,9 @@ class SqliteDatabase {
     }
     if (oldV < 29) {
       await _migrateToV29(db);
+    }
+    if (oldV < 30) {
+      await _migrateToV30(db);
     }
   }
 

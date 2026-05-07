@@ -31,6 +31,7 @@ before staging-apply + Production1-apply runs.
 | `202605070000_phase_11W_7_operator_account_fields.sql` | 11W.7 / Wave A2 operator-web Account editor write-fields | code-ready — **operator decision pending** |
 | `202605070100_password_history_salt_pepper.sql` | Code Health M2 password-history salt/pepper | code-ready |
 | `202605070200_audit_anchor_advisory_lock_infra.sql` | Code Health M3 audit-anchor advisory lock + Azure breadcrumbs | code-ready |
+| `202605070400_phase_8_notification_preferences.sql` | Phase 8 W2.B per-actor notification preferences (synthetic UUID PK + `UNIQUE NULLS NOT DISTINCT` on 6-tuple, per-user RLS, operator-leading indexes) | code-ready |
 | `202605080000_phase_8_timing_provenance_fk_posture.sql` | V1.B Phase 8 timing-provenance FK flip to `ON DELETE SET NULL` | code-ready |
 | `202605080100_admin_idempotency_expires_at.sql` | Code Health M1 admin idempotency TTL | code-ready |
 | `202605080100_phase_8_weekly_plan_server_truth.sql` | Phase 8 weekly-plan server truth (forecast contexts + snapshots) | code-ready |
@@ -38,7 +39,7 @@ before staging-apply + Production1-apply runs.
 | `202605080300_phase_8_data_accuracy_walk_in_settings.sql` | Phase 8 walk-in handling additive fields | code-ready |
 | `202605080400_phase_8_connector_oauth_state.sql` | Phase 8 connector OAuth CSRF/PKCE state table | code-ready |
 
-**Action:** apply all 20 in next Production1 event per
+**Action:** apply all 21 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

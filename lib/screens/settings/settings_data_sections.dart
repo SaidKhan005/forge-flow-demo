@@ -431,11 +431,17 @@ class SettingsAccountSection extends StatefulWidget {
     this.accountInfoGateway,
     this.passwordChangeGateway,
     this.refreshGeneration = 0,
+    this.viewOnly = false,
   });
 
   final AccountInfoGateway? accountInfoGateway;
   final PasswordChangeGateway? passwordChangeGateway;
   final int refreshGeneration;
+
+  /// W3.A — when true, the password-change action and the bulk
+  /// sign-out action are hidden. The mobile mirror only shows the
+  /// account-info summary + a sign-out-this-device fallback.
+  final bool viewOnly;
 
   @override
   State<SettingsAccountSection> createState() => _SettingsAccountSectionState();
@@ -631,6 +637,14 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
   @override
   Widget build(BuildContext context) {
     final accountInfoGateway = widget.accountInfoGateway;
+    if (widget.viewOnly) {
+      // Read-only mirror: only show the account-info summary card,
+      // no password-change form or sign-out-everywhere action.
+      if (accountInfoGateway == null) {
+        return const SizedBox.shrink();
+      }
+      return _buildAccountInfoCard();
+    }
     final actions = _buildAccountActionsCard();
     if (accountInfoGateway == null) return actions;
     return Column(

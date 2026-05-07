@@ -49,6 +49,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../auth/operator_web_auth_source.dart';
+import '../services/operator_web_audit_chain_anchors_gateway_provider.dart';
 import '../services/web_team_audit_log_gateway.dart';
 import '../widgets/audit_log_row.dart';
 import '../widgets/operator_web_summary_strip.dart';
@@ -90,10 +91,23 @@ class AuditLogScreen extends StatefulWidget {
     this.idempotencyKeyFactory,
     this.onCsvReady,
     this.copyToClipboard,
+    this.chainAnchorGateway,
+    this.chainAnchorClock,
   });
 
   final OperatorWebSession session;
   final WebTeamAuditLogGateway gateway;
+
+  /// Operator Web W4.B - optional gateway driving the chain integrity
+  /// badge. When null the badge falls back to the unknown state with
+  /// a neutral helper string so the rest of the screen keeps working
+  /// (e.g. demo flavors that have not wired the provider yet).
+  final OperatorWebAuditChainAnchorsGateway? chainAnchorGateway;
+
+  /// Override for `DateTime.now()` used to compute the "N hours ago"
+  /// helper string on the badge. Tests pin the clock so the rendered
+  /// helper is deterministic.
+  final DateTime Function()? chainAnchorClock;
 
   /// Optional override for tests so an assertion can pin the
   /// idempotency-key value the screen forwards into the gateway on
@@ -160,10 +174,45 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
   /// show up after a filter change.
   final Map<String, String> _actorPickerCatalog = <String, String>{};
 
+  /// Operator Web W4.B - latest snapshot of the chain anchor health.
+  /// Null while the badge is loading. The screen renders an unknown
+  /// state when no gateway is wired or when the proxy returns an
+  /// error so a transient outage stays neutral.
+  OperatorWebAuditChainAnchorSnapshot? _chainAnchorSnapshot;
+  bool _chainAnchorLoading = false;
+  bool _chainAnchorTransientError = false;
+
   @override
   void initState() {
     super.initState();
     _refresh();
+    _loadChainAnchor();
+  }
+
+  Future<void> _loadChainAnchor() async {
+    final gateway = widget.chainAnchorGateway;
+    if (gateway == null) return;
+    setState(() {
+      _chainAnchorLoading = true;
+      _chainAnchorTransientError = false;
+    });
+    try {
+      final snapshot = await gateway.latest();
+      if (!mounted) return;
+      setState(() {
+        _chainAnchorSnapshot = snapshot;
+        _chainAnchorLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _chainAnchorSnapshot = const OperatorWebAuditChainAnchorSnapshot(
+          status: OperatorWebAuditChainAnchorStatus.unknown,
+        );
+        _chainAnchorLoading = false;
+        _chainAnchorTransientError = true;
+      });
+    }
   }
 
   String _nextIdempotencyKey() {
@@ -404,6 +453,13 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
             canExport: widget._canExport,
             exporting: _exporting,
             onExport: _exportCsv,
+          ),
+          const SizedBox(height: 14),
+          AuditLogIntegrityBadge(
+            snapshot: _chainAnchorSnapshot,
+            isLoading: _chainAnchorLoading,
+            transientError: _chainAnchorTransientError,
+            now: widget.chainAnchorClock?.call(),
           ),
           const SizedBox(height: 18),
           _AuditLogFilters(
@@ -1150,4 +1206,208 @@ class _AuditLogForbiddenSurface extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Operator Web W4.B - chain integrity badge rendered above the
+/// filter strip on the Audit Log screen. Mirrors the F&F Ops Console
+/// chain-integrity rendering in `lib/admin/screens/health_admin_screen.dart`
+/// but scoped to one operator: the daily 02:00 UTC sweep stamps an
+/// anchor row in `audit_chain_anchors`; this badge surfaces the most
+/// recent stamp's freshness so operators can see whether their own
+/// audit log integrity is intact.
+///
+/// States:
+///   * Healthy - "Anchored at 02:00 UTC. Last anchor N hours ago."
+///   * Delayed - "Anchor delayed - last anchor was N hours ago."
+///   * Failed  - "Anchor failed - F and F support is investigating."
+///   * Unknown - "No anchor recorded yet - daily anchoring runs at
+///                02:00 UTC." (when no gateway is wired or when no
+///                anchor row exists for the operator)
+class AuditLogIntegrityBadge extends StatelessWidget {
+  const AuditLogIntegrityBadge({
+    super.key,
+    required this.snapshot,
+    required this.isLoading,
+    required this.transientError,
+    this.now,
+  });
+
+  final OperatorWebAuditChainAnchorSnapshot? snapshot;
+  final bool isLoading;
+  final bool transientError;
+  final DateTime? now;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = _resolveState();
+    return Container(
+      key: const Key('operator_web_audit_log_integrity_badge'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: state.background,
+        border: Border.all(color: state.border, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(state.icon, size: 18, color: state.foreground),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  state.title,
+                  key: Key(
+                    'operator_web_audit_log_integrity_badge_${state.wireKey}_title',
+                  ),
+                  style: AppTextStyles.mono12(
+                    color: state.foreground,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  state.body,
+                  key: Key(
+                    'operator_web_audit_log_integrity_badge_${state.wireKey}_body',
+                  ),
+                  style: AppTextStyles.body12(color: AppColors.textPrimary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  _BadgeStyle _resolveState() {
+    if (isLoading) {
+      return const _BadgeStyle(
+        wireKey: 'loading',
+        title: 'Checking audit chain integrity',
+        body: 'Loading the most recent anchor for your operator.',
+        foreground: AppColors.sunsetDark,
+        background: AppColors.backgroundSurface,
+        border: AppColors.borderSubtle,
+        icon: Icons.hourglass_top_outlined,
+      );
+    }
+    final resolved = snapshot;
+    if (resolved == null) {
+      return const _BadgeStyle(
+        wireKey: 'unknown',
+        title: 'Audit chain status unknown',
+        body:
+            'No anchor recorded yet. Daily anchoring runs at 02:00 UTC and '
+            'this badge updates as soon as the first sweep lands.',
+        foreground: AppColors.textSecondary,
+        background: AppColors.backgroundSurface,
+        border: AppColors.borderSubtle,
+        icon: Icons.help_outline,
+      );
+    }
+    final reference = (now ?? DateTime.now()).toUtc();
+    final anchored = resolved.lastAnchorBlobAt ?? resolved.anchoredAt;
+    final ageLabel = anchored == null
+        ? null
+        : _humanizeAge(reference.difference(anchored));
+    switch (resolved.status) {
+      case OperatorWebAuditChainAnchorStatus.healthy:
+        return _BadgeStyle(
+          wireKey: 'healthy',
+          title: 'Audit chain healthy',
+          body: ageLabel == null
+              ? 'Anchored at 02:00 UTC daily.'
+              : 'Anchored at 02:00 UTC. Last anchor $ageLabel ago.',
+          foreground: const Color(0xFF1F7A4D),
+          background: const Color(0xFFEBF7F0),
+          border: const Color(0xFF1F7A4D),
+          icon: Icons.verified_outlined,
+        );
+      case OperatorWebAuditChainAnchorStatus.delayed:
+        return _BadgeStyle(
+          wireKey: 'delayed',
+          title: 'Audit chain delayed',
+          body: ageLabel == null
+              ? 'Anchor delayed past the daily 02:00 UTC cadence. F and F '
+                  'support is monitoring this.'
+              : 'Anchor delayed. Last anchor was $ageLabel ago. F and F '
+                  'support is monitoring this.',
+          foreground: const Color(0xFF8A5A00),
+          background: const Color(0xFFFFF4DA),
+          border: const Color(0xFFB58300),
+          icon: Icons.schedule_outlined,
+        );
+      case OperatorWebAuditChainAnchorStatus.failed:
+        return const _BadgeStyle(
+          wireKey: 'failed',
+          title: 'Audit chain anchor failed',
+          body:
+              'Anchor failed. F and F support is investigating. Your audit '
+              'log entries are still being recorded; the daily evidence '
+              'anchor is what is delayed.',
+          foreground: Color(0xFFA8341B),
+          background: Color(0xFFFCEEEA),
+          border: Color(0xFFA8341B),
+          icon: Icons.error_outline,
+        );
+      case OperatorWebAuditChainAnchorStatus.unknown:
+        final transient = transientError;
+        return _BadgeStyle(
+          wireKey: 'unknown',
+          title: transient
+              ? 'Audit chain status unavailable'
+              : 'Audit chain status unknown',
+          body: transient
+              ? 'Audit chain status could not load. Refresh the page to try '
+                  'again. Daily anchoring runs at 02:00 UTC.'
+              : 'No anchor recorded yet. Daily anchoring runs at 02:00 UTC '
+                  'and this badge updates as soon as the first sweep lands.',
+          foreground: AppColors.textSecondary,
+          background: AppColors.backgroundSurface,
+          border: AppColors.borderSubtle,
+          icon: Icons.help_outline,
+        );
+    }
+  }
+
+  static String _humanizeAge(Duration age) {
+    final seconds = age.inSeconds;
+    if (seconds < 60) {
+      return seconds <= 1 ? '1 second' : '$seconds seconds';
+    }
+    final minutes = age.inMinutes;
+    if (minutes < 60) {
+      return minutes == 1 ? '1 minute' : '$minutes minutes';
+    }
+    final hours = age.inHours;
+    if (hours < 48) {
+      return hours == 1 ? '1 hour' : '$hours hours';
+    }
+    final days = age.inDays;
+    return days == 1 ? '1 day' : '$days days';
+  }
+}
+
+class _BadgeStyle {
+  const _BadgeStyle({
+    required this.wireKey,
+    required this.title,
+    required this.body,
+    required this.foreground,
+    required this.background,
+    required this.border,
+    required this.icon,
+  });
+
+  final String wireKey;
+  final String title;
+  final String body;
+  final Color foreground;
+  final Color background;
+  final Color border;
+  final IconData icon;
 }

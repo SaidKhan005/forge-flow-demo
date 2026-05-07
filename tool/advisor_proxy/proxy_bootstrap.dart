@@ -36,6 +36,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_recovery_request_attempts_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_tokens_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/notification_preferences_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
@@ -101,6 +102,7 @@ import '../advisor_corpus/advisor_corpus.dart'
         graphifyNodeCandidatesFileName;
 import 'advisor_proxy.dart';
 import 'admin_integrations_routes.dart';
+import 'connector_backfill_jobs_routes.dart';
 import 'anthropic_http_complete_fn.dart';
 import 'health_producers/producer_registry.dart';
 import 'log.dart';
@@ -195,6 +197,9 @@ class ProxyProductionBindings {
     required this.mfaTotpRetryCounter,
     required this.passwordResetThrottleCounter,
     required this.operatorWriteRouter,
+    required this.auditChainAnchorsGateway,
+    required this.connectorBackfillJobsRouter,
+    required this.notificationPreferencesRouter,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -337,6 +342,25 @@ class ProxyProductionBindings {
   /// [RepositoryOperatorBusinessTimingWriteGateway] +
   /// [ProductionOperatorWriteAuditSink].
   final OperatorWriteRouter operatorWriteRouter;
+
+  /// Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
+  /// Backed by [PostgresAuditChainAnchorsGateway]; the route
+  /// `GET /v1/operator/audit-chain-anchors/latest` reads through this
+  /// so the operator-web Audit Log screen can render an integrity
+  /// badge.
+  final AuditChainAnchorsGateway auditChainAnchorsGateway;
+
+  /// Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
+  /// Backed by [ConnectorBackfillJobRepository]; per-tenant RLS rides
+  /// `SET LOCAL` in the gateway so the route returns only rows the
+  /// signed-in (operator_id, location_id) is permitted to see.
+  final ConnectorBackfillJobsRouter connectorBackfillJobsRouter;
+
+  /// Phase 8 W2.B - per-actor notification preferences router. Backed
+  /// by [NotificationPreferencesRepository] (tenant pool, per-user
+  /// RLS). Wired into `routeRequest` for the three operator-scoped
+  /// notification-preferences routes.
+  final NotificationPreferencesRouter notificationPreferencesRouter;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -594,6 +618,23 @@ ProxyProductionBindings buildProxyProductionBindings(
           },
         );
       },
+    ),
+  );
+  // Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
+  // Reuses the existing [ConnectorBackfillJobRepository] so the read
+  // path rides the same tenant pool + RLS posture as the write path
+  // shipped by `8.first-connect-backfill-wire-in`.
+  final connectorBackfillJobsRouter = ConnectorBackfillJobsRouter(
+    gateway: _RepositoryConnectorBackfillJobsReadGateway(
+      repository: ConnectorBackfillJobRepository(tenantWrapper),
+    ),
+  );
+  // Phase 8 W2.B - per-actor notification preferences router. Tenant
+  // pool + per-user RLS policy on the table; the repository pattern is
+  // the primary defense.
+  final notificationPreferencesRouter = NotificationPreferencesRouter(
+    gateway: RepositoryNotificationPreferencesGateway(
+      repository: NotificationPreferencesRepository(tenantWrapper),
     ),
   );
   SelectedStarTargetRouter.installGlobal(
@@ -902,7 +943,44 @@ ProxyProductionBindings buildProxyProductionBindings(
       window: kAuthPasswordResetWindow,
     ),
     operatorWriteRouter: operatorWriteRouter,
+    // Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
+    // Runs through the tenant transaction wrapper so the per-tenant
+    // RLS policy `audit_chain_anchors_per_tenant_select` clamps the
+    // SELECT to the caller's operator. Anchor rows are written by the
+    // L9 Cloud Run sweep (and verified server-side); this binding is
+    // strictly read-only.
+    auditChainAnchorsGateway: PostgresAuditChainAnchorsGateway(
+      tenantWrapper: tenantWrapper,
+    ),
+    connectorBackfillJobsRouter: connectorBackfillJobsRouter,
+    notificationPreferencesRouter: notificationPreferencesRouter,
   );
+}
+
+/// Wave W2.D - bridges the [ConnectorBackfillJobRepository] (in
+/// `lib/`, the only tenant-pool seam) to the proxy-level
+/// [ConnectorBackfillJobsReadGateway] surface so the route file does
+/// not pull `package:postgres` into the proxy import graph directly.
+class _RepositoryConnectorBackfillJobsReadGateway
+    implements ConnectorBackfillJobsReadGateway {
+  _RepositoryConnectorBackfillJobsReadGateway({required this.repository});
+
+  final ConnectorBackfillJobRepository repository;
+
+  @override
+  Future<List<FirstConnectionBackfillJob>> listLatestPerConnection({
+    required String operatorId,
+    required String locationId,
+    String? connectionId,
+    String? actorUserId,
+  }) {
+    return repository.listLatestPerConnection(
+      operatorId: operatorId,
+      locationId: locationId,
+      connectionId: connectionId,
+      actorUserId: actorUserId,
+    );
+  }
 }
 
 /// HARD-B - production [AuthLockoutEnforcer] backed by the
@@ -7370,5 +7448,78 @@ const String phase10a2DlqCapEnvVar = 'EVENT_OUTBOX_DLQ_CAP';
 /// look up the producer by name and the deploy verifier can grep the
 /// `/health` envelope without re-declaring the literal.
 const String phase10a2DlqDepthMetricKey = 'event_outbox_dlq_depth';
+
+// ─── Operator Web W4.B — audit_chain_anchors per-tenant read ──────────
+//
+// Production-grade [AuditChainAnchorsGateway] backed by the tenant
+// transaction wrapper. Reads the most-recent
+// `public.audit_chain_anchors` row for the caller's operator using a
+// single indexed lookup against the `audit_chain_anchors_recent_idx`
+// (`(operator_id, chain_date desc)` from
+// `db/migrations/202604280005_phase_9_0sigma_f_audit_logs.sql`). The
+// wrapper issues `SET LOCAL app.operator_id` so the per-tenant RLS
+// policy `audit_chain_anchors_per_tenant_select` clamps the result.
+class PostgresAuditChainAnchorsGateway implements AuditChainAnchorsGateway {
+  PostgresAuditChainAnchorsGateway({
+    required TenantTransactionWrapper tenantWrapper,
+  }) : _tenantWrapper = tenantWrapper;
+
+  final TenantTransactionWrapper _tenantWrapper;
+
+  @override
+  Future<AuditChainAnchorRow?> latestForOperator({
+    required String operatorId,
+    required String locationId,
+    String? userId,
+  }) async {
+    final TenantContext tenantContext;
+    try {
+      tenantContext = TenantContext(
+        operatorId: operatorId,
+        locationId: locationId,
+        userId: userId,
+      );
+    } on TenantContextValidationError {
+      // Defense in depth: a malformed JWT operator/location id should
+      // never reach the route, but if it did we return null so the
+      // route surfaces the unknown badge instead of leaking the SET
+      // LOCAL error to the operator.
+      return null;
+    }
+    return _tenantWrapper.runInTenantContext(tenantContext, (exec) async {
+      final rows = await exec.query(
+        'select chain_date, anchored_at, row_count, blob_uri, '
+        'last_anchor_blob_url, last_anchor_blob_at '
+        'from public.audit_chain_anchors '
+        'where operator_id = @operator_id::uuid '
+        'order by chain_date desc '
+        'limit 1',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final chainDate = row['chain_date'];
+      final anchoredAt = row['anchored_at'];
+      if (chainDate is! DateTime || anchoredAt is! DateTime) return null;
+      final rowCountRaw = row['row_count'];
+      final rowCount = rowCountRaw is num ? rowCountRaw.toInt() : 0;
+      final blobUri = row['blob_uri']?.toString() ?? '';
+      final lastAnchorBlobUrl = row['last_anchor_blob_url']?.toString();
+      final lastAnchorBlobAt = row['last_anchor_blob_at'];
+      return AuditChainAnchorRow(
+        chainDate: chainDate.toUtc(),
+        anchoredAt: anchoredAt.toUtc(),
+        rowCount: rowCount,
+        blobUri: blobUri,
+        lastAnchorBlobUrl:
+            (lastAnchorBlobUrl != null && lastAnchorBlobUrl.isNotEmpty)
+                ? lastAnchorBlobUrl
+                : null,
+        lastAnchorBlobAt:
+            lastAnchorBlobAt is DateTime ? lastAnchorBlobAt.toUtc() : null,
+      );
+    });
+  }
+}
 
 // endregion

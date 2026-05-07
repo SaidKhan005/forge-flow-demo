@@ -77,10 +77,13 @@ import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 
 import '../advisor_corpus/advisor_corpus.dart'
     show CorpusManifest, defaultManifestPath;
+import 'audit_chain_anchors_routes.dart';
 import 'health_operation_budget.dart';
 import 'log.dart';
 import 'business_scope_routes.dart';
+import 'connector_backfill_jobs_routes.dart';
 import 'mobile_push_notifications.dart';
+import 'notification_preferences_routes.dart';
 import 'operator_routes.dart';
 import 'proxy_idempotency_cache.dart';
 import 'realtime_route.dart'
@@ -117,6 +120,16 @@ export 'operator_routes.dart'
         operatorBusinessTimingProfilePrefix,
         hashOperatorRequestBody,
         readOperatorJsonBody;
+export 'notification_preferences_routes.dart'
+    show
+        NotificationPreferencesRouter,
+        NotificationPreferencesGateway,
+        NotificationPreferencesIdempotencyCache,
+        NotificationPreferenceRouteRejected,
+        RepositoryNotificationPreferencesGateway,
+        notificationPreferencesPath,
+        notificationPreferencesPrefix,
+        hashNotificationPreferencesRequest;
 export 'business_scope_routes.dart'
     show
         BusinessScopeProxyGateway,
@@ -127,6 +140,17 @@ export 'business_scope_routes.dart'
         businessScopesOperatorsPrefix,
         businessScopesResource,
         businessScopesUsersPrefix;
+export 'audit_chain_anchors_routes.dart'
+    show
+        AuditChainAnchorRow,
+        AuditChainAnchorStatus,
+        AuditChainAnchorsGateway,
+        AuditChainAnchorsRouteMatch,
+        AuditChainAnchorsRouteResult,
+        AuditChainAnchorsRouter,
+        auditChainAnchorStatusWire,
+        classifyAnchorStatus,
+        operatorAuditChainAnchorsLatestPath;
 export 'star_target_routes.dart'
     show
         RepositorySelectedStarTargetGateway,
@@ -7999,6 +8023,14 @@ Future<void> routeRequest(
   // so existing tests do not need to plumb the router through every
   // call site.
   OperatorWriteRouter? operatorWriteRouter,
+  // Wave W2.D - operator-scoped read of connector_backfill_jobs.
+  // Optional: when null the read route returns 503 so existing tests
+  // do not need to plumb the router through every call site.
+  ConnectorBackfillJobsRouter? connectorBackfillJobsRouter,
+  // Phase 8 W2.B - operator-scoped notification preferences router.
+  // Optional: when null the three routes return 503 so existing tests
+  // do not need to plumb the router through every call site.
+  NotificationPreferencesRouter? notificationPreferencesRouter,
   // Phase 8 star/target truth - selected-star read/write router. Optional
   // for existing tests; production installs a global router from bootstrap.
   SelectedStarTargetRouter? selectedStarTargetRouter,
@@ -8009,6 +8041,11 @@ Future<void> routeRequest(
   // environments; when null the route returns a typed 503 and existing
   // token-exact sync behavior is preserved.
   BusinessScopeRouter? businessScopeRouter,
+  // Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
+  // Optional for tests and scaffold environments; when null the route
+  // returns a typed 503 so the Audit Log screen renders the unknown
+  // badge state without crashing.
+  AuditChainAnchorsGateway? auditChainAnchorsGateway,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -8475,6 +8512,63 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'business_scopes_unavailable',
               'message': 'business scopes are unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Operator Web W4.B - per-tenant audit-chain-anchor read.
+        // Operator-scoped: operatorId resolved from the JWT, never
+        // from the URL or body. RLS clamps the read inside the
+        // gateway via the tenant transaction wrapper.
+        final auditChainAnchorMatch =
+            AuditChainAnchorsRouter.match(path, request.method);
+        if (auditChainAnchorMatch != null) {
+          if (auditChainAnchorsGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'audit_chain_anchors_not_configured',
+              'message':
+                  'audit chain anchors gateway is not installed; please retry',
+            });
+            return;
+          }
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+          try {
+            final router = AuditChainAnchorsRouter(
+              gateway: auditChainAnchorsGateway,
+              now: clock,
+            );
+            final result = await router.handle(
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              userId: scope.userId,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'audit_chain_anchors',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'audit_chain_anchors_unavailable',
+              'message':
+                  'audit chain anchor lookup is unavailable; please retry',
             });
           }
           return;
@@ -12704,6 +12798,144 @@ Future<void> routeRequest(
           return;
         }
 
+        // Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
+        // Mirrors the operator-web Vendor Connections progress widget.
+        // Open to any operator-web role; per-tenant RLS is enforced by
+        // the gateway via SET LOCAL.
+        if (ConnectorBackfillJobsRouter.matches(path, request.method)) {
+          if (connectorBackfillJobsRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'connector_backfill_jobs_router_not_configured',
+              'message':
+                  'route requires a ConnectorBackfillJobsRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          if (!scope.roles.any(
+            kOperatorConnectorBackfillJobsReadRoles.contains,
+          )) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'forbidden',
+              'message':
+                  'an operator role with vendor-connections access is required',
+              'required_roles':
+                  kOperatorConnectorBackfillJobsReadRoles.toList(),
+            });
+            return;
+          }
+          try {
+            final result = await connectorBackfillJobsRouter.handle(
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              actorUserId: scope.userId,
+              queryParameters: request.uri.queryParameters,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'connector_backfill_jobs',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'connector_backfill_jobs_unavailable',
+              'message':
+                  'connector backfill progress is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Phase 8 W2.B - operator-scoped notification preferences
+        // routes. Per-actor (the JWT subject's own preferences). PUT /
+        // DELETE require Idempotency-Key. GET requires no key.
+        if (NotificationPreferencesRouter.matches(path, request.method)) {
+          if (notificationPreferencesRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'notification_preferences_router_not_configured',
+              'message':
+                  'route requires a NotificationPreferencesRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          String? notifIdemKey;
+          if (request.method == 'PUT' || request.method == 'DELETE') {
+            notifIdemKey =
+                request.headers.value('Idempotency-Key')?.trim();
+            if (notifIdemKey == null || notifIdemKey.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_missing',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+            if (notifIdemKey.length > 200) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_too_long',
+                'message':
+                    'Idempotency-Key header must be 200 characters or fewer',
+              });
+              return;
+            }
+          }
+          Map<String, Object?>? notifBody;
+          if (request.method == 'PUT') {
+            final bodyResult = await readOperatorJsonBody(request);
+            if (bodyResult.errorStatus != null) {
+              _writeJson(
+                response,
+                bodyResult.errorStatus!,
+                bodyResult.errorBody!,
+              );
+              return;
+            }
+            notifBody = bodyResult.body;
+          }
+          try {
+            final result = await notificationPreferencesRouter.handle(
+              method: request.method,
+              path: path,
+              query: request.uri.queryParameters,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              actorUserId: scope.userId,
+              idempotencyKey: notifIdemKey,
+              body: notifBody,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'notification_preferences_router',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'notification_preferences_unavailable',
+              'message':
+                  'notification preferences write is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
         _writeJson(response, 404, <String, Object?>{
           'error': 'not found',
           'method': request.method,
@@ -13108,7 +13340,8 @@ bool _isAdminIntegrationsPath(String path) {
 bool _isAuthCorsPath(String path) {
   return path.startsWith('/v1/auth/') ||
       path.startsWith('/v1/admin/auth/') ||
-      BusinessScopeRouter.match(path, 'GET') != null;
+      BusinessScopeRouter.match(path, 'GET') != null ||
+      AuditChainAnchorsRouter.match(path, 'GET') != null;
 }
 
 bool _isAdminIntegrationsOperation(String path, String method) {

@@ -42,6 +42,17 @@ export 'operator_web_data_accuracy_gateway.dart'
         OperatorWebDataAccuracyGateway,
         OperatorWebHttpDataAccuracyGateway;
 
+/// Operator Web W4.B - re-export the chain anchor gateway provider so
+/// router/auth-source wiring sees one canonical sentinel surface.
+export 'operator_web_audit_chain_anchors_gateway_provider.dart'
+    show
+        OperatorWebAuditChainAnchorsGateway,
+        OperatorWebAuditChainAnchorsGatewayDemo,
+        OperatorWebAuditChainAnchorsGatewayLive,
+        OperatorWebAuditChainAnchorsGatewayProvider,
+        OperatorWebAuditChainAnchorSnapshot,
+        OperatorWebAuditChainAnchorStatus;
+
 /// Sentinel the operator-web shell stamps on the auth source when it
 /// can supply a [WebTeamUsersGateway] for the Members surface. Demo
 /// auth source mixes this in with `DemoWebTeamUsersGateway`;

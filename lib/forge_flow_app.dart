@@ -10,6 +10,7 @@ import 'domain/models/restaurant_location.dart';
 import 'domain/models/business_scope.dart';
 import 'services/advisor_corpus_admin_service.dart';
 import 'services/advisor_model_config_service.dart';
+import 'services/app_notification_service.dart';
 import 'services/auth/auth_operations_gateway.dart';
 import 'services/auth/password_change_gateway.dart';
 import 'services/auth/password_reset_deep_link_source.dart';
@@ -993,6 +994,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           ? <RestaurantLocation>[restaurant]
           : const <RestaurantLocation>[],
     );
+    // W2.A — keep the bell badge in sync with the active restaurant.
+    if (restaurant != null) {
+      unawaited(
+        AppNotificationService.instance.start(restaurant.restaurantId),
+      );
+    }
   }
 
   @override
@@ -2037,10 +2044,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           child: Center(child: SyncStateBadge()),
         ),
         IconButton(
-          icon: const Icon(
-            Icons.notifications_none_outlined,
-            size: 26,
-            color: AppColors.textMuted,
+          icon: ValueListenableBuilder<int>(
+            valueListenable:
+                AppNotificationService.instance.unreadCountNotifier,
+            builder: (context, count, child) {
+              const iconWidget = Icon(
+                Icons.notifications_none_outlined,
+                size: 26,
+                color: AppColors.textMuted,
+              );
+              if (count <= 0) return iconWidget;
+              return Badge.count(count: count, child: iconWidget);
+            },
           ),
           onPressed: () => _openNotifications(context),
         ),
@@ -2093,10 +2108,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 const SizedBox(width: 8),
                 const SyncStateBadge(),
                 const Spacer(),
-                _AppShellIconButton(
-                  icon: Icons.notifications_none_outlined,
-                  tooltip: 'Notifications',
-                  onTap: () => _openNotifications(context),
+                ValueListenableBuilder<int>(
+                  valueListenable:
+                      AppNotificationService.instance.unreadCountNotifier,
+                  builder: (context, count, _) {
+                    final button = _AppShellIconButton(
+                      icon: Icons.notifications_none_outlined,
+                      tooltip: 'Notifications',
+                      onTap: () => _openNotifications(context),
+                    );
+                    if (count <= 0) return button;
+                    return Badge.count(count: count, child: button);
+                  },
                 ),
                 const SizedBox(width: 8),
                 _AppShellIconButton(

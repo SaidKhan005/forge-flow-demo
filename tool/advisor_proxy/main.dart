@@ -990,6 +990,23 @@ Future<void> main(List<String> args) async {
             // account routes. Without this binding the routes return
             // 503 operator_write_router_not_configured.
             operatorWriteRouter: productionBindings.operatorWriteRouter,
+            // Operator Web W4.B - per-tenant audit-chain-anchor read
+            // gateway for the operator-web Audit Log integrity badge.
+            // Without this binding the route returns 503
+            // audit_chain_anchors_not_configured.
+            auditChainAnchorsGateway:
+                productionBindings.auditChainAnchorsGateway,
+            // Wave W2.D - operator-scoped read of
+            // `connector_backfill_jobs`. Without this binding the
+            // route returns 503 connector_backfill_jobs_router_not_configured.
+            connectorBackfillJobsRouter:
+                productionBindings.connectorBackfillJobsRouter,
+            // Phase 8 W2.B - per-actor notification preferences
+            // router for the three `/v1/operator/notification-
+            // preferences` routes. Without this binding the routes
+            // return 503 notification_preferences_router_not_configured.
+            notificationPreferencesRouter:
+                productionBindings.notificationPreferencesRouter,
           );
         } catch (error, stack) {
           log(
