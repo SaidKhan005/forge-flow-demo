@@ -14,6 +14,7 @@ import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_t
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
 import '../../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../../state/auth_session_notifier.dart';
 import '../realtime/realtime_event.dart';
@@ -152,6 +153,9 @@ Future<void> defaultCrossTenantWipe(String keepRestaurantId) async {
     keepRestaurantId,
   );
   await SqliteTargetProfileRepository.instance.wipeForOtherScopes(
+    keepRestaurantId,
+  );
+  await SqliteWeeklyPlanSnapshotRepository.instance.wipeForOtherScopes(
     keepRestaurantId,
   );
 }
@@ -376,6 +380,8 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
         topic.contains('target_cycle') ||
         topic.contains('active_target_profile') ||
         topic.contains('target_profile_version') ||
+        topic.contains('weekly_plan_snapshot') ||
+        topic.contains('forecast_context') ||
         topic.contains('backfill') ||
         topic.contains('connector_backfill_job') ||
         topic.contains('business_timing') ||
@@ -392,6 +398,9 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
         table == 'target_cycles' ||
         table == 'active_target_profiles' ||
         table == 'target_profile_versions' ||
+        table == 'weekly_plan_snapshots' ||
+        table == 'forecast_contexts' ||
+        table == 'forecast_context' ||
         table == 'connector_backfill_jobs' ||
         table == 'business_timing_profiles' ||
         table == 'business_timing_service_periods' ||

@@ -16,7 +16,8 @@ class WeeklyPlanSnapshotDao {
   ) async {
     final rows = await _db.query(
       'weekly_plan_snapshots',
-      where: 'restaurant_id = ? AND week_start_date <= ? AND week_end_date >= ?',
+      where:
+          'restaurant_id = ? AND week_start_date <= ? AND week_end_date >= ?',
       whereArgs: [restaurantId, businessDate, businessDate],
       limit: 1,
     );
@@ -48,6 +49,14 @@ class WeeklyPlanSnapshotDao {
       'weekly_plan_snapshots',
       map,
       conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> wipeForOtherScopes(String keepRestaurantId) async {
+    await _db.delete(
+      'weekly_plan_snapshots',
+      where: 'restaurant_id != ?',
+      whereArgs: [keepRestaurantId],
     );
   }
 
