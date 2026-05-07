@@ -90,6 +90,7 @@ import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/per_tenant_location_config_resolver.dart';
 import 'package:http/http.dart' as http;
+import 'package:meta/meta.dart';
 
 import '../advisor_proxy/advisor_proxy.dart'
     show CloverAppCredentials, SquareAppCredentials;
@@ -1107,8 +1108,23 @@ class IntegrationSyncWorkerLoop {
 
 typedef WorkerPoolFactory = PostgresPool Function(String connectionString);
 
+// Honor POSTGRES_POOL_MAX_CONNECTIONS env override; falls back to default 4.
 PostgresPool _defaultPoolFactory(String connectionString) =>
-    PackagePostgresPool.fromUrl(connectionString);
+    PackagePostgresPool.fromUrl(
+      connectionString,
+      maxConnectionCount: resolvePostgresMaxConnectionsPerPool(),
+    );
+
+/// Test seam over the env-aware pool factory. Production calls
+/// [_defaultPoolFactory] (no env arg → reads `Platform.environment`).
+/// Tests pass a synthetic `environment` map to assert the
+/// `POSTGRES_POOL_MAX_CONNECTIONS` override flows through to
+/// `PackagePostgresPool.maxConnectionCount`.
+@visibleForTesting
+int integrationSyncWorkerResolvedPoolMaxConnections({
+  Map<String, String>? environment,
+}) =>
+    resolvePostgresMaxConnectionsPerPool(environment: environment);
 
 /// Bundle returned by [buildWorkerRuntime]. Tests inject overrides so
 /// the worker's source / sink / resolver paths can be exercised

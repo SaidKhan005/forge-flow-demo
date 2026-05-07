@@ -23,6 +23,8 @@
 // Job entrypoint at the bottom of the file.
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/labor_adapter.dart';
@@ -289,19 +291,108 @@ class IntegrationSyncWorker {
   }
 }
 
+/// Per-tick error event surfaced by [integrationSyncWorkerMain].
+///
+/// The runner writes a `poll_error` row to `connector_sync_log` for
+/// per-row failures inside [IntegrationSyncWorker.runOnce]; an
+/// exception that escapes that loop (gateway SELECT failure, dispatch
+/// resolution that wasn't caught downstream, etc.) reaches the outer
+/// loop wrapper. We classify it for observability instead of swallowing
+/// blind, and never crash the long-running loop.
+class IntegrationSyncWorkerLoopError {
+  const IntegrationSyncWorkerLoopError({
+    required this.kind,
+    required this.error,
+    required this.stackTrace,
+  });
+
+  /// `'timeout'` for [TimeoutException]; `'exception'` for any other
+  /// `Exception`; `'unhandled'` for non-`Exception` `Object` throws.
+  final String kind;
+  final Object error;
+  final StackTrace stackTrace;
+
+  Map<String, Object?> toLogFields() => <String, Object?>{
+        'worker': 'integration_sync',
+        'event': 'tick_error',
+        'kind': kind,
+        'error': error.toString(),
+        'stackTrace': stackTrace.toString(),
+      };
+}
+
+/// Reporter contract for per-tick loop errors. Tests inject a
+/// recorder; production wires a JSON-line writer to stderr.
+typedef IntegrationSyncWorkerLoopErrorReporter = void Function(
+  IntegrationSyncWorkerLoopError error,
+);
+
+/// Default reporter: write a single-line JSON to stderr so Cloud Run /
+/// log routing keeps structured fields intact.
+void _defaultLoopErrorReporter(IntegrationSyncWorkerLoopError error) {
+  stderr.writeln(jsonEncode(error.toLogFields()));
+}
+
 /// Cloud Run Job entrypoint. V1 lean cut 2 — Cloud Run's default
 /// drain handles SIGTERM. The custom drain handler from iter1 was
 /// removed: watermark-per-batch-commit makes the worker restart-
 /// resilient without it.
-Future<void> integrationSyncWorkerMain(IntegrationSyncWorker worker) async {
-  while (true) {
+///
+/// The outer loop catches typed error classes — `TimeoutException`,
+/// then any `Exception`, then any `Object` — so a non-`Exception`
+/// throw cannot crash the tick cadence. Each captured error is
+/// surfaced through [reportError] with structured fields
+/// (`worker`, `event`, `kind`, `error`, `stackTrace`) so the deploy's
+/// log router can fan it out to metrics. Tests inject a recording
+/// reporter to assert the loop continues past per-tick failures.
+///
+/// `tickCount` (test-only) bounds the loop iteration count so the
+/// tick cadence can be exercised under `flutter_test` without
+/// `runZoned` wallclock manipulation. Production passes nothing and
+/// the loop runs forever.
+Future<void> integrationSyncWorkerMain(
+  IntegrationSyncWorker worker, {
+  Duration tickInterval = const Duration(seconds: 30),
+  IntegrationSyncWorkerLoopErrorReporter reportError =
+      _defaultLoopErrorReporter,
+  int? tickCount,
+}) async {
+  var ticksRun = 0;
+  while (tickCount == null || ticksRun < tickCount) {
     try {
       await worker.runOnce();
-    } catch (_) {
-      // The runner already wrote the error to connector_sync_log;
-      // a second exception bubble would only crash the loop. Keep
-      // ticking.
+    } on TimeoutException catch (e, st) {
+      // Gateway SELECT or downstream call timed out. Log structured;
+      // the tick cadence keeps running so the next iteration retries
+      // against a (likely) recovered DB connection.
+      reportError(IntegrationSyncWorkerLoopError(
+        kind: 'timeout',
+        error: e,
+        stackTrace: st,
+      ));
+    } on Exception catch (e, st) {
+      // Per-row failures already flushed `poll_error` to
+      // `connector_sync_log` inside [runOnce]; an exception that
+      // bubbles here means the SELECT itself failed (DB unreachable,
+      // role-elevate refused, etc.). Don't crash the loop — log and
+      // tick again.
+      reportError(IntegrationSyncWorkerLoopError(
+        kind: 'exception',
+        error: e,
+        stackTrace: st,
+      ));
+    } on Object catch (e, st) {
+      // Non-`Exception` throws (StateError chained from `Object`,
+      // raw `String` throws, etc.). Same posture as `Exception`:
+      // surface and keep ticking.
+      reportError(IntegrationSyncWorkerLoopError(
+        kind: 'unhandled',
+        error: e,
+        stackTrace: st,
+      ));
     }
-    await Future<void>.delayed(const Duration(seconds: 30));
+    ticksRun += 1;
+    if (tickCount != null && ticksRun >= tickCount) break;
+    await Future<void>.delayed(tickInterval);
   }
 }

@@ -64,6 +64,20 @@ class PostgresSyncWorkerSource extends OperatorScopedRepository
 
   @override
   Stream<ConnectorConnectionRow> connectedConnections() async* {
+    // Claim discipline (W5-LB3): the SELECT runs inside the
+    // [runAsSystem] tx and locks each `connector_connection` row with
+    // `FOR UPDATE SKIP LOCKED OF cc` so two concurrent worker replicas
+    // never enumerate the same connection in the same tick. The
+    // left-joined watermark row is intentionally NOT locked (`OF cc`
+    // limits the lock to the parent table) — watermark writes go
+    // through `IntegrationSyncCanonicalSink.advanceWatermark` in
+    // separate per-row transactions and must not contend with the
+    // claim.
+    //
+    // The lock is held for the duration of `withSystem`'s tx, which
+    // wraps the SELECT + row materialisation. Workers that race the
+    // SELECT see disjoint partitions of the connected set; the second
+    // worker's SELECT skips any rows the first has already claimed.
     final rows = await withSystem<List<ConnectorConnectionRow>>(
       (exec) async {
         final query = await exec.query(
@@ -80,7 +94,8 @@ class PostgresSyncWorkerSource extends OperatorScopedRepository
           'left join public.connector_sync_watermark csw '
           '  on csw.connection_id = cc.connection_id '
           "where cc.status = 'connected' "
-          'order by cc.operator_id, cc.location_id, cc.vendor_id',
+          'order by cc.operator_id, cc.location_id, cc.vendor_id '
+          'for update of cc skip locked',
         );
         return <ConnectorConnectionRow>[
           for (final row in query) _rowFromPostgres(row),
