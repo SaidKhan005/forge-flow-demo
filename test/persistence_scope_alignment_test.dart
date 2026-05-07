@@ -458,6 +458,43 @@ void main() {
         expect(s.restaurantId, 'demo_restaurant_001');
       }
     });
+
+    // â”€â”€ Per-operator isolation (CODE_HEALTH Launch Blocker #1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    test(
+        'DatabaseHelper.forScope routes reads to the requested scope, not DemoScope',
+        () async {
+      // Two distinct scope helpers must read against their own
+      // restaurant_id, not the historic DemoScope hardcoding. The demo
+      // scope is seeded with shifts; an unseeded scope must come back
+      // empty even though both helpers share the underlying SQLite file.
+      final demoHelper = DatabaseHelper.forScope(DemoScope.restaurantId);
+      final otherHelper = DatabaseHelper.forScope('other_tenant_xyz');
+
+      // forScope is cached per-scope, so two helpers for the same id
+      // must be identical, but different ids must return distinct
+      // helpers.
+      expect(
+          identical(demoHelper, DatabaseHelper.forScope(DemoScope.restaurantId)),
+          isTrue,
+          reason: 'forScope must cache per-scope');
+      expect(identical(demoHelper, otherHelper), isFalse,
+          reason: 'distinct scopes must yield distinct helpers');
+
+      final demoShifts = await demoHelper.getShiftsForWeek('2026-W13');
+      final otherShifts = await otherHelper.getShiftsForWeek('2026-W13');
+
+      expect(demoShifts, isNotEmpty,
+          reason: 'demo scope has seeded data');
+      expect(otherShifts, isEmpty,
+          reason:
+              'unseeded scope must NOT return demo rows; forScope must not '
+              'leak across tenants. Per CLAUDE.md: per-operator isolation '
+              'is non-negotiable.');
+      for (final s in demoShifts) {
+        expect(s.restaurantId, DemoScope.restaurantId);
+      }
+    });
   });
 
   // â”€â”€ J: Fixture replay raw-import businessDate is a real date â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
