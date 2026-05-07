@@ -57,9 +57,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../auth/permission_keys.dart';
+import '../../theme/app_theme.dart';
 import '../account/operator_web_account_actions.dart';
 import '../auth/operator_web_auth_source.dart';
-import '../../theme/app_theme.dart';
 
 /// V1 My account screen. The router renders this at
 /// `kOperatorWebNavMyAccount` once onboarding completes.
@@ -134,7 +135,7 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     final roles = widget.session.roles;
     return roles.contains('operator_owner') ||
         roles.contains('operator_admin') ||
-        widget.session.permissions.contains('integrations.configure');
+        widget.session.permissions.contains(PermissionKeys.integrationsConfigure);
   }
 
   String get _readOnlyTooltipMfa =>
