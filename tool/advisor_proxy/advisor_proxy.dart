@@ -910,24 +910,84 @@ class ServicePrincipalJwtVerifier implements ProxyJwtVerifier {
   );
 }
 
+/// CODE_HEALTH L4 — generic, verifier-agnostic rejection used by the
+/// composite when every verifier fails. The pre-L4 composite leaked
+/// "service principal JWT …" wording from the SP verifier when the SP
+/// arm ran last, which let an attacker enumerate which verifiers are
+/// installed by probing tokens of different shapes and reading the
+/// distinct error strings. The hardened composite always returns this
+/// single, neutral error.
+const String _kCompositeJwtRejectionMessage = 'invalid bearer token';
+
 class CompositeProxyJwtVerifier implements ProxyJwtVerifier {
   const CompositeProxyJwtVerifier(this.verifiers);
 
   final List<ProxyJwtVerifier> verifiers;
 
+  /// Probe every configured verifier in parallel before deciding the
+  /// outcome. Two reasons:
+  ///
+  ///   1. Constant error message — the rejection path always throws
+  ///      [_kCompositeJwtRejectionMessage] regardless of which
+  ///      verifiers are installed or which one happened to run last.
+  ///      The pre-L4 implementation surfaced the LAST verifier's
+  ///      error verbatim, which leaked verifier-installed enumeration
+  ///      signal (e.g. "service principal JWT …" when the SP verifier
+  ///      was wired vs. "firebase id token …" when only Firebase
+  ///      ran).
+  ///
+  ///   2. Constant timing — every verifier runs every time, so the
+  ///      observable wall-clock latency does not depend on which arm
+  ///      accepted or rejected. The pre-L4 implementation
+  ///      short-circuited on the first success, leaking which
+  ///      verifier accepted via timing differences between the
+  ///      Firebase RS256 path (slower) and the SP HS256 path (faster).
+  ///
+  /// We also drain all futures even after we have a winner so that no
+  /// pending verification leaks an `unhandled exception` warning.
   @override
   Future<ProxyJwtClaims> verify(String bearerToken) async {
-    ProxyJwtVerificationError? lastError;
+    if (verifiers.isEmpty) {
+      throw ProxyJwtVerificationError(_kCompositeJwtRejectionMessage);
+    }
+    final futures = <Future<_VerifierProbe>>[];
     for (final verifier in verifiers) {
-      try {
-        return await verifier.verify(bearerToken);
-      } on ProxyJwtVerificationError catch (error) {
-        lastError = error;
+      futures.add(_probeVerifier(verifier, bearerToken));
+    }
+    final results = await Future.wait(futures);
+    ProxyJwtClaims? winner;
+    for (final result in results) {
+      if (result.claims != null) {
+        // Constant-time chooser: keep the first claims we encounter
+        // (deterministic over the configured verifier order) without
+        // short-circuiting the loop.
+        winner ??= result.claims;
       }
     }
-    throw lastError ??
-        ProxyJwtVerificationError('no proxy JWT verifier is configured');
+    if (winner != null) return winner;
+    throw ProxyJwtVerificationError(_kCompositeJwtRejectionMessage);
   }
+
+  static Future<_VerifierProbe> _probeVerifier(
+    ProxyJwtVerifier verifier,
+    String bearerToken,
+  ) async {
+    try {
+      final claims = await verifier.verify(bearerToken);
+      return _VerifierProbe.success(claims);
+    } catch (_) {
+      // Swallow the verifier-specific error string here; the composite
+      // surfaces a single neutral message at the top of [verify].
+      return const _VerifierProbe.failure();
+    }
+  }
+}
+
+class _VerifierProbe {
+  const _VerifierProbe.success(this.claims);
+  const _VerifierProbe.failure() : claims = null;
+
+  final ProxyJwtClaims? claims;
 }
 
 String _base64UrlJson(Map<String, Object?> data) {
@@ -5083,6 +5143,155 @@ class GeminiProxyLlmProvider implements ProxyLlmProvider {
   }
 }
 
+/// CODE_HEALTH L4 — secondary-LLM HTTP/runtime failure classification.
+///
+/// The pre-L4 pipeline used a bare `catch (_)` around the secondary
+/// (Gemini) call, which counted RateLimitErrors, AuthErrors, transient
+/// 5xx, permanent 4xx, and timeouts identically. The breaker uses this
+/// taxonomy to decide retry vs fail-fast and to distinguish "service
+/// degraded" from "credentials broken".
+enum SecondaryLlmFailureKind {
+  /// Secondary call did not complete inside the per-call deadline.
+  timeout,
+  /// HTTP 429.
+  rateLimit,
+  /// HTTP 401 / 403 — credentials or scope problem; never retry.
+  auth,
+  /// HTTP 5xx — transient server-side failure; safe to retry.
+  transient,
+  /// HTTP 4xx other than 429/401/403 — permanent client error; never retry.
+  permanent,
+  /// Anything we cannot classify (DNS, socket, parse). Treated as transient
+  /// for breaker accounting (false positives are safer than false
+  /// negatives for breakers).
+  unknown,
+}
+
+/// CODE_HEALTH L4 — typed classification of secondary-LLM failures.
+///
+/// Branches on:
+///   1. [TimeoutException] → [SecondaryLlmFailureKind.timeout].
+///   2. [LLMProviderException] → its declared [FailureKind] +
+///      [statusCode] map directly; HTTP status drives the AuthError /
+///      RateLimitError / PermanentError split.
+///   3. Anything else (`SocketException`, `HttpException`,
+///      `FormatException`, …) → [SecondaryLlmFailureKind.unknown].
+SecondaryLlmFailureKind classifySecondaryLlmFailure(Object error) {
+  if (error is TimeoutException) return SecondaryLlmFailureKind.timeout;
+  if (error is LLMProviderException) {
+    final status = error.statusCode;
+    if (status != null) {
+      if (status == 429) return SecondaryLlmFailureKind.rateLimit;
+      if (status == 401 || status == 403) return SecondaryLlmFailureKind.auth;
+      if (status >= 500 && status < 600) {
+        return SecondaryLlmFailureKind.transient;
+      }
+      if (status >= 400 && status < 500) {
+        return SecondaryLlmFailureKind.permanent;
+      }
+    }
+    switch (error.kind) {
+      case FailureKind.timeout:
+        return SecondaryLlmFailureKind.timeout;
+      case FailureKind.http429:
+        return SecondaryLlmFailureKind.rateLimit;
+      case FailureKind.http5xx:
+        return SecondaryLlmFailureKind.transient;
+      case FailureKind.costBreach:
+        return SecondaryLlmFailureKind.permanent;
+      case FailureKind.unknown:
+        return SecondaryLlmFailureKind.unknown;
+    }
+  }
+  return SecondaryLlmFailureKind.unknown;
+}
+
+/// CODE_HEALTH L4 — circuit breaker for the secondary (Gemini) LLM.
+///
+/// The pre-L4 pipeline trusted the secondary unconditionally: every
+/// fallback attempt waited up to whatever the underlying HTTP client
+/// chose, and a slow / down Gemini propagated that latency to every
+/// caller while the primary breaker was open. This breaker rolls a
+/// 60-second sliding window of failures; after [maxFailures] failures
+/// the breaker opens for [openDuration]. While open, [tryAcquire]
+/// returns false instantly and callers fall through to the cache /
+/// refusal branches WITHOUT invoking the underlying gateway.
+///
+/// Auth failures are excluded from the failure window because credential
+/// breakage is not transient — letting an AuthError trip the breaker
+/// would mask the real problem and delay recovery once credentials are
+/// fixed. Permanent 4xx errors are likewise excluded.
+///
+/// Sliding-window semantics: only failures whose timestamp is within
+/// the last [windowDuration] count toward the threshold; older
+/// timestamps are pruned on every [recordFailure] / [tryAcquire] call.
+class SecondaryLlmBreaker {
+  SecondaryLlmBreaker({
+    this.maxFailures = 5,
+    this.windowDuration = const Duration(seconds: 60),
+    this.openDuration = const Duration(seconds: 30),
+    DateTime Function() clock = _defaultClock,
+  }) : _clock = clock;
+
+  static DateTime _defaultClock() => DateTime.now().toUtc();
+
+  final int maxFailures;
+  final Duration windowDuration;
+  final Duration openDuration;
+  final DateTime Function() _clock;
+
+  final List<DateTime> _failureTimestamps = <DateTime>[];
+  DateTime? _openedAt;
+
+  /// True when the breaker is closed (or has cooled down past
+  /// [openDuration]); callers should invoke the secondary. False when
+  /// the breaker is open; callers should skip to the cache / refusal
+  /// branches.
+  bool tryAcquire() {
+    final now = _clock();
+    if (_openedAt != null) {
+      if (now.difference(_openedAt!) >= openDuration) {
+        // Half-open: clear the window so a fresh failure does not
+        // immediately re-open the breaker.
+        _openedAt = null;
+        _failureTimestamps.clear();
+        return true;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  /// Records a successful secondary call. Closes the breaker (if it
+  /// was half-open) and clears the failure window.
+  void recordSuccess() {
+    _openedAt = null;
+    _failureTimestamps.clear();
+  }
+
+  /// Records a failed secondary call. Auth and permanent 4xx errors
+  /// are NOT counted toward the breaker (credential / contract
+  /// failures are not transient). Timeouts, 5xx, 429, and unknown
+  /// failures count.
+  void recordFailure(SecondaryLlmFailureKind kind) {
+    if (kind == SecondaryLlmFailureKind.auth ||
+        kind == SecondaryLlmFailureKind.permanent) {
+      return;
+    }
+    final now = _clock();
+    final cutoff = now.subtract(windowDuration);
+    _failureTimestamps.removeWhere((ts) => ts.isBefore(cutoff));
+    _failureTimestamps.add(now);
+    if (_failureTimestamps.length >= maxFailures) {
+      _openedAt = now;
+      _failureTimestamps.clear();
+    }
+  }
+
+  /// Test-only inspector: true when the breaker is currently open.
+  bool get isOpen => _openedAt != null;
+}
+
 /// Block 2 (Lock 7 v1) — fallback chain executor.
 ///
 /// Wraps the primary [ProxyLlmProvider] with a [CircuitBreaker], an
@@ -5091,12 +5300,29 @@ class GeminiProxyLlmProvider implements ProxyLlmProvider {
 /// secondary slot was reserved as `// TODO(E.2b)` in v1; this graft
 /// fills it with a real `GeminiProxyLlmProvider`. Tests assert that
 /// `fallback_used` reports `'gemini'` when the secondary serves.
+///
+/// CODE_HEALTH L4 — the secondary call is now wrapped in a per-call
+/// 8s timeout, a sliding-window circuit breaker, and typed failure
+/// classification. The breaker is exposed via [secondaryBreaker] so
+/// tests can drive the state transitions without standing up the
+/// full pipeline.
 class AdvisorRequestPipeline {
   AdvisorRequestPipeline({
     required this.breaker,
     required this.cache,
     this.secondaryLlmProvider,
-  });
+    Duration secondaryTimeout = const Duration(seconds: 8),
+    int secondaryBreakerMaxFailures = 5,
+    Duration secondaryBreakerWindow = const Duration(seconds: 60),
+    Duration secondaryBreakerOpenDuration = const Duration(seconds: 30),
+    DateTime Function() secondaryBreakerClock = SecondaryLlmBreaker._defaultClock,
+  })  : _secondaryTimeout = secondaryTimeout,
+        secondaryBreaker = SecondaryLlmBreaker(
+          maxFailures: secondaryBreakerMaxFailures,
+          windowDuration: secondaryBreakerWindow,
+          openDuration: secondaryBreakerOpenDuration,
+          clock: secondaryBreakerClock,
+        );
 
   final CircuitBreaker breaker;
   final AdvisorResponseCache cache;
@@ -5108,6 +5334,13 @@ class AdvisorRequestPipeline {
   /// is intentionally not protected by its own breaker in this slice
   /// — that is a follow-up.
   final ProxyLlmProvider? secondaryLlmProvider;
+
+  /// CODE_HEALTH L4 — sliding-window breaker scoped to this proxy
+  /// instance. Exposed (test seam) so failure / open / half-open /
+  /// close transitions can be asserted without round-tripping HTTP.
+  final SecondaryLlmBreaker secondaryBreaker;
+
+  final Duration _secondaryTimeout;
 
   Future<AdvisorPipelineResult> execute({
     required ProxyLlmProvider llmProvider,
@@ -5148,10 +5381,21 @@ class AdvisorRequestPipeline {
     // for E.2b. When the secondary serves successfully, return as a
     // normal HTTP 200 with the Gemini answer — the request did NOT
     // fall to the degraded envelope, so don't flag it as `refused`.
+    //
+    // CODE_HEALTH L4 — the secondary call is now bounded by an 8s
+    // per-call timeout, a sliding-window circuit breaker, and typed
+    // exception classification. AuthError / PermanentError do NOT
+    // trip the breaker; TimeoutException / RateLimitError /
+    // TransientError do. When the breaker is open, we do NOT invoke
+    // the underlying gateway at all — the request short-circuits to
+    // cache → refusal.
     final secondary = secondaryLlmProvider;
-    if (secondary != null) {
+    if (secondary != null && secondaryBreaker.tryAcquire()) {
       try {
-        final completion = await secondary.complete(llmRequest);
+        final completion = await secondary
+            .complete(llmRequest)
+            .timeout(_secondaryTimeout);
+        secondaryBreaker.recordSuccess();
         return AdvisorPipelineResult(
           completion: completion,
           cachedAnswer: null,
@@ -5160,10 +5404,17 @@ class AdvisorRequestPipeline {
           fallbackUsed: 'gemini',
           decision: decision,
         );
-      } catch (_) {
-        // Gemini also failed. Fall through to cache → refusal.
-        // Intentionally NOT wired into the Anthropic breaker —
-        // breaker tracks the primary only.
+      } on TimeoutException {
+        secondaryBreaker.recordFailure(SecondaryLlmFailureKind.timeout);
+        // Fall through to cache → refusal.
+      } on LLMProviderException catch (error) {
+        secondaryBreaker.recordFailure(classifySecondaryLlmFailure(error));
+        // Fall through. Auth/Permanent failures still drop us into
+        // the degraded envelope; they just don't trip the breaker.
+      } catch (error) {
+        secondaryBreaker.recordFailure(classifySecondaryLlmFailure(error));
+        // Fall through. Intentionally NOT wired into the Anthropic
+        // breaker — that breaker tracks the primary only.
       }
     }
 
@@ -6887,6 +7138,47 @@ abstract class AdminRequestIdempotencyStore {
     required int responseStatus,
     required Map<String, Object?> responsePayload,
   });
+
+  /// CODE_HEALTH L4 — reclaim a single in-flight reservation whose
+  /// `expires_at` has passed.
+  ///
+  /// Predicate (matches the M1 migration —
+  /// `db/migrations/202605080100_admin_idempotency_expires_at.sql` —
+  /// and the `admin_idempotency_sweep` pg_cron job exactly):
+  ///   `response_status IS NULL AND completed_at IS NULL AND
+  ///    expires_at < now()`
+  ///
+  /// The HARD-H table has NO `status` column; "in-flight" is the
+  /// pair `(response_status IS NULL AND completed_at IS NULL)`. Do
+  /// NOT introduce a `status='in_flight'` predicate — it does not
+  /// exist.
+  ///
+  /// Returns true when the row was reclaimed (deleted) and the caller
+  /// should retry [reserve]. Returns false when the row is still in
+  /// its TTL window, has already completed, or does not exist.
+  ///
+  /// Default implementation is a no-op so production wiring lives in
+  /// `proxy_bootstrap.dart::PostgresAdminRequestIdempotencyStore` (out
+  /// of scope for L4) and pg_cron is the live backstop. Tests that
+  /// drive the reclaim flow override this to flip the in-flight row
+  /// in their fake.
+  Future<bool> tryReclaimOrphan({
+    required String idempotencyKey,
+  }) async {
+    return false;
+  }
+
+  /// CODE_HEALTH L4 — sweep every in-flight reservation whose
+  /// `expires_at` has passed.
+  ///
+  /// Same predicate as [tryReclaimOrphan] but unkeyed; returns the
+  /// number of rows deleted. Backs the in-process every-5-minute
+  /// sweeper [main.dart] starts at boot. Default no-op so the
+  /// pg_cron sweep registered by the M1 migration is the live
+  /// backstop until the Postgres-backed store overrides this method.
+  Future<int> sweepExpiredOrphans() async {
+    return 0;
+  }
 }
 
 class AdminRequestIdempotencyEntry {
@@ -6896,6 +7188,7 @@ class AdminRequestIdempotencyEntry {
     required this.responseStatus,
     required this.responsePayload,
     required this.completedAt,
+    this.expiresAt,
   });
 
   final String idempotencyKey;
@@ -6907,6 +7200,14 @@ class AdminRequestIdempotencyEntry {
   final int? responseStatus;
   final Map<String, Object?>? responsePayload;
   final DateTime? completedAt;
+
+  /// CODE_HEALTH L4 — TTL for the reservation. Mirrors the
+  /// `expires_at` column added by M1
+  /// (`db/migrations/202605080100_admin_idempotency_expires_at.sql`).
+  /// Null when the underlying store does not yet expose the column;
+  /// `_runAdminIdempotent` only attempts the orphan-reclaim path when
+  /// this field is non-null AND has elapsed.
+  final DateTime? expiresAt;
 }
 
 class AdminIdempotencyKeyConflict implements Exception {
@@ -7279,17 +7580,22 @@ Future<void> routeRequest(
         }
 
         // HARD-C — request body cap. POST/PATCH/PUT must declare a
-        // Content-Length and stay under the 1 MB ceiling. Missing or
-        // oversized bodies short-circuit with 413 before any handler
-        // runs. CORS headers were already applied above for admin paths,
-        // so the browser still sees the echo on the 413 response.
+        // Content-Length and stay under the per-route ceiling. Missing
+        // or oversized bodies short-circuit with 413 before any
+        // handler runs. CORS headers were already applied above for
+        // admin paths, so the browser still sees the echo on the 413
+        // response.
+        //
+        // CODE_HEALTH L4 — the cap is now per-route. The graph-
+        // candidate batch endpoint admits 16 MB; everything else stays
+        // at the 1 MB default. See [resolveRequestBodyLimitBytes].
         if (_isBodyMethod(request.method)) {
           final declaredLength = request.contentLength;
-          if (declaredLength < 0 ||
-              declaredLength > kAdminCorsRequestBodyLimitBytes) {
+          final routeLimit = resolveRequestBodyLimitBytes(path);
+          if (declaredLength < 0 || declaredLength > routeLimit) {
             _writeJson(response, 413, <String, Object?>{
               'error': 'request_too_large',
-              'limit_bytes': kAdminCorsRequestBodyLimitBytes,
+              'limit_bytes': routeLimit,
             });
             return;
           }
@@ -13233,6 +13539,36 @@ String _hashRequestBody(Map<String, Object?> body) {
 /// `request_type` or differing `request_body_hash`) bubbles out so the
 /// dispatch-site catch can translate it into the contract's 409 / 422
 /// envelopes — same handling the toggle path uses.
+
+/// CODE_HEALTH L4 — public test seam for [_runAdminIdempotent]. Lets
+/// `test/tool/advisor_proxy/admin_idempotency_reclaim_test.dart` drive
+/// the reserve → reclaim → re-reserve flow against an in-memory
+/// `AdminRequestIdempotencyStore` fake without standing up the entire
+/// route handler. Production code calls the private helper directly;
+/// the public alias exists exclusively for tests.
+Future<void> runAdminIdempotentForTesting({
+  required HttpResponse response,
+  required AdminRequestIdempotencyStore? store,
+  required String idempotencyKey,
+  required String requestType,
+  required String? actorUserId,
+  required Map<String, Object?> requestBody,
+  required Future<({int statusCode, Map<String, Object?> payload})> Function()
+      compute,
+  DateTime Function()? clock,
+}) {
+  return _runAdminIdempotent(
+    response: response,
+    store: store,
+    idempotencyKey: idempotencyKey,
+    requestType: requestType,
+    actorUserId: actorUserId,
+    requestBody: requestBody,
+    compute: compute,
+    clock: clock,
+  );
+}
+
 Future<void> _runAdminIdempotent({
   required HttpResponse response,
   required AdminRequestIdempotencyStore? store,
@@ -13242,12 +13578,14 @@ Future<void> _runAdminIdempotent({
   required Map<String, Object?> requestBody,
   required Future<({int statusCode, Map<String, Object?> payload})> Function()
   compute,
+  DateTime Function()? clock,
 }) async {
   if (store == null || idempotencyKey.isEmpty) {
     final result = await compute();
     _writeJson(response, result.statusCode, result.payload);
     return;
   }
+  final now = (clock ?? () => DateTime.now().toUtc()).call();
   final bodyHash = _hashRequestBody(requestBody);
   final cached = await store.lookup(
     idempotencyKey: idempotencyKey,
@@ -13256,14 +13594,44 @@ Future<void> _runAdminIdempotent({
   );
   if (cached != null) {
     if (cached.responseStatus == null || cached.responsePayload == null) {
-      _writeJson(response, 409, <String, Object?>{
-        'error': 'idempotency_request_in_flight',
-        'message': 'idempotent request is already in flight',
-      });
+      // CODE_HEALTH L4 — orphan reclaim. The pre-L4 helper returned
+      // 409 here unconditionally, which meant a transient compute
+      // failure between `reserve()` and `completeReservation()` (proxy
+      // crash, network glitch, panic in the route body) pinned the
+      // key to 409 forever — the Idempotency-Key was effectively
+      // burned for any future retry.
+      //
+      // Reclaim predicate (matches the M1 migration + `pg_cron` sweep
+      // exactly): the in-flight pair `(response_status IS NULL AND
+      // completed_at IS NULL)` PLUS `expires_at < now()`. The HARD-H
+      // table has NO `status` column — DO NOT check
+      // `status='in_flight'`.
+      final expiresAt = cached.expiresAt;
+      if (expiresAt != null && expiresAt.isBefore(now)) {
+        final reclaimed = await store.tryReclaimOrphan(
+          idempotencyKey: idempotencyKey,
+        );
+        if (reclaimed) {
+          // Row deleted; fall through to the normal reserve→compute
+          // path below as if the key had never been used.
+        } else {
+          _writeJson(response, 409, <String, Object?>{
+            'error': 'idempotency_request_in_flight',
+            'message': 'idempotent request is already in flight',
+          });
+          return;
+        }
+      } else {
+        _writeJson(response, 409, <String, Object?>{
+          'error': 'idempotency_request_in_flight',
+          'message': 'idempotent request is already in flight',
+        });
+        return;
+      }
+    } else {
+      _writeJson(response, cached.responseStatus!, cached.responsePayload!);
       return;
     }
-    _writeJson(response, cached.responseStatus!, cached.responsePayload!);
-    return;
   }
   final reserved = await store.reserve(
     idempotencyKey: idempotencyKey,
@@ -14712,6 +15080,29 @@ bool _isBodyMethod(String method) {
 /// admin-route mutation; oversized requests get 413 before any
 /// gateway runs.
 const int kAdminCorsRequestBodyLimitBytes = 1000000;
+
+/// CODE_HEALTH L4 — graph-candidate batch endpoint body cap.
+///
+/// The graph-candidate commit-batch route (`POST
+/// /v1/admin/corpus/graph-candidates/commit-batch`) accepts the full
+/// batch decision payload from the Graphify reviewer. A 1 MB cap was
+/// silently rejecting batches above ~3k candidate decisions; raise to
+/// 16 MB exclusively for this surface so review-and-commit continues
+/// to work without re-introducing the global cap (which would expand
+/// the attack surface for every other admin POST). Every other route,
+/// admin or otherwise, stays on [kAdminCorsRequestBodyLimitBytes].
+const int kGraphCandidateBatchRequestBodyLimitBytes = 16 * 1024 * 1024;
+
+/// CODE_HEALTH L4 — per-route body cap selector. Returns the
+/// per-route cap when the path matches a known oversized surface;
+/// otherwise returns the global default
+/// [kAdminCorsRequestBodyLimitBytes].
+int resolveRequestBodyLimitBytes(String path) {
+  if (path == adminCorpusGraphCandidatesCommitPath) {
+    return kGraphCandidateBatchRequestBodyLimitBytes;
+  }
+  return kAdminCorsRequestBodyLimitBytes;
+}
 
 /// HARD-C — admin CORS preflight cache duration. Browsers may keep
 /// the preflight response for this many seconds before re-issuing
