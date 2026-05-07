@@ -34,6 +34,8 @@
 //     ArgumentError; `fromGrantLocationId` legacy convention
 //     (null / empty → operatorWide; non-empty → location).
 
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/user_roles_repository.dart';
@@ -47,6 +49,10 @@ const String _roleA = '55555555-5555-5555-5555-555555555555';
 const String _orgUnitA = '66666666-6666-6666-6666-666666666666';
 const String _grantLoc = '77777777-7777-7777-7777-777777777777';
 const String _userRoleId = '88888888-8888-8888-8888-888888888888';
+const String _otherUser1 = '99999999-9999-9999-9999-999999999991';
+const String _otherUser2 = '99999999-9999-9999-9999-999999999992';
+const String _otherUser3 = '99999999-9999-9999-9999-999999999993';
+const String _otherUser4 = '99999999-9999-9999-9999-999999999994';
 
 void main() {
   group('UserRoleScope value object', () {
@@ -501,7 +507,15 @@ void main() {
       'revoked_at IS NULL + validity window so revoked / expired '
       'grants do not trigger a roles_version bump',
       () async {
-        final pool = _RolesPool(bumpAffectedRows: 5);
+        final pool = _RolesPool(
+          bumpedUserIds: <String>[
+            _targetUser,
+            _otherUser1,
+            _otherUser2,
+            _otherUser3,
+            _otherUser4,
+          ],
+        );
         final repo = UserRolesRepository(TenantTransactionWrapper(pool));
         final affected = await repo.bumpActiveGrantHoldersForRole(
           operatorId: _opA,
@@ -525,6 +539,10 @@ void main() {
           'user_roles.valid_until is null or user_roles.valid_until > now()',
         ));
         expect(updateSql, contains('user_roles.valid_from <= now()'));
+        // RETURNING user_id::text feeds the per-user fan-out emit
+        // loop; producers cannot drop the listener contract by
+        // collapsing the bump back to plain `execute`.
+        expect(updateSql, contains('returning user_id::text as user_id'));
 
         final params = tx.parameters.firstWhere(
           (p) => p['role_id'] == _roleA,
@@ -533,6 +551,191 @@ void main() {
       },
     );
   });
+
+  group(
+    'PCACHE-FANOUT-PRODUCERS — pg_notify on permission_cache_invalidate',
+    () {
+      test(
+        'insertGrant emits ONE NOTIFY with the listener-contract '
+        'payload after the roles_version bump (same transaction)',
+        () async {
+          final pool = _RolesPool(insertedUserRoleId: _userRoleId);
+          final repo = UserRolesRepository(TenantTransactionWrapper(pool));
+          await repo.insertGrant(
+            operatorId: _opA,
+            locationId: _locA,
+            actorUserId: _actorA,
+            targetUserId: _targetUser,
+            roleId: _roleA,
+            scopeType: UserRoleScope.operatorWide,
+          );
+          final tx = pool.transactions.single;
+          // Locate the emitted NOTIFY statement and decode its
+          // bound payload — the JSON shape must match
+          // PermissionCacheInvalidation.fromPayload byte-for-byte.
+          final notifyIdx = tx.executedSql.indexWhere(
+            (s) => s.contains("pg_notify('permission_cache_invalidate'"),
+          );
+          expect(
+            notifyIdx,
+            isNonNegative,
+            reason: 'insertGrant must queue a NOTIFY after the bump',
+          );
+          final notifySql = tx.executedSql[notifyIdx];
+          // Parameter-bound, NEVER concatenated.
+          expect(notifySql, contains('@payload'));
+          expect(notifySql, isNot(contains('||')));
+          expect(notifySql, isNot(contains("' || ")));
+          final payload = tx.parameters[notifyIdx]['payload'];
+          expect(payload, isA<String>());
+          final decoded = jsonDecode(payload! as String) as Map<String, Object?>;
+          expect(decoded['user_id'], equals(_targetUser));
+          expect(decoded['operator_id'], equals(_opA));
+          expect(decoded['location_id'], isNull);
+
+          // The NOTIFY runs AFTER the bump on `users`, BEFORE commit.
+          final bumpIdx = tx.executedSql.indexWhere(
+            (s) =>
+                s.contains('update users') &&
+                s.contains('roles_version = roles_version + 1') &&
+                !s.contains('exists ('),
+          );
+          expect(bumpIdx, isNonNegative);
+          expect(notifyIdx, greaterThan(bumpIdx));
+          // Single emission per insert (no duplicate fan-out).
+          expect(
+            tx.executedSql.where(
+              (s) => s.contains("pg_notify('permission_cache_invalidate'"),
+            ),
+            hasLength(1),
+          );
+          // Atomic with the write — same transaction commit count.
+          expect(tx.commitCount, equals(1));
+        },
+      );
+
+      test(
+        'insertGrant rolling back (RLS denial — INSERT returns 0 '
+        'rows) emits NO NOTIFY: a failed grant must not invalidate '
+        'peer caches',
+        () async {
+          final pool = _RolesPool(insertedUserRoleId: null);
+          final repo = UserRolesRepository(TenantTransactionWrapper(pool));
+          await expectLater(
+            repo.insertGrant(
+              operatorId: _opA,
+              locationId: _locA,
+              actorUserId: _actorA,
+              targetUserId: _targetUser,
+              roleId: _roleA,
+              scopeType: UserRoleScope.operatorWide,
+            ),
+            throwsStateError,
+          );
+          final tx = pool.transactions.single;
+          expect(
+            tx.executedSql.where(
+              (s) => s.contains("pg_notify('permission_cache_invalidate'"),
+            ),
+            isEmpty,
+          );
+        },
+      );
+
+      test(
+        'revokeGrant with affected ≥ 1 emits ONE NOTIFY; revokeGrant '
+        'with affected == 0 emits NONE',
+        () async {
+          // affected == 1
+          final hitPool = _RolesPool(revokeAffectedRows: 1);
+          final hitRepo = UserRolesRepository(TenantTransactionWrapper(hitPool));
+          await hitRepo.revokeGrant(
+            operatorId: _opA,
+            locationId: _locA,
+            actorUserId: _actorA,
+            userRoleId: _userRoleId,
+            targetUserId: _targetUser,
+          );
+          final hitTx = hitPool.transactions.single;
+          final hitNotifies = <int>[
+            for (var i = 0; i < hitTx.executedSql.length; i++)
+              if (hitTx.executedSql[i]
+                  .contains("pg_notify('permission_cache_invalidate'"))
+                i,
+          ];
+          expect(hitNotifies, hasLength(1));
+          final hitDecoded = jsonDecode(
+            hitTx.parameters[hitNotifies.single]['payload']! as String,
+          ) as Map<String, Object?>;
+          expect(hitDecoded['user_id'], equals(_targetUser));
+          expect(hitDecoded['operator_id'], equals(_opA));
+          expect(hitDecoded['location_id'], isNull);
+
+          // affected == 0 — no-op revoke: no NOTIFY, no cache budget burn.
+          final missPool = _RolesPool(revokeAffectedRows: 0);
+          final missRepo = UserRolesRepository(
+            TenantTransactionWrapper(missPool),
+          );
+          await missRepo.revokeGrant(
+            operatorId: _opA,
+            locationId: _locA,
+            actorUserId: _actorA,
+            userRoleId: _userRoleId,
+            targetUserId: _targetUser,
+          );
+          final missTx = missPool.transactions.single;
+          expect(
+            missTx.executedSql.where(
+              (s) => s.contains("pg_notify('permission_cache_invalidate'"),
+            ),
+            isEmpty,
+          );
+        },
+      );
+
+      test(
+        'bumpActiveGrantHoldersForRole emits ONE NOTIFY per affected '
+        'user_id (fan-out for a custom-role permission edit)',
+        () async {
+          final pool = _RolesPool(
+            bumpedUserIds: <String>[_targetUser, _otherUser1, _otherUser2],
+          );
+          final repo = UserRolesRepository(TenantTransactionWrapper(pool));
+          await repo.bumpActiveGrantHoldersForRole(
+            operatorId: _opA,
+            locationId: _locA,
+            actorUserId: _actorA,
+            roleId: _roleA,
+          );
+          final tx = pool.transactions.single;
+          final notifyIndexes = <int>[
+            for (var i = 0; i < tx.executedSql.length; i++)
+              if (tx.executedSql[i]
+                  .contains("pg_notify('permission_cache_invalidate'"))
+                i,
+          ];
+          expect(notifyIndexes, hasLength(3));
+          final emittedUserIds = <String>{};
+          for (final idx in notifyIndexes) {
+            final notifySql = tx.executedSql[idx];
+            expect(notifySql, contains('@payload'));
+            expect(notifySql, isNot(contains('||')));
+            final payload = tx.parameters[idx]['payload'];
+            expect(payload, isA<String>());
+            final decoded =
+                jsonDecode(payload! as String) as Map<String, Object?>;
+            expect(decoded['operator_id'], equals(_opA));
+            expect(decoded['location_id'], isNull);
+            emittedUserIds.add(decoded['user_id']! as String);
+          }
+          expect(
+            emittedUserIds,
+            equals(<String>{_targetUser, _otherUser1, _otherUser2}),
+          );
+        },
+      );
+    },
+  );
 }
 
 /// Recording fake `PostgresPool` shaped for the UserRolesRepository
@@ -544,21 +747,22 @@ void main() {
 /// `revokeAffectedRows` controls what the revoke UPDATE returns as
 /// the affected-row count.
 ///
-/// `bumpAffectedRows` controls the bumpActiveGrantHoldersForRole
-/// affected-row count.
+/// `bumpedUserIds` controls what `bumpActiveGrantHoldersForRole`'s
+/// `update users ... returning user_id` query hands back. The list
+/// length is the affected-row count seen by the caller.
 ///
 /// `activeGrantRows` controls what activeGrantsForUser returns.
 class _RolesPool implements PostgresPool {
   _RolesPool({
     this.insertedUserRoleId,
     this.revokeAffectedRows = 0,
-    this.bumpAffectedRows = 0,
+    this.bumpedUserIds = const <String>[],
     this.activeGrantRows = const <PostgresRow>[],
   });
 
   final String? insertedUserRoleId;
   final int revokeAffectedRows;
-  final int bumpAffectedRows;
+  final List<String> bumpedUserIds;
   final List<PostgresRow> activeGrantRows;
   final List<_RolesTransaction> transactions = <_RolesTransaction>[];
 
@@ -567,7 +771,7 @@ class _RolesPool implements PostgresPool {
     final tx = _RolesTransaction(
       insertedUserRoleId: insertedUserRoleId,
       revokeAffectedRows: revokeAffectedRows,
-      bumpAffectedRows: bumpAffectedRows,
+      bumpedUserIds: bumpedUserIds,
       activeGrantRows: activeGrantRows,
     );
     transactions.add(tx);
@@ -579,13 +783,13 @@ class _RolesTransaction extends PostgresTransaction {
   _RolesTransaction({
     required this.insertedUserRoleId,
     required this.revokeAffectedRows,
-    required this.bumpAffectedRows,
+    required this.bumpedUserIds,
     required this.activeGrantRows,
   });
 
   final String? insertedUserRoleId;
   final int revokeAffectedRows;
-  final int bumpAffectedRows;
+  final List<String> bumpedUserIds;
   final List<PostgresRow> activeGrantRows;
 
   final List<String> executedSql = <String>[];
@@ -609,6 +813,12 @@ class _RolesTransaction extends PostgresTransaction {
         <String, Object?>{'user_role_id': insertedUserRoleId},
       ];
     }
+    if (sql.contains('update users') &&
+        sql.contains('returning user_id::text as user_id')) {
+      return <PostgresRow>[
+        for (final id in bumpedUserIds) <String, Object?>{'user_id': id},
+      ];
+    }
     if (sql.contains('from user_roles')) {
       return activeGrantRows;
     }
@@ -626,10 +836,6 @@ class _RolesTransaction extends PostgresTransaction {
     if (sql.contains('update user_roles') &&
         sql.contains('set revoked_at = now()')) {
       return revokeAffectedRows;
-    }
-    if (sql.contains('update users') &&
-        sql.contains('exists (')) {
-      return bumpAffectedRows;
     }
     return 0;
   }
