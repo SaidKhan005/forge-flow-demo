@@ -1,6 +1,7 @@
 // Phase 9.UX.1 - delayed MFA factor removal request repository.
 
 import '../operator_scoped_repository.dart';
+import '../postgres_executor.dart';
 import '../tenant_context.dart';
 
 class MfaFactorRemovalRequestRecord {
@@ -285,6 +286,53 @@ class MfaFactorRemovalRequestsRepository extends OperatorScopedRepository {
         },
       );
     });
+  }
+
+  /// On-executor variant of [markCompleted]. Runs the same UPDATE
+  /// against a caller-supplied [PostgresExecutor] instead of opening
+  /// its own `withTenant` boundary. Used by the L7 atomic-completion
+  /// path in `MfaRemovalWorker`, which composes
+  /// `markCompletedInTransaction + audit + outbox` inside a single
+  /// tenant transaction so the three writes commit (or roll back)
+  /// together. The caller MUST already hold a `withTenant` transaction
+  /// against [exec] so the SET LOCAL `app.operator_id` /
+  /// `app.location_id` / `app.user_id` injected by the wrapper are in
+  /// scope when the RLS policy
+  /// (`mfa_factor_removal_requests_per_user`) evaluates.
+  ///
+  /// The SQL mirrors [markCompleted] exactly — same WHERE-clause
+  /// guard (`completed_at is null and cancelled_at is null`) so a
+  /// re-attempt after a transaction rollback sees the row in its
+  /// pre-attempt state and the WHERE-clause race-loss path
+  /// (return 0) still applies if a parallel worker has already
+  /// finalized the row.
+  Future<int> markCompletedInTransaction(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String requestId,
+    required DateTime completedAt,
+  }) {
+    return exec.execute(
+      'update mfa_factor_removal_requests '
+      'set completed_at = @completed_at::timestamptz, '
+      'last_error = null, processing_started_at = null, '
+      'processing_owner = null, updated_at = now() '
+      'where request_id = @request_id::uuid '
+      'and operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid '
+      'and user_id = @user_id::uuid '
+      'and completed_at is null '
+      'and cancelled_at is null',
+      parameters: <String, Object?>{
+        'request_id': requestId,
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'user_id': userId,
+        'completed_at': completedAt.toUtc().toIso8601String(),
+      },
+    );
   }
 
   Future<int> markCancelled({

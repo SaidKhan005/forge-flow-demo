@@ -8,6 +8,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/users_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
 import 'package:forge_and_flow/services/mfa/firebase_mfa_client.dart';
@@ -683,6 +684,28 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     events.add(_AuditEvent(eventType: eventType, payload: payload));
     return 'event-1';
   }
+
+  /// L7 atomic-completion on-executor variant. Records onto the same
+  /// `events` list so the gateway test's existing assertions still hold.
+  @override
+  Future<String> insertSystemEventOn(
+    PostgresExecutor exec, {
+    required String eventType,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+    String actorKind = 'user',
+    String? actorServicePrincipalId,
+    String? targetUserId,
+    Map<String, Object?> payload = const <String, Object?>{},
+    String? ip,
+    String? userAgent,
+    String? geoCountry,
+    String? requestId,
+  }) async {
+    events.add(_AuditEvent(eventType: eventType, payload: payload));
+    return 'event-1';
+  }
 }
 
 class _AuditEvent {
@@ -809,6 +832,42 @@ class _RecordingRemovalRequestsRepository
     required String requestId,
     required DateTime completedAt,
   }) async {
+    return _applyCompletion(requestId: requestId, completedAt: completedAt);
+  }
+
+  /// L7 atomic-completion on-executor variant. The fake ignores [exec]
+  /// and applies the same record mutation as the legacy [markCompleted].
+  /// Atomicity (rollback on body throw) is simulated by the [withTenant]
+  /// override below.
+  @override
+  Future<int> markCompletedInTransaction(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String requestId,
+    required DateTime completedAt,
+  }) async {
+    return _applyCompletion(requestId: requestId, completedAt: completedAt);
+  }
+
+  /// Override the inherited `withTenant` so the fake can run the body
+  /// without a live Postgres pool. The gateway test exercises the
+  /// success path only, so a try/rethrow is enough — no rollback
+  /// simulation is needed for these scenarios. (`mfa_removal_worker_test`
+  /// has the explicit rollback coverage.)
+  @override
+  Future<R> withTenant<R>(
+    TenantContext context,
+    Future<R> Function(PostgresExecutor exec) body,
+  ) async {
+    return body(_FakeExecutor());
+  }
+
+  int _applyCompletion({
+    required String requestId,
+    required DateTime completedAt,
+  }) {
     final index = records.indexWhere((record) => record.requestId == requestId);
     if (index < 0) return 0;
     final current = records[index];
@@ -947,6 +1006,20 @@ class _RecordingEventOutboxRepository extends EventOutboxRepository {
     enqueued.add(_OutboxEvent(topic: topic, payload: payload));
     return 'outbox-1';
   }
+
+  /// L7 atomic-completion on-executor variant. Records onto the same
+  /// `enqueued` list so the gateway test's existing assertions still
+  /// hold.
+  @override
+  Future<String> enqueueInTransaction(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String topic,
+    required Map<String, Object?> payload,
+  }) async {
+    enqueued.add(_OutboxEvent(topic: topic, payload: payload));
+    return 'outbox-1';
+  }
 }
 
 class _OutboxEvent {
@@ -954,6 +1027,27 @@ class _OutboxEvent {
 
   final String topic;
   final Map<String, Object?> payload;
+}
+
+/// Stand-in for a real `PostgresExecutor` inside the atomic-completion
+/// body of `MfaRemovalWorker`. The downstream fakes ignore the
+/// executor argument; this exists only so the type system is happy.
+class _FakeExecutor implements PostgresExecutor {
+  @override
+  Future<List<PostgresRow>> query(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    throw StateError('unexpected query in atomic-completion body: $sql');
+  }
+
+  @override
+  Future<int> execute(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    throw StateError('unexpected execute in atomic-completion body: $sql');
+  }
 }
 
 class _NoopPool implements PostgresPool {

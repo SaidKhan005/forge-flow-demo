@@ -23,11 +23,12 @@
 //     dead-lettering. The 10th failure dead-letters the row, emits
 //     exactly one outbox event for human triage, and counts the row
 //     as `failed` + `deadLettered` in the result.
-//   * Failure AFTER markCompleted (e.g. audit insert raises) — the
-//     worker treats it as a row failure: incrementAttemptCount +
-//     markFailed run; on the retry, markCompleted's WHERE-clause
-//     guard short-circuits to a race-lost outcome so audit/outbox are
-//     not double-emitted.
+//   * Atomic-completion rollback — when audit insert raises inside the
+//     completion transaction, the wrapper rolls back so the
+//     `markCompletedInTransaction` UPDATE is discarded. The row stays
+//     in pending state with `attempt_count` bumped by the failure arm
+//     (which opens its own transaction); the next tick reclaims it
+//     cleanly and (with audit healed) completes the row.
 //   * `shouldStop` predicate breaks the per-row loop between rows so
 //     SIGTERM-driven cooperative shutdown leaves the next row for the
 //     replacement instance.
@@ -36,6 +37,23 @@
 // shape used by `mfa_operations_gateway_test.dart`. The retry-cap +
 // DLQ surface is exercised through new fake methods backed by M4's
 // `incrementAttemptCount` / `markDeadLettered`.
+//
+// Atomic-completion fakes:
+//
+//   * `_RemovalRequestsFake.withTenant` is overridden to short-circuit
+//     `_NoopPool` and run the body with a `_FakeExecutor`. The fake
+//     simulates transaction commit/rollback by buffering the
+//     `markCompletedInTransaction` mutation in `_pendingCompletions`
+//     and either committing it to `completedRequestIds` (body returns
+//     normally) or discarding it (body throws). This is what lets the
+//     "audit-failure rolls markCompleted back" assertion hold without
+//     a live Postgres.
+//   * `_AuditFake.insertSystemEventOn` is the on-executor variant the
+//     atomic completion path calls; it shares the `events` recorder
+//     with the legacy `insertSystemEvent`.
+//   * `_EventOutboxFake.enqueueInTransaction` is the on-executor
+//     variant; it shares the `enqueued` recorder with the legacy
+//     `enqueue` (so DLQ-channel events still surface).
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -45,6 +63,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/users_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
 import 'package:forge_and_flow/services/mfa/mfa_removal_worker.dart';
@@ -387,21 +406,22 @@ void main() {
     );
 
     test(
-      'failure after markCompleted (audit insert raises) → '
-      'incrementAttemptCount + markFailed; row stays claimable; on retry '
-      'markCompleted returns 0 so audit + outbox are not double-emitted',
+      'audit insert failure rolls back markCompletedInTransaction; row '
+      'stays in pending state with attempt_count bumped; next tick '
+      'completes cleanly',
       () async {
         final removalRepo = _RemovalRequestsFake(
           records: <MfaFactorRemovalRequestRecord>[
             _due(requestId: _requestIdA, factorId: _factorIdA),
           ],
         );
-        // Audit fake throws on insertSystemEvent — simulates a
-        // Postgres failure on the audit-row INSERT (post markCompleted).
-        // The L7 worker treats that as a row-level failure: the row
-        // is left in a state where the next tick reclaims it, sees
-        // `markCompleted` return 0 (the WHERE clause excludes
-        // already-completed rows), and short-circuits via raceLost.
+        // Audit fake throws on insertSystemEventOn — simulates a
+        // Postgres failure on the audit-row INSERT inside the
+        // single-tx atomic completion body. The wrapper must roll the
+        // whole transaction back so markCompletedInTransaction is
+        // discarded and the row stays claimable. The worker's catch
+        // arm then routes through `_onFailure` which opens its own tx
+        // for incrementAttemptCount + markFailed.
         final auditRepo = _ThrowingAuditFake();
         final outbox = _EventOutboxFake();
         final worker = MfaRemovalWorker(
@@ -414,29 +434,35 @@ void main() {
           now: () => DateTime.utc(2026, 5, 1, 13),
         );
 
-        // Tick 1 — markCompleted succeeds (returns 1), audit throws,
-        // failure arm runs.
+        // Tick 1 — markCompletedInTransaction's UPDATE matched 1
+        // (row was pending), audit throws inside the body, the
+        // surrounding transaction rolls back. The fake's
+        // `completedRequestIds` MUST stay empty: that is the
+        // observable proof that markCompleted was rolled back.
         final result1 = await worker.processDue();
         expect(result1.claimed, equals(1));
         expect(result1.completed, equals(0));
         expect(result1.failed, equals(1));
         expect(result1.deadLettered, equals(0));
-        // No success-path outbox enqueue happened because the audit
-        // INSERT raised before the outbox call.
+        // markCompletedInTransaction was attempted but rolled back.
+        expect(removalRepo.markCompletedAttempts, equals(1));
+        expect(
+          removalRepo.completedRequestIds,
+          isEmpty,
+          reason: 'audit failure must roll markCompleted back; with '
+              'single-tx atomicity the row stays pending',
+        );
+        // No success-path outbox enqueue happened (rolled back).
         expect(outbox.enqueued, isEmpty);
-        // Failure arm fired: increment + markFailed.
+        // Failure arm fired in its own transaction: increment +
+        // markFailed (both run outside the rolled-back atomic body).
         expect(removalRepo.incrementAttemptCalls, hasLength(1));
         expect(removalRepo.markFailedCalls, hasLength(1));
         expect(removalRepo.attemptCount(_requestIdA), equals(1));
 
-        // Simulate the next polling tick after the row has been
-        // re-marked completed by a parallel worker (or simply remains
-        // completed from tick 1 since markCompleted ran before audit
-        // failed). Force markCompleted to return 0 so the WHERE-
-        // clause guard short-circuits the worker to raceLost.
-        removalRepo.forceMarkCompletedReturns(0);
-        // Use a non-throwing audit fake so we'd see the event if it
-        // fired.
+        // Tick 2 — audit healed; the row is reclaimed and completes
+        // cleanly with no double-emission (audit + outbox each fire
+        // exactly once, as they would for a fresh first-try success).
         final retryAudit = _AuditFake();
         final retryWorker = MfaRemovalWorker(
           removalRequestsRepository: removalRepo,
@@ -448,17 +474,60 @@ void main() {
           now: () => DateTime.utc(2026, 5, 1, 13),
         );
         final result2 = await retryWorker.processDue();
-        // Tick 2 — markCompleted returns 0 (the row is already
-        // completed). The worker short-circuits to raceLost: not
-        // counted as completed, not audited, not enqueued.
         expect(result2.claimed, equals(1));
-        expect(result2.completed, equals(0));
+        expect(result2.completed, equals(1));
         expect(result2.failed, equals(0));
         expect(result2.deadLettered, equals(0));
-        expect(retryAudit.events, isEmpty);
-        // The DLQ-channel outbox was not touched on either tick (one
-        // failure is far below the retry cap).
+        expect(retryAudit.events, hasLength(1));
+        expect(outbox.enqueued, hasLength(1));
+        expect(
+          outbox.enqueued.single.topic,
+          equals('auth.user.mfa_factor_removed'),
+        );
+        // The success-path completed flag is now committed.
+        expect(removalRepo.completedRequestIds, equals(<String>[_requestIdA]));
+      },
+    );
+
+    test(
+      'race-loss inside atomic body (markCompleted UPDATE returns 0) '
+      'commits the empty transaction without audit/outbox writes',
+      () async {
+        final removalRepo = _RemovalRequestsFake(
+          records: <MfaFactorRemovalRequestRecord>[
+            _due(requestId: _requestIdA, factorId: _factorIdA),
+          ],
+          markCompletedReturns: 0,
+        );
+        final auditRepo = _AuditFake();
+        final outbox = _EventOutboxFake();
+        final worker = MfaRemovalWorker(
+          removalRequestsRepository: removalRepo,
+          mfaFactorsRepository: _MfaFactorsFake(),
+          usersRepository: _UsersFake(firebaseUid: 'fb-uid'),
+          auditRepository: auditRepo,
+          firebaseAdmin: _FirebaseAdminFake(),
+          eventOutboxRepository: outbox,
+          now: () => DateTime.utc(2026, 5, 1, 13),
+        );
+
+        final result = await worker.processDue();
+
+        // Race-lost: markCompleted UPDATE matched 0 (parallel writer
+        // already finalised). Body returns _RowOutcome.raceLost without
+        // throwing, so the transaction commits cleanly with no audit /
+        // outbox writes.
+        expect(result.claimed, equals(1));
+        expect(result.completed, equals(0));
+        expect(result.failed, equals(0));
+        expect(result.deadLettered, equals(0));
+        expect(auditRepo.events, isEmpty);
         expect(outbox.enqueued, isEmpty);
+        // markCompletedInTransaction was attempted but matched 0 —
+        // not a rollback, just a no-op commit.
+        expect(removalRepo.markCompletedAttempts, equals(1));
+        expect(removalRepo.atomicTransactionsCommitted, equals(1));
+        expect(removalRepo.atomicTransactionsRolledBack, equals(0));
       },
     );
 
@@ -539,13 +608,37 @@ class _RemovalRequestsFake extends MfaFactorRemovalRequestsRepository {
   final _attemptCounts = <String, int>{};
   final _deadLetterStamps = <String, int>{};
 
+  /// Atomic-completion fake state.
+  ///
+  /// `markCompletedAttempts` counts every call to
+  /// [markCompletedInTransaction] regardless of commit/rollback so
+  /// tests can pin the worker's per-row retry shape. Pending
+  /// completions are buffered in [_pendingCompletions] and either
+  /// drained into [completedRequestIds] when [withTenant]'s body
+  /// returns normally, or discarded when it throws — that's the
+  /// observable "rollback" behavior.
+  int markCompletedAttempts = 0;
+  int atomicTransactionsCommitted = 0;
+  int atomicTransactionsRolledBack = 0;
+  final List<String> _pendingCompletions = <String>[];
+  final List<String> completedRequestIds = <String>[];
+
   int attemptCount(String requestId) => _attemptCounts[requestId] ?? 0;
   int deadLetteredCount(String requestId) =>
       _deadLetterStamps[requestId] ?? 0;
 
-  /// Test seam — flips [_markCompletedReturns] mid-test so the second
-  /// tick of the audit-failure scenario can simulate a "row already
-  /// completed" race.
+  /// Whether [requestId] is currently in the committed-completed set.
+  /// `claimDuePending` consults this so a row that has been fully
+  /// completed in a prior tick is excluded from the next tick's claim
+  /// batch (mirroring the partial-index shape on the real schema).
+  bool isCommittedCompleted(String requestId) =>
+      completedRequestIds.contains(requestId);
+
+  /// Test seam — flips [_markCompletedReturns] mid-test. Retained for
+  /// parity with the legacy fake API; the new atomicity tests prefer
+  /// to model the post-rollback "row stays pending" shape directly via
+  /// the [completedRequestIds] / [_pendingCompletions] buffers, so
+  /// most tests no longer need to flip this manually.
   void forceMarkCompletedReturns(int value) {
     _markCompletedReturns = value;
   }
@@ -559,12 +652,63 @@ class _RemovalRequestsFake extends MfaFactorRemovalRequestsRepository {
   }) async {
     lastClaimOwner = workerOwner;
     lastClaimLimit = limit;
-    // Filter dead-lettered rows out so subsequent ticks of the
-    // retry-cap test see an empty claim batch (matches the M4 partial
-    // index shape).
+    // Filter dead-lettered AND committed-completed rows out so
+    // subsequent ticks see an empty claim batch (mirrors the M4
+    // partial-index shape on the real schema).
     return records
-        .where((r) => deadLetteredCount(r.requestId) == 0)
+        .where((r) =>
+            deadLetteredCount(r.requestId) == 0 &&
+            !isCommittedCompleted(r.requestId))
         .toList();
+  }
+
+  /// Override the inherited `withTenant` so the fake can run the body
+  /// without a live Postgres pool AND simulate transaction
+  /// commit/rollback. The body sees a [_FakeExecutor] that the
+  /// downstream fakes (audit + outbox) ignore — they record their
+  /// effects directly. This fake is the source-of-truth for
+  /// markCompleted's commit semantics: writes buffered in
+  /// [_pendingCompletions] either move to [completedRequestIds] on a
+  /// clean body return or are dropped on a body throw.
+  @override
+  Future<R> withTenant<R>(
+    TenantContext context,
+    Future<R> Function(PostgresExecutor exec) body,
+  ) async {
+    final exec = _FakeExecutor();
+    _pendingCompletions.clear();
+    try {
+      final result = await body(exec);
+      // Commit: drain pending completions into the committed set.
+      completedRequestIds.addAll(_pendingCompletions);
+      _pendingCompletions.clear();
+      atomicTransactionsCommitted += 1;
+      return result;
+    } catch (_) {
+      // Rollback: drop pending completions. Tests assert on
+      // [completedRequestIds] to verify the rollback held.
+      _pendingCompletions.clear();
+      atomicTransactionsRolledBack += 1;
+      rethrow;
+    }
+  }
+
+  @override
+  Future<int> markCompletedInTransaction(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String requestId,
+    required DateTime completedAt,
+  }) async {
+    markCompletedAttempts += 1;
+    if (_markCompletedReturns == 0) {
+      // Race-loss UPDATE: matched 0 rows. Don't buffer the completion.
+      return 0;
+    }
+    _pendingCompletions.add(requestId);
+    return _markCompletedReturns;
   }
 
   @override
@@ -575,6 +719,12 @@ class _RemovalRequestsFake extends MfaFactorRemovalRequestsRepository {
     required String requestId,
     required DateTime completedAt,
   }) async {
+    // Legacy callers still hit this seam. Mirror the in-tx variant for
+    // parity but commit immediately (the legacy method opens its own
+    // tx). Not used by the post-atomic-completion worker.
+    markCompletedAttempts += 1;
+    if (_markCompletedReturns == 0) return 0;
+    completedRequestIds.add(requestId);
     return _markCompletedReturns;
   }
 
@@ -615,6 +765,36 @@ class _RemovalRequestsFake extends MfaFactorRemovalRequestsRepository {
     final stamps = (_deadLetterStamps[requestId] ?? 0) + 1;
     _deadLetterStamps[requestId] = stamps;
     return 1;
+  }
+}
+
+/// Stand-in for a real `PostgresExecutor` inside the atomic-completion
+/// body. The downstream fakes (audit + outbox) ignore the executor
+/// argument and record effects on themselves; the fake's only job is
+/// to satisfy the type system. Any unexpected SQL would surface as a
+/// hard StateError so a test that drifts from the contract fails
+/// loudly.
+class _FakeExecutor implements PostgresExecutor {
+  @override
+  Future<List<PostgresRow>> query(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    throw StateError(
+      'unexpected query in atomic-completion body: $sql — '
+      'fakes record on their own state, not via the executor',
+    );
+  }
+
+  @override
+  Future<int> execute(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    throw StateError(
+      'unexpected execute in atomic-completion body: $sql — '
+      'fakes record on their own state, not via the executor',
+    );
   }
 }
 
@@ -720,10 +900,36 @@ class _AuditFake extends AuthEventsAuditRepository {
     events.add(_AuditEvent(eventType: eventType, payload: payload));
     return 'event-${events.length}';
   }
+
+  /// On-executor variant the atomic-completion body calls. The fake
+  /// ignores [exec] and records on the same `events` list as the
+  /// other helpers so existing assertions still hold.
+  @override
+  Future<String> insertSystemEventOn(
+    PostgresExecutor exec, {
+    required String eventType,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+    String actorKind = 'user',
+    String? actorServicePrincipalId,
+    String? targetUserId,
+    Map<String, Object?> payload = const <String, Object?>{},
+    String? ip,
+    String? userAgent,
+    String? geoCountry,
+    String? requestId,
+  }) async {
+    events.add(_AuditEvent(eventType: eventType, payload: payload));
+    return 'event-${events.length}';
+  }
 }
 
-/// Variant audit fake whose `insertSystemEvent` always throws —
-/// pins the failure-after-markCompleted test.
+/// Variant audit fake whose `insertSystemEventOn` always throws —
+/// pins the atomic-completion rollback test. The on-executor variant
+/// is the one the post-atomic worker calls; the legacy
+/// `insertSystemEvent` is kept throwing for parity should other
+/// callers regress.
 class _ThrowingAuditFake extends _AuditFake {
   @override
   Future<String> insertSystemEvent({
@@ -740,6 +946,25 @@ class _ThrowingAuditFake extends _AuditFake {
     String? geoCountry,
     String? requestId,
     required String adminReason,
+  }) async {
+    throw const _FakeAuditError('audit_insert_failed');
+  }
+
+  @override
+  Future<String> insertSystemEventOn(
+    PostgresExecutor exec, {
+    required String eventType,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+    String actorKind = 'user',
+    String? actorServicePrincipalId,
+    String? targetUserId,
+    Map<String, Object?> payload = const <String, Object?>{},
+    String? ip,
+    String? userAgent,
+    String? geoCountry,
+    String? requestId,
   }) async {
     throw const _FakeAuditError('audit_insert_failed');
   }
@@ -771,6 +996,20 @@ class _EventOutboxFake extends EventOutboxRepository {
     required String topic,
     required Map<String, Object?> payload,
     String? userId,
+  }) async {
+    enqueued.add(_OutboxEvent(topic: topic, payload: payload));
+    return 'outbox-${enqueued.length}';
+  }
+
+  /// On-executor variant the atomic-completion body calls. The fake
+  /// ignores [exec] and records on the same `enqueued` list as the
+  /// legacy [enqueue] so existing assertions still hold.
+  @override
+  Future<String> enqueueInTransaction(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String topic,
+    required Map<String, Object?> payload,
   }) async {
     enqueued.add(_OutboxEvent(topic: topic, payload: payload));
     return 'outbox-${enqueued.length}';
