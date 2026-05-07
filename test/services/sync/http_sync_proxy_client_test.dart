@@ -248,6 +248,23 @@ void main() {
                 },
               ],
             },
+          '/base/v1/operators/op/locations/loc/wage_role_rows' =>
+            <String, Object?>{
+              'wage_role_rows': <Object?>[
+                <String, Object?>{
+                  'role_name': 'Line Cook',
+                  'labor_bucket': 'boh',
+                  'hourly_rate': '18.25',
+                  'weighted_hours': 40,
+                },
+                <String, Object?>{
+                  'roleName': 'Server',
+                  'laborBucket': 'foh',
+                  'hourlyRate': 16.5,
+                  'weightedHours': '32',
+                },
+              ],
+            },
           '/base/v1/operators/op/locations/loc/polling_tier_assignment' =>
             <String, Object?>{
               'assignment': <String, Object?>{
@@ -306,6 +323,10 @@ void main() {
       operatorId: 'op',
       locationId: 'loc',
     );
+    final wageRows = await client.fetchWageRoleRows(
+      operatorId: 'op',
+      locationId: 'loc',
+    );
     final tier = await client.fetchForgeFlowPollingTierAssignment(
       operatorId: 'op',
       locationId: 'loc',
@@ -331,12 +352,20 @@ void main() {
     expect(keyedAccuracy.single.coversSource.wire, 'reservation_plus_walkin');
     expect(keyedAccuracy.single.wageSource.wire, 'manual_mix');
     expect(keyedAccuracy.single.updatedBy, 'admin-1');
+    expect(wageRows.map((row) => row.roleName), <String>[
+      'Line Cook',
+      'Server',
+    ]);
+    expect(wageRows.first.restaurantId, 'loc');
+    expect(wageRows.first.laborBucket, 'boh');
+    expect(wageRows.first.hourlyRate, 18.25);
+    expect(wageRows.last.weightedHours, 32);
     expect(tier!.tierKey, 'premium');
     expect(tier.pollingCadencePerVendorSeconds['toast'], 300);
     expect(backfill!.status, 'running');
     expect(backfill.vendorId, 'toast');
     expect(backfill.isRunning, isTrue);
-    expect(requests, hasLength(7));
+    expect(requests, hasLength(8));
 
     // BUG 3 (MEDIUM): non-root proxyBaseUri prefix MUST be preserved.
     // The previous implementation called `proxyBaseUri.resolve` against

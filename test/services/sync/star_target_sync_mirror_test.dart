@@ -6,6 +6,7 @@ import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/target_cycle.dart';
 import 'package:forge_and_flow/domain/models/target_cycle_source.dart';
 import 'package:forge_and_flow/domain/models/target_profile_version.dart';
+import 'package:forge_and_flow/domain/models/wage_role_row.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_baseline_selection_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
@@ -476,6 +477,14 @@ class _StarTargetSyncClient
   }
 
   @override
+  Future<List<WageRoleRow>> fetchWageRoleRows({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    return const <WageRoleRow>[];
+  }
+
+  @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
   fetchForgeFlowPollingTierAssignment({
     required String operatorId,
@@ -549,6 +558,14 @@ class _LegacySyncProxyClient implements SyncProxyClient {
     required String locationId,
   }) async {
     return const <DataAccuracyServicePeriodSetting>[];
+  }
+
+  @override
+  Future<List<WageRoleRow>> fetchWageRoleRows({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    return const <WageRoleRow>[];
   }
 
   @override

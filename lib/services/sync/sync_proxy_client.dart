@@ -27,6 +27,7 @@
 import '../../domain/models/open_shift_snapshot.dart';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/restaurant_timing_config.dart';
+import '../../domain/models/wage_role_row.dart';
 import '../../models/shift_record.dart';
 import '../integration/demo_mode_state.dart';
 
@@ -201,8 +202,8 @@ class FirstBackfillStatusSnapshot {
 ///
 /// All methods are bounded: `fetchShiftRecords` and
 /// `fetchOpenShiftSnapshots` take an explicit page size; the aux
-/// fetches return at most one row per (operator, location, category)
-/// by schema. Whole-table sweeps are not part of the surface.
+/// fetches mirror small server-owned settings sets scoped to one
+/// operator/location. Whole-table sweeps are not part of the surface.
 abstract class SyncProxyClient {
   /// Pull one bounded page of `ShiftRecord` rows modified since
   /// [cursor]. The proxy enforces operator / location isolation via
@@ -263,6 +264,14 @@ abstract class SyncProxyClient {
   /// display/explanation only and must not write them.
   Future<List<DataAccuracyServicePeriodSetting>>
   fetchDataAccuracyServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  });
+
+  /// Pull the server-owned wage role mix rows for this location. Mobile
+  /// persists these as a read-only cache in `wage_role_rows`; the
+  /// proxy/server remains the source of truth for role/rate mapping.
+  Future<List<WageRoleRow>> fetchWageRoleRows({
     required String operatorId,
     required String locationId,
   });

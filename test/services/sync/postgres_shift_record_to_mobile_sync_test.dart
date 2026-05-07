@@ -26,9 +26,11 @@ import 'package:forge_and_flow/domain/models/data_accuracy_service_period_settin
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
+import 'package:forge_and_flow/domain/models/wage_role_row.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/services/integration/demo_mode_state.dart';
@@ -409,6 +411,161 @@ void main() {
     },
   );
 
+  // ── F3/F4. wage_role_rows sync to mobile ──────────────────────────
+
+  test(
+    'F3. wage_role_rows replace local cache from server authority',
+    () async {
+      const rid = 'rest_F3';
+      const otherRid = 'rest_F3_other';
+      final wageRepo = SqliteWageRoleRowRepository.instance;
+      await wageRepo.deleteAll(rid);
+      await wageRepo.deleteAll(otherRid);
+      addTearDown(() async {
+        await wageRepo.deleteAll(rid);
+        await wageRepo.deleteAll(otherRid);
+      });
+      await wageRepo.upsertRow(
+        const WageRoleRow(
+          restaurantId: rid,
+          roleName: 'Old Role',
+          laborBucket: 'foh',
+          hourlyRate: 12,
+          weightedHours: 10,
+        ),
+      );
+      await wageRepo.upsertRow(
+        const WageRoleRow(
+          restaurantId: otherRid,
+          roleName: 'Other Location Role',
+          laborBucket: 'boh',
+          hourlyRate: 20,
+          weightedHours: 15,
+        ),
+      );
+
+      final client = _FakeSyncProxyClient()
+        ..scriptShiftPages([_Page(records: const [], nextCursor: null)])
+        ..scriptWageRoleRows(const <WageRoleRow>[
+          WageRoleRow(
+            restaurantId: 'server-location-id',
+            roleName: 'Line Cook',
+            laborBucket: 'boh',
+            hourlyRate: 18.25,
+            weightedHours: 40,
+          ),
+          WageRoleRow(
+            restaurantId: 'server-location-id',
+            roleName: 'Server',
+            laborBucket: 'foh',
+            hourlyRate: 16.5,
+            weightedHours: 32,
+          ),
+        ]);
+      final invalidations = _BusListener(bus);
+      addTearDown(invalidations.detach);
+      final sync = PostgresShiftRecordToMobileSync(
+        client: client,
+        shiftRepository: SqliteShiftRecordRepository.instance,
+        watermarkDao: watermarkDao,
+        invalidationBus: bus,
+      );
+
+      final result = await sync.sync(
+        operatorId: _opId,
+        locationId: _locId,
+        restaurantId: rid,
+      );
+      invalidations.detach();
+
+      expect(result.wageRoleRows.map((row) => row.roleName), <String>[
+        'Line Cook',
+        'Server',
+      ]);
+      expect(sync.latestWageRoleRows.first.restaurantId, rid);
+      final stored = await wageRepo.getRows(rid);
+      expect(stored.map((row) => row.roleName), <String>[
+        'Line Cook',
+        'Server',
+      ]);
+      expect(stored.every((row) => row.restaurantId == rid), isTrue);
+      expect(
+        await wageRepo.getRows(otherRid),
+        hasLength(1),
+        reason: 'replace-all is scoped to the active restaurant only',
+      );
+      expect(invalidations.count, 1);
+
+      client
+        ..scriptShiftPages([_Page(records: const [], nextCursor: null)])
+        ..scriptWageRoleRows(const <WageRoleRow>[]);
+
+      final emptyResult = await sync.sync(
+        operatorId: _opId,
+        locationId: _locId,
+        restaurantId: rid,
+      );
+
+      expect(emptyResult.wageRoleRows, isEmpty);
+      expect(await wageRepo.getRows(rid), isEmpty);
+    },
+  );
+
+  test(
+    'F4. aborted wage_role_rows sweep preserves prior cache and latest state',
+    () async {
+      const rid = 'rest_F4';
+      final wageRepo = SqliteWageRoleRowRepository.instance;
+      await wageRepo.deleteAll(rid);
+      addTearDown(() => wageRepo.deleteAll(rid));
+
+      final client = _FakeSyncProxyClient()
+        ..scriptShiftPages([_Page(records: const [], nextCursor: null)])
+        ..scriptWageRoleRows(const <WageRoleRow>[
+          WageRoleRow(
+            restaurantId: 'server-location-id',
+            roleName: 'Server',
+            laborBucket: 'foh',
+            hourlyRate: 16,
+            weightedHours: 32,
+          ),
+        ]);
+      final sync = PostgresShiftRecordToMobileSync(
+        client: client,
+        shiftRepository: SqliteShiftRecordRepository.instance,
+        watermarkDao: watermarkDao,
+        invalidationBus: bus,
+      );
+      await sync.sync(operatorId: _opId, locationId: _locId, restaurantId: rid);
+
+      var aborted = false;
+      client
+        ..scriptShiftPages([_Page(records: const [], nextCursor: null)])
+        ..scriptWageRoleRows(const <WageRoleRow>[
+          WageRoleRow(
+            restaurantId: 'server-location-id',
+            roleName: 'Manager',
+            laborBucket: 'manager',
+            hourlyRate: 30,
+            weightedHours: 10,
+          ),
+        ])
+        ..onWageRoleRowsFetch = () => aborted = true;
+
+      final result = await sync.sync(
+        operatorId: _opId,
+        locationId: _locId,
+        restaurantId: rid,
+        isAborted: () => aborted,
+      );
+
+      expect(result.wageRoleRows.single.roleName, 'Server');
+      expect(sync.latestWageRoleRows.single.roleName, 'Server');
+      final stored = await wageRepo.getRows(rid);
+      expect(stored.single.roleName, 'Server');
+    },
+  );
+
   // ── G. forge_flow_polling_tier_assignment sync to mobile ───────────
 
   test('G. forge_flow_polling_tier_assignment sync: server snapshot -> '
@@ -776,9 +933,11 @@ class _FakeSyncProxyClient implements SyncProxyClient {
   DataAccuracySettingsSnapshot? _dataAccuracySettings;
   List<DataAccuracyServicePeriodSetting> _dataAccuracyServicePeriodSettings =
       const <DataAccuracyServicePeriodSetting>[];
+  List<WageRoleRow> _wageRoleRows = const <WageRoleRow>[];
   ForgeFlowPollingTierAssignmentSnapshot? _pollingTierAssignment;
   FirstBackfillStatusSnapshot? _firstBackfillStatus;
   RestaurantTimingConfig? _timingConfig;
+  void Function()? onWageRoleRowsFetch;
 
   void scriptShiftPages(List<_Page> pages) {
     _shiftPages
@@ -808,6 +967,10 @@ class _FakeSyncProxyClient implements SyncProxyClient {
     List<DataAccuracyServicePeriodSetting> settings,
   ) {
     _dataAccuracyServicePeriodSettings = settings;
+  }
+
+  void scriptWageRoleRows(List<WageRoleRow> rows) {
+    _wageRoleRows = rows;
   }
 
   void scriptPollingTierAssignment(
@@ -881,6 +1044,15 @@ class _FakeSyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
   }) async => _dataAccuracyServicePeriodSettings;
+
+  @override
+  Future<List<WageRoleRow>> fetchWageRoleRows({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    onWageRoleRowsFetch?.call();
+    return _wageRoleRows;
+  }
 
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>

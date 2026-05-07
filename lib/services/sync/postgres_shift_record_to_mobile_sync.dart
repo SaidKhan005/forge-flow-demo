@@ -12,7 +12,8 @@
 // signal.
 //
 // Aux pulls in the same sweep (`demo_mode_state`,
-// `data_accuracy_settings`, `forge_flow_polling_tier_assignment`)
+// `data_accuracy_settings`, `wage_role_rows`,
+// `forge_flow_polling_tier_assignment`)
 // surface the operator-app banner + accuracy chrome without a
 // redeploy. Mobile SQLite vendor-column parity is deferred per the
 // spine-bridge.3 prompt: the orchestrator holds the latest aux
@@ -44,6 +45,7 @@ import 'dart:convert';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/import_run.dart';
 import '../../domain/models/sync_watermark.dart';
+import '../../domain/models/wage_role_row.dart';
 import '../../domain/repositories/baseline_selection_repository.dart';
 import '../../domain/repositories/open_shift_snapshot_repository.dart';
 import '../../domain/repositories/restaurant_timing_config_repository.dart';
@@ -58,6 +60,7 @@ import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_t
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
 import '../../state/app_runtime_invalidation_bus.dart';
 import '../integration/demo_mode_state.dart';
 import 'star_target_sync_resources.dart';
@@ -77,6 +80,7 @@ class SyncResult {
     required this.demoModeStates,
     required this.dataAccuracySettings,
     required this.dataAccuracyServicePeriodSettings,
+    required this.wageRoleRows,
     required this.pollingTierAssignment,
     required this.firstBackfillStatus,
     required this.starTargetMirrors,
@@ -129,6 +133,11 @@ class SyncResult {
   final List<DataAccuracyServicePeriodSetting>
   dataAccuracyServicePeriodSettings;
 
+  /// Server-owned wage mix rows mirrored into mobile SQLite for the
+  /// active restaurant. Empty means the server authoritative set is
+  /// empty, so the local cache was cleared on a successful sweep.
+  final List<WageRoleRow> wageRoleRows;
+
   /// Snapshot of the currently-effective
   /// `forge_flow_polling_tier_assignment` row, or null when not
   /// provisioned.
@@ -165,6 +174,7 @@ class PostgresShiftRecordToMobileSync {
     TargetCycleRepository? targetCycleRepository,
     TargetProfileRepository? targetProfileRepository,
     WeeklyPlanSnapshotRepository? weeklyPlanSnapshotRepository,
+    SqliteWageRoleRowRepository? wageRoleRowRepository,
     AppRuntimeInvalidationBus? invalidationBus,
     this.pageSize = 200,
   }) : assert(pageSize > 0, 'pageSize must be positive'),
@@ -184,6 +194,8 @@ class PostgresShiftRecordToMobileSync {
        weeklyPlanSnapshotRepository =
            weeklyPlanSnapshotRepository ??
            SqliteWeeklyPlanSnapshotRepository.instance,
+       wageRoleRowRepository =
+           wageRoleRowRepository ?? SqliteWageRoleRowRepository.instance,
        invalidationBus = invalidationBus ?? AppRuntimeInvalidationBus.instance;
 
   final SyncProxyClient client;
@@ -194,6 +206,7 @@ class PostgresShiftRecordToMobileSync {
   final TargetCycleRepository targetCycleRepository;
   final TargetProfileRepository targetProfileRepository;
   final WeeklyPlanSnapshotRepository weeklyPlanSnapshotRepository;
+  final SqliteWageRoleRowRepository wageRoleRowRepository;
   final ImportTrackingDao watermarkDao;
   final AppRuntimeInvalidationBus invalidationBus;
   final int pageSize;
@@ -221,6 +234,7 @@ class PostgresShiftRecordToMobileSync {
   List<DataAccuracyServicePeriodSetting>
   _latestDataAccuracyServicePeriodSettings =
       const <DataAccuracyServicePeriodSetting>[];
+  List<WageRoleRow> _latestWageRoleRows = const <WageRoleRow>[];
   ForgeFlowPollingTierAssignmentSnapshot? _latestPollingTierAssignment;
   FirstBackfillStatusSnapshot? _latestFirstBackfillStatus;
   List<ForecastContextSyncRow> _latestForecastContexts =
@@ -243,6 +257,11 @@ class PostgresShiftRecordToMobileSync {
       List<DataAccuracyServicePeriodSetting>.unmodifiable(
         _latestDataAccuracyServicePeriodSettings,
       );
+
+  /// Most-recent server-owned wage role mix rows for the last sync'd
+  /// (operator, location).
+  List<WageRoleRow> get latestWageRoleRows =>
+      List<WageRoleRow>.unmodifiable(_latestWageRoleRows);
 
   /// Most-recent `forge_flow_polling_tier_assignment` snapshot, or
   /// null when not provisioned.
@@ -349,11 +368,11 @@ class PostgresShiftRecordToMobileSync {
   ///   * Loop terminates when the server returns `nextCursor == null`.
   ///
   /// Aux semantics:
-  ///   * After the ShiftRecord loop ends, pulls `demo_mode_state` +
-  ///     `data_accuracy_settings` + `forge_flow_polling_tier_assignment`
-  ///     in that order. Updates the in-memory snapshots so the
-  ///     operator app sees the demo flip / accuracy settings / polling
-  ///     tier without a redeploy.
+  ///   * After the ShiftRecord loop ends, pulls `demo_mode_state`,
+  ///     `data_accuracy_settings`, `wage_role_rows`, and
+  ///     `forge_flow_polling_tier_assignment`. Wage role rows replace
+  ///     the local SQLite cache for the active restaurant because the
+  ///     server owns the role/rate mix.
   Future<SyncResult> sync({
     required String operatorId,
     required String locationId,
@@ -380,6 +399,7 @@ class PostgresShiftRecordToMobileSync {
             List<DataAccuracyServicePeriodSetting>.unmodifiable(
               _latestDataAccuracyServicePeriodSettings,
             ),
+        wageRoleRows: List<WageRoleRow>.unmodifiable(_latestWageRoleRows),
         pollingTierAssignment: _latestPollingTierAssignment,
         firstBackfillStatus: _latestFirstBackfillStatus,
         starTargetMirrors: StarTargetMirrorSyncResult.skipped(),
@@ -409,6 +429,27 @@ class PostgresShiftRecordToMobileSync {
     var openSnapshotsWritten = 0;
     var openSnapshotPagesPulled = 0;
     var timingConfigSynced = false;
+
+    SyncResult abortedResult() => SyncResult(
+      recordsWritten: recordsWritten,
+      openSnapshotsWritten: openSnapshotsWritten,
+      pagesPulled: pagesPulled,
+      openSnapshotPagesPulled: openSnapshotPagesPulled,
+      finalCursor: cursor,
+      finalOpenSnapshotCursor: openCursor,
+      timingConfigSynced: timingConfigSynced,
+      demoModeStates: List<DemoModeRecord>.unmodifiable(_latestDemoModeStates),
+      dataAccuracySettings: _latestDataAccuracySettings,
+      dataAccuracyServicePeriodSettings:
+          List<DataAccuracyServicePeriodSetting>.unmodifiable(
+            _latestDataAccuracyServicePeriodSettings,
+          ),
+      wageRoleRows: List<WageRoleRow>.unmodifiable(_latestWageRoleRows),
+      pollingTierAssignment: _latestPollingTierAssignment,
+      firstBackfillStatus: _latestFirstBackfillStatus,
+      starTargetMirrors: StarTargetMirrorSyncResult.skipped(),
+      weeklyPlanMirrors: WeeklyPlanMirrorSyncResult.skipped(),
+    );
 
     final timingConfig = await client.fetchResolvedTimingConfig(
       operatorId: operatorId,
@@ -486,72 +527,93 @@ class PostgresShiftRecordToMobileSync {
     }
 
     if (aborted()) {
-      return SyncResult(
-        recordsWritten: recordsWritten,
-        openSnapshotsWritten: openSnapshotsWritten,
-        pagesPulled: pagesPulled,
-        openSnapshotPagesPulled: openSnapshotPagesPulled,
-        finalCursor: cursor,
-        finalOpenSnapshotCursor: openCursor,
-        timingConfigSynced: timingConfigSynced,
-        demoModeStates: List<DemoModeRecord>.unmodifiable(
-          _latestDemoModeStates,
-        ),
-        dataAccuracySettings: _latestDataAccuracySettings,
-        dataAccuracyServicePeriodSettings:
-            List<DataAccuracyServicePeriodSetting>.unmodifiable(
-              _latestDataAccuracyServicePeriodSettings,
-            ),
-        pollingTierAssignment: _latestPollingTierAssignment,
-        firstBackfillStatus: _latestFirstBackfillStatus,
-        starTargetMirrors: StarTargetMirrorSyncResult.skipped(),
-        weeklyPlanMirrors: WeeklyPlanMirrorSyncResult.skipped(),
-      );
+      return abortedResult();
     }
 
-    // Aux pulls in the same sweep (per spine-bridge.3 contract).
-    _latestDemoModeStates = await client.fetchDemoModeStates(
+    // Aux pulls in the same sweep (per spine-bridge.3 contract). Keep
+    // the fetched state staged until every abort check clears so a
+    // cancelled sweep leaves the previous local cache and getters intact.
+    final demoModeStates = await client.fetchDemoModeStates(
       operatorId: operatorId,
       locationId: locationId,
     );
-    _latestDataAccuracySettings = await client.fetchDataAccuracySettings(
+    if (aborted()) return abortedResult();
+    final dataAccuracySettings = await client.fetchDataAccuracySettings(
       operatorId: operatorId,
       locationId: locationId,
     );
-    _latestDataAccuracyServicePeriodSettings = await client
+    if (aborted()) return abortedResult();
+    final dataAccuracyServicePeriodSettings = await client
         .fetchDataAccuracyServicePeriodSettings(
           operatorId: operatorId,
           locationId: locationId,
         );
-    _latestPollingTierAssignment = await client
+    if (aborted()) return abortedResult();
+    final wageRoleRows =
+        (await client.fetchWageRoleRows(
+              operatorId: operatorId,
+              locationId: locationId,
+            ))
+            .map(
+              (row) => WageRoleRow(
+                restaurantId: restaurantId,
+                roleName: row.roleName,
+                laborBucket: row.laborBucket,
+                hourlyRate: row.hourlyRate,
+                weightedHours: row.weightedHours,
+              ),
+            )
+            .toList(growable: false);
+    if (aborted()) return abortedResult();
+    final pollingTierAssignment = await client
         .fetchForgeFlowPollingTierAssignment(
           operatorId: operatorId,
           locationId: locationId,
         );
-    _latestFirstBackfillStatus = await client.fetchFirstBackfillStatus(
+    if (aborted()) return abortedResult();
+    final firstBackfillStatus = await client.fetchFirstBackfillStatus(
       operatorId: operatorId,
       locationId: locationId,
     );
-    final backfillStatus = _latestFirstBackfillStatus;
-    if (backfillStatus != null) {
-      await _persistFirstBackfillStatus(
-        restaurantId: restaurantId,
-        status: backfillStatus,
-      );
-      invalidationBus.notifyImportCompletionPersisted();
-    }
+    if (aborted()) return abortedResult();
     final starTargetMirrors = await _syncStarTargetMirrors(
       operatorId: operatorId,
       locationId: locationId,
       restaurantId: restaurantId,
       isAborted: isAborted,
     );
+    if (aborted()) return abortedResult();
     final weeklyPlanMirrors = await _syncWeeklyPlanMirrors(
       operatorId: operatorId,
       locationId: locationId,
       restaurantId: restaurantId,
       isAborted: isAborted,
     );
+    if (aborted()) return abortedResult();
+
+    final wageRoleRowsChanged = await wageRoleRowRepository.replaceAll(
+      restaurantId,
+      wageRoleRows,
+    );
+    if (wageRoleRowsChanged) {
+      invalidationBus.notifyImportCompletionPersisted();
+    }
+    if (firstBackfillStatus != null) {
+      await _persistFirstBackfillStatus(
+        restaurantId: restaurantId,
+        status: firstBackfillStatus,
+      );
+      invalidationBus.notifyImportCompletionPersisted();
+    }
+    _latestDemoModeStates = List<DemoModeRecord>.unmodifiable(demoModeStates);
+    _latestDataAccuracySettings = dataAccuracySettings;
+    _latestDataAccuracyServicePeriodSettings =
+        List<DataAccuracyServicePeriodSetting>.unmodifiable(
+          dataAccuracyServicePeriodSettings,
+        );
+    _latestWageRoleRows = List<WageRoleRow>.unmodifiable(wageRoleRows);
+    _latestPollingTierAssignment = pollingTierAssignment;
+    _latestFirstBackfillStatus = firstBackfillStatus;
 
     return SyncResult(
       recordsWritten: recordsWritten,
@@ -567,6 +629,7 @@ class PostgresShiftRecordToMobileSync {
           List<DataAccuracyServicePeriodSetting>.unmodifiable(
             _latestDataAccuracyServicePeriodSettings,
           ),
+      wageRoleRows: List<WageRoleRow>.unmodifiable(_latestWageRoleRows),
       pollingTierAssignment: _latestPollingTierAssignment,
       firstBackfillStatus: _latestFirstBackfillStatus,
       starTargetMirrors: starTargetMirrors,

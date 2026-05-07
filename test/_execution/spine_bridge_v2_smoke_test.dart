@@ -49,6 +49,7 @@ import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/domain/models/target_snapshot.dart';
+import 'package:forge_and_flow/domain/models/wage_role_row.dart';
 import 'package:forge_and_flow/domain/services/shift_fact_builder.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_shift_record_writer.dart';
@@ -1348,6 +1349,12 @@ class _SmokeSyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
   }) async => const <DataAccuracyServicePeriodSetting>[];
+
+  @override
+  Future<List<WageRoleRow>> fetchWageRoleRows({
+    required String operatorId,
+    required String locationId,
+  }) async => const <WageRoleRow>[];
 
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
