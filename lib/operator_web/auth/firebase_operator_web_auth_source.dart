@@ -27,6 +27,7 @@ class FirebaseOperatorWebAuthSource
         OperatorWebAuthSource,
         OperatorWebAccountActions,
         OperatorWebVendorConnectionsGatewayProvider,
+        OperatorWebVendorLifecycleRecentlyAvailableGatewayProvider,
         OperatorWebAccountGatewayProvider,
         OperatorWebBusinessTimingWriteGatewayProvider,
         OperatorWebDataAccuracyGatewayProvider,
@@ -92,6 +93,11 @@ class FirebaseOperatorWebAuthSource
        wageAuthorityGateway = OperatorWebHttpWageAuthorityGateway(
          proxyBaseUri: proxyClient.baseUri,
          idTokenProvider: authClient.currentIdToken,
+       ),
+       vendorLifecycleRecentlyAvailableGateway =
+           OperatorWebVendorLifecycleRecentlyAvailableGatewayLive(
+         proxyBaseUri: proxyClient.baseUri,
+         idTokenProvider: authClient.currentIdToken,
        ) {
     _controller.add(_state);
     unawaited(_bootstrap());
@@ -139,6 +145,10 @@ class FirebaseOperatorWebAuthSource
 
   @override
   final OperatorWebWageAuthorityGateway wageAuthorityGateway;
+
+  @override
+  final OperatorWebVendorLifecycleRecentlyAvailableGateway
+      vendorLifecycleRecentlyAvailableGateway;
 
   String? _currentSessionId;
 

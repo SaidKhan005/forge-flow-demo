@@ -109,6 +109,7 @@ import 'health_producers/producer_registry.dart';
 import 'log.dart';
 import 'mobile_push_notifications.dart';
 import 'vendor_admin_status_catalog.dart' as vendor_status;
+import 'vendor_capability_index.dart';
 
 typedef PostgresPoolFactory = PostgresPool Function(String connectionString);
 
@@ -200,6 +201,7 @@ class ProxyProductionBindings {
     required this.operatorWriteRouter,
     required this.auditChainAnchorsGateway,
     required this.connectorBackfillJobsRouter,
+    required this.vendorLifecycleRecentlyAvailableRouter,
     required this.notificationPreferencesRouter,
     required this.wageRoleRowsRouter,
   });
@@ -357,6 +359,15 @@ class ProxyProductionBindings {
   /// `SET LOCAL` in the gateway so the route returns only rows the
   /// signed-in (operator_id, location_id) is permitted to see.
   final ConnectorBackfillJobsRouter connectorBackfillJobsRouter;
+
+  /// Phase 11W.8 follow-up - operator-scoped read of recently-available
+  /// vendors. Backed by a tenant-pool query against
+  /// `vendor_lifecycle_notification` (filtered to `notified_at >=
+  /// since`); per-tenant RLS rides `SET LOCAL` in the gateway so the
+  /// route returns only rows the signed-in operator is permitted to
+  /// see.
+  final OperatorVendorLifecycleRecentlyAvailableRouter
+      vendorLifecycleRecentlyAvailableRouter;
 
   /// Phase 8 W2.B - per-actor notification preferences router. Backed
   /// by [NotificationPreferencesRepository] (tenant pool, per-user
@@ -639,6 +650,21 @@ ProxyProductionBindings buildProxyProductionBindings(
     gateway: _RepositoryConnectorBackfillJobsReadGateway(
       repository: ConnectorBackfillJobRepository(tenantWrapper),
     ),
+  );
+  // Phase 11W.8 follow-up - operator-scoped read of recently-promoted
+  // vendors. Reads `vendor_lifecycle_notification.notified_at >= since`
+  // against the tenant pool; per-tenant RLS rides `SET LOCAL` so the
+  // route returns only rows the signed-in operator is permitted to
+  // see. The display name resolver leans on the existing capability
+  // registries so the proxy never imports the `lib/integrations/ui`
+  // surface.
+  final vendorLifecycleRecentlyAvailableRouter =
+      OperatorVendorLifecycleRecentlyAvailableRouter(
+    gateway: _PostgresOperatorRecentlyAvailableVendorsGateway(
+      tenantWrapper: tenantWrapper,
+    ),
+    displayNameResolver: (vendorId) =>
+        lookupVendorCapability(vendorId)?.displayName,
   );
   // Phase 8 W2.B - per-actor notification preferences router. Tenant
   // pool + per-user RLS policy on the table; the repository pattern is
@@ -973,6 +999,8 @@ ProxyProductionBindings buildProxyProductionBindings(
       tenantWrapper: tenantWrapper,
     ),
     connectorBackfillJobsRouter: connectorBackfillJobsRouter,
+    vendorLifecycleRecentlyAvailableRouter:
+        vendorLifecycleRecentlyAvailableRouter,
     notificationPreferencesRouter: notificationPreferencesRouter,
     wageRoleRowsRouter: wageRoleRowsRouter,
   );
@@ -1000,6 +1028,65 @@ class _RepositoryConnectorBackfillJobsReadGateway
       locationId: locationId,
       connectionId: connectionId,
       actorUserId: actorUserId,
+    );
+  }
+}
+
+/// Phase 11W.8 follow-up - tenant-pool query against
+/// `vendor_lifecycle_notification` keyed on `notified_at >= since`.
+/// Wrapped in [TenantTransactionWrapper.runInTenantContext] so per-
+/// tenant RLS rides `SET LOCAL` for every read.
+class _PostgresOperatorRecentlyAvailableVendorsGateway
+    implements OperatorRecentlyAvailableVendorsGateway {
+  _PostgresOperatorRecentlyAvailableVendorsGateway({
+    required TenantTransactionWrapper tenantWrapper,
+  }) : _tenantWrapper = tenantWrapper;
+
+  final TenantTransactionWrapper _tenantWrapper;
+
+  @override
+  Future<List<OperatorRecentlyAvailableVendorRow>> listRecentlyPromoted({
+    required String operatorId,
+    required String locationId,
+    required DateTime since,
+    String? actorUserId,
+  }) async {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return _tenantWrapper.runInTenantContext<
+        List<OperatorRecentlyAvailableVendorRow>>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select vendor_id, max(notified_at) as promoted_at '
+        'from public.vendor_lifecycle_notification '
+        'where operator_id = @operator_id::uuid '
+        '  and notified_at is not null '
+        '  and notified_at >= @since::timestamptz '
+        'group by vendor_id '
+        'order by max(notified_at) desc, vendor_id asc',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'since': since.toUtc(),
+        },
+      );
+      return <OperatorRecentlyAvailableVendorRow>[
+        for (final row in rows)
+          OperatorRecentlyAvailableVendorRow(
+            vendorId: (row['vendor_id'] as String).trim(),
+            promotedAt: _readDateTime(row['promoted_at']),
+          ),
+      ];
+    });
+  }
+
+  static DateTime _readDateTime(Object? value) {
+    if (value is DateTime) return value.toUtc();
+    if (value is String) return DateTime.parse(value).toUtc();
+    throw StateError(
+      'vendor_lifecycle_notification.notified_at returned non-timestamp '
+      'value (${value.runtimeType})',
     );
   }
 }

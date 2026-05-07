@@ -90,6 +90,7 @@ import 'proxy_idempotency_cache.dart';
 import 'realtime_route.dart'
     show handleRealtimeUpgrade, RealtimeReplayFetcher, realtimeSubscribePath;
 import 'star_target_routes.dart';
+import 'vendor_lifecycle_recently_available_routes.dart';
 import 'weekly_plan_routes.dart';
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
     show DependencyTimeoutException;
@@ -176,6 +177,18 @@ export 'star_target_routes.dart'
         selectedStarWritePermissionKey,
         targetCyclesResource,
         targetProfileVersionsResource;
+export 'vendor_lifecycle_recently_available_routes.dart'
+    show
+        OperatorRecentlyAvailableVendor,
+        OperatorRecentlyAvailableVendorDisplayNameResolver,
+        OperatorRecentlyAvailableVendorRow,
+        OperatorRecentlyAvailableVendorsGateway,
+        OperatorVendorLifecycleRecentlyAvailableRouteResult,
+        OperatorVendorLifecycleRecentlyAvailableRouter,
+        kOperatorVendorLifecycleRecentlyAvailableDefaultWindow,
+        kOperatorVendorLifecycleRecentlyAvailableMaxWindow,
+        kOperatorVendorLifecycleRecentlyAvailableReadRoles,
+        operatorVendorLifecycleRecentlyAvailablePath;
 export 'weekly_plan_routes.dart'
     show
         ForecastContextPayload,
@@ -8045,6 +8058,12 @@ Future<void> routeRequest(
   // Optional: when null the read route returns 503 so existing tests
   // do not need to plumb the router through every call site.
   ConnectorBackfillJobsRouter? connectorBackfillJobsRouter,
+  // Phase 11W.8 follow-up - operator-scoped read of recently-available
+  // vendors (vendor_lifecycle_notification fan-out mirror). Optional:
+  // when null the read route returns 503 so existing tests do not need
+  // to plumb the router through every call site.
+  OperatorVendorLifecycleRecentlyAvailableRouter?
+      vendorLifecycleRecentlyAvailableRouter,
   // Phase 8 W2.B - operator-scoped notification preferences router.
   // Optional: when null the three routes return 503 so existing tests
   // do not need to plumb the router through every call site.
@@ -12874,6 +12893,68 @@ Future<void> routeRequest(
               'error': 'connector_backfill_jobs_unavailable',
               'message':
                   'connector backfill progress is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Phase 11W.8 follow-up - operator-scoped read of recently-
+        // available vendors (mirrors the vendor_now_available email
+        // fan-out). Open to any operator-web role; per-tenant RLS is
+        // enforced by the gateway via SET LOCAL.
+        if (OperatorVendorLifecycleRecentlyAvailableRouter.matches(
+          path,
+          request.method,
+        )) {
+          if (vendorLifecycleRecentlyAvailableRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error':
+                  'vendor_lifecycle_recently_available_router_not_configured',
+              'message':
+                  'route requires a OperatorVendorLifecycleRecentlyAvailableRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          if (!scope.roles.any(
+            kOperatorVendorLifecycleRecentlyAvailableReadRoles.contains,
+          )) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'forbidden',
+              'message':
+                  'an operator role with vendor-connections access is required',
+              'required_roles':
+                  kOperatorVendorLifecycleRecentlyAvailableReadRoles.toList(),
+            });
+            return;
+          }
+          try {
+            final result =
+                await vendorLifecycleRecentlyAvailableRouter.handle(
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              actorUserId: scope.userId,
+              queryParameters: request.uri.queryParameters,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'vendor_lifecycle_recently_available',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'vendor_lifecycle_recently_available_unavailable',
+              'message':
+                  'recently available vendors are unavailable; please retry',
             });
           }
           return;
