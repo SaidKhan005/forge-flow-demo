@@ -57,6 +57,23 @@ abstract class VendorConnectionsGateway {
     required String vendorId,
     int limit = 100,
   });
+
+  /// Submit an api-key bundle for a key-paste vendor. Vendor-specific
+  /// fields (some vendors require `apiSecret`, some accept a username
+  /// or restaurant id surfaced through `apiSecret`) are passed through
+  /// verbatim. The proxy validates the key with the vendor + persists
+  /// the `connector_connection` + `vendor_credentials` rows + enqueues
+  /// the first backfill, all in one round trip.
+  ///
+  /// Hits `POST /v1/integrations/api-key/{vendorId}/connect`.
+  Future<VendorApiKeyConnectResult> connectWithApiKey({
+    required String operatorId,
+    required String locationId,
+    required String vendorId,
+    required String apiKey,
+    String? apiSecret,
+    String? module,
+  });
 }
 
 class VendorConnectFlowStart {
@@ -67,6 +84,21 @@ class VendorConnectFlowStart {
 }
 
 enum VendorConnectFlowKind { oauthRedirect, keyPasteForm }
+
+/// Result of a successful key-paste connect. Mirrors the proxy's
+/// `/v1/integrations/api-key/{vendor}/connect` 200 response, narrowed
+/// to the fields the operator-facing widget cares about.
+class VendorApiKeyConnectResult {
+  const VendorApiKeyConnectResult({
+    required this.connectionId,
+    required this.connectedAt,
+    required this.firstBackfillStarted,
+  });
+
+  final String connectionId;
+  final DateTime connectedAt;
+  final bool firstBackfillStarted;
+}
 
 /// Thrown by the gateway on operator-facing errors. The operator-
 /// facing UX writing standard requires a remediation hint with each

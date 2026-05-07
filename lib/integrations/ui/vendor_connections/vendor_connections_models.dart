@@ -72,6 +72,10 @@ class VendorPickerEntry {
     required this.coversFieldExposed,
     required this.requiresModule,
     this.modules = const <String>[],
+    this.apiKeyFieldLabel,
+    this.apiSecretFieldLabel,
+    this.credentialsHelpText,
+    this.credentialsPortalUrl,
   });
 
   final String vendorId;
@@ -88,6 +92,24 @@ class VendorPickerEntry {
   final bool coversFieldExposed;
   final bool requiresModule;
   final List<String> modules;
+
+  /// Label rendered above the primary api-key field in the key-paste
+  /// dialog. Defaults to "API key" when null.
+  final String? apiKeyFieldLabel;
+
+  /// Label rendered above the optional secondary api-key field.
+  /// `null` means the dialog renders only the primary field. Vendors
+  /// that need a paired secret (Toast restaurant ID + auth token,
+  /// Lightspeed LSK client ID + secret, etc.) populate this.
+  final String? apiSecretFieldLabel;
+
+  /// Vendor-specific guidance shown above the form fields, telling the
+  /// operator where to find the credentials inside the vendor's portal.
+  final String? credentialsHelpText;
+
+  /// Optional deep link to the vendor admin / developer portal where
+  /// the operator can locate or generate credentials.
+  final Uri? credentialsPortalUrl;
 }
 
 enum VendorAuthMode { oauth, keyPaste, oauthOrKeyPaste }

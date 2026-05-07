@@ -28,7 +28,7 @@ class OperatorWebHttpVendorConnectionsGateway
   // The live operator-web picker must reflect implemented adapter lifecycle
   // truth, not a smaller credentialed-demo subset. Reuse the tested catalog
   // and keep connect actions disabled until a vendor promotes past documented.
-  static const List<VendorPickerEntry> _catalog =
+  static final List<VendorPickerEntry> _catalog =
       InMemoryVendorConnectionsGateway.vendorCatalog;
 
   @override
@@ -107,6 +107,61 @@ class OperatorWebHttpVendorConnectionsGateway
       flowKind: isKeyPaste
           ? VendorConnectFlowKind.keyPasteForm
           : VendorConnectFlowKind.oauthRedirect,
+    );
+  }
+
+  @override
+  Future<VendorApiKeyConnectResult> connectWithApiKey({
+    required String operatorId,
+    required String locationId,
+    required String vendorId,
+    required String apiKey,
+    String? apiSecret,
+    String? module,
+  }) async {
+    final trimmedKey = apiKey.trim();
+    if (trimmedKey.isEmpty) {
+      throw VendorConnectionsGatewayError(
+        message: 'API key is required.',
+        remediation: 'Paste the API key from the vendor portal and try again.',
+      );
+    }
+    final body = await _postJson(
+      '/v1/integrations/api-key/$vendorId/connect',
+      body: <String, Object?>{
+        'api_key': trimmedKey,
+        if (apiSecret != null && apiSecret.trim().isNotEmpty)
+          'api_secret': apiSecret.trim(),
+        'location_id': locationId,
+        if (module != null && module.trim().isNotEmpty) 'module': module.trim(),
+      },
+    );
+    final connectionId =
+        _readString(body['connection_id']) ??
+        _readString(body['connector_connection_id']);
+    if (connectionId == null) {
+      throw VendorConnectionsGatewayError(
+        message: 'The proxy did not return a connection id.',
+        remediation:
+            'Try again in a moment. If it repeats, Forge & Flow support should '
+            'check the integration route binding for this vendor.',
+      );
+    }
+    final connectedAt =
+        _readDate(body['connected_at']) ??
+        _readDate(body['updated_at']) ??
+        DateTime.now().toUtc();
+    final firstBackfillRaw = body['first_backfill'];
+    bool firstBackfillStarted;
+    if (firstBackfillRaw is Map<Object?, Object?>) {
+      firstBackfillStarted = firstBackfillRaw['started'] == true;
+    } else {
+      firstBackfillStarted = body['first_backfill_started'] == true;
+    }
+    return VendorApiKeyConnectResult(
+      connectionId: connectionId,
+      connectedAt: connectedAt,
+      firstBackfillStarted: firstBackfillStarted,
     );
   }
 

@@ -984,4 +984,18 @@ class _CaptureGateway implements VendorConnectionsGateway {
     required String vendorId,
     int limit = 100,
   }) async => const <VendorSyncLogEntry>[];
+
+  @override
+  Future<VendorApiKeyConnectResult> connectWithApiKey({
+    required String operatorId,
+    required String locationId,
+    required String vendorId,
+    required String apiKey,
+    String? apiSecret,
+    String? module,
+  }) async => VendorApiKeyConnectResult(
+    connectionId: 'capture-conn-$vendorId',
+    connectedAt: DateTime.now().toUtc(),
+    firstBackfillStarted: true,
+  );
 }

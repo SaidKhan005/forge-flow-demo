@@ -20,15 +20,23 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
 
   final Map<String, VendorConnectionsBundle> _bundles;
 
-  static const List<VendorPickerEntry> vendorCatalog = <VendorPickerEntry>[
+  static final List<VendorPickerEntry> vendorCatalog =
+      List<VendorPickerEntry>.unmodifiable(<VendorPickerEntry>[
     VendorPickerEntry(
       vendorId: 'aloha_ncr_voyix',
       displayName: 'Aloha (NCR Voyix)',
       category: VendorCategory.pos,
-      authMode: VendorAuthMode.oauth,
+      authMode: VendorAuthMode.keyPaste,
       lifecycle: VendorLifecycle.documented,
       coversFieldExposed: true,
       requiresModule: false,
+      apiKeyFieldLabel: 'Aloha API key',
+      apiSecretFieldLabel: 'Site / restaurant ID',
+      credentialsHelpText:
+          'Find these in the NCR Voyix Developer Portal under your Aloha '
+          'integration. The site ID identifies your restaurant; the API key '
+          'authenticates Forge & Flow against Aloha cloud APIs.',
+      credentialsPortalUrl: Uri.parse('https://developer.ncrvoyix.com/'),
     ),
     VendorPickerEntry(
       vendorId: 'clover',
@@ -43,28 +51,50 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       vendorId: 'lightspeed_lsk',
       displayName: 'Lightspeed Restaurant K-Series',
       category: VendorCategory.pos,
-      authMode: VendorAuthMode.oauth,
+      authMode: VendorAuthMode.keyPaste,
       lifecycle: VendorLifecycle.documented,
       coversFieldExposed: true,
       requiresModule: false,
+      apiKeyFieldLabel: 'OAuth client ID',
+      apiSecretFieldLabel: 'OAuth client secret',
+      credentialsHelpText:
+          'Generate an integration in the Lightspeed K-Series back office '
+          '(Settings -> Integrations -> Create new). Copy the client ID and '
+          'client secret here.',
+      credentialsPortalUrl: Uri.parse('https://www.lightspeedhq.com/login/'),
     ),
     VendorPickerEntry(
       vendorId: 'oracle_micros_simphony',
       displayName: 'Oracle MICROS Simphony',
       category: VendorCategory.pos,
-      authMode: VendorAuthMode.oauth,
+      authMode: VendorAuthMode.keyPaste,
       lifecycle: VendorLifecycle.documented,
       coversFieldExposed: true,
       requiresModule: false,
+      apiKeyFieldLabel: 'Simphony API key',
+      apiSecretFieldLabel: 'Organisation short name',
+      credentialsHelpText:
+          'Open Oracle Simphony EMC -> Configuration -> Integrations and '
+          'create a new API key for Forge & Flow. Pair it with your '
+          'organisation short name (the tenant identifier shown on the '
+          'Simphony login screen).',
+      credentialsPortalUrl: Uri.parse('https://docs.oracle.com/en/industries/food-beverage/simphony.html'),
     ),
     VendorPickerEntry(
       vendorId: 'revel',
       displayName: 'Revel Systems',
       category: VendorCategory.pos,
-      authMode: VendorAuthMode.oauth,
+      authMode: VendorAuthMode.keyPaste,
       lifecycle: VendorLifecycle.documented,
       coversFieldExposed: true,
       requiresModule: false,
+      apiKeyFieldLabel: 'Revel API key',
+      apiSecretFieldLabel: 'Revel API secret',
+      credentialsHelpText:
+          'In the Revel Management Console, open Settings -> API '
+          'Authentication and create a new key pair scoped to read access '
+          'for orders, payments, and employees.',
+      credentialsPortalUrl: Uri.parse('https://app.revelsystems.com/'),
     ),
     VendorPickerEntry(
       vendorId: 'square',
@@ -79,10 +109,17 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       vendorId: 'toast',
       displayName: 'Toast',
       category: VendorCategory.pos,
-      authMode: VendorAuthMode.oauth,
+      authMode: VendorAuthMode.keyPaste,
       lifecycle: VendorLifecycle.documented,
       coversFieldExposed: true,
       requiresModule: false,
+      apiKeyFieldLabel: 'Toast API auth token',
+      apiSecretFieldLabel: 'Restaurant GUID',
+      credentialsHelpText:
+          'In Toast Web, open Integrations -> Restaurant API and request a '
+          'partner integration. Toast will return an auth token; pair it '
+          'with the restaurant GUID shown on the same page.',
+      credentialsPortalUrl: Uri.parse('https://www.toasttab.com/login'),
     ),
     VendorPickerEntry(
       vendorId: 'libro',
@@ -97,10 +134,17 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       vendorId: 'opentable',
       displayName: 'OpenTable',
       category: VendorCategory.reservation,
-      authMode: VendorAuthMode.oauth,
+      authMode: VendorAuthMode.keyPaste,
       lifecycle: VendorLifecycle.documented,
       coversFieldExposed: false,
       requiresModule: false,
+      apiKeyFieldLabel: 'OpenTable client ID',
+      apiSecretFieldLabel: 'OpenTable client secret',
+      credentialsHelpText:
+          'Open the OpenTable Restaurant Center, then go to '
+          'Integrations -> Open API and copy the client ID + client secret '
+          'OpenTable issued for your restaurant.',
+      credentialsPortalUrl: Uri.parse('https://restaurant.opentable.com/'),
     ),
     VendorPickerEntry(
       vendorId: 'sevenrooms',
@@ -110,6 +154,13 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       lifecycle: VendorLifecycle.documented,
       coversFieldExposed: false,
       requiresModule: false,
+      apiKeyFieldLabel: 'SevenRooms API key',
+      apiSecretFieldLabel: 'Venue ID',
+      credentialsHelpText:
+          'In the SevenRooms admin console, open Settings -> Integrations '
+          'and create an API key with read access. Pair it with the venue '
+          'ID for the location you are connecting.',
+      credentialsPortalUrl: Uri.parse('https://www.sevenrooms.com/login/'),
     ),
     VendorPickerEntry(
       vendorId: 'tock',
@@ -119,25 +170,43 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       lifecycle: VendorLifecycle.documented,
       coversFieldExposed: false,
       requiresModule: false,
+      apiKeyFieldLabel: 'Tock API key',
+      credentialsHelpText:
+          'Tock issues partner API keys directly via your account manager. '
+          'Once you have the key, paste it here. Forge & Flow uses it to '
+          'read reservations and party sizes for this venue.',
+      credentialsPortalUrl: Uri.parse('https://www.exploretock.com/'),
     ),
     VendorPickerEntry(
       vendorId: 'adp',
       displayName: 'ADP Workforce Now / Workforce Manager',
       category: VendorCategory.labor,
-      authMode: VendorAuthMode.oauth,
+      authMode: VendorAuthMode.keyPaste,
       lifecycle: VendorLifecycle.documented,
       coversFieldExposed: false,
       requiresModule: true,
       modules: <String>['workforce_now', 'workforce_manager', 'run'],
+      apiKeyFieldLabel: 'ADP client ID',
+      apiSecretFieldLabel: 'ADP client secret',
+      credentialsHelpText:
+          'In the ADP Marketplace developer console, open the Forge & Flow '
+          'integration listing and copy the client ID and client secret '
+          'issued for your tenant.',
+      credentialsPortalUrl: Uri.parse('https://developers.adp.com/'),
     ),
     VendorPickerEntry(
       vendorId: 'agendrix',
       displayName: 'Agendrix',
       category: VendorCategory.labor,
-      authMode: VendorAuthMode.oauth,
+      authMode: VendorAuthMode.keyPaste,
       lifecycle: VendorLifecycle.documented,
       coversFieldExposed: false,
       requiresModule: false,
+      apiKeyFieldLabel: 'Agendrix API key',
+      credentialsHelpText:
+          'In Agendrix, open Account -> Integrations -> Public API and '
+          'generate a new API token scoped to your account.',
+      credentialsPortalUrl: Uri.parse('https://app.agendrix.com/'),
     ),
     VendorPickerEntry(
       vendorId: 'humanity',
@@ -147,6 +216,12 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       lifecycle: VendorLifecycle.documented,
       coversFieldExposed: false,
       requiresModule: false,
+      apiKeyFieldLabel: 'Humanity API key',
+      credentialsHelpText:
+          'In Humanity, go to Settings -> Account -> API access and '
+          'generate a personal access token. Forge & Flow uses it to read '
+          'shifts, time clocks, and employees.',
+      credentialsPortalUrl: Uri.parse('https://www.humanity.com/app/'),
     ),
     VendorPickerEntry(
       vendorId: 'push_operations',
@@ -156,6 +231,11 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       lifecycle: VendorLifecycle.documented,
       coversFieldExposed: false,
       requiresModule: false,
+      apiKeyFieldLabel: 'Push Operations API key',
+      credentialsHelpText:
+          'Sign in to Push Operations as an admin, open Settings -> '
+          'Developer / API and generate a new API key for Forge & Flow.',
+      credentialsPortalUrl: Uri.parse('https://app.pushoperations.com/'),
     ),
     VendorPickerEntry(
       vendorId: 'quickbooks_time',
@@ -176,7 +256,7 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       coversFieldExposed: false,
       requiresModule: false,
     ),
-  ];
+  ]);
 
   String _key(String operatorId, String locationId) =>
       '$operatorId/$locationId';
@@ -262,6 +342,75 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
     return VendorConnectFlowStart(
       redirectUrl: 'https://demo.example.com/oauth/$vendorId/start',
       flowKind: VendorConnectFlowKind.oauthRedirect,
+    );
+  }
+
+  @override
+  Future<VendorApiKeyConnectResult> connectWithApiKey({
+    required String operatorId,
+    required String locationId,
+    required String vendorId,
+    required String apiKey,
+    String? apiSecret,
+    String? module,
+  }) async {
+    if (apiKey.trim().isEmpty) {
+      throw VendorConnectionsGatewayError(
+        message: 'API key is required.',
+        remediation: 'Paste the API key from the vendor portal and try again.',
+      );
+    }
+    final entry = vendorCatalog.firstWhere(
+      (candidate) => candidate.vendorId == vendorId,
+      orElse: () => throw VendorConnectionsGatewayError(
+        message: 'Unknown vendor: $vendorId',
+        remediation: 'Pick a vendor from the connection dialog.',
+      ),
+    );
+    final bundle = await loadBundle(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+    final connectedAt = DateTime.now().toUtc();
+    final connection = VendorConnectionRow(
+      connectionId: 'demo-conn-$vendorId',
+      vendorId: vendorId,
+      displayName: entry.displayName,
+      category: entry.category,
+      status: VendorConnectionStatus.connected,
+      metadata: <String, Object?>{
+        if (apiSecret != null && apiSecret.trim().isNotEmpty)
+          'username': apiSecret.trim(),
+      },
+      module: module,
+      lastSyncAt: connectedAt,
+      webhookUrl: null,
+      recordsLast24h: 0,
+      errorsLast24h: 0,
+    );
+    final updated = VendorConnectionsBundle(
+      operatorId: operatorId,
+      locationId: locationId,
+      locationName: bundle.locationName,
+      posConnection: entry.category == VendorCategory.pos
+          ? connection
+          : bundle.posConnection,
+      laborConnection: entry.category == VendorCategory.labor
+          ? connection
+          : bundle.laborConnection,
+      reservationConnection: entry.category == VendorCategory.reservation
+          ? connection
+          : bundle.reservationConnection,
+      // Demo flag does NOT flip on connect alone in V1; the writer-side
+      // policy requires a backfill commit. The walkthrough simulates
+      // that subsequently via a separate test step.
+      demoFlags: bundle.demoFlags,
+    );
+    _bundles[_key(operatorId, locationId)] = updated;
+    return VendorApiKeyConnectResult(
+      connectionId: connection.connectionId,
+      connectedAt: connectedAt,
+      firstBackfillStarted: true,
     );
   }
 

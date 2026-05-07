@@ -280,4 +280,18 @@ class _StubVendorConnectionsGateway implements VendorConnectionsGateway {
     if (throwOnLoadLogs != null) throw throwOnLoadLogs!;
     return const <VendorSyncLogEntry>[];
   }
+
+  @override
+  Future<VendorApiKeyConnectResult> connectWithApiKey({
+    required String operatorId,
+    required String locationId,
+    required String vendorId,
+    required String apiKey,
+    String? apiSecret,
+    String? module,
+  }) async => VendorApiKeyConnectResult(
+    connectionId: 'stub-conn-$vendorId',
+    connectedAt: DateTime.now().toUtc(),
+    firstBackfillStarted: true,
+  );
 }
