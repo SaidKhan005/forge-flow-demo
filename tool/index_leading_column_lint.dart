@@ -104,6 +104,32 @@ const Set<String> _defaultExemptions = <String>{
   '202604300000_phase_9_mfa_factor_removal_requests.sql:mfa_factor_removal_due_idx',
   '202604300000_phase_9_mfa_factor_removal_requests.sql:mfa_factor_removal_processing_idx',
 
+  // 202605071500 — code-health.M4 follow-up that re-creates the same
+  // two worker-queue indexes after adding the `dead_lettered_at`
+  // predicate. Identical leading-column shape, identical justification:
+  // the worker poll (claimDuePending in
+  // lib/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart)
+  // ORDERs BY `execute_after, request_id` across tenants under
+  // `forge_admin` BYPASSRLS, so the time column is the correct leading
+  // key. Tenant-scoped reads still hit `mfa_factor_removal_active_idx`
+  // (operator-leading), which the same migration also recreates with
+  // operator_id first.
+  '202605071500_phase_9_mfa_factor_removal_attempt_count.sql:mfa_factor_removal_due_idx',
+  '202605071500_phase_9_mfa_factor_removal_attempt_count.sql:mfa_factor_removal_processing_idx',
+
+  // 202605080400 — Phase 8 connector OAuth CSRF state. The
+  // `expires_at` partial index backs a cross-tenant prune sweep
+  // (`pruneExpiredAcrossTenants` in
+  // tool/advisor_proxy/integration_oauth_state_store.dart) that runs
+  // through the admin pool's `runAsSystem` lane (BYPASSRLS) and ranges
+  // by expiry timestamp without an operator predicate. The same
+  // migration ships `connector_oauth_state_operator_idx` leading with
+  // `(operator_id, location_id, expires_at)` for tenant-scoped reads,
+  // so per-tenant lookups are already covered. Inline justification is
+  // recorded in the migration body (see lines 108-112 of
+  // 202605080400_phase_8_connector_oauth_state.sql).
+  '202605080400_phase_8_connector_oauth_state.sql:connector_oauth_state_expires_at_idx',
+
   // 202605020452 — HARD-B auth lockout ledger. This index backs the
   // pre-tenant login lockout counter, which intentionally runs under
   // `forge_admin` BYPASSRLS before Firebase/operator scope exists.
