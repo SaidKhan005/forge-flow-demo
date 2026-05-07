@@ -28,7 +28,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_outbox_listener.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_dead_letter_repository.dart';
@@ -42,6 +41,7 @@ import 'package:forge_and_flow/services/realtime/realtime_replay_resolver.dart';
 import 'admin_email_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
+import 'advisor_response_cache.dart';
 import 'log.dart';
 import 'proxy_bootstrap.dart';
 import 'realtime_bridge.dart';
@@ -321,8 +321,15 @@ Future<void> main(List<String> args) async {
 
   // Lock 7 v1: per-instance breaker + always-miss cache stub.
   // Replace the cache with a real impl in E.2b.
+  // code-health.L14: real Postgres-backed cache wired via the proxy
+  // tenant pool so the breaker-open / primary-failure / secondary-
+  // failure branch can replay a recent identical answer instead of
+  // falling straight to graceful refusal. Backed by
+  // public.advisor_response_cache (24h TTL, hourly pg_cron sweep).
   final anthropicBreaker = CircuitBreaker(providerId: 'anthropic');
-  const advisorResponseCache = AlwaysMissAdvisorResponseCache();
+  final advisorResponseCache = PostgresAdvisorResponseCache(
+    tenantWrapper: TenantTransactionWrapper(productionBindings.tenantPool),
+  );
   final advisorRequestPipeline = AdvisorRequestPipeline(
     breaker: anthropicBreaker,
     cache: advisorResponseCache,
