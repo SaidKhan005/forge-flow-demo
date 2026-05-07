@@ -80,6 +80,47 @@ void main() {
       expect(adapter.handleCalls, 1);
     });
 
+    test(
+        'fail-closed: missing webhook signing secret rejects 403 + no '
+        'adapter dispatch (CODE_OPS_DEBT G#2)', () async {
+      // Critical posture: when `vendor_credentials.webhook_signing_secret_ciphertext`
+      // has not yet been provisioned for the (operator, location, vendor)
+      // triple, the gateway returns null and the handler MUST reject
+      // the webhook with 403 — never silently skip verification, never
+      // hand the payload to the adapter.
+      gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
+        connectionId: 'conn-1',
+        metadata: <String, Object?>{'business_id': 'lsk-biz-7c2f'},
+        status: ConnectionStatus.connected,
+      );
+      // Intentionally NOT setting gateway.signingSecrets['lightspeed_lsk']:
+      // simulates the unprovisioned column. Gateway returns null →
+      // handler short-circuits with 403 before invoking the verifier.
+      verifier.shouldPass = true;
+
+      final result = await handler.dispatch(
+        operatorId: _opId,
+        locationId: _locId,
+        vendorId: 'lightspeed_lsk',
+        rawBody: Uint8List.fromList(utf8.encode('{}')),
+        payload: const <String, Object?>{
+          'event_id': 'evt-no-signing-secret',
+          'business_id': 'lsk-biz-7c2f',
+        },
+        headers: const <String, String>{},
+      );
+
+      expect(result.outcome, WebhookOutcome.signatureInvalid);
+      expect(result.statusCode, 403);
+      expect(result.message, contains('no signing secret on file'),
+          reason: 'message must reference the unprovisioned-secret cause '
+              'so triage knows to run the runbook flow');
+      expect(adapter.handleCalls, 0,
+          reason:
+              'fail-closed: adapter MUST NOT see the payload when the '
+              'webhook signing secret has not been provisioned');
+    });
+
     test('rejected: signature invalid', () async {
       gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
         connectionId: 'conn-1',
