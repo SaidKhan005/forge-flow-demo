@@ -135,25 +135,34 @@ so the trigger lives in `northamerica-northeast1` while the Job
 itself runs in `northamerica-northeast2`. Same constraint as
 `scripts/deploy_audit_anchor_job.ps1`.
 
-## Adapter factory wiring (NOT YET PRODUCTION)
+## Adapter factory wiring
 
 The worker entrypoint expects a `WorkerBackfillAdapterFactory` —
 the closure that materializes the per-vendor adapter for one
-claimed job. Today the production main() defaults to
-`kScaffoldRejectingAdapterFactory`, which throws `StateError` on
-first dispatch.
+claimed job. Production now wires `BinderBackedAdapterFactory`
+(see `tool/first_connect_backfill_worker/main.dart`) which closes
+over the same per-vendor map the proxy binder builds via
+`buildPhase8VendorIntegrationFactoriesFromCredentials` in
+`tool/advisor_proxy/phase_8_vendor_integration_factories.dart`.
+The worker therefore shares the proxy's broker / credential bridges
+/ Postgres canonical sinks per vendor, and its
+`PGCRYPTO_ENVELOPE_KEY` env variable is now required at boot.
 
-A follow-up slice must wire the production factory by composing
-`tool/advisor_proxy/{pos,labor,reservation}_adapter_registry.dart`
-into the worker's main() — the same registries the proxy uses for
-inbound webhook handlers. That follow-up is OUT of scope for this
-slice (`8.gap-2`), which closes the deploy gap; the wiring lives
-in a sibling slice owned by the Phase 8 gap-runbook.
+Disabled vendors (warn-disabled in the binder because optional
+static app credentials or async-only location config are missing)
+surface to the worker as `BackfillVendorDisabledException`. The
+dispatcher records that as a per-job failure with a clean
+`vendor "<id>" not active in binder; missing app credentials`
+message; the cap-and-dead-letter path then dead-letters the job
+once retries exceed `MAX_ATTEMPTS`.
 
 In test paths the factory is injected via
 `runCli(adapterFactoryOverride: ...)` so the worker's claim /
 dispatch / cap-and-audit paths can be exercised end-to-end without
-real adapters.
+real adapters. The legacy `kScaffoldRejectingAdapterFactory`
+remains as a defensive fallback for paths that bypass both
+production wiring and test overrides; reaching it indicates a
+caller bug, not a configuration miss.
 
 ## Local dev
 

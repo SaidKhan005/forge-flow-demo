@@ -23,9 +23,17 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_contex
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
+import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart'
+    show
+        LaborAdapterFactory,
+        PosAdapterFactory,
+        ReservationAdapterFactory,
+        VendorWebhookSignatureVerifier;
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/pos_adapter.dart';
 
+import '../../../tool/advisor_proxy/phase_8_vendor_integration_factories.dart'
+    show Phase8VendorIntegrationFactories;
 import '../../../tool/first_connect_backfill_worker/main.dart';
 import '../../../tool/integration_sync_worker/backfill_dispatch.dart';
 
@@ -240,12 +248,15 @@ void main() {
           workerId: 'worker-test',
           config: WorkerRuntimeConfig(
             postgresUrl: 'test://override',
+            pgcryptoEnvelopeKey: 'test-pgcrypto-key',
+            webhookPublicBaseUri: Uri.parse('https://api.forgeflow.app'),
             maxAttempts: 10,
             maxJobsPerTick: 1,
             pollInterval: const Duration(milliseconds: 50),
             claimStaleAfter: const Duration(minutes: 15),
             workerIdPrefix: 'first-connect-backfill',
             loadedSecretNames: const <String>[],
+            environment: const <String, String>{},
           ),
         );
 
@@ -279,6 +290,154 @@ void main() {
         expect(loop.isStopRequested, isTrue);
       },
     );
+  });
+
+  group('BinderBackedAdapterFactory', () {
+    test('looks up active POS factory and returns the per-tenant adapter',
+        () async {
+      final adapter = _RecordingPosAdapter();
+      final factories = Phase8VendorIntegrationFactories(
+        posAdapterFactories: <String, PosAdapterFactory>{
+          _vendorId:
+              ({required String operatorId, required String locationId}) async =>
+                  adapter,
+        },
+        laborAdapterFactories: const <String, LaborAdapterFactory>{},
+        reservationAdapterFactories:
+            const <String, ReservationAdapterFactory>{},
+        signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
+        disabledVendors: const <String, String>{},
+      );
+      final factory = BinderBackedAdapterFactory(factories: factories);
+
+      final result = factory.call(_job(jobId: _jobIdA));
+
+      // Amendment A made adapter factories async. The
+      // BinderBackedAdapterFactory.call returns Future<Object> so the
+      // dispatcher can `await` the per-tenant construction; the test
+      // unwraps the Future before identity-checking against the
+      // recorded adapter instance.
+      final resolved = await (result as Future<Object>);
+      expect(identical(resolved, adapter), isTrue);
+    });
+
+    test('disabled vendor → BackfillVendorDisabledException with reason',
+        () async {
+      final factories = Phase8VendorIntegrationFactories(
+        posAdapterFactories: const <String, PosAdapterFactory>{},
+        laborAdapterFactories: const <String, LaborAdapterFactory>{},
+        reservationAdapterFactories:
+            const <String, ReservationAdapterFactory>{},
+        signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
+        disabledVendors: const <String, String>{
+          'aloha_ncr_voyix': 'aloha_ncr_voyix_credentials_missing',
+        },
+      );
+      final factory = BinderBackedAdapterFactory(factories: factories);
+
+      expect(
+        () => factory.call(
+          _job(
+            jobId: _jobIdA,
+            vendorId: 'aloha_ncr_voyix',
+            category: IntegrationCategory.pos,
+          ),
+        ),
+        throwsA(
+          isA<BackfillVendorDisabledException>()
+              .having((e) => e.vendorId, 'vendorId', 'aloha_ncr_voyix')
+              .having(
+                (e) => e.reason,
+                'reason',
+                'aloha_ncr_voyix_credentials_missing',
+              )
+              .having(
+                (e) => e.toString(),
+                'toString',
+                contains('not active in binder'),
+              ),
+        ),
+      );
+    });
+
+    test('vendor not wired anywhere → BackfillVendorNotWiredException',
+        () async {
+      final factories = Phase8VendorIntegrationFactories(
+        posAdapterFactories: const <String, PosAdapterFactory>{},
+        laborAdapterFactories: const <String, LaborAdapterFactory>{},
+        reservationAdapterFactories:
+            const <String, ReservationAdapterFactory>{},
+        signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
+        disabledVendors: const <String, String>{},
+      );
+      final factory = BinderBackedAdapterFactory(factories: factories);
+
+      expect(
+        () => factory.call(
+          _job(
+            jobId: _jobIdA,
+            vendorId: 'nonexistent_vendor',
+            category: IntegrationCategory.labor,
+          ),
+        ),
+        throwsA(
+          isA<BackfillVendorNotWiredException>()
+              .having((e) => e.vendorId, 'vendorId', 'nonexistent_vendor')
+              .having((e) => e.category, 'category', IntegrationCategory.labor)
+              .having(
+                (e) => e.toString(),
+                'toString',
+                contains('not wired in the Phase 8 binder builder'),
+              ),
+        ),
+      );
+    });
+
+    test('disabled vendor surfaced through dispatcher → markFailed + clean reason',
+        () async {
+      // End-to-end through runWorkerTick: factory throws
+      // BackfillVendorDisabledException, dispatcher records the
+      // failure, and the job ends marked failed with a clean message
+      // instead of a stack trace. Vendor must exist in the
+      // dispatcher's category registry; we use an existing POS
+      // vendor id (lightspeed_lsk is in the registry but disabled in
+      // the binder per the async-location-config branch).
+      final scope = WorkerJobScope(
+        operatorId: _opIdA,
+        locationId: _locIdA,
+      );
+      final scopeReader = _FakeScopeReader([scope]);
+      final job = _job(jobId: _jobIdA, attemptCount: 1);
+      final jobStore = _FakeBackfillJobStore()..addClaimable(scope, job);
+      final canonicalSink = _RecordingCanonicalSink();
+      final factories = Phase8VendorIntegrationFactories(
+        posAdapterFactories: const <String, PosAdapterFactory>{},
+        laborAdapterFactories: const <String, LaborAdapterFactory>{},
+        reservationAdapterFactories:
+            const <String, ReservationAdapterFactory>{},
+        signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
+        disabledVendors: const <String, String>{
+          _vendorId: 'lightspeed_lsk_async_location_config_required',
+        },
+      );
+      final adapterFactory = BinderBackedAdapterFactory(factories: factories);
+
+      final result = await runWorkerTick(
+        scopeReader: scopeReader,
+        jobStore: jobStore,
+        canonicalSink: canonicalSink,
+        adapterFactory: adapterFactory.call,
+        workerId: 'worker-test',
+        maxJobsPerTick: 5,
+        claimStaleAfter: const Duration(minutes: 15),
+      );
+
+      expect(result.attempted, 1);
+      expect(result.failed, 1);
+      expect(jobStore.failedJobIds, <String>[_jobIdA]);
+      expect(canonicalSink.syncLogs, hasLength(1));
+      expect(canonicalSink.syncLogs.single.eventKind, 'backfill_error');
+    });
   });
 }
 
@@ -685,6 +844,7 @@ FirstConnectionBackfillJob _job({
   int attemptCount = 0,
   IntegrationCategory category = IntegrationCategory.pos,
   String? cursorToken,
+  String vendorId = _vendorId,
 }) {
   final window = FirstConnectionBackfillWindow.lastSixtyDays(_connectedAt);
   return FirstConnectionBackfillJob(
@@ -692,7 +852,7 @@ FirstConnectionBackfillJob _job({
     operatorId: _opIdA,
     locationId: _locIdA,
     connectionId: _connIdA,
-    vendorId: _vendorId,
+    vendorId: vendorId,
     category: category,
     windowStart: window.windowStart,
     windowEnd: window.windowEnd,
