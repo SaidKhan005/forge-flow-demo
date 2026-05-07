@@ -116,6 +116,16 @@ void main() {
   });
 }
 
+// CODE_HEALTH L12 follow-up: RepositoryPasswordResetConfirmGateway
+// instantiates RepositoryPasswordHistoryCheck internally, which would
+// otherwise read PASSWORD_HISTORY_PEPPER from the env at construction
+// time and throw PasswordHistoryPepperMissingError in non-demo mode.
+// Inject a deterministic literal pepper so the salted-hash path is
+// constructible inside the test process. The value is not secret — it
+// only needs to be stable for the test run. Matches the pattern used in
+// test/password_live_binding_test.dart.
+const String _testPepper = 'test-pepper-bytes-not-secret';
+
 RepositoryPasswordResetConfirmGateway _gateway({
   required FirebaseAdminAuthClient firebase,
   PostgresPool? pool,
@@ -131,6 +141,7 @@ RepositoryPasswordResetConfirmGateway _gateway({
       fetcher: fetcher ?? const _NeverHibpRangeFetcher(),
     ),
     passwordHistoryHasher: const Sha256PasswordHistoryHasher(),
+    pepper: PasswordHistoryPepperConfig.literal(_testPepper),
   );
 }
 
