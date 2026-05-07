@@ -4,9 +4,9 @@ Purpose: test the 11A Flutter Web admin console in the in-app browser
 using the same built assets shape that Cloud Run serves.
 
 Use this runbook together with
-`runbooks/browser_use_acceptance_harness_runbook.md`. The harness defines the
-repeatable Browser Use evidence shape; this file adds admin-console-specific
-build, origin, and safety notes.
+`runbooks/browser_use_codex_acceptance_workflow.md`. That workflow defines the
+repeatable Browser Use evidence shape (Codex-driven, out-of-repo); this file
+adds admin-console-specific build, origin, and safety notes.
 
 ## Default Local QA Path
 
