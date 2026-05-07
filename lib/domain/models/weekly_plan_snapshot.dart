@@ -10,6 +10,7 @@
 /// Phase 7.55l.6a: contract only — persistence added in 7.55l.6b+.
 library;
 
+import 'demand_forecast_context.dart';
 import 'schedule_forecast_demand.dart';
 
 /// Immutable day-level row within a [WeeklyPlanSnapshot].
@@ -31,13 +32,13 @@ class WeeklyPlanSnapshotDay {
   });
 
   Map<String, dynamic> toMap() => {
-        'day': day,
-        'business_date': businessDate,
-        'forecast_covers': forecastCovers,
-        'forecast_sales': forecastSales,
-        'required_foh_hours': requiredFohHours,
-        'required_boh_hours': requiredBohHours,
-      };
+    'day': day,
+    'business_date': businessDate,
+    'forecast_covers': forecastCovers,
+    'forecast_sales': forecastSales,
+    'required_foh_hours': requiredFohHours,
+    'required_boh_hours': requiredBohHours,
+  };
 
   factory WeeklyPlanSnapshotDay.fromMap(Map<String, dynamic> m) =>
       WeeklyPlanSnapshotDay(
@@ -64,6 +65,7 @@ class WeeklyPlanSnapshot {
 
   // ── Target cycle linkage ─────────────────────────────────────────────────
   final String targetCycleId;
+  final String? forecastContextId;
 
   // ── Locked weekly values ─────────────────────────────────────────────────
   final int forecastCovers;
@@ -85,6 +87,7 @@ class WeeklyPlanSnapshot {
   // ── Metadata ─────────────────────────────────────────────────────────────
   final String generatedAt;
   final String lockedAt;
+  final DemandForecastContext? forecastContext;
 
   WeeklyPlanSnapshot({
     required this.snapshotId,
@@ -92,6 +95,7 @@ class WeeklyPlanSnapshot {
     required this.weekStartDate,
     required this.weekEndDate,
     required this.targetCycleId,
+    this.forecastContextId,
     required this.forecastCovers,
     required this.forecastSales,
     required this.requiredFohHours,
@@ -102,6 +106,7 @@ class WeeklyPlanSnapshot {
     required this.salesSource,
     required this.generatedAt,
     required this.lockedAt,
+    this.forecastContext,
     List<WeeklyPlanSnapshotDay> dayRows = const [],
   }) : dayRows = List.unmodifiable(dayRows);
 
@@ -115,33 +120,35 @@ class WeeklyPlanSnapshot {
   // ── Serialization ────────────────────────────────────────────────────────
 
   Map<String, dynamic> toMap() => {
-        'snapshot_id': snapshotId,
-        'restaurant_id': restaurantId,
-        'week_key': weekKey,
-        'week_start_date': weekStartDate,
-        'week_end_date': weekEndDate,
-        'target_cycle_id': targetCycleId,
-        'forecast_covers': forecastCovers,
-        'forecast_sales': forecastSales,
-        'required_foh_hours': requiredFohHours,
-        'required_boh_hours': requiredBohHours,
-        'theoretical_foh_labor_dollars': theoreticalFohLaborDollars,
-        'theoretical_boh_labor_dollars': theoreticalBohLaborDollars,
-        // Compatibility persistence copies retained in SQLite so old rows and
-        // bridge-era tooling still round-trip, but no longer exposed as
-        // canonical fields on the public snapshot model.
-        'theoretical_labor_pct': forecastSales > 0
-            ? theoreticalTotalLaborDollars / forecastSales * 100
-            : 0.0,
-        'target_blended_wage': totalRequiredHours > 0
-            ? theoreticalTotalLaborDollars / totalRequiredHours
-            : 0.0,
-        'covers_source': coversSource.name,
-        'sales_source': salesSource.name,
-        'generated_at': generatedAt,
-        'locked_at': lockedAt,
-        'day_rows': dayRows.map((d) => d.toMap()).toList(),
-      };
+    'snapshot_id': snapshotId,
+    'restaurant_id': restaurantId,
+    'week_key': weekKey,
+    'week_start_date': weekStartDate,
+    'week_end_date': weekEndDate,
+    'target_cycle_id': targetCycleId,
+    'forecast_context_id': forecastContextId,
+    'forecast_covers': forecastCovers,
+    'forecast_sales': forecastSales,
+    'required_foh_hours': requiredFohHours,
+    'required_boh_hours': requiredBohHours,
+    'theoretical_foh_labor_dollars': theoreticalFohLaborDollars,
+    'theoretical_boh_labor_dollars': theoreticalBohLaborDollars,
+    // Compatibility persistence copies retained in SQLite so old rows and
+    // bridge-era tooling still round-trip, but no longer exposed as
+    // canonical fields on the public snapshot model.
+    'theoretical_labor_pct': forecastSales > 0
+        ? theoreticalTotalLaborDollars / forecastSales * 100
+        : 0.0,
+    'target_blended_wage': totalRequiredHours > 0
+        ? theoreticalTotalLaborDollars / totalRequiredHours
+        : 0.0,
+    'covers_source': coversSource.name,
+    'sales_source': salesSource.name,
+    'generated_at': generatedAt,
+    'locked_at': lockedAt,
+    'forecast_context': forecastContext?.toMap(),
+    'day_rows': dayRows.map((d) => d.toMap()).toList(),
+  };
 
   factory WeeklyPlanSnapshot.fromMap(Map<String, dynamic> m) {
     final weekStartDate = m['week_start_date'] as String;
@@ -157,9 +164,11 @@ class WeeklyPlanSnapshot {
     }
 
     final rawRows = m['day_rows'] as List<dynamic>?;
-    final dayRowsList = rawRows
-            ?.map((d) =>
-                WeeklyPlanSnapshotDay.fromMap(d as Map<String, dynamic>))
+    final dayRowsList =
+        rawRows
+            ?.map(
+              (d) => WeeklyPlanSnapshotDay.fromMap(d as Map<String, dynamic>),
+            )
             .toList() ??
         [];
 
@@ -169,21 +178,41 @@ class WeeklyPlanSnapshot {
       weekStartDate: weekStartDate,
       weekEndDate: weekEndDate,
       targetCycleId: m['target_cycle_id'] as String,
+      forecastContextId: m['forecast_context_id'] as String?,
       forecastCovers: m['forecast_covers'] as int,
       forecastSales: (m['forecast_sales'] as num).toDouble(),
       requiredFohHours: m['required_foh_hours'] as int,
       requiredBohHours: m['required_boh_hours'] as int,
-      theoreticalFohLaborDollars:
-          (m['theoretical_foh_labor_dollars'] as num).toDouble(),
-      theoreticalBohLaborDollars:
-          (m['theoretical_boh_labor_dollars'] as num).toDouble(),
-      coversSource:
-          ForecastDemandSource.values.byName(m['covers_source'] as String),
-      salesSource:
-          ForecastDemandSource.values.byName(m['sales_source'] as String),
+      theoreticalFohLaborDollars: (m['theoretical_foh_labor_dollars'] as num)
+          .toDouble(),
+      theoreticalBohLaborDollars: (m['theoretical_boh_labor_dollars'] as num)
+          .toDouble(),
+      coversSource: ForecastDemandSource.values.byName(
+        m['covers_source'] as String,
+      ),
+      salesSource: ForecastDemandSource.values.byName(
+        m['sales_source'] as String,
+      ),
       generatedAt: m['generated_at'] as String,
       lockedAt: m['locked_at'] as String,
+      forecastContext: _forecastContextFromMapValue(m['forecast_context']),
       dayRows: dayRowsList,
     );
   }
+}
+
+DemandForecastContext? _forecastContextFromMapValue(Object? value) {
+  if (value == null) return null;
+  if (value is Map<String, dynamic>) {
+    return DemandForecastContext.fromMap(value);
+  }
+  if (value is Map<String, Object?>) {
+    return DemandForecastContext.fromMap(Map<String, dynamic>.from(value));
+  }
+  if (value is Map) {
+    return DemandForecastContext.fromMap(
+      value.map((key, val) => MapEntry(key.toString(), val)),
+    );
+  }
+  return null;
 }

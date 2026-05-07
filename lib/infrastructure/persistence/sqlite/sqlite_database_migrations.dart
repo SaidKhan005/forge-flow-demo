@@ -206,6 +206,27 @@ Future<void> _migrateToV28(Database db) async {
   ''');
 }
 
+Future<void> _migrateToV29(Database db) async {
+  if (!await _columnExists(
+    db,
+    'weekly_plan_snapshots',
+    'forecast_context_id',
+  )) {
+    await db.execute(
+      'ALTER TABLE weekly_plan_snapshots ADD COLUMN forecast_context_id TEXT',
+    );
+  }
+  if (!await _columnExists(
+    db,
+    'weekly_plan_snapshots',
+    'forecast_context_json',
+  )) {
+    await db.execute(
+      'ALTER TABLE weekly_plan_snapshots ADD COLUMN forecast_context_json TEXT',
+    );
+  }
+}
+
 Future<void> _migrateToV24(Database db) async {
   await db.execute(
     '''

@@ -56,8 +56,11 @@ void main() {
         _ForecastPage(
           rows: <ForecastContextSyncRow>[
             ForecastContextSyncRow(
+              forecastContextId: 'fc-1',
               operatorId: _opId,
               locationId: _locId,
+              weekStartDate: '2026-05-04',
+              weekEndDate: '2026-05-10',
               context: _forecastContext(rid),
             ),
           ],
@@ -82,18 +85,22 @@ void main() {
     expect(stored, isNotNull);
     expect(stored!.forecastCovers, 148);
     expect(stored.dayRows.single.businessDate, '2026-05-04');
+    expect(stored.forecastContextId, 'fc-1');
+    expect(stored.forecastContext!.baselineTotalCovers, 1200);
+    expect(stored.forecastContext!.resolvedWeeklyForecastCovers, 148);
     expect(result.weeklyPlanMirrors.weeklyPlanSnapshots.rowsWritten, 1);
     expect(
       result.weeklyPlanMirrors.weeklyPlanSnapshots.finalCursor,
       'weekly-cursor-1',
     );
     expect(
-      result.weeklyPlanMirrors.forecastContexts.unavailableReason,
-      'forecast_context_sqlite_cache_unavailable_memory_only',
+      result.weeklyPlanMirrors.forecastContexts.state,
+      WeeklyPlanResourceSyncState.synced,
     );
+    expect(result.weeklyPlanMirrors.forecastContexts.rowsWritten, 1);
     expect(
       result.weeklyPlanMirrors.forecastContexts.durableCacheAvailable,
-      isFalse,
+      isTrue,
     );
     expect(
       sync.latestForecastContexts.single.context.baselineTotalCovers,
@@ -350,6 +357,7 @@ WeeklyPlanSnapshot _snapshot(
   weekStartDate: '2026-05-04',
   weekEndDate: '2026-05-10',
   targetCycleId: 'cycle-1',
+  forecastContextId: 'fc-1',
   forecastCovers: forecastCovers,
   forecastSales: 6512,
   requiredFohHours: 32,
