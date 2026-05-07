@@ -142,6 +142,33 @@ void main() {
       final colNames = columns.map((c) => c['name'] as String).toList();
       expect(colNames, isNot(contains('business_timezone')));
     });
+
+    test('save hydrates RestaurantLocation timezone from server config',
+        () async {
+      final repo = SqliteRestaurantTimingConfigRepository.instance;
+      final original = await repo.getTimingConfig('demo_restaurant_001');
+      expect(original, isNotNull);
+
+      await repo.saveTimingConfig(
+        RestaurantTimingConfig(
+          restaurantId: 'live-location-1',
+          businessTimezone: 'America/Toronto',
+          businessDayStartLocalTime: original!.businessDayStartLocalTime,
+          weekStartDay: original.weekStartDay,
+          servicePeriodDefinitions: original.servicePeriodDefinitions,
+          shiftCloseAuthority: original.shiftCloseAuthority,
+          localCloseFallback: original.localCloseFallback,
+          createdAt: '2026-05-07T00:00:00.000Z',
+          updatedAt: '2026-05-07T00:00:00.000Z',
+        ),
+      );
+
+      SqliteRestaurantTimingConfigRepository.instance.resetDao();
+      final saved = await repo.getTimingConfig('live-location-1');
+
+      expect(saved, isNotNull);
+      expect(saved!.businessTimezone, 'America/Toronto');
+    });
   });
 
   // ── D: Runtime read seam works ────────────────────────────────────────────
