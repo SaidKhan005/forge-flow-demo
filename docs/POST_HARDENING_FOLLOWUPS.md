@@ -1,11 +1,11 @@
 # Post-Hardening Follow-ups
 
-Updated: 2026-05-06 (B1 data-accuracy migration renumbered to `…1701_…`; Phase 8 first-connection backfill job seam added at `…1800_…`; Phase 11W.7 operator account write-fields added at `…07000000_…`; Phase 8 timing-provenance FK posture flipped to `ON DELETE SET NULL` at `…08000000_…`).
+Updated: 2026-05-07 (B1 data-accuracy migration renumbered to `…1701_…`; Phase 8 first-connection backfill job seam added at `…1800_…`; Phase 11W.7 operator account write-fields added at `…07000000_…`; Code Health M2/M3 migrations added at `…070100_…` and `…070200_…`; Phase 8 timing-provenance FK posture flipped to `ON DELETE SET NULL` at `…08000000_…`; Code Health M1 admin idempotency TTL and Phase 8 weekly-plan server truth added at `…080100_…`).
 Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`. Staging remediation evidence in `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`.
 
 ## P0 - Production1 Migration Apply Gap
 
-**13 migrations pending Production1/staging apply** (chronological):
+**17 migrations pending Production1/staging apply** (chronological):
 
 | Migration | Origin | Staging status |
 |---|---|---|
@@ -21,9 +21,13 @@ Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FO
 | `202605061701_phase_8_data_accuracy_service_period_settings.sql` | Hardening Wave B1 keyed Data Accuracy child table per `(operator_id, location_id, service_period_key, effective_at_business_date)` (replaces hardcoded `covers_source_lunch`/`_dinner`/`_late_night` columns; legacy columns kept as read-only fallback). Renumbered 2026-05-06 from `202605061700_…` to break same-second prefix collision. | code-ready |
 | `202605061800_phase_8_first_connection_backfill_jobs.sql` | Phase 8 mobile core first-connection durable backfill jobs: server-side enqueue/claim/status seam for the 60-day backfill path. | code-ready |
 | `202605070000_phase_11W_7_operator_account_fields.sql` | Phase 11W.7 / Wave A2 operator-web Account editor write-fields on `public.operators` (`logo_url`, `locale_tag`, `week_start_day`, `rollover_hour`) plus format CHECK constraints + `business_name` length CHECK. Additive + default-backed; existing rows preserved. | code-ready |
+| `202605070100_password_history_salt_pepper.sql` | Code Health M2 password-history hash posture: adds salt/pepper/algo columns and the legacy-vs-salted invariant so code can migrate away from bare SHA-256 history rows without rewriting existing hashes. | code-ready |
+| `202605070200_audit_anchor_advisory_lock_infra.sql` | Code Health M3 audit-anchor infrastructure: global advisory-lock id registry plus Azure Blob breadcrumb columns on `audit_chain_anchors` for serialized daily sweeps and crash roll-forward. | code-ready |
 | `202605080000_phase_8_timing_provenance_fk_posture.sql` | V1.B Phase 8 timing-provenance FK posture flip: drops + re-adds `shift_records_business_timing_profile_fk`, `shift_records_business_timing_profile_version_fk`, and `open_shift_snapshots_profile_version_fk` with `ON DELETE SET NULL NOT VALID` so closed historical truth survives `business_timing_profiles` deletion (Operator Web timing editor lifecycle). Validation deferred to a future maintenance window. | code-ready |
+| `202605080100_admin_idempotency_expires_at.sql` | Code Health M1 admin idempotency TTL: adds `expires_at`, a partial in-flight expiry index, and a 5-minute pg_cron sweep to bound orphaned admin idempotency reservations. | code-ready |
+| `202605080100_phase_8_weekly_plan_server_truth.sql` | Phase 8 weekly-plan server truth: server-owned `forecast_contexts`, `weekly_plan_snapshots`, day rows, and audit ledger with target-cycle FK posture, one-active-week uniqueness, RLS, and operator-leading indexes. Mobile sync mirrors snapshots as cache only. | code-ready |
 
-**Action:** apply all 13 in next Production1 event per `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied + verified, the corresponding feature is **staging-ready only**.
+**Action:** apply all 17 in next Production1 event per `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied + verified, the corresponding feature is **staging-ready only**.
 
 ## P1 - Live Admin Operational Gates
 

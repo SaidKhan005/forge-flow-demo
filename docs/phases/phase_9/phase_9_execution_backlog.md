@@ -1,6 +1,6 @@
 ﻿# Phase 9 Execution Backlog
 
-Updated: 2026-05-03.
+Updated: 2026-05-07.
 
 Purpose: keep only the accepted Phase 9 follow-ups visible. Completed result
 reports and the full pre-lean backlog are archived under
@@ -120,10 +120,21 @@ Do not re-open stale findings unless the repo regresses:
   /v1/operator/account` route writes (`logo_url`, `locale_tag`,
   `week_start_day`, `rollover_hour`) plus format CHECK constraints and a
   length CHECK on `business_name`. Additive + default-backed; RLS on
-  `public.operators` is unchanged. Apply on staging first, then carry into
-  the next Production1 batch. The current Production1 follow-up cutoff is
-  therefore
-  `202605070000_phase_11W_7_operator_account_fields.sql`.
+  `public.operators` is unchanged. Code Health M2 then queues
+  `202605070100_password_history_salt_pepper.sql` for the salted/peppered
+  password-history schema seam, and Code Health M3 queues
+  `202605070200_audit_anchor_advisory_lock_infra.sql` for audit-anchor
+  advisory-lock and Blob breadcrumb infrastructure. Phase 8 timing-provenance
+  FK posture then queues
+  `202605080000_phase_8_timing_provenance_fk_posture.sql`, preserving closed
+  historical timing truth under profile deletion. Code Health M1 queues
+  `202605080100_admin_idempotency_expires_at.sql` for admin idempotency TTL
+  cleanup. Phase 8 weekly-plan server truth then queues
+  `202605080100_phase_8_weekly_plan_server_truth.sql` for server-owned
+  forecast contexts and weekly plan snapshots. Apply on staging first, then
+  carry into the next Production1 batch. The current Production1 follow-up
+  cutoff is therefore
+  `202605080100_phase_8_weekly_plan_server_truth.sql`.
 
 ## Remaining Live-Closeout Gates
 

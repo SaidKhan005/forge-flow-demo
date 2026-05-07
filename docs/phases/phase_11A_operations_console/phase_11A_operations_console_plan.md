@@ -1,6 +1,6 @@
 # Phase 11A - F&F Operations Console
 
-Updated: 2026-05-06
+Updated: 2026-05-07
 Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`5`/`6`/`7`/`UX.health` accepted. **Cross-operator parity slices ACCEPT 2026-05-06**: `11A.12` Members + Invites admin parity (`f84424db`), `11A.13` Roles + Hierarchy + Sessions admin parity (`d26425b3`), `11A.14` cross-operator audit log + audited support actions (`bbc6e134`; ships new `admin.users.reset_mfa_factors` permission key, hash-chained audit row shape). 348 admin tests PASS. Audit follow-up `45bdd734` cleared remaining drift on authority docs.
 Remaining: `11A.8` (support audit), `11A.9` (cross-operator reads), `11A.10` (user impersonation) — not started; deferred post-launch unless escalated.
 Owner: F&F admin / operations lane
@@ -127,7 +127,19 @@ the editable business-identity columns the operator-web `PATCH
 `week_start_day`, `rollover_hour`) plus format CHECK constraints and a
 `business_name` length CHECK. Additive + default-backed; RLS on
 `public.operators` is unchanged. That migration is not an 11A surface
-either, but it is now the shared cutoff watched by this plan.
+either, but it moves the shared cutoff watched by this plan. Code Health M2
+then queues `202605070100_password_history_salt_pepper.sql`, and Code Health
+M3 queues `202605070200_audit_anchor_advisory_lock_infra.sql`; they are not
+11A surfaces, but they move the shared cutoff watched by this plan. Phase 8
+timing-provenance FK posture then queues
+`202605080000_phase_8_timing_provenance_fk_posture.sql`; it is not an 11A
+surface, but it preserves closed timing truth under profile deletion and
+moves the shared cutoff. Code Health M1 then queues
+`202605080100_admin_idempotency_expires_at.sql` for admin idempotency TTL
+cleanup. Phase 8 weekly-plan server truth then queues
+`202605080100_phase_8_weekly_plan_server_truth.sql`; it is not an 11A
+surface, but it adds server-owned forecast contexts and weekly plan snapshots
+and is now the shared cutoff watched by this plan.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin
