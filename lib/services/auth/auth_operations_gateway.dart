@@ -1080,6 +1080,62 @@ class AuthEventLabels {
   }
 }
 
+// A7 — magic-link token redemption gateway seam.
+//
+// Kept separate from AuthOperationsGateway so the POST
+// /v1/auth/magic-link/redeem route can be exercised in tests without
+// wiring the full team-management surface. Production binds a
+// Postgres-backed implementation that looks up the token in
+// auth_invites, marks it used, and returns a Firebase custom token.
+
+class MagicLinkRedeemCommand {
+  const MagicLinkRedeemCommand({
+    required this.token,
+    required this.idempotencyKey,
+  });
+
+  /// The single-use invite token from the URL (after being stripped
+  /// from the address bar and POSTed via the welcome screen body).
+  final String token;
+
+  /// Client-generated idempotency key (UUIDv4 or secure-random base64)
+  /// so a network retry with the same token does not double-redeem.
+  final String idempotencyKey;
+}
+
+class MagicLinkRedeemed {
+  const MagicLinkRedeemed({required this.firebaseCustomToken});
+
+  /// Firebase custom token the client exchanges for an ID token via
+  /// `signInWithCustomToken`. Scoped to the invited user's UID and
+  /// the operator's tenant claims.
+  final String firebaseCustomToken;
+}
+
+/// Thrown when the token is not found, already used, or expired.
+/// [statusCode] is 404 for not-found and 410 for expired/used.
+class MagicLinkTokenInvalid implements Exception {
+  const MagicLinkTokenInvalid({
+    required this.code,
+    required this.message,
+    required this.statusCode,
+  });
+
+  final String code;
+  final String message;
+  final int statusCode;
+
+  @override
+  String toString() => 'MagicLinkTokenInvalid(code: $code)';
+}
+
+abstract class MagicLinkRedeemGateway {
+  /// Validates and redeems the token. Throws [MagicLinkTokenInvalid]
+  /// on any 4xx condition (expired, already-used, not-found). Throws
+  /// other exceptions on transient 5xx conditions.
+  Future<MagicLinkRedeemed> redeem(MagicLinkRedeemCommand command);
+}
+
 class AuthOperationRejected implements Exception {
   const AuthOperationRejected({
     required this.code,

@@ -141,9 +141,13 @@ Do not re-open stale findings unless the repo regresses:
   Phase 8 connector OAuth state then queues
   `202605080400_phase_8_connector_oauth_state.sql` for tenant-scoped
   operator-facing vendor OAuth begin/callback state.
+  A1 idempotency rekey then queues
+  `202605080600_phase_8_idempotency_location_id_rekey.sql` to add
+  `location_id` to the fact/webhook idempotency keys and switch all 17
+  vendor sinks to a DO UPDATE WHERE `vendor_modified_at >=` guard.
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605080400_phase_8_connector_oauth_state.sql`.
+  `202605080600_phase_8_idempotency_location_id_rekey.sql`.
 
 ## Remaining Live-Closeout Gates
 

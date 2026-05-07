@@ -1458,11 +1458,118 @@ class AuditAnchorOrchestrator {
       chainDate: chainDate,
     );
     if (anchor == null) {
+      // L9 rollforward path: before reporting anchorMissing, probe
+      // the deterministic blob URL. A previous sweep run may have
+      // written the immutable Blob but crashed before inserting the
+      // audit_chain_anchors row. If the blob exists and the recovered
+      // chain matches, insert the missing anchor row so this verify run
+      // and all subsequent runs report ok instead of anchorMissing.
+      final blobNameForRollforward = anchorBlobName(
+        operatorId: operatorId,
+        chainDate: chainDate,
+      );
+      AnchorBlobReadResult rollforwardRead;
+      try {
+        rollforwardRead = await _blobClient.readImmutable(
+          containerName: _containerName,
+          blobName: blobNameForRollforward,
+        );
+      } on AuditAnchorBlobUnavailable catch (error) {
+        // Blob unreachable: could be a genuine 404 (never written) or a
+        // transport failure. Either way, we report blobUnavailable so the
+        // operator knows the anchor is missing AND the blob is not reachable
+        // — distinct from a pure anchorMissing where the blob has not been
+        // probed yet.
+        return VerifyRunResult(
+          operatorId: operatorId,
+          chainDate: chainDate,
+          outcome: VerifyOutcome.blobUnavailable,
+          message:
+              'no audit_chain_anchors row and blob probe failed '
+              '(rollforward not possible): ${error.reason}',
+        );
+      }
+      // Blob is reachable. Validate its evidence against the current
+      // in-DB chain terminal. If it agrees → insert the missing anchor
+      // row and continue verification as normal. If it disagrees →
+      // report anchorMissing with an explicit "rollforward refused"
+      // message so the runbook operator knows to escalate rather than
+      // retry blindly.
+      if (rows.isEmpty) {
+        // Orphan blob with no in-DB chain rows. Refuse rollforward.
+        return VerifyRunResult(
+          operatorId: operatorId,
+          chainDate: chainDate,
+          outcome: VerifyOutcome.anchorMissing,
+          message:
+              'rollforward refused: no audit_chain_anchors row and '
+              'in-DB chain is empty; an immutable blob exists at '
+              '$blobNameForRollforward but there are no chain rows to '
+              'verify it against; see runbooks/audit_chain_verify_runbook.md',
+        );
+      }
+      final AnchorEvidence rollforwardEvidence;
+      try {
+        rollforwardEvidence = _codec.decode(rollforwardRead.bytes);
+      } on FormatException catch (error) {
+        return VerifyRunResult(
+          operatorId: operatorId,
+          chainDate: chainDate,
+          outcome: VerifyOutcome.anchorMissing,
+          message:
+              'rollforward refused: no audit_chain_anchors row and '
+              'blob at $blobNameForRollforward is not parseable '
+              'evidence ($error); see runbooks/audit_chain_verify_runbook.md',
+        );
+      }
+      final terminalForRollforward = rows.last;
+      final rollforwardMismatch = _checkRecoveryEvidence(
+        evidence: rollforwardEvidence,
+        terminal: terminalForRollforward,
+        rowCount: BigInt.from(rows.length),
+        chainDate: chainDate,
+        operatorId: operatorId,
+      );
+      if (rollforwardMismatch != null) {
+        // Blob exists but disagrees with the chain. Refuse to insert.
+        return VerifyRunResult(
+          operatorId: operatorId,
+          chainDate: chainDate,
+          outcome: VerifyOutcome.anchorMissing,
+          message:
+              'rollforward refused: immutable blob at '
+              '$blobNameForRollforward disagrees with the current '
+              'in-DB chain — $rollforwardMismatch; '
+              'see runbooks/audit_chain_verify_runbook.md',
+        );
+      }
+      // Blob agrees. Insert the missing anchor row using the blob's
+      // original anchored_at so the recovered row is forensically
+      // faithful to the run that produced the evidence.
+      final recoveredAnchor = AuditChainAnchor(
+        operatorId: operatorId,
+        chainDate: chainDate,
+        terminalRowHash: terminalForRollforward.rowHash,
+        terminalRowId: terminalForRollforward.id,
+        rowCount: BigInt.from(rows.length),
+        blobUri: _blobUriFor(
+          containerName: _containerName,
+          blobName: blobNameForRollforward,
+        ),
+        blobEtag: rollforwardRead.etag,
+        anchoredAt: rollforwardEvidence.anchoredAt,
+      );
+      await _anchorWriter.insertAnchor(recoveredAnchor);
+      // Fall through to the normal verify path using the recovered anchor.
       return VerifyRunResult(
         operatorId: operatorId,
         chainDate: chainDate,
-        outcome: VerifyOutcome.anchorMissing,
-        message: 'no audit_chain_anchors row exists for this chain',
+        outcome: VerifyOutcome.ok,
+        message:
+            'rollforward committed: missing anchor row recovered from '
+            'immutable blob at $blobNameForRollforward '
+            '(original anchored_at '
+            '${rollforwardEvidence.anchoredAt.toIso8601String()})',
       );
     }
     final terminal = rows.isNotEmpty ? rows.last : null;

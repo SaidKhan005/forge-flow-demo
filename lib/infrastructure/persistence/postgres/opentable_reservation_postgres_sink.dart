@@ -229,8 +229,10 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
       'on conflict (connection_id, resource) do update set '
       '  cursor_token = excluded.cursor_token, '
       '  last_modified_seen = excluded.last_modified_seen, '
-      '  last_synced_at = now(), '
-      '  updated_at = now()',
+      '  last_synced_at = excluded.last_synced_at, '
+      '  updated_at = now() '
+      'where excluded.last_synced_at >= '
+      'public.connector_sync_watermark.last_synced_at',
       parameters: <String, Object?>{
         'operator_id': operatorId,
         'location_id': locationId,
@@ -305,8 +307,20 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
         '@reservation_at::timestamptz, @business_date::date, @party_size, '
         '@status, null, null, @raw_payload::jsonb'
         ') '
-        'on conflict (operator_id, vendor_id, vendor_entity_id, vendor_modified_at) '
-        'do nothing',
+        'on conflict (operator_id, location_id, vendor_id, vendor_entity_id) '
+        'where vendor_id is not null '
+        'and vendor_entity_id is not null '
+        'do update set '
+        'vendor_modified_at = excluded.vendor_modified_at, '
+        'reservation_at = excluded.reservation_at, '
+        'business_date = excluded.business_date, '
+        'party_size = excluded.party_size, '
+        'status = excluded.status, '
+        'seated_at = excluded.seated_at, '
+        'cancelled_at = excluded.cancelled_at, '
+        'raw_payload = excluded.raw_payload '
+        'where excluded.vendor_modified_at >= '
+        'public.reservation_facts.vendor_modified_at',
         parameters: <String, Object?>{
           'operator_id': fact.operatorId,
           'location_id': fact.locationId,

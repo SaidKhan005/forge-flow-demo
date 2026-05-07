@@ -157,10 +157,13 @@ class DataSourceHealthPill extends StatelessWidget {
       case MetricState.unavailable:
         return 3;
       case MetricState.fallback:
+      case MetricState.stale:
         return 2;
       case MetricState.partial:
+      case MetricState.empty:
         return 1;
       case MetricState.live:
+      case MetricState.demo:
         return 0;
     }
   }

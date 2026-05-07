@@ -998,6 +998,13 @@ class _FakeOAuthRefreshGateway implements OAuthRefreshGateway {
   }
 
   @override
+  Future<bool> acquireAdvisoryLockForRefresh({
+    required String operatorId,
+    required String vendorId,
+  }) async =>
+      true; // Always grant the lock for test.
+
+  @override
   Future<void> recordRefreshSuccess({
     required String credentialId,
     required String operatorId,

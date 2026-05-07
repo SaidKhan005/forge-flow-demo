@@ -128,16 +128,19 @@ class FixedAuditLogsCutoverFlag implements AuditLogsCutoverFlag {
 }
 
 /// Production-grade flag resolver that reads
-/// `public.feature_flags.audit_logs_cutover_enabled` (global scope:
-/// `operator_id is null and location_id is null`) inside the caller's
-/// transaction. Default-on when the row is missing so a fresh DB that
-/// has not run the seed migration still emits the fan-out.
+/// `public.feature_flags.audit_logs_cutover_enabled` (system-wide
+/// scope: `operator_id = public.feature_flag_system_wide_operator_id()
+/// and location_id is null`) inside the caller's transaction.
+/// Default-on when the row is missing so a fresh DB that has not run
+/// the seed migration still emits the fan-out.
 ///
-/// Per-write SELECT cost is one indexed row read on a partial unique
-/// index (`feature_flags_global_scope_idx`); the RLS posture is
-/// `service_role_all using (true)` so the read participates from
-/// either the tenant or admin pool without needing
-/// `app_current_operator()`.
+/// Per-write SELECT cost is one indexed row read on the operator-
+/// scope partial unique index (`feature_flags_operator_scope_idx`);
+/// see `db/migrations/202605072000_feature_flags_sentinel_operator
+/// .sql` for why the dedicated global-scope index was retired in
+/// favor of folding system-wide reads into the tenant-leading
+/// index. The RLS posture is `service_role_all using (...)` so the
+/// read participates from either the tenant or admin pool.
 class FeatureFlagsTableAuditLogsCutoverFlag implements AuditLogsCutoverFlag {
   const FeatureFlagsTableAuditLogsCutoverFlag();
 
@@ -147,7 +150,7 @@ class FeatureFlagsTableAuditLogsCutoverFlag implements AuditLogsCutoverFlag {
       "select enabled "
       'from public.feature_flags '
       "where flag_name = 'audit_logs_cutover_enabled' "
-      'and operator_id is null '
+      'and operator_id = public.feature_flag_system_wide_operator_id() '
       'and location_id is null '
       'limit 1',
     );

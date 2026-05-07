@@ -433,8 +433,15 @@ DNS / secrets enumeration:
                                     list
 ''';
 
+// Honor POSTGRES_POOL_MAX_CONNECTIONS env override; falls back to default 4.
+PostgresPool _defaultPoolFactory(String connectionString) =>
+    PackagePostgresPool.fromUrl(
+      connectionString,
+      maxConnectionCount: resolvePostgresMaxConnectionsPerPool(),
+    );
+
 Future<void> main(List<String> args) async {
-  await runMain(args, defaultPoolFactory: PackagePostgresPool.fromUrl);
+  await runMain(args, defaultPoolFactory: _defaultPoolFactory);
 }
 
 /// Visible for tests: same as [main] but with the production pool

@@ -56,6 +56,24 @@ export 'operator_web_wage_authority_gateway.dart'
         WageAuthorityGatewayException,
         WageRoleRowUpsert;
 
+/// Phase 8 W5.B - Operator Web Schedule gateway provider seam.
+/// Auth sources mix this provider in to surface the live HTTP gateway
+/// that reads the locked weekly plan + matching forecast context for
+/// the Schedule screen. Demo sources may omit the mixin and the router
+/// falls back to an in-memory demo gateway so the walkthrough renders
+/// without a live proxy.
+export 'operator_web_schedule_gateway.dart'
+    show
+        OperatorWebDemoScheduleGateway,
+        OperatorWebHttpScheduleGateway,
+        OperatorWebScheduleGateway,
+        OperatorWebScheduleGatewayException,
+        OperatorWebScheduleGatewayProvider,
+        ScheduleForecastContext,
+        ScheduleSnapshot,
+        ScheduleSnapshotDay,
+        demoScheduleSnapshotFor;
+
 /// Operator Web W4.B - re-export the chain anchor gateway provider so
 /// router/auth-source wiring sees one canonical sentinel surface.
 export 'operator_web_audit_chain_anchors_gateway_provider.dart'

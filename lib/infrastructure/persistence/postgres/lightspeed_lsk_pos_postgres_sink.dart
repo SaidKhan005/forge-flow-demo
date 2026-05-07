@@ -77,7 +77,7 @@ import 'dart:convert';
 import '../../../integrations/pos/lightspeed_lsk_pos_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
-import '../../../services/integration/in_memory_cache.dart';
+
 import '../../../services/integration/integration_adapter_common.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -110,19 +110,6 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
 
   final IanaTimezoneConverter _timezoneConverter;
   final DateTime Function() _clock;
-
-  /// In-memory per-(operator, location) counter of inserts since the
-  /// last watermark advance. Drives the demo-mode flip auto-evaluator
-  /// per item 5 in the file header.
-  ///
-  /// PF1 hardening: bounded by [kLruTtlMapDefaultMaxSize] (1 000
-  /// entries) + [kLruTtlMapDefaultTtl] (1 h) so a high-churn
-  /// multi-tenant pod cannot grow this map unboundedly.
-  final LruTtlMap<String, int> _pendingInsertsByTenant =
-      LruTtlMap<String, int>();
-
-  String _tenantKey(String operatorId, String locationId) =>
-      '$operatorId|$locationId';
 
   // ─── LightspeedLskGateway: binding lookup ────────────────────────
 
@@ -349,11 +336,20 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
         '@closed_at::timestamptz, @business_date::date, '
         '@actual_sales, @raw_payload::jsonb'
         ') '
-        'on conflict (operator_id, vendor_id, vendor_entity_id, '
-        'vendor_modified_at) where vendor_id is not null '
+        'on conflict (operator_id, location_id, vendor_id, vendor_entity_id) '
+        'where vendor_id is not null '
         'and vendor_entity_id is not null '
-        'and vendor_modified_at is not null '
-        'do nothing '
+        'do update set '
+        'vendor_modified_at = excluded.vendor_modified_at, '
+        'covers = excluded.covers, '
+        'covers_source = excluded.covers_source, '
+        'opened_at = excluded.opened_at, '
+        'closed_at = excluded.closed_at, '
+        'business_date = excluded.business_date, '
+        'actual_sales = excluded.actual_sales, '
+        'raw_payload = excluded.raw_payload '
+        'where excluded.vendor_modified_at >= '
+        'public.cover_facts.vendor_modified_at '
         'returning 1 as inserted',
         parameters: <String, Object?>{
           'operator_id': operatorId,
@@ -370,14 +366,32 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
           'raw_payload': jsonEncode(rawPayload),
         },
       );
+      if (rows.isNotEmpty) {
+        // A2 fix: increment persisted pending counter inside the same
+        // transaction as the cover-facts row so counter and fact are
+        // always in sync (launch-blocker A2 fix).
+        await exec.execute(
+          'insert into public.demo_mode_state ('
+          'operator_id, location_id, category, is_demo, '
+          'pending_inserts_count, created_at, updated_at'
+          ') values ('
+          '@operator_id::uuid, @location_id::uuid, @category, true, '
+          '1, @now::timestamptz, @now::timestamptz'
+          ') on conflict (operator_id, location_id, category) do update set '
+          'pending_inserts_count = '
+          'public.demo_mode_state.pending_inserts_count + 1, '
+          'updated_at = excluded.updated_at',
+          parameters: <String, Object?>{
+            'operator_id': operatorId,
+            'location_id': locationId,
+            'category': 'pos',
+            'now': _clock().toUtc(),
+          },
+        );
+      }
       return rows.isNotEmpty;
     });
 
-    if (inserted) {
-      final key = _tenantKey(operatorId, locationId);
-      _pendingInsertsByTenant.put(
-          key, (_pendingInsertsByTenant.get(key) ?? 0) + 1);
-    }
     return inserted;
   }
 
@@ -442,7 +456,9 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
         'last_synced_at = excluded.last_synced_at, '
         'last_modified_seen = excluded.last_modified_seen, '
         'cursor_token = excluded.cursor_token, '
-        'updated_at = excluded.updated_at',
+        'updated_at = excluded.updated_at '
+        'where excluded.last_synced_at >= '
+        'public.connector_sync_watermark.last_synced_at',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,
@@ -454,21 +470,51 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
           'updated_at': _clock().toUtc(),
         },
       );
-    });
-
-    final tenantKey = _tenantKey(operatorId, locationId);
-    final pending = _pendingInsertsByTenant.remove(tenantKey) ?? 0;
-    if (pending >= 1) {
-      await evaluateDemoFlip(
-        operatorId: operatorId,
-        locationId: locationId,
-        category: IntegrationCategory.pos,
-        connectionStatus: ConnectionStatus.connected,
-        firstBackfillCommitted: true,
-        backfillRecordsWritten: pending,
-        connectionId: connectionId,
+      // A2 fix: evaluate the demo-flip inside the same transaction as the
+      // watermark commit so a crash between the two cannot leave the
+      // operator stuck in demo mode. SELECT FOR UPDATE serialises
+      // concurrent pods; UPDATE narrows to is_demo = true for idempotency.
+      final dmsRows = await exec.query(
+        'select pending_inserts_count, is_demo '
+        'from public.demo_mode_state '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'and category = @category '
+        'for update',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'category': 'pos',
+        },
       );
-    }
+      if (dmsRows.isNotEmpty) {
+        final dmsRow = dmsRows.single;
+        final pendingCount =
+            (dmsRow['pending_inserts_count'] as int? ?? 0);
+        final isDemo = dmsRow['is_demo'] as bool? ?? true;
+        if (pendingCount >= 1 && isDemo) {
+          await exec.execute(
+            'update public.demo_mode_state set '
+            'is_demo = false, '
+            'flipped_to_live_at = @now::timestamptz, '
+            'flipped_by_connection_id = @connection_id::uuid, '
+            'pending_inserts_count = 0, '
+            'updated_at = @now::timestamptz '
+            'where operator_id = @operator_id::uuid '
+            'and location_id = @location_id::uuid '
+            'and category = @category '
+            'and is_demo = true',
+            parameters: <String, Object?>{
+              'operator_id': operatorId,
+              'location_id': locationId,
+              'category': 'pos',
+              'now': _clock().toUtc(),
+              'connection_id': connectionId,
+            },
+          );
+        }
+      }
+    });
   }
 
   @override
@@ -561,6 +607,7 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
         'is_demo = false, '
         'flipped_to_live_at = @now::timestamptz, '
         'flipped_by_connection_id = @connection_id::uuid, '
+        'pending_inserts_count = 0, '
         'updated_at = @now::timestamptz '
         'where operator_id = @operator_id::uuid '
         'and location_id = @location_id::uuid '

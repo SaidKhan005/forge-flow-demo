@@ -52,20 +52,36 @@ abstract class IntegrationAdminGateway {
   Future<RotateKeyResult> rotateKey(RotateKeyCommand command);
 }
 
+/// Resolves the current actor's role to gate read-only access for
+/// `ff_support` role. Tests can inject a mock implementation.
+typedef RoleResolver = Future<List<String>> Function();
+
+class PermissionDeniedException implements Exception {
+  const PermissionDeniedException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'PermissionDeniedException: $message';
+}
+
 class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
   HttpIntegrationAdminGateway({
     required this.baseUri,
     required this.bearerTokenProvider,
     http.Client? httpClient,
     Duration timeout = kAdminHttpRequestTimeout,
+    RoleResolver? roleResolver,
   }) : _httpClient = httpClient ?? http.Client(),
-       _timeout = timeout;
+       _timeout = timeout,
+       _roleResolver = roleResolver;
 
   /// Proxy base URI (e.g. `https://admin-proxy.forgeflow.app`).
   final Uri baseUri;
   final IntegrationAdminBearerTokenProvider bearerTokenProvider;
   final http.Client _httpClient;
   final Duration _timeout;
+  final RoleResolver? _roleResolver;
 
   static const String listPath = '/v1/admin/integrations';
   static const String rotateAnthropicPath =
@@ -109,6 +125,8 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
 
   @override
   Future<RotateKeyResult> rotateKey(RotateKeyCommand command) async {
+    // Gate mutate operations for ff_support role.
+    await _checkNotReadOnly();
     final path = rotatePathFor(command.keyKind);
     final body = await _send(
       method: 'POST',
@@ -117,6 +135,17 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
       jsonBody: command.toJson(),
     );
     return RotateKeyResult.fromJson(body);
+  }
+
+  /// Throws [PermissionDeniedException] if the actor holds the
+  /// `ff_support` role (read-only access).
+  Future<void> _checkNotReadOnly() async {
+    final roleResolver = _roleResolver;
+    if (roleResolver == null) return; // No role check configured (production).
+    final roles = await roleResolver();
+    if (roles.contains('ff_support')) {
+      throw const PermissionDeniedException('Read-only access');
+    }
   }
 
   Future<Map<String, Object?>> _send({
@@ -231,10 +260,12 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
     List<VendorConnectorStatus>? vendorConnectors,
     VendorConnectorStatus? fxRateSource,
     VendorConnectorStatus? emailProvider,
+    RoleResolver? roleResolver,
   }) : _kmsProvider = kmsProvider ?? KmsStubProvider(),
        _actorUserId = actorUserId,
        _now = now ?? DateTime.now,
        _credentialIdGenerator = credentialIdGenerator ?? _defaultId,
+       _roleResolver = roleResolver,
        _ledger = <ProviderKeyKind, ProviderKeyRow>{
          for (final row in seed) row.keyKind: row,
        },
@@ -248,6 +279,7 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
   final String? _actorUserId;
   final DateTime Function() _now;
   final String Function() _credentialIdGenerator;
+  final RoleResolver? _roleResolver;
   final Map<ProviderKeyKind, ProviderKeyRow> _ledger;
   final List<VendorConnectorStatus> _vendorConnectors;
   final VendorConnectorStatus _fxRateSource;
@@ -278,6 +310,8 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
 
   @override
   Future<RotateKeyResult> rotateKey(RotateKeyCommand command) async {
+    // Gate mutate operations for ff_support role.
+    await _checkNotReadOnly();
     final cached = _idempotentResults[command.idempotencyKey];
     if (cached != null) return cached;
     if (command.plaintextValue.trim().isEmpty) {
@@ -457,6 +491,17 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
         statusLabel: 'placeholder',
         detailMessage: 'Email provider lands in Phase 9.8.',
       );
+
+  /// Throws [PermissionDeniedException] if the actor holds the
+  /// `ff_support` role (read-only access).
+  Future<void> _checkNotReadOnly() async {
+    final roleResolver = _roleResolver;
+    if (roleResolver == null) return; // No role check configured (tests).
+    final roles = await roleResolver();
+    if (roles.contains('ff_support')) {
+      throw const PermissionDeniedException('Read-only access');
+    }
+  }
 
   static int _idCounter = 0;
   static String _defaultId() {
