@@ -11,6 +11,10 @@ import '../services/app_data_status_service.dart';
 import '../services/schedule_plan_read_service.dart';
 import '../services/wage_standard_context_service.dart';
 
+/// Reads the active restaurant id; injected so tests can simulate a
+/// scope flip mid-fetch.
+typedef ActiveRestaurantIdReader = Future<String> Function();
+
 class ShiftDashboardNotifier extends ChangeNotifier {
   ShiftDashboardReadModel? _readModel;
   AppDataStatus? _status;
@@ -25,13 +29,25 @@ class ShiftDashboardNotifier extends ChangeNotifier {
   /// in-flight revalidation.
   CurrentStateFreshness? _freshness;
 
+  /// Per-operator isolation seam (Launch Blocker #1).
+  ///
+  /// `_load` captures the active restaurant id at fetch-start and re-reads
+  /// it before publishing. If the id changed mid-load (operator switched
+  /// restaurants on a shared device), the result is abandoned: no state
+  /// write, no `notifyListeners()`. CLAUDE.md: "Per-operator isolation is
+  /// non-negotiable."
+  final ActiveRestaurantIdReader _activeRestaurantIdReader;
+
   ShiftDashboardReadModel? get readModel => _readModel;
   AppDataStatus? get status => _status;
   bool get isLoading => _isLoading;
   CurrentStateFreshness? get freshness => _freshness;
   bool get lockedPlanUnavailable => _lockedPlanUnavailable;
 
-  ShiftDashboardNotifier() {
+  ShiftDashboardNotifier({
+    ActiveRestaurantIdReader? activeRestaurantIdReader,
+  }) : _activeRestaurantIdReader = activeRestaurantIdReader ??
+            SqliteRestaurantScopeRepository.instance.getActiveRestaurantId {
     _load();
   }
 
@@ -42,14 +58,18 @@ class ShiftDashboardNotifier extends ChangeNotifier {
   })  : _readModel = model,
         _status = null,
         _freshness = freshness,
-        _isLoading = false;
+        _isLoading = false,
+        _activeRestaurantIdReader =
+            SqliteRestaurantScopeRepository.instance.getActiveRestaurantId;
 
   /// Test-only constructor for synchronous empty-state rendering.
   ShiftDashboardNotifier.emptyForTest(AppDataStatus status)
       : _readModel = null,
         _status = status,
         _freshness = null,
-        _isLoading = false;
+        _isLoading = false,
+        _activeRestaurantIdReader =
+            SqliteRestaurantScopeRepository.instance.getActiveRestaurantId;
 
   Future<void> refresh() async {
     // Do NOT set _isLoading = true — during pull-to-refresh the
@@ -68,11 +88,12 @@ class ShiftDashboardNotifier extends ChangeNotifier {
 
   Future<void> _load() async {
     // Always evaluate data status
-    _status = await AppDataStatusService.instance.evaluate();
-    _lockedPlanUnavailable = false;
+    final loadedStatus = await AppDataStatusService.instance.evaluate();
+    var lockedPlanUnavailable = false;
 
-    final restaurantId =
-        await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
+    // Per-operator isolation (Launch Blocker #1): capture the active
+    // restaurant id at fetch-start. Every read below is scoped to it.
+    final restaurantId = await _activeRestaurantIdReader();
 
     // Load active target profile via wage-aware bootstrap
     final ActiveTargetProfile profile = await WageStandardContextService
@@ -82,6 +103,9 @@ class ShiftDashboardNotifier extends ChangeNotifier {
     // Find the business date with an open shift
     final businessDate = await SqliteOpenShiftSnapshotRepository.instance
         .getCurrentBusinessDate(restaurantId);
+
+    ShiftDashboardReadModel? loadedReadModel;
+    CurrentStateFreshness? loadedFreshness;
 
     if (businessDate != null) {
       // Load ALL daypart snapshots for this business day
@@ -97,7 +121,7 @@ class ShiftDashboardNotifier extends ChangeNotifier {
               null, (a, b) => a == null || b.isAfter(a) ? b : a);
 
       if (snapshots.isNotEmpty) {
-        _freshness = const CurrentStateFreshnessService().evaluate(
+        loadedFreshness = const CurrentStateFreshnessService().evaluate(
           updatedAt: maxUpdatedAt,
           now: DateTime.now().toUtc(),
         );
@@ -126,7 +150,7 @@ class ShiftDashboardNotifier extends ChangeNotifier {
             0, (s, r) => s + r.unseatedCovers);
 
         if (dayPlan != null) {
-          _readModel = ShiftDashboardReadModel.buildWholeDay(
+          loadedReadModel = ShiftDashboardReadModel.buildWholeDay(
             snapshots: snapshots,
             profile: profile,
             forecastCovers: dayPlan.forecastCovers,
@@ -139,20 +163,33 @@ class ShiftDashboardNotifier extends ChangeNotifier {
           // No persisted locked plan or no matching day row.
           // Do not fabricate plan values from a single daypart snapshot or
           // from the live plan path.
-          _readModel = null;
-          _lockedPlanUnavailable = true;
+          loadedReadModel = null;
+          lockedPlanUnavailable = true;
         }
       } else {
-        _readModel = null;
-        _freshness = null;
-        _lockedPlanUnavailable = false;
+        loadedReadModel = null;
+        loadedFreshness = null;
+        lockedPlanUnavailable = false;
       }
     } else {
-      _readModel = null;
-      _freshness = null;
-      _lockedPlanUnavailable = false;
+      loadedReadModel = null;
+      loadedFreshness = null;
+      lockedPlanUnavailable = false;
     }
 
+    // Per-operator isolation re-check (Launch Blocker #1): if the active
+    // restaurant changed mid-load, the result is for a stale tenant.
+    // Abandon the publish — no state write, no `notifyListeners()`. The
+    // next load (triggered by the scope-change handler) will reconcile.
+    final currentRestaurantId = await _activeRestaurantIdReader();
+    if (currentRestaurantId != restaurantId) {
+      return;
+    }
+
+    _status = loadedStatus;
+    _lockedPlanUnavailable = lockedPlanUnavailable;
+    _readModel = loadedReadModel;
+    _freshness = loadedFreshness;
     _isLoading = false;
     notifyListeners();
   }

@@ -173,4 +173,71 @@ void main() {
     final readModel = await ShiftService.instance.getShiftDashboard();
     expect(readModel, isNotNull);
   });
+
+  // ── Per-operator isolation race test (Launch Blocker #1) ─────────────────
+
+  test(
+      'notifier abandons publish when the active restaurant flips mid-load',
+      () async {
+    // Simulate a shared-device operator switch: the active restaurant id
+    // returned at fetch-start differs from the one returned at fetch-end.
+    // CLAUDE.md: "Per-operator isolation is non-negotiable." Stale data
+    // for the prior tenant must not be published to listeners.
+    //
+    // First read uses the seeded demo scope so the load itself completes
+    // with real data; the second read returns a different id so the
+    // re-check fires the abandon path against fully-loaded (but stale)
+    // state — proving the contract.
+    var call = 0;
+    Future<String> flippingScopeReader() async {
+      call++;
+      return call == 1 ? DemoScope.restaurantId : 'flipped_tenant';
+    }
+
+    var notifyCount = 0;
+    final notifier = ShiftDashboardNotifier(
+      activeRestaurantIdReader: flippingScopeReader,
+    );
+    notifier.addListener(() {
+      notifyCount++;
+    });
+
+    // Wait long enough for _load to complete all its awaits and reach the
+    // re-check.
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    // The race-check must have aborted the publish: no notify, no state
+    // mutation. _isLoading remains true (its initial value), readModel
+    // and freshness stay null, status stays null.
+    expect(notifyCount, 0,
+        reason: 'mid-load scope flip must abandon notifyListeners');
+    expect(notifier.isLoading, isTrue,
+        reason: 'aborted load must not set _isLoading = false');
+    expect(notifier.readModel, isNull,
+        reason: 'aborted load must not publish a stale read model');
+    expect(notifier.freshness, isNull,
+        reason: 'aborted load must not publish stale freshness');
+    expect(notifier.status, isNull,
+        reason: 'aborted load must not publish a stale status');
+
+    notifier.dispose();
+  });
+
+  test(
+      'notifier publishes normally when the active restaurant is stable',
+      () async {
+    // Control case: the same restaurant id throughout the load. The
+    // race-check passes and the load completes normally.
+    Future<String> stableScopeReader() async => DemoScope.restaurantId;
+
+    final notifier = ShiftDashboardNotifier(
+      activeRestaurantIdReader: stableScopeReader,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    expect(notifier.isLoading, isFalse);
+    expect(notifier.status, isNotNull);
+
+    notifier.dispose();
+  });
 }
