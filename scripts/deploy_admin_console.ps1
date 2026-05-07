@@ -31,6 +31,7 @@
 #   scripts/deploy_admin_console.ps1 -AdminProxyBaseUri https://admin-proxy.forgeflow.app
 #   scripts/deploy_admin_console.ps1 -PrintCommandOnly
 #   scripts/deploy_admin_console.ps1 -DemoMode -Service forge-flow-admin-sandbox
+#   scripts/deploy_admin_console.ps1 -SharePreview -Service forge-flow-admin-share-preview
 
 param(
   [string] $Project = 'forge-flow-staging',
@@ -41,6 +42,7 @@ param(
   [string] $AdminProxyBaseUri = $env:FORGE_FLOW_ADMIN_PROXY_BASE_URI,
   [string] $SecretsFile = (Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1'),
   [switch] $DemoMode,
+  [switch] $SharePreview,
   [switch] $SkipApiEnable,
   [switch] $PrintCommandOnly
 )
@@ -69,7 +71,21 @@ if ([string]::IsNullOrWhiteSpace($AdminProxyBaseUri)) {
 # explicit acknowledgement so a forgotten flag never lands a
 # fixture-login admin shell on a public URL.
 $adminDemoAuth = 'false'
-if ($DemoMode) {
+$adminSharePreview = 'false'
+if ($SharePreview -and $DemoMode) {
+  Write-Host 'BLOCKED: use either -SharePreview or -DemoMode, not both.'
+  exit 1
+}
+if ($SharePreview) {
+  $adminDemoAuth = 'true'
+  $adminSharePreview = 'true'
+  $AdminProxyBaseUri = ''
+  Write-Host 'Deploying SHARE PREVIEW admin console.'
+  Write-Host ' - no Firebase login'
+  Write-Host ' - seeded in-memory demo data only'
+  Write-Host ' - read-only ff_support session'
+  Write-Host ' - no admin proxy base URI compiled into the bundle'
+} elseif ($DemoMode) {
   Write-Host ''
   Write-Host '################################################################'
   Write-Host '#  WARNING — about to deploy DEMO admin auth to Cloud Run.     #'
@@ -132,6 +148,8 @@ $cloudBuildConfig = @(
   "  - 'Dockerfile.admin_console'",
   "  - '--build-arg'",
   "  - $(Quote-CloudBuildYamlValue "ADMIN_DEMO_AUTH=$adminDemoAuth")",
+  "  - '--build-arg'",
+  "  - $(Quote-CloudBuildYamlValue "ADMIN_SHARE_PREVIEW=$adminSharePreview")",
   "  - '--build-arg'",
   "  - $(Quote-CloudBuildYamlValue "ADMIN_PROXY_BASE_URI=$AdminProxyBaseUri")",
   "  - '-t'",
@@ -214,6 +232,8 @@ if ([string]::IsNullOrWhiteSpace($adminUri)) {
 
 if ($DemoMode) {
   Write-Host "Admin console (DEMO AUTH) deployed: $adminUri"
+} elseif ($SharePreview) {
+  Write-Host "Admin console (SHARE PREVIEW, fixture data only) deployed: $adminUri"
 } else {
   Write-Host "Admin console (live Firebase auth) deployed: $adminUri"
 }

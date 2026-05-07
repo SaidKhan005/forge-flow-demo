@@ -27,12 +27,14 @@ class AdminShell extends StatefulWidget {
     required this.authSource,
     this.routes = kAdminRoutes,
     this.initialRouteId = kAdminOperatorsRouteId,
+    this.sharePreviewMode = false,
   });
 
   final AdminAuthSession session;
   final AdminAuthSource authSource;
   final List<AdminRoute> routes;
   final String initialRouteId;
+  final bool sharePreviewMode;
 
   @override
   State<AdminShell> createState() => _AdminShellState();
@@ -116,6 +118,7 @@ class _AdminShellState extends State<AdminShell> {
                 _AdminHeaderBar(
                   session: widget.session,
                   onSignOut: () => widget.authSource.signOut(),
+                  sharePreviewMode: widget.sharePreviewMode,
                 ),
                 Expanded(
                   child: compact
@@ -280,10 +283,15 @@ bool _routeUsesOperatorScope(String routeId) {
 }
 
 class _AdminHeaderBar extends StatelessWidget {
-  const _AdminHeaderBar({required this.session, required this.onSignOut});
+  const _AdminHeaderBar({
+    required this.session,
+    required this.onSignOut,
+    required this.sharePreviewMode,
+  });
 
   final AdminAuthSession session;
   final VoidCallback onSignOut;
+  final bool sharePreviewMode;
 
   @override
   Widget build(BuildContext context) {
@@ -347,13 +355,19 @@ class _AdminHeaderBar extends StatelessWidget {
                 ),
               ],
               const Spacer(),
+              if (sharePreviewMode) ...[
+                const _SharePreviewPill(),
+                SizedBox(width: compact ? 6 : 10),
+              ],
               _RolePill(roles: session.roles),
               if (!compact) ...[
                 const SizedBox(width: 12),
                 Flexible(child: _IdentityChip(session: session)),
               ],
-              SizedBox(width: compact ? 6 : 8),
-              if (compact)
+              if (!sharePreviewMode) SizedBox(width: compact ? 6 : 8),
+              if (sharePreviewMode)
+                const SizedBox.shrink()
+              else if (compact)
                 IconButton(
                   key: const Key('admin_header_signout'),
                   tooltip: 'Sign out',
@@ -385,6 +399,32 @@ class _AdminHeaderBar extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _SharePreviewPill extends StatelessWidget {
+  const _SharePreviewPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_header_share_preview_pill'),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.ocean.withValues(alpha: 0.10),
+        border: Border.all(
+          color: AppColors.ocean.withValues(alpha: 0.45),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        'Demo data',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppTextStyles.chipLabel(color: AppColors.peacockDark),
+      ),
     );
   }
 }

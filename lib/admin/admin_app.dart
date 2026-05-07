@@ -1,4 +1,4 @@
-﻿// Phase 11A.0 - Admin MaterialApp.
+// Phase 11A.0 - Admin MaterialApp.
 //
 // Top-level Flutter Web app for the F&F Operations Console. Wraps
 // the AdminAuthGate so the entire surface area lives behind the
@@ -19,10 +19,12 @@ class AdminConsoleApp extends StatefulWidget {
     super.key,
     required this.authSource,
     this.routes = kAdminRoutes,
+    this.sharePreviewMode = false,
   });
 
   final AdminAuthSource authSource;
   final List<AdminRoute> routes;
+  final bool sharePreviewMode;
 
   @override
   State<AdminConsoleApp> createState() => _AdminConsoleAppState();
@@ -47,6 +49,7 @@ class _AdminConsoleAppState extends State<AdminConsoleApp> {
           session: session,
           authSource: widget.authSource,
           routes: widget.routes,
+          sharePreviewMode: widget.sharePreviewMode,
         ),
       ),
     );

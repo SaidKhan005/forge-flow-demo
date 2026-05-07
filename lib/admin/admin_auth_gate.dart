@@ -1,4 +1,4 @@
-﻿// Phase 11A.0 - Admin auth gate.
+// Phase 11A.0 - Admin auth gate.
 //
 // The admin console is F&F-internal back-office. Only Firebase users
 // whose ID token carries a `super_admin` or `ff_support` role claim
@@ -176,6 +176,20 @@ class DemoAdminAuthSource implements AdminAuthSource {
         email: 'demo.super.admin@forgeflow.test',
         displayName: 'Demo Super Admin',
         roles: <String>['super_admin'],
+      ),
+    ),
+  );
+
+  /// Convenience factory: starts already signed in as F&F support.
+  /// Share-preview builds use this so the public link opens directly
+  /// into read-only seeded data with no login screen.
+  factory DemoAdminAuthSource.signedInAsSupport() => DemoAdminAuthSource(
+    initial: const AdminAuthAuthenticated(
+      AdminAuthSession(
+        uid: 'demo-ff-support',
+        email: 'support@forgeflow.test',
+        displayName: 'Demo F&F Support',
+        roles: <String>['ff_support'],
       ),
     ),
   );

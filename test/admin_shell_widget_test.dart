@@ -196,6 +196,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('share preview mode shows demo-data pill and hides sign out', (
+    tester,
+  ) async {
+    final source = DemoAdminAuthSource.signedInAsSupport();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(
+        AdminShell(
+          session: const AdminAuthSession(
+            uid: 'demo-ff-support',
+            email: 'support@forgeflow.test',
+            displayName: 'Demo F&F Support',
+            roles: <String>['ff_support'],
+          ),
+          authSource: source,
+          sharePreviewMode: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_header_share_preview_pill')),
+      findsOneWidget,
+    );
+    expect(find.text('Demo data'), findsOneWidget);
+    expect(find.byKey(const Key('admin_header_signout')), findsNothing);
+    expect(find.text('Support access'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('default route renders the live operator surface', (
     tester,
   ) async {
