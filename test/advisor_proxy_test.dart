@@ -40,6 +40,8 @@ void main() {
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
         ProxySecretNames.servicePrincipalJwtSecret:
             'placeholder-service-principal-jwt-secret',
+        ProxySecretNames.pgcryptoEnvelopeKey:
+            'placeholder-pgcrypto-envelope-key',
         if (port != null) 'PORT': port,
       };
     }
@@ -59,6 +61,7 @@ void main() {
           ProxySecretNames.postgresAdminUrl,
           ProxySecretNames.firebaseWebApiKey,
           ProxySecretNames.servicePrincipalJwtSecret,
+          ProxySecretNames.pgcryptoEnvelopeKey,
         ]),
       );
       expect(config.hasSecretFor(ProxySecretNames.anthropicApiKey), isTrue);
@@ -137,6 +140,7 @@ void main() {
         ProxySecretNames.postgresAdminUrl: marker,
         ProxySecretNames.firebaseWebApiKey: marker,
         ProxySecretNames.servicePrincipalJwtSecret: marker,
+        ProxySecretNames.pgcryptoEnvelopeKey: marker,
       };
 
       final config = ProxyConfig.fromEnvironment(environment);
@@ -266,6 +270,123 @@ void main() {
           error.missingSecretNames,
           equals(<String>[ProxyConfigNames.gcpProjectId]),
         );
+      });
+    });
+
+    group('Phase 8 framework — vendor app credentials', () {
+      test('PGCRYPTO_ENVELOPE_KEY is required; missing throws and lists '
+          'it in missingSecretNames', () {
+        final env = <String, String>{
+          ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
+          ProxySecretNames.voyageApiKey: 'placeholder-voyage',
+          ProxySecretNames.postgresUrl: 'placeholder-postgres-url',
+          ProxySecretNames.postgresAdminUrl: 'placeholder-postgres-admin-url',
+          ProxySecretNames.firebaseWebApiKey:
+              'placeholder-firebase-web-api-key',
+          ProxySecretNames.servicePrincipalJwtSecret:
+              'placeholder-service-principal-jwt-secret',
+          // PGCRYPTO_ENVELOPE_KEY intentionally omitted.
+        };
+        Object? thrown;
+        try {
+          ProxyConfig.fromEnvironment(env);
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown, isA<ProxyConfigError>());
+        final error = thrown! as ProxyConfigError;
+        expect(
+          error.missingSecretNames,
+          contains(ProxySecretNames.pgcryptoEnvelopeKey),
+        );
+      });
+
+      test('pgcryptoEnvelopeKey getter returns the loaded value', () {
+        final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
+        expect(
+          config.pgcryptoEnvelopeKey,
+          equals('placeholder-pgcrypto-envelope-key'),
+        );
+      });
+
+      test('Aloha NCR Voyix bundle is optional; absence keeps the proxy '
+          'booting and `hasAlohaNcrVoyixCredentials` is false', () {
+        final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
+        expect(config.hasAlohaNcrVoyixCredentials, isFalse);
+        expect(
+          () => config.alohaNcrVoyixCredentials,
+          throwsStateError,
+        );
+      });
+
+      test('Aloha NCR Voyix bundle materializes the typed record when all '
+          'four secrets load', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxySecretNames.alohaNcrVoyixClientId] = 'aloha-client-id'
+          ..[ProxySecretNames.alohaNcrVoyixClientSecret] = 'aloha-client-secret'
+          ..[ProxySecretNames.alohaNcrVoyixApplicationKey] = 'aloha-app-key'
+          ..[ProxySecretNames.alohaNcrVoyixOrganizationId] = 'aloha-org-id';
+        final config = ProxyConfig.fromEnvironment(env);
+        expect(config.hasAlohaNcrVoyixCredentials, isTrue);
+        final creds = config.alohaNcrVoyixCredentials;
+        expect(creds.clientId, equals('aloha-client-id'));
+        expect(creds.clientSecret, equals('aloha-client-secret'));
+        expect(creds.applicationKey, equals('aloha-app-key'));
+        expect(creds.organizationId, equals('aloha-org-id'));
+        // No on-prem relay override / explicit scope from the static
+        // bundle — the binder relies on transport defaults.
+        expect(creds.scope, isNull);
+        expect(creds.baseUriOverride, isNull);
+      });
+
+      test('Square bundle materializes the typed record when all three '
+          'secrets load', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxySecretNames.squareClientId] = 'square-client-id'
+          ..[ProxySecretNames.squareClientSecret] = 'square-client-secret'
+          ..[ProxySecretNames.squareNotificationUrlHost] =
+              'webhooks.example.com';
+        final config = ProxyConfig.fromEnvironment(env);
+        expect(config.hasSquareAppCredentials, isTrue);
+        final creds = config.squareAppCredentials;
+        expect(creds.clientId, equals('square-client-id'));
+        expect(creds.clientSecret, equals('square-client-secret'));
+        expect(creds.notificationUrlHost, equals('webhooks.example.com'));
+      });
+
+      test('Square bundle is absent → `hasSquareAppCredentials` is false', () {
+        final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
+        expect(config.hasSquareAppCredentials, isFalse);
+        expect(() => config.squareAppCredentials, throwsStateError);
+      });
+
+      test('Clover bundle materializes the typed record when both secrets '
+          'load', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxySecretNames.cloverAppToken] = 'clover-app-token'
+          ..[ProxySecretNames.cloverAppId] = 'clover-app-id';
+        final config = ProxyConfig.fromEnvironment(env);
+        expect(config.hasCloverAppCredentials, isTrue);
+        final creds = config.cloverAppCredentials;
+        expect(creds.appToken, equals('clover-app-token'));
+        expect(creds.appId, equals('clover-app-id'));
+      });
+
+      test('Clover bundle is absent → `hasCloverAppCredentials` is false', () {
+        final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
+        expect(config.hasCloverAppCredentials, isFalse);
+        expect(() => config.cloverAppCredentials, throwsStateError);
+      });
+
+      test('partial Aloha bundle (one of four set) → '
+          '`hasAlohaNcrVoyixCredentials` stays false; `alohaNcrVoyixCredentials` '
+          'throws on the first missing secret', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxySecretNames.alohaNcrVoyixClientId] = 'aloha-client-id';
+        // remaining three intentionally unset.
+        final config = ProxyConfig.fromEnvironment(env);
+        expect(config.hasAlohaNcrVoyixCredentials, isFalse);
+        expect(() => config.alohaNcrVoyixCredentials, throwsStateError);
       });
     });
   });
@@ -2366,6 +2487,8 @@ void main() {
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
         ProxySecretNames.servicePrincipalJwtSecret:
             'placeholder-service-principal-jwt-secret',
+        ProxySecretNames.pgcryptoEnvelopeKey:
+            'placeholder-pgcrypto-envelope-key',
         if (projectId != null) ProxyConfigNames.firebaseProjectId: projectId,
       };
     }

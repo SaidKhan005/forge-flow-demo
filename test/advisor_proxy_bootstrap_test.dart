@@ -8,6 +8,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_session_ledger_writer.dart';
@@ -33,6 +34,8 @@ void main() {
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
         ProxySecretNames.servicePrincipalJwtSecret:
             'placeholder-service-principal-jwt-secret',
+        ProxySecretNames.pgcryptoEnvelopeKey:
+            'placeholder-pgcrypto-envelope-key',
       });
       final pool = _RecordingPostgresPool(
         returningSessionId: '11111111-1111-4111-8111-111111111111',
@@ -104,6 +107,8 @@ void main() {
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
         ProxySecretNames.servicePrincipalJwtSecret:
             'placeholder-service-principal-jwt-secret',
+        ProxySecretNames.pgcryptoEnvelopeKey:
+            'placeholder-pgcrypto-envelope-key',
         ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
       });
       final appPool = _RecordingPostgresPool(
@@ -192,6 +197,19 @@ void main() {
         ),
         equals(integration.IntegrationCategory.pos),
       );
+      // Phase 8 framework — connector binder seams. Both must be
+      // populated so the binder lane can wire vendor adapters without
+      // re-instantiating the wrapper or reaching back into the secret
+      // registry. Field types pinned by `expect`s below.
+      expect(
+        bindings.tenantTransactionWrapper,
+        isA<TenantTransactionWrapper>(),
+      );
+      expect(bindings.pgcryptoEnvelopeKey, isNotEmpty);
+      expect(
+        bindings.pgcryptoEnvelopeKey,
+        equals('placeholder-pgcrypto-envelope-key'),
+      );
       expect(
         capturedConnectionStrings,
         equals(<String>[
@@ -216,6 +234,8 @@ void main() {
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
         ProxySecretNames.servicePrincipalJwtSecret:
             'placeholder-service-principal-jwt-secret',
+        ProxySecretNames.pgcryptoEnvelopeKey:
+            'placeholder-pgcrypto-envelope-key',
       });
       var poolFactoryCalls = 0;
 

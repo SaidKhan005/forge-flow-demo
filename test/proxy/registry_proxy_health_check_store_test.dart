@@ -37,6 +37,8 @@ void main() {
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
         ProxySecretNames.servicePrincipalJwtSecret:
             'placeholder-service-principal-jwt-secret',
+        ProxySecretNames.pgcryptoEnvelopeKey:
+            'placeholder-pgcrypto-envelope-key',
         ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
       });
 
@@ -62,6 +64,8 @@ void main() {
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
         ProxySecretNames.servicePrincipalJwtSecret:
             'placeholder-service-principal-jwt-secret',
+        ProxySecretNames.pgcryptoEnvelopeKey:
+            'placeholder-pgcrypto-envelope-key',
         ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
       });
 
@@ -87,6 +91,8 @@ void main() {
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
         ProxySecretNames.servicePrincipalJwtSecret:
             'placeholder-service-principal-jwt-secret',
+        ProxySecretNames.pgcryptoEnvelopeKey:
+            'placeholder-pgcrypto-envelope-key',
         // Note: FIREBASE_PROJECT_ID intentionally omitted.
       });
       expect(config.firebaseProjectId, isNull);

@@ -188,6 +188,8 @@ class ProxyProductionBindings {
     required this.healthCheckStore,
     required this.tenantPool,
     required this.adminPool,
+    required this.tenantTransactionWrapper,
+    required this.pgcryptoEnvelopeKey,
     required this.authLockoutEnforcer,
     required this.authLockoutAuditSink,
     required this.mfaTotpRetryCounter,
@@ -204,6 +206,22 @@ class ProxyProductionBindings {
 
   /// Admin-scope pool, exposed for the same startup probe.
   final PostgresPool adminPool;
+
+  /// Phase 8 framework — tenant-pool transaction wrapper exposed so
+  /// the connector binder lane (and any future operator-scoped
+  /// repository wiring) can construct repositories without
+  /// re-instantiating the wrapper. The `OperatorScopedRepository`
+  /// pattern requires a single wrapper per pool so per-request
+  /// `SET LOCAL` scope is consistent across nested repos.
+  final TenantTransactionWrapper tenantTransactionWrapper;
+
+  /// Phase 8 framework — pgcrypto symmetric envelope key shared with
+  /// the connector binder. The vendor-credential broker and inbound
+  /// webhook gateway both pass the key into
+  /// `pgp_sym_encrypt`/`pgp_sym_decrypt` calls; surfacing it here
+  /// avoids each binder reaching back into the secret registry on its
+  /// own. The plaintext value never leaves the proxy process.
+  final String pgcryptoEnvelopeKey;
 
   final ProxyAccountingStore accountingStore;
   final AuthSessionLedgerWriter authSessionLedgerWriter;
@@ -860,6 +878,11 @@ ProxyProductionBindings buildProxyProductionBindings(
     // instead of binding the listener and degrading every request.
     tenantPool: tenantPool,
     adminPool: adminPool,
+    // Phase 8 framework — share the locally-constructed tenant
+    // wrapper + pgcrypto envelope key with the connector binder so
+    // each vendor adapter doesn't have to rebuild them.
+    tenantTransactionWrapper: tenantWrapper,
+    pgcryptoEnvelopeKey: config.pgcryptoEnvelopeKey,
     // HARD-B - lockout enforcer + audit sink. Both ride the admin
     // pool because the anonymous-lookup path (pre-tenant resolution)
     // needs forge_admin BYPASSRLS to read/write rows whose
