@@ -1001,6 +1001,12 @@ Future<void> main(List<String> args) async {
             // route returns 503 connector_backfill_jobs_router_not_configured.
             connectorBackfillJobsRouter:
                 productionBindings.connectorBackfillJobsRouter,
+            // Phase 8 W2.B - per-actor notification preferences
+            // router for the three `/v1/operator/notification-
+            // preferences` routes. Without this binding the routes
+            // return 503 notification_preferences_router_not_configured.
+            notificationPreferencesRouter:
+                productionBindings.notificationPreferencesRouter,
           );
         } catch (error, stack) {
           log(

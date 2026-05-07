@@ -36,6 +36,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_recovery_request_attempts_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_tokens_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/notification_preferences_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
@@ -198,6 +199,7 @@ class ProxyProductionBindings {
     required this.operatorWriteRouter,
     required this.auditChainAnchorsGateway,
     required this.connectorBackfillJobsRouter,
+    required this.notificationPreferencesRouter,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -353,6 +355,12 @@ class ProxyProductionBindings {
   /// `SET LOCAL` in the gateway so the route returns only rows the
   /// signed-in (operator_id, location_id) is permitted to see.
   final ConnectorBackfillJobsRouter connectorBackfillJobsRouter;
+
+  /// Phase 8 W2.B - per-actor notification preferences router. Backed
+  /// by [NotificationPreferencesRepository] (tenant pool, per-user
+  /// RLS). Wired into `routeRequest` for the three operator-scoped
+  /// notification-preferences routes.
+  final NotificationPreferencesRouter notificationPreferencesRouter;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -619,6 +627,14 @@ ProxyProductionBindings buildProxyProductionBindings(
   final connectorBackfillJobsRouter = ConnectorBackfillJobsRouter(
     gateway: _RepositoryConnectorBackfillJobsReadGateway(
       repository: ConnectorBackfillJobRepository(tenantWrapper),
+    ),
+  );
+  // Phase 8 W2.B - per-actor notification preferences router. Tenant
+  // pool + per-user RLS policy on the table; the repository pattern is
+  // the primary defense.
+  final notificationPreferencesRouter = NotificationPreferencesRouter(
+    gateway: RepositoryNotificationPreferencesGateway(
+      repository: NotificationPreferencesRepository(tenantWrapper),
     ),
   );
   SelectedStarTargetRouter.installGlobal(
@@ -937,6 +953,7 @@ ProxyProductionBindings buildProxyProductionBindings(
       tenantWrapper: tenantWrapper,
     ),
     connectorBackfillJobsRouter: connectorBackfillJobsRouter,
+    notificationPreferencesRouter: notificationPreferencesRouter,
   );
 }
 

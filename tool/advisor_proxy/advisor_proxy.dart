@@ -83,6 +83,7 @@ import 'log.dart';
 import 'business_scope_routes.dart';
 import 'connector_backfill_jobs_routes.dart';
 import 'mobile_push_notifications.dart';
+import 'notification_preferences_routes.dart';
 import 'operator_routes.dart';
 import 'proxy_idempotency_cache.dart';
 import 'realtime_route.dart'
@@ -119,6 +120,16 @@ export 'operator_routes.dart'
         operatorBusinessTimingProfilePrefix,
         hashOperatorRequestBody,
         readOperatorJsonBody;
+export 'notification_preferences_routes.dart'
+    show
+        NotificationPreferencesRouter,
+        NotificationPreferencesGateway,
+        NotificationPreferencesIdempotencyCache,
+        NotificationPreferenceRouteRejected,
+        RepositoryNotificationPreferencesGateway,
+        notificationPreferencesPath,
+        notificationPreferencesPrefix,
+        hashNotificationPreferencesRequest;
 export 'business_scope_routes.dart'
     show
         BusinessScopeProxyGateway,
@@ -8003,6 +8014,10 @@ Future<void> routeRequest(
   // Optional: when null the read route returns 503 so existing tests
   // do not need to plumb the router through every call site.
   ConnectorBackfillJobsRouter? connectorBackfillJobsRouter,
+  // Phase 8 W2.B - operator-scoped notification preferences router.
+  // Optional: when null the three routes return 503 so existing tests
+  // do not need to plumb the router through every call site.
+  NotificationPreferencesRouter? notificationPreferencesRouter,
   // Phase 8 star/target truth - selected-star read/write router. Optional
   // for existing tests; production installs a global router from bootstrap.
   SelectedStarTargetRouter? selectedStarTargetRouter,
@@ -12822,6 +12837,87 @@ Future<void> routeRequest(
               'error': 'connector_backfill_jobs_unavailable',
               'message':
                   'connector backfill progress is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Phase 8 W2.B - operator-scoped notification preferences
+        // routes. Per-actor (the JWT subject's own preferences). PUT /
+        // DELETE require Idempotency-Key. GET requires no key.
+        if (NotificationPreferencesRouter.matches(path, request.method)) {
+          if (notificationPreferencesRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'notification_preferences_router_not_configured',
+              'message':
+                  'route requires a NotificationPreferencesRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          String? notifIdemKey;
+          if (request.method == 'PUT' || request.method == 'DELETE') {
+            notifIdemKey =
+                request.headers.value('Idempotency-Key')?.trim();
+            if (notifIdemKey == null || notifIdemKey.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_missing',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+            if (notifIdemKey.length > 200) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_too_long',
+                'message':
+                    'Idempotency-Key header must be 200 characters or fewer',
+              });
+              return;
+            }
+          }
+          Map<String, Object?>? notifBody;
+          if (request.method == 'PUT') {
+            final bodyResult = await readOperatorJsonBody(request);
+            if (bodyResult.errorStatus != null) {
+              _writeJson(
+                response,
+                bodyResult.errorStatus!,
+                bodyResult.errorBody!,
+              );
+              return;
+            }
+            notifBody = bodyResult.body;
+          }
+          try {
+            final result = await notificationPreferencesRouter.handle(
+              method: request.method,
+              path: path,
+              query: request.uri.queryParameters,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              actorUserId: scope.userId,
+              idempotencyKey: notifIdemKey,
+              body: notifBody,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'notification_preferences_router',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'notification_preferences_unavailable',
+              'message':
+                  'notification preferences write is unavailable; please retry',
             });
           }
           return;

@@ -8,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import '../../services/auth/account_info_gateway.dart';
 import '../../services/auth/firebase_auth_client.dart';
 import '../account/operator_web_account_actions.dart';
+import '../services/operator_web_notification_preferences_gateway_provider.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/operator_web_team_gateway_providers.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
@@ -34,7 +35,8 @@ class FirebaseOperatorWebAuthSource
         OperatorWebTeamHierarchyGatewayProvider,
         OperatorWebTeamSessionsGatewayProvider,
         OperatorWebTeamAuditLogGatewayProvider,
-        OperatorWebSecurityGatewayProvider {
+        OperatorWebSecurityGatewayProvider,
+        OperatorWebNotificationPreferencesGatewayProvider {
   FirebaseOperatorWebAuthSource({
     required FirebaseAuthClient authClient,
     required OperatorWebProxyClient proxyClient,
@@ -81,6 +83,10 @@ class FirebaseOperatorWebAuthSource
        securityGateway = WebSecurityGatewayLive(
          proxyBaseUri: proxyClient.baseUri,
          idTokenProvider: authClient.currentIdToken,
+       ),
+       notificationPreferencesGateway = HttpWebNotificationPreferencesGateway(
+         proxyBaseUri: proxyClient.baseUri,
+         idTokenProvider: authClient.currentIdToken,
        ) {
     _controller.add(_state);
     unawaited(_bootstrap());
@@ -122,6 +128,9 @@ class FirebaseOperatorWebAuthSource
 
   @override
   final WebSecurityGateway securityGateway;
+
+  @override
+  final WebNotificationPreferencesGateway notificationPreferencesGateway;
 
   String? _currentSessionId;
 

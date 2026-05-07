@@ -36,6 +36,7 @@ import '../services/demo_team_hierarchy_gateway.dart';
 import '../services/demo_team_roles_gateway.dart';
 import '../services/demo_team_sessions_gateway.dart';
 import '../services/demo_team_users_gateway.dart';
+import '../services/operator_web_notification_preferences_gateway_provider.dart';
 import '../services/operator_web_team_gateway_providers.dart';
 import '../services/web_account_gateway.dart';
 import '../services/web_business_timing_gateway.dart';
@@ -60,6 +61,7 @@ import '../screens/permission_explainer_screen.dart';
 import '../screens/roles_screen.dart';
 import '../screens/security_screen.dart';
 import '../screens/sessions_screen.dart';
+import '../screens/settings_notifications_screen.dart';
 import '../screens/sign_in_screen.dart';
 import '../screens/tos_accept_screen.dart';
 import '../screens/vendor_connections_screen.dart';
@@ -85,6 +87,7 @@ const String kOperatorWebNavAuditLog = 'audit_log';
 const String kOperatorWebNavSecurity = 'security';
 const String kOperatorWebNavVendorConnections = 'vendor_connections';
 const String kOperatorWebNavDataAccuracy = 'data_accuracy';
+const String kOperatorWebNavNotifications = 'notifications';
 
 /// Sub-route names mounted under the Roles nav surface. The router
 /// keeps a small state machine here rather than registering full
@@ -739,6 +742,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.tune_outlined,
         group: 'Data & integrations',
       ),
+      OperatorWebNavItem(
+        id: kOperatorWebNavNotifications,
+        title: 'Notifications',
+        icon: Icons.notifications_outlined,
+        group: 'People & access',
+      ),
     ];
     final Widget body;
     switch (_selectedNavId) {
@@ -845,6 +854,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 locationName: locationScope.label,
                 dataAccuracyGateway: _dataAccuracyGateway,
               );
+        break;
+      case kOperatorWebNavNotifications:
+        body = SettingsNotificationsScreen(
+          session: session,
+          gateway: _notificationPreferencesGateway,
+        );
         break;
       default:
         body = AccountScreen(session: session, gateway: _webAccountGateway);
@@ -1023,6 +1038,23 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   }
 
   DemoWebSecurityGateway? _routerOwnedSecurityGateway;
+
+  /// Phase 8 W2.B - per-actor notification preferences gateway.
+  /// Returns the live gateway when the auth source mixes in the
+  /// provider; otherwise falls back to the in-memory demo gateway so
+  /// the screen renders + toggles end-to-end without a live proxy.
+  WebNotificationPreferencesGateway? get _notificationPreferencesGateway {
+    final source = widget.source;
+    if (source is OperatorWebNotificationPreferencesGatewayProvider) {
+      return (source as OperatorWebNotificationPreferencesGatewayProvider)
+          .notificationPreferencesGateway;
+    }
+    return _routerOwnedNotificationPreferencesGateway ??=
+        DemoWebNotificationPreferencesGateway();
+  }
+
+  DemoWebNotificationPreferencesGateway?
+      _routerOwnedNotificationPreferencesGateway;
 
   String? get _currentSessionId {
     final source = widget.source;
