@@ -41,6 +41,7 @@
 // stderr. The runbook (`runbooks/audit_chain_verify_runbook.md`) is
 // authoritative for the env-name list and the Cloud Run job wiring.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
@@ -227,17 +228,23 @@ typedef AuditAnchorBlobClientFactory = AuditAnchorBlobClient Function(
 
 /// Bundle returned by [buildAuditAnchorRuntime]: the orchestrator the
 /// per-operator anchor/verify path drives, plus the operator-id
-/// reader the daily `sweep` mode uses to enumerate operators. Both
+/// reader the daily `sweep` mode uses to enumerate operators, plus
+/// the advisory-lock seam (sweep guard) and the lock-id reader
+/// (constants table lookup) added in code-health lane L9. All four
 /// share a single [TenantTransactionWrapper] so the production
-/// runtime opens one Postgres pool, not two.
+/// runtime opens one Postgres pool, not multiple.
 class AuditAnchorRuntime {
   const AuditAnchorRuntime({
     required this.orchestrator,
     required this.operatorIdReader,
+    required this.sweepLockIdReader,
+    required this.sweepAdvisoryLock,
   });
 
   final AuditAnchorOrchestrator orchestrator;
   final OperatorIdReader operatorIdReader;
+  final SweepLockIdReader sweepLockIdReader;
+  final SweepAdvisoryLock sweepAdvisoryLock;
 }
 
 /// Default pool factory — wraps `PackagePostgresPool.fromUrl` so the
@@ -311,9 +318,13 @@ AuditAnchorRuntime buildAuditAnchorRuntime(
   );
   final operatorIdReader =
       PostgresOperatorIdReader(wrapper: wrapper);
+  final sweepLockIdReader = PostgresSweepLockIdReader(wrapper: wrapper);
+  final sweepAdvisoryLock = PostgresSweepAdvisoryLock(wrapper: wrapper);
   return AuditAnchorRuntime(
     orchestrator: orchestrator,
     operatorIdReader: operatorIdReader,
+    sweepLockIdReader: sweepLockIdReader,
+    sweepAdvisoryLock: sweepAdvisoryLock,
   );
 }
 
@@ -354,6 +365,9 @@ Future<int> runCli(
   AuditAnchorBlobClientFactory? blobClientFactory,
   AuditAnchorOrchestrator? orchestratorOverride,
   OperatorIdReader? operatorIdReaderOverride,
+  SweepLockIdReader? sweepLockIdReaderOverride,
+  SweepAdvisoryLock? sweepAdvisoryLockOverride,
+  ShutdownSignals? shutdownSignals,
   DateTime Function()? clock,
   IOSink? out,
   IOSink? err,
@@ -375,13 +389,19 @@ Future<int> runCli(
 
   AuditAnchorOrchestrator orchestrator;
   OperatorIdReader operatorIdReader;
-  // Default operator-id reader for non-sweep modes that never call
-  // it. The sweep dispatch builds the production reader (or accepts
-  // the test override) below.
+  SweepLockIdReader sweepLockIdReader;
+  SweepAdvisoryLock sweepAdvisoryLock;
+  // Default operator-id / lock-id reader / advisory lock for non-
+  // sweep modes that never call them. The sweep dispatch builds the
+  // production reader (or accepts the test override) below.
   if (orchestratorOverride != null) {
     orchestrator = orchestratorOverride;
     operatorIdReader = operatorIdReaderOverride ??
         const _UnusedOperatorIdReader();
+    sweepLockIdReader =
+        sweepLockIdReaderOverride ?? const _UnusedSweepLockIdReader();
+    sweepAdvisoryLock =
+        sweepAdvisoryLockOverride ?? const _PassthroughSweepAdvisoryLock();
   } else {
     AuditAnchorRuntimeConfig config;
     try {
@@ -401,39 +421,59 @@ Future<int> runCli(
     );
     orchestrator = runtime.orchestrator;
     operatorIdReader = operatorIdReaderOverride ?? runtime.operatorIdReader;
+    sweepLockIdReader =
+        sweepLockIdReaderOverride ?? runtime.sweepLockIdReader;
+    sweepAdvisoryLock =
+        sweepAdvisoryLockOverride ?? runtime.sweepAdvisoryLock;
     stdoutSink.writeln(
       'audit_anchor starting (loaded secret names: '
       '${config.loadedSecretNames.join(', ')})',
     );
   }
 
-  switch (args.mode) {
-    case AuditAnchorMode.sweep:
-      return _runSweepMode(
-        orchestrator: orchestrator,
-        operatorIdReader: operatorIdReader,
-        asOfUtc: args.asOfUtc ?? _utcDate(now),
-        nowUtc: now,
-        out: stdoutSink,
-        err: stderrSink,
-      );
-    case AuditAnchorMode.anchor:
-      return _runAnchorMode(
-        orchestrator: orchestrator,
-        operatorIds: args.operatorIds,
-        asOfUtc: args.asOfUtc ?? _utcDate(now),
-        nowUtc: now,
-        out: stdoutSink,
-        err: stderrSink,
-      );
-    case AuditAnchorMode.verify:
-      return _runVerifyMode(
-        orchestrator: orchestrator,
-        operatorId: args.operatorIds.single,
-        chainDate: args.chainDateUtc!,
-        out: stdoutSink,
-        err: stderrSink,
-      );
+  // L9: SIGTERM/SIGINT cooperative shutdown. Each long-running mode
+  // observes [ShutdownSignals.isShuttingDown] between unit-of-work
+  // boundaries (per-operator, per-chain). The default attaches real
+  // signal handlers on `dart:io`'s [ProcessSignal]; tests pass a fake
+  // so they can assert post-signal behaviour without sending real
+  // signals to the test isolate.
+  final shutdown = shutdownSignals ?? ShutdownSignals.fromProcessSignals();
+
+  try {
+    switch (args.mode) {
+      case AuditAnchorMode.sweep:
+        return await _runSweepMode(
+          orchestrator: orchestrator,
+          operatorIdReader: operatorIdReader,
+          sweepLockIdReader: sweepLockIdReader,
+          sweepAdvisoryLock: sweepAdvisoryLock,
+          shutdown: shutdown,
+          asOfUtc: args.asOfUtc ?? _utcDate(now),
+          nowUtc: now,
+          out: stdoutSink,
+          err: stderrSink,
+        );
+      case AuditAnchorMode.anchor:
+        return await _runAnchorMode(
+          orchestrator: orchestrator,
+          operatorIds: args.operatorIds,
+          asOfUtc: args.asOfUtc ?? _utcDate(now),
+          nowUtc: now,
+          shutdown: shutdown,
+          out: stdoutSink,
+          err: stderrSink,
+        );
+      case AuditAnchorMode.verify:
+        return await _runVerifyMode(
+          orchestrator: orchestrator,
+          operatorId: args.operatorIds.single,
+          chainDate: args.chainDateUtc!,
+          out: stdoutSink,
+          err: stderrSink,
+        );
+    }
+  } finally {
+    await shutdown.dispose();
   }
 }
 
@@ -453,43 +493,264 @@ class _UnusedOperatorIdReader implements OperatorIdReader {
   }
 }
 
+/// Sentinel reader for non-sweep modes that never read the sweep
+/// advisory-lock id. Mirrors [_UnusedOperatorIdReader].
+class _UnusedSweepLockIdReader implements SweepLockIdReader {
+  const _UnusedSweepLockIdReader();
+
+  @override
+  Future<int> readSweepLockId() {
+    throw StateError(
+      'SweepLockIdReader called outside sweep mode; '
+      'orchestratorOverride was supplied without a sweep-lock-id '
+      'reader override',
+    );
+  }
+}
+
+/// Pass-through advisory lock for non-sweep modes — runs the body
+/// without acquiring or releasing any lock. Anchor / verify modes
+/// drive a single operator at a time and do not need to serialize
+/// against other invocations.
+class _PassthroughSweepAdvisoryLock implements SweepAdvisoryLock {
+  const _PassthroughSweepAdvisoryLock();
+
+  @override
+  Future<R> withSweepLock<R>({
+    required int lockId,
+    required Future<R> Function() body,
+  }) =>
+      body();
+}
+
+/// L9: cooperative-shutdown signal source. Production wiring listens
+/// on `dart:io` [ProcessSignal.sigterm] / [ProcessSignal.sigint] and
+/// flips [isShuttingDown] on first delivery. Tests construct the
+/// fake-signal variant via [ShutdownSignals.test] and call
+/// [signalShutdown] directly so they can assert post-signal
+/// behaviour without sending real signals to the test isolate.
+///
+/// Cloud Run revision rollover sends SIGTERM 10 seconds before
+/// SIGKILL — anchor/recovery workers observe [isShuttingDown] at
+/// per-operator boundaries so an in-flight blob write completes
+/// (the anchor write is the durable evidence) but the next operator
+/// is skipped, leaving a clean handoff to the replacement instance.
+class ShutdownSignals {
+  ShutdownSignals._({
+    required this.subscriptions,
+  });
+
+  /// Production wiring: subscribe to SIGTERM and SIGINT. On Windows,
+  /// SIGTERM is not delivered to the Dart isolate; SIGINT (Ctrl+C)
+  /// is. Both subscriptions are cancelled by [dispose].
+  factory ShutdownSignals.fromProcessSignals() {
+    final signals = <StreamSubscription<ProcessSignal>>[];
+    final wrapper = ShutdownSignals._(subscriptions: signals);
+    void onSignal(ProcessSignal signal) {
+      wrapper._signalShutdown(signal.toString());
+    }
+
+    try {
+      signals.add(ProcessSignal.sigterm.watch().listen(onSignal));
+    } catch (_) {
+      // SIGTERM is unsupported on some platforms (Windows); skip.
+    }
+    try {
+      signals.add(ProcessSignal.sigint.watch().listen(onSignal));
+    } catch (_) {
+      // SIGINT.watch() is supported everywhere `dart:io` ships, but
+      // catch defensively to keep the CLI runnable in unusual hosts.
+    }
+    return wrapper;
+  }
+
+  /// Test wiring: no real signals; tests call [signalShutdown]
+  /// directly to flip the flag.
+  factory ShutdownSignals.test() =>
+      ShutdownSignals._(subscriptions: <StreamSubscription<ProcessSignal>>[]);
+
+  final List<StreamSubscription<ProcessSignal>> subscriptions;
+  bool _shuttingDown = false;
+  String? _reason;
+
+  bool get isShuttingDown => _shuttingDown;
+  String? get reason => _reason;
+
+  /// Test seam — flips the flag without sending a real signal. Idempotent.
+  void signalShutdown([String reason = 'test']) =>
+      _signalShutdown(reason);
+
+  void _signalShutdown(String reason) {
+    if (_shuttingDown) return;
+    _shuttingDown = true;
+    _reason = reason;
+  }
+
+  /// Cancels every signal subscription. Production callers invoke this
+  /// in a `finally` block after [runCli] returns so a long-lived
+  /// host process does not leak signal listeners.
+  Future<void> dispose() async {
+    for (final sub in subscriptions) {
+      await sub.cancel();
+    }
+    subscriptions.clear();
+  }
+}
+
 Future<int> _runSweepMode({
   required AuditAnchorOrchestrator orchestrator,
   required OperatorIdReader operatorIdReader,
+  required SweepLockIdReader sweepLockIdReader,
+  required SweepAdvisoryLock sweepAdvisoryLock,
+  required ShutdownSignals shutdown,
   required DateTime asOfUtc,
   required DateTime nowUtc,
   required IOSink out,
   required IOSink err,
 }) async {
-  List<String> operatorIds;
+  // L9: resolve the advisory-lock id from the constants table
+  // BEFORE acquiring any lock. The id is read once at boot — never
+  // hard-coded — so DBAs can rotate the live id without redeploying.
+  int lockId;
   try {
-    operatorIds = await operatorIdReader.listOperatorIds();
+    lockId = await sweepLockIdReader.readSweepLockId();
+  } on SweepLockUnavailable catch (error) {
+    err.writeln('audit_anchor: sweep lock unavailable: $error');
+    return 3;
   } catch (error) {
     err.writeln(
-      'audit_anchor: operator-id resolution failed: $error',
+      'audit_anchor: sweep lock id lookup failed: $error',
     );
     return 3;
   }
-  if (operatorIds.isEmpty) {
-    out.writeln(
-      'audit_anchor: sweep found 0 operators in public.operators '
-      '(no chains to anchor); see '
-      'runbooks/audit_chain_verify_runbook.md',
-    );
-    return 0;
-  }
   out.writeln(
-    'audit_anchor: sweep resolved ${operatorIds.length} operator(s) '
-    'from public.operators',
+    'audit_anchor: sweep advisory-lock id resolved (lock_kind='
+    'audit_anchor_sweep)',
   );
-  return _runAnchorMode(
-    orchestrator: orchestrator,
-    operatorIds: operatorIds,
-    asOfUtc: asOfUtc,
-    nowUtc: nowUtc,
-    out: out,
-    err: err,
+  // L9: serialize concurrent sweep invocations across pods/regions.
+  // pg_advisory_lock blocks until the holder releases — Cloud
+  // Scheduler retry storms thus do not produce a thundering herd;
+  // the second invocation waits for the first, then runs against an
+  // already-anchored set (no work) and exits cleanly.
+  return sweepAdvisoryLock.withSweepLock<int>(
+    lockId: lockId,
+    body: () async {
+      List<String> operatorIds;
+      try {
+        operatorIds = await operatorIdReader.listOperatorIds();
+      } catch (error) {
+        err.writeln(
+          'audit_anchor: operator-id resolution failed: $error',
+        );
+        return 3;
+      }
+      if (operatorIds.isEmpty) {
+        out.writeln(
+          'audit_anchor: sweep found 0 operators in public.operators '
+          '(no chains to anchor); see '
+          'runbooks/audit_chain_verify_runbook.md',
+        );
+        return 0;
+      }
+      out.writeln(
+        'audit_anchor: sweep resolved ${operatorIds.length} '
+        'operator(s) from public.operators',
+      );
+      // L9 sub-task (a): startup crash-recovery sweep BEFORE the
+      // forward anchor pass. Detects orphan blobs (a previous run
+      // wrote the immutable evidence but crashed before inserting
+      // the audit_chain_anchors row) and either commits (recovered)
+      // or fails (refused to insert) deterministically. Both
+      // outcomes are reported per-operator below.
+      var hadFailure = false;
+      for (final operatorId in operatorIds) {
+        if (shutdown.isShuttingDown) {
+          out.writeln(
+            'audit_anchor: SIGTERM/SIGINT received; aborting '
+            'recovery sweep before $operatorId',
+          );
+          return hadFailure ? 1 : 0;
+        }
+        try {
+          final results = await orchestrator.runStartupRecovery(
+            operatorId: operatorId,
+            asOfUtc: asOfUtc,
+          );
+          for (final result in results) {
+            hadFailure |= _logRecoveryResult(
+              result: result,
+              operatorId: operatorId,
+              out: out,
+              err: err,
+            );
+          }
+        } on AuditAnchorBlobUnavailable catch (error) {
+          err.writeln(
+            'audit_anchor: recovery probe blob unavailable for '
+            '$operatorId: ${error.reason}',
+          );
+          hadFailure = true;
+        } catch (error) {
+          err.writeln(
+            'audit_anchor: recovery error for $operatorId: $error',
+          );
+          hadFailure = true;
+        }
+      }
+      // Forward anchor pass: now that any orphan blobs are either
+      // recovered or surfaced as failures, anchor every still-
+      // unanchored completed chain.
+      final anchorExitCode = await _runAnchorMode(
+        orchestrator: orchestrator,
+        operatorIds: operatorIds,
+        asOfUtc: asOfUtc,
+        nowUtc: nowUtc,
+        shutdown: shutdown,
+        out: out,
+        err: err,
+      );
+      return (hadFailure || anchorExitCode != 0) ? 1 : 0;
+    },
   );
+}
+
+/// Logs one recovery [AnchorRunResult] and returns `true` when the
+/// outcome is a recovery failure (so the caller can flip its
+/// `hadFailure` flag). recoveredCommitted is treated as success.
+bool _logRecoveryResult({
+  required AnchorRunResult result,
+  required String operatorId,
+  required IOSink out,
+  required IOSink err,
+}) {
+  switch (result.outcome) {
+    case AnchorOutcome.recoveredCommitted:
+      out.writeln(
+        'audit_anchor: recovery committed $operatorId / '
+        '${_formatChainDate(result.chainDate)} — ${result.message ?? ''}',
+      );
+      return false;
+    case AnchorOutcome.recoveredFailed:
+      err.writeln(
+        'audit_anchor: recovery FAILED $operatorId / '
+        '${_formatChainDate(result.chainDate)} — '
+        '${result.message ?? '(no detail)'}; see '
+        'runbooks/audit_chain_verify_runbook.md',
+      );
+      return true;
+    // Defensive: runStartupRecovery only emits the two recovery
+    // outcomes today, but the enum carries the regular anchor
+    // outcomes too. Treat anything unexpected as a non-failure log.
+    case AnchorOutcome.anchored:
+    case AnchorOutcome.alreadyAnchored:
+    case AnchorOutcome.empty:
+    case AnchorOutcome.chainHashMismatch:
+      out.writeln(
+        'audit_anchor: recovery returned ${result.outcome.name} for '
+        '$operatorId / ${_formatChainDate(result.chainDate)}',
+      );
+      return false;
+  }
 }
 
 Future<int> _runAnchorMode({
@@ -497,11 +758,19 @@ Future<int> _runAnchorMode({
   required List<String> operatorIds,
   required DateTime asOfUtc,
   required DateTime nowUtc,
+  required ShutdownSignals shutdown,
   required IOSink out,
   required IOSink err,
 }) async {
   var hadFailure = false;
   for (final operatorId in operatorIds) {
+    if (shutdown.isShuttingDown) {
+      out.writeln(
+        'audit_anchor: SIGTERM/SIGINT received; aborting before '
+        '$operatorId',
+      );
+      break;
+    }
     List<AnchorRunResult> results;
     try {
       results = await orchestrator.runAnchor(
@@ -542,6 +811,14 @@ Future<int> _runAnchorMode({
               '(${result.violations.length} violation(s); see '
               'runbooks/audit_chain_verify_runbook.md)');
           hadFailure = true;
+        case AnchorOutcome.recoveredCommitted:
+        case AnchorOutcome.recoveredFailed:
+          // runAnchor never emits recovery outcomes today; if a
+          // future change does, log it without flipping failure.
+          out.writeln(
+            'audit_anchor: ${result.outcome.name} $operatorId / '
+            '${_formatChainDate(result.chainDate)}',
+          );
       }
     }
   }
