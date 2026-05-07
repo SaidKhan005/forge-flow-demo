@@ -21,6 +21,7 @@ class RepositoryPasswordChangeGateway implements PasswordChangeGateway {
     required this.auditRepository,
     required this.hibpScreener,
     required this.passwordHistoryHasher,
+    this.pepper,
     this.failClosedOnHibpUnavailable = false,
   });
 
@@ -30,6 +31,13 @@ class RepositoryPasswordChangeGateway implements PasswordChangeGateway {
   final AuthEventsAuditRepository auditRepository;
   final HibpPwnedPasswordScreener hibpScreener;
   final PasswordHistoryHasher passwordHistoryHasher;
+  // CODE_HEALTH L12 follow-up: optional pepper override threaded into
+  // the internal RepositoryPasswordHistoryCheck. Production binds null
+  // so the check reads PASSWORD_HISTORY_PEPPER from the env (matching
+  // the pre-L12 bootstrap surface). Tests inject a literal pepper via
+  // PasswordHistoryPepperConfig.literal so construction never tries to
+  // read the env in non-demo mode.
+  final PasswordHistoryPepperConfig? pepper;
   final bool failClosedOnHibpUnavailable;
 
   @override
@@ -76,6 +84,7 @@ class RepositoryPasswordChangeGateway implements PasswordChangeGateway {
       hasher: passwordHistoryHasher,
       operatorId: command.operatorId,
       locationId: command.locationId,
+      pepper: pepper,
     );
     final service = PasswordChangeService(
       hibpScreener: hibpScreener,
