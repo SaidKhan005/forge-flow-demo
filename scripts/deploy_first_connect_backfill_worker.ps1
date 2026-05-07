@@ -22,6 +22,11 @@
 #
 # Required env names (loaded from the secrets file, NEVER printed):
 #   - POSTGRES_URL
+#   - PGCRYPTO_ENVELOPE_KEY  (Phase 8 — required by the worker since the
+#                              binder builder constructs
+#                              `VendorCredentialBroker` against this
+#                              key. Mirrors the staging proxy required
+#                              list from deploy_staging_proxy.ps1.)
 #
 # Optional env names (loaded if present, fall back to worker defaults):
 #   - FIRST_CONNECT_BACKFILL_WORKER_POLL_SECONDS
@@ -29,11 +34,23 @@
 #   - FIRST_CONNECT_BACKFILL_WORKER_MAX_ATTEMPTS
 #   - FIRST_CONNECT_BACKFILL_WORKER_CLAIM_STALE_SECONDS
 #   - FIRST_CONNECT_BACKFILL_WORKER_ID_PREFIX
+#   - FF_WEBHOOK_PUBLIC_BASE_URI
+#
+# Optional vendor app credentials (each connector binder activates only
+# when its full bundle is present; absent bundles surface as warn-
+# disabled vendors that the backfill worker dead-letters with a clean
+# reason):
+#   - ALOHA_NCR_VOYIX_CLIENT_ID / _CLIENT_SECRET / _APPLICATION_KEY /
+#     _ORGANIZATION_ID
+#   - SQUARE_CLIENT_ID / _CLIENT_SECRET / _NOTIFICATION_URL_HOST
+#   - CLOVER_APP_TOKEN / _APP_ID
 #
 # Secret Manager mapping:
-#   - POSTGRES_URL -> forge-flow-staging-postgres-url
-#                     (reused from deploy_audit_anchor_job.ps1 +
-#                      deploy_staging_proxy.ps1)
+#   - POSTGRES_URL          -> forge-flow-staging-postgres-url
+#   - PGCRYPTO_ENVELOPE_KEY -> forge-flow-staging-pgcrypto-envelope-key
+#                              (same secret the proxy reads;
+#                              deploy_staging_proxy.ps1 owns the source
+#                              of truth.)
 #
 # Schedule: `*/1 * * * *` UTC (every minute). The trigger lives in
 # northamerica-northeast1 because Cloud Scheduler is not available in
@@ -71,8 +88,14 @@ $ScheduleCron = '*/1 * * * *'
 $ScheduleTimeZone = 'Etc/UTC'
 
 # Required env NAMES (NEVER values).
+#
+# Phase 8 (8.backfill-worker-adapter-factory-wire-in): the worker now
+# constructs the binder's per-vendor adapter factories at boot, which
+# requires PGCRYPTO_ENVELOPE_KEY for the VendorCredentialBroker. Same
+# secret the proxy reads.
 $requiredEnv = @(
-  'POSTGRES_URL'
+  'POSTGRES_URL',
+  'PGCRYPTO_ENVELOPE_KEY'
 )
 
 if (-not $SecretPrefix.EndsWith('-')) {
@@ -81,11 +104,44 @@ if (-not $SecretPrefix.EndsWith('-')) {
 }
 
 $secretSuffix = [ordered] @{
-  'POSTGRES_URL' = 'postgres-url'
+  'POSTGRES_URL'          = 'postgres-url'
+  'PGCRYPTO_ENVELOPE_KEY' = 'pgcrypto-envelope-key'
 }
 $secretEnv = [ordered] @{}
 foreach ($entry in $secretSuffix.GetEnumerator()) {
   $secretEnv[$entry.Key] = "$SecretPrefix$($entry.Value)"
+}
+
+# Phase 8 — optional vendor app credential bundles. Each entry is wired
+# into Cloud Run --set-secrets ONLY when the matching env var is
+# present in the local secrets file. Absent bundles surface as warn-
+# disabled vendors at runtime, and the worker dead-letters claimed
+# jobs for those vendors with a clean reason instead of stack-traced
+# StateErrors. Mirrors the staging proxy deploy script pattern; the
+# secret names are the same so a single rotation can sync both.
+$optionalSecretSuffix = [ordered] @{
+  # Aloha NCR Voyix OAuth client_credentials bundle (4 secrets).
+  'ALOHA_NCR_VOYIX_CLIENT_ID'        = 'aloha-ncr-voyix-client-id'
+  'ALOHA_NCR_VOYIX_CLIENT_SECRET'    = 'aloha-ncr-voyix-client-secret'
+  'ALOHA_NCR_VOYIX_APPLICATION_KEY'  = 'aloha-ncr-voyix-application-key'
+  'ALOHA_NCR_VOYIX_ORGANIZATION_ID'  = 'aloha-ncr-voyix-organization-id'
+  # Square OAuth + webhook host bundle (3 secrets).
+  'SQUARE_CLIENT_ID'                 = 'square-client-id'
+  'SQUARE_CLIENT_SECRET'             = 'square-client-secret'
+  'SQUARE_NOTIFICATION_URL_HOST'     = 'square-notification-url-host'
+  # Clover app-level credentials bundle (2 secrets).
+  'CLOVER_APP_TOKEN'                 = 'clover-app-token'
+  'CLOVER_APP_ID'                    = 'clover-app-id'
+}
+$optionalSecretEnv = [ordered] @{}
+$optionalSecretSkipped = [System.Collections.Generic.List[string]]::new()
+foreach ($entry in $optionalSecretSuffix.GetEnumerator()) {
+  $value = [Environment]::GetEnvironmentVariable($entry.Key)
+  if ([string]::IsNullOrWhiteSpace($value)) {
+    $optionalSecretSkipped.Add($entry.Key)
+    continue
+  }
+  $optionalSecretEnv[$entry.Key] = "$SecretPrefix$($entry.Value)"
 }
 
 function Assert-PresentEnv {
@@ -124,6 +180,18 @@ function Write-PreflightHeader {
   Write-Host 'Secret Manager mapping (NAME -> SECRET):'
   foreach ($entry in $secretEnv.GetEnumerator()) {
     Write-Host (" - {0} -> {1}" -f $entry.Key, $entry.Value)
+  }
+  if ($optionalSecretEnv.Count -gt 0) {
+    Write-Host 'Optional vendor app credential bundles surfaced locally (will sync):'
+    foreach ($entry in $optionalSecretEnv.GetEnumerator()) {
+      Write-Host (" - {0} -> {1}" -f $entry.Key, $entry.Value)
+    }
+  }
+  if ($optionalSecretSkipped.Count -gt 0) {
+    Write-Host 'Optional vendor app credential bundles skipped (warn-disabled at runtime):'
+    foreach ($name in $optionalSecretSkipped) {
+      Write-Host " - $name"
+    }
   }
 }
 
@@ -234,10 +302,18 @@ if (-not $SkipSecretManagerSync) {
       -SecretName $entry.Value `
       -Value ([Environment]::GetEnvironmentVariable($entry.Key))
   }
+  # Optional vendor app credentials: only sync entries the local
+  # secrets file actually surfaced. Skipped entries already logged via
+  # $optionalSecretSkipped.
+  foreach ($entry in $optionalSecretEnv.GetEnumerator()) {
+    Sync-SecretManagerSecret `
+      -SecretName $entry.Value `
+      -Value ([Environment]::GetEnvironmentVariable($entry.Key))
+  }
 }
 
 $secretAssignments = (
-  $secretEnv.GetEnumerator() |
+  ($secretEnv.GetEnumerator() + $optionalSecretEnv.GetEnumerator()) |
     ForEach-Object { "$($_.Key)=$($_.Value):latest" }
 ) -join ','
 
@@ -331,4 +407,10 @@ Write-Host " - Cloud Scheduler: $SchedulerName ($ScheduleCron $ScheduleTimeZone)
 foreach ($name in $requiredEnv) {
   Write-Host " - $name (Secret Manager backed)"
 }
-Write-Host ' - Adapter factory wiring follow-up — see tool/first_connect_backfill_worker/README.md'
+foreach ($name in $optionalSecretEnv.Keys) {
+  Write-Host " - $name (Secret Manager backed, optional)"
+}
+foreach ($name in $optionalSecretSkipped) {
+  Write-Host " - $name (skipped — vendor will be warn-disabled at runtime)"
+}
+Write-Host ' - Adapter factory wiring: now backed by the binder builder (PR #268 + this slice).'

@@ -15,11 +15,19 @@
 //   * `lib/infrastructure/persistence/postgres/repositories/
 //     connector_backfill_job_repository.dart` is the repository the
 //     dispatcher's `BackfillJobStore` interface expects.
+//   * `tool/advisor_proxy/phase_8_production_binder.dart` exposes
+//     `buildPhase8VendorIntegrationFactoriesFromCredentials` — the same
+//     per-vendor adapter factory map the proxy installs into
+//     `Phase80IntegrationRoutes.globalBindings` for inbound webhooks.
+//     The worker reuses it for backfill dispatch so per-tenant
+//     credential bridges, sinks, and OAuth refresh closures stay
+//     single-sourced.
 //
 // What this file adds:
 //
-//   1. Env-driven config (`POSTGRES_URL`, etc.) — name-only logging
-//      so secrets never appear in stdout/stderr.
+//   1. Env-driven config (`POSTGRES_URL`, `PGCRYPTO_ENVELOPE_KEY`,
+//      and the optional vendor app credential bundles) — name-only
+//      logging so secrets never appear in stdout/stderr.
 //   2. A `WorkerScopeReader` that discovers `(operator_id, location_id)`
 //      pairs with claimable backfill jobs. The repository's `claimNext`
 //      requires a tenant context, so the worker must enumerate scopes
@@ -64,16 +72,35 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
+
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_backfill_job_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dart';
+import 'package:forge_and_flow/integrations/pos/aloha_ncr_voyix_pos_production_api_client.dart'
+    show AlohaNcrVoyixOauthClientCredentials;
 import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
+import 'package:forge_and_flow/services/integration/per_tenant_location_config_resolver.dart';
 
+import '../advisor_proxy/advisor_proxy.dart'
+    show CloverAppCredentials, SquareAppCredentials;
+// Pull the per-vendor adapter factory builder directly from the
+// dedicated file (NOT through `phase_8_production_binder.dart`) so the
+// worker compile graph never reaches into `proxy_bootstrap.dart` —
+// that file owns admin-pool / Firebase / LLM machinery the backfill
+// worker has no business with.
+import '../advisor_proxy/phase_8_vendor_integration_factories.dart'
+    show
+        Phase8VendorIntegrationFactories,
+        buildPhase8VendorIntegrationFactoriesFromCredentials,
+        kPhase8DefaultWebhookPublicBaseUri,
+        kPhase8WebhookPublicBaseUriEnvName;
 import '../integration_sync_worker/backfill_dispatch.dart';
 import '../integration_sync_worker/dispatch.dart' show kSyncWorkerServicePrincipalId;
 
@@ -86,6 +113,14 @@ DateTime _defaultUtcClock() => DateTime.now().toUtc();
 
 abstract class FirstConnectBackfillWorkerEnvNames {
   static const String postgresUrl = 'POSTGRES_URL';
+
+  /// Phase 8 framework — pgcrypto symmetric envelope key shared with
+  /// the proxy. The vendor-credential broker passes this into
+  /// `pgp_sym_encrypt`/`pgp_sym_decrypt` calls; the worker fails closed
+  /// at boot when the name is missing because every adapter factory
+  /// constructed by the binder builder depends on it.
+  static const String pgcryptoEnvelopeKey = 'PGCRYPTO_ENVELOPE_KEY';
+
   static const String pollIntervalSeconds =
       'FIRST_CONNECT_BACKFILL_WORKER_POLL_SECONDS';
   static const String maxJobsPerTick =
@@ -96,6 +131,29 @@ abstract class FirstConnectBackfillWorkerEnvNames {
       'FIRST_CONNECT_BACKFILL_WORKER_CLAIM_STALE_SECONDS';
   static const String workerIdPrefix =
       'FIRST_CONNECT_BACKFILL_WORKER_ID_PREFIX';
+
+  // ─── Optional vendor app-credential bundle names ─────────────────
+  // Mirrored from `tool/advisor_proxy/advisor_proxy.dart`'s
+  // `ProxySecretNames`. The worker reads them by NAME and threads the
+  // resulting bundles into the binder builder so the same disabled-
+  // vendor warn list the proxy renders is what the worker
+  // dead-letters against. Absent bundles disable the matching vendor
+  // adapter factory; they never fail boot.
+  static const String alohaNcrVoyixClientId = 'ALOHA_NCR_VOYIX_CLIENT_ID';
+  static const String alohaNcrVoyixClientSecret =
+      'ALOHA_NCR_VOYIX_CLIENT_SECRET';
+  static const String alohaNcrVoyixApplicationKey =
+      'ALOHA_NCR_VOYIX_APPLICATION_KEY';
+  static const String alohaNcrVoyixOrganizationId =
+      'ALOHA_NCR_VOYIX_ORGANIZATION_ID';
+
+  static const String squareClientId = 'SQUARE_CLIENT_ID';
+  static const String squareClientSecret = 'SQUARE_CLIENT_SECRET';
+  static const String squareNotificationUrlHost =
+      'SQUARE_NOTIFICATION_URL_HOST';
+
+  static const String cloverAppToken = 'CLOVER_APP_TOKEN';
+  static const String cloverAppId = 'CLOVER_APP_ID';
 }
 
 // ─── CLI ────────────────────────────────────────────────────────────
@@ -194,22 +252,59 @@ int _parsePositiveInt(String raw, String label) {
 class WorkerRuntimeConfig {
   WorkerRuntimeConfig({
     required this.postgresUrl,
+    required this.pgcryptoEnvelopeKey,
+    required this.webhookPublicBaseUri,
     required this.maxAttempts,
     required this.maxJobsPerTick,
     required this.pollInterval,
     required this.claimStaleAfter,
     required this.workerIdPrefix,
     required this.loadedSecretNames,
+    required this.environment,
+    this.alohaNcrVoyixCredentials,
+    this.squareAppCredentials,
+    this.cloverAppCredentials,
   });
 
   /// Resolved Postgres connection string. Never echoed.
   final String postgresUrl;
+
+  /// Phase 8 framework — pgcrypto symmetric envelope key. Never echoed.
+  /// The broker fails ArgumentError at construction when this is empty,
+  /// so the worker validates non-empty at env parse time.
+  final String pgcryptoEnvelopeKey;
+
+  /// Public base URI the binder presents to vendors as the inbound
+  /// webhook host. Webhook callbacks never fire from the backfill
+  /// worker (the dispatcher only invokes `adapter.backfill`), but
+  /// Clover's adapter factory closes over a callback URL source at
+  /// construction time, so the worker still threads the value through.
+  final Uri webhookPublicBaseUri;
+
   final int maxAttempts;
   final int maxJobsPerTick;
   final Duration pollInterval;
   final Duration claimStaleAfter;
   final String workerIdPrefix;
   final List<String> loadedSecretNames;
+
+  /// Captured environment map. Threaded into the binder builder so the
+  /// per-vendor branches can read the staging-shape env vars (Intuit /
+  /// 7shifts / Libro OAuth pairs) without re-resolving Platform.environment.
+  final Map<String, String> environment;
+
+  /// Optional Aloha NCR Voyix static app credentials. Null when any of
+  /// the four secret names is unloaded; the binder builder dead-letters
+  /// claimed Aloha jobs with `aloha_ncr_voyix_credentials_missing`.
+  final AlohaNcrVoyixOauthClientCredentials? alohaNcrVoyixCredentials;
+
+  /// Optional Square static app credentials. Null when any of the
+  /// three secret names is unloaded.
+  final SquareAppCredentials? squareAppCredentials;
+
+  /// Optional Clover static app credentials. Null when either secret
+  /// name is unloaded.
+  final CloverAppCredentials? cloverAppCredentials;
 
   static const int defaultMaxAttempts = 10;
   static const int defaultMaxJobsPerTick = 5;
@@ -251,7 +346,21 @@ class WorkerRuntimeConfig {
       return value;
     }
 
+    String? optionalSecret(String name) {
+      final value = env[name];
+      if (value == null || value.isEmpty) return null;
+      loaded.add(name);
+      return value;
+    }
+
     final postgresUrl = require(FirstConnectBackfillWorkerEnvNames.postgresUrl);
+    final pgcryptoEnvelopeKey = require(
+      FirstConnectBackfillWorkerEnvNames.pgcryptoEnvelopeKey,
+    );
+    final webhookBase = optionalString(
+      kPhase8WebhookPublicBaseUriEnvName,
+      fallback: kPhase8DefaultWebhookPublicBaseUri,
+    );
     final maxAttempts =
         cliOverrides?.maxAttempts ??
         optionalInt(
@@ -280,14 +389,80 @@ class WorkerRuntimeConfig {
       FirstConnectBackfillWorkerEnvNames.workerIdPrefix,
       fallback: defaultWorkerIdPrefix,
     );
+
+    // Optional vendor app credentials.
+    final alohaClientId = optionalSecret(
+      FirstConnectBackfillWorkerEnvNames.alohaNcrVoyixClientId,
+    );
+    final alohaClientSecret = optionalSecret(
+      FirstConnectBackfillWorkerEnvNames.alohaNcrVoyixClientSecret,
+    );
+    final alohaApplicationKey = optionalSecret(
+      FirstConnectBackfillWorkerEnvNames.alohaNcrVoyixApplicationKey,
+    );
+    final alohaOrganizationId = optionalSecret(
+      FirstConnectBackfillWorkerEnvNames.alohaNcrVoyixOrganizationId,
+    );
+    final AlohaNcrVoyixOauthClientCredentials? alohaCreds = (alohaClientId !=
+                null &&
+            alohaClientSecret != null &&
+            alohaApplicationKey != null &&
+            alohaOrganizationId != null)
+        ? AlohaNcrVoyixOauthClientCredentials(
+            clientId: alohaClientId,
+            clientSecret: alohaClientSecret,
+            applicationKey: alohaApplicationKey,
+            organizationId: alohaOrganizationId,
+          )
+        : null;
+
+    final squareClientId = optionalSecret(
+      FirstConnectBackfillWorkerEnvNames.squareClientId,
+    );
+    final squareClientSecret = optionalSecret(
+      FirstConnectBackfillWorkerEnvNames.squareClientSecret,
+    );
+    final squareNotificationUrlHost = optionalSecret(
+      FirstConnectBackfillWorkerEnvNames.squareNotificationUrlHost,
+    );
+    final SquareAppCredentials? squareCreds = (squareClientId != null &&
+            squareClientSecret != null &&
+            squareNotificationUrlHost != null)
+        ? SquareAppCredentials(
+            clientId: squareClientId,
+            clientSecret: squareClientSecret,
+            notificationUrlHost: squareNotificationUrlHost,
+          )
+        : null;
+
+    final cloverAppToken = optionalSecret(
+      FirstConnectBackfillWorkerEnvNames.cloverAppToken,
+    );
+    final cloverAppId = optionalSecret(
+      FirstConnectBackfillWorkerEnvNames.cloverAppId,
+    );
+    final CloverAppCredentials? cloverCreds = (cloverAppToken != null &&
+            cloverAppId != null)
+        ? CloverAppCredentials(
+            appToken: cloverAppToken,
+            appId: cloverAppId,
+          )
+        : null;
+
     return WorkerRuntimeConfig(
       postgresUrl: postgresUrl,
+      pgcryptoEnvelopeKey: pgcryptoEnvelopeKey,
+      webhookPublicBaseUri: Uri.parse(webhookBase),
       maxAttempts: maxAttempts,
       maxJobsPerTick: maxJobsPerTick,
       pollInterval: Duration(seconds: pollSeconds),
       claimStaleAfter: Duration(seconds: claimStaleSeconds),
       workerIdPrefix: prefix,
       loadedSecretNames: loaded,
+      environment: Map<String, String>.unmodifiable(env),
+      alohaNcrVoyixCredentials: alohaCreds,
+      squareAppCredentials: squareCreds,
+      cloverAppCredentials: cloverCreds,
     );
   }
 }
@@ -978,18 +1153,26 @@ class WorkerRuntime {
     required this.scopeReader,
     required this.jobStore,
     required this.canonicalSink,
+    required this.adapterFactory,
     required this.config,
   });
 
   final WorkerScopeReader scopeReader;
   final BackfillJobStore jobStore;
   final CanonicalSink canonicalSink;
+
+  /// Production adapter factory composed from the binder's per-vendor
+  /// factory map (`buildPhase8VendorIntegrationFactoriesFromCredentials`).
+  /// Test paths skip [buildWorkerRuntime] entirely and inject the
+  /// factory through `runCli(adapterFactoryOverride:)`.
+  final WorkerBackfillAdapterFactory adapterFactory;
   final WorkerRuntimeConfig config;
 }
 
 WorkerRuntime buildWorkerRuntime({
   required WorkerRuntimeConfig config,
   WorkerPoolFactory poolFactory = _defaultPoolFactory,
+  http.Client? httpClient,
 }) {
   final pool = poolFactory(config.postgresUrl);
   final wrapper = TenantTransactionWrapper(pool);
@@ -1002,25 +1185,190 @@ WorkerRuntime buildWorkerRuntime({
   );
   final canonicalSink = WorkerCanonicalSink(tenantWrapper: wrapper);
   final scopeReader = PostgresWorkerScopeReader(wrapper: wrapper);
+
+  // Phase 8 — per-vendor adapter factory map sourced from the same
+  // builder the proxy binder uses. The worker constructs its own
+  // VendorCredentialBroker + PerTenantLocationConfigResolver against
+  // the same wrapper so per-tenant credential bridges resolve under
+  // the worker's tenant context. No assignment to
+  // `Phase80IntegrationRoutes.globalBindings` here — the worker is a
+  // sibling process to the proxy and does not own the framework
+  // singleton.
+  final sharedHttpClient = httpClient ?? http.Client();
+  final broker = VendorCredentialBroker(
+    tenantWrapper: wrapper,
+    pgcryptoEnvelopeKey: config.pgcryptoEnvelopeKey,
+  );
+  final locationConfigResolver = PerTenantLocationConfigResolver(
+    wrapper,
+    webhookPublicBaseUri: config.webhookPublicBaseUri,
+  );
+  // Humanity / QuickBooks Time / 7shifts / Libro typed AppCredentials
+  // records are not threaded through the worker today — those vendors
+  // need the proxy's typed `ProxyConfig.*AppCredentials` accessors,
+  // which the worker compile graph deliberately avoids. The builder
+  // dead-letters jobs for those vendors with the per-vendor
+  // `*_oauth_credentials_missing` reason; deploying additional vendor
+  // bundles to the worker is a follow-up if/when first-connection
+  // backfills for those vendors become hot enough to outweigh the
+  // proxy-only fallback path.
+  final factories = buildPhase8VendorIntegrationFactoriesFromCredentials(
+    tenantTransactionWrapper: wrapper,
+    broker: broker,
+    locationConfigResolver: locationConfigResolver,
+    sharedHttpClient: sharedHttpClient,
+    webhookPublicBaseUri: config.webhookPublicBaseUri,
+    alohaNcrVoyixCredentials: config.alohaNcrVoyixCredentials,
+    squareAppCredentials: config.squareAppCredentials,
+    cloverAppCredentials: config.cloverAppCredentials,
+  );
+  final adapterFactory = BinderBackedAdapterFactory(factories: factories);
+
   return WorkerRuntime(
     scopeReader: scopeReader,
     jobStore: cappingStore,
     canonicalSink: canonicalSink,
+    adapterFactory: adapterFactory.call,
     config: config,
   );
 }
 
-/// Adapter factory builder. Production wires this from the existing
-/// per-category registries — there is no production callsite outside
-/// of `proxy_bootstrap.dart` today, so we pass through to a guarded
-/// scaffold that fails loud if the worker is deployed without a
-/// proper factory wired in. The deploy script comments out a
-/// follow-up where the factory wiring lands.
+/// Adapter factory backed by the per-vendor maps the binder builder
+/// produces. When invoked for a job whose vendor is in the binder's
+/// disabled-warn list, throws [BackfillVendorDisabledException] with
+/// the structured reason; the dispatcher's outer try/catch records the
+/// failure through `markFailed`, which the
+/// [RetryCappingBackfillJobStore] eventually upgrades to a dead-letter
+/// after the retry cap. When the vendor is missing from BOTH the
+/// active map AND the disabled-warn list, throws
+/// [BackfillVendorNotWiredException]. The dispatcher's runtime type
+/// check guards against a mis-keyed factory (e.g. a labor vendor
+/// returned for a POS job), so we do not duplicate that check here.
+class BinderBackedAdapterFactory {
+  BinderBackedAdapterFactory({required this.factories});
+
+  final Phase8VendorIntegrationFactories factories;
+
+  /// Adapter factory entry point. Matches the
+  /// [WorkerBackfillAdapterFactory] typedef so callers can pass
+  /// `factory.call` (or use the instance directly via Dart's
+  /// `Function`/method tear-off).
+  Object call(FirstConnectionBackfillJob job) {
+    final disabledReason = factories.disabledVendors[job.vendorId];
+    switch (job.category) {
+      case IntegrationCategory.pos:
+        final factory = factories.posAdapterFactories[job.vendorId];
+        if (factory != null) {
+          return factory(operatorId: job.operatorId, locationId: job.locationId);
+        }
+        if (disabledReason != null) {
+          throw BackfillVendorDisabledException(
+            vendorId: job.vendorId,
+            category: job.category,
+            reason: disabledReason,
+          );
+        }
+        throw BackfillVendorNotWiredException(
+          vendorId: job.vendorId,
+          category: job.category,
+        );
+      case IntegrationCategory.labor:
+        final factory = factories.laborAdapterFactories[job.vendorId];
+        if (factory != null) {
+          return factory(operatorId: job.operatorId, locationId: job.locationId);
+        }
+        if (disabledReason != null) {
+          throw BackfillVendorDisabledException(
+            vendorId: job.vendorId,
+            category: job.category,
+            reason: disabledReason,
+          );
+        }
+        throw BackfillVendorNotWiredException(
+          vendorId: job.vendorId,
+          category: job.category,
+        );
+      case IntegrationCategory.reservation:
+        final factory = factories.reservationAdapterFactories[job.vendorId];
+        if (factory != null) {
+          return factory(operatorId: job.operatorId, locationId: job.locationId);
+        }
+        if (disabledReason != null) {
+          throw BackfillVendorDisabledException(
+            vendorId: job.vendorId,
+            category: job.category,
+            reason: disabledReason,
+          );
+        }
+        throw BackfillVendorNotWiredException(
+          vendorId: job.vendorId,
+          category: job.category,
+        );
+    }
+  }
+}
+
+/// Thrown by [BinderBackedAdapterFactory.call] when the vendor is
+/// present in the binder's `disabledVendors` map (warn-disabled at
+/// boot because optional static app credentials, async location config,
+/// or other prerequisites were missing). The dispatcher's outer
+/// try/catch catches this and records the failure through `markFailed`,
+/// which the [RetryCappingBackfillJobStore] dead-letters once the
+/// retry cap fires. Surfacing the typed reason here keeps the
+/// `last_error` text clean (no stack traces).
+class BackfillVendorDisabledException implements Exception {
+  const BackfillVendorDisabledException({
+    required this.vendorId,
+    required this.category,
+    required this.reason,
+  });
+
+  final String vendorId;
+  final IntegrationCategory category;
+  final String reason;
+
+  @override
+  String toString() =>
+      'vendor "$vendorId" not active in binder; missing app credentials '
+      '(reason=$reason, category=${category.name})';
+}
+
+/// Thrown by [BinderBackedAdapterFactory.call] when the vendor id is
+/// not registered in either the active factory map OR the
+/// disabled-warn list for the requested category. This is a true
+/// configuration miss — the vendor was claimed but the binder builder
+/// has no entry for it (e.g. a new vendor id rolled out before its
+/// branch was added to the builder). Surfaces as a clean failure
+/// message rather than a key-lookup null deref.
+class BackfillVendorNotWiredException implements Exception {
+  const BackfillVendorNotWiredException({
+    required this.vendorId,
+    required this.category,
+  });
+
+  final String vendorId;
+  final IntegrationCategory category;
+
+  @override
+  String toString() =>
+      'vendor "$vendorId" is not wired in the Phase 8 binder builder for '
+      'category=${category.name}; add a per-vendor branch in '
+      'tool/advisor_proxy/phase_8_production_binder.dart';
+}
+
+/// Defensive fallback adapter factory used when [buildWorkerRuntime]
+/// did not produce a production factory (i.e. tests bypassed the
+/// production path without supplying their own override). Production
+/// flows now wire [BinderBackedAdapterFactory] through
+/// [WorkerRuntime.adapterFactory], so this scaffold is unreachable on
+/// the deploy path; it stays for the test-overrides-everything case
+/// where neither override nor binder ran.
 Object _scaffoldRejectingAdapterFactory(FirstConnectionBackfillJob job) {
   throw StateError(
-    'WorkerBackfillAdapterFactory not wired: deploy must inject the '
-    'production factory composed from the POS / labor / reservation '
-    'adapter registries before running. See README.md.',
+    'WorkerBackfillAdapterFactory not wired: production wiring goes through '
+    '`buildWorkerRuntime` which composes the binder\'s per-vendor factory map. '
+    'Tests inject via `runCli(adapterFactoryOverride:)`. Reaching this scaffold '
+    'means neither path ran.',
   );
 }
 
@@ -1066,10 +1414,14 @@ Future<int> runCli(
   BackfillJobStore jobStore;
   CanonicalSink canonicalSink;
 
+  WorkerBackfillAdapterFactory? productionAdapterFactory;
+
   if (hasOverrides) {
     // Tests path: skip env config and pool wiring entirely.
     config = WorkerRuntimeConfig(
       postgresUrl: 'test://override',
+      pgcryptoEnvelopeKey: 'test-pgcrypto-key',
+      webhookPublicBaseUri: Uri.parse(kPhase8DefaultWebhookPublicBaseUri),
       maxAttempts: args.maxAttempts ?? WorkerRuntimeConfig.defaultMaxAttempts,
       maxJobsPerTick:
           args.maxJobsPerTick ?? WorkerRuntimeConfig.defaultMaxJobsPerTick,
@@ -1085,6 +1437,7 @@ Future<int> runCli(
       ),
       workerIdPrefix: WorkerRuntimeConfig.defaultWorkerIdPrefix,
       loadedSecretNames: const <String>[],
+      environment: env,
     );
     scopeReader = scopeReaderOverride;
     jobStore = jobStoreOverride;
@@ -1103,14 +1456,16 @@ Future<int> runCli(
     scopeReader = runtime.scopeReader;
     jobStore = runtime.jobStore;
     canonicalSink = runtime.canonicalSink;
+    productionAdapterFactory = runtime.adapterFactory;
     stdoutSink.writeln(
       'first_connect_backfill_worker starting (loaded secret names: '
       '${config.loadedSecretNames.join(', ')})',
     );
   }
 
-  final adapterFactory =
-      adapterFactoryOverride ?? kScaffoldRejectingAdapterFactory;
+  final adapterFactory = adapterFactoryOverride ??
+      productionAdapterFactory ??
+      kScaffoldRejectingAdapterFactory;
   final workerId =
       '${config.workerIdPrefix}-${pid.toRadixString(16)}-${DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(16)}';
 
