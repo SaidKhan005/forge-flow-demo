@@ -244,6 +244,13 @@ class _ConnectedCard extends StatelessWidget {
                   ),
                 ],
               ),
+              if (row.firstBackfill != null) ...<Widget>[
+                const SizedBox(height: 8),
+                _FirstBackfillProgress(
+                  vendorId: row.vendorId,
+                  state: row.firstBackfill!,
+                ),
+              ],
               const SizedBox(height: 6),
               Text(
                 _categoryConnectedLine(category),

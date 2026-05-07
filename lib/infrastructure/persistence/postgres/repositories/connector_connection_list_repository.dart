@@ -24,6 +24,51 @@ import '../../../../services/integration/integration_adapter_common.dart';
 import '../operator_scoped_repository.dart';
 import '../tenant_context.dart';
 
+/// First 60-day history-pull lifecycle, mirroring
+/// `connector_backfill_jobs.status` plus the operationally distinct
+/// "dead-lettered" state the worker tier surfaces once attempts are
+/// exhausted. Schema today admits only the first four; `deadLettered`
+/// is reserved so the read seam can absorb the worker-tier exhaustion
+/// state without another model edit.
+enum FirstBackfillStatus { pending, running, succeeded, failed, deadLettered }
+
+extension FirstBackfillStatusWire on FirstBackfillStatus {
+  String get wire {
+    switch (this) {
+      case FirstBackfillStatus.pending:
+        return 'pending';
+      case FirstBackfillStatus.running:
+        return 'running';
+      case FirstBackfillStatus.succeeded:
+        return 'succeeded';
+      case FirstBackfillStatus.failed:
+        return 'failed';
+      case FirstBackfillStatus.deadLettered:
+        return 'dead_lettered';
+    }
+  }
+
+  static FirstBackfillStatus? tryFromWire(String? raw) {
+    if (raw == null) return null;
+    final trimmed = raw.trim().toLowerCase();
+    switch (trimmed) {
+      case 'pending':
+        return FirstBackfillStatus.pending;
+      case 'running':
+        return FirstBackfillStatus.running;
+      case 'succeeded':
+        return FirstBackfillStatus.succeeded;
+      case 'failed':
+        return FirstBackfillStatus.failed;
+      case 'dead_lettered':
+      case 'deadlettered':
+        return FirstBackfillStatus.deadLettered;
+      default:
+        return null;
+    }
+  }
+}
+
 /// One row from `public.connector_connection`, projected for the
 /// operator-self-service Connections screen.
 class ConnectorConnectionListRow {
@@ -41,6 +86,12 @@ class ConnectorConnectionListRow {
     this.webhookUrlProvisioned = false,
     this.createdAt,
     this.updatedAt,
+    this.firstBackfillStatus,
+    this.firstBackfillStartedAt,
+    this.firstBackfillCompletedAt,
+    this.firstBackfillFailureReason,
+    this.firstBackfillProcessedDays,
+    this.firstBackfillTotalDays,
   });
 
   /// Stable `connector_connection.connection_id` UUID, lowercase text.
@@ -81,6 +132,34 @@ class ConnectorConnectionListRow {
 
   /// Row last-touched time (status flip, metadata change, etc.).
   final DateTime? updatedAt;
+
+  /// Latest `connector_backfill_jobs.status` for this
+  /// (operator, location, vendor). `null` when no job row exists —
+  /// the connection predates the backfill queue.
+  final FirstBackfillStatus? firstBackfillStatus;
+
+  /// `connector_backfill_jobs.claimed_at` when status entered
+  /// `running`. `null` while still pending.
+  final DateTime? firstBackfillStartedAt;
+
+  /// `connector_backfill_jobs.completed_at` when the backfill ended
+  /// (succeeded or failed). `null` while still in flight.
+  final DateTime? firstBackfillCompletedAt;
+
+  /// `connector_backfill_jobs.last_error` reason. Surfaced verbatim
+  /// to the operator as the "what to fix" line.
+  final String? firstBackfillFailureReason;
+
+  /// Optional progress hint — number of business days the worker has
+  /// already pulled. The schema today has no per-day column, so this
+  /// stays `null` and the UI falls back to indeterminate progress.
+  /// Reserved for the worker-tier progress upgrade.
+  final int? firstBackfillProcessedDays;
+
+  /// Optional progress hint — total business days in the window
+  /// (typically 60). Pairs with [firstBackfillProcessedDays]; both
+  /// must be non-null for the UI to render determinate progress.
+  final int? firstBackfillTotalDays;
 }
 
 /// Bundle returned by [ConnectorConnectionListRepository.listForLocation].
@@ -115,19 +194,23 @@ class ConnectorConnectionListRepository extends OperatorScopedRepository {
   ConnectorConnectionListRepository(super.tenantWrapper);
 
   static const String _selectColumns =
-      'connection_id::text as connection_id, '
-      'vendor_id, '
-      'category, '
-      'status, '
-      'module, '
-      'metadata, '
-      'last_sync_at, '
-      'last_error_at, '
-      'last_error_message, '
-      'disconnect_reason, '
-      'webhook_url_provisioned, '
-      'created_at, '
-      'updated_at';
+      'cc.connection_id::text as connection_id, '
+      'cc.vendor_id, '
+      'cc.category, '
+      'cc.status, '
+      'cc.module, '
+      'cc.metadata, '
+      'cc.last_sync_at, '
+      'cc.last_error_at, '
+      'cc.last_error_message, '
+      'cc.disconnect_reason, '
+      'cc.webhook_url_provisioned, '
+      'cc.created_at, '
+      'cc.updated_at, '
+      'fbj.status as first_backfill_status, '
+      'fbj.claimed_at as first_backfill_started_at, '
+      'fbj.completed_at as first_backfill_completed_at, '
+      'fbj.last_error as first_backfill_failure_reason';
 
   /// Returns every connector_connection row scoped to
   /// (operatorId, locationId), regardless of status. The
@@ -135,6 +218,13 @@ class ConnectorConnectionListRepository extends OperatorScopedRepository {
   /// errored vendors so the operator can reconnect or read the
   /// error message — filtering to connected-only would hide
   /// recoverable state.
+  ///
+  /// LEFT JOIN to `connector_backfill_jobs` pulls the most recent
+  /// job row per (operator, location, vendor) so the operator-web
+  /// UI can render the "60-day history" progress indicator alongside
+  /// the connection status. The schema does not track per-day
+  /// progress today; `processed_days` / `total_days` stay null and
+  /// the UI falls back to an indeterminate indicator.
   Future<ConnectorConnectionListBundle> listForLocation({
     required String operatorId,
     required String locationId,
@@ -150,10 +240,20 @@ class ConnectorConnectionListRepository extends OperatorScopedRepository {
     return withTenant<ConnectorConnectionListBundle>(ctx, (exec) async {
       final rows = await exec.query(
         'select $_selectColumns '
-        'from public.connector_connection '
-        'where operator_id = @operator_id::uuid '
-        '  and location_id = @location_id::uuid '
-        "order by category asc, vendor_id asc, coalesce(module, '') asc",
+        'from public.connector_connection cc '
+        'left join lateral ('
+        '  select status, claimed_at, completed_at, last_error '
+        '  from public.connector_backfill_jobs j '
+        '  where j.operator_id = cc.operator_id '
+        '    and j.location_id = cc.location_id '
+        '    and j.vendor_id = cc.vendor_id '
+        '  order by j.updated_at desc '
+        '  limit 1'
+        ') fbj on true '
+        'where cc.operator_id = @operator_id::uuid '
+        '  and cc.location_id = @location_id::uuid '
+        "order by cc.category asc, cc.vendor_id asc, "
+        "         coalesce(cc.module, '') asc",
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,
@@ -186,7 +286,24 @@ class ConnectorConnectionListRepository extends OperatorScopedRepository {
       webhookUrlProvisioned: row['webhook_url_provisioned'] == true,
       createdAt: _readDate(row['created_at']),
       updatedAt: _readDate(row['updated_at']),
+      firstBackfillStatus: FirstBackfillStatusWire.tryFromWire(
+        _readString(row['first_backfill_status']),
+      ),
+      firstBackfillStartedAt: _readDate(row['first_backfill_started_at']),
+      firstBackfillCompletedAt: _readDate(row['first_backfill_completed_at']),
+      firstBackfillFailureReason: _readString(
+        row['first_backfill_failure_reason'],
+      ),
+      firstBackfillProcessedDays: _readInt(row['first_backfill_processed_days']),
+      firstBackfillTotalDays: _readInt(row['first_backfill_total_days']),
     );
+  }
+
+  static int? _readInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim());
+    return null;
   }
 
   static IntegrationCategory _categoryFromWire(String? raw) {

@@ -91,6 +91,12 @@ ConnectorConnectionListRow _row({
   Map<String, Object?> metadata = const <String, Object?>{},
   DateTime? lastSyncAt,
   String? disconnectReason,
+  FirstBackfillStatus? firstBackfillStatus,
+  DateTime? firstBackfillStartedAt,
+  DateTime? firstBackfillCompletedAt,
+  String? firstBackfillFailureReason,
+  int? firstBackfillProcessedDays,
+  int? firstBackfillTotalDays,
 }) {
   return ConnectorConnectionListRow(
     connectionId: connectionId,
@@ -104,6 +110,12 @@ ConnectorConnectionListRow _row({
     webhookUrlProvisioned: status == 'connected',
     createdAt: DateTime.utc(2026, 5, 7, 9),
     updatedAt: DateTime.utc(2026, 5, 7, 11, 30),
+    firstBackfillStatus: firstBackfillStatus,
+    firstBackfillStartedAt: firstBackfillStartedAt,
+    firstBackfillCompletedAt: firstBackfillCompletedAt,
+    firstBackfillFailureReason: firstBackfillFailureReason,
+    firstBackfillProcessedDays: firstBackfillProcessedDays,
+    firstBackfillTotalDays: firstBackfillTotalDays,
   );
 }
 
@@ -331,6 +343,128 @@ void main() {
         final response = await request.close();
         await response.drain<void>();
         expect(response.statusCode, HttpStatus.unauthorized);
+      } finally {
+        ctx.client.close(force: true);
+        await ctx.server.close(force: true);
+      }
+    });
+  });
+
+  test('emits first_backfill JSON object on rows with backfill state and '
+      'omits the field on legacy rows without one', () {
+    return _withRealHttp(() async {
+      final ctx = await _spinUp(
+        projection: _projectionFor(
+          ConnectorConnectionListBundle(
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            rows: <ConnectorConnectionListRow>[
+              _row(
+                connectionId: 'cnx-running',
+                vendorId: 'toast',
+                category: IntegrationCategory.pos,
+                firstBackfillStatus: FirstBackfillStatus.running,
+                firstBackfillStartedAt: DateTime.utc(2026, 5, 7, 11),
+                firstBackfillProcessedDays: 12,
+                firstBackfillTotalDays: 60,
+              ),
+              _row(
+                connectionId: 'cnx-done',
+                vendorId: 'humanity',
+                category: IntegrationCategory.labor,
+                firstBackfillStatus: FirstBackfillStatus.succeeded,
+                firstBackfillStartedAt: DateTime.utc(2026, 5, 6, 22),
+                firstBackfillCompletedAt: DateTime.utc(2026, 5, 6, 22, 22),
+              ),
+              _row(
+                connectionId: 'cnx-failed',
+                vendorId: 'square',
+                category: IntegrationCategory.pos,
+                firstBackfillStatus: FirstBackfillStatus.failed,
+                firstBackfillFailureReason: 'token revoked mid-pull',
+              ),
+              _row(
+                connectionId: 'cnx-dl',
+                vendorId: 'opentable',
+                category: IntegrationCategory.reservation,
+                firstBackfillStatus: FirstBackfillStatus.deadLettered,
+                firstBackfillFailureReason: 'attempts exhausted',
+              ),
+              _row(
+                connectionId: 'cnx-legacy',
+                vendorId: '7shifts',
+                category: IntegrationCategory.labor,
+                // No firstBackfillStatus — legacy connection row
+                // predating the queue. Wire JSON must omit
+                // `first_backfill` entirely.
+              ),
+            ],
+          ),
+        ),
+      );
+      try {
+        final request = await ctx.client.openUrl(
+          'GET',
+          ctx.baseUri.resolve('/v1/auth/locations/loc-1/integrations'),
+        );
+        request.headers.set('Authorization', 'Bearer ok');
+        request.contentLength = 0;
+        final response = await request.close();
+        final body =
+            jsonDecode(await response.transform(utf8.decoder).join())
+                as Map<String, Object?>;
+
+        expect(response.statusCode, HttpStatus.ok);
+        final connections = body['connections']! as List<Object?>;
+        expect(connections, hasLength(5));
+
+        final running = connections.firstWhere(
+          (c) => (c! as Map<String, Object?>)['vendor_id'] == 'toast',
+        )! as Map<String, Object?>;
+        expect(running.containsKey('first_backfill'), isTrue);
+        final runningBackfill =
+            running['first_backfill']! as Map<String, Object?>;
+        expect(runningBackfill['status'], 'running');
+        expect(runningBackfill['started_at'], '2026-05-07T11:00:00.000Z');
+        expect(runningBackfill['completed_at'], isNull);
+        expect(runningBackfill['failure_reason'], isNull);
+        expect(runningBackfill['processed_days'], 12);
+        expect(runningBackfill['total_days'], 60);
+
+        final done = connections.firstWhere(
+          (c) => (c! as Map<String, Object?>)['vendor_id'] == 'humanity',
+        )! as Map<String, Object?>;
+        final doneBackfill =
+            done['first_backfill']! as Map<String, Object?>;
+        expect(doneBackfill['status'], 'succeeded');
+        expect(doneBackfill['completed_at'], '2026-05-06T22:22:00.000Z');
+
+        final failed = connections.firstWhere(
+          (c) => (c! as Map<String, Object?>)['vendor_id'] == 'square',
+        )! as Map<String, Object?>;
+        final failedBackfill =
+            failed['first_backfill']! as Map<String, Object?>;
+        expect(failedBackfill['status'], 'failed');
+        expect(failedBackfill['failure_reason'], 'token revoked mid-pull');
+
+        final dl = connections.firstWhere(
+          (c) => (c! as Map<String, Object?>)['vendor_id'] == 'opentable',
+        )! as Map<String, Object?>;
+        final dlBackfill =
+            dl['first_backfill']! as Map<String, Object?>;
+        expect(dlBackfill['status'], 'dead_lettered');
+        expect(dlBackfill['failure_reason'], 'attempts exhausted');
+
+        final legacy = connections.firstWhere(
+          (c) => (c! as Map<String, Object?>)['vendor_id'] == '7shifts',
+        )! as Map<String, Object?>;
+        expect(
+          legacy.containsKey('first_backfill'),
+          isFalse,
+          reason: 'legacy rows without a job row must not emit '
+              'first_backfill so the operator-web client renders no '
+              'progress UI for them',
+        );
       } finally {
         ctx.client.close(force: true);
         await ctx.server.close(force: true);
