@@ -43,6 +43,7 @@ import 'admin_email_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
 import 'log.dart';
+import 'phase_8_production_binder.dart';
 import 'proxy_bootstrap.dart';
 import 'realtime_bridge.dart';
 import 'realtime_route.dart' show RealtimeReplayResult;
@@ -575,6 +576,19 @@ Future<void> main(List<String> args) async {
     },
   );
   // endregion
+
+  // Phase 8 — wire the inbound integration chain (vendor credential
+  // broker, 17 per-tenant adapter factories, signature verifiers,
+  // RepositoryInboundWebhookGateway, RepositoryIntegrationRoutesGateway)
+  // before binding the listener. Demo mode (`--define=kDemoMode=true`)
+  // makes this a no-op; otherwise the binder installs
+  // `Phase80IntegrationRoutes.globalBindings` so the marked region in
+  // the dispatch loop above lights up.
+  await bindPhase8IntegrationsForProduction(
+    productionBindings,
+    config,
+    proxyJwtVerifier: verifier,
+  );
 
   final server = await HttpServer.bind(InternetAddress.anyIPv4, config.port);
 
