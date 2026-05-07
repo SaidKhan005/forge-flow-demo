@@ -7812,6 +7812,19 @@ Map<String, Object?> _connectorConnectionRowToWireJson(
     'webhook_url_provisioned': row.webhookUrlProvisioned,
     if (row.createdAt != null) 'created_at': row.createdAt!.toIso8601String(),
     if (row.updatedAt != null) 'updated_at': row.updatedAt!.toIso8601String(),
+    if (row.firstBackfillStatus != null)
+      'first_backfill': _firstBackfillToWireJson(row),
+  };
+}
+
+Map<String, Object?> _firstBackfillToWireJson(ConnectorConnectionListRow row) {
+  return <String, Object?>{
+    'status': row.firstBackfillStatus!.wire,
+    'started_at': row.firstBackfillStartedAt?.toIso8601String(),
+    'completed_at': row.firstBackfillCompletedAt?.toIso8601String(),
+    'failure_reason': row.firstBackfillFailureReason,
+    'processed_days': row.firstBackfillProcessedDays,
+    'total_days': row.firstBackfillTotalDays,
   };
 }
 

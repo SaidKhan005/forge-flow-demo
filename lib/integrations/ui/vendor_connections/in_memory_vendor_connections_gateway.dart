@@ -261,6 +261,69 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
   String _key(String operatorId, String locationId) =>
       '$operatorId/$locationId';
 
+  /// Builds a demo bundle that exercises BOTH the in-flight and
+  /// completed first-history-pull indicators so the walkthrough lands
+  /// on a screen with both visual states already on it. Hosts pass
+  /// the result via the `seed:` constructor parameter.
+  ///
+  /// One POS vendor (`toast`) shows "Pulling 60 days of history..."
+  /// — a recent first connection still in flight. One labor vendor
+  /// (`humanity`) shows "60-day history loaded." — a connection
+  /// whose backfill finished yesterday.
+  static VendorConnectionsBundle demoFirstBackfillBundle({
+    required String operatorId,
+    required String locationId,
+    String locationName = 'Demo location',
+  }) {
+    final now = DateTime.now().toUtc();
+    final yesterday = now.subtract(const Duration(days: 1));
+    return VendorConnectionsBundle(
+      operatorId: operatorId,
+      locationId: locationId,
+      locationName: locationName,
+      posConnection: VendorConnectionRow(
+        connectionId: 'demo-conn-toast',
+        vendorId: 'toast',
+        displayName: 'Toast',
+        category: VendorCategory.pos,
+        status: VendorConnectionStatus.connected,
+        metadata: const <String, Object?>{},
+        lastSyncAt: now,
+        recordsLast24h: 0,
+        errorsLast24h: 0,
+        firstBackfill: VendorConnectionFirstBackfill(
+          status: VendorConnectionFirstBackfillStatus.running,
+          startedAt: now.subtract(const Duration(minutes: 8)),
+          processedDays: 12,
+          totalDays: 60,
+        ),
+      ),
+      laborConnection: VendorConnectionRow(
+        connectionId: 'demo-conn-humanity',
+        vendorId: 'humanity',
+        displayName: 'Humanity',
+        category: VendorCategory.labor,
+        status: VendorConnectionStatus.connected,
+        metadata: const <String, Object?>{},
+        lastSyncAt: now,
+        recordsLast24h: 240,
+        errorsLast24h: 0,
+        firstBackfill: VendorConnectionFirstBackfill(
+          status: VendorConnectionFirstBackfillStatus.succeeded,
+          startedAt: yesterday,
+          completedAt: yesterday.add(const Duration(minutes: 22)),
+          totalDays: 60,
+        ),
+      ),
+      reservationConnection: null,
+      demoFlags: const <VendorCategory, bool>{
+        VendorCategory.pos: false,
+        VendorCategory.labor: false,
+        VendorCategory.reservation: true,
+      },
+    );
+  }
+
   @override
   Future<VendorConnectionsBundle> loadBundle({
     required String operatorId,
@@ -306,6 +369,7 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       locationId: locationId,
     );
     final entry = vendorCatalog.firstWhere((e) => e.vendorId == vendorId);
+    final now = DateTime.now().toUtc();
     final connection = VendorConnectionRow(
       connectionId: 'demo-conn-$vendorId',
       vendorId: vendorId,
@@ -314,11 +378,18 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       status: VendorConnectionStatus.connected,
       metadata: _stubMetadata(vendorId),
       module: module,
-      lastSyncAt: DateTime.now().toUtc(),
+      lastSyncAt: now,
       webhookUrl:
           'https://api.forgeflow.app/v1/webhooks/$vendorId/$operatorId/$locationId',
       recordsLast24h: 0,
       errorsLast24h: 0,
+      // Demo: a freshly connected vendor enters first-history-pull
+      // immediately so the walkthrough shows the in-flight indicator.
+      firstBackfill: VendorConnectionFirstBackfill(
+        status: VendorConnectionFirstBackfillStatus.running,
+        startedAt: now,
+        totalDays: 60,
+      ),
     );
     final updated = VendorConnectionsBundle(
       operatorId: operatorId,
@@ -387,6 +458,13 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       webhookUrl: null,
       recordsLast24h: 0,
       errorsLast24h: 0,
+      // Demo: a freshly connected vendor enters first-history-pull
+      // immediately so the walkthrough shows the in-flight indicator.
+      firstBackfill: VendorConnectionFirstBackfill(
+        status: VendorConnectionFirstBackfillStatus.running,
+        startedAt: connectedAt,
+        totalDays: 60,
+      ),
     );
     final updated = VendorConnectionsBundle(
       operatorId: operatorId,

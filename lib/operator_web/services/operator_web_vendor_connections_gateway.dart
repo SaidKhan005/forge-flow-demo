@@ -352,7 +352,43 @@ class OperatorWebHttpVendorConnectionsGateway
       webhookUrl: _readString(json['webhook_url']),
       recordsLast24h: _readInt(json['records_last_24h']),
       errorsLast24h: _readInt(json['errors_last_24h']),
+      firstBackfill: _firstBackfillFromJson(json['first_backfill']),
     );
+  }
+
+  static VendorConnectionFirstBackfill? _firstBackfillFromJson(Object? raw) {
+    if (raw is! Map<Object?, Object?>) return null;
+    final status = _firstBackfillStatusFromString(_readString(raw['status']));
+    if (status == null) return null;
+    return VendorConnectionFirstBackfill(
+      status: status,
+      startedAt: _readDate(raw['started_at']),
+      completedAt: _readDate(raw['completed_at']),
+      failureReason: _readString(raw['failure_reason']),
+      processedDays: _readInt(raw['processed_days']),
+      totalDays: _readInt(raw['total_days']),
+    );
+  }
+
+  static VendorConnectionFirstBackfillStatus? _firstBackfillStatusFromString(
+    String? raw,
+  ) {
+    if (raw == null) return null;
+    switch (raw.trim().toLowerCase()) {
+      case 'pending':
+        return VendorConnectionFirstBackfillStatus.pending;
+      case 'running':
+        return VendorConnectionFirstBackfillStatus.running;
+      case 'succeeded':
+        return VendorConnectionFirstBackfillStatus.succeeded;
+      case 'failed':
+        return VendorConnectionFirstBackfillStatus.failed;
+      case 'dead_lettered':
+      case 'deadlettered':
+        return VendorConnectionFirstBackfillStatus.deadLettered;
+      default:
+        return null;
+    }
   }
 
   static Map<String, Object?> _stringKeyMap(Map<Object?, Object?> raw) {
