@@ -65,7 +65,7 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_
 import '../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../models/learn_benchmark_context.dart';
 import 'package:forge_and_flow/services/baseline_selection_analytics_service.dart';
-import '../dev/demo_fixture_data.dart';
+import 'baseline_authority_service.dart';
 import 'target_cycle_service.dart';
 
 class LearnBenchmarkContextService {

@@ -1486,4 +1486,47 @@ void main() {
           closeTo(MeridianConfig.opzCeilingCPLH, 0.001));
     });
   });
+
+  // ── CODE_HEALTH L15 — cycleId uses random 128-bit hex ────────────────────
+  // Regression pin for the audit finding: `target_cycle_service.dart:283`
+  // used `millisecondsSinceEpoch`. Two replacement writes within one
+  // millisecond would silently overwrite via upsert. The fix replaces the
+  // timestamp tail with a 128-bit cryptographic-random hex (Random.secure).
+  // The test below drives the public replacement path in a tight burst and
+  // asserts every generated cycleId is unique — even when the wall clock
+  // shares a millisecond across iterations.
+
+  group('CODE_HEALTH L15 — cycleId distinctness within one millisecond', () {
+    setUp(() async {
+      await SqliteDatabase.instance.reseedDemo();
+    });
+
+    test(
+        'rapid same-day admin replacements always produce distinct cycleIds '
+        '(no millisecondsSinceEpoch collision)', () async {
+      await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+
+      const burst = 25;
+      final ids = <String>{};
+      for (var i = 0; i < burst; i++) {
+        final cycle = await TargetCycleService.instance
+            .applyAdminReplacementCycle(restaurantId, '2026-04-01');
+        ids.add(cycle.cycleId);
+      }
+
+      expect(ids.length, burst,
+          reason:
+              'every cycleId from rapid replacement burst must be unique; '
+              'duplicates would mean millisecondsSinceEpoch-style collision');
+      // Each id has the format "<restaurantId>_<sourceLabel>_<32-hex>".
+      for (final id in ids) {
+        final tail = id.split('_').last;
+        expect(tail.length, 32,
+            reason: 'cycleId tail must be 32 hex chars (128-bit random)');
+        expect(RegExp(r'^[0-9a-f]{32}$').hasMatch(tail), isTrue,
+            reason: 'cycleId tail must be lowercase hex digits');
+      }
+    });
+  });
 }

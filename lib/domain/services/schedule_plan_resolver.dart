@@ -1,4 +1,3 @@
-import '../../services/labor_model.dart';
 import '../models/active_target_profile.dart';
 import '../models/schedule_distribution_weights.dart';
 import '../models/schedule_forecast_demand.dart';
@@ -72,8 +71,8 @@ class SchedulePlanResolver {
     ScheduleDistributionWeights? distributionWeights,
   }) {
     final sales = forecastCovers * targetPPA;
-    final fohHours = LaborModel.modelFohHours(forecastCovers, targetCPLH);
-    final bohHours = LaborModel.modelBohHoursFromSales(sales, targetSPLH);
+    final fohHours = _modelFohHours(forecastCovers, targetCPLH);
+    final bohHours = _modelBohHoursFromSales(sales, targetSPLH);
     final fohDollars = fohHours * fohWage;
     final bohDollars = bohHours * bohWage;
     final totalDollars = fohDollars + bohDollars;
@@ -186,5 +185,22 @@ class SchedulePlanResolver {
       remainder -= 1;
     }
     return floors;
+  }
+
+  // ── Pure model-hour formulas (CODE_HEALTH L15 dep inversion) ──────────────
+  // Inlined here so this Layer 7 (domain) resolver no longer imports
+  // `lib/services/labor_model.dart` (Layer 3+). Math is identical to
+  // `LaborModel.modelFohHours` / `LaborModel.modelBohHoursFromSales`.
+  // Jim Taylor Ch. 5 — covers ÷ targetCPLH (FOH), forecastSales ÷ targetSPLH (BOH),
+  // each rounded to the nearest whole hour.
+
+  static int _modelFohHours(int covers, double targetCPLH) {
+    if (targetCPLH == 0) return 0;
+    return (covers / targetCPLH).round();
+  }
+
+  static int _modelBohHoursFromSales(double forecastSales, double targetSPLH) {
+    if (targetSPLH == 0) return 0;
+    return (forecastSales / targetSPLH).round();
   }
 }

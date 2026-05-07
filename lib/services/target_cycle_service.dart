@@ -36,6 +36,8 @@
 //   repository, keeping the persisted profile synchronized with the
 //   current active cycle
 
+import 'dart:math' as math;
+
 import '../models/baseline_candidate_shift.dart';
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/benchmark_selection_summary.dart';
@@ -52,10 +54,10 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_benchmark_selec
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import 'app_notification_service.dart';
+import 'baseline_authority_service.dart';
 import 'baseline_manager_service.dart';
 import 'baseline_selection_analytics_service.dart';
 import '../data/app_defaults.dart';
-import '../dev/demo_fixture_data.dart';
 import 'wage_standard_context_service.dart';
 
 /// Thrown when a manager override is denied by [TargetCyclePolicy] rules.
@@ -278,13 +280,17 @@ class TargetCycleService {
     final calibrationEnd = businessDate;
     final calibrationStart = _addDays(businessDate, -59);
 
-    // Timestamp-based cycleId ensures repeated same-day replacements
-    // produce distinct historical rows instead of overwriting via upsert.
+    // CODE_HEALTH L15 fix: cycleId uses 128-bit cryptographically-random
+    // hex instead of `millisecondsSinceEpoch` so two replacement writes
+    // within the same millisecond cannot silently overwrite via upsert.
+    // No `uuid` package on the dependency tree, so `Random.secure()`
+    // builds a 128-bit hex (32 hex chars) directly — same collision
+    // resistance as UUID v4.
     final nowUtc = DateTime.now().toUtc();
     final now = nowUtc.toIso8601String();
     final replacement = TargetCycle(
       cycleId:
-          '${restaurantId}_${source.label}_${nowUtc.millisecondsSinceEpoch}',
+          '${restaurantId}_${source.label}_${_random128BitHex()}',
       restaurantId: restaurantId,
       source: source,
       effectiveStart: current.effectiveStart,
@@ -736,6 +742,17 @@ class TargetCycleService {
     final result = dt.add(Duration(days: days));
     return '${result.year}-${result.month.toString().padLeft(2, '0')}'
         '-${result.day.toString().padLeft(2, '0')}';
+  }
+
+  // ── 128-bit cryptographic-random hex (CODE_HEALTH L15) ────────────────────
+  // 16 random bytes → 32 hex chars. Equivalent collision resistance to
+  // UUID v4. Used for cycleId so two replacement writes within the same
+  // millisecond cannot collide. `dart:math.Random.secure()` is backed by
+  // the platform CSPRNG (browser `crypto.getRandomValues`, OS urandom).
+  static final math.Random _secureRandom = math.Random.secure();
+  static String _random128BitHex() {
+    final bytes = List<int>.generate(16, (_) => _secureRandom.nextInt(256));
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 }
 
