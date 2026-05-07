@@ -511,6 +511,59 @@ void main() {
         expect(created.last.closeCalls, equals(1));
       },
     );
+
+    test(
+      'POSTGRES_POOL_MAX_CONNECTIONS env override flows into '
+      'PackagePostgresPool.maxConnectionCount',
+      () async {
+        // CODE_HEALTH POOL-ENV: prove the resolver's parsed value is the
+        // value PackagePostgresPool actually honors. With env override = 2
+        // and reuseConnections, the pool may open at most two underlying
+        // connections — the third concurrent borrow must wait.
+        final created = <_FakePackagePostgresConnection>[];
+        final pool = PackagePostgresPool(
+          openConnection: () async {
+            final connection = _FakePackagePostgresConnection();
+            created.add(connection);
+            return connection;
+          },
+          reuseConnections: true,
+          maxConnectionCount: resolvePostgresMaxConnectionsPerPool(
+            environment: const <String, String>{
+              kPostgresPoolMaxConnectionsEnvVar: '2',
+            },
+          ),
+        );
+
+        final first = await pool.beginTransaction();
+        final second = await pool.beginTransaction();
+
+        // Two concurrent transactions => exactly two underlying connections.
+        expect(created, hasLength(2));
+
+        // A third borrow must block until one of the first two commits and
+        // returns its connection to the idle pool.
+        var thirdResolved = false;
+        final thirdFuture = pool.beginTransaction().then((tx) {
+          thirdResolved = true;
+          return tx;
+        });
+        await Future<void>.delayed(Duration.zero);
+        expect(thirdResolved, isFalse,
+            reason: 'maxConnectionCount=2 must throttle the third acquire');
+        expect(created, hasLength(2));
+
+        await first.commit();
+        final third = await thirdFuture;
+        expect(thirdResolved, isTrue);
+        expect(created, hasLength(2),
+            reason: 'released connection should be reused, not opened anew');
+
+        await second.commit();
+        await third.commit();
+        await pool.closeIdleConnections();
+      },
+    );
   });
 
   group('Phase 9.2 RLS per-tenant policy migration '
