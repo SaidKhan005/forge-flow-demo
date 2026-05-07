@@ -21,10 +21,14 @@ import 'package:flutter/foundation.dart';
 
 import 'operator_web_proxy_client.dart';
 
-/// Operator-scoped business-timing write surface. Never produces an
+/// Operator-scoped business-timing surface. Never produces an
 /// `/admin/` path; cross-tenant timing overrides live behind the
 /// F&F Ops Console (separate worktree).
 abstract class WebBusinessTimingGateway {
+  /// 11W.7 ops-debt — lists every timing profile owned by the
+  /// caller's operator with full service-period sets.
+  Future<List<BusinessTimingProfileWriteResult>> listProfiles();
+
   Future<BusinessTimingProfileWriteResult> createProfile(
     BusinessTimingProfileCreate request,
   );
@@ -69,6 +73,37 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
 
   static String operatorServicePeriodPath(String profileId, String key) =>
       '${operatorServicePeriodsPath(profileId)}/${Uri.encodeComponent(key)}';
+
+  @override
+  Future<List<BusinessTimingProfileWriteResult>> listProfiles() async {
+    _assertOperatorPath(operatorProfilesPath);
+    final token = await _requireToken();
+    final response = await _client.getJson(
+      operatorProfilesPath,
+      idToken: token,
+    );
+    final raw = response.body['profiles'];
+    if (raw is! List) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_business_timing_profile_list',
+        message:
+            'The proxy returned an incomplete business-timing profile list.',
+      );
+    }
+    return <BusinessTimingProfileWriteResult>[
+      for (final item in raw)
+        if (item is Map<Object?, Object?>)
+          BusinessTimingProfileWriteResult.fromJson(
+            Map<String, Object?>.from(item),
+          )
+        else
+          throw const OperatorWebProxyException(
+            code: 'malformed_business_timing_profile_list',
+            message:
+                'The proxy returned a malformed business-timing profile.',
+          ),
+    ];
+  }
 
   @override
   Future<BusinessTimingProfileWriteResult> createProfile(

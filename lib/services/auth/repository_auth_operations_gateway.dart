@@ -980,6 +980,36 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     );
   }
 
+  // 11W.4 ops-debt - Team-wide Active Sessions surface. Joins
+  // `auth_sessions` to `users` filtered on `users.operator_id =
+  // command.operatorId` so only sessions belonging to the caller's
+  // operator cross this seam. Caller (proxy) gates on
+  // `team.session.force_logout`.
+  @override
+  Future<AuthTeamActiveSessionsListed> listTeamActiveSessions(
+    AuthTeamActiveSessionsListCommand command,
+  ) async {
+    final repo = _requireAuthSessionsRepository();
+    final rows = await repo.listActiveSessionsForOperator(
+      operatorId: command.operatorId,
+      adminReason:
+          'team.sessions.list:operator=${command.operatorId}:'
+          'actor=${command.actorUserId}',
+    );
+    return AuthTeamActiveSessionsListed(
+      sessions: List<AuthTeamActiveSessionSummary>.unmodifiable(
+        rows.map(
+          (row) => AuthTeamActiveSessionSummary(
+            session: _authSessionSummaryFromRow(row.session),
+            targetUserId: row.userId,
+            targetDisplayName: row.userDisplayName,
+            targetEmail: row.userEmail,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Future<AuthSessionRevoked> revokeSession(
     AuthSessionRevokeCommand command,

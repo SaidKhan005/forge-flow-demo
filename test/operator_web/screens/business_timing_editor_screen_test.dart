@@ -19,6 +19,10 @@ class _FakeBusinessTimingGateway implements WebBusinessTimingGateway {
       <BusinessTimingProfileCreate>[];
 
   @override
+  Future<List<BusinessTimingProfileWriteResult>> listProfiles() async =>
+      const <BusinessTimingProfileWriteResult>[];
+
+  @override
   Future<BusinessTimingProfileWriteResult> createProfile(
     BusinessTimingProfileCreate request,
   ) async {

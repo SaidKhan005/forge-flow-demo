@@ -48,6 +48,24 @@ class RepositoryOperatorAccountWriteGateway
         statusCode: 404,
       );
     }
+    return _accountRecord(row);
+  }
+
+  @override
+  Future<OperatorAccountRecord?> loadAccount({
+    required String operatorId,
+  }) async {
+    final row = await _repository.load(
+      operatorId: operatorId,
+      // operators is identity-only; locationId is the SET LOCAL
+      // sentinel that satisfies the UUID validator. Use operatorId.
+      locationId: operatorId,
+    );
+    if (row == null) return null;
+    return _accountRecord(row);
+  }
+
+  static OperatorAccountRecord _accountRecord(OperatorAccountRow row) {
     return OperatorAccountRecord(
       operatorId: row.operatorId,
       businessName: row.businessName,
@@ -116,6 +134,18 @@ class RepositoryOperatorBusinessTimingWriteGateway
     );
     if (row == null) return null;
     return _toRecord(row);
+  }
+
+  @override
+  Future<List<OperatorBusinessTimingProfileRecord>> listProfiles({
+    required String operatorId,
+  }) async {
+    final rows = await _repository.listProfilesForOperator(
+      operatorId: operatorId,
+    );
+    return <OperatorBusinessTimingProfileRecord>[
+      for (final row in rows) _toRecord(row),
+    ];
   }
 
   @override

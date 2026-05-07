@@ -774,6 +774,44 @@ class AuthActiveSessionsListed {
   final List<AuthSessionSummary> sessions;
 }
 
+// 11W.4 ops-debt fix — team-wide active sessions surface. Lists every
+// active `auth_sessions` row whose `user_id` belongs to the caller's
+// operator, joined to `users` so the response carries the row's
+// owning user identity (id / display name / email). The proxy gates
+// this on `team.session.force_logout`; per-tenant RLS is enforced by
+// the join through the `users.operator_id` column.
+class AuthTeamActiveSessionSummary {
+  const AuthTeamActiveSessionSummary({
+    required this.session,
+    required this.targetUserId,
+    this.targetDisplayName,
+    this.targetEmail,
+  });
+
+  final AuthSessionSummary session;
+  final String targetUserId;
+  final String? targetDisplayName;
+  final String? targetEmail;
+}
+
+class AuthTeamActiveSessionsListCommand {
+  const AuthTeamActiveSessionsListCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+}
+
+class AuthTeamActiveSessionsListed {
+  const AuthTeamActiveSessionsListed({required this.sessions});
+
+  final List<AuthTeamActiveSessionSummary> sessions;
+}
+
 class AuthSessionRevokeCommand {
   const AuthSessionRevokeCommand({
     required this.actorUserId,
@@ -1213,6 +1251,14 @@ abstract class AuthOperationsGateway {
     AuthActiveSessionsListCommand command,
   );
 
+  // 11W.4 ops-debt — team-wide Active Sessions surface (operator
+  // scoped). Joins `auth_sessions` to `users` on
+  // `users.operator_id = command.operatorId`. Proxy gates on
+  // `team.session.force_logout`.
+  Future<AuthTeamActiveSessionsListed> listTeamActiveSessions(
+    AuthTeamActiveSessionsListCommand command,
+  );
+
   Future<AuthSessionRevoked> revokeSession(AuthSessionRevokeCommand command);
 
   Future<AuthAllSessionsRevoked> signOutAll(
@@ -1343,6 +1389,13 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
   @override
   Future<AuthActiveSessionsListed> listActiveSessions(
     AuthActiveSessionsListCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<AuthTeamActiveSessionsListed> listTeamActiveSessions(
+    AuthTeamActiveSessionsListCommand command,
   ) {
     throw StateError(_message);
   }

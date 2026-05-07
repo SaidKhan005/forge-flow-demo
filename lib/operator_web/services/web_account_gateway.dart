@@ -20,10 +20,14 @@ import 'package:flutter/foundation.dart';
 
 import 'operator_web_proxy_client.dart';
 
-/// Operator-scoped business-identity write surface. The frontend
-/// gateway never produces an `/admin/` path; cross-tenant overrides
-/// live behind the F&F Ops Console (separate worktree).
+/// Operator-scoped business-identity surface. The frontend gateway
+/// never produces an `/admin/` path; cross-tenant overrides live
+/// behind the F&F Ops Console (separate worktree).
 abstract class WebAccountGateway {
+  /// 11W.7 ops-debt - GETs the operator's business identity. Returns
+  /// the resolved row from `public.operators`.
+  Future<AccountIdentity> getAccount();
+
   /// Patches the operator's business identity. Every field on
   /// [patch] is optional; the backend treats absent keys as
   /// "leave alone." Returns the resolved row after the write.
@@ -45,6 +49,25 @@ class HttpWebAccountGateway implements WebAccountGateway {
 
   /// Operator-scoped route. The unit-test contract pins this string.
   static const String operatorAccountPath = '/v1/operator/account';
+
+  @override
+  Future<AccountIdentity> getAccount() async {
+    if (operatorAccountPath.contains('/admin/')) {
+      throw const _AdminRouteForbidden();
+    }
+    final token = await _idTokenProvider();
+    if (token == null || token.trim().isEmpty) {
+      throw const OperatorWebProxyException(
+        code: 'unauthenticated',
+        message: 'Sign in again to load your business account.',
+      );
+    }
+    final response = await _client.getJson(
+      operatorAccountPath,
+      idToken: token,
+    );
+    return AccountIdentity.fromJson(response.body);
+  }
 
   @override
   Future<AccountIdentity> patchAccount(AccountIdentityPatch patch) async {

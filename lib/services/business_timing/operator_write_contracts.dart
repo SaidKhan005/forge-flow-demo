@@ -127,7 +127,8 @@ class OperatorWriteRejected implements Exception {
   final Map<String, Object?> extras;
 }
 
-/// Gateway for PATCH /v1/operator/account.
+/// Gateway for PATCH /v1/operator/account and the 11W.7 ops-debt
+/// GET companion.
 abstract class OperatorAccountWriteGateway {
   Future<OperatorAccountRecord> patchAccount({
     required String operatorId,
@@ -136,9 +137,17 @@ abstract class OperatorAccountWriteGateway {
     required ValidatedOperatorAccountPatch patch,
     required String adminReason,
   });
+
+  /// 11W.7 ops-debt — returns the resolved account row for
+  /// [operatorId]. Returns null when the row is missing (router maps
+  /// to 404). Read-only; no audit, no idempotency.
+  Future<OperatorAccountRecord?> loadAccount({
+    required String operatorId,
+  });
 }
 
-/// Gateway for the four business-timing-profile routes.
+/// Gateway for the four business-timing-profile write routes plus
+/// the 11W.7 ops-debt GET list companion.
 abstract class OperatorBusinessTimingWriteGateway {
   Future<OperatorBusinessTimingProfileRecord> createProfile({
     required String operatorId,
@@ -151,6 +160,15 @@ abstract class OperatorBusinessTimingWriteGateway {
   Future<OperatorBusinessTimingProfileRecord?> loadProfile({
     required String operatorId,
     required String profileId,
+  });
+
+  /// 11W.7 ops-debt — lists every business-timing profile owned by
+  /// [operatorId] in resolver-precedence order (operator default, org
+  /// units, locations) with full service-period sets so the operator-
+  /// web Settings shell can render the editor without a second round
+  /// trip. Read-only.
+  Future<List<OperatorBusinessTimingProfileRecord>> listProfiles({
+    required String operatorId,
   });
 
   Future<OperatorBusinessTimingProfileRecord> updateProfile({

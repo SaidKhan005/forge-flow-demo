@@ -237,6 +237,9 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   // the B6 ledger surface so notifier state and refresh-token revoke
   // semantics stay aligned.
   static const String authSessionsPath = '/v1/auth/sessions';
+  // 11W.4 ops-debt — team-wide Active Sessions client path. Operator-
+  // scoped; gated proxy-side on `team.session.force_logout`.
+  static const String authTeamSessionsPath = '/v1/auth/team/sessions';
   static const String authSessionRevokePath = '/v1/auth/session/revoke';
   static const String authSessionRevokeAllPath = '/v1/auth/session/revoke-all';
 
@@ -601,6 +604,28 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<AuthTeamActiveSessionsListed> listTeamActiveSessions(
+    AuthTeamActiveSessionsListCommand command,
+  ) async {
+    final response = await _get(authTeamSessionsPath);
+    _expectStatus(response, 200);
+    final rawSessions = response.body['sessions'];
+    if (rawSessions is! List) {
+      throw _malformed(
+        response,
+        'team active sessions response was incomplete',
+      );
+    }
+    return AuthTeamActiveSessionsListed(
+      sessions: List<AuthTeamActiveSessionSummary>.unmodifiable(
+        rawSessions.map(
+          (raw) => _teamSessionFromJson(response, raw),
+        ),
+      ),
+    );
+  }
+
+  @override
   Future<AuthSessionRevoked> revokeSession(
     AuthSessionRevokeCommand command,
   ) async {
@@ -739,6 +764,30 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       deviceFingerprint: _readNonBlankString(json['device_fingerprint']),
       revokedAt: _readDateTime(json['revoked_at']),
       revokedReason: _readNonBlankString(json['revoked_reason']),
+    );
+  }
+
+  AuthTeamActiveSessionSummary _teamSessionFromJson(
+    ProxyAuthOperationsResponse response,
+    Object? raw,
+  ) {
+    if (raw is! Map) {
+      throw _malformed(response, 'team session payload was malformed');
+    }
+    final json = Map<String, Object?>.from(raw);
+    final session = _authSessionFromJson(response, raw);
+    final targetUserId = _readNonBlankString(json['user_id']);
+    if (targetUserId == null) {
+      throw _malformed(
+        response,
+        'team session payload missing user_id',
+      );
+    }
+    return AuthTeamActiveSessionSummary(
+      session: session,
+      targetUserId: targetUserId,
+      targetDisplayName: _readNonBlankString(json['display_name']),
+      targetEmail: _readNonBlankString(json['email']),
     );
   }
 

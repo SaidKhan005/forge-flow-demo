@@ -7915,6 +7915,14 @@ const String authRefreshTokensRevokeAllPath =
 // surface adds a list endpoint plus reuses those routes for revokes.
 const String authSessionsListPath = '/v1/auth/sessions';
 
+// 11W.4 ops-debt — team-wide Active Sessions read projection. Auth-
+// gated; lists every active `auth_sessions` row whose `user_id`
+// belongs to the caller's operator. Joined to `users` for identity
+// (display name / email) so the operator-web Sessions screen can
+// render which member each row belongs to. Gated on
+// `team.session.force_logout`.
+const String authTeamSessionsListPath = '/v1/auth/team/sessions';
+
 // Phase 11W.8 live-closeout — operator self-service vendor connections
 // read projection. Operator web must use `/v1/auth/*`, not admin-only
 // `/v1/admin/*`, for authenticated operator surfaces. V1 exposes the
@@ -10945,13 +10953,30 @@ Future<void> routeRequest(
                 'reset-mfa-factors' => 'reset-mfa',
                 _ => action.action,
               };
+              // 11A.14 ops-debt fix: the F&F admin support path
+              // (`/v1/admin/auth/users/:id/reset-mfa-factors`) gates on
+              // the new `admin.users.reset_mfa_factors` permission key
+              // (added by migration `202605061100_phase_11A_14_…`). The
+              // operator self-service team path
+              // (`/v1/auth/team/users/:id/reset-mfa`) keeps the existing
+              // `team.users.reset_mfa` posture for delayed authenticator
+              // removal. Both URL families canonicalize to the admin
+              // shape via `_canonicalAuthOperationPath`, so we use the
+              // original `path` here to choose the gate.
+              final isAdminCallerPath = path.startsWith(
+                adminAuthUsersPrefix,
+              );
               final permissionKey = switch (canonicalAction) {
                 'suspend' => 'team.users.deactivate',
                 'reactivate' => 'team.users.reactivate',
                 'soft-delete' => 'team.users.soft_delete',
                 'reset-password' => 'team.users.reset_password',
-                'reset-mfa' => PermissionKeys.teamUsersResetMfa,
-                'cancel-mfa-removal' => PermissionKeys.teamUsersResetMfa,
+                'reset-mfa' => isAdminCallerPath
+                    ? PermissionKeys.adminUsersResetMfaFactors
+                    : PermissionKeys.teamUsersResetMfa,
+                'cancel-mfa-removal' => isAdminCallerPath
+                    ? PermissionKeys.adminUsersResetMfaFactors
+                    : PermissionKeys.teamUsersResetMfa,
                 'force-logout' => 'team.session.force_logout',
                 _ => null,
               };
@@ -11486,6 +11511,101 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'auth_sessions_unavailable',
               'message': 'active sessions are unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // 11W.4 ops-debt — GET /v1/auth/team/sessions. Lists every
+        // active `auth_sessions` row whose `user_id` belongs to the
+        // caller's operator (joined to `users` for display name and
+        // email). Gated on `team.session.force_logout`. Per-tenant
+        // isolation is enforced by the join through
+        // `users.operator_id = scope.operatorId`.
+        if (request.method == 'GET' && path == authTeamSessionsListPath) {
+          if (authOperationsGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_operations_not_configured',
+              'message':
+                  'route requires an AuthOperationsGateway to be installed',
+            });
+            return;
+          }
+          if (permissionSnapshotResolver == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'permission_snapshot_not_configured',
+              'message':
+                  'route requires a ProxyPermissionSnapshotResolver to be '
+                  'installed',
+            });
+            return;
+          }
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+          ProxyPermissionSnapshot snapshot;
+          try {
+            snapshot = await permissionSnapshotResolver.load(scope);
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'permission_snapshot_unavailable',
+              'message': 'permissions are unavailable; please retry',
+            });
+            return;
+          }
+          final effect = snapshot.permissions[
+            PermissionKeys.teamSessionForceLogout
+          ];
+          if (effect != PermissionEffect.allow) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'forbidden',
+              'message':
+                  'team.session.force_logout permission is required to list '
+                  'team sessions',
+            });
+            return;
+          }
+          try {
+            final listed = await authOperationsGateway.listTeamActiveSessions(
+              AuthTeamActiveSessionsListCommand(
+                actorUserId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+              ),
+            );
+            _writeJson(response, 200, <String, Object?>{
+              'sessions': <Map<String, Object?>>[
+                for (final entry in listed.sessions)
+                  <String, Object?>{
+                    ..._authSessionSummaryToJson(entry.session),
+                    'user_id': entry.targetUserId,
+                    if (entry.targetDisplayName != null)
+                      'display_name': entry.targetDisplayName,
+                    if (entry.targetEmail != null)
+                      'email': entry.targetEmail,
+                  },
+              ],
+            });
+          } on AuthOperationRejected catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message': error.message,
+            });
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'team_sessions_unavailable',
+              'message':
+                  'team active sessions are unavailable; please retry',
             });
           }
           return;
@@ -13172,32 +13292,48 @@ Future<void> routeRequest(
             });
             return;
           }
-          final operatorIdemKey = request.headers
-              .value('Idempotency-Key')
-              ?.trim();
-          if (operatorIdemKey == null || operatorIdemKey.isEmpty) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'idempotency_key_missing',
-              'message': 'Idempotency-Key header is required',
-            });
-            return;
-          }
-          if (operatorIdemKey.length > 200) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'idempotency_key_too_long',
-              'message':
-                  'Idempotency-Key header must be 200 characters or fewer',
-            });
-            return;
-          }
-          final bodyResult = await readOperatorJsonBody(request);
-          if (bodyResult.errorStatus != null) {
-            _writeJson(
-              response,
-              bodyResult.errorStatus!,
-              bodyResult.errorBody!,
-            );
-            return;
+          // 11W.7 ops-debt - GET routes are read-only. Skip the
+          // Idempotency-Key check + body parse so the GET surface
+          // does not require a synthetic header from clients.
+          final isReadOnly = OperatorWriteRouter.isReadOnly(
+            path,
+            request.method,
+          );
+          String operatorIdemKey;
+          Map<String, Object?> requestBody;
+          if (isReadOnly) {
+            operatorIdemKey = '';
+            requestBody = const <String, Object?>{};
+          } else {
+            final headerKey = request.headers
+                .value('Idempotency-Key')
+                ?.trim();
+            if (headerKey == null || headerKey.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_missing',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+            if (headerKey.length > 200) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_too_long',
+                'message':
+                    'Idempotency-Key header must be 200 characters or fewer',
+              });
+              return;
+            }
+            final bodyResult = await readOperatorJsonBody(request);
+            if (bodyResult.errorStatus != null) {
+              _writeJson(
+                response,
+                bodyResult.errorStatus!,
+                bodyResult.errorBody!,
+              );
+              return;
+            }
+            operatorIdemKey = headerKey;
+            requestBody = bodyResult.body!;
           }
           try {
             final result = await operatorWriteRouter.handle(
@@ -13207,7 +13343,7 @@ Future<void> routeRequest(
               actorUserId: scope.userId,
               actorKind: scope.actorKind,
               idempotencyKey: operatorIdemKey,
-              body: bodyResult.body!,
+              body: requestBody,
             );
             _writeJson(response, result.statusCode, result.body);
           } catch (error, stackTrace) {

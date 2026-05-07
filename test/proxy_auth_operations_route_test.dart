@@ -689,7 +689,12 @@ void main() {
       },
     );
 
-    test('POST team user reset-mfa queues delayed removal', () async {
+    test('POST admin reset-mfa-factors gates on '
+        'admin.users.reset_mfa_factors and queues delayed removal',
+        () async {
+      // 11A.14 ops-debt fix - the F&F admin support path gates on the
+      // new `admin.users.reset_mfa_factors` permission key (not the
+      // operator-side `team.users.reset_mfa` posture).
       await _withRealHttp(() async {
         final authGateway = _RecordingAuthOperationsGateway();
         final mfaGateway = _RecordingMfaOperationsGateway();
@@ -714,7 +719,7 @@ void main() {
           );
           expect(
             guard.permissionKeys,
-            equals(<String>['team.users.reset_mfa']),
+            equals(<String>['admin.users.reset_mfa_factors']),
           );
           expect(
             mfaGateway.resetUserFactors.single.targetUserId,
@@ -765,7 +770,9 @@ void main() {
       });
     });
 
-    test('POST team user cancel-mfa-removal delegates cancellation', () async {
+    test('POST admin cancel-mfa-removal delegates cancellation gated on '
+        'admin.users.reset_mfa_factors', () async {
+      // 11A.14 ops-debt fix - admin path gates on the new admin key.
       await _withRealHttp(() async {
         final authGateway = _RecordingAuthOperationsGateway();
         final mfaGateway = _RecordingMfaOperationsGateway();
@@ -786,12 +793,46 @@ void main() {
           expect(response.json['cancelled'], isTrue);
           expect(
             guard.permissionKeys,
-            equals(<String>['team.users.reset_mfa']),
+            equals(<String>['admin.users.reset_mfa_factors']),
           );
           expect(mfaGateway.cancels.single.targetUserId, equals('target-user'));
           expect(
             mfaGateway.cancels.single.requestId,
             equals('removal-request-1'),
+          );
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST team-side reset-mfa keeps the operator-side gate '
+        'team.users.reset_mfa', () async {
+      // 11A.14 ops-debt fix - operator self-service paths
+      // (`/v1/auth/team/users/...`) keep `team.users.reset_mfa` for
+      // delayed authenticator removal. Only the admin support path
+      // is upgraded to the new `admin.users.reset_mfa_factors` key.
+      await _withRealHttp(() async {
+        final authGateway = _RecordingAuthOperationsGateway();
+        final mfaGateway = _RecordingMfaOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: authGateway,
+          mfaOperationsGateway: mfaGateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final response = await harness.postJson(
+            '/v1/auth/team/users/${Uri.encodeComponent('target-user')}/'
+            'reset-mfa',
+            const <String, Object?>{},
+            idempotencyKey: 'idem-team-reset-mfa-1',
+          );
+
+          expect(response.statusCode, equals(200));
+          expect(
+            guard.permissionKeys,
+            equals(<String>['team.users.reset_mfa']),
           );
         } finally {
           await harness.close();
@@ -1444,6 +1485,120 @@ void main() {
         });
       },
     );
+
+    // 11W.4 ops-debt - GET /v1/auth/team/sessions tests. The route
+    // gates on `team.session.force_logout` and joins on
+    // `users.operator_id` so cross-tenant rows never cross the seam.
+    test(
+      'GET team sessions returns the projected payload with target user '
+      'identity when the caller has team.session.force_logout',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          gateway.teamActiveSessions = <AuthTeamActiveSessionSummary>[
+            AuthTeamActiveSessionSummary(
+              session: AuthSessionSummary(
+                sessionId: 'aaaaaaaa-1111-4111-8111-111111111111',
+                deviceLabel: 'Forge & Flow on iPhone',
+                createdAt: DateTime.utc(2026, 5, 5, 14),
+                lastSeenAt: DateTime.utc(2026, 5, 5, 14, 30),
+                geoCountry: 'CA',
+              ),
+              targetUserId: 'u-jordan',
+              targetDisplayName: 'Jordan Lee',
+              targetEmail: 'jordan.lee@demo.test',
+            ),
+          ];
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            permissionSnapshotResolver: _FixedSnapshotResolver(
+              ProxyPermissionSnapshot(
+                userId: _userId,
+                operatorId: _operatorId,
+                locationId: _locationId,
+                rolesVersion: 7,
+                evaluatedAt: DateTime.utc(2026, 5, 5),
+                permissions: const <String, PermissionEffect>{
+                  'team.session.force_logout': PermissionEffect.allow,
+                },
+              ),
+            ),
+          );
+          try {
+            final response = await harness.get(authTeamSessionsListPath);
+            expect(response.statusCode, equals(200));
+            final sessions = response.json['sessions'] as List<Object?>;
+            expect(sessions, hasLength(1));
+            final entry = Map<String, Object?>.from(
+              sessions.single as Map<Object?, Object?>,
+            );
+            expect(entry['user_id'], equals('u-jordan'));
+            expect(entry['display_name'], equals('Jordan Lee'));
+            expect(entry['email'], equals('jordan.lee@demo.test'));
+            expect(
+              entry['session_id'],
+              equals('aaaaaaaa-1111-4111-8111-111111111111'),
+            );
+            expect(
+              gateway.teamActiveSessionsLists.single.operatorId,
+              equals(_operatorId),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test('GET team sessions returns 403 without team.session.force_logout',
+        () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          permissionSnapshotResolver: _FixedSnapshotResolver(
+            ProxyPermissionSnapshot(
+              userId: _userId,
+              operatorId: _operatorId,
+              locationId: _locationId,
+              rolesVersion: 7,
+              evaluatedAt: DateTime.utc(2026, 5, 5),
+              permissions: const <String, PermissionEffect>{
+                'team.session.force_logout': PermissionEffect.deny,
+              },
+            ),
+          ),
+        );
+        try {
+          final response = await harness.get(authTeamSessionsListPath);
+          expect(response.statusCode, equals(403));
+          expect(response.json['error'], equals('forbidden'));
+          expect(gateway.teamActiveSessionsLists, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('GET team sessions returns 503 without permissionSnapshotResolver',
+        () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+        );
+        try {
+          final response = await harness.get(authTeamSessionsListPath);
+          expect(response.statusCode, equals(503));
+          expect(
+            response.json['error'],
+            equals('permission_snapshot_not_configured'),
+          );
+        } finally {
+          await harness.close();
+        }
+      });
+    });
 
     test(
       'GET audit log delegates with verified scope and returns the projected '
@@ -2247,6 +2402,22 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
     activeSessionsLists.add(command);
     return AuthActiveSessionsListed(
       sessions: List<AuthSessionSummary>.unmodifiable(activeSessions),
+    );
+  }
+
+  final teamActiveSessionsLists = <AuthTeamActiveSessionsListCommand>[];
+  List<AuthTeamActiveSessionSummary> teamActiveSessions =
+      <AuthTeamActiveSessionSummary>[];
+
+  @override
+  Future<AuthTeamActiveSessionsListed> listTeamActiveSessions(
+    AuthTeamActiveSessionsListCommand command,
+  ) async {
+    teamActiveSessionsLists.add(command);
+    return AuthTeamActiveSessionsListed(
+      sessions: List<AuthTeamActiveSessionSummary>.unmodifiable(
+        teamActiveSessions,
+      ),
     );
   }
 

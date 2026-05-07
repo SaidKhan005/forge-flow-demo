@@ -723,6 +723,59 @@ void main() {
       },
     );
 
+    // 11W.4 ops-debt - listTeamActiveSessions GETs the new
+    // /v1/auth/team/sessions route and projects per-row user identity.
+    test('listTeamActiveSessions GETs /v1/auth/team/sessions and parses '
+        'target user identity', () async {
+      final fake = _FakeAuthOpsHttpClient(
+        getResponse: ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{
+            'sessions': <Object?>[
+              <String, Object?>{
+                'session_id': 'session-1',
+                'created_at': DateTime.utc(2026, 5, 5).toIso8601String(),
+                'last_seen_at': DateTime.utc(2026, 5, 5, 14)
+                    .toIso8601String(),
+                'device_label': 'Forge & Flow on iPhone',
+                'user_id': 'u-jordan',
+                'display_name': 'Jordan Lee',
+                'email': 'jordan.lee@demo.test',
+              },
+            ],
+          },
+        ),
+      );
+      final gateway = ProxyAuthOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+      );
+
+      final listed = await gateway.listTeamActiveSessions(
+        const AuthTeamActiveSessionsListCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+        ),
+      );
+
+      expect(listed.sessions, hasLength(1));
+      expect(listed.sessions.single.targetUserId, equals('u-jordan'));
+      expect(
+        listed.sessions.single.targetDisplayName,
+        equals('Jordan Lee'),
+      );
+      expect(
+        listed.sessions.single.session.sessionId,
+        equals('session-1'),
+      );
+      expect(
+        fake.gets.single.url.path,
+        equals('/v1/auth/team/sessions'),
+      );
+    });
+
     test('revokeSession POSTs the existing session/revoke route', () async {
       final fake = _FakeAuthOpsHttpClient(
         postResponse: const ProxyAuthOperationsResponse(
