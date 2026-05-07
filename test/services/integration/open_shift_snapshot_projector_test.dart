@@ -1,3 +1,5 @@
+import 'dart:io' as io;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/canonical_day_order.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
@@ -505,8 +507,60 @@ void main() {
       expect(dinner.businessDate, '2026-05-06');
       expect(dinner.dayLabel, 'Wed');
     });
+
+    // Code Health (Theme G#6) — the per-status seated transition column
+    // name is canonicalized through `_kSeatedAtCanonicalKey` in the
+    // projector source. The banned-grep below mirrors the per-sink
+    // pattern in `opentable_reservation_postgres_sink_test.dart` and
+    // catches a regression where a developer hard-codes the standalone
+    // Dart token at a fact-key lookup site.
+    test(
+      'projector source carries no standalone seated_at Dart literal '
+      'outside the central canonical-key declaration',
+      () async {
+        final source = await io.File(
+          'lib/services/integration/open_shift_snapshot_projector.dart',
+        ).readAsString();
+        final stripped = _stripDartComments(source);
+        // The canonical key declaration intentionally splits the
+        // literal into adjacent string fragments (`'seated' '_at'`)
+        // so the standalone token never appears at any source site,
+        // including the declaration. The grep below catches a
+        // regression where a developer reverts to the standalone token.
+        expect(stripped.contains(_seatedDartLiteral), isFalse,
+            reason:
+                'Use `_kSeatedAtCanonicalKey` (split-literal declaration) '
+                'instead of the standalone Dart token at any new use site '
+                'so the per-sink banned-grep convention extends to this '
+                'projector. See CODE_OPS_DEBT.md Theme G#6.');
+      },
+    );
   });
 }
+
+/// Strip `//` line comments and `/* */` block comments so the banned-
+/// items grep targets executable code only.
+String _stripDartComments(String source) {
+  final withoutBlock = source.replaceAll(
+    RegExp(r'/\*[\s\S]*?\*/', multiLine: true),
+    '',
+  );
+  final lines = withoutBlock.split('\n').map((line) {
+    final idx = line.indexOf('//');
+    return idx >= 0 ? line.substring(0, idx) : line;
+  });
+  return lines.join('\n');
+}
+
+// The literal `'seated_at'` Dart token built up at runtime so this test
+// file's own assertion text does not appear as the banned token when
+// the grep is applied to the projector source. Using `String.fromCharCodes`
+// (instead of `+` concatenation of literal fragments) keeps the
+// analyzer from rewriting it back into a single token at parse time.
+final String _seatedDartLiteral =
+    String.fromCharCodes(<int>[0x27]) +
+    String.fromCharCodes('seated_at'.codeUnits) +
+    String.fromCharCodes(<int>[0x27]);
 
 OpenShiftSnapshotProjector _projector(_InMemorySnapshotWriter writer) {
   return OpenShiftSnapshotProjector(
