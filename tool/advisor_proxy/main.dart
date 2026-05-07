@@ -30,6 +30,7 @@ import 'dart:io';
 
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_outbox_listener.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_connection_list_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_dead_letter_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
@@ -687,6 +688,28 @@ Future<void> main(List<String> args) async {
     integrationCategoryResolver: productionBindings.integrationCategoryResolver,
     operatorUiBaseUri: config.publicBaseUri,
   );
+
+  // Phase 8 — operator-self-service vendor connections list. The
+  // projection runs inside the operator's tenant transaction (RLS +
+  // SET LOCAL guarded) and emits the wire-shape JSON the operator-web
+  // Connections screen expects. The route layer in `routeRequest`
+  // gates on the operator's integration permissions BEFORE invoking
+  // this closure, so the projection itself does not re-check.
+  final connectorConnectionListRepository = ConnectorConnectionListRepository(
+    productionBindings.tenantTransactionWrapper,
+  );
+  Future<Map<String, Object?>> operatorLocationIntegrationsProjection({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+  }) async {
+    final bundle = await connectorConnectionListRepository.listForLocation(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+    );
+    return buildOperatorLocationIntegrationsBundleJson(bundle);
+  }
   log(
     LogSeverity.info,
     'startup.operator_oauth_routes.installed',
@@ -899,6 +922,8 @@ Future<void> main(List<String> args) async {
             accountInfoGateway: productionBindings.accountInfoGateway,
             permissionSnapshotResolver:
                 productionBindings.permissionSnapshotResolver,
+            operatorLocationIntegrationsProjection:
+                operatorLocationIntegrationsProjection,
             adminPermissionGuard: productionBindings.adminPermissionGuard,
             authOperationsGateway: productionBindings.authOperationsGateway,
             servicePrincipalJwtIssuanceGateway:

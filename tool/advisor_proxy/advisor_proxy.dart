@@ -53,6 +53,8 @@ import 'package:forge_and_flow/domain/services/graceful_refusal_response.dart';
 import 'package:forge_and_flow/domain/services/llm_provider.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_connection_list_repository.dart';
+import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart';
@@ -7738,6 +7740,92 @@ final RegExp authLocationIntegrationsPattern = RegExp(
   r'^/v1/auth/locations/([^/]+)/integrations$',
 );
 
+/// Phase 8 — operator-self-service projection over
+/// `public.connector_connection`. The proxy bootstrap binds a real
+/// projection that runs `ConnectorConnectionListRepository.listForLocation`
+/// inside the operator's tenant transaction; tests inject a fixture
+/// closure. When unbound the route falls back to the V1 stub bundle
+/// (no connections, demo flags all true) so existing tests do not
+/// regress.
+///
+/// The projection returns the wire JSON ready to write to the client
+/// — the route layer only stamps `operator_id` / `location_id` from
+/// the verified scope and enforces the location_scope_mismatch /
+/// permission gates before invoking it.
+typedef OperatorLocationIntegrationsProjection =
+    Future<Map<String, Object?>> Function({
+      required String operatorId,
+      required String locationId,
+      required String actorUserId,
+    });
+
+/// Phase 8 — wire-shape encoder for the
+/// `GET /v1/auth/locations/{location_id}/integrations` response.
+///
+/// Reusable so the production projection (Postgres-backed) and any
+/// test fixture (in-memory) emit identical JSON shapes. Returns:
+///   - `connections`: list of vendor rows
+///   - `demo_flags`: per-category flag (`true` when no connected row
+///     exists in that category, `false` once an operator has at least
+///     one connected vendor — drives the demo bundle picker on the
+///     operator-web Connections screen).
+///
+/// The route layer always stamps `operator_id` / `location_id` after
+/// this builder runs so the projection cannot accidentally leak a
+/// different operator's identifiers.
+Map<String, Object?> buildOperatorLocationIntegrationsBundleJson(
+  ConnectorConnectionListBundle bundle,
+) {
+  return <String, Object?>{
+    'operator_id': bundle.operatorId,
+    'location_id': bundle.locationId,
+    'connections': bundle.rows
+        .map(_connectorConnectionRowToWireJson)
+        .toList(growable: false),
+    'demo_flags': <String, Object?>{
+      'pos': bundle.noConnectedRowForCategory(IntegrationCategory.pos),
+      'labor': bundle.noConnectedRowForCategory(IntegrationCategory.labor),
+      'reservation':
+          bundle.noConnectedRowForCategory(IntegrationCategory.reservation),
+    },
+  };
+}
+
+Map<String, Object?> _connectorConnectionRowToWireJson(
+  ConnectorConnectionListRow row,
+) {
+  return <String, Object?>{
+    'connection_id': row.connectionId,
+    'vendor_id': row.vendorId,
+    'category': _integrationCategoryWireKey(row.category),
+    'status': row.status,
+    if (row.module != null) 'module': row.module,
+    'metadata': row.metadata,
+    if (row.lastSyncAt != null)
+      'last_sync_at': row.lastSyncAt!.toIso8601String(),
+    if (row.lastErrorAt != null)
+      'last_error_at': row.lastErrorAt!.toIso8601String(),
+    if (row.lastErrorMessage != null)
+      'last_error_message': row.lastErrorMessage,
+    if (row.disconnectReason != null)
+      'disconnect_reason': row.disconnectReason,
+    'webhook_url_provisioned': row.webhookUrlProvisioned,
+    if (row.createdAt != null) 'created_at': row.createdAt!.toIso8601String(),
+    if (row.updatedAt != null) 'updated_at': row.updatedAt!.toIso8601String(),
+  };
+}
+
+String _integrationCategoryWireKey(IntegrationCategory category) {
+  switch (category) {
+    case IntegrationCategory.pos:
+      return 'pos';
+    case IntegrationCategory.labor:
+      return 'labor';
+    case IntegrationCategory.reservation:
+      return 'reservation';
+  }
+}
+
 // Phase 9.UX.6 — self-service Audit Log read projection. Auth-gated;
 // the proxy resolves user_id from the verified Firebase bearer token
 // and ignores any client-supplied user_id. The WHERE clause pins
@@ -7834,6 +7922,13 @@ Future<void> routeRequest(
   FirebaseAdminAuthClient? firebaseAdminAuthClient,
   AccountInfoGateway? accountInfoGateway,
   ProxyPermissionSnapshotResolver? permissionSnapshotResolver,
+  // Phase 8 — operator-self-service vendor connections list. When
+  // null the route returns the legacy V1 stub bundle (empty list,
+  // demo flags true) so existing scaffolds + tests do not regress;
+  // production binds the [ConnectorConnectionListRepository]-backed
+  // projection in the proxy bootstrap.
+  OperatorLocationIntegrationsProjection?
+      operatorLocationIntegrationsProjection,
   AuthOperationsGateway? authOperationsGateway,
   ProxyAdminPermissionGuard? adminPermissionGuard,
   ServicePrincipalJwtIssuanceGateway? servicePrincipalJwtIssuanceGateway,
@@ -10923,6 +11018,35 @@ Future<void> routeRequest(
             return;
           }
 
+          if (operatorLocationIntegrationsProjection != null) {
+            try {
+              final body = await operatorLocationIntegrationsProjection(
+                operatorId: scope.operatorId,
+                locationId: locationId,
+                actorUserId: scope.userId,
+              );
+              // Always stamp the verified scope on the response so the
+              // projection cannot accidentally leak another operator's
+              // identifiers to the wire (defense in depth alongside RLS
+              // and the `withTenant` set_local).
+              final outgoing = <String, Object?>{
+                ...body,
+                'operator_id': scope.operatorId,
+                'location_id': locationId,
+              };
+              _writeJson(response, 200, outgoing);
+            } catch (_) {
+              _writeJson(response, 503, <String, Object?>{
+                'error': 'integrations_projection_unavailable',
+                'message':
+                    'vendor connections are unavailable; please retry',
+              });
+            }
+            return;
+          }
+          // Legacy V1 stub — kept so existing test scaffolds that do
+          // not bind a projection continue to receive a 200 with the
+          // demo-mode-friendly empty bundle.
           _writeJson(response, 200, <String, Object?>{
             'operator_id': scope.operatorId,
             'location_id': locationId,
