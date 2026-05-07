@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -52,15 +53,19 @@ class AppTextStyles {
   static bool get _isWidgetTestBinding =>
       WidgetsBinding.instance.runtimeType.toString().contains('Test');
 
-  static TextStyle _playfair(TextStyle style) => _isWidgetTestBinding
-      ? style
-      : GoogleFonts.playfairDisplay(textStyle: style);
+  static bool get _usesRuntimeGoogleFonts => !_isWidgetTestBinding && !kIsWeb;
 
-  static TextStyle _mono(TextStyle style) =>
-      _isWidgetTestBinding ? style : GoogleFonts.ibmPlexMono(textStyle: style);
+  static TextStyle _playfair(TextStyle style) => _usesRuntimeGoogleFonts
+      ? GoogleFonts.playfairDisplay(textStyle: style)
+      : style;
 
-  static TextStyle _sans(TextStyle style) =>
-      _isWidgetTestBinding ? style : GoogleFonts.ibmPlexSans(textStyle: style);
+  static TextStyle _mono(TextStyle style) => _usesRuntimeGoogleFonts
+      ? GoogleFonts.ibmPlexMono(textStyle: style)
+      : style;
+
+  static TextStyle _sans(TextStyle style) => _usesRuntimeGoogleFonts
+      ? GoogleFonts.ibmPlexSans(textStyle: style)
+      : style;
   // ── Display — Playfair Display ────────────────────────────────────────────
   static TextStyle display36({Color? color}) => _playfair(
     TextStyle(
@@ -309,16 +314,16 @@ class AppTheme {
     ),
     dividerColor: AppColors.borderSubtle,
     cardColor: AppColors.backgroundSurface,
-    textTheme: AppTextStyles._isWidgetTestBinding
-        ? const TextTheme(
-            bodyMedium: TextStyle(color: AppColors.textPrimary),
-            bodySmall: TextStyle(color: AppColors.textSecondary),
-          )
-        : GoogleFonts.ibmPlexSansTextTheme(
+    textTheme: AppTextStyles._usesRuntimeGoogleFonts
+        ? GoogleFonts.ibmPlexSansTextTheme(
             const TextTheme(
               bodyMedium: TextStyle(color: AppColors.textPrimary),
               bodySmall: TextStyle(color: AppColors.textSecondary),
             ),
+          )
+        : const TextTheme(
+            bodyMedium: TextStyle(color: AppColors.textPrimary),
+            bodySmall: TextStyle(color: AppColors.textSecondary),
           ),
     useMaterial3: true,
   );
