@@ -113,6 +113,13 @@ import 'vendor_capability_index.dart';
 
 typedef PostgresPoolFactory = PostgresPool Function(String connectionString);
 
+// Honor POSTGRES_POOL_MAX_CONNECTIONS env override; falls back to default 4.
+PostgresPool _defaultPostgresPoolFactory(String connectionString) =>
+    PackagePostgresPool.fromUrl(
+      connectionString,
+      maxConnectionCount: resolvePostgresMaxConnectionsPerPool(),
+    );
+
 /// HARD-A — early-exit decision for the proxy entrypoint.
 ///
 /// When non-null, the entrypoint should write [message] to stderr and
@@ -487,7 +494,7 @@ buildProxyLlmProviders(ProxyConfig config) {
 /// but unauthenticated probes like `/health` keep working).
 ProxyProductionBindings buildProxyProductionBindings(
   ProxyConfig config, {
-  PostgresPoolFactory postgresPoolFactory = PackagePostgresPool.fromUrl,
+  PostgresPoolFactory postgresPoolFactory = _defaultPostgresPoolFactory,
   bool requireFirebase = true,
   List<String> expectedMigrationFilenames = const <String>[],
 }) {
@@ -7095,7 +7102,7 @@ class RepositoryIntegrationAdminActorResolver
 /// connection.
 AuthSessionLedgerWriter buildAuthSessionLedgerWriter(
   ProxyConfig config, {
-  PostgresPoolFactory postgresPoolFactory = PackagePostgresPool.fromUrl,
+  PostgresPoolFactory postgresPoolFactory = _defaultPostgresPoolFactory,
 }) {
   final pool = postgresPoolFactory(
     config.secretFor(ProxySecretNames.postgresUrl),
