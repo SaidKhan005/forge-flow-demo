@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_data_accuracy_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_proxy_client.dart';
 
@@ -34,6 +35,26 @@ void main() {
           'updated_at': '2026-05-06T12:01:00Z',
           'updated_by': 'user-1',
         },
+      };
+    }
+
+    Map<String, Object?> servicePeriodRow({
+      String servicePeriodKey = 'breakfast',
+      String coversSource = 'reservation_plus_walkin',
+      String wageSource = 'target_substitution',
+      String effectiveAtBusinessDate = '2026-05-07',
+    }) {
+      return <String, Object?>{
+        'id': 'period-setting-1',
+        'operator_id': 'op-1',
+        'location_id': 'loc-1',
+        'service_period_key': servicePeriodKey,
+        'covers_source': coversSource,
+        'wage_source': wageSource,
+        'effective_at_business_date': effectiveAtBusinessDate,
+        'created_at': '2026-05-07T12:00:00Z',
+        'updated_at': '2026-05-07T12:01:00Z',
+        'updated_by': 'user-1',
       };
     }
 
@@ -86,6 +107,42 @@ void main() {
       expect(request.headers['authorization'], 'Bearer demo-id-token');
     });
 
+    test('loads service-period settings from operator-scoped path', () async {
+      final gateway = buildGateway(
+        responses: <Map<String, Object?>>[
+          <String, Object?>{
+            'data_accuracy_service_period_settings': <Map<String, Object?>>[
+              servicePeriodRow(),
+            ],
+          },
+        ],
+      );
+
+      final settings = await gateway.loadServicePeriodSettings(
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+      );
+
+      expect(settings, hasLength(1));
+      final setting = settings.single;
+      expect(setting.servicePeriodKey, 'breakfast');
+      expect(
+        setting.coversSource,
+        ServicePeriodCoversSource.reservationPlusWalkin,
+      );
+      expect(setting.wageSource, ServicePeriodWageSource.targetSubstitution);
+      expect(setting.effectiveAtBusinessDate, '2026-05-07');
+      final request = capturedRequests.single;
+      expect(request.method, 'GET');
+      expect(
+        request.url.path,
+        '/v1/operators/op-1/locations/loc-1/'
+        'data_accuracy_service_period_settings',
+      );
+      expect(request.url.path.contains('/admin/'), isFalse);
+      expect(request.headers['authorization'], 'Bearer demo-id-token');
+    });
+
     test('saves full settings payload through PATCH', () async {
       final gateway = buildGateway(
         responses: <Map<String, Object?>>[settingsPayload()],
@@ -121,10 +178,44 @@ void main() {
       final json = jsonDecode(request.body) as Map<String, Object?>;
       expect(json['covers_source_lunch'], 'manual');
       expect(json['wage_source'], 'manual_mix');
-      expect(
-        json['walk_in_handling_mode'],
-        'walk_ins_added_to_reservations',
+      expect(json['walk_in_handling_mode'], 'walk_ins_added_to_reservations');
+      expect(request.headers['idempotency-key'], isNotNull);
+    });
+
+    test('saves service-period settings through PATCH', () async {
+      final gateway = buildGateway(
+        responses: <Map<String, Object?>>[
+          <String, Object?>{'data': servicePeriodRow()},
+        ],
       );
+
+      final result = await gateway.saveServicePeriodSetting(
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+        servicePeriodKey: 'breakfast',
+        coversSource: ServicePeriodCoversSource.reservationPlusWalkin,
+        wageSource: ServicePeriodWageSource.targetSubstitution,
+        effectiveAtBusinessDateIso: '2026-05-07',
+      );
+
+      expect(result.servicePeriodKey, 'breakfast');
+      expect(
+        result.coversSource,
+        ServicePeriodCoversSource.reservationPlusWalkin,
+      );
+      expect(result.wageSource, ServicePeriodWageSource.targetSubstitution);
+      final request = capturedRequests.single;
+      expect(request.method, 'PATCH');
+      expect(
+        request.url.path,
+        '/v1/operators/op-1/locations/loc-1/'
+        'data_accuracy_service_period_settings',
+      );
+      final json = jsonDecode(request.body) as Map<String, Object?>;
+      expect(json['service_period_key'], 'breakfast');
+      expect(json['covers_source'], 'reservation_plus_walkin');
+      expect(json['wage_source'], 'target_substitution');
+      expect(json['effective_at_business_date'], '2026-05-07');
       expect(request.headers['idempotency-key'], isNotNull);
     });
 

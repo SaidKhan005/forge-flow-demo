@@ -2187,6 +2187,61 @@ class RepositoryMobileOperationalSyncProxyGateway
   }
 
   @override
+  Future<Map<String, Object?>> upsertDataAccuracyServicePeriodSettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) {
+    final servicePeriodKey = _bodyServicePeriodKey(body);
+    final effectiveAt = _bodyBusinessDate(body, 'effective_at_business_date');
+    final coversSource = _bodyServicePeriodCoversSource(body);
+    final wageSource = _bodyServicePeriodWageSource(body);
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final rows = await exec.query(
+        'insert into public.data_accuracy_service_period_settings ('
+        'operator_id, location_id, service_period_key, covers_source, '
+        'wage_source, effective_at_business_date, updated_by) '
+        'values (@operator_id::uuid, @location_id::uuid, '
+        '@service_period_key, @covers_source, @wage_source, '
+        '@effective_at::date, @updated_by) '
+        'on conflict (operator_id, location_id, service_period_key, '
+        'effective_at_business_date) do update set '
+        'covers_source = excluded.covers_source, '
+        'wage_source = excluded.wage_source, '
+        'updated_at = now(), '
+        'updated_by = excluded.updated_by '
+        'returning id::text as id, '
+        'operator_id::text as operator_id, '
+        'location_id::text as location_id, '
+        'service_period_key, covers_source, wage_source, '
+        'effective_at_business_date::text as effective_at_business_date, '
+        'created_at, updated_at, updated_by',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'service_period_key': servicePeriodKey,
+          'covers_source': coversSource,
+          'wage_source': wageSource,
+          'effective_at': effectiveAt,
+          'updated_by': scope.userId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw const MobileOperationalSyncProxyGatewayException(
+          statusCode: 503,
+          code: 'data_accuracy_service_period_settings_write_failed',
+          message:
+              'data accuracy service-period settings write returned no row',
+        );
+      }
+      return <String, Object?>{
+        'data': _dataAccuracyServicePeriodJson(rows.single),
+      };
+    });
+  }
+
+  @override
   Future<Map<String, Object?>> fetchDataAccuracyServicePeriodSettings({
     required OperatorContext scope,
     required String operatorId,
@@ -2662,6 +2717,67 @@ class RepositoryMobileOperationalSyncProxyGateway
       statusCode: 400,
       code: 'invalid_$field',
       message: '$field must be a non-empty string',
+    );
+  }
+
+  static String _bodyServicePeriodKey(Map<String, Object?> body) {
+    final key = _bodyString(body, 'service_period_key');
+    final pattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
+    if (key != null && pattern.hasMatch(key)) return key;
+    throw const MobileOperationalSyncProxyGatewayException(
+      statusCode: 400,
+      code: 'invalid_service_period_key',
+      message:
+          'service_period_key must start with a lowercase letter and contain '
+          'only lowercase letters, numbers, or underscores',
+    );
+  }
+
+  static String _bodyBusinessDate(Map<String, Object?> body, String field) {
+    final value = _bodyString(body, field);
+    if (value != null && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) {
+      return value;
+    }
+    throw MobileOperationalSyncProxyGatewayException(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be a YYYY-MM-DD business date',
+    );
+  }
+
+  static String _bodyServicePeriodCoversSource(Map<String, Object?> body) {
+    final value = _bodyString(body, 'covers_source') ?? 'vendor';
+    const allowed = <String>{
+      'vendor',
+      'forecast',
+      'manual',
+      'reservation_plus_walkin',
+    };
+    if (allowed.contains(value)) return value;
+    throw const MobileOperationalSyncProxyGatewayException(
+      statusCode: 400,
+      code: 'invalid_covers_source',
+      message:
+          'covers_source must be vendor, forecast, manual, or '
+          'reservation_plus_walkin',
+    );
+  }
+
+  static String _bodyServicePeriodWageSource(Map<String, Object?> body) {
+    final value = _bodyString(body, 'wage_source') ?? 'vendor_per_employee';
+    const allowed = <String>{
+      'vendor_per_employee',
+      'vendor_per_position',
+      'target_substitution',
+      'manual_mix',
+    };
+    if (allowed.contains(value)) return value;
+    throw const MobileOperationalSyncProxyGatewayException(
+      statusCode: 400,
+      code: 'invalid_wage_source',
+      message:
+          'wage_source must be vendor_per_employee, vendor_per_position, '
+          'target_substitution, or manual_mix',
     );
   }
 

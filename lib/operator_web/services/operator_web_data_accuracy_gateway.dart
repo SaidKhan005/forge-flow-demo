@@ -5,6 +5,7 @@
 // web-safe: it goes through OperatorWebProxyClient and never imports dart:io.
 
 import '../../domain/models/data_accuracy_settings.dart';
+import '../../domain/models/data_accuracy_service_period_setting.dart';
 import 'operator_web_proxy_client.dart';
 
 abstract class OperatorWebDataAccuracyGateway {
@@ -14,6 +15,20 @@ abstract class OperatorWebDataAccuracyGateway {
   });
 
   Future<DataAccuracySettings> saveSettings(DataAccuracySettings settings);
+
+  Future<List<DataAccuracyServicePeriodSetting>> loadServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  });
+
+  Future<DataAccuracyServicePeriodSetting> saveServicePeriodSetting({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required ServicePeriodCoversSource coversSource,
+    required ServicePeriodWageSource wageSource,
+    required String effectiveAtBusinessDateIso,
+  });
 }
 
 class OperatorWebHttpDataAccuracyGateway
@@ -33,6 +48,14 @@ class OperatorWebHttpDataAccuracyGateway
   }) =>
       '/v1/operators/${Uri.encodeComponent(operatorId)}/locations/'
       '${Uri.encodeComponent(locationId)}/data_accuracy_settings';
+
+  static String dataAccuracyServicePeriodSettingsPath({
+    required String operatorId,
+    required String locationId,
+  }) =>
+      '/v1/operators/${Uri.encodeComponent(operatorId)}/locations/'
+      '${Uri.encodeComponent(locationId)}/'
+      'data_accuracy_service_period_settings';
 
   @override
   Future<DataAccuracySettings?> loadSettings({
@@ -56,7 +79,9 @@ class OperatorWebHttpDataAccuracyGateway
   }
 
   @override
-  Future<DataAccuracySettings> saveSettings(DataAccuracySettings settings) async {
+  Future<DataAccuracySettings> saveSettings(
+    DataAccuracySettings settings,
+  ) async {
     final token = await _requireToken();
     final response = await _client.patchJson(
       dataAccuracySettingsPath(
@@ -74,6 +99,82 @@ class OperatorWebHttpDataAccuracyGateway
       );
     }
     return _settingsFromJson(Map<String, Object?>.from(raw));
+  }
+
+  @override
+  Future<List<DataAccuracyServicePeriodSetting>> loadServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final token = await _requireToken();
+    final response = await _client.getJson(
+      dataAccuracyServicePeriodSettingsPath(
+        operatorId: operatorId,
+        locationId: locationId,
+      ),
+      idToken: token,
+    );
+    final raw =
+        response.body['data_accuracy_service_period_settings'] ??
+        response.body['service_period_settings'];
+    if (raw is! List<Object?>) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_data_accuracy_service_period_settings',
+        message:
+            'The proxy returned malformed data accuracy service-period '
+            'settings.',
+      );
+    }
+    final settings = <DataAccuracyServicePeriodSetting>[];
+    for (final row in raw) {
+      if (row is! Map<Object?, Object?>) {
+        throw const OperatorWebProxyException(
+          code: 'malformed_data_accuracy_service_period_settings',
+          message:
+              'The proxy returned malformed data accuracy service-period '
+              'settings.',
+        );
+      }
+      settings.add(
+        _servicePeriodSettingFromJson(Map<String, Object?>.from(row)),
+      );
+    }
+    return settings;
+  }
+
+  @override
+  Future<DataAccuracyServicePeriodSetting> saveServicePeriodSetting({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required ServicePeriodCoversSource coversSource,
+    required ServicePeriodWageSource wageSource,
+    required String effectiveAtBusinessDateIso,
+  }) async {
+    final token = await _requireToken();
+    final response = await _client.patchJson(
+      dataAccuracyServicePeriodSettingsPath(
+        operatorId: operatorId,
+        locationId: locationId,
+      ),
+      idToken: token,
+      body: <String, Object?>{
+        'service_period_key': servicePeriodKey,
+        'covers_source': coversSource.wire,
+        'wage_source': wageSource.wire,
+        'effective_at_business_date': effectiveAtBusinessDateIso,
+      },
+    );
+    final raw = response.body['data'];
+    if (raw is! Map<Object?, Object?>) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_data_accuracy_service_period_settings',
+        message:
+            'The proxy returned malformed data accuracy service-period '
+            'settings.',
+      );
+    }
+    return _servicePeriodSettingFromJson(Map<String, Object?>.from(raw));
   }
 
   Future<String> _requireToken() async {
@@ -132,4 +233,14 @@ DateTime _dateTime(Object? value) {
     return DateTime.parse(value).toUtc();
   }
   return DateTime.utc(1970);
+}
+
+DataAccuracyServicePeriodSetting _servicePeriodSettingFromJson(
+  Map<String, Object?> json,
+) {
+  return DataAccuracyServicePeriodSetting.fromRow(<String, Object?>{
+    ...json,
+    'created_at': _dateTime(json['created_at']),
+    'updated_at': _dateTime(json['updated_at']),
+  });
 }
