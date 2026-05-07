@@ -76,48 +76,44 @@ void main() {
       );
     });
 
-    test(
-      'requireFirebase=false tolerates missing FIREBASE_PROJECT_ID in '
-      'dev/staging so the proxy still binds',
-      () {
-        final config = ProxyConfig.fromEnvironment(const <String, String>{
-          ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
-          ProxySecretNames.voyageApiKey: 'placeholder-voyage',
-          ProxySecretNames.postgresUrl: 'postgres://app-role.example/forgeflow',
-          ProxySecretNames.postgresAdminUrl:
-              'postgres://admin-role.example/forgeflow',
-          ProxySecretNames.firebaseWebApiKey:
-              'placeholder-firebase-web-api-key',
-          ProxySecretNames.servicePrincipalJwtSecret:
-              'placeholder-service-principal-jwt-secret',
-          // Note: FIREBASE_PROJECT_ID intentionally omitted.
-        });
-        expect(config.firebaseProjectId, isNull);
+    test('requireFirebase=false tolerates missing FIREBASE_PROJECT_ID in '
+        'dev/staging so the proxy still binds', () {
+      final config = ProxyConfig.fromEnvironment(const <String, String>{
+        ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
+        ProxySecretNames.voyageApiKey: 'placeholder-voyage',
+        ProxySecretNames.postgresUrl: 'postgres://app-role.example/forgeflow',
+        ProxySecretNames.postgresAdminUrl:
+            'postgres://admin-role.example/forgeflow',
+        ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
+        ProxySecretNames.servicePrincipalJwtSecret:
+            'placeholder-service-principal-jwt-secret',
+        // Note: FIREBASE_PROJECT_ID intentionally omitted.
+      });
+      expect(config.firebaseProjectId, isNull);
 
-        // Default `requireFirebase: true` still throws — preserves the
-        // existing prod posture.
-        expect(
-          () => buildProxyProductionBindings(
-            config,
-            postgresPoolFactory: (_) => _NoOpPostgresPool(),
-          ),
-          throwsA(isA<ProxyConfigError>()),
-        );
-
-        // Dev/staging override: bindings construct without raising and
-        // the Firebase admin client falls back to the scaffold-failing
-        // implementation.
-        final bindings = buildProxyProductionBindings(
+      // Default `requireFirebase: true` still throws — preserves the
+      // existing prod posture.
+      expect(
+        () => buildProxyProductionBindings(
           config,
           postgresPoolFactory: (_) => _NoOpPostgresPool(),
-          requireFirebase: false,
-        );
-        expect(
-          bindings.firebaseAdminAuthClient,
-          isA<ScaffoldFailingFirebaseAdminAuthClient>(),
-        );
-      },
-    );
+        ),
+        throwsA(isA<ProxyConfigError>()),
+      );
+
+      // Dev/staging override: bindings construct without raising and
+      // the Firebase admin client falls back to the scaffold-failing
+      // implementation.
+      final bindings = buildProxyProductionBindings(
+        config,
+        postgresPoolFactory: (_) => _NoOpPostgresPool(),
+        requireFirebase: false,
+      );
+      expect(
+        bindings.firebaseAdminAuthClient,
+        isA<ScaffoldFailingFirebaseAdminAuthClient>(),
+      );
+    });
   });
 
   group('strictProxyHealthDependencyProbe — behavioral checks', () {
@@ -192,8 +188,7 @@ void main() {
         expect(
           calls.any((sql) => sql.contains("pg_extension where extname")),
           isFalse,
-          reason:
-              'strict probe must not fall back to extension-presence-only',
+          reason: 'strict probe must not fall back to extension-presence-only',
         );
         // pgvector call must use the distance operator, not just the
         // vector literal cast.
@@ -250,8 +245,7 @@ void main() {
       Future<List<Map<String, Object?>>> runnerFn(
         String sql, {
         Map<String, Object?> parameters = const <String, Object?>{},
-      }) async =>
-          const <Map<String, Object?>>[];
+      }) async => const <Map<String, Object?>>[];
 
       final store = RegistryProxyHealthCheckStore(
         runnerFn: runnerFn,
@@ -308,8 +302,7 @@ void main() {
       Future<List<Map<String, Object?>>> runnerFn(
         String sql, {
         Map<String, Object?> parameters = const <String, Object?>{},
-      }) async =>
-          const <Map<String, Object?>>[];
+      }) async => const <Map<String, Object?>>[];
 
       final store = RegistryProxyHealthCheckStore(
         runnerFn: runnerFn,
@@ -334,32 +327,33 @@ void main() {
       );
     });
 
-    test('reserved keys never appear in metric values when producer absent',
-        () async {
-      Future<List<Map<String, Object?>>> runnerFn(
-        String sql, {
-        Map<String, Object?> parameters = const <String, Object?>{},
-      }) async =>
-          const <Map<String, Object?>>[];
+    test(
+      'reserved keys never appear in metric values when producer absent',
+      () async {
+        Future<List<Map<String, Object?>>> runnerFn(
+          String sql, {
+          Map<String, Object?> parameters = const <String, Object?>{},
+        }) async => const <Map<String, Object?>>[];
 
-      final store = RegistryProxyHealthCheckStore(
-        runnerFn: runnerFn,
-        dependencyProbe: (fn, now) async => const ProxyHealthDependencyProbe(
-          postgresOk: true,
-          ageOk: true,
-          pgvectorOk: true,
-        ),
-        producers: const <String, ProxyHealthRegistryProducer>{},
-        now: () => DateTime.utc(2026, 5, 2, 12),
-      );
+        final store = RegistryProxyHealthCheckStore(
+          runnerFn: runnerFn,
+          dependencyProbe: (fn, now) async => const ProxyHealthDependencyProbe(
+            postgresOk: true,
+            ageOk: true,
+            pgvectorOk: true,
+          ),
+          producers: const <String, ProxyHealthRegistryProducer>{},
+          now: () => DateTime.utc(2026, 5, 2, 12),
+        );
 
-      final result = await store.check();
-      final json = result.toJson(checkedAt: DateTime.utc(2026, 5, 2, 12));
-      final raw = jsonEncode(json);
-      // Tenant identifiers must never appear anywhere in /health.
-      expect(raw.contains('operator_id'), isFalse);
-      expect(raw.contains('location_id'), isFalse);
-    });
+        final result = await store.check();
+        final json = result.toJson(checkedAt: DateTime.utc(2026, 5, 2, 12));
+        final raw = jsonEncode(json);
+        // Tenant identifiers must never appear anywhere in /health.
+        expect(raw.contains('operator_id'), isFalse);
+        expect(raw.contains('location_id'), isFalse);
+      },
+    );
   });
 
   group('main.dart entrypoint contract surface', () {
@@ -369,8 +363,7 @@ void main() {
     // diagnostics line emits `gemini_slot_enabled`. Asserting on the
     // file source keeps the wiring honest without binding a real port.
     test('does not reference ScaffoldFailingProxyHealthCheckStore', () {
-      final source =
-          File('tool/advisor_proxy/main.dart').readAsStringSync();
+      final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
       expect(
         source.contains('ScaffoldFailingProxyHealthCheckStore'),
         isFalse,
@@ -379,8 +372,7 @@ void main() {
     });
 
     test('does not reference ScaffoldFailingUsageCounterStore', () {
-      final source =
-          File('tool/advisor_proxy/main.dart').readAsStringSync();
+      final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
       expect(
         source.contains('ScaffoldFailingUsageCounterStore'),
         isFalse,
@@ -389,24 +381,35 @@ void main() {
     });
 
     test('routes the production bindings into the runtime', () {
-      final source =
-          File('tool/advisor_proxy/main.dart').readAsStringSync();
+      final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
+      expect(source, contains('store: productionBindings.usageCounterStore'));
+      expect(source, contains('productionBindings.healthCheckStore'));
+    });
+
+    test('production health producer concurrency matches the health pool', () {
+      final source = File(
+        'tool/advisor_proxy/proxy_bootstrap.dart',
+      ).readAsStringSync();
       expect(
         source,
-        contains('store: productionBindings.usageCounterStore'),
+        contains(
+          'const healthProducerConcurrency = '
+          'kPostgresDefaultMaxConnectionsPerPool',
+        ),
       );
       expect(
         source,
-        contains('productionBindings.healthCheckStore'),
+        contains('producerConcurrency: healthProducerConcurrency'),
       );
     });
 
     test('emits gemini_slot_enabled diagnostics line', () {
-      final source =
-          File('tool/advisor_proxy/main.dart').readAsStringSync();
+      final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
       expect(
         source,
-        contains("'gemini_slot_enabled: \${productionBindings.geminiSlotEnabled}'"),
+        contains(
+          "'gemini_slot_enabled: \${productionBindings.geminiSlotEnabled}'",
+        ),
       );
     });
   });
@@ -418,8 +421,6 @@ void main() {
 class _NoOpPostgresPool implements PostgresPool {
   @override
   Future<PostgresTransaction> beginTransaction() async {
-    throw StateError(
-      'unexpected database access during binding construction',
-    );
+    throw StateError('unexpected database access during binding construction');
   }
 }
