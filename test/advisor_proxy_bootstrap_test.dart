@@ -36,6 +36,7 @@ void main() {
             'placeholder-service-principal-jwt-secret',
         ProxySecretNames.pgcryptoEnvelopeKey:
             'placeholder-pgcrypto-envelope-key',
+        ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
       });
       final pool = _RecordingPostgresPool(
         returningSessionId: '11111111-1111-4111-8111-111111111111',
@@ -109,6 +110,7 @@ void main() {
             'placeholder-service-principal-jwt-secret',
         ProxySecretNames.pgcryptoEnvelopeKey:
             'placeholder-pgcrypto-envelope-key',
+        ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
         ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
       });
       final appPool = _RecordingPostgresPool(
@@ -236,6 +238,7 @@ void main() {
             'placeholder-service-principal-jwt-secret',
         ProxySecretNames.pgcryptoEnvelopeKey:
             'placeholder-pgcrypto-envelope-key',
+        ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
       });
       var poolFactoryCalls = 0;
 

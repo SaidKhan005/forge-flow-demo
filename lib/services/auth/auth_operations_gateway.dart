@@ -154,6 +154,30 @@ class TeamUserListCommand {
   final String locationId;
 }
 
+class TeamUserProfilePatchCommand {
+  const TeamUserProfilePatchCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.targetUserId,
+    required this.displayName,
+    required this.reason,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String targetUserId;
+  final String displayName;
+  final String reason;
+}
+
+class TeamUserProfilePatched {
+  const TeamUserProfilePatched({required this.user});
+
+  final TeamUserListEntry user;
+}
+
 // Phase 9.UX.grant-payload — per-grant snapshot bundled with the team-users
 // projection. Mirrors the `user_roles` row shape consumed by the role-change
 // dialog's inheritance hint, plus the materialized
@@ -777,12 +801,14 @@ class AuthAllSessionsRevokeCommand {
     required this.actorUserId,
     required this.operatorId,
     required this.locationId,
+    this.targetUserId,
     this.reason,
   });
 
   final String actorUserId;
   final String operatorId;
   final String locationId;
+  final String? targetUserId;
   final String? reason;
 }
 
@@ -1059,11 +1085,13 @@ class AuthOperationRejected implements Exception {
     required this.code,
     required this.message,
     required this.statusCode,
+    this.details = const <String, Object?>{},
   });
 
   final String code;
   final String message;
   final int statusCode;
+  final Map<String, Object?> details;
 
   @override
   String toString() => 'AuthOperationRejected(code: $code)';
@@ -1071,6 +1099,10 @@ class AuthOperationRejected implements Exception {
 
 abstract class AuthOperationsGateway {
   Future<TeamUsersListed> listUsers(TeamUserListCommand command);
+
+  Future<TeamUserProfilePatched> patchUserProfile(
+    TeamUserProfilePatchCommand command,
+  );
 
   Future<TeamRoleCatalogListed> listRoles(TeamRoleCatalogListCommand command);
 
@@ -1140,6 +1172,13 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
 
   @override
   Future<TeamUsersListed> listUsers(TeamUserListCommand command) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamUserProfilePatched> patchUserProfile(
+    TeamUserProfilePatchCommand command,
+  ) {
     throw StateError(_message);
   }
 

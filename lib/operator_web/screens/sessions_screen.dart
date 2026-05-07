@@ -482,7 +482,7 @@ class _SessionsHeader extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    'Sessions',
+                    'Active sessions',
                     style: AppTextStyles.display20(
                       color: AppColors.textPrimary,
                     ),
@@ -491,9 +491,9 @@ class _SessionsHeader extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'See where Forge and Flow is signed in for your business and '
-                'sign out devices that no longer need access. Mobile and web '
-                'sessions appear together here.',
+                'See where Forge and Flow is signed in, then sign out '
+                'devices that no longer need access. Mobile and web sessions '
+                'appear together here.',
                 key: const Key('operator_web_sessions_subtitle'),
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),

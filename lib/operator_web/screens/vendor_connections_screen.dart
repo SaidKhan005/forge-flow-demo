@@ -84,6 +84,7 @@ class VendorConnectionsScreen extends StatelessWidget {
     super.key,
     required this.session,
     required this.locationId,
+    this.locationName,
     this.gateway,
   });
 
@@ -95,6 +96,7 @@ class VendorConnectionsScreen extends StatelessWidget {
   /// Defaults to the operator's primary location id when the route
   /// has no explicit param.
   final String locationId;
+  final String? locationName;
 
   /// Optional gateway override. Production wires the HTTP gateway
   /// at the Cloud Run entry point; demo + widget tests pass an
@@ -119,9 +121,7 @@ class VendorConnectionsScreen extends StatelessWidget {
         key: const Key('operator_web_vendor_connections_no_location'),
       );
     }
-    final locationLabel = locationId == session.primaryLocationId
-        ? session.primaryLocationName
-        : 'this location';
+    final locationLabel = _locationLabel();
     return SingleChildScrollView(
       key: const Key('operator_web_vendor_connections_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -203,6 +203,15 @@ class VendorConnectionsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _locationLabel() {
+    final provided = locationName?.trim();
+    if (provided != null && provided.isNotEmpty) return provided;
+    if (locationId == session.primaryLocationId) {
+      return session.primaryLocationName;
+    }
+    return 'this location';
   }
 }
 

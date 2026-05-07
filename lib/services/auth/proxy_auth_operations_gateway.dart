@@ -261,6 +261,25 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<TeamUserProfilePatched> patchUserProfile(
+    TeamUserProfilePatchCommand command,
+  ) async {
+    final response = await _patch(
+      '$usersPrefix${Uri.encodeComponent(command.targetUserId)}',
+      <String, Object?>{
+        'display_name': command.displayName,
+        'reason': command.reason,
+      },
+    );
+    _expectStatus(response, 200);
+    final rawUser = response.body['user'];
+    if (rawUser is! Map) {
+      throw _malformed(response, 'team user patch response was incomplete');
+    }
+    return TeamUserProfilePatched(user: _teamUserFromJson(response, rawUser));
+  }
+
+  @override
   Future<TeamRoleCatalogListed> listRoles(
     TeamRoleCatalogListCommand command,
   ) async {
@@ -624,10 +643,8 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       'offset': command.offset.toString(),
       if (command.eventKind != null)
         'event_kind': AuthEventLabels.wireKey(command.eventKind!),
-      if (command.from != null)
-        'from': command.from!.toUtc().toIso8601String(),
-      if (command.to != null)
-        'to': command.to!.toUtc().toIso8601String(),
+      if (command.from != null) 'from': command.from!.toUtc().toIso8601String(),
+      if (command.to != null) 'to': command.to!.toUtc().toIso8601String(),
     };
     final response = await _get(_appendQuery(authAuditLogPath, query));
     _expectStatus(response, 200);
@@ -978,9 +995,7 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     final rawEffective = json['effective_location_ids'];
     final effectiveLocationIds = rawEffective is List
         ? List<String>.unmodifiable(
-            rawEffective
-                .whereType<String>()
-                .where((entry) => entry.isNotEmpty),
+            rawEffective.whereType<String>().where((entry) => entry.isNotEmpty),
           )
         : const <String>[];
     return TeamGrantSnapshot(

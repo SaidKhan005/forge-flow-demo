@@ -267,7 +267,7 @@ class PermissionExplainerScreen extends StatelessWidget {
           key: const Key('operator_web_permission_explainer_back'),
           icon: const Icon(Icons.arrow_back, size: 18),
           onPressed: onClose ?? () => Navigator.of(context).maybePop(),
-          tooltip: 'Back to Roles',
+          tooltip: 'Back to Roles & permissions',
         ),
         title: Text(
           'Permission Explainer',

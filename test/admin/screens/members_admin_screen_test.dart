@@ -395,6 +395,7 @@ void main() {
           'demo-user-diner-staff-archived',
         ];
         const actions = <String>[
+          'edit_name',
           'suspend',
           'reactivate',
           'soft_delete',
@@ -474,6 +475,66 @@ void main() {
         expect(events.single.actorUserId, equals('demo-super-admin'));
         expect(events.single.adminReason, equals('support-ticket-1234'));
         expect(events.single.targetId, equals('demo-user-diner-owner'));
+      },
+    );
+
+    testWidgets(
+      'Edit display name prompts for reason and updates the team row',
+      (tester) async {
+        wideViewport(tester);
+        final gateway = InMemoryMembersAdminGateway(
+          membersByOperator: kDemoMembersByOperator(),
+          invitesByOperator: kDemoInvitesByOperator(),
+        );
+        var nextKey = 0;
+        await tester.pumpWidget(
+          wrap(
+            MembersAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+              pickedOperator: demoPick(),
+              idempotencyKeyFactory: () {
+                nextKey += 1;
+                return 'idem-name-$nextKey';
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(
+            const Key('admin_members_action_edit_name_demo-user-diner-owner'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('admin_members_display_name_dialog')),
+          findsOneWidget,
+        );
+
+        await tester.enterText(
+          find.byKey(const Key('admin_members_display_name_field')),
+          'Diner Owner Updated',
+        );
+        await tester.enterText(
+          find.byKey(const Key('admin_members_display_name_reason')),
+          'operator requested display correction',
+        );
+        await tester.tap(
+          find.byKey(const Key('admin_members_display_name_submit')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Diner Owner Updated'), findsWidgets);
+        final events = gateway.capturedAuditEvents;
+        expect(events, hasLength(1));
+        expect(events.single.action, equals('team.users.update_profile'));
+        expect(events.single.actorKind, equals('forge_admin'));
+        expect(
+          events.single.adminReason,
+          equals('operator requested display correction'),
+        );
       },
     );
 
@@ -585,6 +646,68 @@ void main() {
         expect(inviteEvent.actorKind, equals('forge_admin'));
       },
     );
+
+    testWidgets('duplicate invite can show the existing team row', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = InMemoryMembersAdminGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin_members_invite_button')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_email')),
+        'owner@demo-diner.test',
+      );
+      await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'This email is already on the team. Edit the existing member instead.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_members_invite_existing_email_details')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('admin_members_invite_show_existing_email')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_members_invite_dialog')),
+        findsNothing,
+      );
+      final search = tester.widget<TextField>(
+        find.byKey(const Key('admin_members_filter_search')),
+      );
+      expect(search.controller?.text, equals('owner@demo-diner.test'));
+      expect(
+        find.byKey(const Key('admin_members_row_demo-user-diner-owner')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_members_row_demo-user-diner-manager')),
+        findsNothing,
+      );
+    });
   });
 
   group('InviteMemberAdminDialog locked validation copy', () {

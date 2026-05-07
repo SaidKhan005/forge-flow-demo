@@ -39,6 +39,7 @@ void main() {
             'placeholder-service-principal-jwt-secret',
         ProxySecretNames.pgcryptoEnvelopeKey:
             'placeholder-pgcrypto-envelope-key',
+        ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
         ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
       });
 
@@ -66,6 +67,7 @@ void main() {
             'placeholder-service-principal-jwt-secret',
         ProxySecretNames.pgcryptoEnvelopeKey:
             'placeholder-pgcrypto-envelope-key',
+        ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
         ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
       });
 
@@ -93,6 +95,7 @@ void main() {
             'placeholder-service-principal-jwt-secret',
         ProxySecretNames.pgcryptoEnvelopeKey:
             'placeholder-pgcrypto-envelope-key',
+        ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
         // Note: FIREBASE_PROJECT_ID intentionally omitted.
       });
       expect(config.firebaseProjectId, isNull);

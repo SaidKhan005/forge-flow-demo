@@ -33,6 +33,7 @@ Map<String, String> _baseEnv({
     ProxySecretNames.servicePrincipalJwtSecret:
         'placeholder-service-principal-jwt-secret',
     ProxySecretNames.pgcryptoEnvelopeKey: 'placeholder-pgcrypto-envelope-key',
+    ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
   };
   if (adminCorsAllowedOrigins != null) {
     env[ProxyConfigNames.adminCorsAllowedOrigins] = adminCorsAllowedOrigins;

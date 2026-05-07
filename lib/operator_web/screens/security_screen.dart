@@ -509,16 +509,16 @@ class _SecurityHeader extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Text(
-              'Security',
+              'Sign-in security',
               style: AppTextStyles.display20(color: AppColors.textPrimary),
             ),
           ],
         ),
         const SizedBox(height: 6),
         Text(
-          'Manage your authenticator apps, change your password, and review '
-          'recent sign-in activity for your account. These settings affect '
-          'only your sign-in; per-team controls live on the Members surface.',
+          'Protect your own sign-in with authenticator apps, password '
+          'changes, and recent activity. Team-level controls live in Team '
+          'members and Roles & permissions.',
           key: const Key('operator_web_security_subtitle'),
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),

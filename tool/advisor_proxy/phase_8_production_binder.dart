@@ -75,12 +75,14 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/aloha_ncr_voy
 import 'package:forge_and_flow/infrastructure/persistence/postgres/clover_pos_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/humanity_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/libro_postgres_sink.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/lightspeed_lsk_pos_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/opentable_reservation_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/oracle_micros_simphony_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/push_operations_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/quickbooks_time_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/revel_pos_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/seven_shifts_postgres_sink.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/sevenrooms_reservation_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/square_pos_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/toast_pos_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tock_reservation_postgres_sink.dart';
@@ -140,6 +142,11 @@ import 'package:forge_and_flow/integrations/pos/aloha_ncr_voyix_pos_adapter.dart
 import 'package:forge_and_flow/integrations/pos/aloha_ncr_voyix_pos_production_api_client.dart';
 import 'package:forge_and_flow/integrations/pos/aloha_ncr_voyix_webhook_signature_verifier.dart';
 import 'package:forge_and_flow/integrations/pos/clover_credential_bridge.dart';
+import 'package:forge_and_flow/integrations/pos/lightspeed_lsk_credential_bridge.dart'
+    hide kLightspeedLskVendorId;
+import 'package:forge_and_flow/integrations/pos/lightspeed_lsk_pos_adapter.dart';
+import 'package:forge_and_flow/integrations/pos/lightspeed_lsk_pos_production_api_client.dart';
+import 'package:forge_and_flow/integrations/pos/lightspeed_lsk_webhook_signature_verifier.dart';
 import 'package:forge_and_flow/integrations/pos/clover_pos_adapter.dart';
 import 'package:forge_and_flow/integrations/pos/clover_pos_postgres_credential_store.dart';
 import 'package:forge_and_flow/integrations/pos/clover_pos_production_api_client.dart';
@@ -174,7 +181,10 @@ import 'package:forge_and_flow/integrations/reservation/opentable_reservation_ad
     hide kOpenTableVendorId;
 import 'package:forge_and_flow/integrations/reservation/opentable_reservation_production_api_client.dart';
 import 'package:forge_and_flow/integrations/reservation/opentable_webhook_signature_verifier.dart';
-import 'package:forge_and_flow/integrations/reservation/sevenrooms_credential_bridge.dart';
+import 'package:forge_and_flow/integrations/reservation/sevenrooms_credential_bridge.dart'
+    hide kSevenRoomsVendorId;
+import 'package:forge_and_flow/integrations/reservation/sevenrooms_reservation_adapter.dart';
+import 'package:forge_and_flow/integrations/reservation/sevenrooms_reservation_production_api_client.dart';
 import 'package:forge_and_flow/integrations/reservation/sevenrooms_webhook_signature_verifier.dart';
 import 'package:forge_and_flow/integrations/reservation/tock_credential_bridge.dart';
 import 'package:forge_and_flow/integrations/reservation/tock_reservation_adapter.dart';
@@ -191,18 +201,12 @@ import 'advisor_proxy.dart';
 import 'proxy_bootstrap.dart';
 
 /// Default public base URI the framework presents to vendors as the
-/// inbound webhook host. Mirrors the convention already used in
-/// `lib/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart`
-/// and `lib/services/integration/per_tenant_location_config_resolver.dart`
-/// docs. Override at boot via the `FF_WEBHOOK_PUBLIC_BASE_URI` env var.
+/// inbound webhook host. Retained as a documentation-only reference
+/// of the canonical production hostname; the binder no longer reads
+/// it. Phase 8's typed-app-credentials amendment moved the public
+/// base URI to the required [ProxySecretNames.publicBaseUri] env var
+/// surfaced through [ProxyConfig.publicBaseUri].
 const String kPhase8DefaultWebhookPublicBaseUri = 'https://api.forgeflow.app';
-
-/// Env var name the binder consults for an explicit override of
-/// [kPhase8DefaultWebhookPublicBaseUri]. Cloud Run deployments that
-/// expose the proxy under a custom hostname set this; the default
-/// suffices for the canonical production deploy.
-const String kPhase8WebhookPublicBaseUriEnvName =
-    'FF_WEBHOOK_PUBLIC_BASE_URI';
 
 /// `dart-define` flag that gates demo mode. Mirrors the dart-define
 /// handshake used elsewhere in the runtime
@@ -250,11 +254,15 @@ Future<void> bindPhase8IntegrationsForProduction(
     return;
   }
 
-  final env = environmentOverride ?? Platform.environment;
-  final webhookPublicBaseUri = Uri.parse(
-    env[kPhase8WebhookPublicBaseUriEnvName] ??
-        kPhase8DefaultWebhookPublicBaseUri,
-  );
+  // Per the typed-app-credentials amendment, the public base URI is a
+  // typed [Uri] surfaced through [ProxyConfig.publicBaseUri] (sourced
+  // from the required `PUBLIC_BASE_URI` env var). The
+  // [environmentOverride] parameter is retained on the public binder
+  // signature for backwards-compat with callers that pre-date the
+  // typed-record migration; it is no longer consulted because every
+  // remaining vendor read flows through `proxyConfig.has*AppCredentials`
+  // / `proxyConfig.*AppCredentials` accessors.
+  final webhookPublicBaseUri = proxyConfig.publicBaseUri;
 
   // Step 1 — Vendor credential broker.
   final broker = VendorCredentialBroker(
@@ -305,10 +313,17 @@ Future<void> bindPhase8IntegrationsForProduction(
   final toastRefresh = makeToastOauthRefreshClosure(
     httpClient: sharedHttpClient,
   );
+  // Each per-vendor factory is bound through an explicit
+  // `PosAdapterFactory` cast at the assignment site. Dart's contextual
+  // inference would otherwise pick the concrete adapter subtype as the
+  // closure's `Future<T>` parameter, and `Future<T>` is invariant — a
+  // `Future<ToastPosAdapter> Function(...)` is NOT a subtype of
+  // `Future<PosAdapter> Function(...)`. The cast widens the closure's
+  // return type to the typedef's expected `Future<PosAdapter>`.
   posAdapterFactories[kToastVendorId] = ({
     required String operatorId,
     required String locationId,
-  }) {
+  }) async {
     final tokenResolver = ToastBrokerAccessTokenResolver(
       broker: broker,
       operatorId: operatorId,
@@ -320,7 +335,7 @@ Future<void> bindPhase8IntegrationsForProduction(
       tokenResolver: tokenResolver,
     );
     return ToastPosAdapter(transport: transport, factSink: toastSink);
-  };
+  } as PosAdapterFactory;
   signatureVerifiers[kToastVendorId] = const ToastWebhookSignatureVerifier();
 
   // ─── POS — Aloha NCR Voyix (optional static app credentials) ───────
@@ -335,7 +350,7 @@ Future<void> bindPhase8IntegrationsForProduction(
     posAdapterFactories[kAlohaNcrVoyixVendorId] = ({
       required String operatorId,
       required String locationId,
-    }) {
+    }) async {
       final credentialStore = makeAlohaNcrVoyixCredentialStore(
         broker: broker,
         operatorId: operatorId,
@@ -351,7 +366,7 @@ Future<void> bindPhase8IntegrationsForProduction(
         transport: transport,
         factSink: alohaSink,
       );
-    };
+    } as PosAdapterFactory;
     signatureVerifiers[kAlohaNcrVoyixVendorId] =
         const AlohaNcrVoyixWebhookSignatureVerifier();
   } else {
@@ -380,7 +395,7 @@ Future<void> bindPhase8IntegrationsForProduction(
     posAdapterFactories[kCloverVendorId] = ({
       required String operatorId,
       required String locationId,
-    }) {
+    }) async {
       final merchantTokenSource = makeCloverAccessTokenSource(
         broker: broker,
         operatorId: operatorId,
@@ -407,7 +422,7 @@ Future<void> bindPhase8IntegrationsForProduction(
         webhookRegistry: webhookRegistry,
         credentials: cloverCredStore,
       );
-    };
+    } as PosAdapterFactory;
     signatureVerifiers[kCloverVendorId] = const CloverWebhookSignatureVerifier();
   } else {
     disabledVendors[kCloverVendorId] = 'clover_app_credentials_missing';
@@ -415,17 +430,53 @@ Future<void> bindPhase8IntegrationsForProduction(
 
   // ─── POS — Lightspeed LSK ──────────────────────────────────────────
   // Lightspeed's adapter takes per-tenant timezone + rollover-hour +
-  // webhookUrl values from `PerTenantLocationConfigResolver`, which is
-  // async. The factory typedef is sync, so we mark Lightspeed
-  // disabled-with-warn for the binder; the per-tenant lane wires
-  // Lightspeed via the sync worker dispatch path
-  // (`tool/integration_sync_worker/dispatch.dart`) which IS async and
-  // can resolve location config before constructing the adapter.
-  // Inbound webhooks for Lightspeed therefore land at the gateway-only
-  // surface (verifier + idempotency + binding cross-check) until the
-  // factory typedef gains an async variant.
-  disabledVendors['lightspeed_lsk'] =
-      'lightspeed_lsk_async_location_config_required';
+  // webhookUrl values from `PerTenantLocationConfigResolver`. With the
+  // factory typedefs now async (PR for `8.framework.async-adapter-factories`),
+  // the closure can `await` the resolver before constructing the
+  // adapter. OAuth + webhook subscribe paths run only at connect /
+  // disconnect time; the inbound-webhook handler only ever invokes
+  // `handleWebhook`, which uses the gateway alone. The connect-time
+  // clients are wired with binder-only stubs that throw with a clear
+  // message so a regression that triggers them surfaces immediately;
+  // the connect/disconnect hot path is wired separately by the admin-
+  // routes binding (which materialises a fully-formed transport).
+  final lightspeedLskSink = LightspeedLskPosPostgresSink(
+    productionBindings.tenantTransactionWrapper,
+  );
+  final lightspeedLskRefresh = makeLightspeedLskOauthRefreshClosure(
+    httpClient: sharedHttpClient,
+  );
+  posAdapterFactories[kLightspeedLskVendorId] = ({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final config = await locationConfigResolver.resolve(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: kLightspeedLskVendorId,
+    );
+    final tokenResolver = LightspeedLskBrokerAccessTokenResolver(
+      broker: broker,
+      operatorId: operatorId,
+      locationId: locationId,
+      oauthRefresh: lightspeedLskRefresh,
+    );
+    final ordersClient = LightspeedLskProductionOrdersClient(
+      tokenResolver: tokenResolver,
+      httpClient: sharedHttpClient,
+    );
+    return LightspeedLskPosAdapter(
+      gateway: lightspeedLskSink,
+      oauthClient: const _UnboundLightspeedLskOAuthClient(),
+      webhookClient: const _UnboundLightspeedLskWebhookClient(),
+      ordersClient: ordersClient,
+      restaurantTimezone: config.restaurantTimezone,
+      businessDayRolloverHour: config.businessDayRolloverHour,
+      webhookUrl: config.webhookBaseUri.toString(),
+    );
+  } as PosAdapterFactory;
+  signatureVerifiers[kLightspeedLskVendorId] =
+      const LightspeedLskWebhookSignatureVerifier();
 
   // ─── POS — Oracle MICROS Simphony ──────────────────────────────────
   final oracleSink = OracleMicrosSimphonyPostgresSink(
@@ -443,7 +494,7 @@ Future<void> bindPhase8IntegrationsForProduction(
   posAdapterFactories[kOracleMicrosSimphonyVendorId] = ({
     required String operatorId,
     required String locationId,
-  }) {
+  }) async {
     final transport = OracleMicrosSimphonyProductionApiClient(
       httpClient: sharedHttpClient,
       tokenStore: simphonyTokenStore,
@@ -458,7 +509,7 @@ Future<void> bindPhase8IntegrationsForProduction(
       apiClient: transport,
       canonicalSink: oracleSink,
     );
-  };
+  } as PosAdapterFactory;
   signatureVerifiers[kOracleMicrosSimphonyVendorId] =
       const OracleMicrosSimphonyWebhookSignatureVerifier();
 
@@ -469,7 +520,7 @@ Future<void> bindPhase8IntegrationsForProduction(
   posAdapterFactories[kRevelVendorId] = ({
     required String operatorId,
     required String locationId,
-  }) {
+  }) async {
     final transport = RevelProductionApiClient(
       deps: RevelProductionApiClientDeps(
         httpClient: sharedHttpClient,
@@ -479,7 +530,7 @@ Future<void> bindPhase8IntegrationsForProduction(
       transport: transport,
       gateway: revelSink,
     );
-  };
+  } as PosAdapterFactory;
   signatureVerifiers[kRevelVendorId] = const RevelWebhookSignatureVerifier();
 
   // ─── POS — Square (optional static app credentials) ────────────────
@@ -496,7 +547,7 @@ Future<void> bindPhase8IntegrationsForProduction(
     posAdapterFactories[kSquareVendorId] = ({
       required String operatorId,
       required String locationId,
-    }) {
+    }) async {
       final credentialResolver = SquareBrokerCredentialResolver(
         broker: broker,
         operatorId: operatorId,
@@ -531,7 +582,7 @@ Future<void> bindPhase8IntegrationsForProduction(
           return config.webhookBaseUri.toString();
         },
       );
-    };
+    } as PosAdapterFactory;
     signatureVerifiers[kSquareVendorId] = const SquareWebhookSignatureVerifier();
   } else {
     disabledVendors[kSquareVendorId] = 'square_app_credentials_missing';
@@ -544,7 +595,7 @@ Future<void> bindPhase8IntegrationsForProduction(
   laborAdapterFactories[kAdpVendorId] = ({
     required String operatorId,
     required String locationId,
-  }) {
+  }) async {
     final credentialsProvider = makeAdpCredentialsProvider(
       broker: broker,
       operatorId: operatorId,
@@ -564,7 +615,7 @@ Future<void> bindPhase8IntegrationsForProduction(
       transport: transport,
       gateway: adpSink,
     );
-  };
+  } as LaborAdapterFactory;
   signatureVerifiers[kAdpVendorId] = const AdpWebhookSignatureVerifier();
 
   // ─── Labor — Agendrix ──────────────────────────────────────────────
@@ -575,7 +626,7 @@ Future<void> bindPhase8IntegrationsForProduction(
   laborAdapterFactories[agendrixVendorId] = ({
     required String operatorId,
     required String locationId,
-  }) {
+  }) async {
     final transport = AgendrixProductionApiClient(
       credentialStore: agendrixCredentialStore,
       httpClient: sharedHttpClient,
@@ -584,7 +635,7 @@ Future<void> bindPhase8IntegrationsForProduction(
       apiClient: transport,
       canonicalSink: agendrixSink,
     );
-  };
+  } as LaborAdapterFactory;
   signatureVerifiers[agendrixVendorId] =
       const AgendrixWebhookSignatureVerifier();
 
@@ -592,43 +643,43 @@ Future<void> bindPhase8IntegrationsForProduction(
   final humanitySink = HumanityPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
-  // Humanity uses an app-wide OAuth client_id / client_secret pair the
-  // proxy bootstrap has not yet surfaced as typed records (PR #260
-  // covered Aloha / Square / Clover). Until those secrets land, the
-  // refresh closure resolves the pair from the per-tenant credential
-  // bundle (where bridges may also persist app-wide values during the
-  // staging shape). We thread null-safe blanks; the closure throws
-  // VendorRefreshFailed at refresh time when the bundle does not
-  // surface them, which the framework surfaces as a reconnect prompt.
-  laborAdapterFactories[kHumanityVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) {
+  // Humanity uses an app-wide OAuth client_id / client_secret pair
+  // surfaced through [ProxyConfig.humanityAppCredentials]. Mirrors the
+  // Aloha / Square / Clover warn-and-disable shape from PR #260: when
+  // the typed record is absent at boot, the vendor lands on the
+  // disabled-warn list and the per-tenant factory is NOT registered.
+  if (!proxyConfig.hasHumanityAppCredentials) {
+    disabledVendors[kHumanityVendorId] = 'humanity_oauth_credentials_missing';
+  } else {
+    final humanityCreds = proxyConfig.humanityAppCredentials;
     final humanityRefresh = makeHumanityOauthRefreshClosure(
       httpClient: sharedHttpClient,
-      // Humanity bridges thread the app-wide pair via metadata until a
-      // typed ProxyConfig accessor lands.
-      clientId: '',
-      clientSecret: '',
+      clientId: humanityCreds.clientId,
+      clientSecret: humanityCreds.clientSecret,
     );
-    // Construct a per-tenant bridge so refresh + revoke paths run with
-    // the right (operator, location) tuple wired in.
-    HumanityBrokerCredentialBridge(
-      broker: broker,
-      operatorId: operatorId,
-      locationId: locationId,
-      oauthRefresh: humanityRefresh,
-    );
-    final transport = HumanityLaborProductionApiClient(
-      httpClient: sharedHttpClient,
-    );
-    return HumanityLaborAdapter(
-      httpClient: transport,
-      gateway: humanitySink,
-    );
-  };
-  signatureVerifiers[kHumanityVendorId] =
-      const HumanityWebhookSignatureVerifier();
+    laborAdapterFactories[kHumanityVendorId] = ({
+      required String operatorId,
+      required String locationId,
+    }) async {
+      // Construct a per-tenant bridge so refresh + revoke paths run
+      // with the right (operator, location) tuple wired in.
+      HumanityBrokerCredentialBridge(
+        broker: broker,
+        operatorId: operatorId,
+        locationId: locationId,
+        oauthRefresh: humanityRefresh,
+      );
+      final transport = HumanityLaborProductionApiClient(
+        httpClient: sharedHttpClient,
+      );
+      return HumanityLaborAdapter(
+        httpClient: transport,
+        gateway: humanitySink,
+      );
+    } as LaborAdapterFactory;
+    signatureVerifiers[kHumanityVendorId] =
+        const HumanityWebhookSignatureVerifier();
+  }
 
   // ─── Labor — Push Operations ───────────────────────────────────────
   final pushOpsSink = PushOperationsPostgresSink(
@@ -638,7 +689,7 @@ Future<void> bindPhase8IntegrationsForProduction(
   laborAdapterFactories[pushOperationsVendorId] = ({
     required String operatorId,
     required String locationId,
-  }) {
+  }) async {
     final transport = PushOperationsLaborProductionApiClient(
       bearerResolver: pushOpsBearerResolver,
       httpClient: sharedHttpClient,
@@ -647,7 +698,7 @@ Future<void> bindPhase8IntegrationsForProduction(
       apiClient: transport,
       canonicalSink: pushOpsSink,
     );
-  };
+  } as LaborAdapterFactory;
   signatureVerifiers[pushOperationsVendorId] =
       const PushOperationsWebhookSignatureVerifier();
 
@@ -656,30 +707,26 @@ Future<void> bindPhase8IntegrationsForProduction(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
   // QuickBooks Time uses an app-wide Intuit client_id / client_secret
-  // pair the bootstrap has not yet surfaced as a typed record. We
-  // currently thread null-safe blanks; the refresh closure throws on
-  // refresh until those secrets are loaded. Optional vendor warn-list
-  // surfaces the missing pair at boot.
-  final qbtClientId =
-      env['INTUIT_OAUTH_CLIENT_ID'] ?? env['QBT_OAUTH_CLIENT_ID'] ?? '';
-  final qbtClientSecret =
-      env['INTUIT_OAUTH_CLIENT_SECRET'] ?? env['QBT_OAUTH_CLIENT_SECRET'] ?? '';
-  if (qbtClientId.isEmpty || qbtClientSecret.isEmpty) {
-    disabledVendors[kQuickBooksTimeVendorId] = 'intuit_oauth_credentials_missing';
+  // pair surfaced through [ProxyConfig.quickBooksTimeAppCredentials].
+  // Same warn-and-disable shape as the other optional vendors.
+  if (!proxyConfig.hasQuickBooksTimeAppCredentials) {
+    disabledVendors[kQuickBooksTimeVendorId] =
+        'intuit_oauth_credentials_missing';
   } else {
+    final qbtCreds = proxyConfig.quickBooksTimeAppCredentials;
     final qbtRefresh = makeQuickBooksTimeOauthRefreshClosure(
       httpClient: sharedHttpClient,
-      clientId: qbtClientId,
-      clientSecret: qbtClientSecret,
+      clientId: qbtCreds.clientId,
+      clientSecret: qbtCreds.clientSecret,
     );
     final qbtOauthCreds = StaticQuickBooksTimeBrokerOauthClientCredentials(
-      clientId: qbtClientId,
-      clientSecret: qbtClientSecret,
+      clientId: qbtCreds.clientId,
+      clientSecret: qbtCreds.clientSecret,
     );
     laborAdapterFactories[kQuickBooksTimeVendorId] = ({
       required String operatorId,
       required String locationId,
-    }) {
+    }) async {
       final credStore = QuickBooksTimeBrokerCredentialStore(
         broker: broker,
         operatorId: operatorId,
@@ -697,7 +744,7 @@ Future<void> bindPhase8IntegrationsForProduction(
         transport: transport,
         gateway: qbtSink,
       );
-    };
+    } as LaborAdapterFactory;
     signatureVerifiers[kQuickBooksTimeVendorId] =
         const QuickBooksTimeWebhookSignatureVerifier();
   }
@@ -706,22 +753,22 @@ Future<void> bindPhase8IntegrationsForProduction(
   final sevenShiftsSink = SevenShiftsPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
-  // 7shifts uses an app-wide partner registration. Until the typed
-  // ProxyConfig accessor lands, env reads are the staging shape.
-  final sevenShiftsClientId = env['SEVEN_SHIFTS_OAUTH_CLIENT_ID'] ?? '';
-  final sevenShiftsClientSecret = env['SEVEN_SHIFTS_OAUTH_CLIENT_SECRET'] ?? '';
-  if (sevenShiftsClientId.isEmpty || sevenShiftsClientSecret.isEmpty) {
+  // 7shifts uses an app-wide partner registration surfaced through
+  // [ProxyConfig.sevenShiftsAppCredentials]. Same warn-and-disable
+  // shape as the other optional vendors.
+  if (!proxyConfig.hasSevenShiftsAppCredentials) {
     disabledVendors['seven_shifts'] = 'seven_shifts_oauth_credentials_missing';
   } else {
+    final sevenShiftsCreds = proxyConfig.sevenShiftsAppCredentials;
     final sevenShiftsRefresh = makeSevenShiftsOauthRefreshClosure(
       httpClient: sharedHttpClient,
-      clientId: sevenShiftsClientId,
-      clientSecret: sevenShiftsClientSecret,
+      clientId: sevenShiftsCreds.clientId,
+      clientSecret: sevenShiftsCreds.clientSecret,
     );
     laborAdapterFactories['seven_shifts'] = ({
       required String operatorId,
       required String locationId,
-    }) {
+    }) async {
       final accessTokenProvider =
           seven_shifts_bridge.makeSevenShiftsAccessTokenProvider(
         broker: broker,
@@ -739,7 +786,7 @@ Future<void> bindPhase8IntegrationsForProduction(
         transport: transport,
         gateway: sevenShiftsSink,
       );
-    };
+    } as LaborAdapterFactory;
     signatureVerifiers['seven_shifts'] =
         const SevenShiftsWebhookSignatureVerifier();
   }
@@ -748,20 +795,22 @@ Future<void> bindPhase8IntegrationsForProduction(
   final libroSink = LibroPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
-  final libroClientId = env['LIBRO_OAUTH_CLIENT_ID'] ?? '';
-  final libroClientSecret = env['LIBRO_OAUTH_CLIENT_SECRET'] ?? '';
-  if (libroClientId.isEmpty || libroClientSecret.isEmpty) {
+  // Libro uses an app-wide registration surfaced through
+  // [ProxyConfig.libroAppCredentials]. Same warn-and-disable shape as
+  // the other optional vendors.
+  if (!proxyConfig.hasLibroAppCredentials) {
     disabledVendors[kLibroVendorId] = 'libro_oauth_credentials_missing';
   } else {
+    final libroCreds = proxyConfig.libroAppCredentials;
     final libroRefresh = makeLibroOauthRefreshClosure(
       httpClient: sharedHttpClient,
-      clientId: libroClientId,
-      clientSecret: libroClientSecret,
+      clientId: libroCreds.clientId,
+      clientSecret: libroCreds.clientSecret,
     );
     reservationAdapterFactories[kLibroVendorId] = ({
       required String operatorId,
       required String locationId,
-    }) {
+    }) async {
       final bearerResolver = makeLibroBearerTokenResolver(
         broker: broker,
         operatorId: operatorId,
@@ -777,7 +826,7 @@ Future<void> bindPhase8IntegrationsForProduction(
         httpClient: transport,
         timezoneConverter: LibroIanaConverter(),
       );
-    };
+    } as ReservationAdapterFactory;
     signatureVerifiers[kLibroVendorId] = const LibroWebhookSignatureVerifier();
   }
 
@@ -788,7 +837,7 @@ Future<void> bindPhase8IntegrationsForProduction(
   reservationAdapterFactories[kOpenTableVendorId] = ({
     required String operatorId,
     required String locationId,
-  }) {
+  }) async {
     final credentialStore = OpenTableBrokerCredentialStore(
       broker: broker,
       operatorId: operatorId,
@@ -802,20 +851,62 @@ Future<void> bindPhase8IntegrationsForProduction(
       transport: transport,
       gateway: opentableSink,
     );
-  };
+  } as ReservationAdapterFactory;
   signatureVerifiers[kOpenTableVendorId] =
       const OpenTableWebhookSignatureVerifier();
 
   // ─── Reservation — SevenRooms ──────────────────────────────────────
   // SevenRooms requires async per-(operator, location) location config
-  // (timezone, rollover hour, webhook URL) at adapter construction
-  // time, but the factory typedef is sync. Mark disabled-with-warn
-  // until the framework gains an async factory variant. Webhook
-  // ingestion still flows through the gateway-only path (verifier +
-  // idempotency + binding cross-check); SevenRooms uses manualPaste so
-  // it never auto-registers in any case.
-  disabledVendors[kSevenRoomsVendorId] =
-      'sevenrooms_async_location_config_required';
+  // (timezone, rollover hour, webhook URL) at adapter construction.
+  // With async factories the closure can `await` the resolver before
+  // building the adapter. SevenRooms is `manualPaste`, so the webhook
+  // client must NEVER be invoked by the adapter — the production
+  // webhook impl throws on subscribe and the adapter test asserts no
+  // calls. Auth runs only at connect time, not on `handleWebhook`, so
+  // we share the production transport surface across factory
+  // invocations: each factory builds a fresh credential store keyed
+  // on the live `(operator, location)` and threads it into a shared
+  // `SevenRoomsTransportDeps`.
+  final sevenRoomsSink = SevenRoomsReservationPostgresSink(
+    tenantWrapper: productionBindings.tenantTransactionWrapper,
+  );
+  reservationAdapterFactories[kSevenRoomsVendorId] = ({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final config = await locationConfigResolver.resolve(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: kSevenRoomsVendorId,
+    );
+    final credentialStore = SevenRoomsBrokerCredentialStore(
+      broker: broker,
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+    final transportDeps = SevenRoomsTransportDeps.shared(
+      credentialStore: credentialStore,
+      httpClient: sharedHttpClient,
+    );
+    final authClient = transportDeps.buildAuthClient();
+    final reservationsClient = transportDeps.buildReservationsClient(
+      // Production threads the per-operator credential id from the
+      // live binding (looked up by the adapter at backfill / poll
+      // time). For factory construction we pass an empty string; the
+      // adapter looks up the binding before any API call so the
+      // empty placeholder is never the value used on the wire.
+      credentialIdForRequest: '',
+    );
+    return SevenRoomsReservationAdapter(
+      gateway: sevenRoomsSink,
+      authClient: authClient,
+      webhookClient: const SevenRoomsWebhookProductionApiClient(),
+      reservationsClient: reservationsClient,
+      restaurantTimezone: config.restaurantTimezone,
+      businessDayRolloverHour: config.businessDayRolloverHour,
+      webhookUrl: config.webhookBaseUri.toString(),
+    );
+  } as ReservationAdapterFactory;
   signatureVerifiers[kSevenRoomsVendorId] =
       const SevenRoomsWebhookSignatureVerifier();
 
@@ -826,7 +917,7 @@ Future<void> bindPhase8IntegrationsForProduction(
   reservationAdapterFactories[kTockVendorId] = ({
     required String operatorId,
     required String locationId,
-  }) {
+  }) async {
     final resolver = TockBrokerCredentialResolver(
       broker: broker,
       operatorId: operatorId,
@@ -840,7 +931,7 @@ Future<void> bindPhase8IntegrationsForProduction(
       transport: transport,
       factSink: tockSink,
     );
-  };
+  } as ReservationAdapterFactory;
   signatureVerifiers[kTockVendorId] = const TockWebhookSignatureVerifier();
 
   // Step 5 — InboundWebhookHandler.
@@ -970,6 +1061,83 @@ class _ToolToLibActorUserResolverAdapter
     return _toolResolver.resolveActorUserId(
       firebaseUid: firebaseUid,
       adminReason: adminReason,
+    );
+  }
+}
+
+/// Binder-local stub for [LightspeedLskOAuthClient]. Lightspeed OAuth
+/// flows (authorization-code + refresh + revoke) are exercised only
+/// during connect / disconnect, not during inbound webhook dispatch.
+/// The per-tenant adapter factory in this binder is only consulted by
+/// `InboundWebhookHandler.dispatch`, which calls `handleWebhook`. If a
+/// future wiring routes a connect / disconnect through this adapter
+/// instance, this stub fails fast with a typed `StateError` so the
+/// regression surfaces immediately at the boundary instead of silently
+/// no-oping.
+class _UnboundLightspeedLskOAuthClient implements LightspeedLskOAuthClient {
+  const _UnboundLightspeedLskOAuthClient();
+
+  @override
+  Future<LightspeedLskTokenExchangeResult> completeAuthorization({
+    required String oauthState,
+  }) {
+    throw StateError(
+      '_UnboundLightspeedLskOAuthClient.completeAuthorization MUST NOT be '
+      'called from the inbound-webhook factory; the connect flow is wired '
+      'separately by the admin-routes binding.',
+    );
+  }
+
+  @override
+  Future<LightspeedLskTokenExchangeResult> refresh({
+    required String refreshTokenCredentialId,
+  }) {
+    throw StateError(
+      '_UnboundLightspeedLskOAuthClient.refresh MUST NOT be called from the '
+      'inbound-webhook factory; refresh runs from the OAuth refresh cron, '
+      'which holds its own LightspeedLskOAuthClient.',
+    );
+  }
+
+  @override
+  Future<void> revoke({required String accessTokenCredentialId}) {
+    throw StateError(
+      '_UnboundLightspeedLskOAuthClient.revoke MUST NOT be called from the '
+      'inbound-webhook factory; the disconnect flow is wired separately by '
+      'the admin-routes binding.',
+    );
+  }
+}
+
+/// Binder-local stub for [LightspeedLskWebhookClient]. Lightspeed
+/// webhook subscribe / unregister run only during connect / disconnect,
+/// not on inbound webhook dispatch. Same rationale as
+/// [_UnboundLightspeedLskOAuthClient].
+class _UnboundLightspeedLskWebhookClient implements LightspeedLskWebhookClient {
+  const _UnboundLightspeedLskWebhookClient();
+
+  @override
+  Future<LightspeedLskWebhookSubscription> subscribe({
+    required String accessTokenCredentialId,
+    required String webhookUrl,
+    required String endpointId,
+  }) {
+    throw StateError(
+      '_UnboundLightspeedLskWebhookClient.subscribe MUST NOT be called from '
+      'the inbound-webhook factory; the connect flow is wired separately by '
+      'the admin-routes binding.',
+    );
+  }
+
+  @override
+  Future<void> unregister({
+    required String accessTokenCredentialId,
+    required String subscriptionId,
+  }) {
+    throw StateError(
+      '_UnboundLightspeedLskWebhookClient.unregister MUST NOT be called from '
+      'the inbound-webhook factory; the disconnect flow is wired separately '
+      'by the admin-routes binding.',
     );
   }
 }

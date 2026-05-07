@@ -194,197 +194,265 @@ void main() {
       });
     });
 
-    test('POST /v1/admin/auth/roles replays cached response on key reuse',
-        () async {
-      await _withRealHttp(() async {
-        final gateway = _IdempotencyRecordingAuthOperationsGateway();
-        final harness = await _RouteHarness.start(
-          authOperationsGateway: gateway,
-          adminPermissionGuard: _RecordingAdminGuard(),
-        );
-        try {
-          final first = await harness.postJson(
-            adminAuthRolesPath,
-            const <String, Object?>{
-              'role_key': 'kitchen_lead',
-              'display_name': 'Kitchen Lead',
-            },
-            idempotencyKey: 'idem-role-create-1',
+    test(
+      'POST /v1/admin/auth/roles replays cached response on key reuse',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
           );
-          final second = await harness.postJson(
-            adminAuthRolesPath,
-            const <String, Object?>{
-              'role_key': 'kitchen_lead',
-              'display_name': 'Kitchen Lead',
-            },
-            idempotencyKey: 'idem-role-create-1',
-          );
-          expect(first.statusCode, equals(201));
-          expect(second.statusCode, equals(201));
-          // Gateway only invoked once even though the client sent
-          // the request twice — the second call replayed the cached
-          // 201 body without re-running the multi-system write.
-          expect(gateway.roleCreates, hasLength(1));
-        } finally {
-          await harness.close();
-        }
-      });
-    });
+          try {
+            final first = await harness.postJson(
+              adminAuthRolesPath,
+              const <String, Object?>{
+                'role_key': 'kitchen_lead',
+                'display_name': 'Kitchen Lead',
+              },
+              idempotencyKey: 'idem-role-create-1',
+            );
+            final second = await harness.postJson(
+              adminAuthRolesPath,
+              const <String, Object?>{
+                'role_key': 'kitchen_lead',
+                'display_name': 'Kitchen Lead',
+              },
+              idempotencyKey: 'idem-role-create-1',
+            );
+            expect(first.statusCode, equals(201));
+            expect(second.statusCode, equals(201));
+            // Gateway only invoked once even though the client sent
+            // the request twice — the second call replayed the cached
+            // 201 body without re-running the multi-system write.
+            expect(gateway.roleCreates, hasLength(1));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
 
-    test('PATCH /v1/admin/auth/roles/{id} rejects missing Idempotency-Key',
-        () async {
-      await _withRealHttp(() async {
-        final gateway = _IdempotencyRecordingAuthOperationsGateway();
-        final harness = await _RouteHarness.start(
-          authOperationsGateway: gateway,
-          adminPermissionGuard: _RecordingAdminGuard(),
-        );
-        try {
-          final response = await harness.patchJson(
-            '$adminAuthRolePrefix$_roleId',
-            const <String, Object?>{'display_name': 'Updated'},
+    test(
+      'PATCH /v1/admin/auth/roles/{id} rejects missing Idempotency-Key',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
           );
-          expect(response.statusCode, equals(400));
-          expect(response.json['error'], equals('missing_idempotency_key'));
-          expect(gateway.rolePatches, isEmpty);
-        } finally {
-          await harness.close();
-        }
-      });
-    });
+          try {
+            final response = await harness.patchJson(
+              '$adminAuthRolePrefix$_roleId',
+              const <String, Object?>{'display_name': 'Updated'},
+            );
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('missing_idempotency_key'));
+            expect(gateway.rolePatches, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
 
-    test('DELETE /v1/admin/auth/roles/{id} rejects missing Idempotency-Key',
-        () async {
-      await _withRealHttp(() async {
-        final gateway = _IdempotencyRecordingAuthOperationsGateway();
-        final harness = await _RouteHarness.start(
-          authOperationsGateway: gateway,
-          adminPermissionGuard: _RecordingAdminGuard(),
-        );
-        try {
-          final response = await harness.deleteJson(
-            '$adminAuthRolePrefix$_roleId',
-            const <String, Object?>{'reason': 'cleanup'},
+    test(
+      'PATCH /v1/admin/auth/users/{id} rejects missing Idempotency-Key',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
           );
-          expect(response.statusCode, equals(400));
-          expect(response.json['error'], equals('missing_idempotency_key'));
-          expect(gateway.roleDeletes, isEmpty);
-        } finally {
-          await harness.close();
-        }
-      });
-    });
+          try {
+            final response = await harness.patchJson(
+              '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}',
+              const <String, Object?>{
+                'display_name': 'Target Person',
+                'admin_reason': 'operator requested correction',
+              },
+            );
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('missing_idempotency_key'));
+            expect(gateway.profilePatches, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
 
-    test('POST /v1/admin/auth/invites rejects missing Idempotency-Key',
-        () async {
-      await _withRealHttp(() async {
-        final gateway = _IdempotencyRecordingAuthOperationsGateway();
-        final harness = await _RouteHarness.start(
-          authOperationsGateway: gateway,
-          adminPermissionGuard: _RecordingAdminGuard(),
-        );
-        try {
-          final response = await harness.postJson(
-            adminAuthInvitesPath,
-            const <String, Object?>{
-              'email': 'new@example.test',
-              'role_id': _roleId,
-              'scope_type': 'operator_wide',
-            },
+    test(
+      'PATCH /v1/admin/auth/users/{id} replays cached response on key reuse',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
           );
-          expect(response.statusCode, equals(400));
-          expect(response.json['error'], equals('missing_idempotency_key'));
-          expect(gateway.inviteCreates, isEmpty);
-        } finally {
-          await harness.close();
-        }
-      });
-    });
+          try {
+            final first = await harness.patchJson(
+              '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}',
+              const <String, Object?>{
+                'display_name': 'Target Person',
+                'admin_reason': 'operator requested correction',
+              },
+              idempotencyKey: 'idem-profile-patch-1',
+            );
+            final second = await harness.patchJson(
+              '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}',
+              const <String, Object?>{
+                'display_name': 'Target Person',
+                'admin_reason': 'operator requested correction',
+              },
+              idempotencyKey: 'idem-profile-patch-1',
+            );
+            expect(first.statusCode, equals(200));
+            expect(second.statusCode, equals(200));
+            expect(first.json, equals(second.json));
+            expect(gateway.profilePatches, hasLength(1));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
 
-    test('POST /v1/admin/auth/invites replays cached response on key reuse',
-        () async {
-      await _withRealHttp(() async {
-        final gateway = _IdempotencyRecordingAuthOperationsGateway();
-        final harness = await _RouteHarness.start(
-          authOperationsGateway: gateway,
-          adminPermissionGuard: _RecordingAdminGuard(),
-        );
-        try {
-          final first = await harness.postJson(
-            adminAuthInvitesPath,
-            const <String, Object?>{
-              'email': 'new@example.test',
-              'role_id': _roleId,
-              'scope_type': 'operator_wide',
-            },
-            idempotencyKey: 'idem-invite-1',
+    test(
+      'DELETE /v1/admin/auth/roles/{id} rejects missing Idempotency-Key',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
           );
-          final second = await harness.postJson(
-            adminAuthInvitesPath,
-            const <String, Object?>{
-              'email': 'new@example.test',
-              'role_id': _roleId,
-              'scope_type': 'operator_wide',
-            },
-            idempotencyKey: 'idem-invite-1',
-          );
-          expect(first.statusCode, equals(201));
-          expect(second.statusCode, equals(201));
-          // Gateway invoked exactly once across the two retries.
-          expect(gateway.inviteCreates, hasLength(1));
-        } finally {
-          await harness.close();
-        }
-      });
-    });
+          try {
+            final response = await harness.deleteJson(
+              '$adminAuthRolePrefix$_roleId',
+              const <String, Object?>{'reason': 'cleanup'},
+            );
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('missing_idempotency_key'));
+            expect(gateway.roleDeletes, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
 
-    test('DELETE /v1/admin/auth/invites/{id} rejects missing Idempotency-Key',
-        () async {
-      await _withRealHttp(() async {
-        final gateway = _IdempotencyRecordingAuthOperationsGateway();
-        final harness = await _RouteHarness.start(
-          authOperationsGateway: gateway,
-          adminPermissionGuard: _RecordingAdminGuard(),
-        );
-        try {
-          final response = await harness.deleteJson(
-            '$adminAuthInvitePrefix${Uri.encodeComponent('invite-1')}',
-            const <String, Object?>{},
+    test(
+      'POST /v1/admin/auth/invites rejects missing Idempotency-Key',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
           );
-          expect(response.statusCode, equals(400));
-          expect(response.json['error'], equals('missing_idempotency_key'));
-          expect(gateway.inviteRevokes, isEmpty);
-        } finally {
-          await harness.close();
-        }
-      });
-    });
+          try {
+            final response = await harness
+                .postJson(adminAuthInvitesPath, const <String, Object?>{
+                  'email': 'new@example.test',
+                  'role_id': _roleId,
+                  'scope_type': 'operator_wide',
+                });
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('missing_idempotency_key'));
+            expect(gateway.inviteCreates, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
 
-    test('POST /v1/admin/auth/role-grants rejects missing Idempotency-Key',
-        () async {
-      await _withRealHttp(() async {
-        final gateway = _IdempotencyRecordingAuthOperationsGateway();
-        final harness = await _RouteHarness.start(
-          authOperationsGateway: gateway,
-          adminPermissionGuard: _RecordingAdminGuard(),
-        );
-        try {
-          final response = await harness.postJson(
-            adminAuthRoleGrantsPath,
-            const <String, Object?>{
-              'user_id': 'target-user',
-              'role_id': _roleId,
-              'scope_type': 'operator_wide',
-            },
+    test(
+      'POST /v1/admin/auth/invites replays cached response on key reuse',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
           );
-          expect(response.statusCode, equals(400));
-          expect(response.json['error'], equals('missing_idempotency_key'));
-          expect(gateway.roleGrantCreates, isEmpty);
-        } finally {
-          await harness.close();
-        }
-      });
-    });
+          try {
+            final first = await harness
+                .postJson(adminAuthInvitesPath, const <String, Object?>{
+                  'email': 'new@example.test',
+                  'role_id': _roleId,
+                  'scope_type': 'operator_wide',
+                }, idempotencyKey: 'idem-invite-1');
+            final second = await harness
+                .postJson(adminAuthInvitesPath, const <String, Object?>{
+                  'email': 'new@example.test',
+                  'role_id': _roleId,
+                  'scope_type': 'operator_wide',
+                }, idempotencyKey: 'idem-invite-1');
+            expect(first.statusCode, equals(201));
+            expect(second.statusCode, equals(201));
+            // Gateway invoked exactly once across the two retries.
+            expect(gateway.inviteCreates, hasLength(1));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'DELETE /v1/admin/auth/invites/{id} rejects missing Idempotency-Key',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
+          );
+          try {
+            final response = await harness.deleteJson(
+              '$adminAuthInvitePrefix${Uri.encodeComponent('invite-1')}',
+              const <String, Object?>{},
+            );
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('missing_idempotency_key'));
+            expect(gateway.inviteRevokes, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'POST /v1/admin/auth/role-grants rejects missing Idempotency-Key',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
+          );
+          try {
+            final response = await harness
+                .postJson(adminAuthRoleGrantsPath, const <String, Object?>{
+                  'user_id': 'target-user',
+                  'role_id': _roleId,
+                  'scope_type': 'operator_wide',
+                });
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('missing_idempotency_key'));
+            expect(gateway.roleGrantCreates, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
 
     test('DELETE /v1/admin/auth/role-grants/{id} rejects missing '
         'Idempotency-Key', () async {
@@ -408,32 +476,32 @@ void main() {
       });
     });
 
-    test('POST /v1/admin/auth/org-units rejects missing Idempotency-Key',
-        () async {
-      await _withRealHttp(() async {
-        final gateway = _IdempotencyRecordingAuthOperationsGateway();
-        final harness = await _RouteHarness.start(
-          authOperationsGateway: gateway,
-          adminPermissionGuard: _RecordingAdminGuard(),
-        );
-        try {
-          final response = await harness.postJson(
-            adminAuthOrgUnitsPath,
-            const <String, Object?>{
-              'parent_org_unit_id': 'unit-root',
-              'unit_type': 'region',
-              'label': 'east',
-              'name': 'East Region',
-            },
+    test(
+      'POST /v1/admin/auth/org-units rejects missing Idempotency-Key',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
           );
-          expect(response.statusCode, equals(400));
-          expect(response.json['error'], equals('missing_idempotency_key'));
-          expect(gateway.orgUnitCreates, isEmpty);
-        } finally {
-          await harness.close();
-        }
-      });
-    });
+          try {
+            final response = await harness
+                .postJson(adminAuthOrgUnitsPath, const <String, Object?>{
+                  'parent_org_unit_id': 'unit-root',
+                  'unit_type': 'region',
+                  'label': 'east',
+                  'name': 'East Region',
+                });
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('missing_idempotency_key'));
+            expect(gateway.orgUnitCreates, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
 
     test('PATCH /v1/admin/auth/locations/{id}/org-unit rejects missing '
         'Idempotency-Key', () async {
@@ -457,31 +525,33 @@ void main() {
       });
     });
 
-    test('rejects empty Idempotency-Key (whitespace-only) the same as missing',
-        () async {
-      await _withRealHttp(() async {
-        final gateway = _IdempotencyRecordingAuthOperationsGateway();
-        final harness = await _RouteHarness.start(
-          authOperationsGateway: gateway,
-          adminPermissionGuard: _RecordingAdminGuard(),
-        );
-        try {
-          final response = await harness.postJson(
-            adminAuthRolesPath,
-            const <String, Object?>{
-              'role_key': 'kitchen_lead',
-              'display_name': 'Kitchen Lead',
-            },
-            idempotencyKey: '   ',
+    test(
+      'rejects empty Idempotency-Key (whitespace-only) the same as missing',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
           );
-          expect(response.statusCode, equals(400));
-          expect(response.json['error'], equals('missing_idempotency_key'));
-          expect(gateway.roleCreates, isEmpty);
-        } finally {
-          await harness.close();
-        }
-      });
-    });
+          try {
+            final response = await harness.postJson(
+              adminAuthRolesPath,
+              const <String, Object?>{
+                'role_key': 'kitchen_lead',
+                'display_name': 'Kitchen Lead',
+              },
+              idempotencyKey: '   ',
+            );
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('missing_idempotency_key'));
+            expect(gateway.roleCreates, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
   });
 
   // Audit follow-up to commit 76021d28 — the user-actions sub-route
@@ -948,6 +1018,7 @@ class _IdempotencyRecordingAuthOperationsGateway
   final roleGrantRevokes = <TeamRoleGrantRevokeCommand>[];
   final orgUnitCreates = <TeamOrgUnitCreateCommand>[];
   final locationOrgUnitMoves = <TeamLocationOrgUnitMoveCommand>[];
+  final profilePatches = <TeamUserProfilePatchCommand>[];
   final userSuspends = <TeamUserStatusCommand>[];
   final userReactivates = <TeamUserStatusCommand>[];
   final userSoftDeletes = <TeamUserStatusCommand>[];
@@ -963,6 +1034,22 @@ class _IdempotencyRecordingAuthOperationsGateway
     operatorId: _operatorId,
     permissions: <TeamRolePermissionRule>[],
   );
+
+  @override
+  Future<TeamUsersListed> listUsers(TeamUserListCommand command) async {
+    return const TeamUsersListed(
+      users: <TeamUserListEntry>[
+        TeamUserListEntry(
+          userId: 'target-user',
+          email: 'target@example.test',
+          displayName: 'Target User',
+          roleId: _roleId,
+          roleLabel: 'Staff',
+          status: 'active',
+        ),
+      ],
+    );
+  }
 
   @override
   Future<TeamRoleCreated> createRole(TeamRoleCreateCommand command) async {
@@ -1015,6 +1102,23 @@ class _IdempotencyRecordingAuthOperationsGateway
   ) async {
     roleGrantRevokes.add(command);
     return const TeamRoleGrantRevoked(revoked: true);
+  }
+
+  @override
+  Future<TeamUserProfilePatched> patchUserProfile(
+    TeamUserProfilePatchCommand command,
+  ) async {
+    profilePatches.add(command);
+    return TeamUserProfilePatched(
+      user: TeamUserListEntry(
+        userId: command.targetUserId,
+        email: 'target@example.test',
+        displayName: command.displayName,
+        roleId: _roleId,
+        roleLabel: 'Staff',
+        status: 'active',
+      ),
+    );
   }
 
   @override

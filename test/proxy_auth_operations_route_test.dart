@@ -472,6 +472,104 @@ void main() {
       });
     });
 
+    test(
+      'PATCH admin user display name delegates idempotent profile update',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            final response = await harness.patchJson(
+              '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}',
+              const <String, Object?>{
+                'display_name': 'Target Person',
+                'admin_reason': 'operator requested correction',
+              },
+              idempotencyKey: 'idem-user-profile-patch-1',
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(guard.permissionKeys, equals(<String>['team.users.invite']));
+            final command = gateway.profilePatches.single;
+            expect(command.targetUserId, equals('target-user'));
+            expect(command.displayName, equals('Target Person'));
+            expect(command.reason, equals('operator requested correction'));
+            final user = response.json['user'] as Map<String, Object?>;
+            expect(user['display_name'], equals('Target Person'));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test('POST admin deactivate alias returns updated user payload', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}'
+            '/deactivate',
+            const <String, Object?>{
+              'admin_reason': 'operator requested suspension',
+            },
+            idempotencyKey: 'idem-user-deactivate-1',
+          );
+
+          expect(response.statusCode, equals(200));
+          expect(response.json['updated'], isTrue);
+          expect(response.json['user'], isA<Map<String, Object?>>());
+          expect(
+            guard.permissionKeys,
+            equals(<String>['team.users.deactivate']),
+          );
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST admin force-logout alias signs out target user', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}'
+            '/force-logout',
+            const <String, Object?>{'admin_reason': 'support lockout recovery'},
+            idempotencyKey: 'idem-user-force-logout-1',
+          );
+
+          expect(response.statusCode, equals(200));
+          expect(response.json['revoked_count'], equals(2));
+          expect(
+            guard.permissionKeys,
+            equals(<String>['team.session.force_logout']),
+          );
+          final command = gateway.allSessionsRevokes.single;
+          expect(command.actorUserId, equals(_userId));
+          expect(command.targetUserId, equals('target-user'));
+          expect(command.reason, equals('support lockout recovery'));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
     test('GET admin sessions returns Access screen session rows', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingAuthOperationsGateway();
@@ -1896,6 +1994,7 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
   final roleDeletes = <TeamRoleDeleteCommand>[];
   final inviteLists = <TeamInviteListCommand>[];
   final inviteCreates = <TeamInviteCreateCommand>[];
+  final profilePatches = <TeamUserProfilePatchCommand>[];
 
   @override
   Future<TeamUsersListed> listUsers(TeamUserListCommand command) async {
@@ -1947,6 +2046,24 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
   ) async {
     roleLists.add(command);
     return TeamRoleCatalogListed(roles: <TeamRoleCatalogEntry>[_teamRole]);
+  }
+
+  @override
+  Future<TeamUserProfilePatched> patchUserProfile(
+    TeamUserProfilePatchCommand command,
+  ) async {
+    profilePatches.add(command);
+    return TeamUserProfilePatched(
+      user: TeamUserListEntry(
+        userId: command.targetUserId,
+        email: 'target@example.test',
+        displayName: command.displayName,
+        roleId: _roleId,
+        roleLabel: 'Kitchen Lead',
+        status: 'active',
+        mfaEnrolled: true,
+      ),
+    );
   }
 
   @override

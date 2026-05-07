@@ -113,8 +113,10 @@ void main() {
       final factory = Phase80IntegrationRoutes
           .globalBindings!.webhookHandler.posAdapterFactories['toast']!;
 
-      final adapterA = factory(operatorId: _operatorA, locationId: _locationA);
-      final adapterB = factory(operatorId: _operatorB, locationId: _locationB);
+      final adapterA =
+          await factory(operatorId: _operatorA, locationId: _locationA);
+      final adapterB =
+          await factory(operatorId: _operatorB, locationId: _locationB);
 
       expect(identical(adapterA, adapterB), isFalse,
           reason: 'each factory invocation must build a fresh adapter so '
@@ -205,6 +207,63 @@ void main() {
       expect(factories.containsKey('clover'), isTrue);
     });
   });
+
+  group('async-factory vendors (Lightspeed LSK + SevenRooms)', () {
+    test(
+        'lightspeed_lsk is wired in posAdapterFactories (no longer '
+        'disabled-with-warn after async typedef)', () async {
+      final config = _buildConfig();
+      final bindings = _buildBindings();
+      await bindPhase8IntegrationsForProduction(
+        bindings,
+        config,
+        proxyJwtVerifier: _StubJwtVerifier(),
+      );
+
+      final installed = Phase80IntegrationRoutes.globalBindings!;
+      // The factory is registered (was on the disabled list before
+      // PR `8.framework.async-adapter-factories` because the sync
+      // typedef could not await `PerTenantLocationConfigResolver`).
+      expect(
+        installed.webhookHandler.posAdapterFactories.containsKey('lightspeed_lsk'),
+        isTrue,
+        reason: 'lightspeed_lsk must move from disabled list to wired list '
+            'now that PosAdapterFactory returns Future<PosAdapter>',
+      );
+      // Signature verifier is also registered (was already on the
+      // disabled-but-verifiable list pre-PR).
+      expect(
+        installed.webhookHandler.signatureVerifiers
+            .containsKey('lightspeed_lsk'),
+        isTrue,
+      );
+    });
+
+    test(
+        'sevenrooms is wired in reservationAdapterFactories (no longer '
+        'disabled-with-warn after async typedef)', () async {
+      final config = _buildConfig();
+      final bindings = _buildBindings();
+      await bindPhase8IntegrationsForProduction(
+        bindings,
+        config,
+        proxyJwtVerifier: _StubJwtVerifier(),
+      );
+
+      final installed = Phase80IntegrationRoutes.globalBindings!;
+      expect(
+        installed.webhookHandler.reservationAdapterFactories
+            .containsKey('sevenrooms'),
+        isTrue,
+        reason: 'sevenrooms must move from disabled list to wired list now '
+            'that ReservationAdapterFactory returns Future<ReservationAdapter>',
+      );
+      expect(
+        installed.webhookHandler.signatureVerifiers.containsKey('sevenrooms'),
+        isTrue,
+      );
+    });
+  });
 }
 
 // ─── Test fixtures ─────────────────────────────────────────────────────
@@ -222,6 +281,7 @@ ProxyConfig _buildConfig({
     ProxySecretNames.servicePrincipalJwtSecret:
         'placeholder-service-principal-jwt-secret',
     ProxySecretNames.pgcryptoEnvelopeKey: 'placeholder-pgcrypto-envelope-key',
+    ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
     ...extraEnv,
   };
   return ProxyConfig.fromEnvironment(env);

@@ -145,7 +145,10 @@ surface, but it adds the server-owned wage mix / role-job-code mapping table
 that mobile mirrors as cache. Phase 8 data-accuracy walk-in settings then
 queues `202605080300_phase_8_data_accuracy_walk_in_settings.sql`; it is not an
 11A surface, but it adds server-owned reservation-demand walk-in fields that
-mobile mirrors as cache and is now the shared cutoff watched by this plan.
+mobile mirrors as cache. Phase 8 connector OAuth state then queues
+`202605080400_phase_8_connector_oauth_state.sql`; it is not an 11A surface,
+but it adds tenant-scoped state for operator-facing vendor OAuth
+begin/callback flows and is now the shared cutoff watched by this plan.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin
