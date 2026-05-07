@@ -60,6 +60,7 @@ dart run tool\migration_cutoff_lint.dart
 
 ## Remaining Follow-Up
 
-Operator Web needs the same drawer affordance in its shell. Group and
-region rows are returned as scopes, but V1 intentionally keeps those
-non-switchable on mobile until server rollup truth exists.
+Operator Web needs the same drawer affordance in its shell. The
+2026-05-07 follow-up clarifies that higher-level role grants should
+expand into the underlying selectable mobile locations, not disabled
+group/region rows and not client-side rollups.

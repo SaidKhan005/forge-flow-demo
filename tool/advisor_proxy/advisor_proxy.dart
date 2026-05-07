@@ -8125,11 +8125,19 @@ Future<void> routeRequest(
             });
             return;
           }
-          final scope = await _resolveOperatorContextOrWrite(
-            request,
-            response,
-            authGuard,
-          );
+          final scope = weeklyPlanMatch.action == WeeklyPlanRouteAction.read
+              ? await _resolveLocationReadContextOrWrite(
+                  request: request,
+                  response: response,
+                  authGuard: authGuard,
+                  operatorId: weeklyPlanMatch.operatorId,
+                  locationId: weeklyPlanMatch.locationId,
+                )
+              : await _resolveOperatorContextOrWrite(
+                  request,
+                  response,
+                  authGuard,
+                );
           if (scope == null) return;
           final weeklyScopeAllowed =
               weeklyPlanMatch.action == WeeklyPlanRouteAction.read
@@ -8216,11 +8224,20 @@ Future<void> routeRequest(
             });
             return;
           }
-          final scope = await _resolveOperatorContextOrWrite(
-            request,
-            response,
-            authGuard,
-          );
+          final scope =
+              selectedStarMatch.action == SelectedStarTargetRouteAction.read
+              ? await _resolveLocationReadContextOrWrite(
+                  request: request,
+                  response: response,
+                  authGuard: authGuard,
+                  operatorId: selectedStarMatch.operatorId,
+                  locationId: selectedStarMatch.locationId,
+                )
+              : await _resolveOperatorContextOrWrite(
+                  request,
+                  response,
+                  authGuard,
+                );
           if (scope == null) return;
           final selectedStarScopeAllowed =
               selectedStarMatch.action == SelectedStarTargetRouteAction.read
@@ -8316,21 +8333,14 @@ Future<void> routeRequest(
           if (claims == null) return;
           final operatorId = claims.operatorId;
           final locationId = claims.locationId;
-          if (operatorId == null ||
-              operatorId.isEmpty ||
-              locationId == null ||
-              locationId.isEmpty) {
-            _writeJson(response, 403, <String, Object?>{
-              'error': 'permission_denied',
-              'message': 'verified token is missing operator or location scope',
-            });
-            return;
+          if (operatorId != null && operatorId.isNotEmpty) {
+            bindOperatorIdToLogContext(operatorId);
           }
-          bindOperatorIdToLogContext(operatorId);
           try {
             final result = await router.handle(
               match: businessScopeMatch,
               actorUserId: claims.userId,
+              actorRoles: claims.roles,
               actorOperatorId: operatorId,
               actorLocationId: locationId,
             );
@@ -14580,10 +14590,12 @@ Future<void> _routeMobileOperationalSync({
     return;
   }
 
-  final scope = await _resolveOperatorContextOrWrite(
-    request,
-    response,
-    authGuard,
+  final scope = await _resolveLocationReadContextOrWrite(
+    request: request,
+    response: response,
+    authGuard: authGuard,
+    operatorId: target.operatorId,
+    locationId: target.locationId,
   );
   if (scope == null) return;
 
@@ -14769,6 +14781,78 @@ class _MobileOperationalPath {
   final String operatorId;
   final String locationId;
   final String resource;
+}
+
+const Set<String> _globalMobileLocationReadRoles = <String>{
+  'super_admin',
+  'ff_support',
+};
+
+Future<OperatorContext?> _resolveLocationReadContextOrWrite({
+  required HttpRequest request,
+  required HttpResponse response,
+  required ProxyRequestGuard authGuard,
+  required String operatorId,
+  required String locationId,
+}) async {
+  final claims = await _resolveVerifiedClaimsOrWrite(
+    request,
+    response,
+    authGuard,
+  );
+  if (claims == null) return null;
+
+  if (_rolesIntersect(claims.roles, _globalMobileLocationReadRoles)) {
+    bindOperatorIdToLogContext(operatorId);
+    return _operatorContextFromClaims(
+      claims,
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+  }
+
+  final scopedOperatorId = _nonBlankString(claims.operatorId);
+  final scopedLocationId = _nonBlankString(claims.locationId);
+  if (scopedOperatorId == null || scopedLocationId == null) {
+    _writeJson(response, 403, <String, Object?>{
+      'error': 'permission_denied',
+      'message': 'verified token is missing operator or location scope',
+    });
+    return null;
+  }
+  bindOperatorIdToLogContext(scopedOperatorId);
+  return _operatorContextFromClaims(
+    claims,
+    operatorId: scopedOperatorId,
+    locationId: scopedLocationId,
+  );
+}
+
+OperatorContext _operatorContextFromClaims(
+  ProxyJwtClaims claims, {
+  required String operatorId,
+  required String locationId,
+}) {
+  return OperatorContext(
+    userId: claims.userId,
+    operatorId: operatorId,
+    locationId: locationId,
+    roles: claims.roles,
+    actorKind: claims.actorKind,
+    servicePrincipalId: claims.servicePrincipalId,
+    firebaseUid: claims.firebaseUid,
+    rolesVersion:
+        claims.rolesVersion ??
+        ProxyRequestGuard._rolesVersionFromRoles(claims.roles),
+    lastFreshAuthAt: claims.lastFreshAuthAt,
+  );
+}
+
+bool _rolesIntersect(List<String> roles, Set<String> allowedRoles) {
+  for (final role in roles) {
+    if (allowedRoles.contains(role)) return true;
+  }
+  return false;
 }
 
 Future<OperatorContext?> _resolveOperatorContextOrWrite(

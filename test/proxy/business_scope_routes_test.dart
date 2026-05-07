@@ -26,17 +26,15 @@ void main() {
         _FakeMobileOperationalSyncGateway mobileGateway,
       })
     >
-    spinUp() async {
-      final guard = ProxyRequestGuard(
-        verifier: _SettableVerifier(
-          const ProxyJwtClaims(
-            userId: 'user-1',
-            operatorId: 'op-1',
-            locationId: 'loc-1',
-            roles: <String>['operator_manager'],
-          ),
-        ),
-      );
+    spinUp({
+      ProxyJwtClaims claims = const ProxyJwtClaims(
+        userId: 'user-1',
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+        roles: <String>['operator_manager'],
+      ),
+    }) async {
+      final guard = ProxyRequestGuard(verifier: _SettableVerifier(claims));
       final businessGateway = _FakeBusinessScopeGateway();
       final mobileGateway = _FakeMobileOperationalSyncGateway();
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -81,6 +79,43 @@ void main() {
       });
     });
 
+    test(
+      'global admin route returns every registered location scope',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            claims: const ProxyJwtClaims(
+              userId: 'admin-1',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve('/v1/users/admin-1/business_scopes'),
+            );
+            expect(response.statusCode, 200);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['user_id'], 'admin-1');
+            expect(body.containsKey('operator_id'), isFalse);
+            final scopes = body['scopes'] as List<Object?>;
+            expect(scopes, hasLength(2));
+            expect(
+              scopes.map((scope) => (scope as Map<String, Object?>)['label']),
+              <String>['Acme - Downtown', 'Beta - Uptown'],
+            );
+            expect(ctx.businessGateway.globalListCalls, <String>['admin-1']);
+            expect(ctx.businessGateway.listCalls, isEmpty);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
     test('rejects a user path for someone else', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
@@ -112,11 +147,43 @@ void main() {
             );
             expect(response.statusCode, 200);
             expect(ctx.mobileGateway.calls, <String>[
-              'shift_records:op-1:loc-2',
+              'shift_records:op-1:loc-2:scope=op-1:loc-1',
             ]);
             expect(ctx.businessGateway.accessCalls, <String>[
               'user-1:op-1:loc-2',
             ]);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'global admin token can read the selected location sync path',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            claims: const ProxyJwtClaims(
+              userId: 'admin-1',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '/v1/operators/op-2/locations/loc-9/shift_records',
+              ),
+            );
+            expect(response.statusCode, 200);
+            expect(ctx.mobileGateway.calls, <String>[
+              'shift_records:op-2:loc-9:scope=op-2:loc-9',
+            ]);
+            expect(ctx.businessGateway.accessCalls, isEmpty);
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -138,6 +205,7 @@ class _SettableVerifier implements ProxyJwtVerifier {
 
 class _FakeBusinessScopeGateway implements BusinessScopeProxyGateway {
   final listCalls = <String>[];
+  final globalListCalls = <String>[];
   final accessCalls = <String>[];
 
   @override
@@ -166,6 +234,29 @@ class _FakeBusinessScopeGateway implements BusinessScopeProxyGateway {
   }
 
   @override
+  Future<List<BusinessScopeProxyRow>> listAllLocationScopesForAdmin({
+    required String adminUserId,
+  }) async {
+    globalListCalls.add(adminUserId);
+    return const <BusinessScopeProxyRow>[
+      BusinessScopeProxyRow(
+        scopeId: 'loc-1',
+        scopeType: 'location',
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+        label: 'Acme - Downtown',
+      ),
+      BusinessScopeProxyRow(
+        scopeId: 'loc-9',
+        scopeType: 'location',
+        operatorId: 'op-2',
+        locationId: 'loc-9',
+        label: 'Beta - Uptown',
+      ),
+    ];
+  }
+
+  @override
   Future<bool> canAccessLocation({
     required String userId,
     required String operatorId,
@@ -188,7 +279,10 @@ class _FakeMobileOperationalSyncGateway
     required String? modifiedSince,
     required int pageSize,
   }) async {
-    calls.add('shift_records:$operatorId:$locationId');
+    calls.add(
+      'shift_records:$operatorId:$locationId:'
+      'scope=${scope.operatorId}:${scope.locationId}',
+    );
     return const <String, Object?>{
       'shift_records': <Map<String, Object?>>[],
       'next_cursor': null,

@@ -138,9 +138,12 @@ Do not re-open stale findings unless the repo regresses:
   cache. Phase 8 data-accuracy walk-in settings then queues
   `202605080300_phase_8_data_accuracy_walk_in_settings.sql` for server-owned
   reservation-demand walk-in handling fields that mobile mirrors as cache.
+  Phase 8 connector OAuth state then queues
+  `202605080400_phase_8_connector_oauth_state.sql` for tenant-scoped
+  operator-facing vendor OAuth begin/callback state.
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605080300_phase_8_data_accuracy_walk_in_settings.sql`.
+  `202605080400_phase_8_connector_oauth_state.sql`.
 
 ## Remaining Live-Closeout Gates
 

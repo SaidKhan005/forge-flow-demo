@@ -5,7 +5,7 @@ Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FO
 
 ## P0 - Production1 Migration Apply Gap
 
-**19 migrations pending Production1/staging apply** (chronological):
+**20 migrations pending Production1/staging apply** (chronological):
 
 | Migration | Origin | Staging status |
 |---|---|---|
@@ -28,8 +28,9 @@ Origin: 2026-05-02 deep audit. Resolved items in `docs/archive/POST_HARDENING_FO
 | `202605080100_phase_8_weekly_plan_server_truth.sql` | Phase 8 weekly-plan server truth: server-owned `forecast_contexts`, `weekly_plan_snapshots`, day rows, and audit ledger with target-cycle FK posture, one-active-week uniqueness, RLS, and operator-leading indexes. Mobile sync mirrors snapshots as cache only. | code-ready |
 | `202605080200_phase_8_wage_role_rows_server_truth.sql` | Phase 8 wage-role row server truth: additive tenant-scoped `wage_role_rows` table for operator/admin-owned role/rate/job-code mapping. Mobile reads it as cache only. | code-ready |
 | `202605080300_phase_8_data_accuracy_walk_in_settings.sql` | Phase 8 data-accuracy walk-in settings: additive `walk_in_handling_mode` and `walk_in_manual_entries` fields on `data_accuracy_settings` so reservation demand settings are server-owned and mobile-readable. | code-ready |
+| `202605080400_phase_8_connector_oauth_state.sql` | Phase 8 connector OAuth state: additive tenant-scoped CSRF/PKCE state table for operator-facing vendor OAuth begin/callback flows. | code-ready |
 
-**Action:** apply all 19 in next Production1 event per `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied + verified, the corresponding feature is **staging-ready only**.
+**Action:** apply all 20 in next Production1 event per `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied + verified, the corresponding feature is **staging-ready only**.
 
 ## P1 - Live Admin Operational Gates
 

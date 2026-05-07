@@ -271,7 +271,8 @@ class OrgUnitsRepository extends OperatorScopedRepository {
         'select location_id::text as location_id, '
         'operator_id::text as operator_id, '
         'parent_org_unit_id::text as parent_org_unit_id, '
-        'org_unit_path::text as org_unit_path, name '
+        'org_unit_path::text as org_unit_path, name, '
+        'timezone as business_timezone '
         'from locations '
         'order by org_unit_path, name',
       );
@@ -350,6 +351,30 @@ class OrgUnitsRepository extends OperatorScopedRepository {
     );
   }
 
+  /// Admin/system path: SELECT every registered location across
+  /// operators for global F&F read-only mobile scope discovery. Runs
+  /// through `withSystem` so the [adminReason] string is audited and
+  /// tenant RLS remains closed to ordinary operator tokens.
+  Future<List<OrgLocationRow>> listAllLocationsAsAdmin({
+    required String adminReason,
+  }) {
+    return withSystem<List<OrgLocationRow>>((exec) async {
+      final rows = await exec.query(
+        'select l.location_id::text as location_id, '
+        'l.operator_id::text as operator_id, '
+        'l.parent_org_unit_id::text as parent_org_unit_id, '
+        "coalesce(l.org_unit_path::text, '') as org_unit_path, "
+        'l.name, l.timezone as business_timezone, '
+        'o.business_name as operator_name '
+        'from locations l '
+        'join operators o on o.operator_id = l.operator_id '
+        'order by lower(o.business_name), l.org_unit_path, '
+        'lower(l.name), l.location_id',
+      );
+      return rows.map(_locationRowFromMap).toList(growable: false);
+    }, reason: adminReason);
+  }
+
   static void _validateUnitType(String value) {
     if (!allowedUnitTypes.contains(value)) {
       throw ArgumentError.value(
@@ -377,9 +402,11 @@ class OrgUnitsRepository extends OperatorScopedRepository {
     return OrgLocationRow(
       locationId: row['location_id']! as String,
       operatorId: row['operator_id']! as String,
-      parentOrgUnitId: row['parent_org_unit_id']! as String,
-      orgUnitPath: row['org_unit_path']! as String,
+      parentOrgUnitId: row['parent_org_unit_id'] as String?,
+      orgUnitPath: row['org_unit_path'] as String? ?? '',
       name: row['name']! as String,
+      businessTimezone: row['business_timezone'] as String?,
+      operatorName: row['operator_name'] as String?,
     );
   }
 }
@@ -393,14 +420,18 @@ class OrgLocationRow {
   const OrgLocationRow({
     required this.locationId,
     required this.operatorId,
-    required this.parentOrgUnitId,
     required this.orgUnitPath,
     required this.name,
+    this.parentOrgUnitId,
+    this.businessTimezone,
+    this.operatorName,
   });
 
   final String locationId;
   final String operatorId;
-  final String parentOrgUnitId;
+  final String? parentOrgUnitId;
   final String orgUnitPath;
   final String name;
+  final String? businessTimezone;
+  final String? operatorName;
 }

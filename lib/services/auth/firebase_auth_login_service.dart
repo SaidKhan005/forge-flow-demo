@@ -195,8 +195,12 @@ class FirebaseAuthLoginService implements AuthLoginService {
     FirebaseAuthCredential credential, {
     String? locationOverride,
   }) async {
+    final roles = _extractRoles(credential.customClaims);
     final operatorIdClaim = credential.customClaims['operator_id'];
-    if (operatorIdClaim is! String || operatorIdClaim.isEmpty) {
+    final operatorId = operatorIdClaim is String && operatorIdClaim.isNotEmpty
+        ? operatorIdClaim
+        : null;
+    if (operatorId == null && !_hasGlobalReadRole(roles)) {
       throw const FirebaseAuthLoginProjectionError(
         'JWT custom claim `operator_id` is missing or not a string',
       );
@@ -209,19 +213,23 @@ class FirebaseAuthLoginService implements AuthLoginService {
         ? postgresUserIdClaim
         : credential.userId;
     final locationClaim = credential.customClaims['location_id'];
-    final locationId =
-        locationOverride ??
-        (locationClaim is String && locationClaim.isNotEmpty
-            ? locationClaim
-            : await _locationResolver.resolveDefaultLocationId(
-                userId: credential.userId,
-                operatorId: operatorIdClaim,
-              ));
-    final roles = _extractRoles(credential.customClaims);
+    final String locationId;
+    if (locationOverride != null) {
+      locationId = locationOverride;
+    } else if (locationClaim is String && locationClaim.isNotEmpty) {
+      locationId = locationClaim;
+    } else if (operatorId == null) {
+      locationId = '';
+    } else {
+      locationId = await _locationResolver.resolveDefaultLocationId(
+        userId: credential.userId,
+        operatorId: operatorId,
+      );
+    }
     final mfaEnrolled = _extractMfaEnrolled(credential.customClaims);
     return AuthSession(
       userId: userId,
-      operatorId: operatorIdClaim,
+      operatorId: operatorId ?? '',
       locationId: locationId,
       firebaseIdToken: credential.idToken,
       issuedAt: credential.idTokenIssuedAt,
@@ -243,6 +251,10 @@ class FirebaseAuthLoginService implements AuthLoginService {
       roles.add('roles_version:$rolesVersion');
     }
     return List<String>.unmodifiable(roles);
+  }
+
+  static bool _hasGlobalReadRole(List<String> roles) {
+    return roles.contains('super_admin') || roles.contains('ff_support');
   }
 
   static bool _extractMfaEnrolled(Map<String, Object?> claims) {

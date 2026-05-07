@@ -12,7 +12,7 @@ and accessible-scope server truth.
 The sprint goal is plain:
 
 1. A user with access to multiple operators, locations, regions, or
-   groups picks "what business they're looking at" from a hamburger
+   groups picks which location they are looking at from a hamburger
    drawer.
 2. The accessible scopes available to the user are server truth, not
    client-derived from role catalogs.
@@ -51,8 +51,11 @@ That means:
 
 This sprint includes:
 
-- Additive proxy route returning the user's accessible scopes
-  (operators, locations, regions, groups), filtered by RBAC.
+- Additive proxy route returning the user's selectable locations,
+  filtered by RBAC. Operator-wide, region, district, or group grants
+  expand server-side into the underlying location rows.
+- F&F global read roles can use the same mobile drawer to discover all
+  registered business locations.
 - Mobile model + local active-scope SQLite repository.
 - Hamburger drawer / scope picker UI on mobile + operator-web shell.
 - Cancellation + re-base of the in-flight sync runtime when scope
@@ -64,7 +67,8 @@ This sprint includes:
 This sprint excludes:
 
 - Group / region / company rollups (group-level dashboards live in a
-  separate post-V1 sprint).
+  separate post-V1 sprint). Higher-level grants do not create mobile
+  rollup dashboards in this sprint.
 - Cross-tenant ad-hoc queries on Operator Web (admin support uses the
   F&F Ops Console).
 - Push notification proof.
@@ -77,7 +81,7 @@ The accepted sprint proves this path:
 ```text
 user signs in
 -> proxy returns accessible scopes via /v1/users/:userId/business_scopes
--> mobile renders a hamburger drawer with the list
+-> mobile renders a searchable hamburger drawer with selectable locations
 -> active scope is persisted locally per user
 -> user switches scope from A to B
 -> mobile cancels the in-flight sync
@@ -90,6 +94,8 @@ user signs in
 
 1. Accessible scopes are server truth. The mobile client never derives
    them from a local role table.
+   Higher-level grants are projected by the server into location rows;
+   mobile does not synthesize a rollup or merge rows locally.
 2. Active scope is per-session local state. It is never sent on a
    write — every write carries server-derived `(operator_id,
    location_id)` from the JWT, and the proxy verifies the active
@@ -101,7 +107,9 @@ user signs in
    location_id)`; no duplicate mobile cache tables.
 5. The proxy route is operator-scoped and respects per-operator RLS.
 6. The drawer surfaces only what the user actually has access to —
-   never a "request access" button on V1.
+   never a "request access" button on V1. The drawer has search and
+   only selectable location rows; non-location scope rows are not
+   rendered as disabled pseudo-rollups.
 7. The drawer copy reads as training, not jargon (UX writing standard).
 8. The active scope persists across app restarts via existing local
    identity storage, not a new keychain entry.
@@ -112,6 +120,11 @@ Accept only when:
 
 - Proxy `/v1/users/:userId/business_scopes` returns the correct
   accessible set for a multi-scope user, restricted by RBAC.
+- Operator-wide and org-unit grants return their underlying locations,
+  with no mobile rollup rows.
+- F&F global read roles can list every registered business location,
+  search the drawer, and select a location while the phone still reads
+  one selected location at a time.
 - Mobile drawer renders the list and persists active scope locally.
 - Switching scope cancels in-flight sync, re-bases caches, and renders
   the new scope's data.
