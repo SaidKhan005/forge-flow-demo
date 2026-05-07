@@ -21,7 +21,7 @@
 // Polling cadence is therefore the only live-update path, which makes
 // per-batch watermark persistence load-bearing.
 
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 import '../../services/integration/integration_adapter_common.dart';
 import '../../services/integration/pos_adapter.dart';

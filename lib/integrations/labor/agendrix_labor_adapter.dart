@@ -27,7 +27,7 @@
 // F&F `location_id` via `connector_location_binding` rows after the
 // initial location enumeration.
 
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 import '../../services/integration/integration_adapter_common.dart';
 import '../../services/integration/labor_adapter.dart';

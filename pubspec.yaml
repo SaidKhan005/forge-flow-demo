@@ -39,6 +39,7 @@ dependencies:
   sqflite_common_ffi: ^2.3.4
   path: ^1.9.0
   shared_preferences: ^2.3.0
+  meta: ^1.16.0
   # Phase 9.4 - SHA-256 hashing for recovery-code at-rest hashing.
   # Was previously dev-only (used by the corpus build tool); promoted
   # to a direct dependency so `lib/services/mfa/recovery_code_hasher.dart`

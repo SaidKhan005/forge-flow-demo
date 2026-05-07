@@ -41,7 +41,7 @@
 // graceful-drain hook, no dead-letter UI, no sidecar raw-payload
 // partitions, no 5-second test-connection SLA, no email auto-disable).
 
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 import '../../services/integration/integration_adapter_common.dart';
 import '../../services/integration/labor_adapter.dart';

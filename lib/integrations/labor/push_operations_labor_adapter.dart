@@ -29,7 +29,7 @@
 // adapter never sees plaintext: the framework wraps the token in a
 // `VendorCredentialHandle` issued by `vendor_credentials_repository.dart`.
 
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 import '../../services/integration/integration_adapter_common.dart';
 import '../../services/integration/labor_adapter.dart';
