@@ -65,6 +65,7 @@ import '../screens/settings_notifications_screen.dart';
 import '../screens/sign_in_screen.dart';
 import '../screens/tos_accept_screen.dart';
 import '../screens/vendor_connections_screen.dart';
+import '../screens/wage_authority_screen.dart';
 import '../screens/welcome_screen.dart';
 import '../widgets/web_app_shell.dart';
 import '../../theme/app_theme.dart';
@@ -88,6 +89,7 @@ const String kOperatorWebNavSecurity = 'security';
 const String kOperatorWebNavVendorConnections = 'vendor_connections';
 const String kOperatorWebNavDataAccuracy = 'data_accuracy';
 const String kOperatorWebNavNotifications = 'notifications';
+const String kOperatorWebNavWageAuthority = 'wage_authority';
 
 /// Sub-route names mounted under the Roles nav surface. The router
 /// keeps a small state machine here rather than registering full
@@ -743,6 +745,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         group: 'Data & integrations',
       ),
       OperatorWebNavItem(
+        id: kOperatorWebNavWageAuthority,
+        title: 'Wage authority',
+        icon: Icons.payments_outlined,
+        group: 'Data & integrations',
+      ),
+      OperatorWebNavItem(
         id: kOperatorWebNavNotifications,
         title: 'Notifications',
         icon: Icons.notifications_outlined,
@@ -853,6 +861,28 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 locationId: locationScope.id,
                 locationName: locationScope.label,
                 dataAccuracyGateway: _dataAccuracyGateway,
+              );
+        break;
+      case kOperatorWebNavWageAuthority:
+        body = locationScope == null
+            ? _RequiresLocationScopeSurface(
+                key: const Key(
+                  'operator_web_wage_authority_requires_location',
+                ),
+                icon: Icons.payments_outlined,
+                title: 'Choose a location',
+                body:
+                    'Wage rows are saved per location. Use Managing to pick the '
+                    'location whose wage mix you want to manage.',
+                selectedScopeLabel: managementScope.label,
+              )
+            : WageAuthorityScreen(
+                session: session,
+                locationId: locationScope.id,
+                locationName: locationScope.label,
+                gateway: _wageAuthorityGateway ??
+                    (_routerOwnedDemoWageAuthorityGateway ??=
+                        OperatorWebDemoWageAuthorityGateway()),
               );
         break;
       case kOperatorWebNavNotifications:
@@ -1055,6 +1085,23 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
 
   DemoWebNotificationPreferencesGateway?
       _routerOwnedNotificationPreferencesGateway;
+
+  /// Phase 8 W5.A.2 - Wage authority screen gateway. Live wiring (the
+  /// Firebase source plus the proxy) implements the provider mixin;
+  /// demo / fixture sources fall back to the in-memory demo gateway
+  /// owned by the router so the walkthrough renders + edits end-to-end
+  /// without a live proxy.
+  OperatorWebWageAuthorityGateway? get _wageAuthorityGateway {
+    final source = widget.source;
+    if (source is OperatorWebWageAuthorityGatewayProvider) {
+      return (source as OperatorWebWageAuthorityGatewayProvider)
+          .wageAuthorityGateway;
+    }
+    return null;
+  }
+
+  OperatorWebDemoWageAuthorityGateway?
+      _routerOwnedDemoWageAuthorityGateway;
 
   String? get _currentSessionId {
     final source = widget.source;

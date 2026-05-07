@@ -42,6 +42,20 @@ export 'operator_web_data_accuracy_gateway.dart'
         OperatorWebDataAccuracyGateway,
         OperatorWebHttpDataAccuracyGateway;
 
+/// Phase 8 W5.A.2 - Operator Web Wage authority gateway provider seam.
+/// Auth sources mix this provider in to surface the live HTTP gateway
+/// to the Wage authority screen; demo sources mix in the in-memory
+/// demo impl. Re-exports keep this file the single registration index
+/// for operator-web gateway providers.
+export 'operator_web_wage_authority_gateway.dart'
+    show
+        OperatorWebDemoWageAuthorityGateway,
+        OperatorWebHttpWageAuthorityGateway,
+        OperatorWebWageAuthorityGateway,
+        OperatorWebWageAuthorityGatewayProvider,
+        WageAuthorityGatewayException,
+        WageRoleRowUpsert;
+
 /// Operator Web W4.B - re-export the chain anchor gateway provider so
 /// router/auth-source wiring sees one canonical sentinel surface.
 export 'operator_web_audit_chain_anchors_gateway_provider.dart'
