@@ -243,4 +243,40 @@ Verified against `origin/master` 2026-05-07: every closed item below is present 
 
 - [#278](https://github.com/SaidKhan005/forge-flow-demo/pull/278) Resolution table + PROJECT_TRACKER "Now" bullet (2026-05-07).
 - [#284](https://github.com/SaidKhan005/forge-flow-demo/pull/284) Fact-check addendum vs current master (2026-05-07).
-- This archive PR — moves the audit + closeout history here; trims `/CODE_HEALTH.md` to the open-residuals tracker.
+- [#285](https://github.com/SaidKhan005/forge-flow-demo/pull/285) Archive split — moved audit + closeout history here; trimmed `/CODE_HEALTH.md` to the open-residuals tracker.
+
+---
+
+# Wave 3 closures (2026-05-07)
+
+A second remediation wave landed nine parallel lanes against the residuals from the original audit. Seven closed cleanly; two closed partially with documented gaps and one corrected an audit misdiagnosis.
+
+## Closed via Wave 3
+
+| Finding | PR | Lane |
+|---|---|---|
+| Launch Blocker #1 — Mobile per-operator isolation (`ShiftDashboardNotifier._load` TOCTTOU + `DatabaseHelper.instance` demo hardcoding) | [#294](https://github.com/SaidKhan005/forge-flow-demo/pull/294) | LB1 |
+| Launch Blocker #2 — Vendor sync log redaction (all 17 vendor Postgres sinks now redact `payloadPreview` before INSERT via shared `encodePayloadPreviewForSyncLog` helper) | [#302](https://github.com/SaidKhan005/forge-flow-demo/pull/302) | LB2 (re-scoped) |
+| Deferred #1 — MFA removal post-`markCompleted` atomicity (`EventOutboxRepository.enqueueInTransaction` + `markCompletedInTransaction`; MFA worker now atomic) | [#299](https://github.com/SaidKhan005/forge-flow-demo/pull/299) | OUTBOX-TX |
+| Conflicting `actor_kind` constraint definitions (`202604280004` + `202604280013`) — predicates were semantically identical; consolidation migration drops both old names and re-creates a single canonical `auth_events_audit_actor_kind_check` | [#289](https://github.com/SaidKhan005/forge-flow-demo/pull/289) | ACTOR-KIND |
+| `phase_8_set_business_date()` SECURITY DEFINER blast radius (REVOKE EXECUTE from `service_role`; added `tg_argv[0]` allowlist + explicit `timestamptz` cast; function only called by triggers, no app-code path) | [#291](https://github.com/SaidKhan005/forge-flow-demo/pull/291) | BIZ-DATE-SEC |
+| Re-locate the six "moved" surfaces (5 STILL OPEN at new paths; 1 CHANGED; CODE_HEALTH.md "Surfaces moved" section rewritten with current evidence) | [#293](https://github.com/SaidKhan005/forge-flow-demo/pull/293) | RELOCATE |
+| `cost_telemetry_limit` query param "bypassable token cap" — closed as audit misdiagnosis (it's a row-count `LIMIT` for the admin observability dashboard, server-clamped to `[1, 100]`); the actual no-token-cap gap on outbound LLM calls is recorded as a separate residual | [#300](https://github.com/SaidKhan005/forge-flow-demo/pull/300) | TOKEN-CAP doc |
+
+## Closed partially in Wave 3 (mechanism in place, adoption / producer side pending)
+
+| Finding | What landed in Wave 3 | What still needs to land | PR |
+|---|---|---|---|
+| Postgres pool size pinned at 4 with no env override | Top-level `resolvePostgresMaxConnectionsPerPool({Map<String, String>? environment})` resolver reading `POSTGRES_POOL_MAX_CONNECTIONS` env var with default fallback + sane upper bound (200) | Pool-factory call sites still use the const default; need to thread the resolver call through actual construction sites so deployments can tune the pool | [#290](https://github.com/SaidKhan005/forge-flow-demo/pull/290) |
+| Permission cache invalidation per-process | LISTEN side: `PermissionCacheInvalidationListener` consumes the `permission_cache_invalidate` Postgres NOTIFY channel and calls `cache.invalidateUser(userId)` on each event; channel + payload contract documented in migration `202605080500_permission_cache_invalidation_channel.sql` | NOTIFY producers — every permission-write site (role grants/revokes, `roles_version` bumps in `users_repository.dart` / `user_roles_repository.dart`) needs to emit `pg_notify('permission_cache_invalidate', json_object(...))` after commit | [#292](https://github.com/SaidKhan005/forge-flow-demo/pull/292) |
+
+## Wave 3 lane discoveries worth noting
+
+- **LB2 surface area was wider than the audit cited.** The audit pointed at `toast_pos_postgres_sink.dart:139–158`. Investigation found the same bug pattern across **17 vendor Postgres sinks** (POS / Labor / Reservation), with `seven_shifts_postgres_sink.dart` carrying three insert sites. The first agent stopped at the threshold rule; the re-scoped lane fixed all 17 via a shared `_postgres_sink_log_helpers.dart` private helper to prevent drift on sink #18.
+- **OUTBOX-TX needed one more file.** The lane prompt scoped `event_outbox_repository.dart` + `mfa_removal_worker.dart` + tests. The agent correctly added `markCompletedInTransaction` to `mfa_factor_removal_requests_repository.dart` as well, since true atomicity required the row-update + audit-insert + outbox-enqueue all on the same executor.
+- **TOKEN-CAP misdiagnosis.** The original audit pointer (`advisor_proxy.dart:7446`, default `100`, "cap is bypassable") matched a row-count LIMIT for the admin observability dashboard, not a token cap. The actual concern (no per-request token cap exists at all on the proxy's outbound LLM call sites at `advisor_proxy.dart:8485-8700`) is a NEW residual.
+- **`DatabaseHelper.instance` had zero production callers.** Only 6 test files referenced it. The wider call-site sweep the LB1 lane was prepared to handle wasn't needed — the deprecation can land at any time.
+
+## Wave 3 closeout PR
+
+- [#286](https://github.com/SaidKhan005/forge-flow-demo/pull/286) — placeholder; this archive PR records the Wave 3 closures and trims `/CODE_HEALTH.md` to remove the now-closed items.
