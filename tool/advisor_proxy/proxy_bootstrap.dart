@@ -56,6 +56,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/usage_caps_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/user_roles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/users_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/wage_role_rows_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
@@ -200,6 +201,7 @@ class ProxyProductionBindings {
     required this.auditChainAnchorsGateway,
     required this.connectorBackfillJobsRouter,
     required this.notificationPreferencesRouter,
+    required this.wageRoleRowsRouter,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -361,6 +363,15 @@ class ProxyProductionBindings {
   /// RLS). Wired into `routeRequest` for the three operator-scoped
   /// notification-preferences routes.
   final NotificationPreferencesRouter notificationPreferencesRouter;
+
+  /// Phase 8 W5.A.1 - operator-scoped wage role rows write router.
+  /// Handles POST /v1/operator/wage-role-rows (upsert) and DELETE
+  /// /v1/operator/wage-role-rows/:wage_role_row_id (soft delete) so the
+  /// wage editor (mobile + future op-web W3.D parity) can write the
+  /// per-tenant wage mix through the same Idempotency-Key + tenant-RLS
+  /// discipline as every other operator write. Wired through
+  /// [RepositoryWageRoleRowsGateway] over [WageRoleRowsRepository].
+  final WageRoleRowsRouter wageRoleRowsRouter;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -635,6 +646,15 @@ ProxyProductionBindings buildProxyProductionBindings(
   final notificationPreferencesRouter = NotificationPreferencesRouter(
     gateway: RepositoryNotificationPreferencesGateway(
       repository: NotificationPreferencesRepository(tenantWrapper),
+    ),
+  );
+  // Phase 8 W5.A.1 - operator-scoped wage role rows write router.
+  // Wired through tenant-pool repository so RLS + per-operator
+  // isolation hold; the read path stays in `fetchWageRoleRows`
+  // (lower in this file).
+  final wageRoleRowsRouter = WageRoleRowsRouter(
+    gateway: RepositoryWageRoleRowsGateway(
+      repository: WageRoleRowsRepository(tenantWrapper),
     ),
   );
   SelectedStarTargetRouter.installGlobal(
@@ -954,6 +974,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     ),
     connectorBackfillJobsRouter: connectorBackfillJobsRouter,
     notificationPreferencesRouter: notificationPreferencesRouter,
+    wageRoleRowsRouter: wageRoleRowsRouter,
   );
 }
 
