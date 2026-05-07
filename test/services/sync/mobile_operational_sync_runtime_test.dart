@@ -18,6 +18,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/auth/auth_session.dart';
 import 'package:forge_and_flow/domain/models/business_scope.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/domain/repositories/open_shift_snapshot_repository.dart';
@@ -359,6 +360,13 @@ class _StubSyncProxyClient implements SyncProxyClient {
   }) async => null;
 
   @override
+  Future<List<DataAccuracyServicePeriodSetting>>
+  fetchDataAccuracyServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  }) async => const <DataAccuracyServicePeriodSetting>[];
+
+  @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
   fetchForgeFlowPollingTierAssignment({
     required String operatorId,
@@ -534,6 +542,15 @@ class _CountingProxyClient implements SyncProxyClient {
   }) async {
     accuracyCallCount++;
     return null;
+  }
+
+  @override
+  Future<List<DataAccuracyServicePeriodSetting>>
+  fetchDataAccuracyServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    return const <DataAccuracyServicePeriodSetting>[];
   }
 
   @override

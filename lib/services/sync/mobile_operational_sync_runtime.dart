@@ -475,6 +475,7 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
         table == 'open_shift_snapshots' ||
         table == 'demo_mode_state' ||
         table == 'data_accuracy_settings' ||
+        table == 'data_accuracy_service_period_settings' ||
         table == 'forge_flow_polling_tier_assignment' ||
         table == 'selected_star_shift_decisions' ||
         table == 'target_cycles' ||

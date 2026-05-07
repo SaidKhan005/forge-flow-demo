@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../domain/models/open_shift_snapshot.dart';
 import '../../domain/models/business_scope.dart';
+import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/restaurant_timing_config.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../models/shift_record.dart';
@@ -181,6 +182,32 @@ class HttpSyncProxyClient
         body['data_accuracy_settings'] ?? body['settings'] ?? body['data'];
     if (raw == null) return null;
     return _dataAccuracyFromJson(_stringKeyMap(raw));
+  }
+
+  @override
+  Future<List<DataAccuracyServicePeriodSetting>>
+  fetchDataAccuracyServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final body = await _getJson(
+      _locationPath(operatorId, locationId, const <String>[
+        'data_accuracy_service_period_settings',
+      ]),
+    );
+    final rows = _readList(body, const <String>[
+      'data_accuracy_service_period_settings',
+      'service_period_settings',
+      'settings',
+      'items',
+      'data',
+    ]);
+    return rows
+        .map(
+          (row) =>
+              _dataAccuracyServicePeriodSettingFromJson(_stringKeyMap(row)),
+        )
+        .toList(growable: false);
   }
 
   @override
@@ -857,6 +884,36 @@ class HttpSyncProxyClient
       coversManualEntries: _readManualEntries(json['covers_manual_entries']),
       wageSource: _readString(json['wage_source']) ?? 'vendor',
       updatedAt: _readDateTime(json['updated_at']) ?? DateTime.now().toUtc(),
+    );
+  }
+
+  static DataAccuracyServicePeriodSetting
+  _dataAccuracyServicePeriodSettingFromJson(Map<String, dynamic> json) {
+    return DataAccuracyServicePeriodSetting(
+      id: _requiredString(json, 'id'),
+      operatorId: _requiredString(json, 'operator_id'),
+      locationId: _requiredString(json, 'location_id'),
+      servicePeriodKey: _requiredString(json, 'service_period_key'),
+      coversSource: ServicePeriodCoversSourceWire.fromWire(
+        _readString(json['covers_source']) ?? 'vendor',
+      ),
+      wageSource: ServicePeriodWageSourceWire.fromWire(
+        _readString(json['wage_source']) ?? 'target_substitution',
+      ),
+      effectiveAtBusinessDate:
+          _readString(json['effective_at_business_date']) ??
+          _readString(json['effectiveAtBusinessDate']) ??
+          '1970-01-01',
+      createdAt:
+          _readDateTime(json['created_at']) ??
+          _readDateTime(json['createdAt']) ??
+          DateTime.now().toUtc(),
+      updatedAt:
+          _readDateTime(json['updated_at']) ??
+          _readDateTime(json['updatedAt']) ??
+          DateTime.now().toUtc(),
+      updatedBy:
+          _readString(json['updated_by']) ?? _readString(json['updatedBy']),
     );
   }
 
