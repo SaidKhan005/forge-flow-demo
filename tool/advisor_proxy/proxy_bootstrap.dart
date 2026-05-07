@@ -1976,11 +1976,13 @@ class RepositoryMobileOperationalSyncProxyGateway
   }) {
     return _tenantRead(scope, operatorId, locationId, (exec) async {
       final rows = await exec.query(
-        'select operator_id::text as operator_id, '
+        'select setting_id::text as setting_id, '
+        'operator_id::text as operator_id, '
         'location_id::text as location_id, covers_source_lunch, '
         'covers_source_dinner, covers_source_late_night, '
         'covers_manual_entries, wage_source, '
-        'walk_in_handling_mode, walk_in_manual_entries, updated_at '
+        'walk_in_handling_mode, walk_in_manual_entries, '
+        'created_at, updated_at, updated_by '
         'from public.data_accuracy_settings '
         'where operator_id = @operator_id::uuid '
         'and location_id = @location_id::uuid '
@@ -1993,6 +1995,95 @@ class RepositoryMobileOperationalSyncProxyGateway
       return <String, Object?>{
         'data': rows.isEmpty ? null : _dataAccuracyJson(rows.single),
       };
+    });
+  }
+
+  @override
+  Future<Map<String, Object?>> upsertDataAccuracySettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) {
+    final coversLunch = _bodyCoversSource(
+      body,
+      'covers_source_lunch',
+      defaultValue: 'vendor',
+    );
+    final coversDinner = _bodyCoversSource(
+      body,
+      'covers_source_dinner',
+      defaultValue: 'vendor',
+    );
+    final coversLateNight = _bodyCoversSource(
+      body,
+      'covers_source_late_night',
+      defaultValue: 'vendor',
+    );
+    final wageSource = _bodyWageSource(
+      body,
+      'wage_source',
+      defaultValue: 'vendor',
+    );
+    final walkInHandlingMode = _bodyWalkInHandlingMode(
+      body,
+      'walk_in_handling_mode',
+      defaultValue: 'reservations_only',
+    );
+    final manualEntries = _bodyNestedIntMap(body, 'covers_manual_entries');
+    final walkInEntries = _bodyIntMap(body, 'walk_in_manual_entries');
+
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final rows = await exec.query(
+        'insert into public.data_accuracy_settings ('
+        'operator_id, location_id, covers_source_lunch, '
+        'covers_source_dinner, covers_source_late_night, '
+        'covers_manual_entries, wage_source, '
+        'walk_in_handling_mode, walk_in_manual_entries, updated_by) '
+        'values ('
+        '@operator_id::uuid, @location_id::uuid, '
+        '@covers_lunch, @covers_dinner, @covers_late_night, '
+        '@manual_entries::jsonb, @wage_source, '
+        '@walk_in_handling_mode, @walk_in_manual_entries::jsonb, '
+        '@updated_by) '
+        'on conflict (operator_id, location_id) do update set '
+        'covers_source_lunch = excluded.covers_source_lunch, '
+        'covers_source_dinner = excluded.covers_source_dinner, '
+        'covers_source_late_night = excluded.covers_source_late_night, '
+        'covers_manual_entries = excluded.covers_manual_entries, '
+        'wage_source = excluded.wage_source, '
+        'walk_in_handling_mode = excluded.walk_in_handling_mode, '
+        'walk_in_manual_entries = excluded.walk_in_manual_entries, '
+        'updated_at = now(), '
+        'updated_by = excluded.updated_by '
+        'returning setting_id::text as setting_id, '
+        'operator_id::text as operator_id, '
+        'location_id::text as location_id, '
+        'covers_source_lunch, covers_source_dinner, '
+        'covers_source_late_night, covers_manual_entries, wage_source, '
+        'walk_in_handling_mode, walk_in_manual_entries, '
+        'created_at, updated_at, updated_by',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'covers_lunch': coversLunch,
+          'covers_dinner': coversDinner,
+          'covers_late_night': coversLateNight,
+          'manual_entries': jsonEncode(manualEntries),
+          'wage_source': wageSource,
+          'walk_in_handling_mode': walkInHandlingMode,
+          'walk_in_manual_entries': jsonEncode(walkInEntries),
+          'updated_by': _uuidOrNull(scope.userId),
+        },
+      );
+      if (rows.isEmpty) {
+        throw const MobileOperationalSyncProxyGatewayException(
+          statusCode: 503,
+          code: 'data_accuracy_settings_write_failed',
+          message: 'data accuracy settings write returned no row',
+        );
+      }
+      return <String, Object?>{'data': _dataAccuracyJson(rows.single)};
     });
   }
 
@@ -2307,6 +2398,7 @@ class RepositoryMobileOperationalSyncProxyGateway
 
   static Map<String, Object?> _dataAccuracyJson(PostgresRow row) {
     return <String, Object?>{
+      'setting_id': row['setting_id'],
       'operator_id': row['operator_id'],
       'location_id': row['location_id'],
       'covers_source_lunch': row['covers_source_lunch'] ?? 'vendor',
@@ -2317,7 +2409,9 @@ class RepositoryMobileOperationalSyncProxyGateway
       'walk_in_handling_mode':
           row['walk_in_handling_mode'] ?? 'reservations_only',
       'walk_in_manual_entries': _jsonMap(row['walk_in_manual_entries']),
+      'created_at': _dateJson(row['created_at']) ?? _todayUtcInstant(),
       'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
+      'updated_by': row['updated_by'],
     };
   }
 
@@ -2405,6 +2499,154 @@ class RepositoryMobileOperationalSyncProxyGateway
       if (decoded is Map) return Map<String, Object?>.from(decoded);
     }
     return const <String, Object?>{};
+  }
+
+  static String _bodyCoversSource(
+    Map<String, Object?> body,
+    String field, {
+    required String defaultValue,
+  }) {
+    final value = _bodyString(body, field) ?? defaultValue;
+    try {
+      return CoversSourceWire.fromWire(value).wire;
+    } on ArgumentError {
+      throw MobileOperationalSyncProxyGatewayException(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field must be vendor, forecast, or manual',
+      );
+    }
+  }
+
+  static String _bodyWageSource(
+    Map<String, Object?> body,
+    String field, {
+    required String defaultValue,
+  }) {
+    final value = _bodyString(body, field) ?? defaultValue;
+    try {
+      return WageSourceWire.fromWire(value).wire;
+    } on ArgumentError {
+      throw const MobileOperationalSyncProxyGatewayException(
+        statusCode: 400,
+        code: 'invalid_wage_source',
+        message: 'wage_source must be vendor or manual_mix',
+      );
+    }
+  }
+
+  static String _bodyWalkInHandlingMode(
+    Map<String, Object?> body,
+    String field, {
+    required String defaultValue,
+  }) {
+    final value = _bodyString(body, field) ?? defaultValue;
+    try {
+      return DataAccuracyWalkInHandlingModeWire.fromWire(value).wire;
+    } on ArgumentError {
+      throw const MobileOperationalSyncProxyGatewayException(
+        statusCode: 400,
+        code: 'invalid_walk_in_handling_mode',
+        message:
+            'walk_in_handling_mode must be reservations_only, '
+            'walk_ins_added_to_reservations, or '
+            'walk_ins_tracked_separately',
+      );
+    }
+  }
+
+  static String? _bodyString(Map<String, Object?> body, String field) {
+    final raw = body[field];
+    if (raw == null) return null;
+    if (raw is String && raw.trim().isNotEmpty) return raw.trim();
+    throw MobileOperationalSyncProxyGatewayException(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be a non-empty string',
+    );
+  }
+
+  static Map<String, Map<String, int>> _bodyNestedIntMap(
+    Map<String, Object?> body,
+    String field,
+  ) {
+    final raw = body[field];
+    if (raw == null) return const <String, Map<String, int>>{};
+    if (raw is! Map) {
+      throw MobileOperationalSyncProxyGatewayException(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field must be an object',
+      );
+    }
+    final out = <String, Map<String, int>>{};
+    raw.forEach((key, value) {
+      if (key is! String || key.trim().isEmpty || value is! Map) {
+        throw MobileOperationalSyncProxyGatewayException(
+          statusCode: 400,
+          code: 'invalid_$field',
+          message: '$field entries must be date objects',
+        );
+      }
+      final inner = <String, int>{};
+      value.forEach((innerKey, innerValue) {
+        if (innerKey is! String || innerKey.trim().isEmpty) {
+          throw MobileOperationalSyncProxyGatewayException(
+            statusCode: 400,
+            code: 'invalid_$field',
+            message: '$field daypart keys must be strings',
+          );
+        }
+        inner[innerKey.trim()] = _nonNegativeInt(innerValue, field);
+      });
+      out[key.trim()] = inner;
+    });
+    return out;
+  }
+
+  static Map<String, int> _bodyIntMap(
+    Map<String, Object?> body,
+    String field,
+  ) {
+    final raw = body[field];
+    if (raw == null) return const <String, int>{};
+    if (raw is! Map) {
+      throw MobileOperationalSyncProxyGatewayException(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field must be an object',
+      );
+    }
+    final out = <String, int>{};
+    raw.forEach((key, value) {
+      if (key is! String || key.trim().isEmpty) {
+        throw MobileOperationalSyncProxyGatewayException(
+          statusCode: 400,
+          code: 'invalid_$field',
+          message: '$field keys must be strings',
+        );
+      }
+      out[key.trim()] = _nonNegativeInt(value, field);
+    });
+    return out;
+  }
+
+  static int _nonNegativeInt(Object? value, String field) {
+    final parsed = value is int
+        ? value
+        : value is num && value == value.roundToDouble()
+        ? value.toInt()
+        : value is String
+        ? int.tryParse(value.trim())
+        : null;
+    if (parsed == null || parsed < 0) {
+      throw MobileOperationalSyncProxyGatewayException(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field values must be non-negative integers',
+      );
+    }
+    return parsed;
   }
 
   static Map<String, int> _intMap(Map<String, Object?> value) {

@@ -30,9 +30,12 @@
 // every label trains the operator. Plain English. No engineering
 // jargon.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../auth/operator_web_auth_source.dart';
+import '../services/operator_web_data_accuracy_gateway.dart';
 import '../widgets/covers_historical_seed_card.dart';
 import '../widgets/covers_manual_entry_card.dart';
 import '../widgets/covers_source_toggle.dart';
@@ -103,6 +106,7 @@ class DataAccuracyScreen extends StatefulWidget {
     this.locationName,
     this.gateway,
     this.initialSettings,
+    this.dataAccuracyGateway,
     this.businessDateIso = '2026-05-05',
     this.tierStatus,
     this.walkInModeOverride,
@@ -122,6 +126,11 @@ class DataAccuracyScreen extends StatefulWidget {
   /// (covers_source_* = vendor; wage_source = vendor; empty manual
   /// entries).
   final DataAccuracySettings? initialSettings;
+
+  /// Optional live gateway. When present, the screen hydrates from and
+  /// saves to the server-owned data_accuracy_settings row for the
+  /// selected operator/location.
+  final OperatorWebDataAccuracyGateway? dataAccuracyGateway;
 
   final String businessDateIso;
 
@@ -154,6 +163,13 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   bool _loading = true;
   String? _loadError;
   int _loadGeneration = 0;
+  bool _settingsLoading = false;
+  String? _settingsLoadError;
+  String? _settingsSaveError;
+  bool _savingSettings = false;
+  int _settingsLoadGeneration = 0;
+  int _settingsSaveGeneration = 0;
+  DataAccuracySettings? _lastSettings;
 
   // In-memory editable working copy of the settings. Materialized
   // back into `DataAccuracySettings` on save.
@@ -170,27 +186,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   void initState() {
     super.initState();
     _gateway = widget.gateway ?? InMemoryVendorConnectionsGateway();
-    final seed = widget.initialSettings;
-    _coversSourceLunch = seed?.coversSourceLunch ?? CoversSource.vendor;
-    _coversSourceDinner = seed?.coversSourceDinner ?? CoversSource.vendor;
-    _coversSourceLateNight = seed?.coversSourceLateNight ?? CoversSource.vendor;
-    _wageSource = seed?.wageSource ?? WageSource.vendor;
-    _manualEntries = <String, Map<String, int>>{
-      for (final e in (seed?.coversManualEntries ?? const {}).entries)
-        e.key: Map<String, int>.from(e.value),
-    };
-    _walkInEntries = <String, int>{
-      for (final e in (seed?.walkInManualEntries ?? const {}).entries)
-        e.key: e.value,
-    };
-    _walkInMode =
-        widget.walkInModeOverride ??
-        _widgetWalkInModeFromDomain(
-          seed?.walkInHandlingMode ??
-              DataAccuracyWalkInHandlingMode.reservationsOnly,
-        );
-    _walkInDailyCount = _walkInEntries[widget.businessDateIso];
+    _applySettingsSeed(widget.initialSettings);
+    _settingsLoading = widget.dataAccuracyGateway != null;
     _loadBundle();
+    _loadSettings();
   }
 
   Future<void> _loadBundle() async {
@@ -220,21 +219,76 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.gateway != widget.gateway ||
         oldWidget.locationId != widget.locationId ||
-        oldWidget.session.operatorId != widget.session.operatorId) {
+        oldWidget.session.operatorId != widget.session.operatorId ||
+        oldWidget.dataAccuracyGateway != widget.dataAccuracyGateway) {
       _gateway = widget.gateway ?? InMemoryVendorConnectionsGateway();
       setState(() {
         _loading = true;
         _loadError = null;
+        _settingsLoading = widget.dataAccuracyGateway != null;
+        _settingsLoadError = null;
+        _settingsSaveError = null;
       });
       _loadBundle();
+      _loadSettings();
     }
+  }
+
+  Future<void> _loadSettings() async {
+    final gateway = widget.dataAccuracyGateway;
+    if (gateway == null) {
+      _settingsLoading = false;
+      return;
+    }
+    final generation = ++_settingsLoadGeneration;
+    try {
+      final settings = await gateway.loadSettings(
+        operatorId: widget.session.operatorId,
+        locationId: widget.locationId,
+      );
+      if (!mounted || generation != _settingsLoadGeneration) return;
+      setState(() {
+        if (settings != null) _applySettingsSeed(settings);
+        _settingsLoading = false;
+        _settingsLoadError = null;
+      });
+    } catch (error) {
+      if (!mounted || generation != _settingsLoadGeneration) return;
+      setState(() {
+        _settingsLoading = false;
+        _settingsLoadError = 'Could not load data accuracy settings: $error';
+      });
+    }
+  }
+
+  void _applySettingsSeed(DataAccuracySettings? seed) {
+    _lastSettings = seed;
+    _coversSourceLunch = seed?.coversSourceLunch ?? CoversSource.vendor;
+    _coversSourceDinner = seed?.coversSourceDinner ?? CoversSource.vendor;
+    _coversSourceLateNight = seed?.coversSourceLateNight ?? CoversSource.vendor;
+    _wageSource = seed?.wageSource ?? WageSource.vendor;
+    _manualEntries = <String, Map<String, int>>{
+      for (final e in (seed?.coversManualEntries ?? const {}).entries)
+        e.key: Map<String, int>.from(e.value),
+    };
+    _walkInEntries = <String, int>{
+      for (final e in (seed?.walkInManualEntries ?? const {}).entries)
+        e.key: e.value,
+    };
+    _walkInMode =
+        widget.walkInModeOverride ??
+        _widgetWalkInModeFromDomain(
+          seed?.walkInHandlingMode ??
+              DataAccuracyWalkInHandlingMode.reservationsOnly,
+        );
+    _walkInDailyCount = _walkInEntries[widget.businessDateIso];
   }
 
   // ── Settings materialization ────────────────────────────────────
 
   DataAccuracySettings _materialize() {
     final now = DateTime.now().toUtc();
-    final base = widget.initialSettings;
+    final base = _lastSettings ?? widget.initialSettings;
     return DataAccuracySettings(
       settingId: base?.settingId ?? 'demo-setting-id',
       operatorId: widget.session.operatorId,
@@ -256,7 +310,36 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   }
 
   void _emitSave() {
-    widget.onSaveSettings?.call(_materialize());
+    final settings = _materialize();
+    widget.onSaveSettings?.call(settings);
+    final gateway = widget.dataAccuracyGateway;
+    if (gateway != null) unawaited(_saveSettings(gateway, settings));
+  }
+
+  Future<void> _saveSettings(
+    OperatorWebDataAccuracyGateway gateway,
+    DataAccuracySettings settings,
+  ) async {
+    final generation = ++_settingsSaveGeneration;
+    setState(() {
+      _savingSettings = true;
+      _settingsSaveError = null;
+    });
+    try {
+      final saved = await gateway.saveSettings(settings);
+      if (!mounted || generation != _settingsSaveGeneration) return;
+      setState(() {
+        _applySettingsSeed(saved);
+        _savingSettings = false;
+        _settingsSaveError = null;
+      });
+    } catch (error) {
+      if (!mounted || generation != _settingsSaveGeneration) return;
+      setState(() {
+        _savingSettings = false;
+        _settingsSaveError = 'Could not save data accuracy settings: $error';
+      });
+    }
   }
 
   // ── Handlers ────────────────────────────────────────────────────
@@ -374,7 +457,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         key: const Key('operator_web_data_accuracy_forbidden'),
       );
     }
-    if (_loading) {
+    if (_loading || _settingsLoading) {
       return const Center(
         key: Key('operator_web_data_accuracy_loading'),
         child: SizedBox(
@@ -387,7 +470,8 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         ),
       );
     }
-    if (_loadError != null) {
+    final loadError = _loadError ?? _settingsLoadError;
+    if (loadError != null) {
       return Center(
         key: const Key('operator_web_data_accuracy_load_error'),
         child: ConstrainedBox(
@@ -404,7 +488,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _loadError!,
+                  loadError,
                   style: AppTextStyles.body13(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 14),
@@ -414,8 +498,11 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
                     setState(() {
                       _loading = true;
                       _loadError = null;
+                      _settingsLoading = widget.dataAccuracyGateway != null;
+                      _settingsLoadError = null;
                     });
                     _loadBundle();
+                    _loadSettings();
                   },
                   child: const Text('Retry'),
                 ),
@@ -459,6 +546,13 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 20),
+          if (_savingSettings || _settingsSaveError != null) ...[
+            _SaveStatusBanner(
+              saving: _savingSettings,
+              error: _settingsSaveError,
+            ),
+            const SizedBox(height: 14),
+          ],
           OperatorWebSummaryStrip(
             key: const Key('operator_web_data_accuracy_summary'),
             items: [
@@ -636,6 +730,57 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       case WalkInHandlingMode.walkInsTrackedSeparately:
         return DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately;
     }
+  }
+}
+
+class _SaveStatusBanner extends StatelessWidget {
+  const _SaveStatusBanner({required this.saving, required this.error});
+
+  final bool saving;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    final isError = error != null;
+    return Container(
+      key: Key(
+        isError
+            ? 'operator_web_data_accuracy_save_error'
+            : 'operator_web_data_accuracy_saving',
+      ),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isError ? AppColors.warningBadgeBg : AppColors.cardGlow,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isError ? AppColors.warning : AppColors.borderSubtle,
+        ),
+      ),
+      child: Row(
+        children: [
+          if (saving) ...[
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.sunsetDark,
+              ),
+            ),
+            const SizedBox(width: 10),
+          ],
+          Expanded(
+            child: Text(
+              error ?? 'Saving data accuracy settings...',
+              style: AppTextStyles.body12(
+                color: isError ? AppColors.warning : AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
