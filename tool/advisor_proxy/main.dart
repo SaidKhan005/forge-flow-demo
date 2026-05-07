@@ -36,9 +36,9 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_tokens_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/email/email_outbox_dispatcher.dart';
-import 'package:forge_and_flow/services/email/email_provider.dart';
 import 'package:forge_and_flow/services/email/email_template_renderer.dart';
 import 'package:forge_and_flow/services/email/postgres_email_outbox_repository.dart';
 import 'package:forge_and_flow/services/email/sendgrid_email_provider.dart';
