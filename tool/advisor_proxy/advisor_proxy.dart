@@ -44,6 +44,8 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
 import 'package:forge_and_flow/auth/permission_keys.dart';
+import 'package:forge_and_flow/integrations/pos/aloha_ncr_voyix_pos_production_api_client.dart'
+    show AlohaNcrVoyixOauthClientCredentials;
 import 'package:forge_and_flow/domain/services/advisor_provider_constants.dart';
 import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
@@ -214,6 +216,63 @@ abstract class ProxySecretNames {
   static const String mobilePushTokenEnvelopeKey =
       'MOBILE_PUSH_TOKEN_ENVELOPE_KEY';
 
+  /// Phase 8 framework — pgcrypto symmetric envelope key used by
+  /// `pgp_sym_encrypt` / `pgp_sym_decrypt` calls in the
+  /// `vendor_credentials` table and the inbound webhook gateway. The
+  /// key never leaves the proxy process; ciphertext at rest is the
+  /// stored form. Required by every vendor adapter / connector binder
+  /// that reads or writes a vendor OAuth handle.
+  static const String pgcryptoEnvelopeKey = 'PGCRYPTO_ENVELOPE_KEY';
+
+  /// Phase 8 framework — Aloha NCR Voyix OAuth `client_id` for the
+  /// app-wide `client_credentials` registration. Static across
+  /// operators; per-(operator, location) refresh handles still resolve
+  /// through the vendor-credentials repository.
+  static const String alohaNcrVoyixClientId = 'ALOHA_NCR_VOYIX_CLIENT_ID';
+
+  /// Phase 8 framework — Aloha NCR Voyix OAuth `client_secret`
+  /// matching [alohaNcrVoyixClientId].
+  static const String alohaNcrVoyixClientSecret =
+      'ALOHA_NCR_VOYIX_CLIENT_SECRET';
+
+  /// Phase 8 framework — NCR Voyix application key
+  /// (`nep-application-key` header). Static per F&F developer
+  /// registration.
+  static const String alohaNcrVoyixApplicationKey =
+      'ALOHA_NCR_VOYIX_APPLICATION_KEY';
+
+  /// Phase 8 framework — NCR Voyix organization id
+  /// (`nep-organization` header). Static per F&F developer
+  /// registration.
+  static const String alohaNcrVoyixOrganizationId =
+      'ALOHA_NCR_VOYIX_ORGANIZATION_ID';
+
+  /// Phase 8 framework — Square OAuth `client_id` (Square Application
+  /// ID) for the F&F application registration. Required by the
+  /// `/oauth2/token` refresh + `/oauth2/revoke` paths.
+  static const String squareClientId = 'SQUARE_CLIENT_ID';
+
+  /// Phase 8 framework — Square OAuth `client_secret` matching
+  /// [squareClientId].
+  static const String squareClientSecret = 'SQUARE_CLIENT_SECRET';
+
+  /// Phase 8 framework — Square notification URL host the proxy
+  /// stamps onto inbound webhook requests via the
+  /// `x-ff-notification-url` header. Square signs webhook bodies
+  /// against the registered URL; the verifier rejects mismatches.
+  static const String squareNotificationUrlHost =
+      'SQUARE_NOTIFICATION_URL_HOST';
+
+  /// Phase 8 framework — Clover app-level OAuth bearer used to manage
+  /// app-scoped resources (the webhook subscription endpoint sits
+  /// under `/v3/apps/{aId}/webhooks`). Static; tenant-scoped merchant
+  /// tokens still resolve through `vendor_credentials`.
+  static const String cloverAppToken = 'CLOVER_APP_TOKEN';
+
+  /// Phase 8 framework — Clover app id used in
+  /// `/v3/apps/{aId}/webhooks` paths. Static across operators.
+  static const String cloverAppId = 'CLOVER_APP_ID';
+
   /// Required server-side secret names. The proxy refuses to start
   /// when any of these are missing or blank.
   static const List<String> required = <String>[
@@ -223,14 +282,30 @@ abstract class ProxySecretNames {
     postgresAdminUrl,
     firebaseWebApiKey,
     servicePrincipalJwtSecret,
+    pgcryptoEnvelopeKey,
   ];
 
   /// Optional server-side secret names. Loaded into [ProxyConfig] when
   /// present; absence is not a startup error. Callers gate behavior on
   /// [ProxyConfig.hasSecretFor].
+  ///
+  /// Phase 8 framework — vendor app credentials (Aloha / Square /
+  /// Clover) are loaded as optional. Each connector binder fails its
+  /// own activation when the bundle is missing; the proxy still boots
+  /// without them so non-POS routes (advisor, auth, weekly plan) keep
+  /// working in dev / staging where a vendor isn't configured.
   static const List<String> optional = <String>[
     geminiApiKey,
     mobilePushTokenEnvelopeKey,
+    alohaNcrVoyixClientId,
+    alohaNcrVoyixClientSecret,
+    alohaNcrVoyixApplicationKey,
+    alohaNcrVoyixOrganizationId,
+    squareClientId,
+    squareClientSecret,
+    squareNotificationUrlHost,
+    cloverAppToken,
+    cloverAppId,
   ];
 }
 
@@ -345,6 +420,57 @@ class ProxyKmsMisconfiguredError extends ProxyConfigError {
         'flip KMS_REAL_PROVIDER_ENABLED off and redeploy.',
         missingSecretNames: List<String>.unmodifiable(missing),
       );
+}
+
+// ─── Vendor app-credential typed records (Phase 8 framework) ────────────────
+//
+// Static, app-wide credentials the Phase 8 connector binders read at
+// startup to instantiate vendor production transports. Per-(operator,
+// location) OAuth handles still resolve through `vendor_credentials`
+// at request time; these records carry only the registration-level
+// material the binder cannot conjure on its own.
+//
+// Square / Clover do not have transport-defined typed record classes
+// today, so the records live here next to [ProxySecretNames]. Aloha
+// reuses [AlohaNcrVoyixOauthClientCredentials] from the production
+// transport file (binder calls [ProxyConfig.alohaNcrVoyixCredentials]
+// to materialize it).
+
+/// Phase 8 framework — Square static app credentials. The OAuth
+/// client_id / client_secret are the F&F Application's registration;
+/// [notificationUrlHost] is the registered webhook host the
+/// Square webhook signature verifier checks against.
+class SquareAppCredentials {
+  const SquareAppCredentials({
+    required this.clientId,
+    required this.clientSecret,
+    required this.notificationUrlHost,
+  });
+
+  /// OAuth `client_id` (Square Application ID).
+  final String clientId;
+
+  /// OAuth `client_secret`. Server-side only.
+  final String clientSecret;
+
+  /// Registered notification URL host. The proxy stamps this onto
+  /// inbound Square webhook requests so the signature verifier can
+  /// reject mismatched URLs.
+  final String notificationUrlHost;
+}
+
+/// Phase 8 framework — Clover static app credentials. The
+/// app-level token + app id authorize webhook subscription writes
+/// under `/v3/apps/{aId}/webhooks`; tenant-scoped merchant tokens
+/// still resolve through `vendor_credentials`.
+class CloverAppCredentials {
+  const CloverAppCredentials({required this.appToken, required this.appId});
+
+  /// App-level OAuth bearer.
+  final String appToken;
+
+  /// Clover app id used in `/v3/apps/{aId}/webhooks` paths.
+  final String appId;
 }
 
 class ProxyConfig {
@@ -628,6 +754,70 @@ class ProxyConfig {
 
   /// True when the named secret is loaded. Does not return the value.
   bool hasSecretFor(String name) => _secrets.containsKey(name);
+
+  /// Phase 8 framework — pgcrypto symmetric envelope key used for
+  /// `pgp_sym_encrypt` / `pgp_sym_decrypt` calls against the
+  /// `vendor_credentials` table. Throws [StateError] when
+  /// [ProxySecretNames.pgcryptoEnvelopeKey] is not loaded; the proxy
+  /// boot now requires the key, so this only fires from tests that
+  /// build a partial environment.
+  String get pgcryptoEnvelopeKey =>
+      secretFor(ProxySecretNames.pgcryptoEnvelopeKey);
+
+  /// Phase 8 framework — Aloha NCR Voyix static app credentials,
+  /// reusing the transport-defined record so the binder can pass the
+  /// result straight into [AlohaNcrVoyixPosProductionApiClient]. Throws
+  /// [StateError] when any of the four secret names is unloaded.
+  ///
+  /// `scope` and `baseUriOverride` are intentionally null here — the
+  /// production transport falls back to its baked-in default OAuth
+  /// scope and base URI; per-connection on-prem relay overrides ride
+  /// through `vendor_credentials` per request, not through this static
+  /// bundle.
+  AlohaNcrVoyixOauthClientCredentials get alohaNcrVoyixCredentials =>
+      AlohaNcrVoyixOauthClientCredentials(
+        clientId: secretFor(ProxySecretNames.alohaNcrVoyixClientId),
+        clientSecret: secretFor(ProxySecretNames.alohaNcrVoyixClientSecret),
+        applicationKey: secretFor(ProxySecretNames.alohaNcrVoyixApplicationKey),
+        organizationId: secretFor(
+          ProxySecretNames.alohaNcrVoyixOrganizationId,
+        ),
+      );
+
+  /// Phase 8 framework — Square static app credentials. Throws
+  /// [StateError] when any of the three secret names is unloaded.
+  SquareAppCredentials get squareAppCredentials => SquareAppCredentials(
+        clientId: secretFor(ProxySecretNames.squareClientId),
+        clientSecret: secretFor(ProxySecretNames.squareClientSecret),
+        notificationUrlHost: secretFor(
+          ProxySecretNames.squareNotificationUrlHost,
+        ),
+      );
+
+  /// Phase 8 framework — Clover static app credentials. Throws
+  /// [StateError] when either secret name is unloaded.
+  CloverAppCredentials get cloverAppCredentials => CloverAppCredentials(
+        appToken: secretFor(ProxySecretNames.cloverAppToken),
+        appId: secretFor(ProxySecretNames.cloverAppId),
+      );
+
+  /// True when every Aloha NCR Voyix app credential secret is loaded.
+  bool get hasAlohaNcrVoyixCredentials =>
+      hasSecretFor(ProxySecretNames.alohaNcrVoyixClientId) &&
+      hasSecretFor(ProxySecretNames.alohaNcrVoyixClientSecret) &&
+      hasSecretFor(ProxySecretNames.alohaNcrVoyixApplicationKey) &&
+      hasSecretFor(ProxySecretNames.alohaNcrVoyixOrganizationId);
+
+  /// True when every Square app credential secret is loaded.
+  bool get hasSquareAppCredentials =>
+      hasSecretFor(ProxySecretNames.squareClientId) &&
+      hasSecretFor(ProxySecretNames.squareClientSecret) &&
+      hasSecretFor(ProxySecretNames.squareNotificationUrlHost);
+
+  /// True when every Clover app credential secret is loaded.
+  bool get hasCloverAppCredentials =>
+      hasSecretFor(ProxySecretNames.cloverAppToken) &&
+      hasSecretFor(ProxySecretNames.cloverAppId);
 
   /// Names of loaded secrets, for diagnostics / startup logs. Never
   /// returns or includes the values.

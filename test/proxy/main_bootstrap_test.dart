@@ -40,6 +40,7 @@ ProxyConfig _configFromEnv({
     ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
     ProxySecretNames.servicePrincipalJwtSecret:
         'placeholder-service-principal-jwt-secret',
+    ProxySecretNames.pgcryptoEnvelopeKey: 'placeholder-pgcrypto-envelope-key',
     ...overrides,
   };
   return ProxyConfig.fromEnvironment(env);
@@ -53,6 +54,7 @@ Map<String, String> _baseEnv() => <String, String>{
   ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
   ProxySecretNames.servicePrincipalJwtSecret:
       'placeholder-service-principal-jwt-secret',
+  ProxySecretNames.pgcryptoEnvelopeKey: 'placeholder-pgcrypto-envelope-key',
   ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
 };
 

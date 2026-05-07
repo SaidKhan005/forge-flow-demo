@@ -185,6 +185,8 @@ void main() {
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
         ProxySecretNames.servicePrincipalJwtSecret:
             'placeholder-service-principal-jwt-secret',
+        ProxySecretNames.pgcryptoEnvelopeKey:
+            'placeholder-pgcrypto-envelope-key',
         if (cacheFlag != null) ProxyConfigNames.cacheTelemetryV2: cacheFlag,
       };
     }
