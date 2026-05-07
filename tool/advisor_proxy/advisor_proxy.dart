@@ -273,6 +273,53 @@ abstract class ProxySecretNames {
   /// `/v3/apps/{aId}/webhooks` paths. Static across operators.
   static const String cloverAppId = 'CLOVER_APP_ID';
 
+  /// Phase 8 framework — Humanity OAuth `client_id` for the app-wide
+  /// registration. Static across operators; per-(operator, location)
+  /// refresh handles still resolve through `vendor_credentials`.
+  static const String humanityClientId = 'HUMANITY_CLIENT_ID';
+
+  /// Phase 8 framework — Humanity OAuth `client_secret` matching
+  /// [humanityClientId].
+  static const String humanityClientSecret = 'HUMANITY_CLIENT_SECRET';
+
+  /// Phase 8 framework — QuickBooks Time (Intuit) OAuth `client_id`
+  /// for the app-wide registration. Static across operators;
+  /// per-(operator, location) refresh handles still resolve through
+  /// `vendor_credentials`.
+  static const String quickBooksTimeClientId = 'QUICKBOOKS_TIME_CLIENT_ID';
+
+  /// Phase 8 framework — QuickBooks Time (Intuit) OAuth `client_secret`
+  /// matching [quickBooksTimeClientId].
+  static const String quickBooksTimeClientSecret =
+      'QUICKBOOKS_TIME_CLIENT_SECRET';
+
+  /// Phase 8 framework — 7shifts OAuth `client_id` for the app-wide
+  /// partner registration.
+  static const String sevenShiftsClientId = 'SEVEN_SHIFTS_CLIENT_ID';
+
+  /// Phase 8 framework — 7shifts OAuth `client_secret` matching
+  /// [sevenShiftsClientId].
+  static const String sevenShiftsClientSecret = 'SEVEN_SHIFTS_CLIENT_SECRET';
+
+  /// Phase 8 framework — Libro OAuth `client_id` for the app-wide
+  /// registration.
+  static const String libroClientId = 'LIBRO_CLIENT_ID';
+
+  /// Phase 8 framework — Libro OAuth `client_secret` matching
+  /// [libroClientId].
+  static const String libroClientSecret = 'LIBRO_CLIENT_SECRET';
+
+  /// Phase 8 framework — public base URI the proxy presents to
+  /// inbound vendor webhooks (per-tenant location config resolver
+  /// builds operator-scoped paths under this host). Required at boot
+  /// to force operators to declare their externally-reachable host
+  /// rather than silently fall through to a baked-in default; the
+  /// staging deploy and the canonical production deploy both set
+  /// this to their own URL. Stored as a string secret name and
+  /// surfaced through the typed [ProxyConfig.publicBaseUri] getter
+  /// which parses + validates the URI shape.
+  static const String publicBaseUri = 'PUBLIC_BASE_URI';
+
   /// Required server-side secret names. The proxy refuses to start
   /// when any of these are missing or blank.
   static const List<String> required = <String>[
@@ -283,6 +330,7 @@ abstract class ProxySecretNames {
     firebaseWebApiKey,
     servicePrincipalJwtSecret,
     pgcryptoEnvelopeKey,
+    publicBaseUri,
   ];
 
   /// Optional server-side secret names. Loaded into [ProxyConfig] when
@@ -290,10 +338,11 @@ abstract class ProxySecretNames {
   /// [ProxyConfig.hasSecretFor].
   ///
   /// Phase 8 framework — vendor app credentials (Aloha / Square /
-  /// Clover) are loaded as optional. Each connector binder fails its
-  /// own activation when the bundle is missing; the proxy still boots
-  /// without them so non-POS routes (advisor, auth, weekly plan) keep
-  /// working in dev / staging where a vendor isn't configured.
+  /// Clover / Humanity / QuickBooks Time / 7shifts / Libro) are loaded
+  /// as optional. Each connector binder fails its own activation when
+  /// the bundle is missing; the proxy still boots without them so
+  /// non-POS routes (advisor, auth, weekly plan) keep working in dev /
+  /// staging where a vendor isn't configured.
   static const List<String> optional = <String>[
     geminiApiKey,
     mobilePushTokenEnvelopeKey,
@@ -306,6 +355,14 @@ abstract class ProxySecretNames {
     squareNotificationUrlHost,
     cloverAppToken,
     cloverAppId,
+    humanityClientId,
+    humanityClientSecret,
+    quickBooksTimeClientId,
+    quickBooksTimeClientSecret,
+    sevenShiftsClientId,
+    sevenShiftsClientSecret,
+    libroClientId,
+    libroClientSecret,
   ];
 }
 
@@ -430,9 +487,10 @@ class ProxyKmsMisconfiguredError extends ProxyConfigError {
 // at request time; these records carry only the registration-level
 // material the binder cannot conjure on its own.
 //
-// Square / Clover do not have transport-defined typed record classes
-// today, so the records live here next to [ProxySecretNames]. Aloha
-// reuses [AlohaNcrVoyixOauthClientCredentials] from the production
+// Square / Clover / Humanity / QuickBooks Time / 7shifts / Libro do
+// not have transport-defined typed record classes today, so the
+// records live here next to [ProxySecretNames]. Aloha reuses
+// [AlohaNcrVoyixOauthClientCredentials] from the production
 // transport file (binder calls [ProxyConfig.alohaNcrVoyixCredentials]
 // to materialize it).
 
@@ -471,6 +529,75 @@ class CloverAppCredentials {
 
   /// Clover app id used in `/v3/apps/{aId}/webhooks` paths.
   final String appId;
+}
+
+/// Phase 8 framework — Humanity static app credentials. The OAuth
+/// `client_id` / `client_secret` are the F&F application's
+/// registration; per-(operator, location) refresh handles still
+/// resolve through `vendor_credentials`.
+class HumanityAppCredentials {
+  const HumanityAppCredentials({
+    required this.clientId,
+    required this.clientSecret,
+  });
+
+  /// OAuth `client_id`.
+  final String clientId;
+
+  /// OAuth `client_secret`. Server-side only.
+  final String clientSecret;
+}
+
+/// Phase 8 framework — QuickBooks Time (Intuit) static app
+/// credentials. The OAuth `client_id` / `client_secret` are the F&F
+/// application's Intuit Developer registration; per-(operator,
+/// location) refresh handles still resolve through
+/// `vendor_credentials`.
+class QuickBooksTimeAppCredentials {
+  const QuickBooksTimeAppCredentials({
+    required this.clientId,
+    required this.clientSecret,
+  });
+
+  /// OAuth `client_id` (Intuit Application ID).
+  final String clientId;
+
+  /// OAuth `client_secret`. Server-side only.
+  final String clientSecret;
+}
+
+/// Phase 8 framework — 7shifts static app credentials. The OAuth
+/// `client_id` / `client_secret` are the F&F partner registration;
+/// per-(operator, location) refresh handles still resolve through
+/// `vendor_credentials`.
+class SevenShiftsAppCredentials {
+  const SevenShiftsAppCredentials({
+    required this.clientId,
+    required this.clientSecret,
+  });
+
+  /// OAuth `client_id`.
+  final String clientId;
+
+  /// OAuth `client_secret`. Server-side only.
+  final String clientSecret;
+}
+
+/// Phase 8 framework — Libro static app credentials. The OAuth
+/// `client_id` / `client_secret` are the F&F application's
+/// registration; per-(operator, location) bearer tokens still
+/// resolve through `vendor_credentials`.
+class LibroAppCredentials {
+  const LibroAppCredentials({
+    required this.clientId,
+    required this.clientSecret,
+  });
+
+  /// OAuth `client_id`.
+  final String clientId;
+
+  /// OAuth `client_secret`. Server-side only.
+  final String clientSecret;
 }
 
 class ProxyConfig {
@@ -797,6 +924,57 @@ class ProxyConfig {
     appId: secretFor(ProxySecretNames.cloverAppId),
   );
 
+  /// Phase 8 framework — Humanity static app credentials. Throws
+  /// [StateError] when either secret name is unloaded.
+  HumanityAppCredentials get humanityAppCredentials => HumanityAppCredentials(
+        clientId: secretFor(ProxySecretNames.humanityClientId),
+        clientSecret: secretFor(ProxySecretNames.humanityClientSecret),
+      );
+
+  /// Phase 8 framework — QuickBooks Time (Intuit) static app
+  /// credentials. Throws [StateError] when either secret name is
+  /// unloaded.
+  QuickBooksTimeAppCredentials get quickBooksTimeAppCredentials =>
+      QuickBooksTimeAppCredentials(
+        clientId: secretFor(ProxySecretNames.quickBooksTimeClientId),
+        clientSecret: secretFor(ProxySecretNames.quickBooksTimeClientSecret),
+      );
+
+  /// Phase 8 framework — 7shifts static app credentials. Throws
+  /// [StateError] when either secret name is unloaded.
+  SevenShiftsAppCredentials get sevenShiftsAppCredentials =>
+      SevenShiftsAppCredentials(
+        clientId: secretFor(ProxySecretNames.sevenShiftsClientId),
+        clientSecret: secretFor(ProxySecretNames.sevenShiftsClientSecret),
+      );
+
+  /// Phase 8 framework — Libro static app credentials. Throws
+  /// [StateError] when either secret name is unloaded.
+  LibroAppCredentials get libroAppCredentials => LibroAppCredentials(
+        clientId: secretFor(ProxySecretNames.libroClientId),
+        clientSecret: secretFor(ProxySecretNames.libroClientSecret),
+      );
+
+  /// Phase 8 framework — public base URI the binder presents to
+  /// vendors when constructing the per-tenant location config
+  /// resolver. Sourced from the required
+  /// [ProxySecretNames.publicBaseUri] env var. Throws [StateError]
+  /// when the value is unparseable as a URI; the secret loader
+  /// guarantees the name is set (it would have failed boot otherwise),
+  /// so the only way to land here is a malformed value.
+  Uri get publicBaseUri {
+    final raw = secretFor(ProxySecretNames.publicBaseUri);
+    final parsed = Uri.tryParse(raw);
+    if (parsed == null || !parsed.hasScheme || parsed.host.isEmpty) {
+      throw StateError(
+        'advisor proxy: ${ProxySecretNames.publicBaseUri} is set but '
+        'does not parse as an absolute URI with scheme + host. '
+        'Expected something like "https://api.forgeflow.app".',
+      );
+    }
+    return parsed;
+  }
+
   /// True when every Aloha NCR Voyix app credential secret is loaded.
   bool get hasAlohaNcrVoyixCredentials =>
       hasSecretFor(ProxySecretNames.alohaNcrVoyixClientId) &&
@@ -814,6 +992,26 @@ class ProxyConfig {
   bool get hasCloverAppCredentials =>
       hasSecretFor(ProxySecretNames.cloverAppToken) &&
       hasSecretFor(ProxySecretNames.cloverAppId);
+
+  /// True when every Humanity app credential secret is loaded.
+  bool get hasHumanityAppCredentials =>
+      hasSecretFor(ProxySecretNames.humanityClientId) &&
+      hasSecretFor(ProxySecretNames.humanityClientSecret);
+
+  /// True when every QuickBooks Time app credential secret is loaded.
+  bool get hasQuickBooksTimeAppCredentials =>
+      hasSecretFor(ProxySecretNames.quickBooksTimeClientId) &&
+      hasSecretFor(ProxySecretNames.quickBooksTimeClientSecret);
+
+  /// True when every 7shifts app credential secret is loaded.
+  bool get hasSevenShiftsAppCredentials =>
+      hasSecretFor(ProxySecretNames.sevenShiftsClientId) &&
+      hasSecretFor(ProxySecretNames.sevenShiftsClientSecret);
+
+  /// True when every Libro app credential secret is loaded.
+  bool get hasLibroAppCredentials =>
+      hasSecretFor(ProxySecretNames.libroClientId) &&
+      hasSecretFor(ProxySecretNames.libroClientSecret);
 
   /// Names of loaded secrets, for diagnostics / startup logs. Never
   /// returns or includes the values.

@@ -187,6 +187,7 @@ void main() {
             'placeholder-service-principal-jwt-secret',
         ProxySecretNames.pgcryptoEnvelopeKey:
             'placeholder-pgcrypto-envelope-key',
+        ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
         if (cacheFlag != null) ProxyConfigNames.cacheTelemetryV2: cacheFlag,
       };
     }

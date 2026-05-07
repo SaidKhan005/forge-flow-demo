@@ -6453,8 +6453,15 @@ class PostgresAdminRequestIdempotencyStore
     }
   }
 
+  // CODE_HEALTH L4 — orphan-reclaim shape mirrors the abstract base's
+  // default no-op so the production store compiles; the live pg_cron
+  // sweep registered by the M1 migration is the production backstop
+  // for this Postgres-backed implementation. Future work overrides
+  // these to issue the matching DELETE statements directly.
   @override
-  Future<bool> tryReclaimOrphan({required String idempotencyKey}) async {
+  Future<bool> tryReclaimOrphan({
+    required String idempotencyKey,
+  }) async {
     return false;
   }
 

@@ -191,18 +191,12 @@ import 'advisor_proxy.dart';
 import 'proxy_bootstrap.dart';
 
 /// Default public base URI the framework presents to vendors as the
-/// inbound webhook host. Mirrors the convention already used in
-/// `lib/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart`
-/// and `lib/services/integration/per_tenant_location_config_resolver.dart`
-/// docs. Override at boot via the `FF_WEBHOOK_PUBLIC_BASE_URI` env var.
+/// inbound webhook host. Retained as a documentation-only reference
+/// of the canonical production hostname; the binder no longer reads
+/// it. Phase 8's typed-app-credentials amendment moved the public
+/// base URI to the required [ProxySecretNames.publicBaseUri] env var
+/// surfaced through [ProxyConfig.publicBaseUri].
 const String kPhase8DefaultWebhookPublicBaseUri = 'https://api.forgeflow.app';
-
-/// Env var name the binder consults for an explicit override of
-/// [kPhase8DefaultWebhookPublicBaseUri]. Cloud Run deployments that
-/// expose the proxy under a custom hostname set this; the default
-/// suffices for the canonical production deploy.
-const String kPhase8WebhookPublicBaseUriEnvName =
-    'FF_WEBHOOK_PUBLIC_BASE_URI';
 
 /// `dart-define` flag that gates demo mode. Mirrors the dart-define
 /// handshake used elsewhere in the runtime
@@ -250,11 +244,15 @@ Future<void> bindPhase8IntegrationsForProduction(
     return;
   }
 
-  final env = environmentOverride ?? Platform.environment;
-  final webhookPublicBaseUri = Uri.parse(
-    env[kPhase8WebhookPublicBaseUriEnvName] ??
-        kPhase8DefaultWebhookPublicBaseUri,
-  );
+  // Per the typed-app-credentials amendment, the public base URI is a
+  // typed [Uri] surfaced through [ProxyConfig.publicBaseUri] (sourced
+  // from the required `PUBLIC_BASE_URI` env var). The
+  // [environmentOverride] parameter is retained on the public binder
+  // signature for backwards-compat with callers that pre-date the
+  // typed-record migration; it is no longer consulted because every
+  // remaining vendor read flows through `proxyConfig.has*AppCredentials`
+  // / `proxyConfig.*AppCredentials` accessors.
+  final webhookPublicBaseUri = proxyConfig.publicBaseUri;
 
   // Step 1 — Vendor credential broker.
   final broker = VendorCredentialBroker(
@@ -592,41 +590,41 @@ Future<void> bindPhase8IntegrationsForProduction(
   final humanitySink = HumanityPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
-  // Humanity uses an app-wide OAuth client_id / client_secret pair the
-  // proxy bootstrap has not yet surfaced as typed records (PR #260
-  // covered Aloha / Square / Clover). Until those secrets land, the
-  // refresh closure resolves the pair from the per-tenant credential
-  // bundle (where bridges may also persist app-wide values during the
-  // staging shape). We thread null-safe blanks; the closure throws
-  // VendorRefreshFailed at refresh time when the bundle does not
-  // surface them, which the framework surfaces as a reconnect prompt.
-  laborAdapterFactories[kHumanityVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) {
+  // Humanity uses an app-wide OAuth client_id / client_secret pair
+  // surfaced through [ProxyConfig.humanityAppCredentials]. Mirrors the
+  // Aloha / Square / Clover warn-and-disable shape from PR #260: when
+  // the typed record is absent at boot, the vendor lands on the
+  // disabled-warn list and the per-tenant factory is NOT registered.
+  if (!proxyConfig.hasHumanityAppCredentials) {
+    disabledVendors[kHumanityVendorId] = 'humanity_oauth_credentials_missing';
+  } else {
+    final humanityCreds = proxyConfig.humanityAppCredentials;
     final humanityRefresh = makeHumanityOauthRefreshClosure(
       httpClient: sharedHttpClient,
-      // Humanity bridges thread the app-wide pair via metadata until a
-      // typed ProxyConfig accessor lands.
-      clientId: '',
-      clientSecret: '',
+      clientId: humanityCreds.clientId,
+      clientSecret: humanityCreds.clientSecret,
     );
-    // Construct a per-tenant bridge so refresh + revoke paths run with
-    // the right (operator, location) tuple wired in.
-    HumanityBrokerCredentialBridge(
-      broker: broker,
-      operatorId: operatorId,
-      locationId: locationId,
-      oauthRefresh: humanityRefresh,
-    );
-    final transport = HumanityLaborProductionApiClient(
-      httpClient: sharedHttpClient,
-    );
-    return HumanityLaborAdapter(
-      httpClient: transport,
-      gateway: humanitySink,
-    );
-  };
+    laborAdapterFactories[kHumanityVendorId] = ({
+      required String operatorId,
+      required String locationId,
+    }) {
+      // Construct a per-tenant bridge so refresh + revoke paths run
+      // with the right (operator, location) tuple wired in.
+      HumanityBrokerCredentialBridge(
+        broker: broker,
+        operatorId: operatorId,
+        locationId: locationId,
+        oauthRefresh: humanityRefresh,
+      );
+      final transport = HumanityLaborProductionApiClient(
+        httpClient: sharedHttpClient,
+      );
+      return HumanityLaborAdapter(
+        httpClient: transport,
+        gateway: humanitySink,
+      );
+    };
+  }
   signatureVerifiers[kHumanityVendorId] =
       const HumanityWebhookSignatureVerifier();
 
@@ -656,25 +654,21 @@ Future<void> bindPhase8IntegrationsForProduction(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
   // QuickBooks Time uses an app-wide Intuit client_id / client_secret
-  // pair the bootstrap has not yet surfaced as a typed record. We
-  // currently thread null-safe blanks; the refresh closure throws on
-  // refresh until those secrets are loaded. Optional vendor warn-list
-  // surfaces the missing pair at boot.
-  final qbtClientId =
-      env['INTUIT_OAUTH_CLIENT_ID'] ?? env['QBT_OAUTH_CLIENT_ID'] ?? '';
-  final qbtClientSecret =
-      env['INTUIT_OAUTH_CLIENT_SECRET'] ?? env['QBT_OAUTH_CLIENT_SECRET'] ?? '';
-  if (qbtClientId.isEmpty || qbtClientSecret.isEmpty) {
-    disabledVendors[kQuickBooksTimeVendorId] = 'intuit_oauth_credentials_missing';
+  // pair surfaced through [ProxyConfig.quickBooksTimeAppCredentials].
+  // Same warn-and-disable shape as the other optional vendors.
+  if (!proxyConfig.hasQuickBooksTimeAppCredentials) {
+    disabledVendors[kQuickBooksTimeVendorId] =
+        'intuit_oauth_credentials_missing';
   } else {
+    final qbtCreds = proxyConfig.quickBooksTimeAppCredentials;
     final qbtRefresh = makeQuickBooksTimeOauthRefreshClosure(
       httpClient: sharedHttpClient,
-      clientId: qbtClientId,
-      clientSecret: qbtClientSecret,
+      clientId: qbtCreds.clientId,
+      clientSecret: qbtCreds.clientSecret,
     );
     final qbtOauthCreds = StaticQuickBooksTimeBrokerOauthClientCredentials(
-      clientId: qbtClientId,
-      clientSecret: qbtClientSecret,
+      clientId: qbtCreds.clientId,
+      clientSecret: qbtCreds.clientSecret,
     );
     laborAdapterFactories[kQuickBooksTimeVendorId] = ({
       required String operatorId,
@@ -706,17 +700,17 @@ Future<void> bindPhase8IntegrationsForProduction(
   final sevenShiftsSink = SevenShiftsPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
-  // 7shifts uses an app-wide partner registration. Until the typed
-  // ProxyConfig accessor lands, env reads are the staging shape.
-  final sevenShiftsClientId = env['SEVEN_SHIFTS_OAUTH_CLIENT_ID'] ?? '';
-  final sevenShiftsClientSecret = env['SEVEN_SHIFTS_OAUTH_CLIENT_SECRET'] ?? '';
-  if (sevenShiftsClientId.isEmpty || sevenShiftsClientSecret.isEmpty) {
+  // 7shifts uses an app-wide partner registration surfaced through
+  // [ProxyConfig.sevenShiftsAppCredentials]. Same warn-and-disable
+  // shape as the other optional vendors.
+  if (!proxyConfig.hasSevenShiftsAppCredentials) {
     disabledVendors['seven_shifts'] = 'seven_shifts_oauth_credentials_missing';
   } else {
+    final sevenShiftsCreds = proxyConfig.sevenShiftsAppCredentials;
     final sevenShiftsRefresh = makeSevenShiftsOauthRefreshClosure(
       httpClient: sharedHttpClient,
-      clientId: sevenShiftsClientId,
-      clientSecret: sevenShiftsClientSecret,
+      clientId: sevenShiftsCreds.clientId,
+      clientSecret: sevenShiftsCreds.clientSecret,
     );
     laborAdapterFactories['seven_shifts'] = ({
       required String operatorId,
@@ -748,15 +742,17 @@ Future<void> bindPhase8IntegrationsForProduction(
   final libroSink = LibroPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
-  final libroClientId = env['LIBRO_OAUTH_CLIENT_ID'] ?? '';
-  final libroClientSecret = env['LIBRO_OAUTH_CLIENT_SECRET'] ?? '';
-  if (libroClientId.isEmpty || libroClientSecret.isEmpty) {
+  // Libro uses an app-wide registration surfaced through
+  // [ProxyConfig.libroAppCredentials]. Same warn-and-disable shape as
+  // the other optional vendors.
+  if (!proxyConfig.hasLibroAppCredentials) {
     disabledVendors[kLibroVendorId] = 'libro_oauth_credentials_missing';
   } else {
+    final libroCreds = proxyConfig.libroAppCredentials;
     final libroRefresh = makeLibroOauthRefreshClosure(
       httpClient: sharedHttpClient,
-      clientId: libroClientId,
-      clientSecret: libroClientSecret,
+      clientId: libroCreds.clientId,
+      clientSecret: libroCreds.clientSecret,
     );
     reservationAdapterFactories[kLibroVendorId] = ({
       required String operatorId,

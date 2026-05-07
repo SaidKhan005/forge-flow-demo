@@ -162,7 +162,13 @@ if (-not $SkipSecretManagerSync) {
     # refuses to boot when this name is missing, so the deploy must
     # source it from Secret Manager alongside the other required
     # secrets above.
-    'PGCRYPTO_ENVELOPE_KEY'
+    'PGCRYPTO_ENVELOPE_KEY',
+    # 8.framework.typed-app-credentials-humanity-qbt-7shifts-libro-publicbaseuri
+    # added PUBLIC_BASE_URI to ProxySecretNames.required. Mirrors the
+    # webhook host the per-tenant location config resolver presents
+    # to vendors; the proxy boot fails closed when this name is
+    # missing.
+    'PUBLIC_BASE_URI'
   )
 }
 Assert-PresentEnv -Names $requiredEnv
@@ -182,6 +188,14 @@ $secretSuffix = [ordered] @{
   # ProxySecretNames.required (PR #260). The proxy fails closed at
   # boot without it.
   'PGCRYPTO_ENVELOPE_KEY'         = 'pgcrypto-envelope-key'
+  # Phase 8 framework — public base URI required by
+  # ProxySecretNames.required (typed-app-credentials amendment). The
+  # binder consumes this through ProxyConfig.publicBaseUri to build
+  # the per-tenant location config resolver. Per-environment value:
+  # staging deploys point at the staging URL; production points at
+  # the canonical production URL. The proxy fails closed at boot
+  # without it.
+  'PUBLIC_BASE_URI'               = 'public-base-uri'
 }
 $secretEnv = [ordered] @{}
 foreach ($entry in $secretSuffix.GetEnumerator()) {
@@ -207,6 +221,19 @@ $optionalSecretSuffix = [ordered] @{
   # Clover app-level credentials bundle (2 secrets).
   'CLOVER_APP_TOKEN'                 = 'clover-app-token'
   'CLOVER_APP_ID'                    = 'clover-app-id'
+  # 8.framework.typed-app-credentials-humanity-qbt-7shifts-libro-publicbaseuri:
+  # Humanity OAuth bundle (2 secrets).
+  'HUMANITY_CLIENT_ID'               = 'humanity-client-id'
+  'HUMANITY_CLIENT_SECRET'           = 'humanity-client-secret'
+  # QuickBooks Time (Intuit) OAuth bundle (2 secrets).
+  'QUICKBOOKS_TIME_CLIENT_ID'        = 'quickbooks-time-client-id'
+  'QUICKBOOKS_TIME_CLIENT_SECRET'    = 'quickbooks-time-client-secret'
+  # 7shifts OAuth bundle (2 secrets).
+  'SEVEN_SHIFTS_CLIENT_ID'           = 'seven-shifts-client-id'
+  'SEVEN_SHIFTS_CLIENT_SECRET'       = 'seven-shifts-client-secret'
+  # Libro OAuth bundle (2 secrets).
+  'LIBRO_CLIENT_ID'                  = 'libro-client-id'
+  'LIBRO_CLIENT_SECRET'              = 'libro-client-secret'
 }
 # Build the optional secret env map only for entries that actually
 # have a local value. Missing entries do not fail the deploy — they
@@ -448,6 +475,7 @@ Write-Host ' - SERVICE_PRINCIPAL_JWT_SECRET'
 Write-Host ' - POSTGRES_URL'
 Write-Host ' - POSTGRES_ADMIN_URL'
 Write-Host ' - PGCRYPTO_ENVELOPE_KEY'
+Write-Host ' - PUBLIC_BASE_URI'
 Write-Host ' - ADMIN_CORS_ALLOWED_ORIGINS includes Firebase auth action hosts'
 Write-Host ' - Cloud Run secret env refs backed by Secret Manager'
 if ($optionalSecretEnv.Count -gt 0) {
