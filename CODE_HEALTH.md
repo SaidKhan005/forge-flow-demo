@@ -47,16 +47,16 @@ These were "out of scope" in the original remediation and remain real on current
 
 ---
 
-## Surfaces moved — concern status unknown, needs re-locate
+## Surfaces moved — re-located 2026-05-07
 
-Six audit-cited surfaces were renamed/restructured between the 2026-05-06 audit and the 2026-05-07 fact-check. The original concern may have been incidentally fixed by the rewrite OR carried forward into the new code. Each needs a 5–10 minute re-locate before being declared closed or re-cited:
+The fact-check noted six audit-cited surfaces had been renamed/restructured. Re-located on current `origin/master`; status updated with the new paths and concern shape:
 
-- `lib/services/embeddings/voyage_embedding_provider.dart` — Voyage chunking / retry / concurrency cap. **File not found at audit path.**
-- `vector_index_health.activeVectors` re-embed path. **Surface not found at audit-cited location.**
-- `lib/widgets/settings_wage_authority_section.dart` — widget calling `SqliteWageRoleRowRepository.instance` directly. **File not found**; wage role surfaces were actively reworked between audit and fact-check.
-- `lib/widgets/shift_dashboard.dart` — timezone init + service-period bucketing in widget. **File not found** at audit path. (The separate `ShiftDashboardNotifier` race is verified still real — see Launch Blocker #1.)
-- Permission keys hand-typed across `lib/operator_web/screens/**`. **Path doesn't exist on master.**
-- `admin_routes.dart` (~1.9k lines). **Not found at the cited path.**
+- **Voyage embedding provider** — STILL OPEN at `lib/services/voyage_embedding_provider.dart` (path moved up one directory; no `embeddings/` folder). Has no chunking, retry, or concurrency cap. The class delegates straight to an injected callback: `VoyageEmbeddingProvider({required VoyageEmbedFn embedFn})` and calls `_embedFn([text], model: modelId)` / `_embedFn(texts, model: modelId)` with no batch-size guard, no retry, no semaphore. Doc at the top says "HTTP/SDK gateway wiring is out of scope here" — gateway hardening still owed.
+- **`vector_index_health.activeVectors` re-embed path** — CHANGED. Helper at `tool/vector_index_health/vector_index_health.dart` now exposes `activeVectors` as a required snapshot field, and the production reader at `tool/advisor_proxy/health_producers/vector_producers.dart` (`vectorActiveCountPerCorpusProducer`) queries `select corpus_id::text, active_count::bigint from vector_index_health` against Postgres. The CLI placeholder at `tool/vector_index_health/main.dart:62` still passes `activeVectors: 0`, but it is documented as `'CLI placeholder snapshot — no live DB query was issued'`. The original "no re-embed path on model change" concern has not been re-cited at any callsite; no separate re-embed orchestrator was located.
+- **Settings wage authority section** — STILL OPEN at `lib/screens/settings/settings_wage_authority_section.dart` (moved out of `lib/widgets/`). Widget still calls `SqliteWageRoleRowRepository.instance` directly: `_rows = await SqliteWageRoleRowRepository.instance.getRows(restaurantId);` (line 48), `await SqliteWageRoleRowRepository.instance.upsertRow(row);` (line 64), `await SqliteWageRoleRowRepository.instance.deleteRow(id);` (line 67). Recent reworks (`Sync wage role rows to mobile cache`, `Polish admin business team access flow`) did not move the widget off direct SQLite access.
+- **Shift dashboard timezone init** — STILL OPEN at `lib/screens/shift_dashboard.dart` (moved from `lib/widgets/`). The widget still owns timezone bootstrap: `bool _tzInitialized = false; void _ensureTzInitialized() { if (_tzInitialized) return; tzdata.initializeTimeZones(); _tzInitialized = true; }` (lines 35-41), called from `_restaurantLocalNow` at line 1243. Service-period bucketing helper `_servicePeriodSlivers(...)` lives in the State class (lines 139, 210). Contract-banned widget responsibility carries forward.
+- **Permission keys hand-typed in operator-web screens** — STILL OPEN at `lib/operator_web/screens/**` (the path DOES exist on current master; the fact-check note was incorrect). Sample of 5 screens: `members_screen.dart` declares 7 hand-typed `'team.users.*'` literals at lines 81–99 with no `permission_keys.dart` import; `sessions_screen.dart` (1 hand-typed key, no import); `hierarchy_screen.dart` (2 hand-typed, no import); `audit_log_screen.dart` (2 hand-typed, no import); `roles_screen.dart` (2 hand-typed, but DOES import `../../auth/permission_keys.dart` at line 32). Of 23 screen files, only 3 import `permission_keys.dart` (`custom_role_editor_screen.dart`, `roles_screen.dart`, `permission_explainer_screen.dart`). Concern shape unchanged.
+- **`admin_routes.dart`** — STILL OPEN at `lib/admin/admin_routes.dart` (1,953 lines; audit cited ~1,906, +47). Load-bearing monolith concern carries forward.
 
 ---
 
