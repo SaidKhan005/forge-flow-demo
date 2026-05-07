@@ -126,6 +126,26 @@ void main() {
           expect(accuracy.statusCode, 200);
           expect(accuracy.body, contains('covers_source_lunch'));
 
+          final periodAccuracy = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/'
+              'data_accuracy_service_period_settings',
+            ),
+          );
+          expect(periodAccuracy.statusCode, 200);
+          final periodBody =
+              jsonDecode(periodAccuracy.body) as Map<String, Object?>;
+          final periodRows =
+              periodBody['data_accuracy_service_period_settings']
+                  as List<Object?>;
+          expect(periodRows, hasLength(1));
+          final periodRow = periodRows.single as Map<String, Object?>;
+          expect(periodRow['service_period_key'], 'dinner');
+          expect(periodRow['effective_at_business_date'], '2026-05-06');
+          expect(periodRow['covers_source'], 'manual');
+          expect(periodRow['wage_source'], 'manual_mix');
+
           final tier = await _httpGet(
             ctx.client,
             ctx.baseUri.resolve(
@@ -151,9 +171,30 @@ void main() {
             'timing/resolved:op-1:loc-1:2026-05-06',
             'demo_mode_states:op-1:loc-1',
             'data_accuracy_settings:op-1:loc-1',
+            'data_accuracy_service_period_settings:op-1:loc-1',
             'polling_tier_assignment:op-1:loc-1',
             'first_backfill_status:op-1:loc-1',
           ]);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('does not accept writes for service-period settings', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final uri = ctx.baseUri.resolve(
+            '/v1/operators/op-1/locations/loc-1/'
+            'data_accuracy_service_period_settings',
+          );
+          final post = await _httpRequest(ctx.client, 'POST', uri);
+          expect(post.statusCode, 404);
+          final patch = await _httpRequest(ctx.client, 'PATCH', uri);
+          expect(patch.statusCode, 404);
+          expect(ctx.gateway.calls, isEmpty);
         } finally {
           ctx.client.close(force: true);
           await ctx.server.close(force: true);
@@ -419,6 +460,31 @@ class _FakeMobileOperationalSyncGateway
   }
 
   @override
+  Future<Map<String, Object?>> fetchDataAccuracyServicePeriodSettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  }) async {
+    calls.add('data_accuracy_service_period_settings:$operatorId:$locationId');
+    return const <String, Object?>{
+      'data_accuracy_service_period_settings': <Map<String, Object?>>[
+        <String, Object?>{
+          'id': 'setting-1',
+          'operator_id': 'op-1',
+          'location_id': 'loc-1',
+          'service_period_key': 'dinner',
+          'effective_at_business_date': '2026-05-06',
+          'covers_source': 'manual',
+          'wage_source': 'manual_mix',
+          'created_at': '2026-05-06T12:00:00Z',
+          'updated_at': '2026-05-06T12:00:00Z',
+          'updated_by': 'user-1',
+        },
+      ],
+    };
+  }
+
+  @override
   Future<Map<String, Object?>> fetchPollingTierAssignment({
     required OperatorContext scope,
     required String operatorId,
@@ -468,6 +534,19 @@ Future<_HttpResult> _httpGet(
   String authorization = 'Bearer token',
 }) async {
   final request = await client.getUrl(uri);
+  request.headers.set(HttpHeaders.authorizationHeader, authorization);
+  final response = await request.close();
+  final body = await utf8.decodeStream(response);
+  return _HttpResult(response.statusCode, body);
+}
+
+Future<_HttpResult> _httpRequest(
+  HttpClient client,
+  String method,
+  Uri uri, {
+  String authorization = 'Bearer token',
+}) async {
+  final request = await client.openUrl(method, uri);
   request.headers.set(HttpHeaders.authorizationHeader, authorization);
   final response = await request.close();
   final body = await utf8.decodeStream(response);

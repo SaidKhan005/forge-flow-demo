@@ -1948,6 +1948,38 @@ class RepositoryMobileOperationalSyncProxyGateway
   }
 
   @override
+  Future<Map<String, Object?>> fetchDataAccuracyServicePeriodSettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  }) {
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final rows = await exec.query(
+        'select id::text as id, '
+        'operator_id::text as operator_id, '
+        'location_id::text as location_id, '
+        'service_period_key, covers_source, wage_source, '
+        'effective_at_business_date::text as effective_at_business_date, '
+        'created_at, updated_at, updated_by '
+        'from public.data_accuracy_service_period_settings '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'order by service_period_key asc, '
+        'effective_at_business_date desc',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      return <String, Object?>{
+        'data_accuracy_service_period_settings': <Map<String, Object?>>[
+          for (final row in rows) _dataAccuracyServicePeriodJson(row),
+        ],
+      };
+    });
+  }
+
+  @override
   Future<Map<String, Object?>> fetchPollingTierAssignment({
     required OperatorContext scope,
     required String operatorId,
@@ -2193,6 +2225,23 @@ class RepositoryMobileOperationalSyncProxyGateway
       'covers_manual_entries': _jsonMap(row['covers_manual_entries']),
       'wage_source': row['wage_source'] ?? 'vendor',
       'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
+    };
+  }
+
+  static Map<String, Object?> _dataAccuracyServicePeriodJson(PostgresRow row) {
+    return <String, Object?>{
+      'id': row['id'],
+      'operator_id': row['operator_id'],
+      'location_id': row['location_id'],
+      'service_period_key': row['service_period_key'],
+      'effective_at_business_date': _dateOnly(
+        row['effective_at_business_date'],
+      ),
+      'covers_source': row['covers_source'] ?? 'vendor',
+      'wage_source': row['wage_source'] ?? 'vendor_per_employee',
+      'created_at': _dateJson(row['created_at']) ?? _todayUtcInstant(),
+      'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
+      'updated_by': row['updated_by'],
     };
   }
 
