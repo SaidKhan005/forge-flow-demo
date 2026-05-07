@@ -1,0 +1,65 @@
+-- Code-health PCACHE-FANOUT — declare the
+-- `permission_cache_invalidate` Postgres NOTIFY channel by convention.
+--
+-- This migration is documentation-only. Postgres NOTIFY channels are
+-- not first-class schema objects — there is nothing to CREATE here.
+-- The channel exists the moment a session calls `LISTEN
+-- permission_cache_invalidate` (the listener in
+-- `lib/auth/permission_cache_invalidation_listener.dart`) or
+-- `pg_notify('permission_cache_invalidate', ...)` (producers added in
+-- follow-up slices that touch role/grant write paths). Locking the
+-- name + payload contract here keeps the listener and producers from
+-- drifting.
+--
+-- Why we need a fan-out channel:
+--   Each Cloud Run proxy instance keeps its own in-process
+--   `PermissionCache` (LRU, default 60s TTL, keyed on
+--   `(user_id, roles_version, operator_id, location_id)`). When an
+--   admin role-change commits on instance A, instance B keeps serving
+--   any cached snapshot for that user that still presents the OLD
+--   roles_version (e.g. via a stale Firebase custom claim) until the
+--   per-entry TTL expires. The TTL is the catch-all; the NOTIFY
+--   channel is the precise wake-up so other instances drop the entry
+--   immediately on commit.
+--
+-- Channel name : `permission_cache_invalidate`
+--
+-- Payload      : JSON object. Required:
+--                  user_id       text  -- users.id to invalidate
+--                Optional (forward-compatible, currently ignored
+--                by the listener):
+--                  operator_id   text
+--                  location_id   text
+--
+-- Producer convention (no producer is wired in this slice — they land
+-- in follow-ups that touch the relevant write paths):
+--
+--   * Emit AFTER the role/grant change commits, never inside the
+--     write transaction. NOTIFY is delivered on COMMIT regardless,
+--     but emitting at the post-commit boundary keeps the contract
+--     readable and avoids surprising rollbacks of intent-only signals.
+--
+--     PERFORM pg_notify(
+--       'permission_cache_invalidate',
+--       json_build_object('user_id', :user_id)::text
+--     );
+--
+--   * Producers MUST treat NOTIFY as best-effort. Postgres drops
+--     notifications under connection failure / queue pressure. The
+--     `PermissionCache` per-entry TTL (default 60s, configurable via
+--     env var `PERMISSION_CACHE_TTL_SECONDS`) bounds staleness when a
+--     notification is dropped.
+--
+-- Consumer (this slice):
+--
+--   * `PermissionCacheInvalidationListener` (Dart) holds a dedicated
+--     `package:postgres` connection, calls `LISTEN
+--     permission_cache_invalidate`, and on each NOTIFY parses the
+--     payload and calls `cache.invalidateUser(user_id)` on the local
+--     in-process `PermissionCache`. The cache's external API is not
+--     changed by this fix.
+--
+-- No DDL — this file exists so the migration ledger records the
+-- channel-name lock alongside the listener landing. Re-running this
+-- migration is a no-op.
+SELECT 1;
