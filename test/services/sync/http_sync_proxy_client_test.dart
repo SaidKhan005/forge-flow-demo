@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
+import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
 import 'package:forge_and_flow/services/sync/http_sync_proxy_client.dart';
 
 void main() {
@@ -39,6 +40,53 @@ void main() {
     expect(page.records.single.weekId, '2026-W18');
     expect(page.nextCursor, 'cursor-2');
   });
+
+  test(
+    'submitSelectedStarDecision posts scoped body with idempotency key',
+    () async {
+      late http.Request seen;
+      final client = HttpSyncProxyClient(
+        proxyBaseUri: Uri.parse('https://proxy.example/base/'),
+        idTokenProvider: () async => 'token-1',
+        httpClient: http_testing.MockClient((request) async {
+          seen = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'decision': <String, Object?>{'decision_id': 'decision-1'},
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      await client.submitSelectedStarDecision(
+        operatorId: 'op',
+        locationId: 'loc',
+        action: StarTargetSelectionWriteAction.select,
+        idempotencyKey: 'idem-1',
+        body: const <String, Object?>{
+          'restaurant_id': 'restaurant-1',
+          'record_key': '2026-W19|Wed|dinner',
+          'week_id': '2026-W19',
+          'day_label': 'Wed',
+          'daypart': 'dinner',
+          'business_date': '2026-05-06',
+        },
+      );
+
+      expect(seen.method, 'POST');
+      expect(
+        seen.url.path,
+        '/base/v1/operators/op/locations/loc/'
+        'selected_star_shift_decisions/select',
+      );
+      expect(seen.headers['authorization'], 'Bearer token-1');
+      expect(seen.headers['idempotency-key'], 'idem-1');
+      final body = jsonDecode(seen.body) as Map<String, Object?>;
+      expect(body['record_key'], '2026-W19|Wed|dinner');
+    },
+  );
 
   test('parses open snapshots, timing config, and aux snapshots', () async {
     final requests = <String>[];
@@ -314,6 +362,109 @@ void main() {
     },
   );
 
+  test('parses star-target sync resources and unavailable setup state', () async {
+    final requests = <Uri>[];
+    final client = HttpSyncProxyClient(
+      proxyBaseUri: Uri.parse('https://proxy.example/base/'),
+      idTokenProvider: () async => 'token-1',
+      httpClient: http_testing.MockClient((request) async {
+        requests.add(request.url);
+        final body = switch (request.url.path) {
+          '/base/v1/operators/op/locations/loc/selected_star_shift_decisions' =>
+            <String, Object?>{
+              'decisions': <Object?>[
+                <String, Object?>{
+                  'operator_id': 'op',
+                  'location_id': 'loc',
+                  'restaurant_id': 'loc',
+                  'record_key': '2026-W18|Mon|lunch',
+                  'decision_type': 'manager_selected',
+                  'updated_at': '2026-05-06T12:00:00Z',
+                },
+              ],
+              'next_cursor': 'selected-next',
+            },
+          '/base/v1/operators/op/locations/loc/target_cycles' =>
+            <String, Object?>{
+              'target_cycles': <Object?>[_targetCycleRow()],
+              'next_cursor': 'cycle-next',
+            },
+          '/base/v1/operators/op/locations/loc/active_target_profiles' =>
+            <String, Object?>{
+              'active_target_profiles': <Object?>[_activeProfileRow()],
+            },
+          '/base/v1/operators/op/locations/loc/target_profile_versions' =>
+            <String, Object?>{
+              'status': 'setup_required',
+              'setup_reason': 'target_profile_versions_not_projected',
+            },
+          _ => <String, Object?>{},
+        };
+        return http.Response(jsonEncode(body), 200);
+      }),
+    );
+
+    final selected = await client.fetchSelectedStarShiftDecisions(
+      operatorId: 'op',
+      locationId: 'loc',
+      cursor: 'selected-cursor',
+      pageSize: 25,
+    );
+    final cycles = await client.fetchTargetCycles(
+      operatorId: 'op',
+      locationId: 'loc',
+      cursor: null,
+      pageSize: 25,
+    );
+    final profiles = await client.fetchActiveTargetProfiles(
+      operatorId: 'op',
+      locationId: 'loc',
+      cursor: null,
+      pageSize: 25,
+    );
+    final versions = await client.fetchTargetProfileVersions(
+      operatorId: 'op',
+      locationId: 'loc',
+      cursor: null,
+      pageSize: 25,
+    );
+
+    expect(selected.decisions.single.recordKey, '2026-W18|Mon|lunch');
+    expect(selected.decisions.single.isSelected, isTrue);
+    expect(selected.nextCursor, 'selected-next');
+    expect(cycles.cycles.single.cycle.cycleId, 'cycle-1');
+    expect(cycles.cycles.single.cycle.managerOverrideUsed, isTrue);
+    expect(cycles.nextCursor, 'cycle-next');
+    expect(profiles.profiles.single.profile.targetProfileId, 'profile-1');
+    expect(versions.isUnavailable, isTrue);
+    expect(versions.unavailableReason, 'target_profile_versions_not_projected');
+    expect(requests.first.queryParameters['modified_since'], 'selected-cursor');
+    expect(requests.first.queryParameters['page_size'], '25');
+  });
+
+  test('missing star-target proxy route reports unavailable page', () async {
+    final client = HttpSyncProxyClient(
+      proxyBaseUri: Uri.parse('https://proxy.example'),
+      idTokenProvider: () async => 'token-1',
+      httpClient: http_testing.MockClient((_) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{'error': 'not_found'}),
+          404,
+        );
+      }),
+    );
+
+    final page = await client.fetchTargetCycles(
+      operatorId: 'op',
+      locationId: 'loc',
+      cursor: null,
+      pageSize: 25,
+    );
+
+    expect(page.isUnavailable, isTrue);
+    expect(page.unavailableReason, 'star_target_proxy_route_not_found');
+  });
+
   test('retries once after a 401 by force-refreshing the id token', () async {
     final tokens = <String>['stale-token', 'fresh-token'];
     var refreshCount = 0;
@@ -468,3 +619,48 @@ Map<String, Object?> _legacyOpenSnapshotRow() {
   row.remove('service_period_key');
   return row;
 }
+
+Map<String, Object?> _targetCycleRow() => <String, Object?>{
+  'cycle_id': 'cycle-1',
+  'operator_id': 'op',
+  'location_id': 'loc',
+  'restaurant_id': 'loc',
+  'source': 'manager_override',
+  'effective_start': '2026-05-01',
+  'effective_end': '2026-06-30',
+  'calibration_window_start': '2026-03-01',
+  'calibration_window_end': '2026-04-30',
+  'target_cplh': '5.2',
+  'target_splh': 181.0,
+  'target_ppa': 44.0,
+  'foh_wage': 18.0,
+  'boh_wage': 23.0,
+  'opz_floor_cplh': 3.5,
+  'opz_ceiling_cplh': 7.0,
+  'manager_override_used': true,
+  'manager_override_at': '2026-05-06T12:00:00Z',
+  'created_at': '2026-05-06T12:00:00Z',
+  'updated_at': '2026-05-06T12:00:00Z',
+};
+
+Map<String, Object?> _activeProfileRow() => <String, Object?>{
+  'target_profile_id': 'profile-1',
+  'operator_id': 'op',
+  'location_id': 'loc',
+  'restaurant_id': 'loc',
+  'target_cycle_id': 'cycle-1',
+  'target_profile_version_id': 'tpv-1',
+  'source_type': 'cycle_manager_override',
+  'target_cplh': 5.2,
+  'target_splh': 181.0,
+  'target_ppa': 44.0,
+  'foh_wage': 18.0,
+  'boh_wage': 23.0,
+  'opz_floor_cplh': 3.5,
+  'opz_ceiling_cplh': 7.0,
+  'theoretical_foh_labor_pct': 7.87,
+  'theoretical_boh_labor_pct': 12.7,
+  'theoretical_labor_pct': 20.57,
+  'built_at': '2026-05-06T12:00:00Z',
+  'updated_at': '2026-05-06T12:00:00Z',
+};

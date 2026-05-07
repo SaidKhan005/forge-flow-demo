@@ -32,6 +32,7 @@ import '../domain/services/service_period_definition_resolver.dart';
 import 'business_date_authority_service.dart';
 import '../dev/demo_fixture_data.dart';
 import '../domain/services/recommended_benchmark_selection_service.dart';
+import 'star_target_selection_write_service.dart';
 import 'target_cycle_service.dart';
 
 /// Callback type for active-target profile change events.
@@ -41,15 +42,21 @@ class BaselineManagerService {
   BaselineManagerService._();
   static final BaselineManagerService instance = BaselineManagerService._();
 
-  final ShiftRecordRepository _shiftRepo =
-      SqliteShiftRecordRepository.instance;
+  final ShiftRecordRepository _shiftRepo = SqliteShiftRecordRepository.instance;
   final BaselineSelectionRepository _baselineRepo =
       SqliteBaselineSelectionRepository.instance;
   final RestaurantScopeRepository _scopeRepo =
       SqliteRestaurantScopeRepository.instance;
+
   /// Optional callback invoked after active target authority changes.
   /// Set by the app-wide ActiveTargetProfileNotifier to receive change events.
   ActiveTargetChangedCallback? onActiveTargetChanged;
+
+  /// Production/mobile server-truth writer. When present, star selection
+  /// changes must land through the proxy before the local SQLite mirror is
+  /// updated. Demo/offline builds leave this null and keep the local cycle
+  /// compatibility path below.
+  BaselineServerSelectionWriter? serverSelectionWriter;
 
   Future<String> _activeRestaurantId() => _scopeRepo.getActiveRestaurantId();
 
@@ -84,30 +91,33 @@ class BaselineManagerService {
   /// `candidate.isSelected` reflects the requested restaurant's
   /// persisted manager selection, not the active restaurant's.
   Future<List<BaselineCandidateShift>> getCandidateShiftsForDateRange(
-      String startDate, String endDate,
-      {String? restaurantId}) async {
+    String startDate,
+    String endDate, {
+    String? restaurantId,
+  }) async {
     final scopedId = restaurantId ?? await _activeRestaurantId();
     final closedShifts = await _shiftRepo.getClosedShiftsInDateRange(
-        scopedId, startDate, endDate);
-    final selectedKeys =
-        await _baselineRepo.getSelectedRecordKeys(scopedId);
+      scopedId,
+      startDate,
+      endDate,
+    );
+    final selectedKeys = await _baselineRepo.getSelectedRecordKeys(scopedId);
 
     final candidates = closedShifts.map((shift) {
-      final recordKey =
-          '${shift.weekId}|${shift.dayLabel}|${shift.daypart}';
+      final recordKey = '${shift.weekId}|${shift.dayLabel}|${shift.daypart}';
       return BaselineCandidateShift(
-        recordKey:      recordKey,
-        weekId:         shift.weekId,
-        weekLabel:      shift.weekId,
-        dayLabel:       shift.dayLabel,
-        daypart:        shift.daypart,
-        covers:         shift.covers,
-        cplh:           shift.cplh,
-        splh:           shift.splh,
-        ppa:            shift.ppa,
+        recordKey: recordKey,
+        weekId: shift.weekId,
+        weekLabel: shift.weekId,
+        dayLabel: shift.dayLabel,
+        daypart: shift.daypart,
+        covers: shift.covers,
+        cplh: shift.cplh,
+        splh: shift.splh,
+        ppa: shift.ppa,
         primaryLeverId: shift.normalizedLeverId,
-        isSelected:     selectedKeys.contains(recordKey),
-        businessDate:   shift.businessDate,
+        isSelected: selectedKeys.contains(recordKey),
+        businessDate: shift.businessDate,
         actualLaborPct: shift.totalLaborPct,
         hasActualLaborPctTruth: shift.hasSourceBackedTotalLaborPct,
       );
@@ -123,8 +133,10 @@ class BaselineManagerService {
     const dayOrder = BusinessDateAuthorityService.canonicalDayOrder;
 
     candidates.sort((a, b) {
-      final dp = ServicePeriodDefinitionResolver.sortIndex(defs, a.daypart)
-          .compareTo(ServicePeriodDefinitionResolver.sortIndex(defs, b.daypart));
+      final dp = ServicePeriodDefinitionResolver.sortIndex(
+        defs,
+        a.daypart,
+      ).compareTo(ServicePeriodDefinitionResolver.sortIndex(defs, b.daypart));
       if (dp != 0) return dp;
       final cplh = b.cplh.compareTo(a.cplh);
       if (cplh != 0) return cplh;
@@ -134,8 +146,7 @@ class BaselineManagerService {
       if (ppa != 0) return ppa;
       final week = b.weekId.compareTo(a.weekId);
       if (week != 0) return week;
-      return (dayOrder[a.dayLabel] ?? 99)
-          .compareTo(dayOrder[b.dayLabel] ?? 99);
+      return (dayOrder[a.dayLabel] ?? 99).compareTo(dayOrder[b.dayLabel] ?? 99);
     });
   }
 
@@ -167,19 +178,24 @@ class BaselineManagerService {
   /// passed [restaurantId] instead of silently falling back to the
   /// active-scope restaurant.
   Future<RecommendedBenchmarkSelection> resolveRecommendedSelection(
-      String restaurantId, String businessDate,
-      {RecommendedSelectionConfig config =
-          const RecommendedSelectionConfig()}) async {
+    String restaurantId,
+    String businessDate, {
+    RecommendedSelectionConfig config = const RecommendedSelectionConfig(),
+  }) async {
     final endDate = businessDate;
-    final startDate =
-        BusinessDateAuthorityService.subtractDays(businessDate, 59);
+    final startDate = BusinessDateAuthorityService.subtractDays(
+      businessDate,
+      59,
+    );
     final candidates = await getCandidateShiftsForDateRange(
       startDate,
       endDate,
       restaurantId: restaurantId,
     );
-    return RecommendedBenchmarkSelectionService.instance
-        .select(candidates, config: config);
+    return RecommendedBenchmarkSelectionService.instance.select(
+      candidates,
+      config: config,
+    );
   }
 
   // ── Date-anchored baseline context priming ─────────────────────────────────
@@ -197,9 +213,14 @@ class BaselineManagerService {
   /// passed [restaurantId] instead of silently falling back to the
   /// active-scope restaurant.
   Future<void> primeBaselineContextForDate(
-      String restaurantId, String businessDate) async {
+    String restaurantId,
+    String businessDate,
+  ) async {
     final endDate = businessDate;
-    final startDate = BusinessDateAuthorityService.subtractDays(businessDate, 59);
+    final startDate = BusinessDateAuthorityService.subtractDays(
+      businessDate,
+      59,
+    );
 
     final candidates = await getCandidateShiftsForDateRange(
       startDate,
@@ -214,14 +235,16 @@ class BaselineManagerService {
     }
 
     final context = candidates
-        .map((c) => DaypartBaseline(
-              daypart: c.daypart,
-              cplh: c.cplh,
-              splh: c.splh,
-              ppa: c.ppa,
-              covers: c.covers,
-              isSelected: c.isSelected,
-            ))
+        .map(
+          (c) => DaypartBaseline(
+            daypart: c.daypart,
+            cplh: c.cplh,
+            splh: c.splh,
+            ppa: c.ppa,
+            covers: c.covers,
+            isSelected: c.isSelected,
+          ),
+        )
         .toList();
 
     BaselineData.applyHistoricalContext(context);
@@ -252,14 +275,16 @@ class BaselineManagerService {
 
     // All candidates already come from the true 60-day date window.
     final context = candidates
-        .map((c) => DaypartBaseline(
-              daypart:    c.daypart,
-              cplh:       c.cplh,
-              splh:       c.splh,
-              ppa:        c.ppa,
-              covers:     c.covers,
-              isSelected: c.isSelected,
-            ))
+        .map(
+          (c) => DaypartBaseline(
+            daypart: c.daypart,
+            cplh: c.cplh,
+            splh: c.splh,
+            ppa: c.ppa,
+            covers: c.covers,
+            isSelected: c.isSelected,
+          ),
+        )
         .toList();
 
     // Compatibility bridge: update in-memory BaselineData with 60-day window
@@ -293,8 +318,36 @@ class BaselineManagerService {
 
   Future<void> saveSelection(Set<String> selectedKeys) async {
     final restaurantId = await _activeRestaurantId();
-    await _baselineRepo.replaceSelectedRecordKeys(
-        restaurantId, selectedKeys);
+    final serverWriter = serverSelectionWriter;
+    if (serverWriter != null) {
+      final candidates = await getCandidateShifts();
+      final selectedCandidates = candidates
+          .where((c) => selectedKeys.contains(c.recordKey))
+          .toList();
+      final foundKeys = selectedCandidates.map((c) => c.recordKey).toSet();
+      final missingKeys = selectedKeys.difference(foundKeys);
+      if (missingKeys.isNotEmpty) {
+        throw StarTargetSelectionWriteException(
+          code: 'candidate_not_in_server_window',
+          message:
+              'Some selected star shifts are no longer in the synced '
+              '60-day server history. Refresh and choose again.',
+        );
+      }
+      await serverWriter.replaceSelection(
+        restaurantId: restaurantId,
+        selectedCandidates: selectedCandidates,
+        previouslySelectedCandidates: candidates.where((c) => c.isSelected),
+      );
+      await _baselineRepo.replaceSelectedRecordKeys(restaurantId, selectedKeys);
+      await primeManagerOverride();
+      final callback = onActiveTargetChanged;
+      if (callback != null) {
+        await callback();
+      }
+      return;
+    }
+    await _baselineRepo.replaceSelectedRecordKeys(restaurantId, selectedKeys);
     if (selectedKeys.isEmpty) {
       BaselineData.clearManagerOverride();
       final businessDate = await BusinessDateAuthorityService.instance
@@ -306,8 +359,10 @@ class BaselineManagerService {
           'manager override.',
         );
       }
-      await TargetCycleService.instance
-          .restoreRecommendedCycle(restaurantId, businessDate);
+      await TargetCycleService.instance.restoreRecommendedCycle(
+        restaurantId,
+        businessDate,
+      );
       final callback = onActiveTargetChanged;
       if (callback != null) {
         await callback();
@@ -331,8 +386,10 @@ class BaselineManagerService {
         'cannot proceed without a business date anchor.',
       );
     }
-    await TargetCycleService.instance
-        .applyManagerOverrideCycle(restaurantId, businessDate);
+    await TargetCycleService.instance.applyManagerOverrideCycle(
+      restaurantId,
+      businessDate,
+    );
 
     // The cycle path writes the profile via the projector but does
     // not fire the active-target-changed callback. Fire it here so
@@ -372,12 +429,15 @@ class BaselineManagerService {
 
     // Deactivate any active cycle so the next read builds a fresh
     // recommended one with `managerOverrideUsed: false`.
-    await SqliteTargetCycleRepository.instance
-        .deactivateAllForRestaurant(restaurantId);
+    await SqliteTargetCycleRepository.instance.deactivateAllForRestaurant(
+      restaurantId,
+    );
 
     // Build the fresh recommended cycle (also syncs the profile).
-    await TargetCycleService.instance
-        .getOrCreateActiveCycle(restaurantId, businessDate);
+    await TargetCycleService.instance.getOrCreateActiveCycle(
+      restaurantId,
+      businessDate,
+    );
 
     // Notify downstream surfaces that the active target changed.
     final callback = onActiveTargetChanged;
@@ -387,5 +447,4 @@ class BaselineManagerService {
   }
 
   // ── Persist active target profile and notify authority path ────────────────
-
 }

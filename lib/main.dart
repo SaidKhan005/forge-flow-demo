@@ -45,6 +45,7 @@ Future<void> main() async {
       secureSessionStorage: bindings.secureSessionStorage,
       authSessionLedgerWriter: bindings.authSessionLedgerWriter,
       syncProxyClient: syncProxyClient,
+      starTargetSelectionWriteClient: syncProxyClient,
       mobilePushNotifications: mobilePushNotifications,
     );
     return;

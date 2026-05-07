@@ -14,7 +14,9 @@ class BaselineSelectionDao {
   }
 
   Future<void> replaceSelectedRecordKeys(
-      String restaurantId, Set<String> keys) async {
+    String restaurantId,
+    Set<String> keys,
+  ) async {
     await _db.transaction((txn) async {
       await txn.delete(
         'baseline_selected_records',
@@ -28,5 +30,13 @@ class BaselineSelectionDao {
         });
       }
     });
+  }
+
+  Future<void> wipeForOtherScopes(String keepRestaurantId) async {
+    await _db.delete(
+      'baseline_selected_records',
+      where: 'restaurant_id != ?',
+      whereArgs: [keepRestaurantId],
+    );
   }
 }

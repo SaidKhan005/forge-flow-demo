@@ -10,6 +10,7 @@ import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/models/baseline_candidate_shift.dart';
 import 'package:forge_and_flow/screens/baseline_manager_screen.dart';
 import 'package:forge_and_flow/services/labor_model.dart';
+import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
 import 'package:provider/provider.dart';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -102,29 +103,26 @@ const _withPreSelected = [_selectedLunch, _lunch1, _dinner1];
 const _leverTestCandidates = [_lunch1, _dinnerSplhDown, _dinner1];
 
 ActiveTargetProfile _defaultProfile() => ActiveTargetProfile(
-      targetProfileId: 'baseline-manager-test',
-      restaurantId: 'test-restaurant',
-      sourceType: 'system_baseline',
-      targetCPLH: BaselineData.derivedTargetCPLH,
-      targetSPLH: BaselineData.derivedTargetSPLH,
-      targetPPA: BaselineData.derivedTargetPPA,
-      fohWage: MeridianConfig.fohWage,
-      bohWage: MeridianConfig.bohWage,
-      opzFloorCPLH: BaselineData.opzFloorCPLH,
-      opzCeilingCPLH: BaselineData.opzCeilingCPLH,
-      theoreticalFohLaborPct: BaselineData.derivedFohTheoreticalLaborPct,
-      theoreticalBohLaborPct: BaselineData.derivedBohTheoreticalLaborPct,
-      theoreticalLaborPct: BaselineData.derivedTheoreticalLaborPct,
-      builtAt: 'test',
-    );
+  targetProfileId: 'baseline-manager-test',
+  restaurantId: 'test-restaurant',
+  sourceType: 'system_baseline',
+  targetCPLH: BaselineData.derivedTargetCPLH,
+  targetSPLH: BaselineData.derivedTargetSPLH,
+  targetPPA: BaselineData.derivedTargetPPA,
+  fohWage: MeridianConfig.fohWage,
+  bohWage: MeridianConfig.bohWage,
+  opzFloorCPLH: BaselineData.opzFloorCPLH,
+  opzCeilingCPLH: BaselineData.opzCeilingCPLH,
+  theoreticalFohLaborPct: BaselineData.derivedFohTheoreticalLaborPct,
+  theoreticalBohLaborPct: BaselineData.derivedBohTheoreticalLaborPct,
+  theoreticalLaborPct: BaselineData.derivedTheoreticalLaborPct,
+  builtAt: 'test',
+);
 
 Widget _wrap(Widget child) => ChangeNotifierProvider(
-      create: (_) => ActiveTargetProfileNotifier.fromProfile(_defaultProfile()),
-      child: MaterialApp(
-        theme: ThemeData.dark(),
-        home: child,
-      ),
-    );
+  create: (_) => ActiveTargetProfileNotifier.fromProfile(_defaultProfile()),
+  child: MaterialApp(theme: ThemeData.dark(), home: child),
+);
 
 // ── Tile label helper ─────────────────────────────────────────────────────────
 // Mirrors the screen's tile label logic: human-friendly date + daypart when
@@ -132,8 +130,18 @@ Widget _wrap(Widget child) => ChangeNotifierProvider(
 
 const _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const _monthAbbrs = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 String _tileLabel(BaselineCandidateShift c) {
@@ -163,7 +171,9 @@ Future<void> _tapBackToCalendar(WidgetTester tester) async {
 /// Tap a candidate tile by its rendered label, handling offstage from
 /// the narrow test viewport (CLEAR ALL bar can push tiles below viewport).
 Future<void> _tapCandidateTile(
-    WidgetTester tester, BaselineCandidateShift candidate) async {
+  WidgetTester tester,
+  BaselineCandidateShift candidate,
+) async {
   final label = _tileLabel(candidate);
   final finder = find.text(label, skipOffstage: false);
   await tester.ensureVisible(finder);
@@ -185,26 +195,37 @@ void main() {
 
   setUp(() async {
     BaselineData.clearManagerOverride();
+    BaselineManagerService.instance.serverSelectionWriter = null;
     await DatabaseHelper.instance.reseedDemo();
     await DatabaseHelper.instance.replaceBaselineSelectedRecordKeys({});
-    final ctx =
-        await DemandForecastContextService.instance.getCurrentContext();
+    final ctx = await DemandForecastContextService.instance.getCurrentContext();
     demandCovers = ctx.historicalWeeklyAvgCovers;
   });
 
-  testWidgets('shows loading indicator when no initialCandidates provided',
-      (tester) async {
+  tearDown(() {
+    BaselineManagerService.instance.serverSelectionWriter = null;
+  });
+
+  testWidgets('shows loading indicator when no initialCandidates provided', (
+    tester,
+  ) async {
     await tester.pumpWidget(_wrap(const BaselineManagerScreen()));
     await tester.pump();
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 
   group('A - required labels present', () {
-    testWidgets('page title, buttons, and all preview labels render',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('page title, buttons, and all preview labels render', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       expect(find.text('Choose Star Shifts'), findsOneWidget);
@@ -231,20 +252,32 @@ void main() {
   });
 
   group('B - zero-selection preview', () {
-    testWidgets('SELECTED SHIFTS shows 0 when nothing selected',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('SELECTED SHIFTS shows 0 when nothing selected', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
       expect(find.text('0'), findsOneWidget);
     });
 
-    testWidgets('all metric cells show -- when nothing selected',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('all metric cells show -- when nothing selected', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
       // 5 target standard cells + 6 plan impact cells = 11
       expect(find.text('--'), findsNWidgets(11));
@@ -252,11 +285,17 @@ void main() {
   });
 
   group('C - live preview updates on selection', () {
-    testWidgets('selecting one candidate clears all -- from preview',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('selecting one candidate clears all -- from preview', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       expect(find.text('--'), findsNWidgets(11));
@@ -269,9 +308,14 @@ void main() {
     });
 
     testWidgets('count increments to 1 after first selection', (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       await _tapCalendarDate(tester, '2026-03-02');
@@ -280,14 +324,18 @@ void main() {
       // In day detail: only preview panel shows '1', no calendar day cells
       expect(find.text('1'), findsOneWidget);
     });
-
   });
 
   group('D - candidate tiles show required fields', () {
     testWidgets('LUNCH section header renders in day detail', (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Navigate to date with lunch shift
@@ -296,9 +344,14 @@ void main() {
     });
 
     testWidgets('DINNER section header renders in day detail', (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Navigate to date with dinner shift
@@ -306,11 +359,17 @@ void main() {
       expect(find.text('DINNER'), findsOneWidget);
     });
 
-    testWidgets('each tile shows CPLH, COVERS, SPLH, PPA, and lever',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('each tile shows CPLH, COVERS, SPLH, PPA, and lever', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Navigate to date with one shift (_lunch1 on 2026-03-02)
@@ -322,15 +381,23 @@ void main() {
       expect(find.text('PPA ', skipOffstage: false), findsNWidgets(1));
       expect(find.text('LEVER ', skipOffstage: false), findsNWidgets(1));
       // Lever label shows full natural-language meaning (metric from LeverCards)
-      expect(find.text('CPLH ABOVE TARGET', skipOffstage: false), findsAtLeastNWidgets(1));
+      expect(
+        find.text('CPLH ABOVE TARGET', skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
     });
   });
 
   group('E - Cancel discards draft', () {
     testWidgets('Cancel does not write selection to DB', (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       await _tapCalendarDate(tester, '2026-03-02');
@@ -349,9 +416,14 @@ void main() {
 
   group('F - Done with non-empty draft commits selection', () {
     testWidgets('Done writes selected record key to DB', (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       await _tapCalendarDate(tester, '2026-03-02');
@@ -367,11 +439,13 @@ void main() {
   });
 
   group('G - Done with empty draft clears override', () {
-    testWidgets('deselect all then Done empties DB and clears override',
-        (tester) async {
+    testWidgets('deselect all then Done empties DB and clears override', (
+      tester,
+    ) async {
       await tester.runAsync(() async {
-        await DatabaseHelper.instance
-            .replaceBaselineSelectedRecordKeys({_selectedLunch.recordKey});
+        await DatabaseHelper.instance.replaceBaselineSelectedRecordKeys({
+          _selectedLunch.recordKey,
+        });
       });
       BaselineData.applyManagerOverride([
         const DaypartBaseline(
@@ -384,9 +458,14 @@ void main() {
       ]);
       expect(BaselineData.hasManagerOverride, isTrue);
 
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_withPreSelected, initialDemandCovers: demandCovers),
-      ));
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _withPreSelected,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Clear all selections via CLEAR ALL button
@@ -404,11 +483,17 @@ void main() {
   // ── H — Plan impact preview: selected-shift behavior ──────────────────────
 
   group('H - plan impact selected-shift behavior', () {
-    testWidgets('selecting one candidate shows plan impact values',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('selecting one candidate shows plan impact values', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Navigate to _lunch1's date and select
@@ -418,10 +503,11 @@ void main() {
       // Forecast covers fixed from canonical demand context
       final expectedCovers = demandCovers;
       expect(expectedCovers, isNot(equals(_lunch1.covers)));
-      expect(find.text('$expectedCovers', skipOffstage: false),
-          findsAtLeastNWidgets(1));
+      expect(
+        find.text('$expectedCovers', skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
     });
-
   });
 
   // ── I — PPA guardrail: changing PPA changes sales/BOH, not covers/FOH ─────
@@ -458,57 +544,69 @@ void main() {
       actualLaborPct: 20.2,
     );
 
-    test('different PPA → same forecast covers, different sales and BOH hrs',
-        () async {
-      final demandCtx =
-          await DemandForecastContextService.instance.getCurrentContext();
-      final demandCovers = demandCtx.historicalWeeklyAvgCovers;
+    test(
+      'different PPA → same forecast covers, different sales and BOH hrs',
+      () async {
+        final demandCtx = await DemandForecastContextService.instance
+            .getCurrentContext();
+        final demandCovers = demandCtx.historicalWeeklyAvgCovers;
 
-      final previewLow =
-          ManagerOverridePlanPreview.fromDraftSelection([lowPPA],
-              historicalWeeklyAvgCovers: demandCovers);
-      final previewHigh =
-          ManagerOverridePlanPreview.fromDraftSelection([highPPA],
-              historicalWeeklyAvgCovers: demandCovers);
+        final previewLow = ManagerOverridePlanPreview.fromDraftSelection([
+          lowPPA,
+        ], historicalWeeklyAvgCovers: demandCovers);
+        final previewHigh = ManagerOverridePlanPreview.fromDraftSelection([
+          highPPA,
+        ], historicalWeeklyAvgCovers: demandCovers);
 
-      expect(previewLow, isNotNull);
-      expect(previewHigh, isNotNull);
+        expect(previewLow, isNotNull);
+        expect(previewHigh, isNotNull);
 
-      // Forecast covers are fixed from demand — same regardless of PPA.
-      expect(previewLow!.forecastCovers, equals(previewHigh!.forecastCovers));
-      expect(previewLow.forecastCovers, equals(demandCovers));
+        // Forecast covers are fixed from demand — same regardless of PPA.
+        expect(previewLow!.forecastCovers, equals(previewHigh!.forecastCovers));
+        expect(previewLow.forecastCovers, equals(demandCovers));
 
-      // Forecast sales changes: covers * PPA.
-      expect(previewHigh.forecastSales, greaterThan(previewLow.forecastSales));
+        // Forecast sales changes: covers * PPA.
+        expect(
+          previewHigh.forecastSales,
+          greaterThan(previewLow.forecastSales),
+        );
 
-      // FOH hours unchanged (driven by covers/CPLH, same for both).
-      expect(previewLow.requiredFohHours, equals(previewHigh.requiredFohHours));
+        // FOH hours unchanged (driven by covers/CPLH, same for both).
+        expect(
+          previewLow.requiredFohHours,
+          equals(previewHigh.requiredFohHours),
+        );
 
-      // BOH hours change (driven by sales/SPLH, sales differs).
-      expect(
-          previewHigh.requiredBohHours, greaterThan(previewLow.requiredBohHours));
-    });
+        // BOH hours change (driven by sales/SPLH, sales differs).
+        expect(
+          previewHigh.requiredBohHours,
+          greaterThan(previewLow.requiredBohHours),
+        );
+      },
+    );
   });
 
   // ── J — ManagerOverridePlanPreview unit tests ─────────────────────────────
 
   group('J - ManagerOverridePlanPreview unit', () {
     test('returns null when no shifts selected', () async {
-      final demandCtx =
-          await DemandForecastContextService.instance.getCurrentContext();
-      final preview = ManagerOverridePlanPreview.fromDraftSelection([],
-          historicalWeeklyAvgCovers: demandCtx.historicalWeeklyAvgCovers);
+      final demandCtx = await DemandForecastContextService.instance
+          .getCurrentContext();
+      final preview = ManagerOverridePlanPreview.fromDraftSelection(
+        [],
+        historicalWeeklyAvgCovers: demandCtx.historicalWeeklyAvgCovers,
+      );
       expect(preview, isNull);
     });
 
     test('uses canonical demand context, not BaselineData', () async {
-      final demandCtx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final demandCtx = await DemandForecastContextService.instance
+          .getCurrentContext();
       final demandCovers = demandCtx.historicalWeeklyAvgCovers;
 
-      final preview = ManagerOverridePlanPreview.fromDraftSelection(
-          [_lunch1],
-          historicalWeeklyAvgCovers: demandCovers);
+      final preview = ManagerOverridePlanPreview.fromDraftSelection([
+        _lunch1,
+      ], historicalWeeklyAvgCovers: demandCovers);
       expect(preview, isNotNull);
       expect(preview!.forecastCovers, equals(demandCovers));
       expect(preview.forecastSales, greaterThan(0));
@@ -543,13 +641,14 @@ void main() {
     });
 
     test('averages multiple candidates', () async {
-      final demandCtx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final demandCtx = await DemandForecastContextService.instance
+          .getCurrentContext();
       final demandCovers = demandCtx.historicalWeeklyAvgCovers;
 
-      final preview = ManagerOverridePlanPreview.fromDraftSelection(
-          [_lunch1, _dinner1],
-          historicalWeeklyAvgCovers: demandCovers);
+      final preview = ManagerOverridePlanPreview.fromDraftSelection([
+        _lunch1,
+        _dinner1,
+      ], historicalWeeklyAvgCovers: demandCovers);
       expect(preview, isNotNull);
       expect(preview!.forecastCovers, equals(demandCovers));
       expect(preview.forecastSales, greaterThan(0));
@@ -575,11 +674,17 @@ void main() {
   // ── K — Candidate tiles show LABOR % chips (Phase 7.55f.2) ───────────────
 
   group('K - candidate tile LABOR % chips', () {
-    testWidgets('each candidate tile shows LABOR % chip with actual value',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('each candidate tile shows LABOR % chip with actual value', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Navigate to _lunch1's date (only 1 shift on this date)
@@ -599,8 +704,9 @@ void main() {
       expect(find.text('23.8%', skipOffstage: false), findsOneWidget);
     });
 
-    testWidgets('candidate tile shows -- when labor truth is unavailable',
-        (tester) async {
+    testWidgets('candidate tile shows -- when labor truth is unavailable', (
+      tester,
+    ) async {
       const unknownLabor = BaselineCandidateShift(
         recordKey: '2026-W10|Mon|dinner_unknown',
         weekId: '2026-W10',
@@ -618,12 +724,13 @@ void main() {
         hasActualLaborPctTruth: false,
       );
 
-      await tester.pumpWidget(_wrap(
-        const BaselineManagerScreen.withCandidates(
-          [unknownLabor],
-          initialDemandCovers: 1800,
+      await tester.pumpWidget(
+        _wrap(
+          const BaselineManagerScreen.withCandidates([
+            unknownLabor,
+          ], initialDemandCovers: 1800),
         ),
-      ));
+      );
       await tester.pump();
 
       await _tapCalendarDate(tester, '2026-03-02');
@@ -632,17 +739,22 @@ void main() {
       expect(find.text('--', skipOffstage: false), findsAtLeastNWidgets(1));
       expect(find.text('0.0%', skipOffstage: false), findsNothing);
     });
-
   });
 
   // ── L — Calendar rendering (Phase 7.55f.3) ────────────────────────────────
 
   group('L - calendar rendering', () {
-    testWidgets('screen shows calendar mode after loading candidates',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('screen shows calendar mode after loading candidates', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       expect(find.text('LAST 60 DAYS'), findsOneWidget);
@@ -651,11 +763,17 @@ void main() {
       expect(find.text('S'), findsAtLeastNWidgets(1));
     });
 
-    testWidgets('calendar window anchored to latest candidate businessDate',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('calendar window anchored to latest candidate businessDate', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Latest is _lunch2 at 2026-03-10.
@@ -663,58 +781,81 @@ void main() {
       expect(find.text('Jan 10 – Mar 10'), findsOneWidget);
     });
 
-    testWidgets('dates with closed shifts show a marker dot',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('dates with closed shifts show a marker dot', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Calendar cells with shifts have a 4x4 Container dot
       // 3 unique dates with shifts: Mar 2, Mar 6, Mar 10
       // Find all DecoratedBox containers that could be dots
       // Just verify the calendar cell keys exist for shift dates
-      expect(find.byKey(const ValueKey<String>('cal_2026-03-02')),
-          findsOneWidget);
-      expect(find.byKey(const ValueKey<String>('cal_2026-03-06')),
-          findsOneWidget);
-      expect(find.byKey(const ValueKey<String>('cal_2026-03-10')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('cal_2026-03-02')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('cal_2026-03-06')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('cal_2026-03-10')),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('dates with selected shifts are highlighted',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_withPreSelected, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('dates with selected shifts are highlighted', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _withPreSelected,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // _selectedLunch is on 2026-03-16 and is pre-selected.
       // The cell should exist and be tappable.
-      expect(find.byKey(const ValueKey<String>('cal_2026-03-16')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('cal_2026-03-16')),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('empty candidates show honest empty state',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(const [], initialDemandCovers: demandCovers),
-      ));
+    testWidgets('empty candidates show honest empty state', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            const [],
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
-      expect(
-          find.textContaining('No closed shifts found.'), findsOneWidget);
+      expect(find.textContaining('No closed shifts found.'), findsOneWidget);
     });
   });
 
   // ── M — Calendar navigation (Phase 7.55f.3) ──────────────────────────────
 
   group('M - calendar navigation', () {
-    testWidgets('tapping a date with shifts opens day detail',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('tapping a date with shifts opens day detail', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       await _tapCalendarDate(tester, '2026-03-02');
@@ -725,11 +866,15 @@ void main() {
       expect(find.text('LUNCH'), findsOneWidget);
     });
 
-    testWidgets('day detail shows only that date\'s shifts',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('day detail shows only that date\'s shifts', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Mar 2 has _lunch1 only (lunch)
@@ -745,9 +890,14 @@ void main() {
     });
 
     testWidgets('back returns to calendar grid', (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       expect(find.text('LAST 60 DAYS'), findsOneWidget);
@@ -761,11 +911,17 @@ void main() {
       expect(find.text('BACK TO CALENDAR'), findsNothing);
     });
 
-    testWidgets('tapping a date without shifts shows empty day detail',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('tapping a date without shifts shows empty day detail', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Jan 15 is in the 60-day window but has no shifts
@@ -777,12 +933,17 @@ void main() {
   // ── N — Selection through calendar (Phase 7.55f.3) ────────────────────────
 
   group('N - selection through calendar', () {
-    testWidgets(
-        'CLEAR ALL from calendar view clears highlights and preview',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_withPreSelected, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('CLEAR ALL from calendar view clears highlights and preview', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _withPreSelected,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Pre-selected state
@@ -799,16 +960,23 @@ void main() {
       expect(find.text('CLEAR ALL'), findsNothing);
     });
 
-    testWidgets('CANCEL after CLEAR ALL does not persist the draft clear',
-        (tester) async {
+    testWidgets('CANCEL after CLEAR ALL does not persist the draft clear', (
+      tester,
+    ) async {
       await tester.runAsync(() async {
-        await DatabaseHelper.instance
-            .replaceBaselineSelectedRecordKeys({_selectedLunch.recordKey});
+        await DatabaseHelper.instance.replaceBaselineSelectedRecordKeys({
+          _selectedLunch.recordKey,
+        });
       });
 
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_withPreSelected, initialDemandCovers: demandCovers),
-      ));
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _withPreSelected,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       await tester.tap(find.text('CLEAR ALL'));
@@ -823,7 +991,6 @@ void main() {
       });
       expect(stored!, contains(_selectedLunch.recordKey));
     });
-
   });
 
   // ── O — DST-safe calendar grid (Phase 7.55f.3a) ──────────────────────────
@@ -831,11 +998,17 @@ void main() {
   group('O - DST-safe calendar grid', () {
     // US DST 2026: spring forward Mar 8.  Window Jan 10 – Mar 10 crosses it.
 
-    testWidgets('all 60 in-window dates have a calendar cell key',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('all 60 in-window dates have a calendar cell key', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Window: 2026-01-10 to 2026-03-10 (60 days inclusive).
@@ -858,37 +1031,55 @@ void main() {
       expect(count, equals(60));
     });
 
-    testWidgets('no duplicate or off-by-one date cells around DST boundary',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('no duplicate or off-by-one date cells around DST boundary', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // March 7 (day before DST) and March 8 (DST spring-forward)
       // must each have exactly one cell, not zero or two.
       expect(
-        find.byKey(const ValueKey<String>('cal_2026-03-07'),
-            skipOffstage: false),
+        find.byKey(
+          const ValueKey<String>('cal_2026-03-07'),
+          skipOffstage: false,
+        ),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('cal_2026-03-08'),
-            skipOffstage: false),
+        find.byKey(
+          const ValueKey<String>('cal_2026-03-08'),
+          skipOffstage: false,
+        ),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('cal_2026-03-09'),
-            skipOffstage: false),
+        find.byKey(
+          const ValueKey<String>('cal_2026-03-09'),
+          skipOffstage: false,
+        ),
         findsOneWidget,
       );
     });
 
-    testWidgets('candidate dates inside DST window remain tappable',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('candidate dates inside DST window remain tappable', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // _lunch2 is on 2026-03-10 (after DST transition on Mar 8)
@@ -902,89 +1093,134 @@ void main() {
   // ── P — Suggested/selected day states (Phase 7.55f.3b) ────────────────────
 
   group('P - suggested/selected day states', () {
-    testWidgets('suggested date is distinguishable from available-only',
-        (tester) async {
+    testWidgets('suggested date is distinguishable from available-only', (
+      tester,
+    ) async {
       // All test candidates have lever 'cplh_up' which is favorable → suggested
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // Legend should show all three states
       expect(find.text('Suggested star'), findsOneWidget);
     });
 
-    testWidgets('selected date is distinguishable from suggested-only',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_withPreSelected, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('selected date is distinguishable from suggested-only', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _withPreSelected,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // _selectedLunch is pre-selected; its date is 2026-03-16.
       // _lunch1 (2026-03-02) has cplh_up (favorable) → suggested but not selected.
       // Both cell keys exist — visual distinction is in decoration.
-      expect(find.byKey(const ValueKey<String>('cal_2026-03-16'),
-              skipOffstage: false),
-          findsOneWidget);
-      expect(find.byKey(const ValueKey<String>('cal_2026-03-02'),
-              skipOffstage: false),
-          findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('cal_2026-03-16'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const ValueKey<String>('cal_2026-03-02'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
       // Legend contains all three labels
       expect(find.text('Selected star'), findsOneWidget);
       expect(find.text('Suggested star'), findsOneWidget);
       expect(find.text('Closed shifts'), findsOneWidget);
     });
-
   });
 
   // ── Q — Lever / date polish (Phase 7.55f.3b) ─────────────────────────────
 
   group('Q - lever and date polish', () {
-    testWidgets('day detail shows full lever meaning, not raw id or generic bucket',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
-      await tester.pump();
+    testWidgets(
+      'day detail shows full lever meaning, not raw id or generic bucket',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _allCandidates,
+              initialDemandCovers: demandCovers,
+            ),
+          ),
+        );
+        await tester.pump();
 
-      await _tapCalendarDate(tester, '2026-03-02');
+        await _tapCalendarDate(tester, '2026-03-02');
 
-      // Should NOT find raw snake_case lever id
-      expect(find.text('cplh_up', skipOffstage: false), findsNothing);
-      // Should find full natural-language meaning, not just the metric bucket
-      expect(find.text('CPLH ABOVE TARGET', skipOffstage: false),
-          findsAtLeastNWidgets(1));
-    });
+        // Should NOT find raw snake_case lever id
+        expect(find.text('cplh_up', skipOffstage: false), findsNothing);
+        // Should find full natural-language meaning, not just the metric bucket
+        expect(
+          find.text('CPLH ABOVE TARGET', skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
+      },
+    );
 
-    testWidgets('distinct lever directions show distinct meanings, not collapsed buckets',
-        (tester) async {
-      // _leverTestCandidates has cplh_up and splh_down on the same date
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_leverTestCandidates, initialDemandCovers: demandCovers),
-      ));
-      await tester.pump();
+    testWidgets(
+      'distinct lever directions show distinct meanings, not collapsed buckets',
+      (tester) async {
+        // _leverTestCandidates has cplh_up and splh_down on the same date
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _leverTestCandidates,
+              initialDemandCovers: demandCovers,
+            ),
+          ),
+        );
+        await tester.pump();
 
-      // Navigate to 2026-03-02 which has both _lunch1 (cplh_up) and
-      // _dinnerSplhDown (splh_down)
-      await _tapCalendarDate(tester, '2026-03-02');
+        // Navigate to 2026-03-02 which has both _lunch1 (cplh_up) and
+        // _dinnerSplhDown (splh_down)
+        await _tapCalendarDate(tester, '2026-03-02');
 
-      // Each should show its full distinct meaning
-      expect(find.text('CPLH ABOVE TARGET', skipOffstage: false),
-          findsAtLeastNWidgets(1));
-      expect(find.text('SPLH BELOW TARGET', skipOffstage: false),
-          findsAtLeastNWidgets(1));
+        // Each should show its full distinct meaning
+        expect(
+          find.text('CPLH ABOVE TARGET', skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
+        expect(
+          find.text('SPLH BELOW TARGET', skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
 
-      // Raw snake_case ids must not appear
-      expect(find.text('cplh_up', skipOffstage: false), findsNothing);
-      expect(find.text('splh_down', skipOffstage: false), findsNothing);
-    });
+        // Raw snake_case ids must not appear
+        expect(find.text('cplh_up', skipOffstage: false), findsNothing);
+        expect(find.text('splh_down', skipOffstage: false), findsNothing);
+      },
+    );
 
-    testWidgets('day detail shows human-friendly date text, not raw week-id',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('day detail shows human-friendly date text, not raw week-id', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       await _tapCalendarDate(tester, '2026-03-02');
@@ -992,8 +1228,10 @@ void main() {
       // Should NOT show raw week-id like '2026-W10'
       expect(find.textContaining('2026-W', skipOffstage: false), findsNothing);
       // Should show human-friendly date text
-      expect(find.text(_tileLabel(_lunch1), skipOffstage: false),
-          findsOneWidget);
+      expect(
+        find.text(_tileLabel(_lunch1), skipOffstage: false),
+        findsOneWidget,
+      );
     });
   });
 
@@ -1001,17 +1239,27 @@ void main() {
 
   group('R - Clear All button', () {
     testWidgets('CLEAR ALL hidden when no draft selections', (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates, initialDemandCovers: demandCovers),
-      ));
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
       expect(find.text('CLEAR ALL'), findsNothing);
     });
 
     testWidgets('CLEAR ALL is a bordered button when visible', (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_withPreSelected, initialDemandCovers: demandCovers),
-      ));
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _withPreSelected,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       // The CLEAR ALL text should be inside a Container with decoration
@@ -1024,11 +1272,17 @@ void main() {
       );
     });
 
-    testWidgets('tapping CLEAR ALL still clears draft selection only',
-        (tester) async {
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_withPreSelected, initialDemandCovers: demandCovers),
-      ));
+    testWidgets('tapping CLEAR ALL still clears draft selection only', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _withPreSelected,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       expect(find.text('CLEAR ALL'), findsOneWidget);
@@ -1082,14 +1336,13 @@ void main() {
 
     test('fromDraftSelection with distinct profile wages produces a '
         'DIFFERENT preview than the MeridianConfig default path', () async {
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
       final demand = ctx.historicalWeeklyAvgCovers;
 
-      final configDefault = ManagerOverridePlanPreview.fromDraftSelection(
-        [_lunch1],
-        historicalWeeklyAvgCovers: demand,
-      );
+      final configDefault = ManagerOverridePlanPreview.fromDraftSelection([
+        _lunch1,
+      ], historicalWeeklyAvgCovers: demand);
       final profileDriven = ManagerOverridePlanPreview.fromDraftSelection(
         [_lunch1],
         historicalWeeklyAvgCovers: demand,
@@ -1102,19 +1355,27 @@ void main() {
 
       // Blended wage is an hour-weighted mix of FOH/BOH wages — must
       // move with the wage inputs.
-      expect(profileDriven!.targetBlendedWage,
-          isNot(closeTo(configDefault!.targetBlendedWage, 0.01)),
-          reason: 'distinct wages must produce a distinct blended wage');
+      expect(
+        profileDriven!.targetBlendedWage,
+        isNot(closeTo(configDefault!.targetBlendedWage, 0.01)),
+        reason: 'distinct wages must produce a distinct blended wage',
+      );
       // Labor % depends on wage inputs as well — must move too.
-      expect(profileDriven.theoreticalLaborPct,
-          isNot(closeTo(configDefault.theoreticalLaborPct, 0.01)),
-          reason: 'distinct wages must produce a distinct theoretical %');
+      expect(
+        profileDriven.theoreticalLaborPct,
+        isNot(closeTo(configDefault.theoreticalLaborPct, 0.01)),
+        reason: 'distinct wages must produce a distinct theoretical %',
+      );
       // Volume-side fields stay the same across both calls (same
       // shift inputs, same demand context).
-      expect(profileDriven.forecastCovers,
-          equals(configDefault.forecastCovers));
-      expect(profileDriven.requiredFohHours,
-          equals(configDefault.requiredFohHours));
+      expect(
+        profileDriven.forecastCovers,
+        equals(configDefault.forecastCovers),
+      );
+      expect(
+        profileDriven.requiredFohHours,
+        equals(configDefault.requiredFohHours),
+      );
     });
 
     testWidgets('_PlanImpactSection renders the PROFILE-driven BLENDED '
@@ -1122,13 +1383,14 @@ void main() {
         'MeridianConfig default)', (tester) async {
       final profileNotifier = ActiveTargetProfileNotifier.fromProfile(
         makeProfileWithWages(
-            fohWage: distinctFohWage, bohWage: distinctBohWage),
+          fohWage: distinctFohWage,
+          bohWage: distinctBohWage,
+        ),
       );
 
       // Expected preview computed through the production seam with the
       // distinct profile wages.
-      final expectedPreview =
-          ManagerOverridePlanPreview.fromDraftSelection(
+      final expectedPreview = ManagerOverridePlanPreview.fromDraftSelection(
         [_lunch1],
         historicalWeeklyAvgCovers: demandCovers,
         fohWage: distinctFohWage,
@@ -1140,15 +1402,18 @@ void main() {
 
       // Config-default path is the "negative" — must NOT be rendered.
       final configDefaultPreview =
-          ManagerOverridePlanPreview.fromDraftSelection(
-        [_lunch1],
-        historicalWeeklyAvgCovers: demandCovers,
-      );
+          ManagerOverridePlanPreview.fromDraftSelection([
+            _lunch1,
+          ], historicalWeeklyAvgCovers: demandCovers);
       final configDefaultWageStr =
           '\$${configDefaultPreview!.targetBlendedWage.toStringAsFixed(2)}';
-      expect(expectedWageStr, isNot(equals(configDefaultWageStr)),
-          reason: 'precondition — distinct wages must produce distinct '
-              'rendered strings');
+      expect(
+        expectedWageStr,
+        isNot(equals(configDefaultWageStr)),
+        reason:
+            'precondition — distinct wages must produce distinct '
+            'rendered strings',
+      );
 
       // Render with the profile notifier in scope.
       await tester.pumpWidget(
@@ -1171,20 +1436,26 @@ void main() {
 
       // The preview now reads the profile-driven blended wage, not the
       // config-default blended wage.
-      expect(find.text(expectedWageStr, skipOffstage: false),
-          findsAtLeastNWidgets(1),
-          reason: 'profile wages must flow into the rendered preview');
-      expect(find.text(configDefaultWageStr, skipOffstage: false),
-          findsNothing,
-          reason: 'the config-default blended wage must NOT appear when '
-              'the profile is in scope');
+      expect(
+        find.text(expectedWageStr, skipOffstage: false),
+        findsAtLeastNWidgets(1),
+        reason: 'profile wages must flow into the rendered preview',
+      );
+      expect(
+        find.text(configDefaultWageStr, skipOffstage: false),
+        findsNothing,
+        reason:
+            'the config-default blended wage must NOT appear when '
+            'the profile is in scope',
+      );
 
       profileNotifier.dispose();
     });
 
     testWidgets('without profile wage authority, labor % and blended wage '
-        'stay on "--" instead of showing config-default preview values',
-        (tester) async {
+        'stay on "--" instead of showing config-default preview values', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: ThemeData.dark(),
@@ -1199,9 +1470,13 @@ void main() {
       await _tapCalendarDate(tester, '2026-03-02');
       await _tapCandidateTile(tester, _lunch1);
 
-      expect(find.text('--'), findsNWidgets(2),
-          reason: 'without an active profile in scope, wage-dependent '
-              'preview cells should degrade honestly');
+      expect(
+        find.text('--'),
+        findsNWidgets(2),
+        reason:
+            'without an active profile in scope, wage-dependent '
+            'preview cells should degrade honestly',
+      );
     });
   });
 
@@ -1221,16 +1496,21 @@ void main() {
       // layer first. This removes the widget-level fragility of
       // running two full Done flows back-to-back in one widget tree.
       await tester.runAsync(() async {
-        await BaselineManagerService.instance
-            .saveSelection({_lunch1.recordKey});
+        await BaselineManagerService.instance.saveSelection({
+          _lunch1.recordKey,
+        });
       });
 
       // Now mount the form, draft a different selection, hit Done.
       // Cycle is locked → ManagerOverrideDeniedException → SnackBar.
-      await tester.pumpWidget(_wrap(
-        BaselineManagerScreen.withCandidates(_allCandidates,
-            initialDemandCovers: demandCovers),
-      ));
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
       await tester.pump();
 
       await _tapCalendarDate(tester, '2026-03-10');
@@ -1249,8 +1529,10 @@ void main() {
 
       // SnackBar with the "already used" copy must be visible.
       expect(
-        find.textContaining('Manager override already used',
-            skipOffstage: false),
+        find.textContaining(
+          'Manager override already used',
+          skipOffstage: false,
+        ),
         findsAtLeastNWidgets(1),
         reason: 'denial must surface as a SnackBar honestly',
       );
@@ -1260,8 +1542,72 @@ void main() {
         reason: 'SnackBar must point users at the admin reset path',
       );
       // Screen is still mounted — DONE button still present.
-      expect(find.text('DONE'), findsOneWidget,
-          reason: 'the Baseline Manager must NOT pop on denial');
+      expect(
+        find.text('DONE'),
+        findsOneWidget,
+        reason: 'the Baseline Manager must NOT pop on denial',
+      );
     });
   });
+
+  group('U - server star-target write errors surface as SnackBar', () {
+    testWidgets('permission denied keeps the screen open', (tester) async {
+      final candidate = (await tester.runAsync(
+        BaselineManagerService.instance.getCandidateShifts,
+      ))!.first;
+      BaselineManagerService.instance.serverSelectionWriter =
+          const _FailingBaselineServerSelectionWriter(
+            StarTargetSelectionWriteException(
+              code: 'permission_denied',
+              message: 'denied',
+              statusCode: 403,
+            ),
+          );
+
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(<BaselineCandidateShift>[
+            candidate,
+          ], initialDemandCovers: demandCovers),
+        ),
+      );
+      await tester.pump();
+
+      await _tapCalendarDate(tester, candidate.businessDate!);
+      await _tapCandidateTile(tester, candidate);
+      await _tapBackToCalendar(tester);
+
+      await tester.runAsync(() async {
+        await tester.tap(find.text('DONE'));
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      });
+      await tester.pump();
+
+      expect(
+        find.textContaining('do not have permission', skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
+      expect(find.text('DONE'), findsOneWidget);
+      final stored = await tester.runAsync(
+        DatabaseHelper.instance.getBaselineSelectedRecordKeys,
+      );
+      expect(stored, isEmpty);
+    });
+  });
+}
+
+class _FailingBaselineServerSelectionWriter
+    implements BaselineServerSelectionWriter {
+  const _FailingBaselineServerSelectionWriter(this.error);
+
+  final StarTargetSelectionWriteException error;
+
+  @override
+  Future<void> replaceSelection({
+    required String restaurantId,
+    required Iterable<BaselineCandidateShift> selectedCandidates,
+    required Iterable<BaselineCandidateShift> previouslySelectedCandidates,
+  }) async {
+    throw error;
+  }
 }

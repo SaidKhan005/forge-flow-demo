@@ -79,6 +79,7 @@ import 'operator_routes.dart';
 import 'proxy_idempotency_cache.dart';
 import 'realtime_route.dart'
     show handleRealtimeUpgrade, RealtimeReplayFetcher, realtimeSubscribePath;
+import 'star_target_routes.dart';
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
     show DependencyTimeoutException;
 export 'log.dart'
@@ -109,6 +110,20 @@ export 'operator_routes.dart'
         operatorBusinessTimingProfilePrefix,
         hashOperatorRequestBody,
         readOperatorJsonBody;
+export 'star_target_routes.dart'
+    show
+        RepositorySelectedStarTargetGateway,
+        SelectedStarTargetGateway,
+        SelectedStarTargetRouteAction,
+        SelectedStarTargetRouteMatch,
+        SelectedStarTargetRouteResult,
+        SelectedStarTargetRouteResource,
+        SelectedStarTargetRouter,
+        activeTargetProfilesResource,
+        selectedStarShiftDecisionsResource,
+        selectedStarWritePermissionKey,
+        targetCyclesResource,
+        targetProfileVersionsResource;
 
 /// Default in-memory idempotency cache shared by the password
 /// change / reset request / reset confirm routes when the route
@@ -7096,6 +7111,9 @@ Future<void> routeRequest(
   // so existing tests do not need to plumb the router through every
   // call site.
   OperatorWriteRouter? operatorWriteRouter,
+  // Phase 8 star/target truth - selected-star read/write router. Optional
+  // for existing tests; production installs a global router from bootstrap.
+  SelectedStarTargetRouter? selectedStarTargetRouter,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -7310,6 +7328,88 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'realtime_tripwire_unavailable',
               'message': 'tripwire status is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        final selectedStarMatch = SelectedStarTargetRouter.match(
+          path,
+          request.method,
+        );
+        if (selectedStarMatch != null) {
+          final router =
+              selectedStarTargetRouter ?? SelectedStarTargetRouter.global;
+          if (router == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'selected_star_router_not_configured',
+              'message':
+                  'route requires a SelectedStarTargetRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          if (scope.operatorId != selectedStarMatch.operatorId ||
+              scope.locationId != selectedStarMatch.locationId) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'requested selected-star scope does not match caller scope',
+            });
+            return;
+          }
+          Map<String, Object?> body = const <String, Object?>{};
+          String? idempotencyKey;
+          if (selectedStarMatch.action != SelectedStarTargetRouteAction.read) {
+            final permitted = await _requireAdminPermissionOrWrite(
+              response: response,
+              guard: adminPermissionGuard,
+              scope: scope,
+              permissionKey: selectedStarWritePermissionKey,
+              requestedAt: clock().toUtc(),
+            );
+            if (!permitted) return;
+            idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+            final bodyResult = await readOperatorJsonBody(request);
+            if (bodyResult.errorStatus != null) {
+              _writeJson(
+                response,
+                bodyResult.errorStatus!,
+                bodyResult.errorBody!,
+              );
+              return;
+            }
+            body = bodyResult.body!;
+          }
+          try {
+            final result = await router.handle(
+              match: selectedStarMatch,
+              method: request.method,
+              path: path,
+              queryParameters: request.uri.queryParameters,
+              actorUserId: scope.userId,
+              actorKind: scope.actorKind,
+              idempotencyKey: idempotencyKey,
+              body: body,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'selected_star_target',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'selected_star_target_unavailable',
+              'message': 'selected-star truth is unavailable; please retry',
             });
           }
           return;
@@ -11324,14 +11424,14 @@ Future<void> routeRequest(
           if (!scope.roles.any(kOperatorWriteRoles.contains)) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'forbidden',
-              'message':
-                  'operator owner or operator admin role is required',
+              'message': 'operator owner or operator admin role is required',
               'required_roles': kOperatorWriteRoles.toList(),
             });
             return;
           }
-          final operatorIdemKey =
-              request.headers.value('Idempotency-Key')?.trim();
+          final operatorIdemKey = request.headers
+              .value('Idempotency-Key')
+              ?.trim();
           if (operatorIdemKey == null || operatorIdemKey.isEmpty) {
             _writeJson(response, 400, <String, Object?>{
               'error': 'idempotency_key_missing',
@@ -11378,8 +11478,7 @@ Future<void> routeRequest(
             );
             _writeJson(response, 503, <String, Object?>{
               'error': 'operator_write_unavailable',
-              'message':
-                  'operator write is unavailable; please retry',
+              'message': 'operator write is unavailable; please retry',
             });
           }
           return;

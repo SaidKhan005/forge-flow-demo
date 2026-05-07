@@ -7,10 +7,13 @@ import '../../auth/auth_session.dart';
 import '../../domain/models/restaurant_location.dart';
 import '../../domain/services/utc_metadata_timestamp.dart';
 import '../../infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_baseline_selection_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_timing_config_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import '../../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../../state/auth_session_notifier.dart';
 import '../realtime/realtime_event.dart';
@@ -24,8 +27,9 @@ typedef MobileSyncFactory =
 /// Hook signature used by [MobileOperationalSyncHost] (and tests) to
 /// purge mirrored rows whose `restaurant_id` is NOT [keepRestaurantId].
 /// Defaults to wiping shift_records / open_shift_snapshots /
-/// restaurant_timing_configs across the three SQLite repos the runtime
-/// pulls into; tests can substitute a stub. See BUG 1 (HIGH).
+/// restaurant_timing_configs plus selected-star / target cache mirrors
+/// across the SQLite repos the runtime pulls into; tests can substitute
+/// a stub. See BUG 1 (HIGH).
 typedef CrossTenantWipe = Future<void> Function(String keepRestaurantId);
 
 class MobileOperationalSyncRunner {
@@ -139,6 +143,15 @@ Future<void> defaultCrossTenantWipe(String keepRestaurantId) async {
     keepRestaurantId,
   );
   await SqliteRestaurantTimingConfigRepository.instance.wipeForOtherScopes(
+    keepRestaurantId,
+  );
+  await SqliteBaselineSelectionRepository.instance.wipeForOtherScopes(
+    keepRestaurantId,
+  );
+  await SqliteTargetCycleRepository.instance.wipeForOtherScopes(
+    keepRestaurantId,
+  );
+  await SqliteTargetProfileRepository.instance.wipeForOtherScopes(
     keepRestaurantId,
   );
 }
@@ -359,6 +372,10 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
         topic.contains('demo_mode') ||
         topic.contains('data_accuracy') ||
         topic.contains('polling_tier') ||
+        topic.contains('selected_star') ||
+        topic.contains('target_cycle') ||
+        topic.contains('active_target_profile') ||
+        topic.contains('target_profile_version') ||
         topic.contains('backfill') ||
         topic.contains('connector_backfill_job') ||
         topic.contains('business_timing') ||
@@ -371,6 +388,10 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
         table == 'demo_mode_state' ||
         table == 'data_accuracy_settings' ||
         table == 'forge_flow_polling_tier_assignment' ||
+        table == 'selected_star_shift_decisions' ||
+        table == 'target_cycles' ||
+        table == 'active_target_profiles' ||
+        table == 'target_profile_versions' ||
         table == 'connector_backfill_jobs' ||
         table == 'business_timing_profiles' ||
         table == 'business_timing_service_periods' ||

@@ -7,7 +7,8 @@ class TargetProfileDao {
   const TargetProfileDao(this._db);
 
   Future<ActiveTargetProfile?> getActiveTargetProfile(
-      String restaurantId) async {
+    String restaurantId,
+  ) async {
     final rows = await _db.query(
       'active_target_profiles',
       where: 'restaurant_id = ?',
@@ -34,7 +35,9 @@ class TargetProfileDao {
   }
 
   Future<TargetProfileVersion?> getTargetProfileVersion(
-      String restaurantId, String versionId) async {
+    String restaurantId,
+    String versionId,
+  ) async {
     final rows = await _db.query(
       'target_profile_versions',
       where: 'restaurant_id = ? AND target_profile_version_id = ?',
@@ -42,5 +45,18 @@ class TargetProfileDao {
     );
     if (rows.isEmpty) return null;
     return TargetProfileVersion.fromMap(rows.first);
+  }
+
+  Future<void> wipeForOtherScopes(String keepRestaurantId) async {
+    await _db.delete(
+      'active_target_profiles',
+      where: 'restaurant_id != ?',
+      whereArgs: [keepRestaurantId],
+    );
+    await _db.delete(
+      'target_profile_versions',
+      where: 'restaurant_id != ?',
+      whereArgs: [keepRestaurantId],
+    );
   }
 }

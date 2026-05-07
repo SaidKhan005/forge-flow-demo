@@ -50,4 +50,9 @@ class SqliteTargetCycleRepository implements TargetCycleRepository {
     final dao = await _daoReady;
     return dao.deactivateAllForRestaurant(restaurantId);
   }
+
+  Future<void> wipeForOtherScopes(String keepRestaurantId) async {
+    final dao = await _daoReady;
+    return dao.wipeForOtherScopes(keepRestaurantId);
+  }
 }

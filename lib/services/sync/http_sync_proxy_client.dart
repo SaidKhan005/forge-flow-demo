@@ -9,9 +9,15 @@ import '../../domain/models/service_period_definition.dart';
 import '../../models/shift_record.dart';
 import '../integration/demo_mode_state.dart';
 import '../integration/integration_adapter_common.dart';
+import '../star_target_selection_write_service.dart';
+import 'star_target_sync_resources.dart';
 import 'sync_proxy_client.dart';
 
-class HttpSyncProxyClient implements SyncProxyClient {
+class HttpSyncProxyClient
+    implements
+        SyncProxyClient,
+        StarTargetSyncProxyClient,
+        StarTargetSelectionWriteClient {
   HttpSyncProxyClient({
     required this.proxyBaseUri,
     required Future<String?> Function() idTokenProvider,
@@ -198,6 +204,168 @@ class HttpSyncProxyClient implements SyncProxyClient {
     return _firstBackfillStatusFromJson(_stringKeyMap(raw));
   }
 
+  @override
+  Future<SelectedStarShiftDecisionPage> fetchSelectedStarShiftDecisions({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  }) async {
+    final body = await _getStarTargetJsonOrUnavailable(
+      _locationPath(operatorId, locationId, const <String>[
+        'selected_star_shift_decisions',
+      ]),
+      queryParameters: _pageQuery(cursor: cursor, pageSize: pageSize),
+    );
+    final unavailableReason = starTargetUnavailableReason(body);
+    if (unavailableReason != null) {
+      return SelectedStarShiftDecisionPage.unavailable(unavailableReason);
+    }
+    final rows = _readList(body, const <String>[
+      'decisions',
+      'selected_star_shift_decisions',
+      'baseline_selected_records',
+      'records',
+      'items',
+      'data',
+    ]);
+    return SelectedStarShiftDecisionPage(
+      decisions: rows
+          .map(
+            (row) =>
+                SelectedStarShiftDecisionSyncRow.fromJson(_stringKeyMap(row)),
+          )
+          .toList(growable: false),
+      nextCursor:
+          _readString(body['next_cursor']) ?? _readString(body['nextCursor']),
+    );
+  }
+
+  @override
+  Future<void> submitSelectedStarDecision({
+    required String operatorId,
+    required String locationId,
+    required StarTargetSelectionWriteAction action,
+    required String idempotencyKey,
+    required Map<String, Object?> body,
+  }) async {
+    try {
+      await _postJson(
+        _locationPath(operatorId, locationId, <String>[
+          'selected_star_shift_decisions',
+          action == StarTargetSelectionWriteAction.clear ? 'clear' : 'select',
+        ]),
+        body: body,
+        idempotencyKey: idempotencyKey,
+      );
+    } on SyncProxyClientException catch (error) {
+      throw StarTargetSelectionWriteException(
+        code: error.code,
+        message: error.message,
+        statusCode: error.statusCode,
+      );
+    }
+  }
+
+  @override
+  Future<TargetCycleSyncPage> fetchTargetCycles({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  }) async {
+    final body = await _getStarTargetJsonOrUnavailable(
+      _locationPath(operatorId, locationId, const <String>['target_cycles']),
+      queryParameters: _pageQuery(cursor: cursor, pageSize: pageSize),
+    );
+    final unavailableReason = starTargetUnavailableReason(body);
+    if (unavailableReason != null) {
+      return TargetCycleSyncPage.unavailable(unavailableReason);
+    }
+    final rows = _readList(body, const <String>[
+      'target_cycles',
+      'cycles',
+      'records',
+      'items',
+      'data',
+    ]);
+    return TargetCycleSyncPage(
+      cycles: rows
+          .map((row) => TargetCycleSyncRow.fromJson(_stringKeyMap(row)))
+          .toList(growable: false),
+      nextCursor:
+          _readString(body['next_cursor']) ?? _readString(body['nextCursor']),
+    );
+  }
+
+  @override
+  Future<ActiveTargetProfileSyncPage> fetchActiveTargetProfiles({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  }) async {
+    final body = await _getStarTargetJsonOrUnavailable(
+      _locationPath(operatorId, locationId, const <String>[
+        'active_target_profiles',
+      ]),
+      queryParameters: _pageQuery(cursor: cursor, pageSize: pageSize),
+    );
+    final unavailableReason = starTargetUnavailableReason(body);
+    if (unavailableReason != null) {
+      return ActiveTargetProfileSyncPage.unavailable(unavailableReason);
+    }
+    final rows = _readList(body, const <String>[
+      'active_target_profiles',
+      'profiles',
+      'records',
+      'items',
+      'data',
+    ]);
+    return ActiveTargetProfileSyncPage(
+      profiles: rows
+          .map((row) => ActiveTargetProfileSyncRow.fromJson(_stringKeyMap(row)))
+          .toList(growable: false),
+      nextCursor:
+          _readString(body['next_cursor']) ?? _readString(body['nextCursor']),
+    );
+  }
+
+  @override
+  Future<TargetProfileVersionSyncPage> fetchTargetProfileVersions({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  }) async {
+    final body = await _getStarTargetJsonOrUnavailable(
+      _locationPath(operatorId, locationId, const <String>[
+        'target_profile_versions',
+      ]),
+      queryParameters: _pageQuery(cursor: cursor, pageSize: pageSize),
+    );
+    final unavailableReason = starTargetUnavailableReason(body);
+    if (unavailableReason != null) {
+      return TargetProfileVersionSyncPage.unavailable(unavailableReason);
+    }
+    final rows = _readList(body, const <String>[
+      'target_profile_versions',
+      'versions',
+      'records',
+      'items',
+      'data',
+    ]);
+    return TargetProfileVersionSyncPage(
+      versions: rows
+          .map(
+            (row) => TargetProfileVersionSyncRow.fromJson(_stringKeyMap(row)),
+          )
+          .toList(growable: false),
+      nextCursor:
+          _readString(body['next_cursor']) ?? _readString(body['nextCursor']),
+    );
+  }
+
   Future<Map<String, Object?>> _getJson(
     List<String> tailSegments, {
     Map<String, String>? queryParameters,
@@ -226,6 +394,49 @@ class HttpSyncProxyClient implements SyncProxyClient {
     return _interpret(retry);
   }
 
+  Future<Map<String, Object?>> _getStarTargetJsonOrUnavailable(
+    List<String> tailSegments, {
+    Map<String, String>? queryParameters,
+  }) async {
+    try {
+      return await _getJson(tailSegments, queryParameters: queryParameters);
+    } on SyncProxyClientException catch (error) {
+      if (error.statusCode == 404) {
+        return const <String, Object?>{
+          'available': false,
+          'unavailable_reason': 'star_target_proxy_route_not_found',
+        };
+      }
+      rethrow;
+    }
+  }
+
+  Future<Map<String, Object?>> _postJson(
+    List<String> tailSegments, {
+    required Map<String, Object?> body,
+    required String idempotencyKey,
+  }) async {
+    final firstAttempt = await _attemptPost(
+      tailSegments,
+      body: body,
+      idempotencyKey: idempotencyKey,
+    );
+    if (firstAttempt.statusCode != 401 || _refreshIdToken == null) {
+      return _interpret(firstAttempt);
+    }
+    try {
+      await _refreshIdToken();
+    } catch (_) {
+      return _interpret(firstAttempt);
+    }
+    final retry = await _attemptPost(
+      tailSegments,
+      body: body,
+      idempotencyKey: idempotencyKey,
+    );
+    return _interpret(retry);
+  }
+
   Future<_HttpAttemptResult> _attemptGet(
     List<String> tailSegments, {
     Map<String, String>? queryParameters,
@@ -245,6 +456,31 @@ class HttpSyncProxyClient implements SyncProxyClient {
       'accept': 'application/json',
       'authorization': 'Bearer $token',
     });
+    final streamed = await _httpClient.send(request).timeout(_timeout);
+    final raw = await streamed.stream.bytesToString().timeout(_timeout);
+    return _HttpAttemptResult(streamed.statusCode, raw);
+  }
+
+  Future<_HttpAttemptResult> _attemptPost(
+    List<String> tailSegments, {
+    required Map<String, Object?> body,
+    required String idempotencyKey,
+  }) async {
+    final token = (await _idTokenProvider())?.trim();
+    if (token == null || token.isEmpty) {
+      throw const SyncProxyClientException(
+        code: 'missing_auth_token',
+        message: 'The sync proxy client has no live auth token.',
+      );
+    }
+    final request = http.Request('POST', _resolve(tailSegments));
+    request.headers.addAll(<String, String>{
+      'accept': 'application/json',
+      'authorization': 'Bearer $token',
+      'content-type': 'application/json',
+      'idempotency-key': idempotencyKey,
+    });
+    request.body = jsonEncode(body);
     final streamed = await _httpClient.send(request).timeout(_timeout);
     final raw = await streamed.stream.bytesToString().timeout(_timeout);
     return _HttpAttemptResult(streamed.statusCode, raw);
