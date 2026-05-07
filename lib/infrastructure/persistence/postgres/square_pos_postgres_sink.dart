@@ -90,6 +90,7 @@ import 'dart:convert';
 import '../../../integrations/pos/square_pos_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
+import '../../../services/integration/in_memory_cache.dart';
 import '../../../services/integration/integration_adapter_common.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -127,7 +128,12 @@ class SquarePosPostgresSink extends OperatorScopedRepository
   /// In-memory per-(operator, location) counter of inserts since the
   /// last watermark advance. Drives the demo-mode flip auto-evaluator
   /// per item 6 in the file header.
-  final Map<String, int> _pendingInsertsByTenant = <String, int>{};
+  ///
+  /// PF1 hardening: bounded by [kLruTtlMapDefaultMaxSize] (1 000
+  /// entries) + [kLruTtlMapDefaultTtl] (1 h) so a high-churn
+  /// multi-tenant pod cannot grow this map unboundedly.
+  final LruTtlMap<String, int> _pendingInsertsByTenant =
+      LruTtlMap<String, int>();
 
   String _tenantKey(String operatorId, String locationId) =>
       '$operatorId|$locationId';
@@ -250,8 +256,8 @@ class SquarePosPostgresSink extends OperatorScopedRepository
 
     if (inserted) {
       final key = _tenantKey(operatorId, locationId);
-      _pendingInsertsByTenant[key] =
-          (_pendingInsertsByTenant[key] ?? 0) + 1;
+      _pendingInsertsByTenant.put(
+          key, (_pendingInsertsByTenant.get(key) ?? 0) + 1);
     }
     return inserted;
   }
