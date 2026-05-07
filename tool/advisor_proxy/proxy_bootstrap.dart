@@ -7471,7 +7471,7 @@ class FeatureFlagsTableAdminCorsOriginsExtraFlag
       final rows = await tx.query(
         'select enabled, description from public.feature_flags '
         "where flag_name = '$kAdminCorsOriginsExtraFlagName' "
-        'and operator_id is null '
+        'and operator_id = public.feature_flag_system_wide_operator_id() '
         'and location_id is null '
         'limit 1',
       );

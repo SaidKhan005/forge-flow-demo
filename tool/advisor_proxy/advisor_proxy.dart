@@ -4907,7 +4907,7 @@ where to_regclass('public.feature_flags') is not null
     select 1
     from public.feature_flags f
     where f.flag_name = flag_name
-      and f.operator_id is null
+      and f.operator_id = public.feature_flag_system_wide_operator_id()
       and f.location_id is null
   )
 order by object_name
