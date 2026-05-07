@@ -85,6 +85,7 @@ import 'connector_backfill_jobs_routes.dart';
 import 'mobile_push_notifications.dart';
 import 'notification_preferences_routes.dart';
 import 'operator_routes.dart';
+import 'wage_role_rows_routes.dart';
 import 'proxy_idempotency_cache.dart';
 import 'realtime_route.dart'
     show handleRealtimeUpgrade, RealtimeReplayFetcher, realtimeSubscribePath;
@@ -130,6 +131,16 @@ export 'notification_preferences_routes.dart'
         notificationPreferencesPath,
         notificationPreferencesPrefix,
         hashNotificationPreferencesRequest;
+export 'wage_role_rows_routes.dart'
+    show
+        WageRoleRowsRouter,
+        WageRoleRowsGateway,
+        RepositoryWageRoleRowsGateway,
+        WageRoleRowsIdempotencyCache,
+        WageRoleRowsRouteRejected,
+        wageRoleRowsPath,
+        wageRoleRowsPrefix,
+        hashWageRoleRowsRequest;
 export 'business_scope_routes.dart'
     show
         BusinessScopeProxyGateway,
@@ -8031,6 +8042,10 @@ Future<void> routeRequest(
   // Optional: when null the three routes return 503 so existing tests
   // do not need to plumb the router through every call site.
   NotificationPreferencesRouter? notificationPreferencesRouter,
+  // Phase 8 W5.A.1 - operator-scoped wage role rows write router.
+  // Optional: when null, the POST/DELETE routes return 503 so existing
+  // tests do not need to plumb the router through every call site.
+  WageRoleRowsRouter? wageRoleRowsRouter,
   // Phase 8 star/target truth - selected-star read/write router. Optional
   // for existing tests; production installs a global router from bootstrap.
   SelectedStarTargetRouter? selectedStarTargetRouter,
@@ -12931,6 +12946,94 @@ Future<void> routeRequest(
               'error': 'notification_preferences_unavailable',
               'message':
                   'notification preferences write is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Phase 8 W5.A.1 - operator-scoped wage role rows write router.
+        // Dedicated POST/DELETE seam that mirrors the OperatorWriteRouter
+        // discipline (operator owner / admin role, Idempotency-Key, body
+        // validation) but lives in its own router so the wage editor's
+        // proxy contract stays narrow and op-web W3.D parity can call it
+        // directly.
+        if (WageRoleRowsRouter.matches(path, request.method)) {
+          if (wageRoleRowsRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'wage_role_rows_router_not_configured',
+              'message':
+                  'route requires a WageRoleRowsRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          if (!scope.roles.any(kOperatorWriteRoles.contains)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'forbidden',
+              'message': 'operator owner or operator admin role is required',
+              'required_roles': kOperatorWriteRoles.toList(),
+            });
+            return;
+          }
+          final wageIdemKey = request.headers
+              .value('Idempotency-Key')
+              ?.trim();
+          if (wageIdemKey == null || wageIdemKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_missing',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
+          if (wageIdemKey.length > 200) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_too_long',
+              'message':
+                  'Idempotency-Key header must be 200 characters or fewer',
+            });
+            return;
+          }
+          Map<String, Object?> wageBody = const <String, Object?>{};
+          if (request.method == 'POST') {
+            final bodyResult = await readOperatorJsonBody(request);
+            if (bodyResult.errorStatus != null) {
+              _writeJson(
+                response,
+                bodyResult.errorStatus!,
+                bodyResult.errorBody!,
+              );
+              return;
+            }
+            wageBody = bodyResult.body!;
+          }
+          try {
+            final result = await wageRoleRowsRouter.handle(
+              method: request.method,
+              path: path,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              actorUserId: scope.userId,
+              idempotencyKey: wageIdemKey,
+              body: wageBody,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'wage_role_rows_router',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'wage_role_rows_unavailable',
+              'message': 'wage row write is unavailable; please retry',
             });
           }
           return;

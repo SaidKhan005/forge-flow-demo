@@ -1007,6 +1007,10 @@ Future<void> main(List<String> args) async {
             // return 503 notification_preferences_router_not_configured.
             notificationPreferencesRouter:
                 productionBindings.notificationPreferencesRouter,
+            // Phase 8 W5.A.1 - operator-scoped wage role rows write
+            // router. Without this binding the POST/DELETE routes
+            // return 503 wage_role_rows_router_not_configured.
+            wageRoleRowsRouter: productionBindings.wageRoleRowsRouter,
           );
         } catch (error, stack) {
           log(
