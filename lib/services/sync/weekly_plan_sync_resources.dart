@@ -334,7 +334,41 @@ Map<String, dynamic> _snapshotPayload(Map<String, dynamic> json) {
         DateTime.now().toUtc().toIso8601String(),
     'forecast_context': _optionalContextPayload(base),
     'day_rows': dayRows,
+    // Theme H#6: server-emitted lifecycle fields the mobile snapshot
+    // model preserves so closed-truth semantics (which row is in force,
+    // which one it superseded, who locked it, why) survive the sync.
+    'is_active': _readBool(base['is_active']),
+    'supersedes_snapshot_id': _readString(base['supersedes_snapshot_id']),
+    'lock_reason': _readString(base['lock_reason']),
+    'locked_by_user_id': _readString(base['locked_by_user_id']),
+    'metadata': _readMapValue(base['metadata']),
   };
+}
+
+Map<String, Object?>? _readMapValue(Object? value) {
+  if (value == null) return null;
+  if (value is Map<String, Object?>) return value.isEmpty ? null : value;
+  if (value is Map) {
+    if (value.isEmpty) return null;
+    return <String, Object?>{
+      for (final entry in value.entries)
+        entry.key.toString(): entry.value,
+    };
+  }
+  if (value is String && value.trim().isNotEmpty) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map) {
+        return <String, Object?>{
+          for (final entry in decoded.entries)
+            entry.key.toString(): entry.value,
+        };
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
 }
 
 Map<String, dynamic> _contextPayload(Map<String, dynamic> json) {

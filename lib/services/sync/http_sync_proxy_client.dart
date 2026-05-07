@@ -963,7 +963,20 @@ class HttpSyncProxyClient
     Map<String, dynamic> json, {
     required String fallbackRestaurantId,
   }) {
+    // server_id mirrors public.wage_role_rows.wage_role_row_id (UUID).
+    // Proxy emits it as `server_id`; some legacy payloads use
+    // `wage_role_row_id` directly. Either form is accepted.
+    final serverId =
+        _readString(json['server_id']) ??
+        _readString(json['serverId']) ??
+        _readString(json['wage_role_row_id']) ??
+        _readString(json['wageRoleRowId']);
+    final effectiveAtRaw = json['effective_at'] ?? json['effectiveAt'];
+    final effectiveAtIso =
+        _readDateTime(effectiveAtRaw)?.toIso8601String();
+    final metadata = _readMap(json['metadata']);
     return WageRoleRow(
+      serverId: serverId,
       restaurantId:
           _readString(json['restaurant_id']) ??
           _readString(json['restaurantId']) ??
@@ -984,6 +997,18 @@ class HttpSyncProxyClient
           _readDouble(json['weighted_hours']) ??
           _readDouble(json['weightedHours']) ??
           _requiredDouble(json, 'hours'),
+      jobCode: _readString(json['job_code']) ?? _readString(json['jobCode']),
+      vendorId:
+          _readString(json['vendor_id']) ?? _readString(json['vendorId']),
+      vendorRoleId:
+          _readString(json['vendor_role_id']) ??
+          _readString(json['vendorRoleId']),
+      source: _readString(json['source']),
+      isActive: _readBool(json['is_active']) ?? _readBool(json['isActive']),
+      effectiveAt: effectiveAtIso,
+      metadata: metadata,
+      updatedBy:
+          _readString(json['updated_by']) ?? _readString(json['updatedBy']),
     );
   }
 
@@ -1129,6 +1154,34 @@ class HttpSyncProxyClient
   static DateTime? _readDateTime(Object? value) {
     final raw = _readString(value);
     return raw == null ? null : DateTime.tryParse(raw)?.toUtc();
+  }
+
+  static Map<String, Object?>? _readMap(Object? value) {
+    if (value == null) return null;
+    if (value is Map<String, Object?>) {
+      return value.isEmpty ? null : value;
+    }
+    if (value is Map) {
+      if (value.isEmpty) return null;
+      return <String, Object?>{
+        for (final entry in value.entries)
+          entry.key.toString(): entry.value,
+      };
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is Map) {
+          return <String, Object?>{
+            for (final entry in decoded.entries)
+              entry.key.toString(): entry.value,
+          };
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
   }
 }
 

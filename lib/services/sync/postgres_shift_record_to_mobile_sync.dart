@@ -55,6 +55,7 @@ import '../../domain/repositories/target_profile_repository.dart';
 import '../../domain/repositories/weekly_plan_snapshot_repository.dart';
 import '../../infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_baseline_selection_repository.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_data_accuracy_service_period_settings_cache_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_timing_config_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
@@ -205,6 +206,8 @@ class PostgresShiftRecordToMobileSync {
     TargetProfileRepository? targetProfileRepository,
     WeeklyPlanSnapshotRepository? weeklyPlanSnapshotRepository,
     SqliteWageRoleRowRepository? wageRoleRowRepository,
+    SqliteDataAccuracyServicePeriodSettingsCacheRepository?
+    dataAccuracyServicePeriodSettingsCacheRepository,
     AppRuntimeInvalidationBus? invalidationBus,
     // PF2 hardening: bumped from 200 → 500 rows per page.
     // Trade-off: each page is ≈2.5 MB of JSON on a 50 K-cover
@@ -236,6 +239,9 @@ class PostgresShiftRecordToMobileSync {
            SqliteWeeklyPlanSnapshotRepository.instance,
        wageRoleRowRepository =
            wageRoleRowRepository ?? SqliteWageRoleRowRepository.instance,
+       dataAccuracyServicePeriodSettingsCacheRepository =
+           dataAccuracyServicePeriodSettingsCacheRepository ??
+           SqliteDataAccuracyServicePeriodSettingsCacheRepository.instance,
        invalidationBus = invalidationBus ?? AppRuntimeInvalidationBus.instance,
        _onCursorViolation = onCursorViolation;
 
@@ -248,6 +254,8 @@ class PostgresShiftRecordToMobileSync {
   final TargetProfileRepository targetProfileRepository;
   final WeeklyPlanSnapshotRepository weeklyPlanSnapshotRepository;
   final SqliteWageRoleRowRepository wageRoleRowRepository;
+  final SqliteDataAccuracyServicePeriodSettingsCacheRepository
+  dataAccuracyServicePeriodSettingsCacheRepository;
   final ImportTrackingDao watermarkDao;
   final AppRuntimeInvalidationBus invalidationBus;
   final int pageSize;
@@ -301,6 +309,21 @@ class PostgresShiftRecordToMobileSync {
       List<DataAccuracyServicePeriodSetting>.unmodifiable(
         _latestDataAccuracyServicePeriodSettings,
       );
+
+  /// Theme H#7 — rehydrate keyed DAS service-period settings from the
+  /// SQLite cache on app start. Returns the hydrated rows so callers can
+  /// observe how many were loaded; the in-memory snapshot is also
+  /// updated so existing getters keep working.
+  Future<List<DataAccuracyServicePeriodSetting>>
+  hydrateDataAccuracyServicePeriodSettingsFromCache(
+    String restaurantId,
+  ) async {
+    final cached = await dataAccuracyServicePeriodSettingsCacheRepository
+        .getRows(restaurantId);
+    _latestDataAccuracyServicePeriodSettings =
+        List<DataAccuracyServicePeriodSetting>.unmodifiable(cached);
+    return cached;
+  }
 
   /// Most-recent server-owned wage role mix rows for the last sync'd
   /// (operator, location).
@@ -703,6 +726,17 @@ class PostgresShiftRecordToMobileSync {
         List<DataAccuracyServicePeriodSetting>.unmodifiable(
           dataAccuracyServicePeriodSettings,
         );
+    // Theme H#7 — persist the keyed DAS service-period rows so app
+    // restart hydrates honest covers/wage source resolution before the
+    // first sweep completes.
+    final servicePeriodCacheChanged =
+        await dataAccuracyServicePeriodSettingsCacheRepository.replaceAll(
+      restaurantId,
+      dataAccuracyServicePeriodSettings,
+    );
+    if (servicePeriodCacheChanged) {
+      invalidationBus.notifyImportCompletionPersisted();
+    }
     _latestWageRoleRows = List<WageRoleRow>.unmodifiable(wageRoleRows);
     _latestPollingTierAssignment = pollingTierAssignment;
     _latestFirstBackfillStatus = firstBackfillStatus;

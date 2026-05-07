@@ -427,6 +427,25 @@ class SelectedStarTargetRouter {
     required DateTime Function(T row) rowUpdatedAt,
     required Map<String, Object?> Function(T row) rowToJson,
   }) {
+    if (rows.isEmpty) {
+      // Honest-unavailable shape so sync clients short-circuit on empty
+      // server-side projections instead of treating zero rows as a synced
+      // empty page. Sync clients recognize available:false / status:unavailable.
+      return SelectedStarTargetRouteResult(
+        statusCode: 200,
+        body: <String, Object?>{
+          'operator_id': match.operatorId,
+          'location_id': match.locationId,
+          'available': false,
+          'status': 'unavailable',
+          'unavailable_reason': 'no_projected_rows',
+          'reason': 'no_projected_rows',
+          rowsKey: const <Map<String, Object?>>[],
+          'next_cursor': null,
+          'has_more': false,
+        },
+      );
+    }
     String? nextCursor;
     for (final row in rows) {
       final value = rowUpdatedAt(row).toUtc().toIso8601String();

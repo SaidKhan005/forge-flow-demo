@@ -50,6 +50,21 @@ class WeeklyPlanSnapshotDao {
     map['forecast_context_json'] = forecastContext == null
         ? null
         : jsonEncode(forecastContext);
+    // Theme H#6 — `metadata` is a Map<String, Object?> on the snapshot
+    // model. SQLite can't store maps directly, so encode it as JSON for
+    // the cell value the same way day_rows / forecast_context are.
+    if (map.containsKey('metadata')) {
+      final rawMetadata = map['metadata'];
+      map['metadata'] = rawMetadata == null ? null : jsonEncode(rawMetadata);
+    }
+    // SQLite stores booleans as 0 / 1; the model uses bool. Coerce so the
+    // INTEGER column accepts the value cleanly.
+    if (map.containsKey('is_active')) {
+      final raw = map['is_active'];
+      if (raw is bool) {
+        map['is_active'] = raw ? 1 : 0;
+      }
+    }
     await _db.insert(
       'weekly_plan_snapshots',
       map,
@@ -151,6 +166,17 @@ class WeeklyPlanSnapshotDao {
     map['day_rows'] = jsonDecode(dayRowsJson) as List<dynamic>;
     if (forecastContextJson != null && forecastContextJson.trim().isNotEmpty) {
       map['forecast_context'] = jsonDecode(forecastContextJson);
+    }
+    // Theme H#6 — decode the metadata JSON cell back to a Map. The
+    // snapshot model handles Map / null gracefully; we just need to
+    // unwrap the on-disk JSON string here.
+    final metadataRaw = map['metadata'];
+    if (metadataRaw is String && metadataRaw.trim().isNotEmpty) {
+      try {
+        map['metadata'] = jsonDecode(metadataRaw);
+      } catch (_) {
+        map['metadata'] = null;
+      }
     }
     return WeeklyPlanSnapshot.fromMap(map);
   }

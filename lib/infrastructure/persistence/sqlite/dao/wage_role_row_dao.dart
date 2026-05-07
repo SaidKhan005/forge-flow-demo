@@ -15,7 +15,33 @@ class WageRoleRowDao {
     return rows.map(WageRoleRow.fromMap).toList();
   }
 
+  /// Upsert a single row. When [WageRoleRow.serverId] is set the upsert
+  /// resolves on the `(restaurant_id, server_id)` UNIQUE index so a
+  /// vendor-driven server row keeps its identity even if the
+  /// (restaurant_id, role_name) pair shifts (e.g., role rename). When
+  /// [WageRoleRow.serverId] is null the legacy
+  /// `(restaurant_id, role_name)` UNIQUE constraint applies.
   Future<void> upsertRow(WageRoleRow row) async {
+    if (row.serverId != null) {
+      // Match the row by server_id first; fall back to insert.
+      final existing = await _db.query(
+        'wage_role_rows',
+        where: 'restaurant_id = ? AND server_id = ?',
+        whereArgs: [row.restaurantId, row.serverId],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        final id = existing.first['id'] as int;
+        final map = row.toMap()..remove('id');
+        await _db.update(
+          'wage_role_rows',
+          map,
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        return;
+      }
+    }
     await _db.insert(
       'wage_role_rows',
       row.toMap(),
@@ -48,6 +74,20 @@ class WageRoleRowDao {
 
   Future<void> deleteRow(int id) async {
     await _db.delete('wage_role_rows', where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// Soft-delete by `server_id`; only used when the proxy emits a row
+  /// with `is_active=false`. Returns the number of rows updated.
+  Future<int> markInactiveByServerId({
+    required String restaurantId,
+    required String serverId,
+  }) async {
+    return _db.update(
+      'wage_role_rows',
+      <String, Object?>{'is_active': 0},
+      where: 'restaurant_id = ? AND server_id = ?',
+      whereArgs: [restaurantId, serverId],
+    );
   }
 
   Future<void> deleteAll(String restaurantId) async {

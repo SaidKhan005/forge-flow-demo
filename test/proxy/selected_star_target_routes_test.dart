@@ -569,28 +569,39 @@ void main() {
       });
     });
 
-    test('read returns null cursor for an empty sync page', () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp();
-        try {
-          final response = await _httpGet(
-            ctx.client,
-            ctx.baseUri.resolve(
-              '$_basePath?modified_since=2026-05-06T18:00:00Z&page_size=25',
-            ),
-          );
+    test(
+      'read returns honest-unavailable shape when projection is empty '
+      '(Theme H#3)',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '$_basePath?modified_since=2026-05-06T18:00:00Z&page_size=25',
+              ),
+            );
 
-          expect(response.statusCode, equals(200));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['selected_star_shift_decisions'], isEmpty);
-          expect(body['next_cursor'], isNull);
-          expect(body['has_more'], isFalse);
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            // The new honest-unavailable shape — sync clients short-circuit
+            // on `available:false` instead of treating zero rows as a synced
+            // empty page.
+            expect(body['available'], isFalse);
+            expect(body['status'], equals('unavailable'));
+            expect(body['unavailable_reason'], equals('no_projected_rows'));
+            expect(body['reason'], equals('no_projected_rows'));
+            expect(body['selected_star_shift_decisions'], isEmpty);
+            expect(body['next_cursor'], isNull);
+            expect(body['has_more'], isFalse);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('read rejects caller scope mismatch', () async {
       await withRealHttp(() async {
