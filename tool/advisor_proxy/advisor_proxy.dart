@@ -80,6 +80,7 @@ import 'proxy_idempotency_cache.dart';
 import 'realtime_route.dart'
     show handleRealtimeUpgrade, RealtimeReplayFetcher, realtimeSubscribePath;
 import 'star_target_routes.dart';
+import 'weekly_plan_routes.dart';
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
     show DependencyTimeoutException;
 export 'log.dart'
@@ -124,6 +125,22 @@ export 'star_target_routes.dart'
         selectedStarWritePermissionKey,
         targetCyclesResource,
         targetProfileVersionsResource;
+export 'weekly_plan_routes.dart'
+    show
+        ForecastContextPayload,
+        ForecastContextRow,
+        WeeklyPlanDayPayload,
+        WeeklyPlanGateway,
+        WeeklyPlanLockRequest,
+        WeeklyPlanRouteAction,
+        WeeklyPlanRouteMatch,
+        WeeklyPlanRouteResource,
+        WeeklyPlanRouteResult,
+        WeeklyPlanRouter,
+        WeeklyPlanSnapshotRow,
+        forecastContextsResource,
+        weeklyPlanLockPermissionKey,
+        weeklyPlanSnapshotsResource;
 
 /// Default in-memory idempotency cache shared by the password
 /// change / reset request / reset confirm routes when the route
@@ -7114,6 +7131,9 @@ Future<void> routeRequest(
   // Phase 8 star/target truth - selected-star read/write router. Optional
   // for existing tests; production installs a global router from bootstrap.
   SelectedStarTargetRouter? selectedStarTargetRouter,
+  // Phase 8 weekly-plan truth - snapshot/context read/write router. Optional
+  // until Lane 0 repository bindings are available in production bootstrap.
+  WeeklyPlanRouter? weeklyPlanRouter,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -7328,6 +7348,83 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'realtime_tripwire_unavailable',
               'message': 'tripwire status is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        final weeklyPlanMatch = WeeklyPlanRouter.match(path, request.method);
+        if (weeklyPlanMatch != null) {
+          final router = weeklyPlanRouter ?? WeeklyPlanRouter.global;
+          if (router == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'weekly_plan_router_not_configured',
+              'message': 'route requires a WeeklyPlanRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          if (scope.operatorId != weeklyPlanMatch.operatorId ||
+              scope.locationId != weeklyPlanMatch.locationId) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'requested weekly-plan scope does not match caller scope',
+            });
+            return;
+          }
+          Map<String, Object?> body = const <String, Object?>{};
+          String? idempotencyKey;
+          if (weeklyPlanMatch.action != WeeklyPlanRouteAction.read) {
+            final permitted = await _requireAdminPermissionOrWrite(
+              response: response,
+              guard: adminPermissionGuard,
+              scope: scope,
+              permissionKey: weeklyPlanLockPermissionKey,
+              requestedAt: clock().toUtc(),
+            );
+            if (!permitted) return;
+            idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+            final bodyResult = await readOperatorJsonBody(request);
+            if (bodyResult.errorStatus != null) {
+              _writeJson(
+                response,
+                bodyResult.errorStatus!,
+                bodyResult.errorBody!,
+              );
+              return;
+            }
+            body = bodyResult.body!;
+          }
+          try {
+            final result = await router.handle(
+              match: weeklyPlanMatch,
+              method: request.method,
+              path: path,
+              queryParameters: request.uri.queryParameters,
+              actorUserId: scope.userId,
+              actorKind: scope.actorKind,
+              idempotencyKey: idempotencyKey,
+              body: body,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'weekly_plan',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'weekly_plan_unavailable',
+              'message': 'weekly-plan truth is unavailable; please retry',
             });
           }
           return;

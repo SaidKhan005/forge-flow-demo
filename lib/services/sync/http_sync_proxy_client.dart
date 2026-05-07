@@ -12,11 +12,13 @@ import '../integration/integration_adapter_common.dart';
 import '../star_target_selection_write_service.dart';
 import 'star_target_sync_resources.dart';
 import 'sync_proxy_client.dart';
+import 'weekly_plan_sync_resources.dart';
 
 class HttpSyncProxyClient
     implements
         SyncProxyClient,
         StarTargetSyncProxyClient,
+        WeeklyPlanSyncProxyClient,
         StarTargetSelectionWriteClient {
   HttpSyncProxyClient({
     required this.proxyBaseUri,
@@ -366,6 +368,78 @@ class HttpSyncProxyClient
     );
   }
 
+  @override
+  Future<WeeklyPlanSnapshotSyncPage> fetchWeeklyPlanSnapshots({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  }) async {
+    final body = await _getWeeklyPlanJsonOrUnavailable(
+      _locationPath(operatorId, locationId, const <String>[
+        'weekly_plan_snapshots',
+      ]),
+      queryParameters: _pageQuery(cursor: cursor, pageSize: pageSize),
+    );
+    final unavailableReason = weeklyPlanUnavailableReason(body);
+    if (unavailableReason != null) {
+      return WeeklyPlanSnapshotSyncPage.unavailable(unavailableReason);
+    }
+    final rows = _readListOrSingleton(body, const <String>[
+      'weekly_plan_snapshots',
+      'snapshots',
+      'weekly_plan_snapshot',
+      'snapshot',
+      'plans',
+      'records',
+      'items',
+      'data',
+    ]);
+    return WeeklyPlanSnapshotSyncPage(
+      snapshots: rows
+          .map((row) => WeeklyPlanSnapshotSyncRow.fromJson(_stringKeyMap(row)))
+          .toList(growable: false),
+      nextCursor:
+          _readString(body['next_cursor']) ?? _readString(body['nextCursor']),
+    );
+  }
+
+  @override
+  Future<ForecastContextSyncPage> fetchForecastContexts({
+    required String operatorId,
+    required String locationId,
+    required String? cursor,
+    required int pageSize,
+  }) async {
+    final body = await _getWeeklyPlanJsonOrUnavailable(
+      _locationPath(operatorId, locationId, const <String>[
+        'forecast_contexts',
+      ]),
+      queryParameters: _pageQuery(cursor: cursor, pageSize: pageSize),
+    );
+    final unavailableReason = weeklyPlanUnavailableReason(body);
+    if (unavailableReason != null) {
+      return ForecastContextSyncPage.unavailable(unavailableReason);
+    }
+    final rows = _readListOrSingleton(body, const <String>[
+      'forecast_contexts',
+      'forecast_context',
+      'current',
+      'contexts',
+      'context',
+      'records',
+      'items',
+      'data',
+    ]);
+    return ForecastContextSyncPage(
+      contexts: rows
+          .map((row) => ForecastContextSyncRow.fromJson(_stringKeyMap(row)))
+          .toList(growable: false),
+      nextCursor:
+          _readString(body['next_cursor']) ?? _readString(body['nextCursor']),
+    );
+  }
+
   Future<Map<String, Object?>> _getJson(
     List<String> tailSegments, {
     Map<String, String>? queryParameters,
@@ -405,6 +479,23 @@ class HttpSyncProxyClient
         return const <String, Object?>{
           'available': false,
           'unavailable_reason': 'star_target_proxy_route_not_found',
+        };
+      }
+      rethrow;
+    }
+  }
+
+  Future<Map<String, Object?>> _getWeeklyPlanJsonOrUnavailable(
+    List<String> tailSegments, {
+    Map<String, String>? queryParameters,
+  }) async {
+    try {
+      return await _getJson(tailSegments, queryParameters: queryParameters);
+    } on SyncProxyClientException catch (error) {
+      if (error.statusCode == 404) {
+        return const <String, Object?>{
+          'available': false,
+          'unavailable_reason': 'weekly_plan_proxy_route_not_found',
         };
       }
       rethrow;
@@ -562,6 +653,23 @@ class HttpSyncProxyClient
       throw SyncProxyClientException(
         code: 'malformed_sync_proxy_response',
         message: 'The sync proxy "$key" field was not a list.',
+      );
+    }
+    return const <Object?>[];
+  }
+
+  static List<Object?> _readListOrSingleton(
+    Map<String, Object?> json,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = json[key];
+      if (value == null) continue;
+      if (value is List) return value;
+      if (value is Map) return <Object?>[value];
+      throw SyncProxyClientException(
+        code: 'malformed_sync_proxy_response',
+        message: 'The sync proxy "$key" field was not a list or object.',
       );
     }
     return const <Object?>[];

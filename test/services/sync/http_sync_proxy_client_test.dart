@@ -465,6 +465,86 @@ void main() {
     expect(page.unavailableReason, 'star_target_proxy_route_not_found');
   });
 
+  test(
+    'parses weekly-plan sync resources and forecast context payloads',
+    () async {
+      final requests = <Uri>[];
+      final client = HttpSyncProxyClient(
+        proxyBaseUri: Uri.parse('https://proxy.example/base/'),
+        idTokenProvider: () async => 'token-1',
+        httpClient: http_testing.MockClient((request) async {
+          requests.add(request.url);
+          final body = switch (request.url.path) {
+            '/base/v1/operators/op/locations/loc/weekly_plan_snapshots' =>
+              <String, Object?>{
+                'snapshots': <Object?>[_weeklyPlanRow()],
+                'nextCursor': 'weekly-next',
+              },
+            '/base/v1/operators/op/locations/loc/forecast_contexts' =>
+              <String, Object?>{
+                'forecast_context': _forecastContextRow(),
+                'next_cursor': 'forecast-next',
+              },
+            _ => <String, Object?>{},
+          };
+          return http.Response(jsonEncode(body), 200);
+        }),
+      );
+
+      final snapshots = await client.fetchWeeklyPlanSnapshots(
+        operatorId: 'op',
+        locationId: 'loc',
+        cursor: 'weekly-cursor',
+        pageSize: 25,
+      );
+      final contexts = await client.fetchForecastContexts(
+        operatorId: 'op',
+        locationId: 'loc',
+        cursor: null,
+        pageSize: 25,
+      );
+
+      expect(snapshots.snapshots.single.snapshot.snapshotId, 'wps-1');
+      expect(
+        snapshots.snapshots.single.snapshot.weekKey,
+        '2026-05-04_2026-05-10',
+      );
+      expect(snapshots.snapshots.single.snapshot.dayRows.single.day, 'Mon');
+      expect(snapshots.nextCursor, 'weekly-next');
+      expect(contexts.contexts.single.context.baselineTotalCovers, 1200);
+      expect(
+        contexts.contexts.single.context.resolvedWeeklyForecastCovers,
+        148,
+      );
+      expect(contexts.nextCursor, 'forecast-next');
+      expect(requests.first.queryParameters['modified_since'], 'weekly-cursor');
+      expect(requests.first.queryParameters['page_size'], '25');
+    },
+  );
+
+  test('missing weekly-plan proxy route reports unavailable page', () async {
+    final client = HttpSyncProxyClient(
+      proxyBaseUri: Uri.parse('https://proxy.example'),
+      idTokenProvider: () async => 'token-1',
+      httpClient: http_testing.MockClient((_) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{'error': 'not_found'}),
+          404,
+        );
+      }),
+    );
+
+    final page = await client.fetchWeeklyPlanSnapshots(
+      operatorId: 'op',
+      locationId: 'loc',
+      cursor: null,
+      pageSize: 25,
+    );
+
+    expect(page.isUnavailable, isTrue);
+    expect(page.unavailableReason, 'weekly_plan_proxy_route_not_found');
+  });
+
   test('retries once after a 401 by force-refreshing the id token', () async {
     final tokens = <String>['stale-token', 'fresh-token'];
     var refreshCount = 0;
@@ -663,4 +743,50 @@ Map<String, Object?> _activeProfileRow() => <String, Object?>{
   'theoretical_labor_pct': 20.57,
   'built_at': '2026-05-06T12:00:00Z',
   'updated_at': '2026-05-06T12:00:00Z',
+};
+
+Map<String, Object?> _weeklyPlanRow() => <String, Object?>{
+  'operator_id': 'op',
+  'location_id': 'loc',
+  'snapshot_id': 'wps-1',
+  'restaurant_id': 'loc',
+  'week_start_date': '2026-05-04',
+  'week_end_date': '2026-05-10',
+  'target_cycle_id': 'cycle-1',
+  'forecast_covers': 148,
+  'forecast_sales': 6512.0,
+  'required_foh_hours': 32,
+  'required_boh_hours': 28,
+  'theoretical_foh_labor_dollars': 576.0,
+  'theoretical_boh_labor_dollars': 644.0,
+  'covers_source': 'historical_average',
+  'sales_source': 'covers_and_ppa',
+  'generated_at': '2026-05-06T12:00:00Z',
+  'locked_at': '2026-05-06T12:01:00Z',
+  'day_rows_json': jsonEncode(<Object?>[
+    <String, Object?>{
+      'day_label': 'Mon',
+      'business_date': '2026-05-04',
+      'covers': 22,
+      'sales': 968.0,
+      'foh_hours': 5,
+      'boh_hours': 4,
+    },
+  ]),
+};
+
+Map<String, Object?> _forecastContextRow() => <String, Object?>{
+  'operator_id': 'op',
+  'location_id': 'loc',
+  'restaurant_id': 'loc',
+  'business_date': '2026-05-04',
+  'baseline_total_covers': 1200,
+  'baseline_weekly_avg_covers': 140,
+  'baseline_weeks_represented': 8.571,
+  'recent_21_day_total_covers': 468,
+  'recent_21_day_weekly_average_covers': 156,
+  'recent_trend_delta_covers': 16,
+  'resolved_weekly_forecast_covers': 148,
+  'covers_source': 'historical_average',
+  'built_at': '2026-05-06T12:00:00Z',
 };

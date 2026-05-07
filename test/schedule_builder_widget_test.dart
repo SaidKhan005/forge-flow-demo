@@ -518,6 +518,60 @@ void main() {
       notifier.dispose();
     });
 
+    testWidgets('D3c: unavailable locked snapshot renders explicit server '
+        'setup state and no generated plan numbers', (tester) async {
+      final notifier =
+          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
+      notifier.setLockedPlanForTest(null,
+          state: ScheduleLockedPlanLoadState.unavailable);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ScheduleBuilder.testContent(notifier),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('No locked server weekly plan yet'), findsWidgets);
+      expect(find.text('--'), findsAtLeastNWidgets(6),
+          reason: 'header and labor summary values should be placeholders '
+              'when no server-backed locked snapshot exists');
+      expect(find.text('1200'), findsNothing,
+          reason: 'must not show the generated/live fixture covers value');
+      expect(find.text('\$50,000'), findsNothing,
+          reason: 'must not show the generated/live fixture sales value');
+      expect(find.text('280'), findsNothing,
+          reason: 'must not show generated/live fixture FOH hours');
+      expect(find.text('300'), findsNothing,
+          reason: 'must not show generated/live fixture BOH hours');
+
+      notifier.dispose();
+    });
+
+    testWidgets('D3d: loading locked snapshot renders loading state with '
+        'placeholders', (tester) async {
+      final notifier =
+          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
+      notifier.setLockedPlanForTest(null,
+          state: ScheduleLockedPlanLoadState.loading);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ScheduleBuilder.testContent(notifier),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Loading locked server weekly plan'), findsWidgets);
+      expect(find.text('--'), findsAtLeastNWidgets(6));
+
+      notifier.dispose();
+    });
+
     testWidgets('D4: real ScheduleBuilder.testContent renders section '
         'labels with a locked-authority notifier whose plan was injected '
         '(surface is authority-agnostic)', (tester) async {
