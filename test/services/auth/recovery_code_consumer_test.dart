@@ -62,13 +62,16 @@ List<PostgresRow> _candidateRows({
     final salt = Uint8List.fromList(
       List<int>.generate(16, (j) => (i * 31 + j) & 0xFF),
     );
-    final code = i == matchIndex ? matchingCode : 'NOMATCH-${i.toString().padLeft(4, "0")}';
+    final code = i == matchIndex
+        ? matchingCode
+        : 'NOMATCH-${i.toString().padLeft(4, "0")}';
     final hashed = hasher.hash(normalizedCode: code, saltBytes: salt);
-    rows.add(_recoveryRow(
-      factorId:
-          '${i.toString().padLeft(8, "0")}-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-      hashed: hashed,
-    ));
+    rows.add(
+      _recoveryRow(
+        factorId: '${i.toString().padLeft(8, "0")}-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        hashed: hashed,
+      ),
+    );
   }
   return rows;
 }
@@ -88,8 +91,7 @@ RecoveryCodeConsumer _consumer({
 }
 
 void main() {
-  group('RecoveryCodeConsumer constant-time slot lookup (CODE_HEALTH L10)',
-      () {
+  group('RecoveryCodeConsumer constant-time slot lookup (CODE_HEALTH L10)', () {
     test('match at slot 0 still iterates EVERY candidate', () async {
       final pool = _FactorPool(
         rows: _candidateRows(
@@ -162,64 +164,58 @@ void main() {
       expect(hasher.verifyCalls, equals(10));
     });
 
-    test(
-      'malformed metadata slots still issue a verify (sentinel) so the '
-      'loop body time is independent of bad-row count',
-      () async {
-        const sha = Sha256RecoveryCodeHasher();
-        final salt = Uint8List(16);
-        final hashed = sha.hash(
-          normalizedCode: 'AAAABBBBCCCC',
-          saltBytes: salt,
-        );
-        final pool = _FactorPool(
-          rows: <PostgresRow>[
-            // Malformed: missing 'hash'.
-            <String, Object?>{
-              'factor_id': '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-              'user_id': _userId,
-              'factor_type': 'recovery_code',
-              'factor_metadata': jsonEncode(<String, Object?>{
-                'salt': base64.encode(salt),
-              }),
-              'enrolled_at': DateTime.utc(2026, 4, 26, 11),
-              'last_used_at': null,
-              'revoked_at': null,
-            },
-            // Malformed: empty.
-            <String, Object?>{
-              'factor_id': '22222222-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-              'user_id': _userId,
-              'factor_type': 'recovery_code',
-              'factor_metadata': '{}',
-              'enrolled_at': DateTime.utc(2026, 4, 26, 11),
-              'last_used_at': null,
-              'revoked_at': null,
-            },
-            // Valid match.
-            _recoveryRow(
-              factorId: '33333333-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-              hashed: hashed,
-            ),
-          ],
-        );
-        final hasher = _CountingHasher();
-        final consumer = _consumer(pool: pool, hasher: hasher);
+    test('malformed metadata slots still issue a verify (sentinel) so the '
+        'loop body time is independent of bad-row count', () async {
+      const sha = Sha256RecoveryCodeHasher();
+      final salt = Uint8List(16);
+      final hashed = sha.hash(normalizedCode: 'AAAABBBBCCCC', saltBytes: salt);
+      final pool = _FactorPool(
+        rows: <PostgresRow>[
+          // Malformed: missing 'hash'.
+          <String, Object?>{
+            'factor_id': '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'user_id': _userId,
+            'factor_type': 'recovery_code',
+            'factor_metadata': jsonEncode(<String, Object?>{
+              'salt': base64.encode(salt),
+            }),
+            'enrolled_at': DateTime.utc(2026, 4, 26, 11),
+            'last_used_at': null,
+            'revoked_at': null,
+          },
+          // Malformed: empty.
+          <String, Object?>{
+            'factor_id': '22222222-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'user_id': _userId,
+            'factor_type': 'recovery_code',
+            'factor_metadata': '{}',
+            'enrolled_at': DateTime.utc(2026, 4, 26, 11),
+            'last_used_at': null,
+            'revoked_at': null,
+          },
+          // Valid match.
+          _recoveryRow(
+            factorId: '33333333-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            hashed: hashed,
+          ),
+        ],
+      );
+      final hasher = _CountingHasher();
+      final consumer = _consumer(pool: pool, hasher: hasher);
 
-        final result = await consumer.consume(
-          operatorId: _operatorId,
-          locationId: _locationId,
-          userId: _userId,
-          rawCode: 'AAAA-BBBB-CCCC',
-        );
+      final result = await consumer.consume(
+        operatorId: _operatorId,
+        locationId: _locationId,
+        userId: _userId,
+        rawCode: 'AAAA-BBBB-CCCC',
+      );
 
-        expect(result, isA<RecoveryCodeConsumed>());
-        // 3 candidates: 2 malformed + 1 valid. Each iteration runs
-        // verify (the malformed ones use the sentinel), so the
-        // hasher saw 3 calls.
-        expect(hasher.verifyCalls, equals(3));
-      },
-    );
+      expect(result, isA<RecoveryCodeConsumed>());
+      // 3 candidates: 2 malformed + 1 valid. Each iteration runs
+      // verify (the malformed ones use the sentinel), so the
+      // hasher saw 3 calls.
+      expect(hasher.verifyCalls, equals(3));
+    });
 
     test(
       'wall-time distributions for match-at-0 vs match-at-9 are not '
@@ -235,7 +231,7 @@ void main() {
         const candidateCount = 10;
         final matchingCode = 'AAAABBBBCCCC';
 
-        Future<int> _timeOne(int matchIndex) async {
+        Future<int> timeOne(int matchIndex) async {
           final pool = _FactorPool(
             rows: _candidateRows(
               count: candidateCount,
@@ -259,14 +255,14 @@ void main() {
         final tailTimes = <int>[];
         // Warm up first to push past JIT noise.
         for (var i = 0; i < 5; i++) {
-          await _timeOne(0);
-          await _timeOne(candidateCount - 1);
+          await timeOne(0);
+          await timeOne(candidateCount - 1);
         }
         for (var i = 0; i < trialsPerScenario; i++) {
           // Interleave so background noise affects both samples
           // similarly.
-          headTimes.add(await _timeOne(0));
-          tailTimes.add(await _timeOne(candidateCount - 1));
+          headTimes.add(await timeOne(0));
+          tailTimes.add(await timeOne(candidateCount - 1));
         }
         headTimes.sort();
         tailTimes.sort();
@@ -288,7 +284,8 @@ void main() {
               'leaking position via timing.',
         );
       },
-      skip: 'timing-sensitive: structural assertions above are the '
+      skip:
+          'timing-sensitive: structural assertions above are the '
           'load-bearing proof. Enable manually if investigating a '
           'regression report.',
     );
@@ -320,8 +317,7 @@ class _FactorTransaction extends PostgresTransaction {
     PostgresParameters parameters = const <String, Object?>{},
   }) async {
     if (_finalized) throw StateError('finalized');
-    if (sql.contains('select factor_id') &&
-        sql.contains('from mfa_factors')) {
+    if (sql.contains('select factor_id') && sql.contains('from mfa_factors')) {
       return _pool.rows;
     }
     return const <PostgresRow>[];

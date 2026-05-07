@@ -19,8 +19,7 @@ import 'package:forge_and_flow/services/auth/password_history_check.dart';
 
 void main() {
   group('PasswordChangeService.evaluate ordering (CODE_HEALTH L10)', () {
-    test('empty candidate -> shape rejection without HIBP roundtrip',
-        () async {
+    test('empty candidate -> shape rejection without HIBP roundtrip', () async {
       final hibp = _CountingHibpFetcher();
       final history = _CountingHistoryCheck();
       final svc = _service(hibp: hibp, history: history);
@@ -39,22 +38,24 @@ void main() {
       expect(history.calls, equals(0));
     });
 
-    test('3-char candidate -> shape rejection without HIBP roundtrip',
-        () async {
-      final hibp = _CountingHibpFetcher();
-      final history = _CountingHistoryCheck();
-      final svc = _service(hibp: hibp, history: history);
+    test(
+      '3-char candidate -> shape rejection without HIBP roundtrip',
+      () async {
+        final hibp = _CountingHibpFetcher();
+        final history = _CountingHistoryCheck();
+        final svc = _service(hibp: hibp, history: history);
 
-      final outcome = await svc.evaluate(userId: 'u', candidate: 'abc');
+        final outcome = await svc.evaluate(userId: 'u', candidate: 'abc');
 
-      expect(outcome.allowed, isFalse);
-      expect(
-        outcome.rejections,
-        contains(PasswordChangeRejection.violatesPolicy),
-      );
-      expect(hibp.calls, equals(0));
-      expect(history.calls, equals(0));
-    });
+        expect(outcome.allowed, isFalse);
+        expect(
+          outcome.rejections,
+          contains(PasswordChangeRejection.violatesPolicy),
+        );
+        expect(hibp.calls, equals(0));
+        expect(history.calls, equals(0));
+      },
+    );
 
     test('control-char candidate -> shape rejection without HIBP', () async {
       final hibp = _CountingHibpFetcher();
@@ -80,92 +81,80 @@ void main() {
       expect(history.calls, equals(0));
     });
 
-    test(
-      'shape-valid candidate flows through to HIBP THEN history',
-      () async {
-        final hibp = _CountingHibpFetcher();
-        final history = _CountingHistoryCheck();
-        final svc = _service(hibp: hibp, history: history);
+    test('shape-valid candidate flows through to HIBP THEN history', () async {
+      final hibp = _CountingHibpFetcher();
+      final history = _CountingHistoryCheck();
+      final svc = _service(hibp: hibp, history: history);
 
-        final outcome = await svc.evaluate(
-          userId: 'u',
-          candidate: 'correct horse battery staple',
-        );
+      final outcome = await svc.evaluate(
+        userId: 'u',
+        candidate: 'correct horse battery staple',
+      );
 
-        expect(outcome.allowed, isTrue);
-        expect(hibp.calls, equals(1));
-        expect(history.calls, equals(1));
-      },
-    );
+      expect(outcome.allowed, isTrue);
+      expect(hibp.calls, equals(1));
+      expect(history.calls, equals(1));
+    });
 
-    test(
-      'shape-valid + pwned -> rejected, HIBP called, history still '
-      'consulted',
-      () async {
-        final hibp = _CountingHibpFetcher(
-          pwnedCandidates: const <String>{'P@ssword1234'},
-        );
-        final history = _CountingHistoryCheck();
-        final svc = _service(hibp: hibp, history: history);
+    test('shape-valid + pwned -> rejected, HIBP called, history still '
+        'consulted', () async {
+      final hibp = _CountingHibpFetcher(
+        pwnedCandidates: const <String>{'P@ssword1234'},
+      );
+      final history = _CountingHistoryCheck();
+      final svc = _service(hibp: hibp, history: history);
 
-        final outcome = await svc.evaluate(
-          userId: 'u',
-          candidate: 'P@ssword1234',
-        );
+      final outcome = await svc.evaluate(
+        userId: 'u',
+        candidate: 'P@ssword1234',
+      );
 
-        expect(outcome.allowed, isFalse);
-        expect(
-          outcome.rejections,
-          contains(PasswordChangeRejection.pwnedInBreach),
-        );
-        expect(hibp.calls, equals(1));
-        expect(history.calls, equals(1));
-      },
-    );
+      expect(outcome.allowed, isFalse);
+      expect(
+        outcome.rejections,
+        contains(PasswordChangeRejection.pwnedInBreach),
+      );
+      expect(hibp.calls, equals(1));
+      expect(history.calls, equals(1));
+    });
 
-    test(
-      'shape-valid + history reuse -> rejected, history called',
-      () async {
-        final hibp = _CountingHibpFetcher();
-        final history = _CountingHistoryCheck(reused: true);
-        final svc = _service(hibp: hibp, history: history);
+    test('shape-valid + history reuse -> rejected, history called', () async {
+      final hibp = _CountingHibpFetcher();
+      final history = _CountingHistoryCheck(reused: true);
+      final svc = _service(hibp: hibp, history: history);
 
-        final outcome = await svc.evaluate(
-          userId: 'u',
-          candidate: 'fresh-shape-password',
-        );
+      final outcome = await svc.evaluate(
+        userId: 'u',
+        candidate: 'fresh-shape-password',
+      );
 
-        expect(outcome.allowed, isFalse);
-        expect(
-          outcome.rejections,
-          contains(PasswordChangeRejection.reusedFromHistory),
-        );
-        expect(hibp.calls, equals(1));
-        expect(history.calls, equals(1));
-      },
-    );
+      expect(outcome.allowed, isFalse);
+      expect(
+        outcome.rejections,
+        contains(PasswordChangeRejection.reusedFromHistory),
+      );
+      expect(hibp.calls, equals(1));
+      expect(history.calls, equals(1));
+    });
 
-    test(
-      'leading-space candidate -> shape rejection without HIBP',
-      () async {
-        final hibp = _CountingHibpFetcher();
-        final history = _CountingHistoryCheck();
-        final svc = _service(hibp: hibp, history: history);
+    test('leading-space candidate -> shape rejection without HIBP', () async {
+      final hibp = _CountingHibpFetcher();
+      final history = _CountingHistoryCheck();
+      final svc = _service(hibp: hibp, history: history);
 
-        final outcome = await svc.evaluate(
-          userId: 'u',
-          candidate: ' has-leading-space',
-        );
+      final outcome = await svc.evaluate(
+        userId: 'u',
+        candidate: ' has-leading-space',
+      );
 
-        expect(outcome.allowed, isFalse);
-        expect(
-          outcome.violations,
-          contains(PasswordViolation.containsLeadingOrTrailingSpace),
-        );
-        expect(hibp.calls, equals(0));
-        expect(history.calls, equals(0));
-      },
-    );
+      expect(outcome.allowed, isFalse);
+      expect(
+        outcome.violations,
+        contains(PasswordViolation.containsLeadingOrTrailingSpace),
+      );
+      expect(hibp.calls, equals(0));
+      expect(history.calls, equals(0));
+    });
   });
 }
 
@@ -184,9 +173,8 @@ PasswordChangeService _service({
 /// Counts every HIBP fetch + optionally reports specific candidates
 /// as pwned by injecting their SHA-1 suffixes into the response body.
 class _CountingHibpFetcher implements HibpRangeFetcher {
-  _CountingHibpFetcher({
-    Set<String>? pwnedCandidates,
-  }) : _pwnedCandidates = pwnedCandidates ?? const <String>{};
+  _CountingHibpFetcher({Set<String>? pwnedCandidates})
+    : _pwnedCandidates = pwnedCandidates ?? const <String>{};
 
   final Set<String> _pwnedCandidates;
   int calls = 0;
@@ -196,8 +184,10 @@ class _CountingHibpFetcher implements HibpRangeFetcher {
     calls += 1;
     final lines = <String>[];
     for (final candidate in _pwnedCandidates) {
-      final hash =
-          sha1.convert(utf8.encode(candidate)).toString().toUpperCase();
+      final hash = sha1
+          .convert(utf8.encode(candidate))
+          .toString()
+          .toUpperCase();
       if (hash.startsWith(hexPrefix)) {
         lines.add('${hash.substring(5)}:42');
       }
@@ -212,10 +202,9 @@ class _CountingHibpFetcher implements HibpRangeFetcher {
 }
 
 class _CountingHistoryCheck implements PasswordHistoryCheck {
-  _CountingHistoryCheck({this.reused = false, this.error});
+  _CountingHistoryCheck({this.reused = false});
 
   final bool reused;
-  final Object? error;
   int calls = 0;
 
   @override
@@ -224,8 +213,6 @@ class _CountingHistoryCheck implements PasswordHistoryCheck {
     required String candidate,
   }) async {
     calls += 1;
-    final err = error;
-    if (err != null) throw err;
     return reused;
   }
 }

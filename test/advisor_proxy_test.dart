@@ -42,6 +42,7 @@ void main() {
             'placeholder-service-principal-jwt-secret',
         ProxySecretNames.pgcryptoEnvelopeKey:
             'placeholder-pgcrypto-envelope-key',
+        ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
         if (port != null) 'PORT': port,
       };
     }
@@ -62,6 +63,7 @@ void main() {
           ProxySecretNames.firebaseWebApiKey,
           ProxySecretNames.servicePrincipalJwtSecret,
           ProxySecretNames.pgcryptoEnvelopeKey,
+          ProxySecretNames.publicBaseUri,
         ]),
       );
       expect(config.hasSecretFor(ProxySecretNames.anthropicApiKey), isTrue);
@@ -141,6 +143,11 @@ void main() {
         ProxySecretNames.firebaseWebApiKey: marker,
         ProxySecretNames.servicePrincipalJwtSecret: marker,
         ProxySecretNames.pgcryptoEnvelopeKey: marker,
+        // publicBaseUri is required in ProxySecretNames.required, but
+        // its [ProxyConfig.publicBaseUri] getter parses + validates the
+        // URI shape. Use a real URL here so the loader does not reject
+        // boot; the value is still asserted not to leak below.
+        ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
       };
 
       final config = ProxyConfig.fromEnvironment(environment);
@@ -387,6 +394,135 @@ void main() {
         final config = ProxyConfig.fromEnvironment(env);
         expect(config.hasAlohaNcrVoyixCredentials, isFalse);
         expect(() => config.alohaNcrVoyixCredentials, throwsStateError);
+      });
+
+      // ─── Typed-app-credentials amendment ────────────────────────────
+      // Mirrors the Aloha / Square / Clover patterns from PR #260 for
+      // the four vendors the binder previously read from
+      // Platform.environment directly: Humanity, QuickBooks Time,
+      // 7shifts, Libro.
+
+      test('Humanity bundle materializes the typed record when both '
+          'secrets load', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxySecretNames.humanityClientId] = 'humanity-client-id'
+          ..[ProxySecretNames.humanityClientSecret] = 'humanity-client-secret';
+        final config = ProxyConfig.fromEnvironment(env);
+        expect(config.hasHumanityAppCredentials, isTrue);
+        final creds = config.humanityAppCredentials;
+        expect(creds.clientId, equals('humanity-client-id'));
+        expect(creds.clientSecret, equals('humanity-client-secret'));
+      });
+
+      test('Humanity bundle is absent → `hasHumanityAppCredentials` is false',
+          () {
+        final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
+        expect(config.hasHumanityAppCredentials, isFalse);
+        expect(() => config.humanityAppCredentials, throwsStateError);
+      });
+
+      test('partial Humanity bundle (one of two set) → '
+          '`hasHumanityAppCredentials` stays false', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxySecretNames.humanityClientId] = 'humanity-client-id';
+        // client_secret intentionally unset.
+        final config = ProxyConfig.fromEnvironment(env);
+        expect(config.hasHumanityAppCredentials, isFalse);
+        expect(() => config.humanityAppCredentials, throwsStateError);
+      });
+
+      test('QuickBooks Time bundle materializes the typed record when '
+          'both secrets load', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxySecretNames.quickBooksTimeClientId] = 'qbt-client-id'
+          ..[ProxySecretNames.quickBooksTimeClientSecret] =
+              'qbt-client-secret';
+        final config = ProxyConfig.fromEnvironment(env);
+        expect(config.hasQuickBooksTimeAppCredentials, isTrue);
+        final creds = config.quickBooksTimeAppCredentials;
+        expect(creds.clientId, equals('qbt-client-id'));
+        expect(creds.clientSecret, equals('qbt-client-secret'));
+      });
+
+      test('QuickBooks Time bundle is absent → '
+          '`hasQuickBooksTimeAppCredentials` is false', () {
+        final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
+        expect(config.hasQuickBooksTimeAppCredentials, isFalse);
+        expect(() => config.quickBooksTimeAppCredentials, throwsStateError);
+      });
+
+      test('7shifts bundle materializes the typed record when both '
+          'secrets load', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxySecretNames.sevenShiftsClientId] = 'seven-shifts-client-id'
+          ..[ProxySecretNames.sevenShiftsClientSecret] =
+              'seven-shifts-client-secret';
+        final config = ProxyConfig.fromEnvironment(env);
+        expect(config.hasSevenShiftsAppCredentials, isTrue);
+        final creds = config.sevenShiftsAppCredentials;
+        expect(creds.clientId, equals('seven-shifts-client-id'));
+        expect(creds.clientSecret, equals('seven-shifts-client-secret'));
+      });
+
+      test('7shifts bundle is absent → '
+          '`hasSevenShiftsAppCredentials` is false', () {
+        final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
+        expect(config.hasSevenShiftsAppCredentials, isFalse);
+        expect(() => config.sevenShiftsAppCredentials, throwsStateError);
+      });
+
+      test('Libro bundle materializes the typed record when both '
+          'secrets load', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxySecretNames.libroClientId] = 'libro-client-id'
+          ..[ProxySecretNames.libroClientSecret] = 'libro-client-secret';
+        final config = ProxyConfig.fromEnvironment(env);
+        expect(config.hasLibroAppCredentials, isTrue);
+        final creds = config.libroAppCredentials;
+        expect(creds.clientId, equals('libro-client-id'));
+        expect(creds.clientSecret, equals('libro-client-secret'));
+      });
+
+      test('Libro bundle is absent → `hasLibroAppCredentials` is false', () {
+        final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
+        expect(config.hasLibroAppCredentials, isFalse);
+        expect(() => config.libroAppCredentials, throwsStateError);
+      });
+
+      // ─── publicBaseUri ─────────────────────────────────────────────
+
+      test('publicBaseUri parses the canonical production URL', () {
+        final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
+        // The shared helper sets `PUBLIC_BASE_URI=https://api.forgeflow.app`.
+        expect(config.publicBaseUri, equals(Uri.parse('https://api.forgeflow.app')));
+        expect(config.publicBaseUri.scheme, equals('https'));
+        expect(config.publicBaseUri.host, equals('api.forgeflow.app'));
+      });
+
+      test('publicBaseUri throws when the value does not parse as an '
+          'absolute URI with scheme + host', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxySecretNames.publicBaseUri] = 'not a url';
+        final config = ProxyConfig.fromEnvironment(env);
+        expect(() => config.publicBaseUri, throwsStateError);
+      });
+
+      test('PUBLIC_BASE_URI is required — boot fails with the missing '
+          'secret name when the env var is unset', () {
+        final env = environmentWithAllSecrets()
+          ..remove(ProxySecretNames.publicBaseUri);
+        Object? thrown;
+        try {
+          ProxyConfig.fromEnvironment(env);
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown, isA<ProxyConfigError>());
+        final error = thrown! as ProxyConfigError;
+        expect(
+          error.missingSecretNames,
+          contains(ProxySecretNames.publicBaseUri),
+        );
       });
     });
   });
@@ -2489,6 +2625,7 @@ void main() {
             'placeholder-service-principal-jwt-secret',
         ProxySecretNames.pgcryptoEnvelopeKey:
             'placeholder-pgcrypto-envelope-key',
+        ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
         if (projectId != null) ProxyConfigNames.firebaseProjectId: projectId,
       };
     }

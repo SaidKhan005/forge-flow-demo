@@ -68,7 +68,6 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
-import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 
@@ -101,9 +100,9 @@ class PostgresAdvisorResponseCache implements AdvisorResponseCache {
     required TenantTransactionWrapper tenantWrapper,
     Duration defaultTtl = const Duration(hours: 24),
     DateTime Function()? now,
-  })  : _tenantWrapper = tenantWrapper,
-        _defaultTtl = defaultTtl,
-        _now = now ?? DateTime.now {
+  }) : _tenantWrapper = tenantWrapper,
+       _defaultTtl = defaultTtl,
+       _now = now ?? DateTime.now {
     if (_defaultTtl <= Duration.zero) {
       throw AdvisorResponseCacheTtlError(
         'defaultTtl must be positive; got $_defaultTtl',
@@ -268,9 +267,7 @@ do update set
     if (raw is Map<String, Object?>) {
       envelope = raw;
     } else if (raw is Map) {
-      envelope = raw.map(
-        (key, value) => MapEntry(key.toString(), value),
-      );
+      envelope = raw.map((key, value) => MapEntry(key.toString(), value));
     } else if (raw is String) {
       try {
         final decoded = jsonDecode(raw);

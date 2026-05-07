@@ -273,6 +273,53 @@ abstract class ProxySecretNames {
   /// `/v3/apps/{aId}/webhooks` paths. Static across operators.
   static const String cloverAppId = 'CLOVER_APP_ID';
 
+  /// Phase 8 framework — Humanity OAuth `client_id` for the app-wide
+  /// registration. Static across operators; per-(operator, location)
+  /// refresh handles still resolve through `vendor_credentials`.
+  static const String humanityClientId = 'HUMANITY_CLIENT_ID';
+
+  /// Phase 8 framework — Humanity OAuth `client_secret` matching
+  /// [humanityClientId].
+  static const String humanityClientSecret = 'HUMANITY_CLIENT_SECRET';
+
+  /// Phase 8 framework — QuickBooks Time (Intuit) OAuth `client_id`
+  /// for the app-wide registration. Static across operators;
+  /// per-(operator, location) refresh handles still resolve through
+  /// `vendor_credentials`.
+  static const String quickBooksTimeClientId = 'QUICKBOOKS_TIME_CLIENT_ID';
+
+  /// Phase 8 framework — QuickBooks Time (Intuit) OAuth `client_secret`
+  /// matching [quickBooksTimeClientId].
+  static const String quickBooksTimeClientSecret =
+      'QUICKBOOKS_TIME_CLIENT_SECRET';
+
+  /// Phase 8 framework — 7shifts OAuth `client_id` for the app-wide
+  /// partner registration.
+  static const String sevenShiftsClientId = 'SEVEN_SHIFTS_CLIENT_ID';
+
+  /// Phase 8 framework — 7shifts OAuth `client_secret` matching
+  /// [sevenShiftsClientId].
+  static const String sevenShiftsClientSecret = 'SEVEN_SHIFTS_CLIENT_SECRET';
+
+  /// Phase 8 framework — Libro OAuth `client_id` for the app-wide
+  /// registration.
+  static const String libroClientId = 'LIBRO_CLIENT_ID';
+
+  /// Phase 8 framework — Libro OAuth `client_secret` matching
+  /// [libroClientId].
+  static const String libroClientSecret = 'LIBRO_CLIENT_SECRET';
+
+  /// Phase 8 framework — public base URI the proxy presents to
+  /// inbound vendor webhooks (per-tenant location config resolver
+  /// builds operator-scoped paths under this host). Required at boot
+  /// to force operators to declare their externally-reachable host
+  /// rather than silently fall through to a baked-in default; the
+  /// staging deploy and the canonical production deploy both set
+  /// this to their own URL. Stored as a string secret name and
+  /// surfaced through the typed [ProxyConfig.publicBaseUri] getter
+  /// which parses + validates the URI shape.
+  static const String publicBaseUri = 'PUBLIC_BASE_URI';
+
   /// Required server-side secret names. The proxy refuses to start
   /// when any of these are missing or blank.
   static const List<String> required = <String>[
@@ -283,6 +330,7 @@ abstract class ProxySecretNames {
     firebaseWebApiKey,
     servicePrincipalJwtSecret,
     pgcryptoEnvelopeKey,
+    publicBaseUri,
   ];
 
   /// Optional server-side secret names. Loaded into [ProxyConfig] when
@@ -290,10 +338,11 @@ abstract class ProxySecretNames {
   /// [ProxyConfig.hasSecretFor].
   ///
   /// Phase 8 framework — vendor app credentials (Aloha / Square /
-  /// Clover) are loaded as optional. Each connector binder fails its
-  /// own activation when the bundle is missing; the proxy still boots
-  /// without them so non-POS routes (advisor, auth, weekly plan) keep
-  /// working in dev / staging where a vendor isn't configured.
+  /// Clover / Humanity / QuickBooks Time / 7shifts / Libro) are loaded
+  /// as optional. Each connector binder fails its own activation when
+  /// the bundle is missing; the proxy still boots without them so
+  /// non-POS routes (advisor, auth, weekly plan) keep working in dev /
+  /// staging where a vendor isn't configured.
   static const List<String> optional = <String>[
     geminiApiKey,
     mobilePushTokenEnvelopeKey,
@@ -306,6 +355,14 @@ abstract class ProxySecretNames {
     squareNotificationUrlHost,
     cloverAppToken,
     cloverAppId,
+    humanityClientId,
+    humanityClientSecret,
+    quickBooksTimeClientId,
+    quickBooksTimeClientSecret,
+    sevenShiftsClientId,
+    sevenShiftsClientSecret,
+    libroClientId,
+    libroClientSecret,
   ];
 }
 
@@ -430,9 +487,10 @@ class ProxyKmsMisconfiguredError extends ProxyConfigError {
 // at request time; these records carry only the registration-level
 // material the binder cannot conjure on its own.
 //
-// Square / Clover do not have transport-defined typed record classes
-// today, so the records live here next to [ProxySecretNames]. Aloha
-// reuses [AlohaNcrVoyixOauthClientCredentials] from the production
+// Square / Clover / Humanity / QuickBooks Time / 7shifts / Libro do
+// not have transport-defined typed record classes today, so the
+// records live here next to [ProxySecretNames]. Aloha reuses
+// [AlohaNcrVoyixOauthClientCredentials] from the production
 // transport file (binder calls [ProxyConfig.alohaNcrVoyixCredentials]
 // to materialize it).
 
@@ -471,6 +529,75 @@ class CloverAppCredentials {
 
   /// Clover app id used in `/v3/apps/{aId}/webhooks` paths.
   final String appId;
+}
+
+/// Phase 8 framework — Humanity static app credentials. The OAuth
+/// `client_id` / `client_secret` are the F&F application's
+/// registration; per-(operator, location) refresh handles still
+/// resolve through `vendor_credentials`.
+class HumanityAppCredentials {
+  const HumanityAppCredentials({
+    required this.clientId,
+    required this.clientSecret,
+  });
+
+  /// OAuth `client_id`.
+  final String clientId;
+
+  /// OAuth `client_secret`. Server-side only.
+  final String clientSecret;
+}
+
+/// Phase 8 framework — QuickBooks Time (Intuit) static app
+/// credentials. The OAuth `client_id` / `client_secret` are the F&F
+/// application's Intuit Developer registration; per-(operator,
+/// location) refresh handles still resolve through
+/// `vendor_credentials`.
+class QuickBooksTimeAppCredentials {
+  const QuickBooksTimeAppCredentials({
+    required this.clientId,
+    required this.clientSecret,
+  });
+
+  /// OAuth `client_id` (Intuit Application ID).
+  final String clientId;
+
+  /// OAuth `client_secret`. Server-side only.
+  final String clientSecret;
+}
+
+/// Phase 8 framework — 7shifts static app credentials. The OAuth
+/// `client_id` / `client_secret` are the F&F partner registration;
+/// per-(operator, location) refresh handles still resolve through
+/// `vendor_credentials`.
+class SevenShiftsAppCredentials {
+  const SevenShiftsAppCredentials({
+    required this.clientId,
+    required this.clientSecret,
+  });
+
+  /// OAuth `client_id`.
+  final String clientId;
+
+  /// OAuth `client_secret`. Server-side only.
+  final String clientSecret;
+}
+
+/// Phase 8 framework — Libro static app credentials. The OAuth
+/// `client_id` / `client_secret` are the F&F application's
+/// registration; per-(operator, location) bearer tokens still
+/// resolve through `vendor_credentials`.
+class LibroAppCredentials {
+  const LibroAppCredentials({
+    required this.clientId,
+    required this.clientSecret,
+  });
+
+  /// OAuth `client_id`.
+  final String clientId;
+
+  /// OAuth `client_secret`. Server-side only.
+  final String clientSecret;
 }
 
 class ProxyConfig {
@@ -779,27 +906,74 @@ class ProxyConfig {
         clientId: secretFor(ProxySecretNames.alohaNcrVoyixClientId),
         clientSecret: secretFor(ProxySecretNames.alohaNcrVoyixClientSecret),
         applicationKey: secretFor(ProxySecretNames.alohaNcrVoyixApplicationKey),
-        organizationId: secretFor(
-          ProxySecretNames.alohaNcrVoyixOrganizationId,
-        ),
+        organizationId: secretFor(ProxySecretNames.alohaNcrVoyixOrganizationId),
       );
 
   /// Phase 8 framework — Square static app credentials. Throws
   /// [StateError] when any of the three secret names is unloaded.
   SquareAppCredentials get squareAppCredentials => SquareAppCredentials(
-        clientId: secretFor(ProxySecretNames.squareClientId),
-        clientSecret: secretFor(ProxySecretNames.squareClientSecret),
-        notificationUrlHost: secretFor(
-          ProxySecretNames.squareNotificationUrlHost,
-        ),
-      );
+    clientId: secretFor(ProxySecretNames.squareClientId),
+    clientSecret: secretFor(ProxySecretNames.squareClientSecret),
+    notificationUrlHost: secretFor(ProxySecretNames.squareNotificationUrlHost),
+  );
 
   /// Phase 8 framework — Clover static app credentials. Throws
   /// [StateError] when either secret name is unloaded.
   CloverAppCredentials get cloverAppCredentials => CloverAppCredentials(
-        appToken: secretFor(ProxySecretNames.cloverAppToken),
-        appId: secretFor(ProxySecretNames.cloverAppId),
+    appToken: secretFor(ProxySecretNames.cloverAppToken),
+    appId: secretFor(ProxySecretNames.cloverAppId),
+  );
+
+  /// Phase 8 framework — Humanity static app credentials. Throws
+  /// [StateError] when either secret name is unloaded.
+  HumanityAppCredentials get humanityAppCredentials => HumanityAppCredentials(
+        clientId: secretFor(ProxySecretNames.humanityClientId),
+        clientSecret: secretFor(ProxySecretNames.humanityClientSecret),
       );
+
+  /// Phase 8 framework — QuickBooks Time (Intuit) static app
+  /// credentials. Throws [StateError] when either secret name is
+  /// unloaded.
+  QuickBooksTimeAppCredentials get quickBooksTimeAppCredentials =>
+      QuickBooksTimeAppCredentials(
+        clientId: secretFor(ProxySecretNames.quickBooksTimeClientId),
+        clientSecret: secretFor(ProxySecretNames.quickBooksTimeClientSecret),
+      );
+
+  /// Phase 8 framework — 7shifts static app credentials. Throws
+  /// [StateError] when either secret name is unloaded.
+  SevenShiftsAppCredentials get sevenShiftsAppCredentials =>
+      SevenShiftsAppCredentials(
+        clientId: secretFor(ProxySecretNames.sevenShiftsClientId),
+        clientSecret: secretFor(ProxySecretNames.sevenShiftsClientSecret),
+      );
+
+  /// Phase 8 framework — Libro static app credentials. Throws
+  /// [StateError] when either secret name is unloaded.
+  LibroAppCredentials get libroAppCredentials => LibroAppCredentials(
+        clientId: secretFor(ProxySecretNames.libroClientId),
+        clientSecret: secretFor(ProxySecretNames.libroClientSecret),
+      );
+
+  /// Phase 8 framework — public base URI the binder presents to
+  /// vendors when constructing the per-tenant location config
+  /// resolver. Sourced from the required
+  /// [ProxySecretNames.publicBaseUri] env var. Throws [StateError]
+  /// when the value is unparseable as a URI; the secret loader
+  /// guarantees the name is set (it would have failed boot otherwise),
+  /// so the only way to land here is a malformed value.
+  Uri get publicBaseUri {
+    final raw = secretFor(ProxySecretNames.publicBaseUri);
+    final parsed = Uri.tryParse(raw);
+    if (parsed == null || !parsed.hasScheme || parsed.host.isEmpty) {
+      throw StateError(
+        'advisor proxy: ${ProxySecretNames.publicBaseUri} is set but '
+        'does not parse as an absolute URI with scheme + host. '
+        'Expected something like "https://api.forgeflow.app".',
+      );
+    }
+    return parsed;
+  }
 
   /// True when every Aloha NCR Voyix app credential secret is loaded.
   bool get hasAlohaNcrVoyixCredentials =>
@@ -818,6 +992,26 @@ class ProxyConfig {
   bool get hasCloverAppCredentials =>
       hasSecretFor(ProxySecretNames.cloverAppToken) &&
       hasSecretFor(ProxySecretNames.cloverAppId);
+
+  /// True when every Humanity app credential secret is loaded.
+  bool get hasHumanityAppCredentials =>
+      hasSecretFor(ProxySecretNames.humanityClientId) &&
+      hasSecretFor(ProxySecretNames.humanityClientSecret);
+
+  /// True when every QuickBooks Time app credential secret is loaded.
+  bool get hasQuickBooksTimeAppCredentials =>
+      hasSecretFor(ProxySecretNames.quickBooksTimeClientId) &&
+      hasSecretFor(ProxySecretNames.quickBooksTimeClientSecret);
+
+  /// True when every 7shifts app credential secret is loaded.
+  bool get hasSevenShiftsAppCredentials =>
+      hasSecretFor(ProxySecretNames.sevenShiftsClientId) &&
+      hasSecretFor(ProxySecretNames.sevenShiftsClientSecret);
+
+  /// True when every Libro app credential secret is loaded.
+  bool get hasLibroAppCredentials =>
+      hasSecretFor(ProxySecretNames.libroClientId) &&
+      hasSecretFor(ProxySecretNames.libroClientSecret);
 
   /// Names of loaded secrets, for diagnostics / startup logs. Never
   /// returns or includes the values.
@@ -9598,6 +9792,24 @@ Future<void> routeRequest(
             return key;
           }
 
+          Future<Map<String, Object?>?> loadTeamUserJson(
+            String targetUserId,
+          ) async {
+            final listed = await authOperationsGateway.listUsers(
+              TeamUserListCommand(
+                actorUserId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+              ),
+            );
+            for (final user in listed.users) {
+              if (user.userId == targetUserId) {
+                return _teamUserToJson(user);
+              }
+            }
+            return null;
+          }
+
           try {
             if (request.method == 'GET' &&
                 authOperationPath == adminAuthRolesPath) {
@@ -9629,6 +9841,56 @@ Future<void> routeRequest(
               _writeJson(response, 200, <String, Object?>{
                 'users': listed.users.map(_teamUserToJson).toList(),
               });
+              return;
+            }
+
+            if (request.method == 'PATCH' &&
+                authOperationPath.startsWith(adminAuthUsersPrefix)) {
+              if (!await requirePermission('team.users.invite')) return;
+              final targetUserId = _pathSuffix(
+                authOperationPath,
+                adminAuthUsersPrefix,
+              );
+              final displayName = _nonBlankString(body['display_name']);
+              final reason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['reason']);
+              if (targetUserId == null ||
+                  displayName == null ||
+                  reason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_user_profile_fields',
+                  'message':
+                      'user id, display_name, and admin_reason are required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthUsersPrefix$targetUserId',
+                key: idempotencyKey,
+                compute: () async {
+                  final patched = await authOperationsGateway.patchUserProfile(
+                    TeamUserProfilePatchCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      targetUserId: targetUserId,
+                      displayName: displayName,
+                      reason: reason,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'user': _teamUserToJson(patched.user),
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
@@ -10014,13 +10276,19 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final permissionKey = switch (action.action) {
+              final canonicalAction = switch (action.action) {
+                'deactivate' => 'suspend',
+                'reset-mfa-factors' => 'reset-mfa',
+                _ => action.action,
+              };
+              final permissionKey = switch (canonicalAction) {
                 'suspend' => 'team.users.deactivate',
                 'reactivate' => 'team.users.reactivate',
                 'soft-delete' => 'team.users.soft_delete',
                 'reset-password' => 'team.users.reset_password',
                 'reset-mfa' => PermissionKeys.teamUsersResetMfa,
                 'cancel-mfa-removal' => PermissionKeys.teamUsersResetMfa,
+                'force-logout' => 'team.session.force_logout',
                 _ => null,
               };
               if (permissionKey == null) {
@@ -10033,8 +10301,8 @@ Future<void> routeRequest(
               }
               if (!await requirePermission(permissionKey)) return;
               final userActionRouteKey =
-                  '$adminAuthUsersPrefix${action.userId}/${action.action}';
-              if (action.action == 'reset-password') {
+                  '$adminAuthUsersPrefix${action.userId}/$canonicalAction';
+              if (canonicalAction == 'reset-password') {
                 final idempotencyKey = readIdempotencyKeyOrFail();
                 if (idempotencyKey == null) return;
                 final cached = await authOpsCache.runOrReplay(
@@ -10058,7 +10326,7 @@ Future<void> routeRequest(
                 _writeJson(response, cached.statusCode, cached.body);
                 return;
               }
-              if (action.action == 'reset-mfa') {
+              if (canonicalAction == 'reset-mfa') {
                 if (mfaOperationsGateway == null) {
                   _writeJson(response, 503, <String, Object?>{
                     'error': 'mfa_operations_not_configured',
@@ -10109,7 +10377,7 @@ Future<void> routeRequest(
                 _writeJson(response, cached.statusCode, cached.body);
                 return;
               }
-              if (action.action == 'cancel-mfa-removal') {
+              if (canonicalAction == 'cancel-mfa-removal') {
                 if (mfaOperationsGateway == null) {
                   _writeJson(response, 503, <String, Object?>{
                     'error': 'mfa_operations_not_configured',
@@ -10154,6 +10422,37 @@ Future<void> routeRequest(
                 _writeJson(response, cached.statusCode, cached.body);
                 return;
               }
+              if (canonicalAction == 'force-logout') {
+                final idempotencyKey = readIdempotencyKeyOrFail();
+                if (idempotencyKey == null) return;
+                final cached = await authOpsCache.runOrReplay(
+                  route: userActionRouteKey,
+                  key: idempotencyKey,
+                  compute: () async {
+                    final revoked = await authOperationsGateway.signOutAll(
+                      AuthAllSessionsRevokeCommand(
+                        actorUserId: scope.userId,
+                        operatorId: scope.operatorId,
+                        locationId: scope.locationId,
+                        targetUserId: action.userId,
+                        reason:
+                            _nonBlankString(body['admin_reason']) ??
+                            _nonBlankString(body['reason']) ??
+                            'admin.session.force_logout',
+                      ),
+                    );
+                    return CachedProxyResponse(
+                      statusCode: 200,
+                      body: <String, Object?>{
+                        'ok': true,
+                        'revoked_count': revoked.revokedCount,
+                      },
+                    );
+                  },
+                );
+                _writeJson(response, cached.statusCode, cached.body);
+                return;
+              }
 
               final idempotencyKey = readIdempotencyKeyOrFail();
               if (idempotencyKey == null) return;
@@ -10166,9 +10465,12 @@ Future<void> routeRequest(
                     operatorId: scope.operatorId,
                     locationId: scope.locationId,
                     targetUserId: action.userId,
-                    reason: _nonBlankString(body['reason']) ?? action.action,
+                    reason:
+                        _nonBlankString(body['admin_reason']) ??
+                        _nonBlankString(body['reason']) ??
+                        canonicalAction,
                   );
-                  final updated = switch (action.action) {
+                  final updated = switch (canonicalAction) {
                     'suspend' => await authOperationsGateway.suspendUser(
                       command,
                     ),
@@ -10180,11 +10482,13 @@ Future<void> routeRequest(
                     ),
                     _ => throw StateError('unreachable action'),
                   };
+                  final user = await loadTeamUserJson(action.userId);
                   return CachedProxyResponse(
                     statusCode: 200,
                     body: <String, Object?>{
                       'ok': true,
                       'updated': updated.updated,
+                      if (user != null) 'user': user,
                     },
                   );
                 },
@@ -10405,6 +10709,7 @@ Future<void> routeRequest(
             _writeJson(response, error.statusCode, <String, Object?>{
               'error': error.code,
               'message': error.message,
+              if (error.details.isNotEmpty) ...error.details,
             });
             return;
           } catch (error, stackTrace) {
@@ -12121,6 +12426,7 @@ Future<void> routeRequest(
               _writeJson(response, error.statusCode, <String, Object?>{
                 'error': error.code,
                 'message': error.message,
+                if (error.details.isNotEmpty) ...error.details,
               });
               return;
             }
@@ -14617,6 +14923,9 @@ bool _isAdminAuthOperation(String path, String method) {
     return true;
   }
   if (method == 'GET' && authOperationPath == adminAuthUsersPath) {
+    return true;
+  }
+  if (method == 'PATCH' && authOperationPath.startsWith(adminAuthUsersPrefix)) {
     return true;
   }
   if (method == 'GET' && authOperationPath == adminAuthSessionsPath) {

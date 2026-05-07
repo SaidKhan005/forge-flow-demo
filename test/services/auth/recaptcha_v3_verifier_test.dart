@@ -14,9 +14,9 @@ import 'package:forge_and_flow/services/auth/recaptcha_v3_verifier.dart';
 void main() {
   group('RecaptchaV3Policy.decide freshness gate (CODE_HEALTH L10)', () {
     final fixedNow = DateTime.utc(2026, 4, 28, 12, 0, 30);
-    final policyAt = (DateTime now) => RecaptchaV3Policy.withClock(
-          now: () => now,
-        );
+
+    RecaptchaV3Policy policyAt(DateTime now) =>
+        RecaptchaV3Policy.withClock(now: () => now);
 
     test('challengeTs 30s old + good score -> accept', () {
       final policy = policyAt(fixedNow);
@@ -27,10 +27,7 @@ void main() {
         challengeTs: fixedNow.subtract(const Duration(seconds: 30)),
       );
 
-      final decision = policy.decide(
-        outcome: outcome,
-        expectedAction: 'login',
-      );
+      final decision = policy.decide(outcome: outcome, expectedAction: 'login');
 
       expect(decision, equals(RecaptchaV3Decision.accept));
     });
@@ -44,10 +41,7 @@ void main() {
         challengeTs: fixedNow.subtract(const Duration(seconds: 90)),
       );
 
-      final decision = policy.decide(
-        outcome: outcome,
-        expectedAction: 'login',
-      );
+      final decision = policy.decide(outcome: outcome, expectedAction: 'login');
 
       // The score is fine, the action matches — only the freshness
       // gate fires. Without L10 this would have accepted.
@@ -72,8 +66,7 @@ void main() {
       );
     });
 
-    test('null challengeTs falls through to score gates (legacy compat)',
-        () {
+    test('null challengeTs falls through to score gates (legacy compat)', () {
       // Outcomes that pre-date the freshness gate (existing
       // scaffold tests, fakes that don't populate challengeTs)
       // keep working — the gate only fires when challengeTs is
@@ -91,51 +84,41 @@ void main() {
     });
 
     test('env override loosens the cap', () {
-      final policy = RecaptchaV3Policy.fromEnvironment(
-        const <String, String>{
-          'RECAPTCHA_MAX_CHALLENGE_AGE_SECONDS': '300',
-        },
-      );
+      final policy = RecaptchaV3Policy.fromEnvironment(const <String, String>{
+        'RECAPTCHA_MAX_CHALLENGE_AGE_SECONDS': '300',
+      });
       expect(policy.maxChallengeAge, equals(const Duration(seconds: 300)));
     });
 
     test('env override tightens the cap', () {
-      final policy = RecaptchaV3Policy.fromEnvironment(
-        const <String, String>{
-          'RECAPTCHA_MAX_CHALLENGE_AGE_SECONDS': '15',
-        },
-      );
+      final policy = RecaptchaV3Policy.fromEnvironment(const <String, String>{
+        'RECAPTCHA_MAX_CHALLENGE_AGE_SECONDS': '15',
+      });
       expect(policy.maxChallengeAge, equals(const Duration(seconds: 15)));
     });
 
-    test(
-      'env override with a non-positive integer falls back to default',
-      () {
-        final zero = RecaptchaV3Policy.fromEnvironment(
-          const <String, String>{
-            'RECAPTCHA_MAX_CHALLENGE_AGE_SECONDS': '0',
-          },
-        );
-        expect(zero.maxChallengeAge, equals(RecaptchaV3Policy.defaultMaxChallengeAge));
+    test('env override with a non-positive integer falls back to default', () {
+      final zero = RecaptchaV3Policy.fromEnvironment(const <String, String>{
+        'RECAPTCHA_MAX_CHALLENGE_AGE_SECONDS': '0',
+      });
+      expect(
+        zero.maxChallengeAge,
+        equals(RecaptchaV3Policy.defaultMaxChallengeAge),
+      );
 
-        final negative = RecaptchaV3Policy.fromEnvironment(
-          const <String, String>{
-            'RECAPTCHA_MAX_CHALLENGE_AGE_SECONDS': '-30',
-          },
-        );
-        expect(
-          negative.maxChallengeAge,
-          equals(RecaptchaV3Policy.defaultMaxChallengeAge),
-        );
-      },
-    );
+      final negative = RecaptchaV3Policy.fromEnvironment(const <String, String>{
+        'RECAPTCHA_MAX_CHALLENGE_AGE_SECONDS': '-30',
+      });
+      expect(
+        negative.maxChallengeAge,
+        equals(RecaptchaV3Policy.defaultMaxChallengeAge),
+      );
+    });
 
     test('env override with a non-numeric value falls back to default', () {
-      final policy = RecaptchaV3Policy.fromEnvironment(
-        const <String, String>{
-          'RECAPTCHA_MAX_CHALLENGE_AGE_SECONDS': 'banana',
-        },
-      );
+      final policy = RecaptchaV3Policy.fromEnvironment(const <String, String>{
+        'RECAPTCHA_MAX_CHALLENGE_AGE_SECONDS': 'banana',
+      });
       expect(
         policy.maxChallengeAge,
         equals(RecaptchaV3Policy.defaultMaxChallengeAge),
@@ -167,8 +150,7 @@ void main() {
       );
     });
 
-    test('verifier success=false rejects regardless of fresh challengeTs',
-        () {
+    test('verifier success=false rejects regardless of fresh challengeTs', () {
       final policy = policyAt(fixedNow);
       final outcome = RecaptchaV3VerifyOutcome(
         success: false,

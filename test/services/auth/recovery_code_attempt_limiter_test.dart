@@ -24,11 +24,8 @@ void main() {
   group('RecoveryCodeAttemptLimiter.checkAndRecord (CODE_HEALTH L10)', () {
     test('records exactly one attempt on Allowed', () async {
       final store = _DeterministicAttemptStore();
-      var now = DateTime.utc(2026, 4, 28, 12);
-      final limiter = RecoveryCodeAttemptLimiter(
-        store: store,
-        now: () => now,
-      );
+      final now = DateTime.utc(2026, 4, 28, 12);
+      final limiter = RecoveryCodeAttemptLimiter(store: store, now: () => now);
 
       final decision = await limiter.checkAndRecord(userId: _userId);
 
@@ -42,52 +39,45 @@ void main() {
       );
     });
 
-    test(
-      'TOCTOU regression: two concurrent callers at the boundary do '
-      'NOT both pass the budget check before either records',
-      () async {
-        // Pre-fill 4 of the 5 daily slots so the next call sits at
-        // the boundary.
-        final store = _DeterministicAttemptStore();
-        var now = DateTime.utc(2026, 4, 28, 12);
-        for (var i = 0; i < 4; i++) {
-          store.attempts(_userId).add(now.subtract(Duration(hours: 2 + i)));
-        }
-        final limiter = RecoveryCodeAttemptLimiter(
-          store: store,
-          now: () => now,
-        );
+    test('TOCTOU regression: two concurrent callers at the boundary do '
+        'NOT both pass the budget check before either records', () async {
+      // Pre-fill 4 of the 5 daily slots so the next call sits at
+      // the boundary.
+      final store = _DeterministicAttemptStore();
+      final now = DateTime.utc(2026, 4, 28, 12);
+      for (var i = 0; i < 4; i++) {
+        store.attempts(_userId).add(now.subtract(Duration(hours: 2 + i)));
+      }
+      final limiter = RecoveryCodeAttemptLimiter(store: store, now: () => now);
 
-        // Fire two concurrent atomic check+record passes for the
-        // SAME user. The per-user mutex serializes them; the first
-        // observes count=4 (Allowed, records the 5th slot) and the
-        // second observes count=5 (DailyExhausted, no record).
-        final results =
-            await Future.wait(<Future<RecoveryCodeAttemptDecision>>[
-          limiter.checkAndRecord(userId: _userId),
-          limiter.checkAndRecord(userId: _userId),
-        ]);
+      // Fire two concurrent atomic check+record passes for the
+      // SAME user. The per-user mutex serializes them; the first
+      // observes count=4 (Allowed, records the 5th slot) and the
+      // second observes count=5 (DailyExhausted, no record).
+      final results = await Future.wait(<Future<RecoveryCodeAttemptDecision>>[
+        limiter.checkAndRecord(userId: _userId),
+        limiter.checkAndRecord(userId: _userId),
+      ]);
 
-        // Exactly one Allowed, exactly one DailyExhausted — the
-        // budget held under contention.
-        final allowedCount = results
-            .where((d) => d is RecoveryCodeAttemptAllowed)
-            .length;
-        final exhaustedCount = results
-            .where((d) => d is RecoveryCodeAttemptDailyExhausted)
-            .length;
-        expect(allowedCount, equals(1));
-        expect(exhaustedCount, equals(1));
-        // Only the winner appended to the durable store.
-        expect(store.attempts(_userId), hasLength(5));
-        // Call interleaving proves serialization: the first read
-        // completes before the second read starts. (Without the
-        // mutex, the call log would interleave reads.)
-        expect(store.callLog.first, equals('recentAttempts:$_userId'));
-        expect(store.callLog[1], equals('recordAttempt:$_userId'));
-        expect(store.callLog[2], equals('recentAttempts:$_userId'));
-      },
-    );
+      // Exactly one Allowed, exactly one DailyExhausted — the
+      // budget held under contention.
+      final allowedCount = results
+          .whereType<RecoveryCodeAttemptAllowed>()
+          .length;
+      final exhaustedCount = results
+          .whereType<RecoveryCodeAttemptDailyExhausted>()
+          .length;
+      expect(allowedCount, equals(1));
+      expect(exhaustedCount, equals(1));
+      // Only the winner appended to the durable store.
+      expect(store.attempts(_userId), hasLength(5));
+      // Call interleaving proves serialization: the first read
+      // completes before the second read starts. (Without the
+      // mutex, the call log would interleave reads.)
+      expect(store.callLog.first, equals('recentAttempts:$_userId'));
+      expect(store.callLog[1], equals('recordAttempt:$_userId'));
+      expect(store.callLog[2], equals('recentAttempts:$_userId'));
+    });
 
     test('different users do NOT serialize against each other', () async {
       // Two different users at the budget boundary should be
@@ -95,15 +85,12 @@ void main() {
       // deterministic store interleaves their reads (otherwise the
       // first user would finish entirely before the second started).
       final store = _DeterministicAttemptStore();
-      var now = DateTime.utc(2026, 4, 28, 12);
+      final now = DateTime.utc(2026, 4, 28, 12);
       for (var i = 0; i < 4; i++) {
         store.attempts(_userId).add(now.subtract(Duration(hours: 2 + i)));
         store.attempts(_otherUserId).add(now.subtract(Duration(hours: 2 + i)));
       }
-      final limiter = RecoveryCodeAttemptLimiter(
-        store: store,
-        now: () => now,
-      );
+      final limiter = RecoveryCodeAttemptLimiter(store: store, now: () => now);
 
       final results = await Future.wait(<Future<RecoveryCodeAttemptDecision>>[
         limiter.checkAndRecord(userId: _userId),
@@ -119,67 +106,43 @@ void main() {
       // (i.e. one global lock) the order would be read1, record1,
       // read2, record2 instead.
       expect(store.callLog, hasLength(4));
-      expect(
-        store.callLog.first,
-        equals('recentAttempts:$_userId'),
-      );
+      expect(store.callLog.first, equals('recentAttempts:$_userId'));
       // Second log entry is the OTHER user's read, not the first
       // user's record.
-      expect(
-        store.callLog[1],
-        equals('recentAttempts:$_otherUserId'),
-      );
+      expect(store.callLog[1], equals('recentAttempts:$_otherUserId'));
     });
 
-    test(
-      'rate-limited within the per-minute window does NOT record a '
-      'fresh attempt (would let an attacker flood the table)',
-      () async {
-        final store = _DeterministicAttemptStore();
-        var now = DateTime.utc(2026, 4, 28, 12);
-        // Last attempt 30s ago — inside the 1-minute window.
-        store.attempts(_userId).add(now.subtract(const Duration(seconds: 30)));
-        final limiter = RecoveryCodeAttemptLimiter(
-          store: store,
-          now: () => now,
-        );
+    test('rate-limited within the per-minute window does NOT record a '
+        'fresh attempt (would let an attacker flood the table)', () async {
+      final store = _DeterministicAttemptStore();
+      final now = DateTime.utc(2026, 4, 28, 12);
+      // Last attempt 30s ago — inside the 1-minute window.
+      store.attempts(_userId).add(now.subtract(const Duration(seconds: 30)));
+      final limiter = RecoveryCodeAttemptLimiter(store: store, now: () => now);
 
-        final decision = await limiter.checkAndRecord(userId: _userId);
+      final decision = await limiter.checkAndRecord(userId: _userId);
 
-        expect(decision, isA<RecoveryCodeAttemptRateLimited>());
-        // Read happened; record did NOT.
-        expect(
-          store.callLog,
-          equals(<String>['recentAttempts:$_userId']),
-        );
-        expect(store.attempts(_userId), hasLength(1));
-      },
-    );
+      expect(decision, isA<RecoveryCodeAttemptRateLimited>());
+      // Read happened; record did NOT.
+      expect(store.callLog, equals(<String>['recentAttempts:$_userId']));
+      expect(store.attempts(_userId), hasLength(1));
+    });
 
-    test(
-      'daily-exhausted does NOT record a fresh attempt',
-      () async {
-        final store = _DeterministicAttemptStore();
-        var now = DateTime.utc(2026, 4, 28, 12);
-        // Already at the budget.
-        for (var i = 0; i < 5; i++) {
-          store.attempts(_userId).add(now.subtract(Duration(hours: 2 + i)));
-        }
-        final limiter = RecoveryCodeAttemptLimiter(
-          store: store,
-          now: () => now,
-        );
+    test('daily-exhausted does NOT record a fresh attempt', () async {
+      final store = _DeterministicAttemptStore();
+      final now = DateTime.utc(2026, 4, 28, 12);
+      // Already at the budget.
+      for (var i = 0; i < 5; i++) {
+        store.attempts(_userId).add(now.subtract(Duration(hours: 2 + i)));
+      }
+      final limiter = RecoveryCodeAttemptLimiter(store: store, now: () => now);
 
-        final decision = await limiter.checkAndRecord(userId: _userId);
+      final decision = await limiter.checkAndRecord(userId: _userId);
 
-        expect(decision, isA<RecoveryCodeAttemptDailyExhausted>());
-        expect(
-          store.callLog,
-          equals(<String>['recentAttempts:$_userId']),
-        );
-        expect(store.attempts(_userId), hasLength(5));
-      },
-    );
+      expect(decision, isA<RecoveryCodeAttemptDailyExhausted>());
+      expect(store.callLog, equals(<String>['recentAttempts:$_userId']));
+      expect(store.attempts(_userId), hasLength(5));
+    });
 
     test('lock releases after store error so next caller proceeds', () async {
       // First caller's store throws; second caller MUST not block
@@ -199,19 +162,22 @@ void main() {
       expect(decision, isA<RecoveryCodeAttemptAllowed>());
     });
 
-    test('legacy check + recordAttempt still work for backward compat', () async {
-      final store = _DeterministicAttemptStore();
-      var now = DateTime.utc(2026, 4, 28, 12);
-      final limiter = RecoveryCodeAttemptLimiter(
-        store: store,
-        now: () => now,
-      );
+    test(
+      'legacy check + recordAttempt still work for backward compat',
+      () async {
+        final store = _DeterministicAttemptStore();
+        final now = DateTime.utc(2026, 4, 28, 12);
+        final limiter = RecoveryCodeAttemptLimiter(
+          store: store,
+          now: () => now,
+        );
 
-      final pre = await limiter.check(userId: _userId);
-      expect(pre, isA<RecoveryCodeAttemptAllowed>());
-      await limiter.recordAttempt(userId: _userId);
-      expect(store.attempts(_userId), hasLength(1));
-    });
+        final pre = await limiter.check(userId: _userId);
+        expect(pre, isA<RecoveryCodeAttemptAllowed>());
+        await limiter.recordAttempt(userId: _userId);
+        expect(store.attempts(_userId), hasLength(1));
+      },
+    );
   });
 }
 
@@ -233,9 +199,9 @@ class _DeterministicAttemptStore implements RecoveryCodeAttemptStore {
   }) async {
     callLog.add('recentAttempts:$userId');
     final cutoff = now.subtract(window);
-    return attempts(userId)
-        .where((ts) => ts.isAfter(cutoff))
-        .toList(growable: false);
+    return attempts(
+      userId,
+    ).where((ts) => ts.isAfter(cutoff)).toList(growable: false);
   }
 
   @override

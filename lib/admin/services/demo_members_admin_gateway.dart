@@ -436,6 +436,66 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
   }
 
   @override
+  Future<MemberAdminRow> updateDisplayName({
+    required String operatorId,
+    required String userId,
+    required String displayName,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'updateDisplayName');
+    _ensureAdminReason(adminReason, 'updateDisplayName');
+    final nextDisplayName = displayName.trim();
+    if (nextDisplayName.isEmpty) {
+      throw MembersAdminGatewayError(
+        statusCode: 400,
+        errorCode: 'display_name_required',
+        message: MembersValidationCopy.displayNameEmpty,
+      );
+    }
+    final cached = _idempotentResults[idempotencyKey];
+    if (cached is MemberAdminRow) return cached;
+    final members = _membersFor(operatorId);
+    final index = _indexOfMember(operatorId: operatorId, userId: userId);
+    final prev = members[index];
+    final updated = MemberAdminRow(
+      userId: prev.userId,
+      email: prev.email,
+      displayName: nextDisplayName,
+      roleKey: prev.roleKey,
+      primaryLocationId: prev.primaryLocationId,
+      primaryLocationName: prev.primaryLocationName,
+      status: prev.status,
+      mfaEnrolled: prev.mfaEnrolled,
+      lastActiveAt: prev.lastActiveAt,
+      createdAt: prev.createdAt,
+      createdBy: prev.createdBy,
+      updatedAt: _clock(),
+      updatedBy: actorUserId,
+      orgUnitId: prev.orgUnitId,
+    );
+    members[index] = updated;
+    _record(
+      action: 'team.users.update_profile',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      targetKind: 'team_user',
+      targetId: userId,
+      payload: <String, Object?>{
+        'display_name': <String, String>{
+          'from': prev.displayName,
+          'to': nextDisplayName,
+        },
+      },
+      adminReason: adminReason,
+    );
+    _idempotentResults[idempotencyKey] = updated;
+    return updated;
+  }
+
+  @override
   Future<MemberAdminRow> overrideRoleGrant({
     required String operatorId,
     required String userId,

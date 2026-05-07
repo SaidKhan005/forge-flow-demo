@@ -93,6 +93,70 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     );
   }
 
+  @override
+  Future<TeamUserProfilePatched> patchUserProfile(
+    TeamUserProfilePatchCommand command,
+  ) async {
+    final displayName = _requiredTrimmed(command.displayName, 'displayName');
+    final reason = _requiredTrimmed(command.reason, 'reason');
+    final before = await listUsers(
+      TeamUserListCommand(
+        actorUserId: command.actorUserId,
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+      ),
+    );
+    final beforeUser = _teamUserById(before.users, command.targetUserId);
+    final affected = await usersRepository.updateDisplayName(
+      operatorId: command.operatorId,
+      userId: command.targetUserId,
+      displayName: displayName,
+      adminReason: reason,
+    );
+    final after = await listUsers(
+      TeamUserListCommand(
+        actorUserId: command.actorUserId,
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+      ),
+    );
+    final user = _teamUserById(after.users, command.targetUserId);
+    if (user == null) {
+      throw const AuthOperationRejected(
+        code: 'user_not_found',
+        message: 'team user was not found for this operator',
+        statusCode: 404,
+      );
+    }
+    if (affected > 0 && beforeUser?.displayName != displayName) {
+      await _audit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        targetUserId: command.targetUserId,
+        eventType: 'auth.user_profile_updated',
+        payload: <String, Object?>{
+          'field': 'display_name',
+          if (beforeUser != null)
+            'previous_display_name': beforeUser.displayName,
+          'display_name': displayName,
+          'reason': reason,
+        },
+      );
+    }
+    return TeamUserProfilePatched(user: user);
+  }
+
+  static TeamUserListEntry? _teamUserById(
+    List<TeamUserListEntry> users,
+    String userId,
+  ) {
+    for (final user in users) {
+      if (user.userId == userId) return user;
+    }
+    return null;
+  }
+
   static List<TeamGrantSnapshot> _teamGrantSnapshotsFromRepositoryRows(
     List<TeamUserGrantRepositoryRow> rows,
   ) {
@@ -345,10 +409,11 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       );
     } on FirebaseAdminAuthError catch (error) {
       if (error.code == 'email_exists') {
-        throw const AuthOperationRejected(
+        throw AuthOperationRejected(
           code: 'invite_email_already_exists',
           message: 'an account with this email already exists',
           statusCode: 409,
+          details: await _emailConflictDetails(command.email),
         );
       }
       rethrow;
@@ -417,6 +482,26 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       expiresAt: expiresAt,
       userId: userId,
     );
+  }
+
+  Future<Map<String, Object?>> _emailConflictDetails(String email) async {
+    try {
+      final rows = await usersRepository.listEmailConflictUsages(
+        email: email,
+        adminReason: 'team.invite_email_conflict_lookup',
+      );
+      return <String, Object?>{
+        'email': email,
+        'email_conflicts': <Map<String, Object?>>[
+          for (final row in rows) row.toJson(),
+        ],
+        if (rows.isEmpty)
+          'email_conflict_note':
+              'Firebase has an account for this email, but no active Forge & Flow team row was found.',
+      };
+    } catch (_) {
+      return <String, Object?>{'email': email};
+    }
   }
 
   void _validateOperatorOwnerBootstrap({
@@ -927,10 +1012,11 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     final repo = _requireAuthSessionsRepository();
     final reason =
         _readNonBlankString(command.reason) ?? 'user_signed_out_all_sessions';
+    final targetUserId = command.targetUserId ?? command.actorUserId;
     final affected = await repo.revokeAllSessionsForUser(
       operatorId: command.operatorId,
       locationId: command.locationId,
-      userId: command.actorUserId,
+      userId: targetUserId,
       reason: reason,
     );
     if (affected > 0) {
@@ -938,7 +1024,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         operatorId: command.operatorId,
         locationId: command.locationId,
         actorUserId: command.actorUserId,
-        targetUserId: command.actorUserId,
+        targetUserId: targetUserId,
         eventType: 'auth.all_sessions_revoked',
         payload: <String, Object?>{'revoked_count': affected, 'reason': reason},
       );

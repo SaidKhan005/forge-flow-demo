@@ -17,34 +17,31 @@ void main() {
   final hex32 = RegExp(r'^[0-9a-f]{32}$');
 
   group('ProxyRefreshTokenRevoker default idempotency key', () {
-    test(
-      'is exactly 32 lowercase hex chars on every revoke call',
-      () async {
-        final fake = _FakeProxyHttpJsonClient();
-        final revoker = ProxyRefreshTokenRevoker(
-          proxyBaseUri: baseUri,
-          idTokenProvider: () async => 'fake-id-token',
-          httpClient: fake,
+    test('is exactly 32 lowercase hex chars on every revoke call', () async {
+      final fake = _FakeProxyHttpJsonClient();
+      final revoker = ProxyRefreshTokenRevoker(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'fake-id-token',
+        httpClient: fake,
+      );
+
+      // 16 calls is plenty to catch a stray prefix or wrong length;
+      // the 1000-key uniqueness check below covers collision risk.
+      for (var i = 0; i < 16; i++) {
+        await revoker.revokeAllRefreshTokens();
+      }
+
+      expect(fake.posts, hasLength(16));
+      for (final call in fake.posts) {
+        final key = call.headers['Idempotency-Key'];
+        expect(key, isNotNull);
+        expect(
+          key,
+          matches(hex32),
+          reason: 'idempotency key must be 32 lowercase hex chars',
         );
-
-        // 16 calls is plenty to catch a stray prefix or wrong length;
-        // the 1000-key uniqueness check below covers collision risk.
-        for (var i = 0; i < 16; i++) {
-          await revoker.revokeAllRefreshTokens();
-        }
-
-        expect(fake.posts, hasLength(16));
-        for (final call in fake.posts) {
-          final key = call.headers['Idempotency-Key'];
-          expect(key, isNotNull);
-          expect(
-            key,
-            matches(hex32),
-            reason: 'idempotency key must be 32 lowercase hex chars',
-          );
-        }
-      },
-    );
+      }
+    });
 
     test('generates 1000 distinct hex32 keys (no collisions)', () async {
       final fake = _FakeProxyHttpJsonClient();
@@ -72,25 +69,22 @@ void main() {
       expect(keys.toSet().length, equals(1000));
     });
 
-    test(
-      'forwards a caller-supplied idempotencyKeyFactory verbatim',
-      () async {
-        final fake = _FakeProxyHttpJsonClient();
-        final revoker = ProxyRefreshTokenRevoker(
-          proxyBaseUri: baseUri,
-          idTokenProvider: () async => 'fake-id-token',
-          httpClient: fake,
-          idempotencyKeyFactory: () => 'caller-owned-key',
-        );
+    test('forwards a caller-supplied idempotencyKeyFactory verbatim', () async {
+      final fake = _FakeProxyHttpJsonClient();
+      final revoker = ProxyRefreshTokenRevoker(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'fake-id-token',
+        httpClient: fake,
+        idempotencyKeyFactory: () => 'caller-owned-key',
+      );
 
-        await revoker.revokeAllRefreshTokens();
+      await revoker.revokeAllRefreshTokens();
 
-        expect(
-          fake.posts.single.headers['Idempotency-Key'],
-          equals('caller-owned-key'),
-        );
-      },
-    );
+      expect(
+        fake.posts.single.headers['Idempotency-Key'],
+        equals('caller-owned-key'),
+      );
+    });
   });
 
   test(
@@ -117,14 +111,10 @@ void main() {
 }
 
 class _FakeProxyHttpJsonClient implements ProxyHttpJsonClient {
-  _FakeProxyHttpJsonClient({
-    this.response = const ProxyHttpJsonResponse(
-      statusCode: 200,
-      body: <String, Object?>{'ok': true},
-    ),
-  });
-
-  final ProxyHttpJsonResponse response;
+  final ProxyHttpJsonResponse response = const ProxyHttpJsonResponse(
+    statusCode: 200,
+    body: <String, Object?>{'ok': true},
+  );
   final posts = <_CapturedRevokeCall>[];
 
   @override

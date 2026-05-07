@@ -15,7 +15,6 @@
 // probe and fails if the literal string `x-api-key` (or any value
 // matching the Anthropic key prefix) appears.
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -38,15 +37,19 @@ void main() {
         captured: captured,
         respond: (request) async {
           request.response.statusCode = 200;
-          request.response.headers.contentType =
-              ContentType('application', 'json');
+          request.response.headers.contentType = ContentType(
+            'application',
+            'json',
+          );
           request.response.write(jsonEncode(<String, Object?>{'status': 'ok'}));
           await request.response.close();
         },
       );
       try {
         final result = await probeForgeFlowProxyHealth(
-          proxyBaseUri: Uri.parse('http://${server.address.host}:${server.port}'),
+          proxyBaseUri: Uri.parse(
+            'http://${server.address.host}:${server.port}',
+          ),
         );
         expect(result.status, equals(AnthropicModelCheckStatus.cannotCheck));
         expect(result.message, contains('reachable'));
@@ -56,13 +59,18 @@ void main() {
         expect(captured.single.method, equals('GET'));
         // Hard Promise #7: no BYO-key header on the wire.
         expect(captured.single.headers.containsKey('x-api-key'), isFalse);
-        expect(captured.single.headers.containsKey('anthropic-version'),
-            isFalse);
+        expect(
+          captured.single.headers.containsKey('anthropic-version'),
+          isFalse,
+        );
         // No Anthropic-style API key value in any header.
         for (final values in captured.single.headers.values) {
           for (final v in values) {
-            expect(v.startsWith('sk-ant-'), isFalse,
-                reason: 'no client-held Anthropic key may appear in headers');
+            expect(
+              v.startsWith('sk-ant-'),
+              isFalse,
+              reason: 'no client-held Anthropic key may appear in headers',
+            );
           }
         }
       } finally {
@@ -80,12 +88,17 @@ void main() {
       );
       try {
         final result = await probeForgeFlowProxyHealth(
-          proxyBaseUri: Uri.parse('http://${server.address.host}:${server.port}'),
+          proxyBaseUri: Uri.parse(
+            'http://${server.address.host}:${server.port}',
+          ),
         );
         expect(result.status, equals(AnthropicModelCheckStatus.cannotCheck));
         expect(result.message, contains('503'));
         // 5xx is NOT online — must not return `available`.
-        expect(result.status, isNot(equals(AnthropicModelCheckStatus.available)));
+        expect(
+          result.status,
+          isNot(equals(AnthropicModelCheckStatus.available)),
+        );
       } finally {
         await server.close(force: true);
       }
@@ -100,31 +113,34 @@ void main() {
       expect(result.status, equals(AnthropicModelCheckStatus.cannotCheck));
     });
 
-    test('preserves a path prefix on proxyBaseUri when probing /healthz',
-        () async {
-      final captured = <_CapturedRequest>[];
-      final server = await _startStubProxy(
-        captured: captured,
-        respond: (request) async {
-          request.response.statusCode = 200;
-          await request.response.close();
-        },
-      );
-      try {
-        // The legacy plumbing on `Uri.resolve` would silently throw
-        // away a base prefix ("/api/") and probe "/healthz" at root.
-        // Guard the documented `replace`-based behavior: probe the
-        // exact `/healthz` path on the configured host.
-        await probeForgeFlowProxyHealth(
-          proxyBaseUri: Uri.parse(
-              'http://${server.address.host}:${server.port}/api'),
+    test(
+      'preserves a path prefix on proxyBaseUri when probing /healthz',
+      () async {
+        final captured = <_CapturedRequest>[];
+        final server = await _startStubProxy(
+          captured: captured,
+          respond: (request) async {
+            request.response.statusCode = 200;
+            await request.response.close();
+          },
         );
-        expect(captured, hasLength(1));
-        expect(captured.single.path, equals('/healthz'));
-      } finally {
-        await server.close(force: true);
-      }
-    });
+        try {
+          // The legacy plumbing on `Uri.resolve` would silently throw
+          // away a base prefix ("/api/") and probe "/healthz" at root.
+          // Guard the documented `replace`-based behavior: probe the
+          // exact `/healthz` path on the configured host.
+          await probeForgeFlowProxyHealth(
+            proxyBaseUri: Uri.parse(
+              'http://${server.address.host}:${server.port}/api',
+            ),
+          );
+          expect(captured, hasLength(1));
+          expect(captured.single.path, equals('/healthz'));
+        } finally {
+          await server.close(force: true);
+        }
+      },
+    );
   });
 
   group('defaultAnthropicOnlineCheck', () {
@@ -157,18 +173,22 @@ Future<HttpServer> _startStubProxy({
       request.headers.forEach((name, values) {
         headers[name] = values;
       });
-      captured.add(_CapturedRequest(
-        method: request.method,
-        path: request.uri.path,
-        headers: headers,
-      ));
+      captured.add(
+        _CapturedRequest(
+          method: request.method,
+          path: request.uri.path,
+          headers: headers,
+        ),
+      );
     }
     try {
       await respond(request);
     } catch (_) {
       try {
         await request.response.close();
-      } catch (_) {/* ignore double-close */}
+      } catch (_) {
+        /* ignore double-close */
+      }
     }
   });
   return server;

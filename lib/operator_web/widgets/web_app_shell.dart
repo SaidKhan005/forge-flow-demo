@@ -32,6 +32,30 @@ class OperatorWebNavItem {
   final bool placeholder;
 }
 
+/// Management scope surfaced in the shell header. The hierarchy tab
+/// owns structural edits; this selector only tells route bodies what
+/// part of the business the operator is managing right now.
+enum OperatorWebManagementScopeKind { operator, orgUnit, location }
+
+@immutable
+class OperatorWebManagementScopeOption {
+  const OperatorWebManagementScopeOption({
+    required this.key,
+    required this.kind,
+    required this.id,
+    required this.label,
+    required this.helper,
+    this.parentOrgUnitId,
+  });
+
+  final String key;
+  final OperatorWebManagementScopeKind kind;
+  final String id;
+  final String label;
+  final String helper;
+  final String? parentOrgUnitId;
+}
+
 /// Branded shell for the operator-web console. Hosts the body widget
 /// the router renders for the active route.
 class WebAppShell extends StatelessWidget {
@@ -43,6 +67,11 @@ class WebAppShell extends StatelessWidget {
     required this.onSelectNav,
     required this.body,
     required this.onSignOut,
+    this.managementScopeOptions = const <OperatorWebManagementScopeOption>[],
+    this.selectedManagementScopeKey,
+    this.managementScopeLoading = false,
+    this.managementScopeError,
+    this.onSelectManagementScope,
   });
 
   final OperatorWebSession session;
@@ -51,6 +80,11 @@ class WebAppShell extends StatelessWidget {
   final ValueChanged<String> onSelectNav;
   final Widget body;
   final VoidCallback onSignOut;
+  final List<OperatorWebManagementScopeOption> managementScopeOptions;
+  final String? selectedManagementScopeKey;
+  final bool managementScopeLoading;
+  final String? managementScopeError;
+  final ValueChanged<String>? onSelectManagementScope;
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +94,15 @@ class WebAppShell extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            _HeaderBar(session: session, onSignOut: onSignOut),
+            _HeaderBar(
+              session: session,
+              onSignOut: onSignOut,
+              managementScopeOptions: managementScopeOptions,
+              selectedManagementScopeKey: selectedManagementScopeKey,
+              managementScopeLoading: managementScopeLoading,
+              managementScopeError: managementScopeError,
+              onSelectManagementScope: onSelectManagementScope,
+            ),
             Expanded(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -87,78 +129,314 @@ class WebAppShell extends StatelessWidget {
 }
 
 class _HeaderBar extends StatelessWidget {
-  const _HeaderBar({required this.session, required this.onSignOut});
+  const _HeaderBar({
+    required this.session,
+    required this.onSignOut,
+    required this.managementScopeOptions,
+    required this.selectedManagementScopeKey,
+    required this.managementScopeLoading,
+    required this.managementScopeError,
+    required this.onSelectManagementScope,
+  });
 
   final OperatorWebSession session;
   final VoidCallback onSignOut;
+  final List<OperatorWebManagementScopeOption> managementScopeOptions;
+  final String? selectedManagementScopeKey;
+  final bool managementScopeLoading;
+  final String? managementScopeError;
+  final ValueChanged<String>? onSelectManagementScope;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final showRole = constraints.maxWidth >= 760;
+        final showIdentity = constraints.maxWidth >= 1000;
+        final pickerWidth = constraints.maxWidth >= 980 ? 260.0 : 184.0;
+        final showPicker =
+            managementScopeOptions.isNotEmpty || managementScopeLoading;
+        return Container(
+          key: const Key('operator_web_header_bar'),
+          height: 64,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppColors.backgroundDeep,
+                AppColors.backgroundDeep.withValues(alpha: 0.85),
+              ],
+            ),
+            border: Border(
+              bottom: BorderSide(
+                color: AppColors.borderSubtle.withValues(alpha: 0.7),
+                width: 1,
+              ),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              ClipOval(
+                child: Image.asset(
+                  'assets/images/forge_flow_splash_icon.png',
+                  width: 32,
+                  height: 32,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Forge & Flow',
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.display20(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      session.businessName,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.mono8(color: AppColors.sunsetDark),
+                    ),
+                  ],
+                ),
+              ),
+              if (showPicker) ...[
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: pickerWidth,
+                  child: _ManagementScopePicker(
+                    options: managementScopeOptions,
+                    selectedKey: selectedManagementScopeKey,
+                    loading: managementScopeLoading,
+                    error: managementScopeError,
+                    onChanged: onSelectManagementScope,
+                  ),
+                ),
+              ],
+              if (showRole) ...[
+                const SizedBox(width: 12),
+                _RolePill(roles: session.roles),
+              ],
+              if (showIdentity) ...[
+                const SizedBox(width: 12),
+                Flexible(child: _IdentityChip(session: session)),
+              ],
+              const SizedBox(width: 8),
+              IconButton(
+                key: const Key('operator_web_header_signout'),
+                tooltip:
+                    'Sign out — ends this browser session and returns '
+                    'you to the welcome screen.',
+                onPressed: onSignOut,
+                icon: const Icon(
+                  Icons.logout_outlined,
+                  size: 18,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ManagementScopePicker extends StatelessWidget {
+  const _ManagementScopePicker({
+    required this.options,
+    required this.selectedKey,
+    required this.loading,
+    required this.error,
+    required this.onChanged,
+  });
+
+  final List<OperatorWebManagementScopeOption> options;
+  final String? selectedKey;
+  final bool loading;
+  final String? error;
+  final ValueChanged<String>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    if (options.isEmpty) return const _ManagementScopePlaceholder();
+    final selected = options.any((option) => option.key == selectedKey)
+        ? selectedKey
+        : options.first.key;
+    final current = options.firstWhere(
+      (option) => option.key == selected,
+      orElse: () => options.first,
+    );
+    final borderColor = error == null
+        ? AppColors.borderSubtle
+        : AppColors.negative.withValues(alpha: 0.55);
+    final tooltip = error == null
+        ? 'Choose the business, group, or location you are managing. '
+              'Location-scoped tabs use a location selection.'
+        : '$error Showing the safest available context.';
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        key: const Key('operator_web_management_scope_container'),
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: AppColors.backgroundSurface.withValues(alpha: 0.84),
+          border: Border.all(color: borderColor, width: 1),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          children: [
+            Icon(_iconFor(current.kind), size: 16, color: AppColors.sunsetDark),
+            const SizedBox(width: 8),
+            Text(
+              'Managing',
+              style: AppTextStyles.mono8(color: AppColors.textMuted),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  key: const Key('operator_web_management_scope_picker'),
+                  value: selected,
+                  isExpanded: true,
+                  iconEnabledColor: AppColors.textSecondary,
+                  dropdownColor: AppColors.backgroundSurface,
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
+                  selectedItemBuilder: (context) => [
+                    for (final option in options)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          option.label,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                  ],
+                  items: [
+                    for (final option in options)
+                      DropdownMenuItem<String>(
+                        key: Key(
+                          'operator_web_management_scope_option_'
+                          '${_optionKey(option.key)}',
+                        ),
+                        value: option.key,
+                        child: Row(
+                          children: [
+                            Icon(
+                              _iconFor(option.kind),
+                              size: 16,
+                              color: AppColors.textSecondary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    option.label,
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                  Text(
+                                    option.helper,
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                    style: AppTextStyles.mono8(
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                  onChanged: loading || onChanged == null
+                      ? null
+                      : (value) {
+                          if (value == null) return;
+                          onChanged!(value);
+                        },
+                ),
+              ),
+            ),
+            if (loading)
+              const Padding(
+                padding: EdgeInsets.only(left: 6),
+                child: SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.sunsetDark,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static IconData _iconFor(OperatorWebManagementScopeKind kind) {
+    switch (kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return Icons.apartment_outlined;
+      case OperatorWebManagementScopeKind.orgUnit:
+        return Icons.account_tree_outlined;
+      case OperatorWebManagementScopeKind.location:
+        return Icons.place_outlined;
+    }
+  }
+
+  static String _optionKey(String key) => key
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+}
+
+class _ManagementScopePlaceholder extends StatelessWidget {
+  const _ManagementScopePlaceholder();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      key: const Key('operator_web_header_bar'),
-      height: 64,
+      key: const Key('operator_web_management_scope_loading'),
+      height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.backgroundDeep,
-            AppColors.backgroundDeep.withValues(alpha: 0.85),
-          ],
-        ),
-        border: Border(
-          bottom: BorderSide(
-            color: AppColors.borderSubtle.withValues(alpha: 0.7),
-            width: 1,
-          ),
-        ),
+        color: AppColors.backgroundSurface.withValues(alpha: 0.84),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
-          ClipOval(
-            child: Image.asset(
-              'assets/images/forge_flow_splash_icon.png',
-              width: 32,
-              height: 32,
-              fit: BoxFit.cover,
+          const SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.sunsetDark,
             ),
           ),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Forge & Flow',
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
-                ),
-                Text(
-                  session.businessName,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.mono8(color: AppColors.sunsetDark),
-                ),
-              ],
-            ),
-          ),
-          const Spacer(),
-          _RolePill(roles: session.roles),
-          const SizedBox(width: 12),
-          Flexible(child: _IdentityChip(session: session)),
           const SizedBox(width: 8),
-          IconButton(
-            key: const Key('operator_web_header_signout'),
-            tooltip:
-                'Sign out — ends this browser session and returns '
-                'you to the welcome screen.',
-            onPressed: onSignOut,
-            icon: const Icon(
-              Icons.logout_outlined,
-              size: 18,
-              color: AppColors.textSecondary,
+          Expanded(
+            child: Text(
+              'Loading context',
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
           ),
         ],

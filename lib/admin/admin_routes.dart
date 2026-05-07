@@ -174,11 +174,12 @@ const String kAdminOperatorPickerRouteId = 'operator-picker';
 const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   AdminRoute(
     id: kAdminOperatorsRouteId,
-    title: 'Operators',
+    title: 'Business accounts',
     path: '/operators',
     icon: Icons.business_outlined,
     section: AdminRouteSection.operations,
-    subtitle: 'Add operators, manage locations, and pause access when needed.',
+    subtitle:
+        'Find a business, review setup, and drill into locations, team, access, audit, and data controls.',
     builder: _buildOperators,
   ),
   AdminRoute(
@@ -269,21 +270,21 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminMembersRouteId,
-    title: 'Team',
+    title: 'Team & roles',
     path: '/admin/members',
     icon: Icons.people_alt_outlined,
     section: AdminRouteSection.operations,
-    subtitle: 'Review members, invites, and admin actions for one operator.',
+    subtitle:
+        'Review members, invites, roles, and roster actions for one business.',
     builder: _buildMembers,
   ),
   AdminRoute(
     id: kAdminRolesHierarchySessionsRouteId,
-    title: 'Access',
+    title: 'Access & hierarchy',
     path: '/admin/roles-hierarchy-sessions',
     icon: Icons.account_tree_outlined,
     section: AdminRouteSection.operations,
-    subtitle:
-        'Review roles, hierarchy, and sessions for the selected operator.',
+    subtitle: 'Review hierarchy and active sessions for the selected business.',
     builder: _buildRolesHierarchySessions,
   ),
   AdminRoute(
@@ -334,6 +335,36 @@ Widget _buildOperators(BuildContext context) {
               handoff.onSelectRoute(
                 AdminRouteIntent(
                   routeId: kAdminPollingPricingRouteId,
+                  operatorLocationScope: scope,
+                ),
+              );
+            },
+      onOpenTeam: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminMembersRouteId,
+                  operatorLocationScope: scope,
+                ),
+              );
+            },
+      onOpenAccess: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminRolesHierarchySessionsRouteId,
+                  operatorLocationScope: scope,
+                ),
+              );
+            },
+      onOpenAuditSupport: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminAuditedSupportActionsRouteId,
                   operatorLocationScope: scope,
                 ),
               );
@@ -619,6 +650,15 @@ Widget _buildMembers(BuildContext context) {
     );
   }
 
+  void openScopedAccess(OperatorPickerResult result) {
+    handoff?.onSelectRoute(
+      AdminRouteIntent(
+        routeId: kAdminRolesHierarchySessionsRouteId,
+        operatorLocationScope: _scopeFromPickerResult(result),
+      ),
+    );
+  }
+
   Future<OperatorPickerResult?> openPicker(
     BuildContext routeContext,
     String? adminUid,
@@ -642,6 +682,7 @@ Widget _buildMembers(BuildContext context) {
       initialPicked: initialPicked,
       openPicker: openPicker,
       onOperatorPicked: rememberPickedOperator,
+      onOpenAccess: handoff == null ? null : openScopedAccess,
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -659,6 +700,7 @@ Widget _buildMembers(BuildContext context) {
         initialPicked: initialPicked,
         openPicker: openPicker,
         onOperatorPicked: rememberPickedOperator,
+        onOpenAccess: handoff == null ? null : openScopedAccess,
       );
     },
   );
@@ -673,6 +715,7 @@ class _MembersAdminRouteShell extends StatefulWidget {
     required this.initialPicked,
     required this.openPicker,
     required this.onOperatorPicked,
+    required this.onOpenAccess,
   });
 
   final MembersAdminGateway gateway;
@@ -686,6 +729,7 @@ class _MembersAdminRouteShell extends StatefulWidget {
   )
   openPicker;
   final ValueChanged<OperatorPickerResult> onOperatorPicked;
+  final ValueChanged<OperatorPickerResult>? onOpenAccess;
 
   @override
   State<_MembersAdminRouteShell> createState() =>
@@ -790,6 +834,9 @@ class _MembersAdminRouteShellState extends State<_MembersAdminRouteShell> {
       pickedOperator: picked,
       editingEnabled: widget.editingEnabled,
       onChangeOperator: _openPicker,
+      onOpenAccess: widget.onOpenAccess == null
+          ? null
+          : () => widget.onOpenAccess!(picked),
     );
   }
 }

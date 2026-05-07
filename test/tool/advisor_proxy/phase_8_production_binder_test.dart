@@ -222,6 +222,7 @@ ProxyConfig _buildConfig({
     ProxySecretNames.servicePrincipalJwtSecret:
         'placeholder-service-principal-jwt-secret',
     ProxySecretNames.pgcryptoEnvelopeKey: 'placeholder-pgcrypto-envelope-key',
+    ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
     ...extraEnv,
   };
   return ProxyConfig.fromEnvironment(env);

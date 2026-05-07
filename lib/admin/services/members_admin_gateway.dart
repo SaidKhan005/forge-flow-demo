@@ -229,11 +229,13 @@ class MembersAdminGatewayError implements Exception {
     required this.statusCode,
     required this.errorCode,
     required this.message,
+    this.details = const <String, Object?>{},
   });
 
   final int statusCode;
   final String errorCode;
   final String message;
+  final Map<String, Object?> details;
 
   @override
   String toString() =>
@@ -307,6 +309,16 @@ abstract class MembersAdminGateway {
   Future<void> forceLogout({
     required String operatorId,
     required String userId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
+  Future<MemberAdminRow> updateDisplayName({
+    required String operatorId,
+    required String userId,
+    required String displayName,
     required String idempotencyKey,
     required String actorUserId,
     required bool actorIsForgeAdmin,
@@ -602,6 +614,39 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
   }
 
   @override
+  Future<MemberAdminRow> updateDisplayName({
+    required String operatorId,
+    required String userId,
+    required String displayName,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'updateDisplayName');
+    _requireAdminReason(adminReason, 'updateDisplayName');
+    final trimmedDisplayName = displayName.trim();
+    if (trimmedDisplayName.isEmpty) {
+      throw MembersAdminGatewayError(
+        statusCode: 400,
+        errorCode: 'display_name_required',
+        message: MembersValidationCopy.displayNameEmpty,
+      );
+    }
+    final body = await _send(
+      method: 'PATCH',
+      path: '$usersPath/${Uri.encodeComponent(userId)}',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'display_name': trimmedDisplayName,
+        'admin_reason': adminReason,
+      },
+    );
+    return _memberRowFromJson(_asMap(body['user']));
+  }
+
+  @override
   Future<MemberAdminRow> overrideRoleGrant({
     required String operatorId,
     required String userId,
@@ -760,6 +805,7 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
       statusCode: response.statusCode,
       errorCode: (parsed['error'] as String?) ?? 'unknown_error',
       message: message,
+      details: parsed,
     );
   }
 }
@@ -904,6 +950,7 @@ class MembersValidationCopy {
   static const String roleMissing = 'Choose a role for this member.';
   static const String locationMissing =
       'Choose a primary location for this member.';
+  static const String displayNameEmpty = 'Display name is required.';
 }
 
 /// Catalog of seeded role keys the invite dialog renders. Mirrors the

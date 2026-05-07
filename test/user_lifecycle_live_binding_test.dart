@@ -54,6 +54,35 @@ void main() {
     );
 
     test(
+      'updateDisplayName is operator-scoped and ignores deleted users',
+      () async {
+        final pool = _LifecyclePool();
+        final repo = UsersRepository(TenantTransactionWrapper(pool));
+        await repo.updateDisplayName(
+          operatorId: _validOpId,
+          userId: _validUserId,
+          displayName: 'Updated Team Name',
+          adminReason: 'team.users.update_profile',
+        );
+        final tx = pool.transactions.single;
+        expect(
+          tx.parameters[0]['value'],
+          equals('system:team.users.update_profile'),
+        );
+        expect(tx.executedSql[1], equals('set local role forge_admin'));
+        final sql = tx.executedSql.last;
+        expect(sql, contains('update users'));
+        expect(sql, contains('display_name = @display_name'));
+        expect(sql, contains('operator_id = @operator_id::uuid'));
+        expect(sql, contains('deleted_at is null'));
+        expect(sql, contains("status != 'deleted'"));
+        expect(tx.parameters.last['operator_id'], equals(_validOpId));
+        expect(tx.parameters.last['user_id'], equals(_validUserId));
+        expect(tx.parameters.last['display_name'], equals('Updated Team Name'));
+      },
+    );
+
+    test(
       'markLoggedIn uses withTenant + bumps last_login_at + last_active_at',
       () async {
         final pool = _LifecyclePool();
