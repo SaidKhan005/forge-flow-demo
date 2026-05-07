@@ -478,6 +478,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     await firebaseAdmin.setDisabled(uid: firebaseUid, disabled: true);
     final affected = await usersRepository.softDelete(
       userId: command.targetUserId,
+      operatorId: command.operatorId,
       adminReason: command.reason,
     );
     if (affected > 0) {
@@ -1102,6 +1103,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     await firebaseAdmin.setDisabled(uid: firebaseUid, disabled: disabled);
     final affected = await usersRepository.updateStatus(
       userId: command.targetUserId,
+      operatorId: command.operatorId,
       newStatus: status,
       adminReason: command.reason,
     );

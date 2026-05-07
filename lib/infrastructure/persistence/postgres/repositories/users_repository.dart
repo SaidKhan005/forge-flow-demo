@@ -441,8 +441,15 @@ class UsersRepository extends OperatorScopedRepository {
   /// state machine post-transition. Caller passes the actor +
   /// reason so the audit row writer (separate concern) can attribute
   /// the change.
+  ///
+  /// Code-health L3 (C5): the WHERE includes `operator_id = $N` so a
+  /// `withSystem` (BYPASSRLS) UPDATE cannot leak across tenants when a
+  /// caller passes a `userId` from operator A while believing it lives
+  /// in operator B. Without an operator match the UPDATE returns 0
+  /// affected rows.
   Future<int> updateStatus({
     required String userId,
+    required String operatorId,
     required String newStatus,
     required String adminReason,
   }) {
@@ -451,8 +458,13 @@ class UsersRepository extends OperatorScopedRepository {
         'update users '
         'set status = @status, updated_at = now() '
         'where user_id = @user_id::uuid '
+        'and operator_id = @operator_id::uuid '
         'and status != @status',
-        parameters: <String, Object?>{'user_id': userId, 'status': newStatus},
+        parameters: <String, Object?>{
+          'user_id': userId,
+          'operator_id': operatorId,
+          'status': newStatus,
+        },
       );
     }, reason: adminReason);
   }
@@ -505,11 +517,22 @@ class UsersRepository extends OperatorScopedRepository {
   /// Resolve the locked-out user and restaurant-admin recipients for the
   /// pre-auth MFA recovery request path. The caller returns only a generic
   /// accepted response to the client; this lookup must not leak existence.
+  ///
+  /// Code-health L3 (C5 cross-tenant scan): when [requireOperatorId] is
+  /// supplied the user lookup adds `operator_id = $N` so a system-pool
+  /// read cannot walk every tenant's rows. Pre-auth recovery callers
+  /// keep the default `null` (the operator is exactly what we are
+  /// resolving) and behavior is unchanged. The admin lookup remains
+  /// scoped to the resolved row's `operator_id`.
   Future<MfaRecoveryTargetRow?> findMfaRecoveryTargetByEmail({
     required String email,
     required String adminReason,
+    String? requireOperatorId,
   }) {
     return withSystem<MfaRecoveryTargetRow?>((exec) async {
+      final operatorPredicate = requireOperatorId == null
+          ? ''
+          : 'and u.operator_id = @scoped_operator_id::uuid ';
       final rows = await exec.query(
         'select u.user_id::text as user_id, '
         'u.operator_id::text as operator_id, '
@@ -521,8 +544,12 @@ class UsersRepository extends OperatorScopedRepository {
         'where lower(u.email) = lower(@email) '
         'and u.deleted_at is null '
         "and u.status != 'deleted' "
+        '$operatorPredicate'
         'limit 1',
-        parameters: <String, Object?>{'email': email},
+        parameters: <String, Object?>{
+          'email': email,
+          if (requireOperatorId != null) 'scoped_operator_id': requireOperatorId,
+        },
       );
       if (rows.isEmpty) return null;
       final row = rows.single;
@@ -659,18 +686,32 @@ class UsersRepository extends OperatorScopedRepository {
   /// System/background lookup for Firebase UID. Workers run outside a live
   /// operator session, so they use the admin wrapper and an explicit audit
   /// reason instead of trying to borrow a user's tenant context.
+  ///
+  /// Code-health L3 (C5 cross-tenant scan): when [requireOperatorId] is
+  /// supplied the WHERE adds `operator_id = $N` so the system-pool read
+  /// cannot accidentally walk every tenant's `users` rows. Pre-auth
+  /// callers (where the operator scope is not yet known) keep the
+  /// default `null` and behavior is unchanged.
   Future<String> firebaseUidForUserSystem({
     required String userId,
     required String adminReason,
+    String? requireOperatorId,
   }) {
     return withSystem<String>((exec) async {
+      final operatorPredicate = requireOperatorId == null
+          ? ''
+          : 'and operator_id = @operator_id::uuid ';
       final rows = await exec.query(
         'select firebase_uid::text as firebase_uid '
         'from users '
         'where user_id = @user_id::uuid '
         'and deleted_at is null '
+        '$operatorPredicate'
         'limit 1',
-        parameters: <String, Object?>{'user_id': userId},
+        parameters: <String, Object?>{
+          'user_id': userId,
+          if (requireOperatorId != null) 'operator_id': requireOperatorId,
+        },
       );
       if (rows.isEmpty) {
         throw StateError('users lookup returned no firebase_uid');
@@ -701,16 +742,24 @@ class UsersRepository extends OperatorScopedRepository {
   Future<String?> findActiveUserIdByFirebaseUidSystem({
     required String firebaseUid,
     required String adminReason,
+    String? requireOperatorId,
   }) {
     return withSystem<String?>((exec) async {
+      final operatorPredicate = requireOperatorId == null
+          ? ''
+          : 'and operator_id = @operator_id::uuid ';
       final rows = await exec.query(
         'select user_id::text as user_id '
         'from users '
         'where firebase_uid = @firebase_uid '
         'and deleted_at is null '
         "and status = 'active' "
+        '$operatorPredicate'
         'limit 1',
-        parameters: <String, Object?>{'firebase_uid': firebaseUid},
+        parameters: <String, Object?>{
+          'firebase_uid': firebaseUid,
+          if (requireOperatorId != null) 'operator_id': requireOperatorId,
+        },
       );
       if (rows.isEmpty) return null;
       final value = rows.single['user_id'];
@@ -866,8 +915,12 @@ class UsersRepository extends OperatorScopedRepository {
 
   /// Soft-delete: mark `deleted_at` + flip status to 'deleted'.
   /// Idempotent — repeated calls are a no-op.
+  ///
+  /// Code-health L3 (C5): operator scope is required so a
+  /// `withSystem` (BYPASSRLS) soft-delete cannot leak across tenants.
   Future<int> softDelete({
     required String userId,
+    required String operatorId,
     required String adminReason,
   }) {
     return withSystem<int>((exec) async {
@@ -875,8 +928,12 @@ class UsersRepository extends OperatorScopedRepository {
         'update users '
         "set deleted_at = now(), status = 'deleted', updated_at = now() "
         'where user_id = @user_id::uuid '
+        'and operator_id = @operator_id::uuid '
         'and deleted_at is null',
-        parameters: <String, Object?>{'user_id': userId},
+        parameters: <String, Object?>{
+          'user_id': userId,
+          'operator_id': operatorId,
+        },
       );
     }, reason: adminReason);
   }
@@ -884,16 +941,24 @@ class UsersRepository extends OperatorScopedRepository {
   /// Bump `roles_version` so cached permission snapshots invalidate.
   /// Used by anything that grants / revokes roles outside the
   /// `UserRolesRepository` path (e.g. status flips that strip access).
+  ///
+  /// Code-health L3 (C5): operator scope is required so a
+  /// `withSystem` (BYPASSRLS) bump cannot leak across tenants.
   Future<int> bumpRolesVersion({
     required String userId,
+    required String operatorId,
     required String adminReason,
   }) {
     return withSystem<int>((exec) async {
       return exec.execute(
         'update users '
         'set roles_version = roles_version + 1, updated_at = now() '
-        'where user_id = @user_id::uuid',
-        parameters: <String, Object?>{'user_id': userId},
+        'where user_id = @user_id::uuid '
+        'and operator_id = @operator_id::uuid',
+        parameters: <String, Object?>{
+          'user_id': userId,
+          'operator_id': operatorId,
+        },
       );
     }, reason: adminReason);
   }
@@ -903,15 +968,26 @@ class UsersRepository extends OperatorScopedRepository {
   /// `ErasureRedactionTemplate` contract from 9.8 — Art. 17(3) preserves
   /// `firebase_uid` (link integrity) + `user_id` + `created_at` so audit
   /// rows still have a stable join key.
-  Future<int> redactPii({required String userId, required String adminReason}) {
+  ///
+  /// Code-health L3 (C5): operator scope is required so a
+  /// `withSystem` (BYPASSRLS) redaction cannot leak across tenants.
+  Future<int> redactPii({
+    required String userId,
+    required String operatorId,
+    required String adminReason,
+  }) {
     return withSystem<int>((exec) async {
       return exec.execute(
         'update users '
         "set email = 'redacted-' || user_id::text || '@deleted.local', "
         'first_name = null, last_name = null, display_name = null, '
         'avatar_url = null, preferred_locale = null, updated_at = now() '
-        'where user_id = @user_id::uuid',
-        parameters: <String, Object?>{'user_id': userId},
+        'where user_id = @user_id::uuid '
+        'and operator_id = @operator_id::uuid',
+        parameters: <String, Object?>{
+          'user_id': userId,
+          'operator_id': operatorId,
+        },
       );
     }, reason: adminReason);
   }

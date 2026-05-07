@@ -65,6 +65,7 @@ class MfaRemovalWorker {
       try {
         final firebaseUid = await _usersRepository.firebaseUidForUserSystem(
           userId: request.userId,
+          requireOperatorId: request.operatorId,
           adminReason: 'system.mfa_factor_removal_worker_firebase_uid',
         );
         await _firebaseAdmin.clearMfaEnrollments(uid: firebaseUid);
