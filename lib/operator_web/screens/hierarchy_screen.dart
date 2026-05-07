@@ -34,6 +34,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../auth/permission_keys.dart';
 import '../../services/auth/auth_operations_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_hierarchy_gateway.dart';
@@ -63,12 +64,14 @@ const Set<String> kOperatorWebHierarchyWriteRoles = <String>{
 };
 
 /// Permission-key bound for the Hierarchy read surface. Live source
-/// hydrates from `/v1/auth/permissions/snapshot`.
-const String kHierarchyViewPermissionKey = 'team.users.view';
+/// hydrates from `/v1/auth/permissions/snapshot`. Aliased to the
+/// frozen catalog constant in `lib/auth/permission_keys.dart`.
+const String kHierarchyViewPermissionKey = PermissionKeys.teamUsersView;
 
 /// Permission-key bound for the create org unit + move location
-/// actions per the parity contract § Hierarchy.
-const String kHierarchyAssignPermissionKey = 'team.roles.assign';
+/// actions per the parity contract § Hierarchy. Aliased to the
+/// frozen catalog constant in `lib/auth/permission_keys.dart`.
+const String kHierarchyAssignPermissionKey = PermissionKeys.teamRolesAssign;
 
 /// Locked copy strings keyed off the parity contract § Hierarchy
 /// Validation copy block. Pinned in `HierarchyCopy` so widget tests

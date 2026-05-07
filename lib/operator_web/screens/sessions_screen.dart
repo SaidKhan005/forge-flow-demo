@@ -45,14 +45,16 @@
 
 import 'package:flutter/material.dart';
 
+import '../../auth/permission_keys.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_sessions_gateway.dart';
 import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 
-/// Permission-key bound for the Team sessions section.
+/// Permission-key bound for the Team sessions section. Aliased to the
+/// frozen catalog constant in `lib/auth/permission_keys.dart`.
 const String kSessionsTeamForceLogoutPermissionKey =
-    'team.session.force_logout';
+    PermissionKeys.teamSessionForceLogout;
 
 /// Roles admitted to the Team sessions section when the proxy
 /// permission snapshot is not yet hydrated. Authoritative gate is
