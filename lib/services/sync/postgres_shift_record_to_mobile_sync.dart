@@ -49,16 +49,19 @@ import '../../domain/repositories/restaurant_timing_config_repository.dart';
 import '../../domain/repositories/shift_record_repository.dart';
 import '../../domain/repositories/target_cycle_repository.dart';
 import '../../domain/repositories/target_profile_repository.dart';
+import '../../domain/repositories/weekly_plan_snapshot_repository.dart';
 import '../../infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_baseline_selection_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_timing_config_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
 import '../../state/app_runtime_invalidation_bus.dart';
 import '../integration/demo_mode_state.dart';
 import 'star_target_sync_resources.dart';
 import 'sync_proxy_client.dart';
+import 'weekly_plan_sync_resources.dart';
 
 /// Outcome of one [PostgresShiftRecordToMobileSync.sync] sweep.
 class SyncResult {
@@ -75,6 +78,7 @@ class SyncResult {
     required this.pollingTierAssignment,
     required this.firstBackfillStatus,
     required this.starTargetMirrors,
+    required this.weeklyPlanMirrors,
   });
 
   /// Total `ShiftRecord` rows persisted via
@@ -130,6 +134,12 @@ class SyncResult {
   /// version cache mirrors. Legacy proxy clients surface unavailable
   /// status here instead of treating existing local rows as server truth.
   final StarTargetMirrorSyncResult starTargetMirrors;
+
+  /// Status for weekly plan snapshot and forecast-context pulls. Weekly
+  /// snapshots write through the existing SQLite cache. Forecast context has
+  /// no existing SQLite table in this lane, so the orchestrator keeps the
+  /// latest rows in memory and marks that durable cache unavailable.
+  final WeeklyPlanMirrorSyncResult weeklyPlanMirrors;
 }
 
 /// Pulls aggregated `ShiftRecord` rows from server-side Postgres into
@@ -146,6 +156,7 @@ class PostgresShiftRecordToMobileSync {
     BaselineSelectionRepository? baselineSelectionRepository,
     TargetCycleRepository? targetCycleRepository,
     TargetProfileRepository? targetProfileRepository,
+    WeeklyPlanSnapshotRepository? weeklyPlanSnapshotRepository,
     AppRuntimeInvalidationBus? invalidationBus,
     this.pageSize = 200,
   }) : assert(pageSize > 0, 'pageSize must be positive'),
@@ -162,6 +173,9 @@ class PostgresShiftRecordToMobileSync {
            targetCycleRepository ?? SqliteTargetCycleRepository.instance,
        targetProfileRepository =
            targetProfileRepository ?? SqliteTargetProfileRepository.instance,
+       weeklyPlanSnapshotRepository =
+           weeklyPlanSnapshotRepository ??
+           SqliteWeeklyPlanSnapshotRepository.instance,
        invalidationBus = invalidationBus ?? AppRuntimeInvalidationBus.instance;
 
   final SyncProxyClient client;
@@ -171,6 +185,7 @@ class PostgresShiftRecordToMobileSync {
   final BaselineSelectionRepository baselineSelectionRepository;
   final TargetCycleRepository targetCycleRepository;
   final TargetProfileRepository targetProfileRepository;
+  final WeeklyPlanSnapshotRepository weeklyPlanSnapshotRepository;
   final ImportTrackingDao watermarkDao;
   final AppRuntimeInvalidationBus invalidationBus;
   final int pageSize;
@@ -186,6 +201,10 @@ class PostgresShiftRecordToMobileSync {
       'pg_active_target_profile_sync';
   static const String _profileVersionsSourceTypePrefix =
       'pg_target_profile_version_sync';
+  static const String _weeklyPlanSnapshotsSourceTypePrefix =
+      'pg_weekly_plan_snapshot_sync';
+  static const String _forecastContextsSourceTypePrefix =
+      'pg_forecast_context_sync';
 
   // ── Latest aux-pull snapshots (in-memory; SQLite parity deferred) ──
 
@@ -193,6 +212,8 @@ class PostgresShiftRecordToMobileSync {
   DataAccuracySettingsSnapshot? _latestDataAccuracySettings;
   ForgeFlowPollingTierAssignmentSnapshot? _latestPollingTierAssignment;
   FirstBackfillStatusSnapshot? _latestFirstBackfillStatus;
+  List<ForecastContextSyncRow> _latestForecastContexts =
+      const <ForecastContextSyncRow>[];
 
   /// Most-recent `demo_mode_state` rows pulled from the server.
   /// Refreshed on every successful sweep; empty before the first sweep.
@@ -213,6 +234,12 @@ class PostgresShiftRecordToMobileSync {
   /// proxy exposes one.
   FirstBackfillStatusSnapshot? get latestFirstBackfillStatus =>
       _latestFirstBackfillStatus;
+
+  /// Latest forecast context rows pulled from the proxy. These are memory-only
+  /// until a contracted SQLite cache exists; [SyncResult.weeklyPlanMirrors]
+  /// reports durable cache unavailable for this resource.
+  List<ForecastContextSyncRow> get latestForecastContexts =>
+      List<ForecastContextSyncRow>.unmodifiable(_latestForecastContexts);
 
   String _watermarkSourceType(String operatorId, String locationId) =>
       '$_sourceTypePrefix:$operatorId:$locationId';
@@ -241,6 +268,16 @@ class PostgresShiftRecordToMobileSync {
     String operatorId,
     String locationId,
   ) => '$_profileVersionsSourceTypePrefix:$operatorId:$locationId';
+
+  String _weeklyPlanSnapshotsWatermarkSourceType(
+    String operatorId,
+    String locationId,
+  ) => '$_weeklyPlanSnapshotsSourceTypePrefix:$operatorId:$locationId';
+
+  String _forecastContextsWatermarkSourceType(
+    String operatorId,
+    String locationId,
+  ) => '$_forecastContextsSourceTypePrefix:$operatorId:$locationId';
 
   Future<String?> _readCursor({
     required String restaurantId,
@@ -323,6 +360,7 @@ class PostgresShiftRecordToMobileSync {
         pollingTierAssignment: _latestPollingTierAssignment,
         firstBackfillStatus: _latestFirstBackfillStatus,
         starTargetMirrors: StarTargetMirrorSyncResult.skipped(),
+        weeklyPlanMirrors: WeeklyPlanMirrorSyncResult.skipped(),
       );
     }
     final initialCursor = await _readCursor(
@@ -440,6 +478,7 @@ class PostgresShiftRecordToMobileSync {
         pollingTierAssignment: _latestPollingTierAssignment,
         firstBackfillStatus: _latestFirstBackfillStatus,
         starTargetMirrors: StarTargetMirrorSyncResult.skipped(),
+        weeklyPlanMirrors: WeeklyPlanMirrorSyncResult.skipped(),
       );
     }
 
@@ -475,6 +514,12 @@ class PostgresShiftRecordToMobileSync {
       restaurantId: restaurantId,
       isAborted: isAborted,
     );
+    final weeklyPlanMirrors = await _syncWeeklyPlanMirrors(
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      isAborted: isAborted,
+    );
 
     return SyncResult(
       recordsWritten: recordsWritten,
@@ -489,6 +534,201 @@ class PostgresShiftRecordToMobileSync {
       pollingTierAssignment: _latestPollingTierAssignment,
       firstBackfillStatus: _latestFirstBackfillStatus,
       starTargetMirrors: starTargetMirrors,
+      weeklyPlanMirrors: weeklyPlanMirrors,
+    );
+  }
+
+  Future<WeeklyPlanMirrorSyncResult> _syncWeeklyPlanMirrors({
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+    bool Function()? isAborted,
+  }) async {
+    bool aborted() => isAborted?.call() ?? false;
+    if (aborted()) return WeeklyPlanMirrorSyncResult.skipped();
+    final weeklyPlanClient = client is WeeklyPlanSyncProxyClient
+        ? client as WeeklyPlanSyncProxyClient
+        : null;
+    if (weeklyPlanClient == null) {
+      _latestForecastContexts = const <ForecastContextSyncRow>[];
+      return WeeklyPlanMirrorSyncResult.unavailable(
+        'weekly_plan_proxy_client_not_configured',
+      );
+    }
+
+    final snapshots = await _syncWeeklyPlanSnapshots(
+      weeklyPlanClient,
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      isAborted: isAborted,
+    );
+    if (aborted()) {
+      return WeeklyPlanMirrorSyncResult(
+        weeklyPlanSnapshots: snapshots,
+        forecastContexts: WeeklyPlanResourceSyncStatus.skipped(
+          'forecast_contexts',
+        ),
+      );
+    }
+    final contexts = await _syncForecastContexts(
+      weeklyPlanClient,
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      isAborted: isAborted,
+    );
+
+    return WeeklyPlanMirrorSyncResult(
+      weeklyPlanSnapshots: snapshots,
+      forecastContexts: contexts,
+    );
+  }
+
+  Future<WeeklyPlanResourceSyncStatus> _syncWeeklyPlanSnapshots(
+    WeeklyPlanSyncProxyClient weeklyPlanClient, {
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+    bool Function()? isAborted,
+  }) async {
+    bool aborted() => isAborted?.call() ?? false;
+    final sourceType = _weeklyPlanSnapshotsWatermarkSourceType(
+      operatorId,
+      locationId,
+    );
+    var cursor = await _readCursor(
+      restaurantId: restaurantId,
+      operatorId: operatorId,
+      locationId: locationId,
+      sourceType: sourceType,
+    );
+    var pagesPulled = 0;
+    var rowsWritten = 0;
+    while (true) {
+      if (aborted()) {
+        return WeeklyPlanResourceSyncStatus.skipped('weekly_plan_snapshots');
+      }
+      final page = await weeklyPlanClient.fetchWeeklyPlanSnapshots(
+        operatorId: operatorId,
+        locationId: locationId,
+        cursor: cursor,
+        pageSize: pageSize,
+      );
+      if (page.isUnavailable) {
+        return WeeklyPlanResourceSyncStatus.unavailable(
+          'weekly_plan_snapshots',
+          page.unavailableReason!,
+          finalCursor: cursor,
+        );
+      }
+      pagesPulled++;
+      for (final row in page.snapshots) {
+        _assertScopedRow(
+          resource: 'weekly_plan_snapshots',
+          operatorId: operatorId,
+          locationId: locationId,
+          rowOperatorId: row.operatorId,
+          rowLocationId: row.locationId,
+        );
+        if (row.snapshot.restaurantId != restaurantId) continue;
+        await weeklyPlanSnapshotRepository.upsertSnapshot(row.snapshot);
+        rowsWritten++;
+      }
+      final next = page.nextCursor;
+      if (next == null) break;
+      await _writeCursor(
+        restaurantId: restaurantId,
+        operatorId: operatorId,
+        locationId: locationId,
+        cursorToken: next,
+        sourceType: sourceType,
+      );
+      cursor = next;
+    }
+    if (rowsWritten > 0) {
+      invalidationBus.notifyImportCompletionPersisted();
+    }
+    return WeeklyPlanResourceSyncStatus.synced(
+      resource: 'weekly_plan_snapshots',
+      rowsWritten: rowsWritten,
+      pagesPulled: pagesPulled,
+      finalCursor: cursor,
+    );
+  }
+
+  Future<WeeklyPlanResourceSyncStatus> _syncForecastContexts(
+    WeeklyPlanSyncProxyClient weeklyPlanClient, {
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+    bool Function()? isAborted,
+  }) async {
+    bool aborted() => isAborted?.call() ?? false;
+    final sourceType = _forecastContextsWatermarkSourceType(
+      operatorId,
+      locationId,
+    );
+    var cursor = await _readCursor(
+      restaurantId: restaurantId,
+      operatorId: operatorId,
+      locationId: locationId,
+      sourceType: sourceType,
+    );
+    var pagesPulled = 0;
+    final contexts = <ForecastContextSyncRow>[];
+    _latestForecastContexts = const <ForecastContextSyncRow>[];
+    while (true) {
+      if (aborted()) {
+        return WeeklyPlanResourceSyncStatus.skipped('forecast_contexts');
+      }
+      final page = await weeklyPlanClient.fetchForecastContexts(
+        operatorId: operatorId,
+        locationId: locationId,
+        cursor: cursor,
+        pageSize: pageSize,
+      );
+      if (page.isUnavailable) {
+        return WeeklyPlanResourceSyncStatus.unavailable(
+          'forecast_contexts',
+          page.unavailableReason!,
+          finalCursor: cursor,
+          pagesPulled: pagesPulled,
+          durableCacheAvailable: false,
+        );
+      }
+      pagesPulled++;
+      for (final row in page.contexts) {
+        _assertScopedRow(
+          resource: 'forecast_contexts',
+          operatorId: operatorId,
+          locationId: locationId,
+          rowOperatorId: row.operatorId,
+          rowLocationId: row.locationId,
+        );
+        if (row.context.restaurantId != restaurantId) continue;
+        contexts.add(row);
+      }
+      final next = page.nextCursor;
+      if (next == null) break;
+      await _writeCursor(
+        restaurantId: restaurantId,
+        operatorId: operatorId,
+        locationId: locationId,
+        cursorToken: next,
+        sourceType: sourceType,
+      );
+      cursor = next;
+    }
+    _latestForecastContexts = List<ForecastContextSyncRow>.unmodifiable(
+      contexts,
+    );
+    return WeeklyPlanResourceSyncStatus.unavailable(
+      'forecast_contexts',
+      'forecast_context_sqlite_cache_unavailable_memory_only',
+      finalCursor: cursor,
+      pagesPulled: pagesPulled,
+      durableCacheAvailable: false,
     );
   }
 

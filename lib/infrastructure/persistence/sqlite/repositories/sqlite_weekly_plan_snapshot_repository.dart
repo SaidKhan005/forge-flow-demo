@@ -41,4 +41,10 @@ class SqliteWeeklyPlanSnapshotRepository
     final dao = await _daoReady;
     return dao.upsertSnapshot(snapshot);
   }
+
+  @override
+  Future<void> wipeForOtherScopes(String keepRestaurantId) async {
+    final dao = await _daoReady;
+    return dao.wipeForOtherScopes(keepRestaurantId);
+  }
 }
