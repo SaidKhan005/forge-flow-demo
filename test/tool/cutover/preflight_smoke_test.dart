@@ -899,6 +899,18 @@ class SocketTestException implements Exception {
   String toString() => 'SocketTestException: $message';
 }
 
+/// Test-only exception used by [_ScriptedTransaction.throwOnQuery] to
+/// simulate a driver-level failure (e.g. `extension "age" does not
+/// exist`, `operator does not exist: vector <=> vector`,
+/// `permission denied`). The check under test must catch this and
+/// convert it to a red verdict — never propagate.
+class _ScriptedQueryFailure implements Exception {
+  const _ScriptedQueryFailure(this.message);
+  final String message;
+  @override
+  String toString() => 'ScriptedQueryFailure: $message';
+}
+
 class _ScriptedPool implements PostgresPool {
   _ScriptedPool(this._scripted);
 
@@ -926,6 +938,7 @@ class _ScriptedTransaction implements PostgresTransaction {
   _ScriptedTransaction({
     Map<String, List<PostgresRow>>? queryResponses,
     this.acceptAnyExecute = false,
+    this.throwOnQuery,
   }) : queryResponses = queryResponses ?? <String, List<PostgresRow>>{};
 
   /// Convenience: a transaction that accepts any execute() / query()
@@ -941,6 +954,12 @@ class _ScriptedTransaction implements PostgresTransaction {
   final Map<String, List<PostgresRow>> queryResponses;
   final bool acceptAnyExecute;
 
+  /// When set, every `query(...)` call raises a [_ScriptedQueryFailure]
+  /// carrying this message. Used by tests that want to simulate
+  /// "extension not installed" / "permission denied" / "operator does
+  /// not exist" responses from the underlying driver.
+  final String? throwOnQuery;
+
   bool committed = false;
   bool rolledBack = false;
   final executedSql = <String>[];
@@ -952,6 +971,9 @@ class _ScriptedTransaction implements PostgresTransaction {
     PostgresParameters parameters = const <String, Object?>{},
   }) async {
     queriedSql.add(sql);
+    if (throwOnQuery != null) {
+      throw _ScriptedQueryFailure(throwOnQuery!);
+    }
     for (final entry in queryResponses.entries) {
       if (sql.contains(entry.key)) {
         return entry.value;

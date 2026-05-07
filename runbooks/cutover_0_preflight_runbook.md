@@ -1,6 +1,6 @@
 # Cutover 0 Pre-Flight Runbook
 
-Updated: 2026-05-06.
+Updated: 2026-05-07.
 
 Purpose: govern the read-only `cutover.0` pre-flight gate that
 must pass before any production cutover work begins. Pairs the
@@ -82,14 +82,34 @@ dart run tool/cutover/preflight_smoke.dart `
   --include-firewall-probe `
   --dns-hostname=app.forgeflow.app `
   --dns-hostname=admin.forgeflow.app `
-  --skip-secrets
+  --proxy-base-uri=https://proxy.forgeflow.app `
+  --gcp-project-id=forge-flow-production1
 ```
 
 If the harness is run from a workstation (not the production deploy
 account), pass `--skip-secrets`. The Secret Manager probe will
 report yellow; the operator must perform that verification manually
 via `gcloud secrets versions access` from the deploy account before
-calling the gate green.
+calling the gate green. Pass `--skip-health-endpoint` from a
+workstation that cannot reach the Cloud Run egress directly.
+
+### Required Environment Variables
+
+The harness reads two env vars when the corresponding flag is not
+set on the command line:
+
+| Env Var | Used By | Notes |
+|---|---|---|
+| `PROXY_BASE_URI` | `health_endpoint` smoke | Falls back to this when `--proxy-base-uri` is omitted. `/health` is appended automatically. |
+| `GOOGLE_CLOUD_PROJECT` (or `GCP_PROJECT`) | `secret_manager_reachability` smoke | Falls back to this when `--gcp-project-id` is omitted. Required when the Secret Manager probe is not skipped. |
+
+Authentication for the live Secret Manager read is handled by
+Application Default Credentials. From a Cloud Run / Compute Engine
+host, the GCE metadata server provides the access token
+automatically. From a workstation, set `GOOGLE_APPLICATION_CREDENTIALS`
+to a service-account key file (or use `gcloud auth application-default
+login`). The CLI is a one-shot harness — failures bubble up as red
+verdicts, never blocking exceptions.
 
 ## Reading the Report
 
@@ -230,6 +250,104 @@ Escalation:
   has a documented "point back at staging" path).
 - If using a managed DNS provider, confirm the record propagation
   TTL has elapsed since the most recent change.
+
+### `cutover_preflight_red_age_cypher_match`
+
+What it means: the trivial `MATCH (n) RETURN n LIMIT 1` Cypher
+traversal against the named AGE graph (default `forge_graph`)
+failed. The two common causes are:
+
+1. The `age` extension is not installed on Production1.
+2. The named graph does not exist (the bootstrap migration that
+   creates the graph never ran).
+
+Escalation:
+
+- Confirm `CREATE EXTENSION IF NOT EXISTS age` has been applied
+  by inspecting `pg_extension` from a `psql` session.
+- Confirm the bootstrap migration that calls
+  `ag_catalog.create_graph('forge_graph')` is in the applied set
+  for the production cutoff.
+- If a non-default graph name is in use, re-run with
+  `--age-graph-name=<name>`.
+
+### `cutover_preflight_red_pgvector_cosine`
+
+What it means: the `'[1,0,0]'::vector <=> '[0,1,0]'::vector`
+probe failed, returned a non-numeric result, or the distance was
+outside the documented `[0, 2]` range.
+
+Escalation:
+
+- Confirm `CREATE EXTENSION IF NOT EXISTS vector` has been
+  applied. The Azure Postgres Flexible Server flavor must enable
+  pgvector in `azure.extensions` before the extension can be
+  created.
+- If the cosine operator is missing entirely, the bootstrap
+  migration may have applied an older `vector` package — confirm
+  the version is at least 0.5.0.
+- An out-of-range distance is extremely unusual; capture the JSON
+  report and escalate to the data platform on-call.
+
+### `cutover_preflight_red_health_endpoint`
+
+What it means: the proxy `/health` endpoint did not return HTTP
+200 + the expected body marker. Common causes:
+
+1. The Cloud Run revision has not been promoted to the production
+   service yet, so DNS points at a non-existent revision.
+2. The proxy is up but cannot reach Postgres or another
+   dependency, so `/health` returns 5xx.
+3. A non-proxy service is answering on the production hostname.
+
+Escalation:
+
+- Hit the URL directly with `curl` and inspect the response body.
+- If 5xx, follow `runbooks/proxy_health_check_runbook.md` for the
+  dependency-by-dependency diagnostic ladder.
+- If 200 but the body marker is absent, confirm the deployed
+  revision is built from this repository (a forked or stale build
+  may not emit the marker).
+- If the harness was run from a workstation that cannot reach the
+  Cloud Run egress, re-run with `--skip-health-endpoint` and
+  perform the verification from a host with network egress.
+
+### `cutover_preflight_red_partman_cron_active`
+
+What it means: either `pg_partman` / `pg_cron` is missing from
+`pg_extension`, or `cron.job` has zero rows. Either failure mode
+silently breaks audit-chain anchoring and per-operator partition
+maintenance.
+
+Escalation:
+
+- Confirm both extensions are listed under `azure.extensions` for
+  the Production1 Flexible Server. Re-apply the bootstrap
+  migrations if missing.
+- Inspect `cron.job`:
+  ```sql
+  select jobname, schedule, command, active from cron.job;
+  ```
+  Confirm at least the audit-chain anchor job is present and
+  active. If absent, re-run
+  `db/migrations/<audit-anchor-bootstrap>.sql` and verify the
+  scheduling INSERT executed without skipping.
+
+### `cutover_preflight_red_partman_cron_active_query_failed`
+
+What it means: the catalog or `cron.job` query itself errored.
+Likely a permissions issue (the runtime role lacks SELECT on
+`cron.job`) or `pg_cron` is not installed in the database the DSN
+points to.
+
+Escalation:
+
+- Confirm `pg_cron` is loaded in the *database* the DSN targets.
+  Azure-managed `pg_cron` runs in a single management database
+  per server (default `postgres`); the application database must
+  have its own grants on the cron objects.
+- Re-run with a `forge_admin` role if the runtime role is missing
+  grants; file a follow-up to repair the runtime role's access.
 
 ## Output
 
