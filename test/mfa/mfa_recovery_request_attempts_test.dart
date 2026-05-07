@@ -465,6 +465,7 @@ class _RecordingUsersRepository extends UsersRepository {
   Future<MfaRecoveryTargetRow?> findMfaRecoveryTargetByEmail({
     required String email,
     required String adminReason,
+    String? requireOperatorId,
   }) async {
     lookupCalls.add(email);
     return _targetByEmail[email];
