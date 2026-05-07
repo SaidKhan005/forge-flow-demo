@@ -384,8 +384,10 @@ class SevenRoomsReservationPostgresSink extends OperatorScopedRepository
       'on conflict (connection_id, resource) do update set '
       '  cursor_token = excluded.cursor_token, '
       '  last_modified_seen = excluded.last_modified_seen, '
-      '  last_synced_at = now(), '
-      '  updated_at = now()',
+      '  last_synced_at = excluded.last_synced_at, '
+      '  updated_at = now() '
+      'where excluded.last_synced_at >= '
+      'public.connector_sync_watermark.last_synced_at',
       parameters: <String, Object?>{
         'operator_id': operatorId,
         'location_id': locationId,

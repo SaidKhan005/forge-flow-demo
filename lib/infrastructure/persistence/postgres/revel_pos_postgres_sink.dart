@@ -141,7 +141,9 @@ class RevelPosPostgresSink extends OperatorScopedRepository
         'status = excluded.status, '
         'metadata = excluded.metadata, '
         'webhook_url_provisioned = excluded.webhook_url_provisioned, '
-        'updated_at = excluded.updated_at',
+        'updated_at = excluded.updated_at '
+        'where excluded.last_synced_at >= '
+        'public.connector_sync_watermark.last_synced_at',
         parameters: <String, Object?>{
           'connection_id': row.connectionId,
           'operator_id': row.operatorId,
