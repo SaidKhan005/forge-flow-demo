@@ -59,6 +59,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../auth/permission_keys.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_connector_backfill_jobs_gateway.dart';
 import '../services/operator_web_url_launcher.dart';
@@ -138,7 +139,7 @@ class _VendorConnectionsScreenState extends State<VendorConnectionsScreen> {
   bool get _canConfigureIntegrations =>
       widget.session.roles
           .any(kOperatorWebVendorConnectionsAdmittedRoles.contains) ||
-      widget.session.permissions.contains('integrations.configure');
+      widget.session.permissions.contains(PermissionKeys.integrationsConfigure);
 
   void _handleConnectFromRecentlyAvailable(
     OperatorWebRecentlyAvailableVendor vendor,

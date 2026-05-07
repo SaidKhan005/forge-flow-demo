@@ -22,10 +22,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../auth/permission_keys.dart';
+import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_schedule_gateway.dart';
 import '../widgets/schedule_forecast_explainer_panel.dart';
-import '../../theme/app_theme.dart';
 
 /// Roles admitted to read the locked weekly plan from op-web. Mirrors the
 /// existing operator-web read role gate (`kOperatorWebAdmittedRoles`)
@@ -71,10 +72,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     // they were resolved into.
     return widget.session.permissions.any(
       const <String>{
-        'forgeflow.settings.view',
-        'team.users.view',
-        'admin.users.view',
-        'integrations.configure',
+        PermissionKeys.forgeflowSettingsView,
+        PermissionKeys.teamUsersView,
+        PermissionKeys.adminUsersView,
+        PermissionKeys.integrationsConfigure,
       }.contains,
     );
   }
