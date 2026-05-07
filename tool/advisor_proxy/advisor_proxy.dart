@@ -2226,6 +2226,108 @@ class UsageEstimate {
   final int requestTokens;
 }
 
+// ─── CODE_HEALTH TOKEN-CAP-REAL — global per-request token cap ───────────────
+//
+// CODE_HEALTH residual: "No per-request token cap on outbound LLM calls. Repo-
+// wide search for `MAX_TOKENS_PER_REQUEST`, `requestTokenCap`, etc. returns
+// zero matches. The proxy's outbound LLM call sites (`tool/advisor_proxy/
+// advisor_proxy.dart:8485-8700`) have no enforced cap." (CODE_HEALTH.md L31).
+//
+// This is a hard, dispatch-site cap independent of [PolicyTier.maxRequestTokens]:
+//   - The tier cap (8000) only applies when [ProxyUsageGuard] is wired AND the
+//     route checks it. The advisor smoke route ducks the guard when
+//     `usageGuard == null` (tests / staging without HARD-A wired).
+//   - This global cap fires at the dispatch site regardless of guard wiring,
+//     so an unauthenticated test, a misconfigured deploy, or a route that
+//     forgot to wire the guard cannot bypass the cap.
+//   - Default 100,000 covers Claude Opus's 200k window with margin while
+//     still rejecting pathological requests (giant context dumps, accidental
+//     megabyte payloads). Operators with a real need can raise via env up
+//     to [kMaxTokensPerRequestUpperBound].
+//   - Hard-cap behavior — exceeding the cap returns HTTP 413
+//     (`request_too_large`). No silent trim / downgrade.
+
+const int kMaxTokensPerRequestDefault = 100000;
+
+/// Sanity ceiling for the env-driven override. A misconfigured env value
+/// (e.g. `9999999`) would otherwise let the proxy ship arbitrarily large
+/// payloads downstream regardless of the operator's actual tier.
+const int kMaxTokensPerRequestUpperBound = 1000000;
+
+/// Env var name for the per-deployment token cap override. When set to a
+/// positive integer at or below [kMaxTokensPerRequestUpperBound],
+/// [resolveMaxTokensPerRequest] returns that value; in every other case it
+/// falls back to [kMaxTokensPerRequestDefault].
+const String kMaxTokensPerRequestEnvVar = 'MAX_TOKENS_PER_REQUEST';
+
+/// Returns the effective per-request token cap for outbound LLM dispatch.
+///
+/// Resolution order:
+///   1. Read [kMaxTokensPerRequestEnvVar] from [environment]
+///      (defaults to [Platform.environment]).
+///   2. Trim and parse as `int`. Reject parse failures, non-positive
+///      values, and values above [kMaxTokensPerRequestUpperBound] with a
+///      warning log; fall back to [kMaxTokensPerRequestDefault].
+///   3. Otherwise return the parsed value.
+///
+/// [environment] exists purely for unit tests — production callers pass
+/// nothing and read the real process env.
+int resolveMaxTokensPerRequest({Map<String, String>? environment}) {
+  String? raw;
+  try {
+    raw = (environment ?? Platform.environment)[kMaxTokensPerRequestEnvVar];
+  } catch (_) {
+    // `Platform.environment` can throw on stripped runtimes; fall back
+    // to the safe default.
+    return kMaxTokensPerRequestDefault;
+  }
+  if (raw == null) return kMaxTokensPerRequestDefault;
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return kMaxTokensPerRequestDefault;
+  final parsed = int.tryParse(trimmed);
+  if (parsed == null) {
+    log(
+      LogSeverity.warning,
+      'advisor_proxy.max_tokens_per_request.invalid',
+      fields: <String, Object?>{
+        'env_var': kMaxTokensPerRequestEnvVar,
+        'raw': trimmed,
+        'reason': 'unparsable',
+        'fallback': kMaxTokensPerRequestDefault,
+      },
+    );
+    return kMaxTokensPerRequestDefault;
+  }
+  if (parsed <= 0) {
+    log(
+      LogSeverity.warning,
+      'advisor_proxy.max_tokens_per_request.invalid',
+      fields: <String, Object?>{
+        'env_var': kMaxTokensPerRequestEnvVar,
+        'raw': trimmed,
+        'reason': 'non_positive',
+        'fallback': kMaxTokensPerRequestDefault,
+      },
+    );
+    return kMaxTokensPerRequestDefault;
+  }
+  if (parsed > kMaxTokensPerRequestUpperBound) {
+    log(
+      LogSeverity.warning,
+      'advisor_proxy.max_tokens_per_request.invalid',
+      fields: <String, Object?>{
+        'env_var': kMaxTokensPerRequestEnvVar,
+        'raw': trimmed,
+        'reason': 'above_upper_bound',
+        'upper_bound': kMaxTokensPerRequestUpperBound,
+        'fallback': kMaxTokensPerRequestDefault,
+      },
+    );
+    return kMaxTokensPerRequestDefault;
+  }
+  return parsed;
+}
+
 class UsageSnapshot {
   const UsageSnapshot({
     required this.requestsThisMinute,
@@ -8851,6 +8953,26 @@ Future<void> routeRequest(
             cacheKey: promptBuilder.cacheKeyForCorpusVersion(corpusVersion),
             maxOutputTokens: PolicyTier.launch.maxOutputTokens,
           );
+
+          // CODE_HEALTH TOKEN-CAP-REAL — global per-request token cap on
+          // outbound LLM dispatch. Independent of the per-tier
+          // `PolicyTier.maxRequestTokens` cap above (which only fires when
+          // [ProxyUsageGuard] is wired). This cap fires regardless of guard
+          // wiring so a misconfigured deploy or test that ducks the guard
+          // cannot ship an unbounded payload to the provider. Hard cap —
+          // rejects with HTTP 413 (`request_too_large`); no silent trim.
+          final maxTokensPerRequest = resolveMaxTokensPerRequest();
+          if (estimate.tokenCount > maxTokensPerRequest) {
+            _writeJson(response, 413, <String, Object?>{
+              'error': 'request_too_large',
+              'message':
+                  'estimated request tokens exceed the per-request cap',
+              'estimate_request_tokens': estimate.tokenCount,
+              'cap_request_tokens': maxTokensPerRequest,
+            });
+            return;
+          }
+
           final questionHash = sha256.convert(utf8.encode(question)).toString();
 
           AdvisorPipelineResult pipelineResult;
