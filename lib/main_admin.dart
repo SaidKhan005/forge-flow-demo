@@ -25,6 +25,11 @@
 //     deploy into demo, because demo auth on a publicly-routed
 //     `--allow-unauthenticated` Cloud Run service is a privilege
 //     bypass.
+//
+//   * Share preview (opt-in only). `--dart-define=ADMIN_SHARE_PREVIEW=true`
+//     starts signed in as read-only F&F support against seeded fixture
+//     data. No Firebase, no proxy, no live staging data, and no login
+//     screen are exposed.
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -53,6 +58,12 @@ import 'theme/app_theme.dart';
 /// Opt-in demo switch. **Must default to false** so a forgotten flag
 /// can never publish demo auth on a public Cloud Run service.
 const bool _kAdminDemoAuth = bool.fromEnvironment('ADMIN_DEMO_AUTH');
+
+/// Public share-preview switch. This is deliberately separate from
+/// [ADMIN_DEMO_AUTH]: demo auth can still show a fixture sign-in
+/// card, while share preview opens directly into read-only fixture
+/// data for emailed review links.
+const bool _kAdminSharePreview = bool.fromEnvironment('ADMIN_SHARE_PREVIEW');
 
 /// Admin proxy base URL. `--dart-define=ADMIN_PROXY_BASE_URI=...`
 /// points the live HTTP gateway at the F&F admin Cloud Run proxy
@@ -88,7 +99,7 @@ Future<void> main() async {
   // build time unless explicitly overridden), so the check is a belt-and-
   // suspenders guard for CI environments that pass the flag.
   assert(() {
-    if (!kDebugMode && _kAdminDemoAuth) {
+    if (!kDebugMode && _kAdminDemoAuth && !_kAdminSharePreview) {
       throw StateError(
         'ADMIN_DEMO_AUTH must not be true in a non-debug build. '
         'Demo auth bypasses Firebase and must never ship on a public endpoint.',
@@ -132,7 +143,10 @@ Future<void> main() async {
     final auditedSupportActionsAdminGateway = gateway == null
         ? null
         : _resolveAuditedSupportActionsAdminGateway(authBinding.authClient);
-    final adminApp = AdminConsoleApp(authSource: source);
+    final adminApp = AdminConsoleApp(
+      authSource: source,
+      sharePreviewMode: _kAdminSharePreview,
+    );
     // Always wrap with `AdminConsoleServicesScope` so the Pricing /
     // Corpus / Integrations / Feature Flags routes can read
     // `adminAuthSource` and switch to the read-only branch for
@@ -151,10 +165,8 @@ Future<void> main() async {
         featureFlagsGateway: featureFlagsGateway,
         debugConsoleGateway: debugConsoleGateway,
         membersAdminGateway: membersAdminGateway,
-        rolesHierarchySessionsAdminGateway:
-            rolesHierarchySessionsAdminGateway,
-        auditedSupportActionsAdminGateway:
-            auditedSupportActionsAdminGateway,
+        rolesHierarchySessionsAdminGateway: rolesHierarchySessionsAdminGateway,
+        auditedSupportActionsAdminGateway: auditedSupportActionsAdminGateway,
         adminAuthSource: source,
         child: adminApp,
       ),
@@ -175,6 +187,12 @@ class _AdminAuthBinding {
 }
 
 Future<_AdminAuthBinding> _resolveAuthSource() async {
+  if (_kAdminSharePreview) {
+    return _AdminAuthBinding(
+      source: DemoAdminAuthSource.signedInAsSupport(),
+      authClient: null,
+    );
+  }
   if (_kAdminDemoAuth) {
     return _AdminAuthBinding(
       source: DemoAdminAuthSource.signedOut(),

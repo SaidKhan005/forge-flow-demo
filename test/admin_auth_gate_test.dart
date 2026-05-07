@@ -46,22 +46,15 @@ void main() {
   });
 
   testWidgets('ff_support session admits to the shell', (tester) async {
-    final source = DemoAdminAuthSource(
-      initial: const AdminAuthAuthenticated(
-        AdminAuthSession(
-          uid: 'demo-ff-support',
-          email: 'support@forgeflow.test',
-          displayName: 'Demo F&F Support',
-          roles: <String>['ff_support'],
-        ),
-      ),
-    );
+    final source = DemoAdminAuthSource.signedInAsSupport();
     addTearDown(source.dispose);
 
     await tester.pumpWidget(gateWith(source));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('test_admin_shell')), findsOneWidget);
+    final state = source.current as AdminAuthAuthenticated;
+    expect(state.session.roles, equals(<String>['ff_support']));
   });
 
   testWidgets('non-admin session fails closed to the forbidden surface', (

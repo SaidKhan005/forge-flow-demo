@@ -19,7 +19,9 @@
 # deploy): `--build-arg ADMIN_DEMO_AUTH=true`. Demo auth on a
 # publicly-routed `--allow-unauthenticated` Cloud Run service is a
 # privilege bypass; the deploy script only honours it behind a
-# loud `-DemoMode` switch.
+# loud `-DemoMode` switch. The separate share-preview build also
+# enables demo auth, but starts as read-only ff_support and binds no
+# live proxy or staging data.
 #
 # Build (live, default):
 #   docker build -f Dockerfile.admin_console \
@@ -36,6 +38,7 @@ FROM ghcr.io/cirruslabs/flutter:stable AS build
 # local sandbox build; never set true in a Cloud Run deploy without
 # the corresponding deploy-script `-DemoMode` warning path.
 ARG ADMIN_DEMO_AUTH=false
+ARG ADMIN_SHARE_PREVIEW=false
 ARG ADMIN_PROXY_BASE_URI=
 ARG ADMIN_BUILD_FLAVOR=admin
 
@@ -59,6 +62,7 @@ RUN flutter config --enable-web \
         --target=lib/main_admin.dart \
         --release \
         --dart-define=ADMIN_DEMO_AUTH=${ADMIN_DEMO_AUTH} \
+        --dart-define=ADMIN_SHARE_PREVIEW=${ADMIN_SHARE_PREVIEW} \
         --dart-define=ADMIN_PROXY_BASE_URI=${ADMIN_PROXY_BASE_URI}
 
 FROM nginx:1.27-alpine
