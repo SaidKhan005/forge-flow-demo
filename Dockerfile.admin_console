@@ -61,6 +61,7 @@ RUN flutter config --enable-web \
     && flutter build web \
         --target=lib/main_admin.dart \
         --release \
+        --no-web-resources-cdn \
         --dart-define=ADMIN_DEMO_AUTH=${ADMIN_DEMO_AUTH} \
         --dart-define=ADMIN_SHARE_PREVIEW=${ADMIN_SHARE_PREVIEW} \
         --dart-define=ADMIN_PROXY_BASE_URI=${ADMIN_PROXY_BASE_URI}
