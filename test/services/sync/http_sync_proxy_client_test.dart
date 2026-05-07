@@ -228,6 +228,8 @@ void main() {
                   '2026-05-05': <String, Object?>{'dinner': 120},
                 },
                 'wage_source': 'manual_mix',
+                'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+                'walk_in_manual_entries': <String, Object?>{'2026-05-05': 14},
                 'updated_at': '2026-05-06T12:00:00Z',
               },
             },
@@ -355,6 +357,8 @@ void main() {
     expect(demo.single.isDemo, isFalse);
     expect(accuracy!.coversSourceDinner, 'manual');
     expect(accuracy.coversManualEntries['2026-05-05']!['dinner'], 120);
+    expect(accuracy.walkInHandlingMode, 'walk_ins_added_to_reservations');
+    expect(accuracy.walkInManualEntries['2026-05-05'], 14);
     expect(keyedAccuracy.single.servicePeriodKey, 'brunch');
     expect(keyedAccuracy.single.coversSource.wire, 'reservation_plus_walkin');
     expect(keyedAccuracy.single.wageSource.wire, 'manual_mix');
@@ -380,13 +384,17 @@ void main() {
     expect(
       fullUrls.where((url) => url.contains('/wage_role_rows')).toList(),
       <String>[
-        wageRoleUrl.replace(queryParameters: <String, String>{
-          'page_size': '500',
-        }).toString(),
-        wageRoleUrl.replace(queryParameters: <String, String>{
-          'page_size': '500',
-          'modified_since': '2026-05-06T12:00:00.000Z',
-        }).toString(),
+        wageRoleUrl
+            .replace(queryParameters: <String, String>{'page_size': '500'})
+            .toString(),
+        wageRoleUrl
+            .replace(
+              queryParameters: <String, String>{
+                'page_size': '500',
+                'modified_since': '2026-05-06T12:00:00.000Z',
+              },
+            )
+            .toString(),
       ],
     );
 

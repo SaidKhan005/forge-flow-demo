@@ -90,17 +90,22 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
         'insert into data_accuracy_settings ('
         'operator_id, location_id, '
         'covers_source_lunch, covers_source_dinner, covers_source_late_night, '
-        'covers_manual_entries, wage_source, updated_by) '
+        'covers_manual_entries, wage_source, '
+        'walk_in_handling_mode, walk_in_manual_entries, updated_by) '
         'values ('
         '@operator_id::uuid, @location_id::uuid, '
         '@covers_lunch, @covers_dinner, @covers_late_night, '
-        '@manual_entries::jsonb, @wage_source, @updated_by) '
+        '@manual_entries::jsonb, @wage_source, '
+        '@walk_in_handling_mode, @walk_in_manual_entries::jsonb, '
+        '@updated_by) '
         'on conflict (operator_id, location_id) do update set '
         'covers_source_lunch = excluded.covers_source_lunch, '
         'covers_source_dinner = excluded.covers_source_dinner, '
         'covers_source_late_night = excluded.covers_source_late_night, '
         'covers_manual_entries = excluded.covers_manual_entries, '
         'wage_source = excluded.wage_source, '
+        'walk_in_handling_mode = excluded.walk_in_handling_mode, '
+        'walk_in_manual_entries = excluded.walk_in_manual_entries, '
         'updated_at = now(), '
         'updated_by = excluded.updated_by '
         'returning '
@@ -109,6 +114,7 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
         'location_id::text as location_id, '
         'covers_source_lunch, covers_source_dinner, covers_source_late_night, '
         'covers_manual_entries, wage_source, '
+        'walk_in_handling_mode, walk_in_manual_entries, '
         'created_at, updated_at, updated_by',
         parameters: <String, Object?>{
           'operator_id': settings.operatorId,
@@ -118,6 +124,8 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
           'covers_late_night': settings.coversSourceLateNight.wire,
           'manual_entries': jsonEncode(settings.coversManualEntries),
           'wage_source': settings.wageSource.wire,
+          'walk_in_handling_mode': settings.walkInHandlingMode.wire,
+          'walk_in_manual_entries': jsonEncode(settings.walkInManualEntries),
           'updated_by': actorUserId,
         },
       );
@@ -188,6 +196,8 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
         coversLateNight: coversLateNight,
         manualEntries: manualEntries,
         wageSource: current.wageSource,
+        walkInHandlingMode: current.walkInHandlingMode,
+        walkInManualEntries: current.walkInManualEntries,
         actorUserId: actorUserId,
       );
     });
@@ -222,6 +232,56 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
         coversLateNight: current.coversSourceLateNight,
         manualEntries: current.coversManualEntries,
         wageSource: wageSource,
+        walkInHandlingMode: current.walkInHandlingMode,
+        walkInManualEntries: current.walkInManualEntries,
+        actorUserId: actorUserId,
+      );
+    });
+  }
+
+  /// Update reservation demand / walk-in handling mode and optionally
+  /// patch one business date's walk-in count. Other data accuracy
+  /// fields remain untouched.
+  Future<DataAccuracySettings> updateWalkInHandling({
+    required String operatorId,
+    required String locationId,
+    required DataAccuracyWalkInHandlingMode mode,
+    String? actorUserId,
+    String? businessDateIso,
+    int? setWalkInCount,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<DataAccuracySettings>(ctx, (exec) async {
+      final current = await _readRow(exec, operatorId, locationId);
+      if (current == null) {
+        throw StateError(
+          'data_accuracy_settings updateWalkInHandling called before '
+          'readOrCreateDefault - no row for this (operator, location)',
+        );
+      }
+      var walkInEntries = current.walkInManualEntries;
+      if (businessDateIso != null) {
+        walkInEntries = _patchWalkInEntry(
+          walkInEntries,
+          businessDateIso,
+          setWalkInCount,
+        );
+      }
+      return _writeAndReturn(
+        exec: exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        coversLunch: current.coversSourceLunch,
+        coversDinner: current.coversSourceDinner,
+        coversLateNight: current.coversSourceLateNight,
+        manualEntries: current.coversManualEntries,
+        wageSource: current.wageSource,
+        walkInHandlingMode: mode,
+        walkInManualEntries: walkInEntries,
         actorUserId: actorUserId,
       );
     });
@@ -273,6 +333,8 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
         coversLateNight: current.coversSourceLateNight,
         manualEntries: merged,
         wageSource: current.wageSource,
+        walkInHandlingMode: current.walkInHandlingMode,
+        walkInManualEntries: current.walkInManualEntries,
         actorUserId: actorUserId,
       );
     });
@@ -292,6 +354,7 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
       'location_id::text as location_id, '
       'covers_source_lunch, covers_source_dinner, covers_source_late_night, '
       'covers_manual_entries, wage_source, '
+      'walk_in_handling_mode, walk_in_manual_entries, '
       'created_at, updated_at, updated_by '
       'from data_accuracy_settings '
       'where operator_id = @operator_id::uuid '
@@ -314,6 +377,8 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
     required CoversSource coversLateNight,
     required Map<String, Map<String, int>> manualEntries,
     required WageSource wageSource,
+    required DataAccuracyWalkInHandlingMode walkInHandlingMode,
+    required Map<String, int> walkInManualEntries,
     String? actorUserId,
   }) async {
     final rows = await exec.query(
@@ -323,6 +388,8 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
       'covers_source_late_night = @covers_late_night, '
       'covers_manual_entries = @manual_entries::jsonb, '
       'wage_source = @wage_source, '
+      'walk_in_handling_mode = @walk_in_handling_mode, '
+      'walk_in_manual_entries = @walk_in_manual_entries::jsonb, '
       'updated_at = now(), '
       'updated_by = @updated_by '
       'where operator_id = @operator_id::uuid '
@@ -333,6 +400,7 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
       'location_id::text as location_id, '
       'covers_source_lunch, covers_source_dinner, covers_source_late_night, '
       'covers_manual_entries, wage_source, '
+      'walk_in_handling_mode, walk_in_manual_entries, '
       'created_at, updated_at, updated_by',
       parameters: <String, Object?>{
         'operator_id': operatorId,
@@ -342,6 +410,8 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
         'covers_late_night': coversLateNight.wire,
         'manual_entries': jsonEncode(manualEntries),
         'wage_source': wageSource.wire,
+        'walk_in_handling_mode': walkInHandlingMode.wire,
+        'walk_in_manual_entries': jsonEncode(walkInManualEntries),
         'updated_by': actorUserId,
       },
     );
@@ -383,6 +453,20 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
         existing[daypart.wire] = covers;
       });
     });
+    return out;
+  }
+
+  static Map<String, int> _patchWalkInEntry(
+    Map<String, int> current,
+    String businessDateIso,
+    int? walkInCount,
+  ) {
+    final out = Map<String, int>.from(current);
+    if (walkInCount == null) {
+      out.remove(businessDateIso);
+    } else {
+      out[businessDateIso] = walkInCount;
+    }
     return out;
   }
 }

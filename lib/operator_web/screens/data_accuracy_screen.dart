@@ -162,6 +162,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   late Map<String, Map<String, int>> _manualEntries;
   WalkInHandlingMode _walkInMode = WalkInHandlingMode.reservationsOnly;
   int? _walkInDailyCount;
+  late Map<String, int> _walkInEntries;
 
   @override
   void initState() {
@@ -176,8 +177,17 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       for (final e in (seed?.coversManualEntries ?? const {}).entries)
         e.key: Map<String, int>.from(e.value),
     };
+    _walkInEntries = <String, int>{
+      for (final e in (seed?.walkInManualEntries ?? const {}).entries)
+        e.key: e.value,
+    };
     _walkInMode =
-        widget.walkInModeOverride ?? WalkInHandlingMode.reservationsOnly;
+        widget.walkInModeOverride ??
+        _widgetWalkInModeFromDomain(
+          seed?.walkInHandlingMode ??
+              DataAccuracyWalkInHandlingMode.reservationsOnly,
+        );
+    _walkInDailyCount = _walkInEntries[widget.businessDateIso];
     _loadBundle();
   }
 
@@ -235,6 +245,8 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           e.key: Map<String, int>.from(e.value),
       },
       wageSource: _wageSource,
+      walkInHandlingMode: _domainWalkInModeFromWidget(_walkInMode),
+      walkInManualEntries: Map<String, int>.from(_walkInEntries),
       createdAt: base?.createdAt ?? now,
       updatedAt: now,
       updatedBy: widget.session.uid,
@@ -307,10 +319,19 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
 
   void _handleWalkInModeChanged(WalkInHandlingMode value) {
     setState(() => _walkInMode = value);
+    _emitSave();
   }
 
   void _handleWalkInCountChanged(int? value) {
-    setState(() => _walkInDailyCount = value);
+    setState(() {
+      _walkInDailyCount = value;
+      if (value == null) {
+        _walkInEntries.remove(widget.businessDateIso);
+      } else {
+        _walkInEntries[widget.businessDateIso] = value;
+      }
+    });
+    _emitSave();
   }
 
   Future<void> _handleRequestTierChange() async {
@@ -579,6 +600,32 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         return 'Forecast';
       case CoversSource.manual:
         return 'Manual';
+    }
+  }
+
+  static WalkInHandlingMode _widgetWalkInModeFromDomain(
+    DataAccuracyWalkInHandlingMode mode,
+  ) {
+    switch (mode) {
+      case DataAccuracyWalkInHandlingMode.reservationsOnly:
+        return WalkInHandlingMode.reservationsOnly;
+      case DataAccuracyWalkInHandlingMode.walkInsAddedToReservations:
+        return WalkInHandlingMode.walkInsAddedToReservations;
+      case DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately:
+        return WalkInHandlingMode.walkInsTrackedSeparately;
+    }
+  }
+
+  static DataAccuracyWalkInHandlingMode _domainWalkInModeFromWidget(
+    WalkInHandlingMode mode,
+  ) {
+    switch (mode) {
+      case WalkInHandlingMode.reservationsOnly:
+        return DataAccuracyWalkInHandlingMode.reservationsOnly;
+      case WalkInHandlingMode.walkInsAddedToReservations:
+        return DataAccuracyWalkInHandlingMode.walkInsAddedToReservations;
+      case WalkInHandlingMode.walkInsTrackedSeparately:
+        return DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately;
     }
   }
 }

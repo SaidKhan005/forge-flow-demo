@@ -356,6 +356,7 @@ abstract class DataAccuracyAdminGateway {
     CoversSource? coversSourceDinner,
     CoversSource? coversSourceLateNight,
     WageSource? wageSource,
+    DataAccuracyWalkInHandlingMode? walkInHandlingMode,
     required String actorUserId,
     required bool actorIsForgeAdmin,
     String? reasonNote,
@@ -483,6 +484,7 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     CoversSource? coversSourceDinner,
     CoversSource? coversSourceLateNight,
     WageSource? wageSource,
+    DataAccuracyWalkInHandlingMode? walkInHandlingMode,
     required String actorUserId,
     required bool actorIsForgeAdmin,
     String? reasonNote,
@@ -502,6 +504,8 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         if (coversSourceLateNight != null)
           'covers_source_late_night': coversSourceLateNight.wire,
         if (wageSource != null) 'wage_source': wageSource.wire,
+        if (walkInHandlingMode != null)
+          'walk_in_handling_mode': walkInHandlingMode.wire,
         if (reasonNote != null && reasonNote.trim().isNotEmpty)
           'reason_note': reasonNote.trim(),
       },
@@ -1072,6 +1076,7 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     CoversSource? coversSourceDinner,
     CoversSource? coversSourceLateNight,
     WageSource? wageSource,
+    DataAccuracyWalkInHandlingMode? walkInHandlingMode,
     required String actorUserId,
     required bool actorIsForgeAdmin,
     String? reasonNote,
@@ -1094,6 +1099,8 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
           coversSourceLateNight ?? prev.coversSourceLateNight,
       coversManualEntries: prev.coversManualEntries,
       wageSource: wageSource ?? prev.wageSource,
+      walkInHandlingMode: walkInHandlingMode ?? prev.walkInHandlingMode,
+      walkInManualEntries: prev.walkInManualEntries,
       createdAt: prev.createdAt,
       updatedAt: _clock(),
       updatedBy: actorUserId,
@@ -1125,6 +1132,13 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       diff['wage_source'] = <String, String>{
         'from': prev.wageSource.wire,
         'to': wageSource.wire,
+      };
+    }
+    if (walkInHandlingMode != null &&
+        walkInHandlingMode != prev.walkInHandlingMode) {
+      diff['walk_in_handling_mode'] = <String, String>{
+        'from': prev.walkInHandlingMode.wire,
+        'to': walkInHandlingMode.wire,
       };
     }
     // Skip the audit insert when the override was a no-op - every

@@ -364,6 +364,18 @@ create table if not exists public.data_accuracy_settings (
     check (wage_source in ('vendor', 'manual_mix')),
 
   -- ── Polling cadence (REVERSED 2026-05-05) ─────────────────────────
+  -- Reservation demand / walk-in handling. Mobile reads this as
+  -- server-owned truth; operators/admins write through the data accuracy
+  -- surfaces.
+  walk_in_handling_mode text not null default 'reservations_only'
+    check (walk_in_handling_mode in (
+      'reservations_only',
+      'walk_ins_added_to_reservations',
+      'walk_ins_tracked_separately'
+    )),
+  walk_in_manual_entries jsonb not null default '{}'::jsonb
+    check (jsonb_typeof(walk_in_manual_entries) = 'object'),
+
   -- Per the F&F-controlled tier model (above), polling cadence is NOT
   -- operator-controlled. It is set by F&F admin via a separate table
   -- `forge_flow_polling_tier_assignment` (see schema below). This row

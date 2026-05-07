@@ -88,6 +88,8 @@ class DataAccuracySettingsSnapshot {
     required this.coversManualEntries,
     required this.wageSource,
     required this.updatedAt,
+    this.walkInHandlingMode = 'reservations_only',
+    this.walkInManualEntries = const <String, int>{},
   });
 
   final String operatorId;
@@ -109,6 +111,14 @@ class DataAccuracySettingsSnapshot {
   /// `'vendor'` (use labor vendor dollars when exposed) or
   /// `'manual_mix'` (always use wage_role_rows mix).
   final String wageSource;
+
+  /// `'reservations_only'`, `'walk_ins_added_to_reservations'`, or
+  /// `'walk_ins_tracked_separately'`.
+  final String walkInHandlingMode;
+
+  /// Sparse map keyed by ISO `business_date`; each value is the
+  /// operator-entered walk-in count for that day.
+  final Map<String, int> walkInManualEntries;
 
   final DateTime updatedAt;
 }

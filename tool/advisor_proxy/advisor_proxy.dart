@@ -6307,6 +6307,7 @@ abstract class DataAccuracyAdminProxyGateway {
     String? coversSourceDinner,
     String? coversSourceLateNight,
     String? wageSource,
+    String? walkInHandlingMode,
     String? reasonNote,
     required String adminReason,
   });
@@ -12318,6 +12319,10 @@ Future<void> _routeDataAccuracyAdmin({
       'covers_source_late_night',
     );
     final wageSource = _optionalBodyString(body, 'wage_source');
+    final walkInHandlingMode = _optionalBodyString(
+      body,
+      'walk_in_handling_mode',
+    );
     final reasonNote = _optionalBodyString(body, 'reason_note');
     await _runAdminIdempotent(
       response: response,
@@ -12335,6 +12340,7 @@ Future<void> _routeDataAccuracyAdmin({
           coversSourceDinner: coversDinner,
           coversSourceLateNight: coversLateNight,
           wageSource: wageSource,
+          walkInHandlingMode: walkInHandlingMode,
           reasonNote: reasonNote,
           adminReason:
               '$reasonPrefix:settings:${pair.operatorId}:${pair.locationId}',

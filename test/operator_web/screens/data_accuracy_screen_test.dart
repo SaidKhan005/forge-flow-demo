@@ -13,6 +13,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
@@ -45,10 +46,10 @@ void main() {
   );
 
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   Future<void> sizeViewport(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
@@ -91,15 +92,14 @@ void main() {
     required String vendorId,
     required String displayName,
     required VendorCategory category,
-  }) =>
-      VendorConnectionRow(
-        connectionId: '$vendorId-conn',
-        vendorId: vendorId,
-        displayName: displayName,
-        category: category,
-        status: VendorConnectionStatus.connected,
-        metadata: const <String, Object?>{},
-      );
+  }) => VendorConnectionRow(
+    connectionId: '$vendorId-conn',
+    vendorId: vendorId,
+    displayName: displayName,
+    category: category,
+    status: VendorConnectionStatus.connected,
+    metadata: const <String, Object?>{},
+  );
 
   // ─── Acceptance item A — default render ──────────────────────────
 
@@ -185,8 +185,9 @@ void main() {
   });
 
   group('DataAccuracyScreen permission gate', () {
-    testWidgets('forbidden surface for location_manager session',
-        (tester) async {
+    testWidgets('forbidden surface for location_manager session', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 800));
 
       await tester.pumpWidget(
@@ -300,8 +301,70 @@ void main() {
       },
     );
 
-    testWidgets('historical seed card surfaces for non-covers-exposing POS',
-        (tester) async {
+    testWidgets('walk-in mode and daily count are saved into settings', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 800));
+
+      final gateway = gatewayWithBundle(
+        ownerSession,
+        bundleFor(
+          session: ownerSession,
+          pos: row(
+            vendorId: 'square',
+            displayName: 'Square',
+            category: VendorCategory.pos,
+          ),
+          labor: row(
+            vendorId: 'quickbooks_time',
+            displayName: 'QuickBooks Time',
+            category: VendorCategory.labor,
+          ),
+          reservation: row(
+            vendorId: 'libro',
+            displayName: 'Libro',
+            category: VendorCategory.reservation,
+          ),
+        ),
+      );
+      final saves = <DataAccuracySettings>[];
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId,
+            gateway: gateway,
+            businessDateIso: '2026-05-06',
+            onSaveSettings: saves.add,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final addedRadio = find.byKey(const Key('walk_in_handling_radio_added'));
+      await tester.ensureVisible(addedRadio);
+      await tester.pumpAndSettle();
+      await tester.tap(addedRadio);
+      await tester.pumpAndSettle();
+      expect(
+        saves.last.walkInHandlingMode,
+        DataAccuracyWalkInHandlingMode.walkInsAddedToReservations,
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('walk_in_handling_daily_count_field')),
+        '14',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(saves.last.walkInManualEntries['2026-05-06'], 14);
+    });
+
+    testWidgets('historical seed card surfaces for non-covers-exposing POS', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 800));
 
       final squareGateway = gatewayWithBundle(
@@ -333,37 +396,36 @@ void main() {
       );
     });
 
-    testWidgets(
-      'switching dinner to manual reveals manual entry sub-card',
-      (tester) async {
-        await sizeViewport(tester, const Size(1280, 1600));
+    testWidgets('switching dinner to manual reveals manual entry sub-card', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1600));
 
-        await tester.pumpWidget(
-          wrap(
-            DataAccuracyScreen(
-              session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
-              gateway: InMemoryVendorConnectionsGateway(),
-            ),
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId,
+            gateway: InMemoryVendorConnectionsGateway(),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.ensureVisible(
-          find.byKey(const Key('covers_source_chip_dinner_manual')),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(const Key('covers_source_chip_dinner_manual')),
-        );
-        await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('covers_source_chip_dinner_manual')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('covers_source_chip_dinner_manual')),
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const Key('data_accuracy_covers_manual_entry_card')),
-          findsOneWidget,
-        );
-      },
-    );
+      expect(
+        find.byKey(const Key('data_accuracy_covers_manual_entry_card')),
+        findsOneWidget,
+      );
+    });
   });
 
   group('DataAccuracyScreen polling tier interaction', () {
@@ -400,71 +462,69 @@ void main() {
   // ─── Acceptance item I — UX writing audit ────────────────────────
 
   group('DataAccuracyScreen UX writing audit', () {
-    testWidgets(
-      'subtitle and screen body avoid engineering jargon',
-      (tester) async {
-        await sizeViewport(tester, const Size(1280, 1600));
+    testWidgets('subtitle and screen body avoid engineering jargon', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1600));
 
-        await tester.pumpWidget(
-          wrap(
-            DataAccuracyScreen(
-              session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
-              gateway: InMemoryVendorConnectionsGateway(),
-            ),
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId,
+            gateway: InMemoryVendorConnectionsGateway(),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Substring checks done case-insensitively. The list mirrors
-        // the V1 lean-cut banned-token guidance — none of these
-        // strings should leak into operator-facing copy on this screen.
-        const bannedSubstrings = <String>[
-          'operator_id',
-          'location_id',
-          'jsonb',
-          'RLS',
-          'pg_partman',
-          'parse_warnings',
-          'parse_partial',
-          'email_outbox',
-          'kms',
-          'KMS',
-          'SIGTERM',
-          'advisory_lock',
-        ];
+      // Substring checks done case-insensitively. The list mirrors
+      // the V1 lean-cut banned-token guidance — none of these
+      // strings should leak into operator-facing copy on this screen.
+      const bannedSubstrings = <String>[
+        'operator_id',
+        'location_id',
+        'jsonb',
+        'RLS',
+        'pg_partman',
+        'parse_warnings',
+        'parse_partial',
+        'email_outbox',
+        'kms',
+        'KMS',
+        'SIGTERM',
+        'advisory_lock',
+      ];
 
-        // First check: subtitle text in particular.
-        final subtitle = tester.widget<Text>(
-          find.byKey(const Key('operator_web_data_accuracy_subtitle')),
+      // First check: subtitle text in particular.
+      final subtitle = tester.widget<Text>(
+        find.byKey(const Key('operator_web_data_accuracy_subtitle')),
+      );
+      for (final banned in bannedSubstrings) {
+        expect(
+          subtitle.data!.toLowerCase().contains(banned.toLowerCase()),
+          isFalse,
+          reason: 'Subtitle leaked banned substring "$banned"',
         );
+      }
+
+      // Sweep every Text in the rendered tree and assert no banned
+      // substring slips through the rest of the surface either.
+      final textElements = find.byType(Text).evaluate();
+      for (final element in textElements) {
+        final widget = element.widget as Text;
+        final data = widget.data;
+        if (data == null || data.isEmpty) continue;
+        final lower = data.toLowerCase();
         for (final banned in bannedSubstrings) {
           expect(
-            subtitle.data!.toLowerCase().contains(banned.toLowerCase()),
+            lower.contains(banned.toLowerCase()),
             isFalse,
-            reason: 'Subtitle leaked banned substring "$banned"',
+            reason: 'Rendered Text leaked banned substring "$banned": "$data"',
           );
         }
-
-        // Sweep every Text in the rendered tree and assert no banned
-        // substring slips through the rest of the surface either.
-        final textElements = find.byType(Text).evaluate();
-        for (final element in textElements) {
-          final widget = element.widget as Text;
-          final data = widget.data;
-          if (data == null || data.isEmpty) continue;
-          final lower = data.toLowerCase();
-          for (final banned in bannedSubstrings) {
-            expect(
-              lower.contains(banned.toLowerCase()),
-              isFalse,
-              reason:
-                  'Rendered Text leaked banned substring "$banned": "$data"',
-            );
-          }
-        }
-      },
-    );
+      }
+    });
   });
 
   // ─── Acceptance item J — walkthrough click-path match ────────────
@@ -516,9 +576,7 @@ void main() {
           find.byKey(const Key('wage_source_radio_manual_mix')),
         );
         await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(const Key('wage_source_radio_manual_mix')),
-        );
+        await tester.tap(find.byKey(const Key('wage_source_radio_manual_mix')));
         await tester.pumpAndSettle();
         expect(
           find.byKey(const Key('wage_source_radio_manual_mix')),

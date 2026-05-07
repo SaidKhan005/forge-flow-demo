@@ -1931,7 +1931,8 @@ class RepositoryMobileOperationalSyncProxyGateway
         'select operator_id::text as operator_id, '
         'location_id::text as location_id, covers_source_lunch, '
         'covers_source_dinner, covers_source_late_night, '
-        'covers_manual_entries, wage_source, updated_at '
+        'covers_manual_entries, wage_source, '
+        'walk_in_handling_mode, walk_in_manual_entries, updated_at '
         'from public.data_accuracy_settings '
         'where operator_id = @operator_id::uuid '
         'and location_id = @location_id::uuid '
@@ -2265,6 +2266,9 @@ class RepositoryMobileOperationalSyncProxyGateway
       'covers_source_late_night': row['covers_source_late_night'] ?? 'vendor',
       'covers_manual_entries': _jsonMap(row['covers_manual_entries']),
       'wage_source': row['wage_source'] ?? 'vendor',
+      'walk_in_handling_mode':
+          row['walk_in_handling_mode'] ?? 'reservations_only',
+      'walk_in_manual_entries': _jsonMap(row['walk_in_manual_entries']),
       'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
     };
   }
@@ -3170,7 +3174,9 @@ class RepositoryDataAccuracyAdminProxyGateway
         's.setting_id::text as setting_id, '
         's.covers_source_lunch, s.covers_source_dinner, '
         's.covers_source_late_night, s.covers_manual_entries, '
-        's.wage_source, s.created_at, s.updated_at, s.updated_by '
+        's.wage_source, s.walk_in_handling_mode, '
+        's.walk_in_manual_entries, '
+        's.created_at, s.updated_at, s.updated_by '
         'from operators o '
         'join locations l on l.operator_id = o.operator_id '
         'left join data_accuracy_settings s '
@@ -3246,6 +3252,7 @@ class RepositoryDataAccuracyAdminProxyGateway
     String? coversSourceDinner,
     String? coversSourceLateNight,
     String? wageSource,
+    String? walkInHandlingMode,
     String? reasonNote,
     required String adminReason,
   }) {
@@ -3253,6 +3260,7 @@ class RepositoryDataAccuracyAdminProxyGateway
     _validateCoversSource(coversSourceDinner, 'covers_source_dinner');
     _validateCoversSource(coversSourceLateNight, 'covers_source_late_night');
     _validateWageSource(wageSource);
+    _validateWalkInHandlingMode(walkInHandlingMode);
     return _adminWrapper.runAsSystem<Map<String, Object?>?>((exec) async {
       final ref = await _operatorLocationRef(
         exec,
@@ -3269,12 +3277,14 @@ class RepositoryDataAccuracyAdminProxyGateway
         'insert into data_accuracy_settings ('
         'operator_id, location_id, covers_source_lunch, '
         'covers_source_dinner, covers_source_late_night, wage_source, '
-        'updated_by) values ('
+        'walk_in_handling_mode, updated_by) values ('
         '@operator_id::uuid, @location_id::uuid, '
         "coalesce(@covers_lunch, 'vendor'), "
         "coalesce(@covers_dinner, 'vendor'), "
         "coalesce(@covers_late_night, 'vendor'), "
-        "coalesce(@wage_source, 'vendor'), @updated_by) "
+        "coalesce(@wage_source, 'vendor'), "
+        "coalesce(@walk_in_handling_mode, 'reservations_only'), "
+        '@updated_by) '
         'on conflict (operator_id, location_id) do update set '
         'covers_source_lunch = coalesce('
         '@covers_lunch, data_accuracy_settings.covers_source_lunch), '
@@ -3285,6 +3295,9 @@ class RepositoryDataAccuracyAdminProxyGateway
         'data_accuracy_settings.covers_source_late_night), '
         'wage_source = coalesce('
         '@wage_source, data_accuracy_settings.wage_source), '
+        'walk_in_handling_mode = coalesce('
+        '@walk_in_handling_mode, '
+        'data_accuracy_settings.walk_in_handling_mode), '
         'updated_at = now(), updated_by = @updated_by '
         'returning '
         'setting_id::text as setting_id, '
@@ -3292,6 +3305,7 @@ class RepositoryDataAccuracyAdminProxyGateway
         'location_id::text as location_id, '
         'covers_source_lunch, covers_source_dinner, '
         'covers_source_late_night, covers_manual_entries, wage_source, '
+        'walk_in_handling_mode, walk_in_manual_entries, '
         'created_at, updated_at, updated_by',
         parameters: <String, Object?>{
           'operator_id': operatorId,
@@ -3300,6 +3314,7 @@ class RepositoryDataAccuracyAdminProxyGateway
           'covers_dinner': coversSourceDinner,
           'covers_late_night': coversSourceLateNight,
           'wage_source': wageSource,
+          'walk_in_handling_mode': walkInHandlingMode,
           'updated_by': actorUserId,
         },
       );
@@ -3628,7 +3643,9 @@ class RepositoryDataAccuracyAdminProxyGateway
       'select setting_id::text as setting_id, '
       'operator_id::text as operator_id, location_id::text as location_id, '
       'covers_source_lunch, covers_source_dinner, covers_source_late_night, '
-      'covers_manual_entries, wage_source, created_at, updated_at, updated_by '
+      'covers_manual_entries, wage_source, '
+      'walk_in_handling_mode, walk_in_manual_entries, '
+      'created_at, updated_at, updated_by '
       'from data_accuracy_settings '
       'where operator_id = @operator_id::uuid '
       'and location_id = @location_id::uuid',
@@ -3737,6 +3754,9 @@ class RepositoryDataAccuracyAdminProxyGateway
           row['covers_source_late_night'] as String? ?? 'vendor',
       'covers_manual_entries': _jsonMap(row['covers_manual_entries']),
       'wage_source': row['wage_source'] as String? ?? 'vendor',
+      'walk_in_handling_mode':
+          row['walk_in_handling_mode'] as String? ?? 'reservations_only',
+      'walk_in_manual_entries': _jsonMap(row['walk_in_manual_entries']),
       'created_at':
           _dateJson(row['created_at']) ?? DateTime.utc(1970).toIso8601String(),
       'updated_at':
@@ -3936,10 +3956,12 @@ class RepositoryDataAccuracyAdminProxyGateway
       'covers_source_dinner',
       'covers_source_late_night',
       'wage_source',
+      'walk_in_handling_mode',
     ];
     for (final field in fields) {
       final from =
-          before?[field] ?? (field == 'wage_source' ? 'vendor' : 'vendor');
+          before?[field] ??
+          (field == 'walk_in_handling_mode' ? 'reservations_only' : 'vendor');
       final to = after[field];
       if (from != to) {
         diff[field] = <String, Object?>{'from': from, 'to': to};
@@ -4001,6 +4023,22 @@ class RepositoryDataAccuracyAdminProxyGateway
         statusCode: 400,
         code: 'invalid_wage_source',
         message: 'wage_source must be vendor or manual_mix',
+      );
+    }
+  }
+
+  static void _validateWalkInHandlingMode(String? value) {
+    if (value == null) return;
+    try {
+      DataAccuracyWalkInHandlingModeWire.fromWire(value);
+    } on ArgumentError {
+      throw const DataAccuracyAdminGatewayValidationError(
+        statusCode: 400,
+        code: 'invalid_walk_in_handling_mode',
+        message:
+            'walk_in_handling_mode must be reservations_only, '
+            'walk_ins_added_to_reservations, or '
+            'walk_ins_tracked_separately',
       );
     }
   }

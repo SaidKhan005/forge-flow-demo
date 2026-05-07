@@ -129,6 +129,7 @@ class _PerLocationDataAccuracyTableState
     ];
     final metadata = <_MiniFact>[
       _MiniFact('Wage source', _wageLabel(row.settings.wageSource)),
+      _MiniFact('Walk-ins', _walkInLabel(row.settings.walkInHandlingMode)),
       _MiniFact('Last override', updatedAt),
       _MiniFact('Changed by', updatedBy),
     ];
@@ -198,6 +199,17 @@ class _PerLocationDataAccuracyTableState
         return 'Vendor';
       case WageSource.manualMix:
         return 'Manual mix';
+    }
+  }
+
+  static String _walkInLabel(DataAccuracyWalkInHandlingMode mode) {
+    switch (mode) {
+      case DataAccuracyWalkInHandlingMode.reservationsOnly:
+        return 'Reservations only';
+      case DataAccuracyWalkInHandlingMode.walkInsAddedToReservations:
+        return 'Add walk-ins';
+      case DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately:
+        return 'Track separately';
     }
   }
 
