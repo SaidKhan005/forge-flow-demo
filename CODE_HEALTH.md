@@ -1,296 +1,81 @@
-# Code Health Report
+# Code Health — Open Residuals
 
-**Audit date:** 2026-05-06
-**Branch reviewed:** `master` @ `02072b1`
-**Method:** Nine parallel read-only review agents, line-by-line across the major surfaces. No code changes.
+The 2026-05-06 audit and its 2026-05-07 closeout (37 closed findings across 22 PRs) are archived at [`docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`](docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md). This file tracks only what's still open.
 
----
-
-## Executive Summary
-
-The codebase is **architecturally disciplined but operationally under-finished**. The Phase 9 hardening lane delivered real artifacts: tenant scoping via `OperatorScopedRepository`, RLS wrapper functions, hash-chained audit log, two-tier provider abstractions, idempotent proxy writes, and an 84-migration ledger that mostly honors the time-boundary and index-leading-column contracts. But across nine surfaces the same theme recurs: **fail-closed scaffolds and "land in a follow-up lane" comments are masking real gaps in production wiring** — the response cache is `AlwaysMiss`, the audit anchor's daily Azure Blob write is paused, the cost-discipline levers are unwired, the realtime-bridge DLQ counter never increments, the polling worker has no row-claim discipline, and the secondary LLM has no breaker.
-
-The **single highest-leverage fix** is graceful shutdown on `tool/advisor_proxy/main.dart` — Cloud Run rollover currently severs in-flight idempotency reservations, which compounds with the admin idempotency store's missing TTL into a permanent `409 in_flight` failure mode.
+Last verified against `origin/master`: 2026-05-07.
 
 ---
 
-## Critical findings (ship-blocker tier)
+## Launch readiness — three real blockers
 
-| # | Surface | File | Issue |
-|---|---------|------|-------|
-| C1 | Permissions | [role_management_policy.dart:181](lib/auth/role_management_policy.dart) | `operator_owner` can grant `super_admin` / `ff_support` within their tenant — privilege-escalation hole |
-| C2 | Auth | [proxy_refresh_token_revoker.dart:62](lib/services/auth/proxy_refresh_token_revoker.dart) | Idempotency key built from `microsecondsSinceEpoch` instead of `Random.secure()` — predictable / collidable |
-| C3 | Proxy | [main.dart:635](tool/advisor_proxy/main.dart) | No SIGTERM handler. Cloud Run rollover severs in-flight `commitUsageLog` + `completeRequest` writes |
-| C4 | Proxy | [advisor_proxy.dart:12888](tool/advisor_proxy/advisor_proxy.dart) | Admin idempotency `_runAdminIdempotent` has no compute-failure cleanup or TTL — single transient failure pins key to `409 in_flight` forever |
-| C5 | Persistence | [users_repository.dart:444,869,887,906](lib/infrastructure/persistence/postgres/repositories/users_repository.dart) | `updateStatus` / `softDelete` / `redactPii` / `bumpRolesVersion` UPDATE without `operator_id` predicate under `withSystem` (BYPASSRLS) |
+Triaged against the V1 launch posture (inbound integrations + two-console web plane; AI surfaces paused). Two of the original five launch-blockers were silently closed and are listed in the archive; these three remain real on current master.
 
----
+1. **Mobile operator-switch data leak.** `lib/state/shift_dashboard_notifier.dart:74` reads `restaurantId` once at fetch-start and uses that captured value through to notify with no re-check. Combined with `DatabaseHelper.instance` being hardcoded to `DemoScope.restaurantId` (`lib/infrastructure/persistence/sqlite/database_helper.dart`) and the SQLite repos being process-global singletons keyed only on `restaurant_id`, an operator who switches restaurants on the same device sees stale data until lazy `wipeForOtherScopes` runs. Per CLAUDE.md, per-operator isolation is non-negotiable. Cleanest contract violation in the residual list.
 
-## High-severity findings by surface
+2. **Vendor sync log redaction skipped on Postgres writes.** `lib/infrastructure/persistence/postgres/toast_pos_postgres_sink.dart:139–158` (`appendSyncLog`) writes `payloadPreview` straight into the INSERT with no redactor. The stdout redactor doesn't run on this path. Any vendor body containing PII / secrets persists unredacted to `connector_sync_log`. Compliance-audit risk.
 
-### Proxy (`tool/advisor_proxy/`)
-- **`advisor_proxy.dart` is 14,500 lines** mixing routing, gateway plumbing, JWT crypto, SQL, CORS — every new slice extends the monolith.
-- **`AlwaysMissAdvisorResponseCache`** still in production wiring (`main.dart:325`) — the documented fallback chain (LLM → secondary → **cache** → refusal) is collapsed to (LLM → secondary → refusal).
-- **Secondary LLM has no breaker, no per-call timeout, bare-catch error classification** (`advisor_proxy.dart:5067`). A pathological Gemini hang consumes the full per-request budget on every request.
-- **Body-size cap is global** (`advisor_proxy.dart:7177`) — graph candidate batch commit will silently 413 once it crosses 1MB.
-- **Composite JWT verifier leaks "SP verifier installed" enumeration signal** through error text (`advisor_proxy.dart:869`).
-
-### Auth / MFA / Permissions
-- **C1 above** — operator_owner role escalation.
-- **Permission cache invalidation is per-process only** (`permission_cache.dart:126`) — silent staleness on any horizontal scale-out.
-- **Recovery code TOCTOU**: rate-limit `check` and `recordAttempt` are non-atomic (`recovery_code_attempt_limiter.dart:149`); two parallel attempts can both pass the limiter.
-- **Recovery-code consumer linear scan with early break** leaks slot position via timing (`recovery_code_consumer.dart:108`).
-- **Salt-less SHA-256 password-history hash** (`repository_password_history_check.dart:38`) — credential oracle on table leak.
-- **HIBP roundtrip fires before shape validation** (`password_change_service.dart:80`) — invalid-input attacks starve the per-process budget.
-- **reCAPTCHA policy ignores `challengeTs` freshness** (`recaptcha_v3_verifier.dart:116`) — token replay possible.
-- **MFA enrollment finalize re-queries `accounts:lookup` for "newest" factor** (`identity_toolkit_firebase_mfa_client.dart:174`) instead of reading the response — race against parallel enrollment.
-- **GDPR pending-erasure approvals have no expiry** (`gdpr_erasure_service.dart:96`) — 6-month-old approval pairs with fresh approval today.
-
-### Domain services / scheduling
-- **`BaselineData` (in `lib/dev/`) is mutated and read by canonical services** — `TargetCycleService`, `BaselineManagerService`, `BenchmarkTrackerReadService`, `LearnBenchmarkContextService`, `BaselineSelectionAnalyticsService` all import the demo fixture global. Layer 3 authority leaks through a dev-folder static.
-- **`weekly_plan_snapshot_service.dart:215` day-row rotation assumes Mon-first** with no assertion. Drift in `SchedulePlanResolver._defaultDayWeights` would silently desync business dates from day labels.
-- **`cycleId` collision** — `target_cycle_service.dart:283` uses `millisecondsSinceEpoch`, two replacement writes within one ms silently overwrite via upsert.
-- **`labor_model.dart:266` decomposition rounds 5 intermediate model-hour values independently** then derives axis dollars — accumulated rounding can flip Primary Driver assignment. The 7.58 "honest dollar attribution" contract rests on this.
-- **`schedule_plan_resolver.dart:1` (Layer 7 domain) imports `lib/services/labor_model.dart`** — domain depending on services.
-
-### Integrations / outbox
-- **Worker watermark is not transactional with adapter writes** (`dispatch.dart:236`). Vendor double-writes are absorbed only if every adapter implements idempotency correctly — unverifiable per-adapter discipline.
-- **Sync worker has no row claim** (`integration_sync_worker.dart:296`) — multi-instance Cloud Run double-polls vendors, burns rate-limit budget, doubles `connector_sync_log` rows. Same loop also swallows every per-tick exception with `catch (_)`.
-- **Cadence resolver's resolved value is discarded** (`dispatch.dart:373`) — tier assignments are observability-only today.
-- **Webhook synthetic event-id grows attempts table unboundedly** (`inbound_webhook_handler.dart:565`) — random-payload spam never dead-letters.
-- **`CanonicalSink.appendSyncLog` accepts arbitrary maps** (`canonical_sink.dart:120`) without redaction or schema; the stdout redactor doesn't run on Postgres-bound writes.
-
-### Migrations / RLS
-- **Audit-anchor cadence is paused** — `202605061700_hardening_audit_anchor_daily_schedule.sql` only NOTIFYs; Cloud Scheduler is paused per the migration's own header. The hash chain alone bounds tamper detection only after-the-fact.
-- **`usage_logs` constraint flip in `202604280006_c`** is a full table rewrite (`ADD COLUMN ... NOT NULL DEFAULT gen_random_uuid()` is `ACCESS EXCLUSIVE`).
-- **6 duplicate basename prefixes** (`202605010000`, `202605020001`, `202605040400`, `202605050400`, `202605060000`, `202605061700`) — apply order is fragile; the drift scanner doesn't reject duplicate prefixes.
-- **Conflicting `actor_kind` definitions** — `202604280004:219` and `202604280013:10` define the constraint twice with different names; the later migration also adds `actor_service_principal_id` not in the canonical slice.
-- **8 fact-table indexes shipped without `operator_id` leading** in `202605040000`; rekey landed 37 days later in `202605061500`.
-- **`feature_flags` policy `OR (operator_id IS NULL …)`** can't fold into the tenant-leading index.
-- **`phase_8_set_business_date()` is `SECURITY DEFINER` owned by forge_admin** and granted EXECUTE to `service_role` (`202605050400`) — a SQL-injection on the proxy that lands a row insert hits BYPASSRLS context as a side effect.
-
-### Persistence
-- **C5 above** — UsersRepository BYPASSRLS UPDATEs without `operator_id`.
-- **Cross-tenant scans** — `firebaseUidForUserSystem`, `findActiveUserIdByFirebaseUidSystem`, `findMfaRecoveryTargetByEmail` walk every tenant's rows.
-- **SQLite repos as process-global singletons keyed only by `restaurant_id`** (`sqlite_shift_record_repository.dart:6`). Operator switch on a shared device leaks until lazy `wipeForOtherScopes` runs.
-- **`DatabaseHelper.instance` hardcoded to `DemoScope.restaurantId`** — non-demo callers silently hit the demo scope.
-- **Pool sizing pinned at 4** (`postgres_executor.dart:34`) with no production-tuning surface; first real load incident will be a multi-day debug.
-
-### AI providers / cache / caps
-- **Two parallel LLM hierarchies** — `LLMProvider` (`lib/domain/services/llm_provider.dart:64`) vs `ProxyLlmProvider` (`advisor_proxy.dart:4823`) with overlapping but incompatible shapes. Phase 12 reuse is contingent on collapsing them.
-- **Anthropic prompt caching is computed but never sent on the wire** — `advisor_proxy.dart:4800` emits the right shape, `anthropic_http_complete_fn.dart:98` sends `system: context` as a flat string. The `prompt_cache_hit_rate` metric will sit at 0%.
-- **No cost-discipline levers wired** — caps fail hard at 402; no model downgrade, no compression, no context trim, no batching, no semantic-cache fallback.
-- **Pre-flight token estimate is client-supplied via query string** (`advisor_proxy.dart:7446`), default `100`. The request-token cap is bypassable.
-- **Two-slot key vs counter store granularity mismatch** — `usage_logs` keys on (operator, billing-org, scoped-org, location, staff, workflow, class, period); `ProxyUsageCounterStore` keys only on (operator, location, tier, minute_bucket).
-- **Voyage embeddings have no chunking, no retry, no concurrency limit** (`voyage_embedding_provider.dart:46`).
-- **No re-embed path on model change** — `vector_index_health` returns hard-coded `activeVectors: 0`.
-- **`defaultAnthropicOnlineCheck` uses dart-defined API key** (`advisor_model_config_service.dart:159`) — violates Hard Promise #7 ("no BYO-key"); a stray `--dart-define` in a build ships the key in the client binary.
-
-### UI / Flutter
-- **`lib/widgets/daypart_table.dart:3` imports `lib/dev/demo_fixture_data.dart`** — prod widget pulling demo seed.
-- **5 widgets import frozen `lib/data/`** — `data_alignment_audit_panel.dart`, `input_metric_card.dart`, `lever_card.dart`, `week_history_tile.dart`, blocking the "delete-only" promise.
-- **`settings_wage_authority_section.dart:48,64,67`** calls `SqliteWageRoleRowRepository.instance` directly from a widget — bypasses the service layer.
-- **`shift_dashboard.dart:36`** owns timezone init and service-period bucketing (contract-banned).
-- **`ShiftDashboardNotifier._load`** (`lib/state/shift_dashboard_notifier.dart:69`) doesn't validate active restaurant id between fetch start and notify — operator switch can leak prior-restaurant data.
-- **Permission keys hand-typed in widgets** instead of imported from `lib/auth/permission_keys.dart` — at least 12 sites in `lib/operator_web/screens/**` and `lib/forge_flow_app.dart`.
-- **`forge_flow_app.dart` is 2,160 lines, `admin_routes.dart` 1,906 lines, 8 admin screens > 1,500 lines** — load-bearing files where every new surface forces a touch.
-
-### Workers
-- **OAuth refresh cron has no claim discipline** (`oauth_refresh_cron.dart:185`) — concurrent refreshes race on vendor refresh-token rotation; auto-disable triggers on healthy connections.
-- **MFA removal worker has no retry cap, no DLQ** (`mfa_removal_worker.dart:123`). Poison-pill removals re-claim forever every 5–15 min.
-- **MFA removal: audit-log + outbox enqueue happen AFTER `markCompleted`** (`mfa_removal_worker.dart:65`) outside the same transaction — partial completions silently drop audit/outbox events.
-- **Realtime bridge DLQ is theatre** (`realtime_bridge.dart:425`) — `attempt_count` is never incremented; `_dlqCap` will never be reached. Poison-pills recycle until 7-day retention deletes them.
-- **Audit anchor verify can't recover from crashed-write state** (`audit_anchor.dart:1101`).
-- **Audit anchor sweep has no advisory-lock guard** — Cloud Scheduler retry storm produces a thundering herd.
-- **Email outbox dispatcher reverse-engineers failure kind from string `.contains`** (`email_outbox_dispatcher.dart:381`).
-- **No common worker base** — every worker re-implements claim loop, error catch, log, alert, metric. Adding a worker is ~200 LOC of boilerplate.
+3. **Sync worker bare `catch (_)` + missing claim discipline.** `tool/integration_sync_worker/integration_sync_worker.dart:303` still swallows every per-tick exception. Multi-instance Cloud Run double-polls vendors; SQL claim moved behind `SyncWorkerSource` abstraction with no `FOR UPDATE SKIP LOCKED`. Owned by the parallel onboarding lane; deferred to their `.1.*` slices. Confirm with that lane before flipping the launch switch.
 
 ---
 
-## Structural risks (the deepest concerns)
+## Deferred — partial closure with documented gap
 
-1. **Monolithic `advisor_proxy.dart`** (14.5k lines, growing). Every Codex review of this file pays a re-read tax; every new slice copies a 50-line route block.
-2. **Duplicated abstractions** — two LLM hierarchies, three adapter interfaces with identical method shapes, ~12 proxy gateways re-implementing `_postJson + idempotency-key`, four trigger functions with the same body, three `bridgeFallback` patterns reading `BaselineData`. The system pays the cost of abstractions but keeps the duplication that forced them in.
-3. **"Land in a follow-up lane" debt** — `AlwaysMissAdvisorResponseCache`, paused audit anchor, 5 unwired cost-discipline levers, no cron-tick observability, `consecutive_poll_failures` not tracked, missing retention sweeps for `proxy_requests` / `auth_login_attempts`, MFA gates pinned to `false` until session-claim resolver lands. Each is documented as v1 scaffold; cumulatively they erode the "ship-ready" claim.
-4. **`lib/dev/` leaking into production paths** — `BaselineData` mutated by canonical services; `daypart_table.dart` importing demo fixtures; `DatabaseHelper.instance` baked to `DemoScope.restaurantId`. The demo-mode-is-writer-side promise is cosmetically true but operationally broken.
-5. **No graceful shutdown story across the fleet** — proxy listener, sync worker, OAuth refresh, MFA worker, email dispatcher all bind a loop and never register SIGTERM handlers. Cloud Run revision rollover terminates work mid-tx, leaving orphan reservations, stuck-claim rows, and missing audit events.
-
----
-
-# Plain-English Version
-
-## What's the headline?
-
-**The blueprint is solid. The wiring isn't done.**
-
-The team built this app like a real piece of infrastructure — there's careful work to keep different restaurant operators' data isolated, an audit log that proves nothing was tampered with, and pluggable AI providers so swapping Claude for Gemini is one wire change. The architecture documents are taken seriously and most of the code follows them.
-
-But underneath that, there are a lot of TODOs that are silently wired into production. Several big features look complete but are actually placeholders that fail safely. They don't crash — they just don't do what their names suggest.
-
-## What's seriously broken
-
-1. **A restaurant owner can promote themselves to "super admin."** The code that checks who can hand out admin powers has a missing line — when an owner tries to grant the highest-level role, nothing stops them.
-2. **One internal "request id generator" uses the clock instead of randomness.** Two near-simultaneous requests can collide. Every other generator in the codebase uses real randomness; this one is the odd one out.
-3. **The "I'm shutting down gracefully" handler doesn't exist on the main server.** When Google's hosting platform updates the server (which happens routinely), in-flight work gets cut off mid-sentence. Some of those cuts leave database rows in a weird stuck state that has to be manually fixed.
-4. **The "if this fails, retry it" feature on admin actions doesn't clean up after itself.** A single network blip can permanently freeze an action with a "still in progress" message. No automatic recovery.
-5. **A few database operations could affect the wrong restaurant.** The system has two layers of defense for keeping restaurants' data separate. Five specific operations skip the first layer and rely entirely on the second. If the second layer has any bug, restaurants leak into each other.
-
-## What's quietly broken
-
-- **The "AI response cache" is a fake.** It returns "miss" every time. The system was supposed to fall back to cached answers when both Claude and Gemini are down — that fallback doesn't exist. Operators just see an error.
-- **Anthropic's prompt-caching feature is half-wired.** The code computes the right caching markers and tests them, but the actual network call sends the prompt without them. The cost-savings dashboard will read 0% forever.
-- **The "cost discipline levers" on the spec sheet aren't built.** When an operator hits their monthly AI spend cap, the system fails hard with "402 Payment Required" instead of gracefully downgrading to a cheaper model.
-- **The audit log's "tamper-proof" daily backup to Azure isn't running.** The hash chain part works — you can prove individual rows weren't changed — but the daily anchor that bounds *when* tampering could have happened is paused.
-- **The integration sync worker silently swallows errors.** If something crashes in the polling loop, you'll see no log, no metric, no alert. The system reports "healthy" while doing nothing.
-- **The OAuth refresh worker has a race condition.** If two copies run at the same time (which Google's platform can cause on retries), they'll both refresh the same token, and the vendor will invalidate one of them. After three races in a row, the connection is auto-disabled — for healthy users.
-- **The "dead-letter queue" for the realtime publisher is theater.** A counter that's supposed to move messages to a dead-letter table after 5 failures never increments — so dead-lettering literally never happens.
-- **The MFA removal worker has no retry cap.** A removal request that always fails will retry every 5–15 minutes forever, with no escalation, no alert, no manual triage path.
-
-## What's just messy
-
-- **The main proxy server file is 14,500 lines.** It mixes routes, security, database queries, and UI helpers. Every new feature pile-ons more code at the bottom. A targeted cleanup would unlock parallel work and reduce review time dramatically.
-- **A handful of "demo mode" leftovers leaked into production code.** Demo seed data is read by real services; one production widget imports the demo fixtures file directly; the legacy database helper is hardcoded to the demo restaurant. The "demo mode is just a switch" promise isn't quite true in code.
-- **Permission strings are hand-typed across the UI** instead of using the central catalog. Renaming a permission means editing dozens of files with no compiler help.
-- **Six pairs of database migration files have identical timestamps.** They sort by filename, which is fragile. A rename can change apply order.
-- **Most servers don't shut down cleanly.** They all loop forever, none of them respond to "please stop" signals from the platform. Whenever Google rolls out an update, in-progress work gets killed.
-
-## What's actually good (don't lose this)
-
-- The contract framework — the layer model, the time-boundary rules, the index-leading-column rule, the per-tenant repository pattern — is internally consistent and the team mostly follows it.
-- Service principals and the JWT verifier composite are well-designed.
-- The audit log's hash-chain implementation is correct (the anchor side is the gap).
-- Idempotency keys are written to a UNIQUE table on the proxy — when the right caller is generating the key.
-- RLS policies use `STABLE LEAKPROOF PARALLEL SAFE` wrapper functions — the right pattern.
-- Tests around cache breakpoints, idempotency, and JWT verification exist and pass.
-- Failure posture is mostly fail-closed (refuse rather than silently approve), which is the right default.
-
-## What to do first (in order)
-
-1. **Add SIGTERM handlers to every long-running process** — this fixes the largest class of "weird stuck state" bugs in one shot.
-2. **Add `expires_at` to the admin idempotency table** — clears the permanent-`409` failure mode.
-3. **Fix the `operator_owner` role grant escalation** — small code change, large security hole closed.
-4. **Add `FOR UPDATE SKIP LOCKED` to the polling worker and OAuth refresh queries** — single-line fix that prevents double-polling and broken vendor connections at horizontal scale.
-5. **Make the salt-less password-history hash salted-and-peppered** — credential-leak posture.
-6. **Land the real response cache** before the next provider outage exposes the placeholder.
-7. **Wire the audit anchor's daily Azure write** — without it, the tamper-evidence story has an unbounded gap.
-8. **Stop importing `lib/dev/` from production code paths** — small refactor, restores the "demo is a switch" claim.
-
-The code was built with good instincts. The next sprint of work isn't more architecture — it's finishing the wiring on what's already there.
-
----
-
-# Resolution (CODE_HEALTH closeout — 2026-05-07)
-
-This audit was remediated via 16 parallel-lane PRs across two waves of worktrees. Two Wave 1 lanes were intentionally skipped because their files belong to a parallel onboarding effort. Two findings closed only partially with a documented residual; several structural risks fall outside the scope of this remediation and remain open for follow-up phase docs.
-
-## Closed
-
-| Finding | PR(s) | Lane |
-|---|---|---|
-| C1 — operator_owner role escalation | [#249](https://github.com/SaidKhan005/forge-flow-demo/pull/249) | L1 |
-| C2 — Random.secure() idempotency in proxy_refresh_token_revoker | [#250](https://github.com/SaidKhan005/forge-flow-demo/pull/250) | L2 |
-| C3 — proxy SIGTERM (and worker SIGTERMs across the fleet) | [#255](https://github.com/SaidKhan005/forge-flow-demo/pull/255), [#270](https://github.com/SaidKhan005/forge-flow-demo/pull/270), [#254](https://github.com/SaidKhan005/forge-flow-demo/pull/254), [#256](https://github.com/SaidKhan005/forge-flow-demo/pull/256) | L4 + L7 + L9 + L8 |
-| C4 — admin idempotency `expires_at` + reclaim + sweep | [#207](https://github.com/SaidKhan005/forge-flow-demo/pull/207) (schema) + [#255](https://github.com/SaidKhan005/forge-flow-demo/pull/255) (code) | M1 + L4 |
-| C5 — UsersRepository operator_id predicates + cross-tenant scan flag | [#251](https://github.com/SaidKhan005/forge-flow-demo/pull/251) | L3 |
-| Secondary LLM circuit breaker + 8 s timeout + typed errors | [#255](https://github.com/SaidKhan005/forge-flow-demo/pull/255) | L4 |
-| Body-size cap per route (16 MB graph batch, 1 MB everywhere else) | [#255](https://github.com/SaidKhan005/forge-flow-demo/pull/255) | L4 |
-| Composite JWT verifier enumeration leak collapsed | [#255](https://github.com/SaidKhan005/forge-flow-demo/pull/255) | L4 |
-| AlwaysMissAdvisorResponseCache → Postgres-backed cache + 24 h TTL | [#258](https://github.com/SaidKhan005/forge-flow-demo/pull/258) | L14 |
-| Recovery code TOCTOU collapsed into atomic check+record | [#261](https://github.com/SaidKhan005/forge-flow-demo/pull/261) | L10 |
-| Recovery-code consumer constant-time scan (no early break) | [#261](https://github.com/SaidKhan005/forge-flow-demo/pull/261) | L10 |
-| reCAPTCHA `challengeTs` 60 s freshness gate | [#261](https://github.com/SaidKhan005/forge-flow-demo/pull/261) | L10 |
-| HIBP roundtrip moved after shape validation | [#261](https://github.com/SaidKhan005/forge-flow-demo/pull/261) | L10 |
-| Salt-less SHA-256 password-history hash → per-row salt + global pepper | [#206](https://github.com/SaidKhan005/forge-flow-demo/pull/206) (schema) + [#257](https://github.com/SaidKhan005/forge-flow-demo/pull/257) (code) + [#267](https://github.com/SaidKhan005/forge-flow-demo/pull/267) (gateway threading) | M2 + L12 + gateway-pepper |
-| MFA enrollment finalize race (read factor from response, not lookup) | [#252](https://github.com/SaidKhan005/forge-flow-demo/pull/252) | L11 |
-| GDPR pending-erasure approvals 14-day expiry | [#252](https://github.com/SaidKhan005/forge-flow-demo/pull/252) | L11 |
-| Realtime bridge DLQ counter increments + row moves to dead-letter | [#256](https://github.com/SaidKhan005/forge-flow-demo/pull/256) | L8 |
-| Email outbox dispatcher typed error union (no string `.contains`) | [#256](https://github.com/SaidKhan005/forge-flow-demo/pull/256) | L8 |
-| MFA removal worker retry cap (10) + DLQ + `dead_lettered_at` | [#265](https://github.com/SaidKhan005/forge-flow-demo/pull/265) (schema) + [#270](https://github.com/SaidKhan005/forge-flow-demo/pull/270) (code) | M4 + L7 |
-| Audit anchor crash-recovery roll-forward | [#210](https://github.com/SaidKhan005/forge-flow-demo/pull/210) (schema) + [#254](https://github.com/SaidKhan005/forge-flow-demo/pull/254) (code) | M3 + L9 |
-| Audit anchor `pg_advisory_lock` sweep guard | [#210](https://github.com/SaidKhan005/forge-flow-demo/pull/210) (schema) + [#254](https://github.com/SaidKhan005/forge-flow-demo/pull/254) (code) | M3 + L9 |
-| Audit anchor daily Azure Blob manifest write | [#210](https://github.com/SaidKhan005/forge-flow-demo/pull/210) (schema) + [#254](https://github.com/SaidKhan005/forge-flow-demo/pull/254) (code) | M3 + L9 |
-| Anthropic prompt cache control on the wire (structured `system`) | [#253](https://github.com/SaidKhan005/forge-flow-demo/pull/253) | L13 |
-| `defaultAnthropicOnlineCheck` dart-define API key removed (Hard Promise #7) | [#253](https://github.com/SaidKhan005/forge-flow-demo/pull/253) | L13 |
-| `BaselineData` promoted out of `lib/dev/` to a Layer 3 service | [#276](https://github.com/SaidKhan005/forge-flow-demo/pull/276) | L15 |
-| `schedule_plan_resolver` Layer 7 import of `labor_model` removed | [#276](https://github.com/SaidKhan005/forge-flow-demo/pull/276) | L15 |
-| `target_cycle_service` `cycleId` is 128-bit hex (not `millisecondsSinceEpoch`) | [#276](https://github.com/SaidKhan005/forge-flow-demo/pull/276) | L15 |
-| `weekly_plan_snapshot_service` Mon-first throw guard | [#276](https://github.com/SaidKhan005/forge-flow-demo/pull/276) | L15 |
-| `daypart_table.dart` no longer imports `lib/dev/` | [#276](https://github.com/SaidKhan005/forge-flow-demo/pull/276) | L15 |
-| Dependent test fixups (collateral from L10 + L12) | [#264](https://github.com/SaidKhan005/forge-flow-demo/pull/264) | follow-up |
-
-## Deferred (partial closure, residual logged)
-
-| Finding | What landed | What remains | Why deferred |
+| Finding | What landed | What remains | Why |
 |---|---|---|---|
 | MFA removal: audit + outbox enqueue post-`markCompleted` not transactional | Deterministic ordering + `markCompleted` row-count guard so re-attempts are idempotent ([#270](https://github.com/SaidKhan005/forge-flow-demo/pull/270)) | True single-tx atomicity needs `EventOutboxRepository.enqueue` to gain an on-executor variant | Outbox API change is its own surface contract — out of L7's three-file scope |
-| `labor_model.dart:266` decomposition rounding | (none) | Single-atomic-computation derivation of axis dollars; re-pin ~10 exact-equals assertions in `test/labor_model_dollar_attribution_test.dart` | Naive rewrite would have flipped Primary Driver assignments in pinned tests; needs a phase doc that re-pins together |
+| `lib/services/labor_model.dart:266` decomposition rounding | (none) | Single-atomic-computation derivation of axis dollars; re-pin ~10 exact-equals assertions in `test/labor_model_dollar_attribution_test.dart` | Naive rewrite would have flipped Primary Driver assignments in pinned tests; needs a phase doc that re-pins together |
 
-## Skipped (other Claude account owns these surfaces)
+---
 
-The following Wave 1 lanes were intentionally skipped because the files belong to the parallel plug-and-play onboarding lanes (sync worker / OAuth refresh / first-connection backfill / canonical-fact projector / dispatch / sync proxy / app data status / proxy admin integration routes / adapter registries / proxy `main.dart` route logic):
+## Confirmed still open — stable shape
 
-- **L5** — sync worker SIGTERM + `FOR UPDATE SKIP LOCKED` + claim discipline + bare-catch fix (`lib/services/integration/integration_sync_worker.dart`, `tool/integration_sync_worker/**`).
-- **L6** — OAuth refresh claim discipline (`lib/services/auth/oauth_refresh_cron.dart`).
+These were "out of scope" in the original remediation and remain real on current master:
 
-Their CODE_HEALTH findings remain open and should be revisited once the onboarding lane lands.
+- **Conflicting `actor_kind` constraint definitions** in migrations `202604280004` + `202604280013` (different constraint names; later migration adds `actor_service_principal_id` not in canonical slice).
+- **`phase_8_set_business_date()` is `SECURITY DEFINER`** owned by `forge_admin`, granted EXECUTE to `service_role`. SQL-injection on the proxy that lands a row insert hits BYPASSRLS context as a side effect.
+- **`DatabaseHelper.instance` hardcoded to `DemoScope.restaurantId`** (overlaps Launch Blocker #1).
+- **Postgres pool size pinned at `kPostgresDefaultMaxConnectionsPerPool = 4`** with no env override (`lib/infrastructure/persistence/postgres/postgres_executor.dart`).
+- **Pre-flight token estimate client-supplied** via `cost_telemetry_limit` query param, default 100 (`tool/advisor_proxy/advisor_proxy.dart` near line 13836). Cap is bypassable.
+- **Cost-discipline levers unwired** — caps still 402-fail with no model-downgrade / compression / context-trim / batching / semantic-cache fallback.
+- **Permission cache invalidation per-process** (`lib/auth/permission_cache.dart:126`) — no Pub/Sub or cross-instance fan-out → silent staleness on horizontal scale-out.
+- **`feature_flags` policy `OR (operator_id IS NULL …)`** can't fold into the tenant-leading index (perf concern).
+- **Two-slot key vs `ProxyUsageCounterStore` granularity mismatch** — `usage_logs` keys broader than the counter store's (operator, location, tier, minute_bucket).
+- **Audit anchor cron unpause** — operational change (Cloud Scheduler), not code. Worker code is ready.
+- **Worker watermark not transactional with adapter writes** (`dispatch.dart:236`).
+- **Cadence resolver's resolved value discarded** (`dispatch.dart:373`) — tier assignments observability-only.
+- **No common worker base** — every worker re-implements claim loop, error catch, log, alert, metric.
 
-## Out of scope for this remediation
+---
 
-CODE_HEALTH lists these but no Wave 0/1/2 lane covered them — they need their own phase docs:
+## Surfaces moved — concern status unknown, needs re-locate
 
-- Monolithic `tool/advisor_proxy/advisor_proxy.dart` (~14.5k lines).
-- Two parallel LLM hierarchies (`LLMProvider` vs `ProxyLlmProvider`) — Phase 12 collapse.
-- Permission cache invalidation per-process (no Pub/Sub fan-out).
-- Migrations: 6 duplicate basename prefixes; conflicting `actor_kind` definitions; 8 fact-table indexes lacking `operator_id` leading column; `feature_flags` policy folding; `phase_8_set_business_date()` `SECURITY DEFINER` blast radius.
-- Persistence: SQLite repos as process-global singletons keyed only by `restaurant_id`; `DatabaseHelper.instance` hardcoded to `DemoScope.restaurantId`; pool size pinned at 4.
-- AI: Voyage embeddings have no chunking / retry / concurrency cap; no re-embed path on model change; pre-flight token estimate is client-supplied via query string; two-slot key vs counter-store granularity mismatch; cost-discipline levers unwired (caps fail at 402).
-- UI/Flutter: 5 widgets importing frozen `lib/data/`; `settings_wage_authority_section` calling `SqliteWageRoleRowRepository.instance` from a widget; `shift_dashboard` owning timezone init; `ShiftDashboardNotifier._load` active-restaurant race; permission keys hand-typed across `operator_web/`; `forge_flow_app.dart` (~2.1k lines) and `admin_routes.dart` (~1.9k lines).
-- Webhook synthetic event-id growth (`inbound_webhook_handler.dart:565`); `CanonicalSink.appendSyncLog` schema-less map intake.
-- Audit anchor cron unpause — operational change in Cloud Scheduler, not code.
+Six audit-cited surfaces were renamed/restructured between the 2026-05-06 audit and the 2026-05-07 fact-check. The original concern may have been incidentally fixed by the rewrite OR carried forward into the new code. Each needs a 5–10 minute re-locate before being declared closed or re-cited:
 
-## Addendum — fact-check against master (2026-05-07)
+- `lib/services/embeddings/voyage_embedding_provider.dart` — Voyage chunking / retry / concurrency cap. **File not found at audit path.**
+- `vector_index_health.activeVectors` re-embed path. **Surface not found at audit-cited location.**
+- `lib/widgets/settings_wage_authority_section.dart` — widget calling `SqliteWageRoleRowRepository.instance` directly. **File not found**; wage role surfaces were actively reworked between audit and fact-check.
+- `lib/widgets/shift_dashboard.dart` — timezone init + service-period bucketing in widget. **File not found** at audit path. (The separate `ShiftDashboardNotifier` race is verified still real — see Launch Blocker #1.)
+- Permission keys hand-typed across `lib/operator_web/screens/**`. **Path doesn't exist on master.**
+- `admin_routes.dart` (~1.9k lines). **Not found at the cited path.**
 
-A second pass after this Resolution table was first written verified each row against the actual current state of `origin/master`. All 24 items in "Closed" remain in place — zero regressions. The list below records what the second pass turned up that contradicts or refines the original record.
+---
 
-### Items moved out of "Skipped" or "Out of scope" into "Closed"
+## Structural risks — needs its own phase doc each
 
-- **L6 OAuth refresh claim discipline** — closed by [#281](https://github.com/SaidKhan005/forge-flow-demo/pull/281) (the parallel onboarding lane's Cloud Run refresh worker). `tool/oauth_refresh_worker/main.dart` now uses `FOR UPDATE SKIP LOCKED` so concurrent refreshes never race on the same row.
-- **Webhook synthetic event-id unbounded growth** — closed in `lib/services/integration/inbound_webhook_handler.dart`: `_vendorEventIdOrSynthetic()` now hashes the payload deterministically (no random UUID), and the framework dead-letters at attempt 3.
-- **5 widgets importing frozen `lib/data/`** — closed; zero such imports remain on master. Resolved incidentally by other UI work.
-- **6 duplicate `YYYYMMDDHHMM` migration prefixes** — not present on current master. Either renamed during a prior cleanup or the audit's list was already stale at write time. Effectively closed.
-- **`ProxyLlmProvider` vs `LLMProvider` parallel hierarchies** — partially closed; `ProxyLlmProvider` no longer exists as a separate abstract class, leaving `LLMProvider` as the single hierarchy. Phase 12 collapse work is reduced but not zero.
+- **Monolithic `tool/advisor_proxy/advisor_proxy.dart` — now 15,863 lines** (up from audit's 14,500; +1,363 since 2026-05-06). The "land in a follow-up lane" debt is reaccumulating in the same file.
+- **`lib/forge_flow_app.dart` — now 2,482 lines** (up from audit's 2,160; +322).
+- **Duplicated abstractions** — three adapter interfaces with identical method shapes; ~12 proxy gateways re-implementing `_postJson + idempotency-key`; four trigger functions with the same body.
+- **Two LLM hierarchies** — partially closed (`ProxyLlmProvider` no longer exists). Phase 12 reuse work is reduced but not zero; remaining shape-collapse work between domain `LLMProvider` and the proxy's call paths.
+- **SQLite repos as process-global singletons** keyed only by `restaurant_id` — operator-switch leak (overlaps Launch Blocker #1).
 
-### Items where the surface moved — concern status now unknown
+---
 
-These need a re-locate pass before being declared closed; the file at the audit's cited path no longer exists, but the underlying concern may have carried forward into the new code:
+## Suggested next bites (by leverage)
 
-- `lib/services/embeddings/voyage_embedding_provider.dart` (Voyage chunking / retry / concurrency cap) — file not found at audit path.
-- `vector_index_health.activeVectors` re-embed path — surface not found at audit-cited location.
-- `lib/widgets/settings_wage_authority_section.dart` (widget→SQLite direct call) — file not found; wage role surfaces were actively reworked between the audit and this addendum.
-- `lib/widgets/shift_dashboard.dart` (timezone init in widget) — file not found at audit path; `ShiftDashboardNotifier._load` race (separate finding) is verified still real.
-- Permission keys hand-typed in `lib/operator_web/screens/**` — that path doesn't exist on master.
-- `admin_routes.dart` (~1.9k lines) — not found at the cited path.
-
-### Items where the concern is now relocated rather than the file missing
-
-- `CanonicalSink.appendSyncLog` schema-less map intake — the offending Postgres write is no longer in `lib/services/integration/canonical_sink.dart`; it now lives in `lib/infrastructure/persistence/postgres/toast_pos_postgres_sink.dart:139–158` where `appendSyncLog` writes `payloadPreview` straight into the INSERT with no redactor. Concern is **still real, file path different**.
-
-### Items confirmed still open (and stable shape)
-
-- Conflicting `actor_kind` constraint definitions (`202604280004` + `202604280013`).
-- `phase_8_set_business_date()` is still `SECURITY DEFINER` granted EXECUTE to `service_role`.
-- `DatabaseHelper.instance` still hardcoded to `DemoScope.restaurantId`.
-- Postgres pool size still pinned at `kPostgresDefaultMaxConnectionsPerPool = 4` with no env override.
-- Pre-flight token estimate still client-supplied via `cost_telemetry_limit` query param, default 100.
-- Cost-discipline levers still unwired — caps still 402-fail with no fallback chain.
-- Permission cache per-process invalidation — still no Pub/Sub or cross-instance fan-out.
-- Sync worker bare `catch (_)` at `tool/integration_sync_worker/integration_sync_worker.dart:303` — still in place; claim discipline deferred to `.1.*` lanes.
-- `ShiftDashboardNotifier._load` operator-switch TOCTTOU at `lib/state/shift_dashboard_notifier.dart:74` — still real.
-
-### Notable: monolith files have grown since the audit
-
-- `tool/advisor_proxy/advisor_proxy.dart`: **15,863 lines** — up from the audit's 14,500 (+1,363).
-- `lib/forge_flow_app.dart`: **2,482 lines** — up from the audit's 2,160 (+322).
-
-The "land in a follow-up lane" debt is reaccumulating in the same files. Worth raising in the next sprint planning.
-
+1. **Launch Blocker #1** — fix the `ShiftDashboardNotifier._load` TOCTTOU + `DatabaseHelper.instance` demo hardcoding. Smallest diff, biggest contract win (per-operator isolation).
+2. **Launch Blocker #2** — wire the redactor through `toast_pos_postgres_sink.appendSyncLog`. Compliance posture.
+3. **Verify Launch Blocker #3** — confirm with the parallel onboarding lane what their `.1.*` slices ship for `integration_sync_worker` claim discipline + bare-catch.
+4. **The `EventOutboxRepository.enqueue` on-executor variant** — closes the L7 deferred residual and unlocks atomic audit/outbox elsewhere.
+5. **Re-locate the six "moved" surfaces** to determine true status (one short reading pass).
+6. **`labor_model.dart` rounding rewrite paired with the test re-pin** (deferred L15 sub-task c).
+7. **`advisor_proxy.dart` monolith split** — biggest reviewer-time multiplier, but a project of its own.
