@@ -7,7 +7,7 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605080400_phase_8_connector_oauth_state.sql`. This
+`202605080600_phase_8_idempotency_location_id_rekey.sql`. This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -71,6 +71,7 @@ Pending follow-up scope (20 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605080200_phase_8_wage_role_rows_server_truth.sql`
 - `db/migrations/202605080300_phase_8_data_accuracy_walk_in_settings.sql`
 - `db/migrations/202605080400_phase_8_connector_oauth_state.sql`
+- `db/migrations/202605080600_phase_8_idempotency_location_id_rekey.sql`
 
 Out of scope:
 
@@ -80,7 +81,7 @@ Out of scope:
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
-  anything later than `202605080400_phase_8_connector_oauth_state.sql`
+  anything later than `202605080600_phase_8_idempotency_location_id_rekey.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
@@ -620,7 +621,7 @@ until the post-tuning monitor window is clean.
   `build/phase_9_production1_apply/2026-05-03_second_batch/` and intentionally
   stay uncommitted.
 
-### Next follow-up - pending (cutoff `202605080400_phase_8_connector_oauth_state.sql`)
+### Next follow-up - pending (cutoff `202605080600_phase_8_idempotency_location_id_rekey.sql`)
 
 - `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` is
   applied and Browser Use verified on staging. Apply it to Production1 under
@@ -739,6 +740,14 @@ until the post-tuning monitor window is clean.
   OAuth state migration for operator-facing vendor OAuth begin/callback CSRF
   and PKCE state. Apply on staging first; carry into the next Production1
   batch with the rest of the follow-up migrations.
+- `202605080600_phase_8_idempotency_location_id_rekey.sql` is the A1
+  idempotency rekey: drops and recreates the UNIQUE indexes on
+  `shift_records`, `cover_facts`, `labor_punches`, `reservation_facts`, and
+  `inbound_webhook_idempotency` to include `location_id` and remove
+  `vendor_modified_at` from the key (replaced by a DO UPDATE WHERE
+  `excluded.vendor_modified_at >= stored` guard in all 17 vendor sinks).
+  Uses `DROP INDEX CONCURRENTLY` / `CREATE UNIQUE INDEX CONCURRENTLY`.
+  Apply on staging first; carry into the next Production1 batch.
 - One-shot apply plan once approved: confirm staging parity for the same files,
   confirm fresh backup/restore point, run analyzer/lints/focused tests, apply
   the approved files to Production1, verify the `forge_admin`
