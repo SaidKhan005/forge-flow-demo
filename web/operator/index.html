@@ -27,7 +27,7 @@
     style-src 'self' 'unsafe-inline';
     img-src 'self' data: blob: https:;
     font-src 'self' data:;
-    connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://proxy.forgeflow.app https://*.forgeflow.app;
+    connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://proxy.forgeflow.app https://*.forgeflow.app https://*.run.app;
     frame-src 'self' https://*.firebaseapp.com;
     object-src 'none';
     base-uri 'self';
@@ -96,7 +96,7 @@
       <source srcset="splash/img/dark-1x.png 1x, splash/img/dark-2x.png 2x, splash/img/dark-3x.png 3x, splash/img/dark-4x.png 4x" media="(prefers-color-scheme: dark)">
       <img class="center" aria-hidden="true" src="splash/img/light-1x.png" alt="">
   </picture>
-  <script src="flutter_bootstrap.js" async=""></script>
+  <script type="module" src="forge_flow_web_bootstrap.js"></script>
 
 
 </body></html>
