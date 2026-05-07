@@ -41,6 +41,7 @@ void main() {
         final repo = UsersRepository(TenantTransactionWrapper(pool));
         await repo.updateStatus(
           userId: _validUserId,
+          operatorId: _validOpId,
           newStatus: 'suspended',
           adminReason: 'admin.users.suspend',
         );
@@ -75,6 +76,7 @@ void main() {
       final repo = UsersRepository(TenantTransactionWrapper(pool));
       await repo.softDelete(
         userId: _validUserId,
+        operatorId: _validOpId,
         adminReason: 'admin.users.soft_delete',
       );
       final sql = pool.transactions.single.executedSql.last;
@@ -90,6 +92,7 @@ void main() {
         final repo = UsersRepository(TenantTransactionWrapper(pool));
         await repo.redactPii(
           userId: _validUserId,
+          operatorId: _validOpId,
           adminReason: 'gdpr.erasure_executed',
         );
         final sql = pool.transactions.single.executedSql.last;
@@ -111,6 +114,7 @@ void main() {
       final repo = UsersRepository(TenantTransactionWrapper(pool));
       await repo.bumpRolesVersion(
         userId: _validUserId,
+        operatorId: _validOpId,
         adminReason: 'admin.users.roles_changed',
       );
       final sql = pool.transactions.single.executedSql.last;
