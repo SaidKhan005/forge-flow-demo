@@ -7,6 +7,40 @@ import 'package:forge_and_flow/services/star_target_selection_write_service.dart
 import 'package:forge_and_flow/services/sync/http_sync_proxy_client.dart';
 
 void main() {
+  test('fetchAccessibleBusinessScopes calls user-scoped route', () async {
+    late http.Request seen;
+    final client = HttpSyncProxyClient(
+      proxyBaseUri: Uri.parse('https://proxy.example/base/'),
+      idTokenProvider: () async => 'token-1',
+      httpClient: http_testing.MockClient((request) async {
+        seen = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'scopes': <Object?>[
+              <String, Object?>{
+                'scope_id': 'loc-2',
+                'scope_type': 'location',
+                'operator_id': 'op-1',
+                'location_id': 'loc-2',
+                'label': 'Mercado',
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    final scopes = await client.fetchAccessibleBusinessScopes(userId: 'user-1');
+
+    expect(seen.method, 'GET');
+    expect(seen.url.path, '/base/v1/users/user-1/business_scopes');
+    expect(seen.headers['authorization'], 'Bearer token-1');
+    expect(scopes.single.locationId, 'loc-2');
+    expect(scopes.single.label, 'Mercado');
+  });
+
   test('fetchShiftRecords calls scoped proxy path with bearer token', () async {
     late http.Request seen;
     final client = HttpSyncProxyClient(

@@ -20,6 +20,21 @@ Future<void> _createAllTables(Database db) async {
   ''');
 
   await db.execute('''
+    CREATE TABLE active_business_scopes (
+      user_id            TEXT PRIMARY KEY NOT NULL,
+      scope_id           TEXT NOT NULL,
+      scope_type         TEXT NOT NULL,
+      operator_id        TEXT NOT NULL,
+      location_id        TEXT,
+      parent_scope_id    TEXT,
+      label              TEXT NOT NULL,
+      business_timezone  TEXT,
+      sort_path          TEXT,
+      updated_at         TEXT NOT NULL
+    )
+  ''');
+
+  await db.execute('''
     CREATE TABLE connector_configs (
       connector_id         TEXT PRIMARY KEY NOT NULL,
       restaurant_id        TEXT NOT NULL,

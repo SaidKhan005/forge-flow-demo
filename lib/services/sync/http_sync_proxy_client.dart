@@ -4,12 +4,14 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../domain/models/open_shift_snapshot.dart';
+import '../../domain/models/business_scope.dart';
 import '../../domain/models/restaurant_timing_config.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../models/shift_record.dart';
 import '../integration/demo_mode_state.dart';
 import '../integration/integration_adapter_common.dart';
 import '../star_target_selection_write_service.dart';
+import '../scope/business_scope_repository.dart';
 import 'star_target_sync_resources.dart';
 import 'sync_proxy_client.dart';
 import 'weekly_plan_sync_resources.dart';
@@ -17,6 +19,7 @@ import 'weekly_plan_sync_resources.dart';
 class HttpSyncProxyClient
     implements
         SyncProxyClient,
+        BusinessScopeClient,
         StarTargetSyncProxyClient,
         WeeklyPlanSyncProxyClient,
         StarTargetSelectionWriteClient {
@@ -50,6 +53,26 @@ class HttpSyncProxyClient
   // `https://host/api/`) is preserved instead of being silently
   // replaced by `Uri.resolve('/v1/operators/...')`.
   static const List<String> _baseSegments = <String>['v1', 'operators'];
+  static const List<String> _userBaseSegments = <String>['v1', 'users'];
+
+  @override
+  Future<List<BusinessScope>> fetchAccessibleBusinessScopes({
+    required String userId,
+  }) async {
+    final body = await _getJson(<String>[
+      userId,
+      'business_scopes',
+    ], baseSegments: _userBaseSegments);
+    final rows = _readList(body, const <String>[
+      'scopes',
+      'business_scopes',
+      'items',
+      'data',
+    ]);
+    return rows
+        .map((row) => BusinessScope.fromJson(_stringKeyMap(row)))
+        .toList(growable: false);
+  }
 
   @override
   Future<ShiftRecordPage> fetchShiftRecords({
@@ -443,10 +466,12 @@ class HttpSyncProxyClient
   Future<Map<String, Object?>> _getJson(
     List<String> tailSegments, {
     Map<String, String>? queryParameters,
+    List<String> baseSegments = _baseSegments,
   }) async {
     final firstAttempt = await _attemptGet(
       tailSegments,
       queryParameters: queryParameters,
+      baseSegments: baseSegments,
     );
     if (firstAttempt.statusCode != 401 || _refreshIdToken == null) {
       return _interpret(firstAttempt);
@@ -464,6 +489,7 @@ class HttpSyncProxyClient
     final retry = await _attemptGet(
       tailSegments,
       queryParameters: queryParameters,
+      baseSegments: baseSegments,
     );
     return _interpret(retry);
   }
@@ -531,6 +557,7 @@ class HttpSyncProxyClient
   Future<_HttpAttemptResult> _attemptGet(
     List<String> tailSegments, {
     Map<String, String>? queryParameters,
+    List<String> baseSegments = _baseSegments,
   }) async {
     final token = (await _idTokenProvider())?.trim();
     if (token == null || token.isEmpty) {
@@ -541,7 +568,11 @@ class HttpSyncProxyClient
     }
     final request = http.Request(
       'GET',
-      _resolve(tailSegments, queryParameters: queryParameters),
+      _resolve(
+        tailSegments,
+        queryParameters: queryParameters,
+        baseSegments: baseSegments,
+      ),
     );
     request.headers.addAll(<String, String>{
       'accept': 'application/json',
@@ -593,6 +624,7 @@ class HttpSyncProxyClient
   Uri _resolve(
     List<String> tailSegments, {
     Map<String, String>? queryParameters,
+    List<String> baseSegments = _baseSegments,
   }) {
     // BUG 3 (MEDIUM): preserve any prefix path on `proxyBaseUri` (e.g.
     // `https://host/api/`). The previous implementation called
@@ -604,7 +636,7 @@ class HttpSyncProxyClient
         .toList(growable: false);
     final composed = <String>[
       ...basePathSegments,
-      ..._baseSegments,
+      ...baseSegments,
       ...tailSegments,
     ];
     final resolved = proxyBaseUri.replace(pathSegments: composed);
