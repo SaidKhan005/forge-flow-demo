@@ -35,8 +35,8 @@ void main() {
       handler = InboundWebhookHandler(
         gateway: gateway,
         posAdapterFactories: <String, PosAdapterFactory>{
-          adapter.vendorId: ({required operatorId, required locationId}) =>
-              adapter,
+          adapter.vendorId:
+              ({required operatorId, required locationId}) async => adapter,
         },
         laborAdapterFactories: const <String, LaborAdapterFactory>{},
         reservationAdapterFactories:
@@ -305,7 +305,7 @@ void main() {
         gateway: gateway,
         posAdapterFactories: <String, PosAdapterFactory>{
           'lightspeed_lsk':
-              ({required operatorId, required locationId}) {
+              ({required operatorId, required locationId}) async {
             factoryCalls.add(<String, String>{
               'operator_id': operatorId,
               'location_id': locationId,
