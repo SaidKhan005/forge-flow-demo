@@ -515,6 +515,53 @@ final perms = <String>{'team.users.view'};
         'lib/screens/settings_screen.dart:1',
       );
     });
+
+    test('RAW_LITERAL pass fires on every permission-category prefix '
+        '(team / admin / operator / product / forgeflow / barrio / '
+        'billing / integration / integrations / workflow)', () {
+      // Pin every category prefix the lint treats as a permission-key
+      // shape. Each literal is on its own file so the per-line collapse
+      // does not hide a missing prefix; the test fails loudly if a new
+      // category is added to `_permissionCategoryPrefixes` without a
+      // corresponding test row here.
+      const probes = <String, String>{
+        'lib/operator_web/screens/probe_team.dart':
+            "final p = 'team.users.view';",
+        'lib/operator_web/screens/probe_admin.dart':
+            "final p = 'admin.audit_log.view';",
+        'lib/operator_web/screens/probe_operator.dart':
+            "final p = 'operator.something.do';",
+        'lib/operator_web/screens/probe_product.dart':
+            "final p = 'product.forgeflow.access';",
+        'lib/operator_web/screens/probe_forgeflow.dart':
+            "final p = 'forgeflow.shift.view';",
+        'lib/operator_web/screens/probe_barrio.dart':
+            "final p = 'barrio.handbook.view';",
+        'lib/operator_web/screens/probe_billing.dart':
+            "final p = 'billing.invoice.view';",
+        'lib/operator_web/screens/probe_integration.dart':
+            "final p = 'integration.toast.view';",
+        'lib/operator_web/screens/probe_integrations.dart':
+            "final p = 'integrations.configure';",
+        'lib/operator_web/screens/probe_workflow.dart':
+            "final p = 'workflow.run';",
+      };
+      final result = PermissionKeyLintRunner(
+        permissionKeysSource: _keysSrcWithCatalogConst,
+        referenceFiles: probes,
+        catalogMarkdown: _catalogWithTeamUsersView,
+        rawLiteralScanScope: const <String>{'lib/operator_web/'},
+        rawLiteralFileAllowlist: const <String>{},
+      ).run();
+      // One finding per probe file → ten findings total.
+      expect(result.rawLiterals, hasLength(probes.length));
+      // Every probe location is reported with `path:line` form so a
+      // failing CI run points the operator at the offending line.
+      for (final loc
+          in result.rawLiterals.map((f) => f.location).toList()..sort()) {
+        expect(loc, matches(RegExp(r'^lib/operator_web/screens/probe_\w+\.dart:1$')));
+      }
+    });
   });
 }
 
