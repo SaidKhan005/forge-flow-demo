@@ -741,7 +741,7 @@ Future<TokenRefreshResult> Function(VendorCredentialBundle)
 
 // ─── 7shifts — POST /v2/oauth/token (refresh_token) ──────────────────
 
-const String kSevenShiftsVendorIdForRefresh = '7shifts';
+const String kSevenShiftsVendorIdForRefresh = 'seven_shifts';
 final Uri kSevenShiftsDefaultOauthTokenUri =
     Uri.parse('https://api.7shifts.com/v2/oauth/token');
 

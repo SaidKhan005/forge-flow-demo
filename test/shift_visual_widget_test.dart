@@ -61,7 +61,7 @@ ShiftDashboardReadModel _fixtureReadModel() {
     snapshot,
     profile,
     posSourceVendorId: 'toast',
-    laborSourceVendorId: '7shifts',
+    laborSourceVendorId: 'seven_shifts',
   );
 }
 
@@ -106,7 +106,7 @@ ShiftDashboardReadModel _fixtureReadModelWithReservation() {
     profile,
     inTheBooksCovers: 72,
     posSourceVendorId: 'toast',
-    laborSourceVendorId: '7shifts',
+    laborSourceVendorId: 'seven_shifts',
   );
 }
 

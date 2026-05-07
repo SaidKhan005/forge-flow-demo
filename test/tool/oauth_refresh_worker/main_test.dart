@@ -326,7 +326,6 @@ void main() {
         expect(
           result.wiredVendorIds,
           equals(<String>[
-            '7shifts',
             'aloha_ncr_voyix',
             'clover',
             'humanity',
@@ -335,6 +334,7 @@ void main() {
             'oracle_micros_simphony',
             'quickbooks_time',
             'revel',
+            'seven_shifts',
             'square',
             'toast',
           ]),
@@ -381,7 +381,7 @@ void main() {
             'clover',
             'humanity',
             'quickbooks_time',
-            '7shifts',
+            'seven_shifts',
             'libro',
           ]),
           reason:

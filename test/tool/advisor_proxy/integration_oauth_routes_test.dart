@@ -668,7 +668,7 @@ void main() {
           equals(<String>{
             'square',
             'clover',
-            '7shifts',
+            'seven_shifts',
             'quickbooks_time',
             'libro',
             'humanity',
@@ -679,7 +679,7 @@ void main() {
           equals(<String>{
             'square',
             'clover',
-            '7shifts',
+            'seven_shifts',
             'quickbooks_time',
             'libro',
             'humanity',
@@ -742,7 +742,7 @@ void main() {
           equals(<String>{
             'square',
             'clover',
-            '7shifts',
+            'seven_shifts',
             'quickbooks_time',
             'libro',
             'humanity',

@@ -568,19 +568,22 @@ ProductionRefreshClosureBuildResult buildProductionRefreshClosures({
   );
 
   // ─── 7shifts ─ app-wide partner client_id / client_secret. Vendor
-  // id stored in vendor_credentials is `7shifts` (the credential
-  // bridge constant), NOT `seven_shifts` (which is the adapter id).
+  // id stored in vendor_credentials is `seven_shifts` (the canonical
+  // adapter constant `kSevenShiftsVendorId`); `'7shifts'` is the
+  // operator-facing display name only. The credential bridge re-
+  // exports the same `'seven_shifts'` constant from the adapter so
+  // the broker, dispatcher, and refresh worker all key off one value.
   if (_hasNonBlank(env, OAuthRefreshWorkerVendorEnvNames.sevenShiftsClientId) &&
       _hasNonBlank(
           env, OAuthRefreshWorkerVendorEnvNames.sevenShiftsClientSecret)) {
-    registry['7shifts'] = makeSevenShiftsOauthRefreshClosure(
+    registry['seven_shifts'] = makeSevenShiftsOauthRefreshClosure(
       httpClient: httpClient,
       clientId: env[OAuthRefreshWorkerVendorEnvNames.sevenShiftsClientId]!,
       clientSecret:
           env[OAuthRefreshWorkerVendorEnvNames.sevenShiftsClientSecret]!,
     );
   } else {
-    disabled['7shifts'] = 'seven_shifts_oauth_credentials_missing';
+    disabled['seven_shifts'] = 'seven_shifts_oauth_credentials_missing';
   }
 
   // ─── QuickBooks Time ─ app-wide Intuit client_id / client_secret.
