@@ -69,6 +69,7 @@ import '../../../integrations/pos/oracle_micros_simphony_pos_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
 import 'tenant_context.dart';
 
@@ -336,8 +337,7 @@ class OracleMicrosSimphonyPostgresSink extends OperatorScopedRepository
           'event_kind': eventKind,
           'records_count': recordsCount,
           'error_message': errorMessage,
-          'payload_preview':
-              payloadPreview == null ? null : jsonEncode(payloadPreview),
+          'payload_preview': encodePayloadPreviewForSyncLog(payloadPreview),
           'occurred_at': _clock().toUtc(),
         },
       );

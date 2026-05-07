@@ -124,6 +124,7 @@ import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/demo_mode_state.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
 import 'postgres_executor.dart';
 import 'tenant_context.dart';
@@ -552,7 +553,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
           'event_kind': kSevenShiftsPayrollPeriodClosedSyncLogKind,
           'records_count': 1,
           'error_message': null,
-          'payload_preview': jsonEncode(payloadPreview),
+          'payload_preview': encodePayloadPreviewForSyncLog(payloadPreview),
           'occurred_at': _now().toUtc(),
         },
       );
@@ -596,7 +597,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
           'event_kind': kSevenShiftsHoursAndWagesReportGatedSyncLogKind,
           'records_count': null,
           'error_message': null,
-          'payload_preview': jsonEncode(<String, Object?>{
+          'payload_preview': encodePayloadPreviewForSyncLog(<String, Object?>{
             'status_code': statusCode,
           }),
           'occurred_at': _now().toUtc(),
@@ -642,8 +643,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
           'event_kind': eventKind,
           'records_count': recordsCount,
           'error_message': errorMessage,
-          'payload_preview':
-              payloadPreview == null ? null : jsonEncode(payloadPreview),
+          'payload_preview': encodePayloadPreviewForSyncLog(payloadPreview),
           'occurred_at': _now().toUtc(),
         },
       );
