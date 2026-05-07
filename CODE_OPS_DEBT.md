@@ -48,6 +48,43 @@ third of the surfaces the trackers say are done.**
 
 ---
 
+## Lane status (2026-05-07 fix sweep)
+
+A 13-lane parallel fix sweep was dispatched 2026-05-07 covering ~40 of the 50
+findings. State per lane:
+
+| Lane | Themes | PR | State |
+|---|---|---|---|
+| M1 — BYPASSRLS predicates | E (3×) | [#304](https://github.com/SaidKhan005/forge-flow-demo/pull/304) | ✅ MERGED |
+| M4 — 7shifts vendor-id alignment | G#1 | [#306](https://github.com/SaidKhan005/forge-flow-demo/pull/306) | ✅ MERGED |
+| M9 — ForgeFlow flavor star/target wiring | H#1 | [#303](https://github.com/SaidKhan005/forge-flow-demo/pull/303) | ✅ MERGED |
+| M11 — Mobile push gating | H#2 | [#305](https://github.com/SaidKhan005/forge-flow-demo/pull/305) | ✅ MERGED |
+| M2 — actor_kind audit sweep | F#4 | [#336](https://github.com/SaidKhan005/forge-flow-demo/pull/336) | 🟡 WIP (rate-limited; mostly complete) |
+| M3 — Permission keys catalog sweep | F#1-2 | [#337](https://github.com/SaidKhan005/forge-flow-demo/pull/337) | 🟡 WIP (rate-limited; mostly complete) |
+| M5 — Worker startup wiring | C | [#338](https://github.com/SaidKhan005/forge-flow-demo/pull/338) | 🔴 WIP (rate-limited; highly incomplete) |
+| M6 — Demo-fallback hardening | I#3-4 | [#339](https://github.com/SaidKhan005/forge-flow-demo/pull/339) | 🟡 WIP (rate-limited; mostly complete) |
+| M7 — Mobile sync server-truth coverage | H#3-7,9 | [#340](https://github.com/SaidKhan005/forge-flow-demo/pull/340) | 🔴 WIP (rate-limited; highly incomplete) |
+| M8 — Cutover preflight smokes | J#1-2 | [#341](https://github.com/SaidKhan005/forge-flow-demo/pull/341) | 🟡 WIP (rate-limited; mostly complete) |
+| M10 — Vendor capability polish | G#3-7 | [#342](https://github.com/SaidKhan005/forge-flow-demo/pull/342) | 🔴 WIP (rate-limited; highly incomplete) |
+| M12 — Webhook signing secret | G#2 | [#343](https://github.com/SaidKhan005/forge-flow-demo/pull/343) | 🟡 WIP (rate-limited; mostly complete) |
+| M13 — Theme B mechanical proxy routes | B#2-4 | [#344](https://github.com/SaidKhan005/forge-flow-demo/pull/344) | 🔴 WIP (rate-limited; highly incomplete) |
+
+**Deferred — needs operator decision** (6 items):
+- Theme A — session-claim resolver (5 admin actions pinned to false). Needs phase-doc decision on freshness window + JWT shape + step-up UX.
+- Theme B#1 — paired-approval erasure proxy route. Needs contract on approval window, scope of erasure, reversibility.
+- Theme B#5 — server-side audit-log CSV export. Needs streaming-vs-job decision.
+- Theme D#2 — Pub/Sub realtime cross-pod replay. Needs Cloud Pub/Sub topic provisioning + IAM.
+- Theme I#1-2 — `kDemoMode` reader-side branches in login + status. Needs UX call.
+- Theme J#3-5 — Browser Use harness binary, runtime-acceptance enforcement, graphify bundle. Each is a meta-slice or operator-staged content.
+
+**Re-dispatch plan:** the 9 WIP lanes will be re-dispatched after the
+2026-05-08 8:10am NDT rate-limit window opens. The mostly-complete (🟡)
+lanes will be told "finish what's started + verify against the audit
+citation"; the highly-incomplete (🔴) lanes will be split into smaller
+sub-lanes to avoid the same rate-limit truncation.
+
+---
+
 ## What we excluded (read this if a finding looks duplicated)
 
 This audit deliberately did not re-flag:
@@ -179,8 +216,8 @@ catches catalog/constant drift but not raw string usage in widgets.
 
 | Sev | Finding | Ref |
 |---|---|---|
-| P0 | Production ForgeFlow flavor does **not** pass `starTargetSelectionWriteClient` to `bootstrapAndRunApp`. Only `lib/main.dart:48` wires it. `BaselineManagerService.serverSelectionWriter` is `null` in prod; manager override silently writes locally via `TargetCycleService.applyManagerOverrideCycle`. **Mobile becomes durable owner — exactly what `mobile_core_star_target_truth_contract.md` Hard Rule #1 forbids.** | `lib/main_forgeflow.dart:61-79` |
-| P0 | `firebase_auth_runtime_bindings.dart` unconditionally wires `ProxyMobilePushTokenGateway` regardless of whether migration `202605060000_…` is applied. **Token-register POSTs from a production phone before staging-apply will 500 against the missing `mobile_push_tokens` table.** No staging-gate flag. | `lib/services/auth/firebase_auth_runtime_bindings.dart:183-187` + `runbooks/phase_9_production1_migration_apply_runbook.md:633-636` |
+| P0 | Production ForgeFlow flavor does **not** pass `starTargetSelectionWriteClient` to `bootstrapAndRunApp`. Only `lib/main.dart:48` wires it. `BaselineManagerService.serverSelectionWriter` is `null` in prod; manager override silently writes locally via `TargetCycleService.applyManagerOverrideCycle`. **Mobile becomes durable owner — exactly what `mobile_core_star_target_truth_contract.md` Hard Rule #1 forbids.** **closed:** `0d5dce4` ([PR #303](https://github.com/SaidKhan005/forge-flow-demo/pull/303)) | `lib/main_forgeflow.dart:61-79` |
+| P0 | `firebase_auth_runtime_bindings.dart` unconditionally wires `ProxyMobilePushTokenGateway` regardless of whether migration `202605060000_…` is applied. **Token-register POSTs from a production phone before staging-apply will 500 against the missing `mobile_push_tokens` table.** No staging-gate flag. **closed:** `70c8af7` ([PR #305](https://github.com/SaidKhan005/forge-flow-demo/pull/305)) — gated behind `MOBILE_PUSH_NOTIFICATIONS_ENABLED` (default `false`); flips post-migration per runbook. | `lib/services/auth/firebase_auth_runtime_bindings.dart:183-187` + `runbooks/phase_9_production1_migration_apply_runbook.md:633-636` |
 | P1 | Empty server table returns `200 + {rows:[], next_cursor:null}`. Sync clients only short-circuit on `available:false`/`status:unavailable`. **Cannot distinguish "feature not yet projected" from "operator has zero stars."** Same shape for weekly_plan reads. | `tool/advisor_proxy/star_target_routes.dart:437-446` + `lib/services/sync/star_target_sync_resources.dart:443-457` |
 | P1 | Proxy emits `wage_role_row_id, job_code, vendor_id, vendor_role_id, source, is_active, effective_at, metadata, updated_by`. Mobile `_wageRoleRowFromJson` reads only `role_name, labor_bucket, hourly_rate, weighted_hours`. **8 server columns dropped on the floor.** | `tool/advisor_proxy/proxy_bootstrap.dart:2047-2052` + `lib/services/sync/http_sync_proxy_client.dart:962-988` |
 | P1 | `wage_role_rows` SQLite table has no `server_id` column. Cache key is `INTEGER PRIMARY KEY AUTOINCREMENT + (restaurant_id, role_name) UNIQUE`. **Renamed/duplicated/deleted-then-recreated server rows can't be tracked across syncs.** Only `replaceAll` works correctly. | `lib/infrastructure/persistence/sqlite/sqlite_database_schema.dart:285-294` |
