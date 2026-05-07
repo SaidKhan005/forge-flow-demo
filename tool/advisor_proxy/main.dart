@@ -30,18 +30,34 @@ import 'dart:io';
 
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_outbox_listener.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/pg_cron_notify_consumer.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_connection_list_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_dead_letter_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_outbox_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_tokens_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/services/email/email_outbox_dispatcher.dart';
+import 'package:forge_and_flow/services/email/email_provider.dart';
+import 'package:forge_and_flow/services/email/email_template_renderer.dart';
+import 'package:forge_and_flow/services/email/postgres_email_outbox_repository.dart';
+import 'package:forge_and_flow/services/email/sendgrid_email_provider.dart';
+import 'package:forge_and_flow/services/realtime/outbox_tripwire_evaluator.dart';
 import 'package:forge_and_flow/services/realtime/pubsub_realtime_publisher.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/repository_integration_routes_gateway.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 import 'package:forge_and_flow/services/realtime/realtime_replay_resolver.dart';
+import 'package:forge_and_flow/services/rollups/rollup_worker.dart';
+import 'package:http/http.dart' as http;
 
+import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart'
+    show MetadataServerAccessTokenProvider;
 import 'package:forge_and_flow/services/auth/kms_pepper_store.dart';
+
+import '../audit_anchor/audit_anchor.dart' as audit_anchor;
+import '../audit_anchor/main.dart' as audit_anchor_cli;
 
 import 'admin_email_routes.dart';
 import 'admin_integrations_routes.dart';
@@ -50,6 +66,7 @@ import 'advisor_response_cache.dart';
 import 'integration_oauth_routes.dart';
 import 'integration_oauth_state_store.dart';
 import 'log.dart';
+import 'mobile_push_notifications.dart';
 import 'pepper_routes.dart';
 import 'phase_8_production_binder.dart';
 import 'phase_8_test_connection_executor.dart';
@@ -57,6 +74,7 @@ import 'proxy_bootstrap.dart';
 import 'realtime_bridge.dart';
 import 'realtime_route.dart' show RealtimeReplayResult;
 import 'realtime_tripwire_gateway.dart';
+import 'worker_startup_wiring.dart';
 
 Future<void> main(List<String> args) async {
   // Startup banner — plain text only, before the log module owns
@@ -101,6 +119,32 @@ Future<void> main(List<String> args) async {
   if (startupFailure != null) {
     stderr.writeln(startupFailure.message);
     exitCode = startupFailure.exitCode;
+    return;
+  }
+
+  // CODE_OPS_DEBT — Theme C #1. When `AUDIT_ANCHOR_REQUIRE_AZURE` is
+  // set the proxy refuses to bind unless the Azure Blob anchor
+  // credentials are loaded. Without this gate `_defaultBlobClientFactory`
+  // in `tool/audit_anchor/main.dart` silently returns the
+  // `ScaffoldRejectingAuditAnchorBlobClient` and the daily
+  // `audit_anchor_tick` cron resolves to a no-op even though the
+  // chain is being written. Production deploys flip the env var on;
+  // dev / staging keep it off and accept the scaffold rejecter.
+  final auditAnchorCheck =
+      evaluateAuditAnchorRequireAzure(Platform.environment);
+  if (auditAnchorCheck.shouldFailStartup) {
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'audit_anchor_require_azure',
+        'message': auditAnchorCheck.message,
+        'tenant_id_loaded': auditAnchorCheck.tenantIdLoaded,
+        'client_id_loaded': auditAnchorCheck.clientIdLoaded,
+        'exit_code': auditAnchorCheck.exitCode,
+      },
+    );
+    exitCode = auditAnchorCheck.exitCode!;
     return;
   }
 
@@ -593,6 +637,332 @@ Future<void> main(List<String> args) async {
   );
   // endregion
 
+  // region: ops_debt_theme_c_worker_startup_wiring
+  // CODE_OPS_DEBT — Theme C. Five `pg_cron`-emitted NOTIFY channels
+  // need in-process LISTEN consumers; without this block the rollups
+  // worker, email outbox dispatcher, mobile-push dispatcher, and
+  // audit-anchor sweep are theatre — the cron fires and the proxy
+  // never wakes a worker. This region registers one
+  // [PgCronNotifyConsumer] per channel + the proxy-internal tripwire
+  // poller. The handle returned by `wireProductionWorkers` is
+  // captured in the SIGTERM closure below so a Cloud Run shutdown
+  // drains every consumer before exit.
+  final workerStartupAdminWrapper = TenantTransactionWrapper(
+    productionBindings.adminPool,
+  );
+  final workerStartupTenantWrapper =
+      productionBindings.tenantTransactionWrapper;
+
+  // Email outbox — rebuild the SendGrid provider + template
+  // renderer (the `adminEmailRouter` block above does not expose
+  // them; re-reading the templates at startup is one filesystem
+  // walk and not on the request path). The dispatcher writes back
+  // through the admin pool because rows are F&F-platform-internal
+  // bookkeeping (operator_id may be null for onboarding invites)
+  // and the per-minute claim deliberately crosses tenant scope.
+  final emailDispatcherTemplatesDir =
+      Directory('tool/advisor_proxy/email_templates');
+  EmailOutboxDispatcher? emailOutboxDispatcher;
+  if (emailDispatcherTemplatesDir.existsSync()) {
+    final wrapperFile = File(
+      '${emailDispatcherTemplatesDir.path}'
+      '${Platform.pathSeparator}_brand_wrapper.html',
+    );
+    if (wrapperFile.existsSync()) {
+      final templates = <String, String>{};
+      var loaded = true;
+      for (final id in EmailTemplateIds.all) {
+        final file = File(
+          '${emailDispatcherTemplatesDir.path}'
+          '${Platform.pathSeparator}$id.md',
+        );
+        if (!file.existsSync()) {
+          loaded = false;
+          break;
+        }
+        templates[id] = file.readAsStringSync();
+      }
+      if (loaded) {
+        final renderer = EmailTemplateRenderer(
+          templateSource: EmailTemplateRenderer.fromMap(templates),
+          brandWrapperSource:
+              EmailTemplateRenderer.fromString(wrapperFile.readAsStringSync()),
+        );
+        final emailOutboxClient = http.Client();
+        final SendGridEmailProvider emailDispatcherProvider =
+            SendGridEmailProvider(
+          httpGateway: ({
+            required String method,
+            required Uri uri,
+            required Map<String, String> headers,
+            String? body,
+          }) async {
+            final request = http.Request(method, uri);
+            request.headers.addAll(headers);
+            if (body != null) request.body = body;
+            final streamed = await emailOutboxClient
+                .send(request)
+                .timeout(const Duration(seconds: 15));
+            final response = await http.Response.fromStream(streamed);
+            return SendGridHttpResponse(
+              statusCode: response.statusCode,
+              headers: response.headers,
+              body: response.body,
+            );
+          },
+          apiKeyProvider: () async =>
+              Platform.environment['SENDGRID_API_KEY'] ?? '',
+          sandboxMode:
+              (Platform.environment['SENDGRID_SANDBOX_MODE'] ?? '')
+                      .trim()
+                      .toLowerCase() ==
+                  'true',
+        );
+        emailOutboxDispatcher = EmailOutboxDispatcher(
+          provider: emailDispatcherProvider,
+          renderer: renderer,
+          repository: PostgresEmailOutboxRepository(
+            adminWrapper: workerStartupAdminWrapper,
+          ),
+          alertSink: (alert) {
+            log(
+              LogSeverity.error,
+              'email_dispatch.failed',
+              fields: <String, Object?>{
+                'email_id': alert.emailId,
+                'template_id': alert.templateId,
+                'recipient_email': alert.recipientEmail,
+                'attempt_count': alert.attemptCount,
+                'failure_kind': alert.failureKind.name,
+                'message': alert.message,
+                if (alert.operatorId != null) 'operator_id': alert.operatorId,
+              },
+            );
+          },
+          fromAddress: Platform.environment['EMAIL_FROM_ADDRESS'] ??
+              'noreply@mail.forgeflow.app',
+          fromDisplayName:
+              Platform.environment['EMAIL_FROM_DISPLAY_NAME'] ?? 'Forge & Flow',
+        );
+      }
+    }
+  }
+
+  // Mobile-push dispatcher — gated on the token-envelope key being
+  // loaded AND `FIREBASE_PROJECT_ID` because the FCM v1 sender needs
+  // both. Without either, the consumer registers but the handler
+  // logs a warning and returns; the cron still fires harmlessly.
+  MobilePushDispatcher? mobilePushDispatcherForWorker;
+  MobilePushOutboxRepository? mobilePushOutboxRepositoryForWorker;
+  final mobilePushTokenEnvelopeKey = config.hasSecretFor(
+    ProxySecretNames.mobilePushTokenEnvelopeKey,
+  )
+      ? config.secretFor(ProxySecretNames.mobilePushTokenEnvelopeKey)
+      : null;
+  if (mobilePushTokenEnvelopeKey != null && config.firebaseProjectId != null) {
+    mobilePushOutboxRepositoryForWorker =
+        MobilePushOutboxRepository(workerStartupTenantWrapper);
+    mobilePushDispatcherForWorker = MobilePushDispatcher(
+      tokensRepository: MobilePushTokensRepository(workerStartupTenantWrapper),
+      outboxRepository: mobilePushOutboxRepositoryForWorker,
+      sender: FcmHttpV1MobilePushSender(
+        firebaseProjectId: config.firebaseProjectId!,
+        accessTokenProvider: MetadataServerAccessTokenProvider(),
+      ),
+      tokenEnvelopeKey: mobilePushTokenEnvelopeKey,
+    );
+  }
+
+  // Rollups worker — workerOwner identifies the Cloud Run instance
+  // in `aggregation_state.lease_owner` so Dev/Admin Health can spot a
+  // pod whose lease never released.
+  final rollupsWorkerOwner =
+      '${Platform.localHostname}:${pid.toString()}';
+  final rollupsWorker = RollupWorker(
+    runAsSystem: <R>(
+      Future<R> Function(PostgresExecutor exec) body, {
+      required String reason,
+    }) =>
+        workerStartupAdminWrapper.runAsSystem<R>(body, reason: reason),
+    workerOwner: rollupsWorkerOwner,
+  );
+
+  // audit_anchor sweep — build the runtime ONCE at startup and reuse
+  // it on every cron tick so we do not re-open a fresh Postgres pool
+  // every 24 h. The sweep mode wraps every per-operator anchor in
+  // its own transaction + advisory lock so reusing the proxy's
+  // wrapper across ticks is safe; the per-tick `runCli` invocation
+  // below passes `orchestratorOverride` etc. so the CLI helper does
+  // NOT rebuild a runtime on every call.
+  audit_anchor_cli.AuditAnchorRuntime? auditAnchorRuntime;
+  try {
+    final auditAnchorConfig =
+        audit_anchor_cli.AuditAnchorRuntimeConfig.fromEnvironment(
+      Platform.environment,
+    );
+    auditAnchorRuntime = audit_anchor_cli.buildAuditAnchorRuntime(
+      auditAnchorConfig,
+    );
+    log(
+      LogSeverity.info,
+      'startup.audit_anchor_runtime_loaded',
+      fields: <String, Object?>{
+        'loaded_secret_names': auditAnchorConfig.loadedSecretNames,
+        'azure_blob_live_wiring': auditAnchorConfig.hasLiveAzureBlobWiring,
+      },
+    );
+  } on audit_anchor.AuditAnchorConfigError catch (error) {
+    // The audit_anchor CLI requires `AZURE_BLOB_CONTAINER` /
+    // `AZURE_BLOB_ENDPOINT` / `POSTGRES_URL` env vars. Dev / staging
+    // hosts that have not provisioned the Azure surface yet boot the
+    // proxy without the runtime; the LISTEN consumer surfaces a
+    // warning on every tick instead of stranding the entire deploy.
+    log(
+      LogSeverity.warning,
+      'startup.audit_anchor_runtime_unavailable',
+      fields: <String, Object?>{
+        'error_message': error.toString(),
+      },
+    );
+  }
+  Future<int> auditAnchorSweep() async {
+    final runtime = auditAnchorRuntime;
+    if (runtime == null) {
+      log(
+        LogSeverity.warning,
+        'audit_anchor_tick.runtime_unavailable',
+        fields: <String, Object?>{},
+      );
+      return 0;
+    }
+    return audit_anchor_cli.runCli(
+      const <String>['sweep'],
+      environment: Platform.environment,
+      orchestratorOverride: runtime.orchestrator,
+      operatorIdReaderOverride: runtime.operatorIdReader,
+      sweepLockIdReaderOverride: runtime.sweepLockIdReader,
+      sweepAdvisoryLockOverride: runtime.sweepAdvisoryLock,
+    );
+  }
+
+  final workerHandle = wireProductionWorkers(
+    postgresUrl: config.secretFor(ProxySecretNames.postgresUrl),
+    adminWrapper: workerStartupAdminWrapper,
+    tenantWrapper: workerStartupTenantWrapper,
+    tripwireFetcher: () async {
+      final envelope = await realtimeTripwireGateway.fetch();
+      final statusKey = envelope['status'];
+      if (statusKey is String) {
+        switch (statusKey) {
+          case 'red':
+            return OutboxTripwireStatus.red;
+          case 'yellow':
+            return OutboxTripwireStatus.yellow;
+          case 'green':
+          default:
+            return OutboxTripwireStatus.green;
+        }
+      }
+      return OutboxTripwireStatus.green;
+    },
+    auditAnchorHandler: buildProductionAuditAnchorTickHandler(
+      sweep: auditAnchorSweep,
+    ),
+    emailTickHandler: () {
+          final dispatcher = emailOutboxDispatcher;
+          if (dispatcher == null) {
+            return () async {
+              log(
+                LogSeverity.warning,
+                'startup.email_dispatcher_disabled',
+                fields: <String, Object?>{
+                  'reason':
+                      'email_templates directory missing on the deployed image',
+                },
+              );
+            };
+          }
+          return () async {
+            await dispatcher.drainBatch();
+          };
+        }(),
+    mobilePushHandler: () {
+          final dispatcher = mobilePushDispatcherForWorker;
+          final outboxRepository = mobilePushOutboxRepositoryForWorker;
+          if (dispatcher == null || outboxRepository == null) {
+            return () async {
+              log(
+                LogSeverity.warning,
+                'startup.mobile_push_dispatcher_disabled',
+                fields: <String, Object?>{
+                  'reason':
+                      'mobile_push_token_envelope_key or firebase_project_id missing',
+                },
+              );
+            };
+          }
+          return buildProductionMobilePushTickHandler(
+            adminWrapper: workerStartupAdminWrapper,
+            outboxRepository: outboxRepository,
+            dispatcher: dispatcher,
+          );
+        }(),
+    rollupTickHandler:
+        buildProductionRollupTickHandler(worker: rollupsWorker),
+    consumerLogger: _logPgCronNotifyConsumerEvent,
+    onTickError: (channel, error, stack) {
+      log(
+        LogSeverity.error,
+        'pg_cron_notify.tick_handler_failed',
+        fields: <String, Object?>{
+          'channel': channel,
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
+          'stack_first_frame': firstStackFrame(stack),
+        },
+      );
+    },
+  );
+
+  // Start each consumer's LISTEN connection. A failure in any one
+  // consumer is logged but does not block startup: the proxy's
+  // existing operator surfaces continue serving while the affected
+  // tick channel falls back to the worker's polling cadence (each
+  // worker is contractually required to poll because NOTIFY is a
+  // wake-up signal only — see the PgCronNotifyConsumer header
+  // comment).
+  for (final consumer in workerHandle.consumers) {
+    try {
+      await consumer.start();
+    } catch (error, stack) {
+      log(
+        LogSeverity.warning,
+        'startup.pg_cron_notify_consumer_failed',
+        fields: <String, Object?>{
+          'channel': consumer.channels.join(','),
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
+          'stack_first_frame': firstStackFrame(stack),
+        },
+      );
+    }
+  }
+  log(
+    LogSeverity.info,
+    'startup.workers_wired',
+    fields: <String, Object?>{
+      'consumers': workerHandle.consumers
+          .map((c) => c.channels.join(','))
+          .toList(growable: false),
+      'tripwire_poller_started': true,
+      'email_dispatcher_loaded': emailOutboxDispatcher != null,
+      'mobile_push_dispatcher_loaded':
+          mobilePushDispatcherForWorker != null,
+      'audit_anchor_require_azure': auditAnchorCheck.required,
+    },
+  );
+  // endregion
+
   // region: M2_pepper_runtime_routes
   // fix(M2.pepper-runtime): pepper retrieval endpoints.
   //   GET /v1/auth/peppers/active   — active pepper (forge_admin + service-principals)
@@ -823,6 +1193,14 @@ Future<void> main(List<String> args) async {
       fields: <String, Object?>{'signal': signalName},
     );
     adminIdempotencySweepTimer.cancel();
+    // CODE_OPS_DEBT — Theme C — drain every pg_cron NOTIFY consumer
+    // and the tripwire poller before closing the HTTP listener so
+    // SIGTERM does not orphan a `package:postgres` LISTEN connection.
+    // The bound is the same 25 s ceiling used below.
+    await Future.any(<Future<void>>[
+      workerHandle.stopAll(),
+      Future<void>.delayed(const Duration(seconds: 5)),
+    ]);
     // Audit-log writes are committed synchronously inside each
     // request (see `AuditLogsRepository.append…` paths through the
     // tenant transaction wrapper); there is no async drain queue
@@ -1405,3 +1783,34 @@ class _OperatorOAuthRoutesBindingsHolder
   @override
   final Duration stateTokenTtl;
 }
+
+/// CODE_OPS_DEBT — Theme C — funnel pg_cron-NOTIFY consumer events
+/// into the canonical structured log() helper. Mirrors
+/// `_logRealtimeBridgeEvent` so the existing log search recipes pick
+/// the new envelopes up without a new producer.
+void _logPgCronNotifyConsumerEvent(PgCronNotifyConsumerEvent event) {
+  final fields = <String, Object?>{
+    'channel': event.channel,
+    if (event.payload != null) 'payload_loaded': event.payload!.isNotEmpty,
+    if (event.error != null) 'error_type': event.error.runtimeType.toString(),
+    if (event.error != null) 'error_message': event.error.toString(),
+    if (event.stack != null) 'stack_first_frame': firstStackFrame(event.stack!),
+  };
+  switch (event.kind) {
+    case PgCronNotifyConsumerKind.started:
+      log(LogSeverity.info, 'pg_cron_notify.started', fields: fields);
+    case PgCronNotifyConsumerKind.stopped:
+      log(LogSeverity.info, 'pg_cron_notify.stopped', fields: fields);
+    case PgCronNotifyConsumerKind.notificationReceived:
+      log(LogSeverity.info, 'pg_cron_notify.received', fields: fields);
+    case PgCronNotifyConsumerKind.channelError:
+      log(LogSeverity.warning, 'pg_cron_notify.channel_error', fields: fields);
+    case PgCronNotifyConsumerKind.reconnectFailed:
+      log(
+        LogSeverity.warning,
+        'pg_cron_notify.reconnect_failed',
+        fields: fields,
+      );
+  }
+}
+

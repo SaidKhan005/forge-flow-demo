@@ -110,3 +110,30 @@ The plaintext must never appear in chat logs, PRs, or screenshots.
 - Masked credential suffix only, never plaintext.
 - Feature flag name and final enabled/disabled state.
 - Smoke result and any health envelope red/yellow signals.
+
+## Audit-Anchor Azure Blob Wiring (`AUDIT_ANCHOR_REQUIRE_AZURE`)
+
+The audit-anchor sweep writes a daily SHA-256 anchor of every operator
+chain to the F&F-immutable Azure Blob container. Without live Azure
+wiring, the proxy falls back to the `ScaffoldRejectingAuditAnchorBlobClient`
+and the daily cron tick is a no-op.
+
+To prevent a production deploy from silently shipping the scaffold
+fallback, set `AUDIT_ANCHOR_REQUIRE_AZURE=true` on the proxy Cloud Run
+revision alongside `AZURE_AD_TENANT_ID` and `AZURE_AD_CLIENT_ID`.
+
+- Flag off (dev/staging without Azure wiring): the proxy boots and the
+  audit-anchor LISTEN consumer logs every cron tick; the sweep returns
+  the scaffold-rejecter error which is captured in the per-tick error
+  envelope.
+- Flag on, both creds present: the proxy boots normally and the
+  audit-anchor sweep writes real Azure Blob evidence on every tick.
+- Flag on, either cred missing: the proxy exits with code 78
+  (`EX_CONFIG`) at startup; the structured `startup.failed` log line
+  names the missing env var.
+
+Env names this gate consults (names only — never echo values):
+
+- `AUDIT_ANCHOR_REQUIRE_AZURE` — boolean; accepts `true`, `1`, `yes`.
+- `AZURE_AD_TENANT_ID` — Azure AD tenant id for federated identity.
+- `AZURE_AD_CLIENT_ID` — Azure AD app-registration client id.
