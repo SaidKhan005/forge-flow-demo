@@ -16,6 +16,29 @@
 // the limiter but forgets the persistence binding fail-closes the
 // recovery-code path rather than silently accepting unbounded
 // attempts.
+//
+// CODE_HEALTH L10 (TOCTOU): the legacy `check` + later
+// `recordAttempt` pair leaves a window where two concurrent callers
+// could both pass the limit check before either records its
+// attempt. The fix is the [checkAndRecord] entrypoint, which:
+//
+//   1. acquires a per-user in-process mutex,
+//   2. reads recent attempts AND inserts a fresh attempt iff the
+//      decision will be Allowed, and
+//   3. classifies the decision from the snapshot taken before the
+//      insert.
+//
+// The mutex serializes the read+write inside one proxy process so
+// two `consume` calls for the same user can't both see "below the
+// budget" at the same time. Cross-process atomicity (multiple proxy
+// instances racing) requires a Postgres row-level lock or a CTE
+// gating the INSERT on `(SELECT count(*) FROM recovery_code_attempts
+// WHERE ... ) < $budget`; that override lives on the
+// `PostgresRecoveryCodeAttemptStore` and is a separate follow-up
+// outside this lane's file scope. The in-process mutex closes the
+// hot single-process TOCTOU and is what the L10 unit tests pin.
+
+import 'dart:async';
 
 /// Persistence boundary for recovery-code attempt timestamps.
 abstract class RecoveryCodeAttemptStore {
@@ -143,9 +166,21 @@ class RecoveryCodeAttemptLimiter {
   final Duration _dailyWindow;
   final int _dailyBudget;
 
+  /// Per-user mutex queue. Each entry is the tail Future that the
+  /// next caller awaits before grabbing the lock. CODE_HEALTH L10:
+  /// the queue is what closes the in-process TOCTOU window between
+  /// `recentAttempts` (the read) and `recordAttempt` (the write).
+  /// Map keyed by user so different users never block each other.
+  final Map<String, Future<void>> _userLocks = <String, Future<void>>{};
+
   /// Decides whether the next attempt is allowed. Does NOT record
   /// the attempt — the caller invokes [recordAttempt] after the
   /// verify pass (regardless of verify outcome).
+  ///
+  /// CODE_HEALTH L10: prefer [checkAndRecord] for new code. The
+  /// non-atomic [check] + [recordAttempt] split is preserved only
+  /// for backward compatibility with existing test surfaces;
+  /// production paths route through [checkAndRecord].
   Future<RecoveryCodeAttemptDecision> check({required String userId}) async {
     final now = _now();
     final recent24h = await _store.recentAttempts(
@@ -153,14 +188,99 @@ class RecoveryCodeAttemptLimiter {
       now: now,
       window: _dailyWindow,
     );
-    if (recent24h.length >= _dailyBudget) {
+    return _classify(now: now, attempts: recent24h);
+  }
+
+  /// Records a fresh attempt timestamp. Caller invokes this after
+  /// every verify pass — even when the code was wrong.
+  Future<void> recordAttempt({required String userId}) {
+    return _store.recordAttempt(userId: userId, at: _now());
+  }
+
+  /// Atomic-in-process check + record. Acquires a per-user mutex
+  /// before reading the attempt window and (when the decision will
+  /// be Allowed) recording the fresh attempt. Two concurrent callers
+  /// for the SAME user serialize through the mutex, so the second
+  /// caller cannot read a stale snapshot — by the time it grabs the
+  /// lock the first caller's record has already landed in the
+  /// store. The TOCTOU window the legacy `check + finally
+  /// recordAttempt` split left open is closed.
+  ///
+  /// When the decision is [RecoveryCodeAttemptAllowed] the store has
+  /// already burned a slot; the caller MUST NOT call [recordAttempt]
+  /// again. When the decision is rate-limited or exhausted, no slot
+  /// was burned — burning a fresh slot for a request we are about to
+  /// reject would let a brute-force attacker flood the table.
+  ///
+  /// Cross-process atomicity (multiple proxy instances racing) is
+  /// not provided here; that requires a Postgres row-level lock or
+  /// a single-CTE INSERT gated on the count, which lives on the
+  /// `PostgresRecoveryCodeAttemptStore` follow-up. The in-process
+  /// mutex closes the hot common case (one proxy, two concurrent
+  /// HTTP handlers).
+  Future<RecoveryCodeAttemptDecision> checkAndRecord({
+    required String userId,
+  }) async {
+    return _withUserLock(userId, () async {
+      final now = _now();
+      final attempts = await _store.recentAttempts(
+        userId: userId,
+        now: now,
+        window: _dailyWindow,
+      );
+      final decision = _classify(now: now, attempts: attempts);
+      if (decision is RecoveryCodeAttemptAllowed) {
+        await _store.recordAttempt(userId: userId, at: now);
+      }
+      return decision;
+    });
+  }
+
+  /// Run [body] under the per-user serialization lock so two
+  /// concurrent callers for [userId] never observe each other's
+  /// pre-record snapshot. The lock is released even when [body]
+  /// throws; the next waiter is unblocked through the completer.
+  Future<R> _withUserLock<R>(
+    String userId,
+    Future<R> Function() body,
+  ) async {
+    final previous = _userLocks[userId];
+    final completer = Completer<void>();
+    _userLocks[userId] = completer.future;
+    try {
+      if (previous != null) {
+        // Wait for the prior holder to release. Errors from the
+        // prior body are NOT propagated here — the lock contract is
+        // "release the slot regardless of outcome".
+        try {
+          await previous;
+        } catch (_) {
+          // ignore: prior caller's failure does not poison this one.
+        }
+      }
+      return await body();
+    } finally {
+      // Detach BEFORE completing so a fast follow-up call doesn't
+      // briefly observe the just-completed future under our key.
+      if (identical(_userLocks[userId], completer.future)) {
+        _userLocks.remove(userId);
+      }
+      completer.complete();
+    }
+  }
+
+  RecoveryCodeAttemptDecision _classify({
+    required DateTime now,
+    required List<DateTime> attempts,
+  }) {
+    if (attempts.length >= _dailyBudget) {
       // Oldest attempt in the window rolls off after _dailyWindow.
-      final oldest = recent24h.reduce((a, b) => a.isBefore(b) ? a : b);
+      final oldest = attempts.reduce((a, b) => a.isBefore(b) ? a : b);
       return RecoveryCodeAttemptDailyExhausted(
         resetsAt: oldest.add(_dailyWindow),
       );
     }
-    final recent1m = recent24h
+    final recent1m = attempts
         .where((ts) => ts.isAfter(now.subtract(_perMinuteWindow)))
         .toList();
     if (recent1m.isNotEmpty) {
@@ -170,11 +290,5 @@ class RecoveryCodeAttemptLimiter {
       );
     }
     return const RecoveryCodeAttemptAllowed();
-  }
-
-  /// Records a fresh attempt timestamp. Caller invokes this after
-  /// every verify pass — even when the code was wrong.
-  Future<void> recordAttempt({required String userId}) {
-    return _store.recordAttempt(userId: userId, at: _now());
   }
 }

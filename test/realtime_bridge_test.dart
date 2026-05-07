@@ -1055,6 +1055,291 @@ void main() {
       },
     );
   });
+
+  // ── Code-Health L8 — attempt_count is actually incremented ───────────
+  //
+  // The pre-L8 behaviour was theatre: rows that failed to publish stayed
+  // at attempt_count=0 forever, so the claim-time partition
+  // `attempt_count > _dlqCap` never fired and a poison-pill row recycled
+  // until 7-day retention swept it. These tests pin the new contract:
+  //   * Every publish failure invokes the [BridgeOutboxFailureMarker].
+  //   * The marker returns the new attempt_count (post-increment).
+  //   * When the new count crosses the cap, the bridge calls
+  //     `moveFromOutbox` inline with `attemptCountThreshold = cap - 1`
+  //     and bumps the DLQ counter exactly once.
+  group('Code-Health L8 — attempt_count increment + DLQ on cap', () {
+    test(
+      '5 successive publish failures bump attempt_count from 0→5; the '
+      '5th failure transitions the row to DLQ; metric counter '
+      'increments once',
+      () async {
+        // The bridge claims 5 times in a row; each claim returns the
+        // same logical row (same id) with an incrementing attempt_count
+        // 0..4. The publisher always throws. The marker mimics a
+        // tenant-scoped UPDATE that bumps attempt_count and returns the
+        // new value. The dead-letter pool fixture lets the MOVE return
+        // a non-null id on the 5th failure.
+        const rowId = '7777';
+        final markerCalls = <_FailureMarkerCall>[];
+        var attemptCount = 0;
+        Future<int> failureMarker({
+          required String operatorId,
+          required String locationId,
+          required String eventId,
+          required String errorMessage,
+        }) async {
+          markerCalls.add(_FailureMarkerCall(
+            operatorId: operatorId,
+            locationId: locationId,
+            eventId: eventId,
+            errorMessage: errorMessage,
+          ));
+          attemptCount += 1;
+          return attemptCount;
+        }
+
+        // Build five claim batches, each with one row whose
+        // attempt_count reflects the prior failures. Note: the bridge
+        // re-claims after a lease window in production; here we drive
+        // five back-to-back drain cycles through `_runPollCycle`-
+        // equivalent bootstrap notifications.
+        const cap = 5;
+        final logEvents = <RealtimeBridgeLogEvent>[];
+        final publisher = _FailingPublisher();
+
+        // The pool is built per-cycle so each "claim" returns a row
+        // carrying the up-to-date attempt_count. We drive one drain
+        // per cycle by re-creating the worker — simpler than making
+        // the fake pool stateful across calls.
+        for (var cycle = 1; cycle <= 5; cycle++) {
+          final claimed = _row(
+            id: rowId,
+            operatorId: _opA,
+            topic: 'rollup.invalidate.variance_week',
+            attemptCount: cycle - 1, // 0,1,2,3,4 entering the failure
+          );
+          // On the cap-crossing cycle, the MOVE CTE returns the row
+          // id (success). Earlier cycles must NOT call MOVE.
+          final pool = _BridgePool(
+            claimedRows: <PostgresRow>[claimed],
+            updateRowCount: 1,
+            dlqMoveReturningId: cycle == cap ? rowId : null,
+          );
+          final wrapper = TenantTransactionWrapper(pool);
+          final worker = RealtimeBridgeWorker(
+            listener: _FakeListener(),
+            outboxRepository: EventOutboxRepository(wrapper),
+            deadLetterRepository: EventOutboxDeadLetterRepository(wrapper),
+            publisher: publisher,
+            locationResolver: (_) async => _locA,
+            outboxFailureMarker: failureMarker,
+            bootstrapOperatorIds: const <String>{_opA},
+            dlqCap: cap,
+            logger: logEvents.add,
+          );
+          await worker.start();
+          await Future<void>.delayed(Duration.zero);
+          await Future<void>.delayed(Duration.zero);
+          await Future<void>.delayed(Duration.zero);
+          await Future<void>.delayed(Duration.zero);
+
+          // Marker is invoked once per failure.
+          expect(
+            markerCalls.length,
+            equals(cycle),
+            reason:
+                'cycle $cycle: marker should have been invoked once '
+                'per accumulated publish failure',
+          );
+          // attempt_count after the cycle's increment matches the
+          // cycle index (1..5).
+          expect(
+            attemptCount,
+            equals(cycle),
+            reason: 'cycle $cycle: attempt_count should be $cycle '
+                'after the marker bumps it',
+          );
+
+          // Cycles 1..4 must NOT have run a DLQ MOVE; cycle 5 must.
+          final moveTransactions = pool.transactions.where(
+            (t) => t.executedSql.any(
+              (s) =>
+                  s.contains('with dead as') &&
+                  s.contains('insert into event_outbox_dead_letter'),
+            ),
+          );
+          if (cycle < cap) {
+            expect(
+              moveTransactions,
+              isEmpty,
+              reason: 'cycle $cycle: row has not crossed the cap yet, '
+                  'no MOVE should fire',
+            );
+            expect(
+              worker.deadLetteredTotal,
+              equals(0),
+              reason: 'cycle $cycle: deadLetteredTotal must stay at 0 '
+                  'until the cap is crossed',
+            );
+          } else {
+            expect(
+              moveTransactions,
+              hasLength(1),
+              reason: 'cap-crossing cycle: exactly one MOVE CTE runs',
+            );
+            expect(
+              worker.deadLetteredTotal,
+              equals(1),
+              reason: 'cap-crossing cycle: counter increments once',
+            );
+            // The MOVE was issued with threshold = cap - 1 so the
+            // server-side `attempt_count > threshold` predicate
+            // matches the new count of `cap`.
+            final moveTx = pool.transactions.firstWhere(
+              (t) =>
+                  t.executedSql.any((s) => s.contains('with dead as')),
+            );
+            final moveParams = moveTx.parameters[
+                moveTx.executedSql.indexWhere(
+                    (s) => s.contains('with dead as'))];
+            expect(
+              moveParams['threshold'],
+              equals(cap - 1),
+              reason:
+                  'failure-time MOVE uses threshold = cap - 1 so the '
+                  '`> threshold` predicate matches a row at exactly cap',
+            );
+          }
+
+          await worker.stop();
+        }
+
+        // Final tally: 5 marker calls, 1 dead-letter event in the log,
+        // attempt_count landed at exactly 5.
+        expect(markerCalls.length, equals(5));
+        expect(attemptCount, equals(5));
+        final dlqEvents = logEvents.where(
+          (e) => e.kind == RealtimeBridgeLogKind.deadLettered,
+        );
+        expect(
+          dlqEvents,
+          hasLength(1),
+          reason: 'exactly one deadLettered log event across the run',
+        );
+        expect(dlqEvents.single.attemptCount, equals(5));
+        expect(dlqEvents.single.cap, equals(5));
+      },
+    );
+
+    test(
+      'when no failure marker is wired (legacy callers), the bridge '
+      'still logs publishFailed but does not increment attempt_count '
+      'or call the dead-letter repository — preserves backward compat',
+      () async {
+        final pool = _BridgePool(
+          claimedRows: <PostgresRow>[
+            _row(id: '8888', operatorId: _opA, topic: 'a.b'),
+          ],
+          updateRowCount: 1,
+        );
+        final publisher = _FailingPublisher();
+        final logEvents = <RealtimeBridgeLogEvent>[];
+        final wrapper = TenantTransactionWrapper(pool);
+        final worker = RealtimeBridgeWorker(
+          listener: _FakeListener(),
+          outboxRepository: EventOutboxRepository(wrapper),
+          deadLetterRepository: EventOutboxDeadLetterRepository(wrapper),
+          publisher: publisher,
+          locationResolver: (_) async => _locA,
+          // outboxFailureMarker intentionally null — legacy path.
+          bootstrapOperatorIds: const <String>{_opA},
+          dlqCap: 5,
+          logger: logEvents.add,
+        );
+        await worker.start();
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(publisher.attempts, 1);
+        expect(
+          logEvents.where(
+            (e) => e.kind == RealtimeBridgeLogKind.publishFailed,
+          ),
+          isNotEmpty,
+          reason: 'legacy path still logs publish failure',
+        );
+        expect(worker.deadLetteredTotal, equals(0));
+        // No MOVE CTE was issued.
+        final moveTransactions = pool.transactions.where(
+          (t) => t.executedSql.any((s) => s.contains('with dead as')),
+        );
+        expect(moveTransactions, isEmpty);
+        await worker.stop();
+      },
+    );
+
+    test(
+      'marker failure is logged but does not crash the publish loop; '
+      'subsequent rows still drain',
+      () async {
+        // Two claimed rows: first publish fails AND the marker throws;
+        // second publish succeeds and is markDelivered.
+        final pool = _BridgePool(
+          claimedRows: <PostgresRow>[
+            _row(id: '9001', operatorId: _opA, topic: 'a.b'),
+            _row(id: '9002', operatorId: _opA, topic: 'a.b'),
+          ],
+          updateRowCount: 1,
+        );
+        Future<int> throwingMarker({
+          required String operatorId,
+          required String locationId,
+          required String eventId,
+          required String errorMessage,
+        }) async {
+          throw StateError('simulated marker failure');
+        }
+
+        final publisher = _FlakyPublisherFailFirst();
+        final logEvents = <RealtimeBridgeLogEvent>[];
+        final wrapper = TenantTransactionWrapper(pool);
+        final worker = RealtimeBridgeWorker(
+          listener: _FakeListener(),
+          outboxRepository: EventOutboxRepository(wrapper),
+          deadLetterRepository: EventOutboxDeadLetterRepository(wrapper),
+          publisher: publisher,
+          locationResolver: (_) async => _locA,
+          outboxFailureMarker: throwingMarker,
+          bootstrapOperatorIds: const <String>{_opA},
+          dlqCap: 5,
+          logger: logEvents.add,
+        );
+        await worker.start();
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        // Both rows were attempted; the second succeeded.
+        expect(publisher.attempts, equals(2));
+        // markDelivered ran for the successful row.
+        final delivered = pool.transactions.any(
+          (t) => t.executedSql.any(
+            (s) => s.contains('set delivered_at = now()'),
+          ),
+        );
+        expect(
+          delivered,
+          isTrue,
+          reason: 'second row should still be markDelivered',
+        );
+        // Counter stays at 0 (marker threw, no MOVE).
+        expect(worker.deadLetteredTotal, equals(0));
+        await worker.stop();
+      },
+    );
+  });
 }
 
 class _SimulatedDlqMoveFailure implements Exception {
@@ -1122,6 +1407,39 @@ class _FailingPublisher implements RealtimeEventPublisher {
   Future<void> publish(RealtimeEvent event) async {
     attempts += 1;
     throw const _SimulatedPublishFailure();
+  }
+}
+
+/// Code-Health L8 — captures one [BridgeOutboxFailureMarker] call so
+/// tests can assert which row, operator, and location the marker
+/// observed. Distinct from [_FailureMarkerLog] only in that it lives
+/// alongside the L8 group's helpers.
+class _FailureMarkerCall {
+  const _FailureMarkerCall({
+    required this.operatorId,
+    required this.locationId,
+    required this.eventId,
+    required this.errorMessage,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String eventId;
+  final String errorMessage;
+}
+
+/// Code-Health L8 — publisher that throws on the FIRST publish call
+/// and succeeds on every subsequent call. Used to verify the bridge's
+/// publish loop continues past a failed-marker scenario.
+class _FlakyPublisherFailFirst implements RealtimeEventPublisher {
+  int attempts = 0;
+
+  @override
+  Future<void> publish(RealtimeEvent event) async {
+    attempts += 1;
+    if (attempts == 1) {
+      throw const _SimulatedPublishFailure();
+    }
   }
 }
 

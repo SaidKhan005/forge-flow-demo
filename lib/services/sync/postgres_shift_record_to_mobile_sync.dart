@@ -152,10 +152,10 @@ class SyncResult {
   /// status here instead of treating existing local rows as server truth.
   final StarTargetMirrorSyncResult starTargetMirrors;
 
-  /// Status for weekly plan snapshot and forecast-context pulls. Weekly
-  /// snapshots write through the existing SQLite cache. Forecast context has
-  /// no existing SQLite table in this lane, so the orchestrator keeps the
-  /// latest rows in memory and marks that durable cache unavailable.
+  /// Status for weekly plan snapshot and forecast-context pulls. Both resources
+  /// write through the existing SQLite weekly-plan cache; forecast context is
+  /// embedded on the snapshot row that references it so mobile remains a cache
+  /// of server truth without adding a duplicate forecast table.
   final WeeklyPlanMirrorSyncResult weeklyPlanMirrors;
 }
 
@@ -273,9 +273,8 @@ class PostgresShiftRecordToMobileSync {
   FirstBackfillStatusSnapshot? get latestFirstBackfillStatus =>
       _latestFirstBackfillStatus;
 
-  /// Latest forecast context rows pulled from the proxy. These are memory-only
-  /// until a contracted SQLite cache exists; [SyncResult.weeklyPlanMirrors]
-  /// reports durable cache unavailable for this resource.
+  /// Latest forecast context rows pulled from the proxy. Matching rows are also
+  /// embedded into the existing `weekly_plan_snapshots` SQLite cache.
   List<ForecastContextSyncRow> get latestForecastContexts =>
       List<ForecastContextSyncRow>.unmodifiable(_latestForecastContexts);
 
@@ -775,6 +774,7 @@ class PostgresShiftRecordToMobileSync {
       sourceType: sourceType,
     );
     var pagesPulled = 0;
+    var rowsWritten = 0;
     final contexts = <ForecastContextSyncRow>[];
     _latestForecastContexts = const <ForecastContextSyncRow>[];
     while (true) {
@@ -793,7 +793,6 @@ class PostgresShiftRecordToMobileSync {
           page.unavailableReason!,
           finalCursor: cursor,
           pagesPulled: pagesPulled,
-          durableCacheAvailable: false,
         );
       }
       pagesPulled++;
@@ -806,6 +805,13 @@ class PostgresShiftRecordToMobileSync {
           rowLocationId: row.locationId,
         );
         if (row.context.restaurantId != restaurantId) continue;
+        rowsWritten += await weeklyPlanSnapshotRepository.attachForecastContext(
+          restaurantId: restaurantId,
+          context: row.context,
+          forecastContextId: row.forecastContextId,
+          weekStartDate: row.weekStartDate,
+          weekEndDate: row.weekEndDate,
+        );
         contexts.add(row);
       }
       final next = page.nextCursor;
@@ -822,12 +828,14 @@ class PostgresShiftRecordToMobileSync {
     _latestForecastContexts = List<ForecastContextSyncRow>.unmodifiable(
       contexts,
     );
-    return WeeklyPlanResourceSyncStatus.unavailable(
-      'forecast_contexts',
-      'forecast_context_sqlite_cache_unavailable_memory_only',
-      finalCursor: cursor,
+    if (rowsWritten > 0) {
+      invalidationBus.notifyImportCompletionPersisted();
+    }
+    return WeeklyPlanResourceSyncStatus.synced(
+      resource: 'forecast_contexts',
+      rowsWritten: rowsWritten,
       pagesPulled: pagesPulled,
-      durableCacheAvailable: false,
+      finalCursor: cursor,
     );
   }
 

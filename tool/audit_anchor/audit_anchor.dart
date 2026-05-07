@@ -695,6 +695,15 @@ class PostgresAuditChainReader implements AuditChainReader {
 /// Production anchor writer. Inserts one row into
 /// `public.audit_chain_anchors` inside the tenant's transaction so the
 /// per-tenant RLS INSERT policy admits the row.
+///
+/// L9 (Code-Health Lane): the INSERT also stamps the breadcrumb columns
+/// `last_anchor_blob_url` and `last_anchor_blob_at` (added by migration
+/// `202605070200_audit_anchor_advisory_lock_infra.sql`) so the sweep's
+/// crash-recovery path has a durable record of the immutable blob URL
+/// the run published. The append-only grant shape (no UPDATE/DELETE)
+/// means the breadcrumbs land on INSERT exactly once; subsequent
+/// recovery sweeps read the existing blob via `readImmutable` and
+/// reuse it idempotently.
 class PostgresAuditChainAnchorWriter implements AuditChainAnchorWriter {
   PostgresAuditChainAnchorWriter({
     required TenantTransactionWrapper wrapper,
@@ -721,12 +730,12 @@ class PostgresAuditChainAnchorWriter implements AuditChainAnchorWriter {
           'insert into audit_chain_anchors ( '
           '  operator_id, chain_date, terminal_row_hash, '
           '  terminal_row_id, row_count, blob_uri, blob_etag, '
-          '  anchored_at) '
+          '  anchored_at, last_anchor_blob_url, last_anchor_blob_at) '
           'values ( '
           '  @operator_id::uuid, @chain_date::date, '
           '  @terminal_row_hash, @terminal_row_id::bigint, '
           '  @row_count::bigint, @blob_uri, @blob_etag, '
-          '  @anchored_at)',
+          '  @anchored_at, @last_anchor_blob_url, @last_anchor_blob_at)',
           parameters: <String, Object?>{
             'operator_id': anchor.operatorId,
             'chain_date': _formatChainDate(anchor.chainDate),
@@ -736,10 +745,141 @@ class PostgresAuditChainAnchorWriter implements AuditChainAnchorWriter {
             'blob_uri': anchor.blobUri,
             'blob_etag': anchor.blobEtag,
             'anchored_at': anchor.anchoredAt.toUtc(),
+            // Breadcrumbs duplicate blob_uri / anchored_at by design.
+            // The original columns hold the immutable evidence the
+            // verifier compares against; the breadcrumbs record the
+            // L9 sweep's most-recent successful blob write so the
+            // crash-recovery path can roll forward without rewriting
+            // an immutable blob. They diverge only when a future
+            // recovery sweep re-stamps the breadcrumb timestamp.
+            'last_anchor_blob_url': anchor.blobUri,
+            'last_anchor_blob_at': anchor.anchoredAt.toUtc(),
           },
         );
       },
     );
+  }
+}
+
+// ─── Advisory-lock seam (sweep guard) ─────────────────────────────────
+
+/// Looks up the integer advisory-lock id used to serialize concurrent
+/// `audit_anchor sweep` invocations. Reads the row identified by
+/// `lock_kind = 'audit_anchor_sweep'` from
+/// `public.audit_anchor_advisory_locks` (constants table seeded by
+/// migration `202605070200_audit_anchor_advisory_lock_infra.sql`).
+///
+/// Production wiring uses [PostgresSweepLockIdReader]; tests pass a
+/// fake. The seam keeps the lock id out of the application binary —
+/// DBAs can audit / rotate the live id without redeploying the worker.
+abstract class SweepLockIdReader {
+  /// Returns the advisory-lock id for the daily anchor sweep.
+  Future<int> readSweepLockId();
+}
+
+class PostgresSweepLockIdReader implements SweepLockIdReader {
+  PostgresSweepLockIdReader({required TenantTransactionWrapper wrapper})
+      : _wrapper = wrapper;
+
+  final TenantTransactionWrapper _wrapper;
+
+  @override
+  Future<int> readSweepLockId() {
+    return _wrapper.runAsSystem<int>(
+      (exec) async {
+        final rows = await exec.query(
+          "select lock_id from public.audit_anchor_advisory_locks "
+          "where lock_kind = 'audit_anchor_sweep' limit 1",
+        );
+        if (rows.isEmpty) {
+          throw const SweepLockUnavailable(
+            'audit_anchor_advisory_locks has no row for '
+            "lock_kind='audit_anchor_sweep'; apply migration "
+            '202605070200_audit_anchor_advisory_lock_infra.sql',
+          );
+        }
+        final raw = rows.first['lock_id'];
+        if (raw is int) return raw;
+        if (raw is BigInt) return raw.toInt();
+        if (raw is String) return int.parse(raw);
+        throw SweepLockUnavailable(
+          'audit_anchor_advisory_locks.lock_id has unexpected '
+          'shape: ${raw.runtimeType}',
+        );
+      },
+      reason: 'audit_anchor.lock_id_lookup',
+    );
+  }
+}
+
+/// Thrown when the advisory-lock id cannot be resolved (missing row,
+/// unexpected shape). The CLI maps this to a runtime error (exit 3)
+/// rather than a config error (exit 2) — the migration is wired but
+/// the data plane is mis-seeded, which is an operations issue.
+class SweepLockUnavailable implements Exception {
+  const SweepLockUnavailable(this.reason);
+  final String reason;
+  @override
+  String toString() => 'SweepLockUnavailable: $reason';
+}
+
+/// Acquires an advisory lock around `body`. Production wiring uses
+/// [PostgresSweepAdvisoryLock] which calls
+/// `pg_advisory_lock(<lockId>) ... pg_advisory_unlock(<lockId>)`;
+/// tests pass a recording fake to assert mutual exclusion of two
+/// concurrent invocations.
+abstract class SweepAdvisoryLock {
+  /// Acquires the advisory lock keyed by [lockId], runs [body], and
+  /// releases the lock when [body] completes (success or failure).
+  /// Returns whatever [body] returns. If the lock is held by another
+  /// session, [withSweepLock] blocks (Postgres semantics) — concurrent
+  /// sweeps serialize rather than racing.
+  Future<R> withSweepLock<R>({
+    required int lockId,
+    required Future<R> Function() body,
+  });
+}
+
+class PostgresSweepAdvisoryLock implements SweepAdvisoryLock {
+  PostgresSweepAdvisoryLock({required TenantTransactionWrapper wrapper})
+      : _wrapper = wrapper;
+
+  final TenantTransactionWrapper _wrapper;
+
+  @override
+  Future<R> withSweepLock<R>({
+    required int lockId,
+    required Future<R> Function() body,
+  }) async {
+    // Acquire on a session, run the body outside any tx, then release.
+    // We cannot run the entire sweep inside one transaction because
+    // each per-operator anchor uses its own tenant-scoped tx; instead
+    // the lock is taken via session-scoped pg_advisory_lock and
+    // released after the sweep completes. Both halves run via
+    // runAsSystem with a non-blank reason so the bypass-RLS audit
+    // marker explains the lock acquisition / release.
+    await _wrapper.runAsSystem<void>(
+      (exec) async {
+        await exec.execute(
+          'select pg_advisory_lock(@lock_id::int)',
+          parameters: <String, Object?>{'lock_id': lockId},
+        );
+      },
+      reason: 'audit_anchor.sweep_lock_acquire',
+    );
+    try {
+      return await body();
+    } finally {
+      await _wrapper.runAsSystem<void>(
+        (exec) async {
+          await exec.execute(
+            'select pg_advisory_unlock(@lock_id::int)',
+            parameters: <String, Object?>{'lock_id': lockId},
+          );
+        },
+        reason: 'audit_anchor.sweep_lock_release',
+      );
+    }
   }
 }
 
@@ -851,7 +991,25 @@ class AnchorRunResult {
   final String? message;
 }
 
-enum AnchorOutcome { anchored, alreadyAnchored, chainHashMismatch, empty }
+enum AnchorOutcome {
+  anchored,
+  alreadyAnchored,
+  chainHashMismatch,
+  empty,
+
+  /// L9 startup-recovery outcome (committed): a previous run wrote the
+  /// immutable blob but crashed before inserting the
+  /// `audit_chain_anchors` row. The recovery sweep recomputed the
+  /// chain prefix, the blob's evidence agreed, and the missing anchor
+  /// row was inserted using the blob's original `anchored_at`.
+  recoveredCommitted,
+
+  /// L9 startup-recovery outcome (failed): an existing immutable blob
+  /// disagrees with the current in-DB chain. The recovery sweep
+  /// refused to insert an anchor row; the row stays unanchored and
+  /// the result surfaces for runbook escalation.
+  recoveredFailed,
+}
 
 /// Result of one verify run.
 class VerifyRunResult {
@@ -918,6 +1076,203 @@ class AuditAnchorOrchestrator {
       results.add(await _anchorOne(summary, nowUtc: nowUtc));
     }
     return results;
+  }
+
+  /// L9 startup crash-recovery sweep.
+  ///
+  /// Drives a deterministic recovery pass for the case where a prior
+  /// run wrote the immutable Azure Blob but crashed before inserting
+  /// the matching `audit_chain_anchors` row (a "writing" sentinel —
+  /// the table is append-only, so there is no in-progress row to
+  /// transition; instead the recovery sentinel is the orphan blob).
+  ///
+  /// For every unanchored completed chain found by
+  /// [AuditChainReader.findUnanchoredCompletedChains], the recovery
+  /// path attempts a [AuditAnchorBlobClient.readImmutable] probe at
+  /// the deterministic blob name [anchorBlobName]:
+  ///
+  ///   * Blob exists and the recomputed chain hash prefix matches the
+  ///     blob evidence's terminal — emit
+  ///     [AnchorOutcome.recoveredCommitted] and insert the missing
+  ///     anchor row using the blob's original `anchored_at`.
+  ///
+  ///   * Blob exists and disagrees with the in-DB chain (terminal
+  ///     hash, terminal id, row count, operator/date envelope) — emit
+  ///     [AnchorOutcome.recoveredFailed]. No anchor row is inserted;
+  ///     the chain stays unanchored, the result surfaces for runbook
+  ///     escalation.
+  ///
+  ///   * Blob does not exist — recovery has nothing to do for this
+  ///     chain; the regular `runAnchor` pass will write it on the next
+  ///     forward sweep. No result is emitted.
+  ///
+  ///   * Blob probe fails for transport / availability reasons (Azure
+  ///     unreachable) — bubbles [AuditAnchorBlobUnavailable] to the
+  ///     caller; the CLI surfaces a runtime error and skips the
+  ///     forward sweep until Azure is reachable.
+  ///
+  /// Determinism: every decision reads only from the in-DB chain and
+  /// the immutable blob; no human intervention. Idempotent: a recovery
+  /// sweep that finds no orphan blobs returns an empty list and is a
+  /// safe no-op.
+  Future<List<AnchorRunResult>> runStartupRecovery({
+    required String operatorId,
+    required DateTime asOfUtc,
+  }) async {
+    final summaries = await _reader.findUnanchoredCompletedChains(
+      operatorId: operatorId,
+      asOfUtc: asOfUtc,
+    );
+    final results = <AnchorRunResult>[];
+    for (final summary in summaries) {
+      final result = await _recoverOne(summary);
+      if (result != null) {
+        results.add(result);
+      }
+    }
+    return results;
+  }
+
+  Future<AnchorRunResult?> _recoverOne(AuditChainSummary summary) async {
+    final blobName = anchorBlobName(
+      operatorId: summary.operatorId,
+      chainDate: summary.chainDate,
+    );
+    AnchorBlobReadResult existing;
+    try {
+      existing = await _blobClient.readImmutable(
+        containerName: _containerName,
+        blobName: blobName,
+      );
+    } on AuditAnchorBlobUnavailable catch (error) {
+      // 404-shaped errors come back as AuditAnchorBlobUnavailable.
+      // For startup recovery we treat "blob not found" as "nothing to
+      // recover for this chain"; transport failures still surface so
+      // the operator can see Azure is unreachable. The reason string
+      // is the only signal we have — match the live client's 404
+      // message verbatim and the test fake's contract exactly.
+      if (_isBlobNotFound(error)) {
+        return null;
+      }
+      rethrow;
+    }
+    final rows = await _reader.readChainRows(
+      operatorId: summary.operatorId,
+      chainDate: summary.chainDate,
+    );
+    if (rows.isEmpty) {
+      // Orphan blob with no in-DB chain — forensic alert. Refuse to
+      // insert an anchor; surface for runbook triage.
+      return AnchorRunResult(
+        operatorId: summary.operatorId,
+        chainDate: summary.chainDate,
+        outcome: AnchorOutcome.recoveredFailed,
+        message:
+            'recovery: immutable blob exists but in-DB chain is empty '
+            'for $blobName; refusing to insert anchor row; see '
+            'runbooks/audit_chain_verify_runbook.md',
+      );
+    }
+    // Recompute the chain prefix. If the in-DB chain is internally
+    // inconsistent we treat that as a failed recovery — runbook
+    // escalation, no anchor row written.
+    final violations = _hasher.verifyChain(rows);
+    if (violations.isNotEmpty) {
+      return AnchorRunResult(
+        operatorId: summary.operatorId,
+        chainDate: summary.chainDate,
+        outcome: AnchorOutcome.recoveredFailed,
+        violations: violations,
+        message:
+            'recovery: in-DB chain failed self-verification; refusing '
+            'to insert anchor row even though an immutable blob '
+            'exists at $blobName',
+      );
+    }
+    final terminal = rows.last;
+    final AnchorEvidence evidence;
+    try {
+      evidence = _codec.decode(existing.bytes);
+    } on FormatException catch (error) {
+      return AnchorRunResult(
+        operatorId: summary.operatorId,
+        chainDate: summary.chainDate,
+        outcome: AnchorOutcome.recoveredFailed,
+        message:
+            'recovery: immutable blob at $blobName is not parseable '
+            'evidence ($error); refusing to insert anchor row',
+      );
+    }
+    final mismatch = _checkRecoveryEvidence(
+      evidence: evidence,
+      terminal: terminal,
+      rowCount: BigInt.from(rows.length),
+      chainDate: summary.chainDate,
+      operatorId: summary.operatorId,
+    );
+    if (mismatch != null) {
+      return AnchorRunResult(
+        operatorId: summary.operatorId,
+        chainDate: summary.chainDate,
+        outcome: AnchorOutcome.recoveredFailed,
+        message:
+            'recovery: existing immutable blob disagrees with current '
+            'in-DB chain — refusing to insert anchor row; $mismatch; '
+            'see runbooks/audit_chain_verify_runbook.md',
+      );
+    }
+    // Hash chain prefix matches evidence. Stamp the anchor row using
+    // the blob's *original* anchored_at so the recovered row remains
+    // forensically faithful to the run that produced the immutable
+    // evidence.
+    final anchor = AuditChainAnchor(
+      operatorId: summary.operatorId,
+      chainDate: summary.chainDate,
+      terminalRowHash: terminal.rowHash,
+      terminalRowId: terminal.id,
+      rowCount: BigInt.from(rows.length),
+      // The probe path doesn't carry the live PUT URI — the blob
+      // name + container endpoint reproduces a stable handle that
+      // future verifier reads route through the deterministic blob
+      // name regardless. Verifier compares ETags, not URI strings.
+      blobUri: _blobUriFor(
+        containerName: _containerName,
+        blobName: blobName,
+      ),
+      blobEtag: existing.etag,
+      anchoredAt: evidence.anchoredAt,
+    );
+    await _anchorWriter.insertAnchor(anchor);
+    return AnchorRunResult(
+      operatorId: summary.operatorId,
+      chainDate: summary.chainDate,
+      outcome: AnchorOutcome.recoveredCommitted,
+      anchor: anchor,
+      message:
+          'recovery: existing immutable blob agrees with in-DB '
+          'chain — inserted anchor row with original anchored_at '
+          '${evidence.anchoredAt.toIso8601String()}',
+    );
+  }
+
+  /// Reproduces the URI shape the Azure Blob client returns for a
+  /// successful PUT (`<endpoint>/<container>/<blob>`). The recovery
+  /// path does not have the live PUT response, so the URI is
+  /// reconstructed from the deterministic blob name. Used only when
+  /// the breadcrumb columns are populated on insert. Endpoint is not
+  /// known at orchestrator scope so the URI is a relative path; the
+  /// verifier compares ETags, not URI strings.
+  String _blobUriFor({
+    required String containerName,
+    required String blobName,
+  }) =>
+      '$containerName/$blobName';
+
+  bool _isBlobNotFound(AuditAnchorBlobUnavailable error) {
+    final reason = error.reason.toLowerCase();
+    return reason.contains('404') ||
+        reason.contains('not found') ||
+        reason.contains('not preloaded');
   }
 
   Future<AnchorRunResult> _anchorOne(

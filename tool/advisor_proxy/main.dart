@@ -28,7 +28,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_outbox_listener.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_dead_letter_repository.dart';
@@ -42,7 +41,9 @@ import 'package:forge_and_flow/services/realtime/realtime_replay_resolver.dart';
 import 'admin_email_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
+import 'advisor_response_cache.dart';
 import 'log.dart';
+import 'phase_8_production_binder.dart';
 import 'proxy_bootstrap.dart';
 import 'realtime_bridge.dart';
 import 'realtime_route.dart' show RealtimeReplayResult;
@@ -321,8 +322,15 @@ Future<void> main(List<String> args) async {
 
   // Lock 7 v1: per-instance breaker + always-miss cache stub.
   // Replace the cache with a real impl in E.2b.
+  // code-health.L14: real Postgres-backed cache wired via the proxy
+  // tenant pool so the breaker-open / primary-failure / secondary-
+  // failure branch can replay a recent identical answer instead of
+  // falling straight to graceful refusal. Backed by
+  // public.advisor_response_cache (24h TTL, hourly pg_cron sweep).
   final anthropicBreaker = CircuitBreaker(providerId: 'anthropic');
-  const advisorResponseCache = AlwaysMissAdvisorResponseCache();
+  final advisorResponseCache = PostgresAdvisorResponseCache(
+    tenantWrapper: TenantTransactionWrapper(productionBindings.tenantPool),
+  );
   final advisorRequestPipeline = AdvisorRequestPipeline(
     breaker: anthropicBreaker,
     cache: advisorResponseCache,
@@ -576,7 +584,94 @@ Future<void> main(List<String> args) async {
   );
   // endregion
 
+  // Phase 8 — wire the inbound integration chain (vendor credential
+  // broker, 17 per-tenant adapter factories, signature verifiers,
+  // RepositoryInboundWebhookGateway, RepositoryIntegrationRoutesGateway)
+  // before binding the listener. Demo mode (`--define=kDemoMode=true`)
+  // makes this a no-op; otherwise the binder installs
+  // `Phase80IntegrationRoutes.globalBindings` so the marked region in
+  // the dispatch loop above lights up.
+  await bindPhase8IntegrationsForProduction(
+    productionBindings,
+    config,
+    proxyJwtVerifier: verifier,
+  );
+
   final server = await HttpServer.bind(InternetAddress.anyIPv4, config.port);
+
+  // CODE_HEALTH L4 — graceful shutdown.
+  //
+  // SIGTERM / SIGINT trigger an orderly drain instead of dropping
+  // in-flight requests. The handler:
+  //   1. Stops the every-5-minute admin-idempotency sweeper Timer.
+  //   2. Closes the HTTP listener (force: false → no new connections,
+  //      existing requests run to completion).
+  //   3. Bounds the wait at 25 seconds so Cloud Run's 30s SIGKILL
+  //      deadline still has slack for `exit(0)` to run.
+  //   4. Notes that audit-log writes are committed synchronously per
+  //      request (no async drain queue), and `ProxyUsageCounterStore`
+  //      writes through `incrementOnAllow` are also synchronous —
+  //      neither has a flush API to call. ProxyUsageCounterStore and
+  //      audit-log queues drain as a no-op.
+  //   5. exit(0).
+  //
+  // Wired BEFORE the listener loop so an in-flight signal during
+  // bootstrap also lands a clean exit.
+  final adminIdempotencySweepTimer = Timer.periodic(
+    const Duration(minutes: 5),
+    (_) async {
+      try {
+        await productionBindings.adminRequestIdempotencyStore
+            .sweepExpiredOrphans();
+      } catch (error, stack) {
+        log(
+          LogSeverity.warning,
+          'admin_idempotency.sweep_failed',
+          fields: <String, Object?>{
+            'error_type': error.runtimeType.toString(),
+            'error_message': error.toString(),
+            'stack_first_frame': firstStackFrame(stack),
+          },
+        );
+      }
+    },
+  );
+
+  var shutdownInProgress = false;
+  Future<void> handleShutdownSignal(String signalName) async {
+    if (shutdownInProgress) return;
+    shutdownInProgress = true;
+    log(
+      LogSeverity.info,
+      'shutdown.signal_received',
+      fields: <String, Object?>{'signal': signalName},
+    );
+    adminIdempotencySweepTimer.cancel();
+    // Audit-log writes are committed synchronously inside each
+    // request (see `AuditLogsRepository.append…` paths through the
+    // tenant transaction wrapper); there is no async drain queue
+    // that needs flushing. Same posture for ProxyUsageCounterStore
+    // — `incrementOnAllow` is a synchronous Postgres UPSERT per
+    // request, not a buffered batch. No flush API exists; nothing
+    // to call here.
+    await Future.any(<Future<void>>[
+      server.close(force: false),
+      Future<void>.delayed(const Duration(seconds: 25)),
+    ]);
+    log(
+      LogSeverity.info,
+      'shutdown.complete',
+      fields: <String, Object?>{'signal': signalName},
+    );
+    exit(0);
+  }
+
+  ProcessSignal.sigterm.watch().listen(
+    (_) => unawaited(handleShutdownSignal('SIGTERM')),
+  );
+  ProcessSignal.sigint.watch().listen(
+    (_) => unawaited(handleShutdownSignal('SIGINT')),
+  );
 
   // HARD-A: own line for gemini_slot_enabled so deploy verification
   // can grep for the slot status without parsing the larger

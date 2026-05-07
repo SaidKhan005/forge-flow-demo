@@ -41,6 +41,7 @@ void main() {
         final repo = UsersRepository(TenantTransactionWrapper(pool));
         await repo.updateStatus(
           userId: _validUserId,
+          operatorId: _validOpId,
           newStatus: 'suspended',
           adminReason: 'admin.users.suspend',
         );
@@ -49,6 +50,35 @@ void main() {
         expect(tx.executedSql[1], equals('set local role forge_admin'));
         expect(tx.executedSql.last, contains('update users'));
         expect(tx.executedSql.last, contains('set status = @status'));
+      },
+    );
+
+    test(
+      'updateDisplayName is operator-scoped and ignores deleted users',
+      () async {
+        final pool = _LifecyclePool();
+        final repo = UsersRepository(TenantTransactionWrapper(pool));
+        await repo.updateDisplayName(
+          operatorId: _validOpId,
+          userId: _validUserId,
+          displayName: 'Updated Team Name',
+          adminReason: 'team.users.update_profile',
+        );
+        final tx = pool.transactions.single;
+        expect(
+          tx.parameters[0]['value'],
+          equals('system:team.users.update_profile'),
+        );
+        expect(tx.executedSql[1], equals('set local role forge_admin'));
+        final sql = tx.executedSql.last;
+        expect(sql, contains('update users'));
+        expect(sql, contains('display_name = @display_name'));
+        expect(sql, contains('operator_id = @operator_id::uuid'));
+        expect(sql, contains('deleted_at is null'));
+        expect(sql, contains("status != 'deleted'"));
+        expect(tx.parameters.last['operator_id'], equals(_validOpId));
+        expect(tx.parameters.last['user_id'], equals(_validUserId));
+        expect(tx.parameters.last['display_name'], equals('Updated Team Name'));
       },
     );
 
@@ -75,6 +105,7 @@ void main() {
       final repo = UsersRepository(TenantTransactionWrapper(pool));
       await repo.softDelete(
         userId: _validUserId,
+        operatorId: _validOpId,
         adminReason: 'admin.users.soft_delete',
       );
       final sql = pool.transactions.single.executedSql.last;
@@ -90,6 +121,7 @@ void main() {
         final repo = UsersRepository(TenantTransactionWrapper(pool));
         await repo.redactPii(
           userId: _validUserId,
+          operatorId: _validOpId,
           adminReason: 'gdpr.erasure_executed',
         );
         final sql = pool.transactions.single.executedSql.last;
@@ -111,6 +143,7 @@ void main() {
       final repo = UsersRepository(TenantTransactionWrapper(pool));
       await repo.bumpRolesVersion(
         userId: _validUserId,
+        operatorId: _validOpId,
         adminReason: 'admin.users.roles_changed',
       );
       final sql = pool.transactions.single.executedSql.last;

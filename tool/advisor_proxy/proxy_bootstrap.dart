@@ -6452,6 +6452,16 @@ class PostgresAdminRequestIdempotencyStore
       rethrow;
     }
   }
+
+  @override
+  Future<bool> tryReclaimOrphan({required String idempotencyKey}) async {
+    return false;
+  }
+
+  @override
+  Future<int> sweepExpiredOrphans() async {
+    return 0;
+  }
 }
 
 /// Production [IntegrationAdminActorResolver] backed by

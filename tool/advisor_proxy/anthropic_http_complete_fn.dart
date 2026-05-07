@@ -81,15 +81,33 @@ class AnthropicHttpCompletionError implements Exception {
 /// - [timeout]: per-call request timeout. Defaults to
 ///   [defaultAnthropicRequestTimeout]. A `TimeoutException` propagates
 ///   to the fallback chain so the Gemini slot can take over.
+/// - [cacheControl]: optional Anthropic prompt-cache marker for the
+///   `system` block. When non-null, the request body emits `system` as
+///   a structured array of content blocks instead of a flat string, and
+///   attaches `cache_control` to the (single) text block — this is the
+///   shape the Messages API requires to actually engage prompt caching
+///   on the wire. Mirror the marker the proxy already computes in
+///   [proxyPromptBlockToCacheControl] (`{'type':'ephemeral','ttl':'1h'}`)
+///   so request shape stays byte-identical to the cache-key Anthropic
+///   sees on retries. When null, the body falls back to the legacy flat
+///   string (no caching engaged) — preserves wire shape for callers
+///   that haven't computed a cache marker yet.
 AnthropicProxyCompleteFn buildAnthropicHttpCompleteFn({
   required String apiKey,
   http.Client? httpClient,
   Uri? endpoint,
   int maxTokens = defaultAnthropicMaxTokens,
   Duration timeout = defaultAnthropicRequestTimeout,
+  Map<String, Object?>? cacheControl,
 }) {
   final client = httpClient ?? http.Client();
   final uri = endpoint ?? Uri.parse(anthropicMessagesEndpoint);
+  // Snapshot the cache-control marker once at build time. The map is
+  // shallow-copied per request below so mutating callers cannot mutate
+  // the body object after `jsonEncode` reads it.
+  final Map<String, Object?>? capturedCacheControl = cacheControl == null
+      ? null
+      : Map<String, Object?>.from(cacheControl);
   return ({
     required String modelId,
     required String question,
@@ -103,7 +121,27 @@ AnthropicProxyCompleteFn buildAnthropicHttpCompleteFn({
       ],
     };
     if (context.isNotEmpty) {
-      body['system'] = context;
+      if (capturedCacheControl != null) {
+        // Item 12 / Lever 1 — emit the structured system-block shape
+        // Anthropic requires for prompt caching. Field order
+        // (`type` -> `text` -> `cache_control`) and the marker
+        // (`{'type':'ephemeral','ttl':'1h'}`) mirror
+        // `proxyPromptBlockToCacheControl` in `advisor_proxy.dart`
+        // exactly so the cache key Anthropic computes is stable across
+        // retries. Without this branch the proxy computed the right
+        // marker but never sent it, leaving `prompt_cache_hit_rate`
+        // pinned at 0%.
+        body['system'] = <Map<String, Object?>>[
+          <String, Object?>{
+            'type': 'text',
+            'text': context,
+            'cache_control':
+                Map<String, Object?>.from(capturedCacheControl),
+          },
+        ];
+      } else {
+        body['system'] = context;
+      }
     }
     final response = await client
         .post(

@@ -339,6 +339,88 @@ void main() {
       expect(result.outputTokens, equals(0));
     });
 
+    test('cacheControl provided emits structured system blocks with '
+        'cache_control on the wire', () async {
+      // L13 — Anthropic prompt caching only engages when the request
+      // body sends `system` as a list of content blocks, each with
+      // `cache_control`. The proxy computes the marker
+      // (`{'type':'ephemeral','ttl':'1h'}` from
+      // `proxyPromptBlockToCacheControl`) but the HTTP adapter has to
+      // actually serialize it onto the wire — without this branch
+      // `prompt_cache_hit_rate` sits at 0%.
+      late http.BaseRequest captured;
+      final mock = MockClient((request) async {
+        captured = request;
+        return _jsonResponse(200, <String, Object?>{
+          'content': <Map<String, Object?>>[
+            <String, Object?>{'type': 'text', 'text': 'ok'},
+          ],
+        });
+      });
+
+      final completeFn = buildAnthropicHttpCompleteFn(
+        apiKey: 'sk-test-cache',
+        httpClient: mock,
+        cacheControl: const <String, Object?>{
+          'type': 'ephemeral',
+          'ttl': '1h',
+        },
+      );
+
+      await completeFn(
+        modelId: 'claude-haiku-4-5',
+        question: 'why?',
+        context: 'You are a labor advisor.',
+      );
+
+      final body = _decodeBody(captured);
+      final systemField = body['system'];
+      expect(systemField, isA<List<Object?>>());
+      final blocks = systemField as List<Object?>;
+      expect(blocks, hasLength(1));
+      final block = blocks.single as Map<String, Object?>;
+      expect(block['type'], equals('text'));
+      expect(block['text'], equals('You are a labor advisor.'));
+      expect(
+        block['cache_control'],
+        equals(<String, Object?>{
+          'type': 'ephemeral',
+          'ttl': '1h',
+        }),
+      );
+    });
+
+    test('cacheControl omitted falls back to flat-string system block',
+        () async {
+      // Negative case — when no cache marker is supplied, the wire shape
+      // matches the pre-L13 behavior (flat string). Keeps the endpoint
+      // shape compatible for callers (e.g. fallback chain) that have
+      // not yet computed a per-request cache marker.
+      late http.BaseRequest captured;
+      final mock = MockClient((request) async {
+        captured = request;
+        return _jsonResponse(200, <String, Object?>{
+          'content': <Map<String, Object?>>[
+            <String, Object?>{'type': 'text', 'text': 'ok'},
+          ],
+        });
+      });
+
+      final completeFn = buildAnthropicHttpCompleteFn(
+        apiKey: 'test-key',
+        httpClient: mock,
+      );
+
+      await completeFn(
+        modelId: 'claude-haiku-4-5',
+        question: 'q',
+        context: 'You are a labor advisor.',
+      );
+
+      final body = _decodeBody(captured);
+      expect(body['system'], equals('You are a labor advisor.'));
+    });
+
     test('malformed usage value is tolerated and tokens default to zero',
         () async {
       final mock = MockClient((request) async {

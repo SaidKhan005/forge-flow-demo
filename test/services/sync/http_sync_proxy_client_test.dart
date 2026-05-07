@@ -671,12 +671,15 @@ void main() {
       );
 
       expect(snapshots.snapshots.single.snapshot.snapshotId, 'wps-1');
+      expect(snapshots.snapshots.single.snapshot.forecastContextId, 'fc-1');
       expect(
         snapshots.snapshots.single.snapshot.weekKey,
         '2026-05-04_2026-05-10',
       );
       expect(snapshots.snapshots.single.snapshot.dayRows.single.day, 'Mon');
       expect(snapshots.nextCursor, 'weekly-next');
+      expect(contexts.contexts.single.forecastContextId, 'fc-1');
+      expect(contexts.contexts.single.weekStartDate, '2026-05-04');
       expect(contexts.contexts.single.context.baselineTotalCovers, 1200);
       expect(
         contexts.contexts.single.context.resolvedWeeklyForecastCovers,
@@ -919,6 +922,7 @@ Map<String, Object?> _weeklyPlanRow() => <String, Object?>{
   'week_start_date': '2026-05-04',
   'week_end_date': '2026-05-10',
   'target_cycle_id': 'cycle-1',
+  'forecast_context_id': 'fc-1',
   'forecast_covers': 148,
   'forecast_sales': 6512.0,
   'required_foh_hours': 32,
@@ -944,8 +948,11 @@ Map<String, Object?> _weeklyPlanRow() => <String, Object?>{
 Map<String, Object?> _forecastContextRow() => <String, Object?>{
   'operator_id': 'op',
   'location_id': 'loc',
+  'forecast_context_id': 'fc-1',
   'restaurant_id': 'loc',
   'business_date': '2026-05-04',
+  'week_start_date': '2026-05-04',
+  'week_end_date': '2026-05-10',
   'baseline_total_covers': 1200,
   'baseline_weekly_avg_covers': 140,
   'baseline_weeks_represented': 8.571,

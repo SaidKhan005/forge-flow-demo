@@ -11,6 +11,8 @@
 //     immediate failed + alert.
 //   * Missing template variable → immediate failed + alert.
 
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/services/email/email_outbox_dispatcher.dart';
@@ -292,6 +294,307 @@ void main() {
 
       expect(outcomes.single.statusKind, EmailDispatchStatusKind.failed);
       expect(provider.sendsAttempted, 0);
+    });
+  });
+
+  // ── Code-Health L8 — typed EmailSendOutcome classification ─────────
+  //
+  // These tests pin the four sealed-class branches by HTTP shape so a
+  // future refactor of `_classifyProviderException` cannot silently
+  // re-introduce the string-keyed reverse engineering the L8 finding
+  // called out.
+  group('Code-Health L8 — typed EmailSendOutcome', () {
+    test('SendGrid 200/2xx → EmailSent carries the provider message id',
+        () async {
+      final outcome = await classifyEmailSendCall(
+        () async => EmailSendResult(
+          providerMessageId: 'sg-msg-200',
+          acceptedAt: DateTime.utc(2026, 5, 4, 12),
+        ),
+      );
+      expect(outcome, isA<EmailSent>());
+      expect((outcome as EmailSent).result.providerMessageId, 'sg-msg-200');
+    });
+
+    test('SendGrid 429 → EmailRateLimitError carries Retry-After', () async {
+      final outcome = await classifyEmailSendCall(
+        () async => throw const EmailProviderException(
+          kind: EmailFailureKind.providerRateLimit,
+          message: 'rate limited',
+          statusCode: 429,
+          retryAfter: Duration(seconds: 30),
+        ),
+      );
+      expect(outcome, isA<EmailRateLimitError>());
+      final rate = outcome as EmailRateLimitError;
+      expect(rate.statusCode, 429);
+      expect(rate.retryAfter, const Duration(seconds: 30));
+    });
+
+    test('SendGrid 503 → EmailTransientError (5xx maps to transient)',
+        () async {
+      final outcome = await classifyEmailSendCall(
+        () async => throw const EmailProviderException(
+          kind: EmailFailureKind.providerInternal,
+          message: 'service unavailable',
+          statusCode: 503,
+        ),
+      );
+      expect(outcome, isA<EmailTransientError>());
+      final transient = outcome as EmailTransientError;
+      expect(transient.kind, EmailFailureKind.providerInternal);
+      expect(transient.statusCode, 503);
+    });
+
+    test(
+        'SendGrid 422 → EmailPermanentError (4xx other than 429 is '
+        'non-retryable)', () async {
+      final outcome = await classifyEmailSendCall(
+        () async => throw const EmailProviderException(
+          kind: EmailFailureKind.providerBadRequest,
+          message: 'unprocessable entity',
+          statusCode: 422,
+        ),
+      );
+      expect(outcome, isA<EmailPermanentError>());
+      final permanent = outcome as EmailPermanentError;
+      expect(permanent.kind, EmailFailureKind.providerBadRequest);
+      expect(permanent.statusCode, 422);
+    });
+
+    test('Timeout → EmailTransientError (network kind)', () async {
+      final outcome = await classifyEmailSendCall(
+        () async => throw TimeoutException('socket', const Duration(seconds: 30)),
+      );
+      expect(outcome, isA<EmailTransientError>());
+      expect((outcome as EmailTransientError).kind, EmailFailureKind.network);
+    });
+
+    test(
+        'dispatcher branch: 200 → EmailSent + status=sent + no '
+        'failureKind on the outcome', () async {
+      final repo = _FakeRepo(<EmailOutboxRow>[
+        const EmailOutboxRow(
+          emailId: 'l8-1',
+          templateId: EmailTemplateIds.operatorInviteFirstAdmin,
+          recipientEmail: 'ok@example.com',
+          templateData: <String, String>{'recipientName': 'Pat'},
+          attemptCount: 0,
+        ),
+      ]);
+      final provider = _StubProvider(
+        sendOutcomes: <_SendOutcome>[_SendOutcome.success('sg-msg-l8-1')],
+      );
+      final dispatcher = EmailOutboxDispatcher(
+        provider: provider,
+        renderer: buildRenderer(),
+        repository: repo,
+        alertSink: (_) {},
+        fromAddress: 'noreply@mail.forgeflow.app',
+        fromDisplayName: 'Forge & Flow',
+      );
+      final outcomes = await dispatcher.drainBatch();
+      expect(outcomes.single.statusKind, EmailDispatchStatusKind.sent);
+      expect(outcomes.single.failureKind, isNull);
+    });
+
+    test(
+        'dispatcher branch: 429 → pendingRetry with backoff + alert is '
+        'NOT raised (retry semantics)', () async {
+      final repo = _FakeRepo(<EmailOutboxRow>[
+        const EmailOutboxRow(
+          emailId: 'l8-2',
+          templateId: EmailTemplateIds.operatorInviteFirstAdmin,
+          recipientEmail: 'ok@example.com',
+          templateData: <String, String>{'recipientName': 'Pat'},
+          attemptCount: 0,
+        ),
+      ]);
+      final provider = _StubProvider(
+        sendOutcomes: <_SendOutcome>[
+          _SendOutcome.failure(const EmailProviderException(
+            kind: EmailFailureKind.providerRateLimit,
+            message: 'too fast',
+            statusCode: 429,
+            retryAfter: Duration(seconds: 5),
+          )),
+        ],
+      );
+      final alerts = <EmailDispatchAlert>[];
+      final dispatcher = EmailOutboxDispatcher(
+        provider: provider,
+        renderer: buildRenderer(),
+        repository: repo,
+        alertSink: alerts.add,
+        fromAddress: 'noreply@mail.forgeflow.app',
+        fromDisplayName: 'Forge & Flow',
+      );
+      final outcomes = await dispatcher.drainBatch();
+      expect(outcomes.single.statusKind, EmailDispatchStatusKind.pendingRetry);
+      expect(outcomes.single.failureKind, EmailFailureKind.providerRateLimit);
+      expect(alerts, isEmpty,
+          reason: '429 is retryable; no alert until retries exhaust');
+    });
+
+    test(
+        'dispatcher branch: 503 → pendingRetry + retryable; same row at '
+        'cap with 503 dead-letters', () async {
+      // First attempt: row at attempt 0, 503 → pendingRetry.
+      final firstRepo = _FakeRepo(<EmailOutboxRow>[
+        const EmailOutboxRow(
+          emailId: 'l8-3a',
+          templateId: EmailTemplateIds.operatorInviteFirstAdmin,
+          recipientEmail: 'ok@example.com',
+          templateData: <String, String>{'recipientName': 'Pat'},
+          attemptCount: 0,
+        ),
+      ]);
+      final firstProvider = _StubProvider(
+        sendOutcomes: <_SendOutcome>[
+          _SendOutcome.failure(const EmailProviderException(
+            kind: EmailFailureKind.providerInternal,
+            message: '503 service unavailable',
+            statusCode: 503,
+          )),
+        ],
+      );
+      final firstAlerts = <EmailDispatchAlert>[];
+      final firstDispatcher = EmailOutboxDispatcher(
+        provider: firstProvider,
+        renderer: buildRenderer(),
+        repository: firstRepo,
+        alertSink: firstAlerts.add,
+        fromAddress: 'noreply@mail.forgeflow.app',
+        fromDisplayName: 'Forge & Flow',
+      );
+      final firstOutcomes = await firstDispatcher.drainBatch();
+      expect(firstOutcomes.single.statusKind,
+          EmailDispatchStatusKind.pendingRetry);
+      expect(firstOutcomes.single.failureKind,
+          EmailFailureKind.providerInternal);
+      expect(firstAlerts, isEmpty);
+
+      // Now drive the same row at attempt 2 (one before cap), 503 →
+      // status = failed because nextAttempt = 3 == maxAttempts.
+      final lastRepo = _FakeRepo(<EmailOutboxRow>[
+        const EmailOutboxRow(
+          emailId: 'l8-3b',
+          templateId: EmailTemplateIds.operatorInviteFirstAdmin,
+          recipientEmail: 'ok@example.com',
+          templateData: <String, String>{'recipientName': 'Pat'},
+          attemptCount: 2,
+        ),
+      ]);
+      final lastProvider = _StubProvider(
+        sendOutcomes: <_SendOutcome>[
+          _SendOutcome.failure(const EmailProviderException(
+            kind: EmailFailureKind.providerInternal,
+            message: '503 service unavailable',
+            statusCode: 503,
+          )),
+        ],
+      );
+      final lastAlerts = <EmailDispatchAlert>[];
+      final lastDispatcher = EmailOutboxDispatcher(
+        provider: lastProvider,
+        renderer: buildRenderer(),
+        repository: lastRepo,
+        alertSink: lastAlerts.add,
+        fromAddress: 'noreply@mail.forgeflow.app',
+        fromDisplayName: 'Forge & Flow',
+      );
+      final lastOutcomes = await lastDispatcher.drainBatch();
+      expect(lastOutcomes.single.statusKind, EmailDispatchStatusKind.failed);
+      expect(lastOutcomes.single.failureKind,
+          EmailFailureKind.providerInternal);
+      expect(lastAlerts, hasLength(1));
+      expect(lastAlerts.single.failureKind,
+          EmailFailureKind.providerInternal);
+    });
+
+    test(
+        'dispatcher branch: 422 → failed on first attempt (permanent), '
+        'no retry, alert raised once', () async {
+      final repo = _FakeRepo(<EmailOutboxRow>[
+        const EmailOutboxRow(
+          emailId: 'l8-4',
+          templateId: EmailTemplateIds.operatorInviteFirstAdmin,
+          recipientEmail: 'ok@example.com',
+          templateData: <String, String>{'recipientName': 'Pat'},
+          attemptCount: 0,
+        ),
+      ]);
+      final provider = _StubProvider(
+        sendOutcomes: <_SendOutcome>[
+          _SendOutcome.failure(const EmailProviderException(
+            kind: EmailFailureKind.providerBadRequest,
+            message: '422 unprocessable entity',
+            statusCode: 422,
+          )),
+        ],
+      );
+      final alerts = <EmailDispatchAlert>[];
+      final dispatcher = EmailOutboxDispatcher(
+        provider: provider,
+        renderer: buildRenderer(),
+        repository: repo,
+        alertSink: alerts.add,
+        fromAddress: 'noreply@mail.forgeflow.app',
+        fromDisplayName: 'Forge & Flow',
+      );
+      final outcomes = await dispatcher.drainBatch();
+      expect(outcomes.single.statusKind, EmailDispatchStatusKind.failed);
+      expect(outcomes.single.attemptCount, 1,
+          reason: 'permanent → dead-letter on first failed attempt');
+      expect(outcomes.single.failureKind,
+          EmailFailureKind.providerBadRequest);
+      expect(alerts, hasLength(1));
+      expect(alerts.single.failureKind,
+          EmailFailureKind.providerBadRequest);
+      expect(provider.sendsAttempted, 1,
+          reason: 'permanent kinds must NOT retry');
+    });
+
+    test(
+        'failureKind on the outcome is set from the typed branch — '
+        'the alert sink no longer reverse-engineers it from lastError',
+        () async {
+      // The deliberately cryptic `message` would NOT match the old
+      // string-contains heuristics ("providerAuth"); the typed flow
+      // surfaces the kind correctly anyway.
+      final repo = _FakeRepo(<EmailOutboxRow>[
+        const EmailOutboxRow(
+          emailId: 'l8-5',
+          templateId: EmailTemplateIds.operatorInviteFirstAdmin,
+          recipientEmail: 'ok@example.com',
+          templateData: <String, String>{'recipientName': 'Pat'},
+          attemptCount: 0,
+        ),
+      ]);
+      final provider = _StubProvider(
+        sendOutcomes: <_SendOutcome>[
+          _SendOutcome.failure(const EmailProviderException(
+            kind: EmailFailureKind.providerAuth,
+            // Message intentionally does NOT contain the literal
+            // 'providerAuth' — the old heuristic would have classified
+            // this as `unknown`.
+            message: 'token rotated; please update credential',
+            statusCode: 403,
+          )),
+        ],
+      );
+      final alerts = <EmailDispatchAlert>[];
+      final dispatcher = EmailOutboxDispatcher(
+        provider: provider,
+        renderer: buildRenderer(),
+        repository: repo,
+        alertSink: alerts.add,
+        fromAddress: 'noreply@mail.forgeflow.app',
+        fromDisplayName: 'Forge & Flow',
+      );
+      final outcomes = await dispatcher.drainBatch();
+      expect(outcomes.single.failureKind, EmailFailureKind.providerAuth);
+      expect(alerts.single.failureKind, EmailFailureKind.providerAuth);
     });
   });
 

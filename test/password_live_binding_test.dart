@@ -33,6 +33,17 @@ const String _validLocId = '22222222-2222-2222-2222-222222222222';
 const String _validUserId = '33333333-3333-3333-3333-333333333333';
 const String _validEntryId = '44444444-4444-4444-4444-444444444444';
 
+// CODE_HEALTH L12: RepositoryPasswordHistoryCheck now requires a
+// PasswordHistoryPepperConfig at construction time. In non-demo mode
+// the env-fallback throws PasswordHistoryPepperMissingError, so tests
+// inject a deterministic literal pepper. The value is not secret — it
+// only needs to be stable across the test run so the salted-hash path
+// is exercisable. The legacy verification path (which these tests
+// hit, because the staged history rows have no password_hash_algo
+// column and default to sha256-legacy) does not consult the pepper at
+// all, but the constructor still requires it before any read.
+const String _testPepper = 'test-pepper-bytes-not-secret';
+
 void main() {
   group('PasswordHistoryRepository (B15 — fake Postgres)', () {
     test('recordHash runs INSERT … RETURNING entry_id with bound params',
@@ -237,6 +248,7 @@ void main() {
         hasher: hasher,
         operatorId: _validOpId,
         locationId: _validLocId,
+        pepper: PasswordHistoryPepperConfig.literal(_testPepper),
       );
       final reused = await check.isReusedPassword(
         userId: _validUserId,
@@ -262,6 +274,7 @@ void main() {
         hasher: const Sha256PasswordHistoryHasher(),
         operatorId: _validOpId,
         locationId: _validLocId,
+        pepper: PasswordHistoryPepperConfig.literal(_testPepper),
       );
       final reused = await check.isReusedPassword(
         userId: _validUserId,
@@ -278,6 +291,7 @@ void main() {
         hasher: const Sha256PasswordHistoryHasher(),
         operatorId: _validOpId,
         locationId: _validLocId,
+        pepper: PasswordHistoryPepperConfig.literal(_testPepper),
       );
 
       await check.recordAndPrune(

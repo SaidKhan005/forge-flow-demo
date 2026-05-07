@@ -5,6 +5,8 @@
 // client sends that request to the proxy while keeping tokens in headers only.
 
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'proxy_auth_session_ledger_writer.dart';
 
@@ -59,8 +61,26 @@ class ProxyRefreshTokenRevoker {
     }
   }
 
-  static String _defaultIdempotencyKey() =>
-      DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+  static final math.Random _idempotencyRandom = math.Random.secure();
+
+  /// Default idempotency key — 16 random bytes (128 bits) hex-encoded
+  /// as 32 lowercase hex chars. Sourced from `Random.secure()` so two
+  /// concurrent revoke calls (or a fast retry within the same
+  /// microsecond) cannot collide on the same key, which would let the
+  /// proxy short-circuit the second revoke as a duplicate. Mirrors the
+  /// convention used by [ProxyAuthSessionLedgerWriter] and the other
+  /// proxy gateways in this directory.
+  static String _defaultIdempotencyKey() {
+    final bytes = Uint8List(16);
+    for (var i = 0; i < bytes.length; i++) {
+      bytes[i] = _idempotencyRandom.nextInt(256);
+    }
+    final buffer = StringBuffer();
+    for (final b in bytes) {
+      buffer.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return buffer.toString();
+  }
 
   static String? _readNonBlankString(Object? value) {
     if (value is! String) return null;

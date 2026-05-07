@@ -2,16 +2,20 @@
 //
 // 7.57.3a-review-fix. Persists dev-only overrides for the advisor
 // answer model ids via SharedPreferences and exposes an injected online
-// check against Anthropic's `GET /v1/models` endpoint.
+// check.
 //
 // Hard rules:
-//   * No API keys are persisted. The Anthropic API key for the online
-//     check comes from the compile-time env (`--dart-define=
-//     ANTHROPIC_API_KEY=...`).
+//   * No API keys are persisted, read, or shipped. Hard Promise #7
+//     ("F&F holds all provider keys server-side. No BYO-key.") forbids
+//     a `--dart-define=ANTHROPIC_API_KEY=...` path on the client; the
+//     online check probes the F&F proxy (no client-held credentials)
+//     and returns [AnthropicModelCheckStatus.cannotCheck] when the
+//     proxy isn't reachable.
 //   * Embedding/rerank models are pinned in `AdvisorProviderConstants`
 //     and are not editable here — only Claude answer model overrides
 //     (quick / nuanced) round-trip through this service.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -21,19 +25,29 @@ import '../domain/services/advisor_model_routing.dart';
 
 // ─── Online check result ─────────────────────────────────────────────────────
 
-/// Outcome of a `GET /v1/models` request.
+/// Outcome of an advisor model availability probe.
+///
+/// In the BYO-key era the default check called Anthropic's
+/// `GET /v1/models` directly and reported `available` /
+/// `unavailable` based on the returned catalog. After Hard Promise #7
+/// (no client-held provider keys), the default check is a proxy
+/// liveness probe and returns [cannotCheck] regardless — the proxy
+/// does not currently expose Anthropic's catalog to clients. Tests
+/// (which inject fakes) still exercise [available] / [unavailable]
+/// to keep the result contract honest.
 enum AnthropicModelCheckStatus {
-  /// API call succeeded; both effective ids are present in the returned
-  /// model list.
+  /// Probe succeeded and confirmed both effective ids are present in
+  /// the returned model list. Reachable today only via injected fakes.
   available,
 
-  /// API call succeeded; one or both effective ids are NOT in the
-  /// returned model list (likely because Anthropic deprecated the id).
+  /// Probe succeeded and confirmed at least one effective id is NOT
+  /// in the returned model list. Reachable today only via injected
+  /// fakes.
   unavailable,
 
-  /// Could not reach Anthropic — missing API key, network error, or
-  /// non-2xx response. The dev should not interpret this as
-  /// "model is dead".
+  /// Could not verify availability — proxy unreachable, returned a
+  /// non-2xx, or doesn't expose model listings. The dev should NOT
+  /// interpret this as "model is dead".
   cannotCheck,
 }
 
@@ -141,9 +155,6 @@ int _compareModelIds(String a, String b) {
   return 0;
 }
 
-bool _isHaikuFamily(String id) => id.toLowerCase().contains('haiku');
-bool _isSonnetFamily(String id) => id.toLowerCase().contains('sonnet');
-
 /// Online-check function the service delegates to. Production wires
 /// [defaultAnthropicOnlineCheck]; tests inject a fake.
 typedef AnthropicOnlineCheckFn = Future<AnthropicModelCheckResult> Function({
@@ -153,87 +164,108 @@ typedef AnthropicOnlineCheckFn = Future<AnthropicModelCheckResult> Function({
 
 // ─── Default production online check ────────────────────────────────────────
 
-/// Compile-time API key. Provided at build via
-/// `--dart-define=ANTHROPIC_API_KEY=...`. Empty when not provided —
-/// the check then returns [AnthropicModelCheckStatus.cannotCheck].
-const String _kAnthropicApiKey =
-    String.fromEnvironment('ANTHROPIC_API_KEY', defaultValue: '');
+/// Compile-time proxy base URI. Mirrors the same dart-define that
+/// `main_forgeflow.dart` already reads when wiring the live sync proxy
+/// client. A URL is environment config (not a secret), so threading it
+/// through `String.fromEnvironment` does not violate Hard Promise #7
+/// the way an API key would. Empty when unset — the online check then
+/// returns [AnthropicModelCheckStatus.cannotCheck] with a clear
+/// message rather than a fabricated availability claim.
+const String _kProxyBaseUri =
+    String.fromEnvironment('FORGE_FLOW_PROXY_BASE_URI', defaultValue: '');
 
-const String _kAnthropicModelsUrl = 'https://api.anthropic.com/v1/models';
+/// Proxy liveness probe path. `/healthz` is unauthenticated, returns
+/// 200 OK with `{status: 'ok'}` when the proxy process is up, and 5xx
+/// (or network errors) when it's not. The probe doesn't tell us
+/// anything about Anthropic's model catalog — that endpoint isn't
+/// exposed to clients today (Hard Promise #7) — so a 200 still maps to
+/// [AnthropicModelCheckStatus.cannotCheck], NOT `available`. Returning
+/// `available` here would fabricate a claim about Anthropic's catalog
+/// that the client has no way to verify.
+const String kForgeFlowProxyHealthPath = '/healthz';
+
+/// Default per-call timeout for the proxy liveness probe. Bounds how
+/// long Settings spends spinning when the proxy is unreachable.
+const Duration kForgeFlowProxyProbeTimeout = Duration(seconds: 5);
+
+/// Probes the F&F proxy's `/healthz` endpoint and returns a
+/// `cannotCheck` result either way — `cannotCheck` because the proxy
+/// does not currently expose Anthropic's model catalog to clients
+/// (Hard Promise #7). The message differs so the dev can tell apart:
+///   * proxy reachable + 2xx → "reachable but catalog not exposed"
+///   * proxy returned 5xx → "infra problem"
+///   * proxy unreachable → "network error"
+///
+/// Exposed (instead of inlined) so the unit test can drive it against
+/// an in-process `HttpServer` without mutating the compile-time
+/// `FORGE_FLOW_PROXY_BASE_URI` dart-define.
+Future<AnthropicModelCheckResult> probeForgeFlowProxyHealth({
+  required Uri? proxyBaseUri,
+  HttpClient Function()? httpClientFactory,
+  Duration timeout = kForgeFlowProxyProbeTimeout,
+}) async {
+  if (proxyBaseUri == null) {
+    return const AnthropicModelCheckResult.cannotCheck(
+      'FORGE_FLOW_PROXY_BASE_URI not configured. Re-launch with the '
+      'proxy URL passed via '
+      '`--dart-define=FORGE_FLOW_PROXY_BASE_URI=...` so the advisor '
+      'model probe can reach the F&F proxy.',
+    );
+  }
+  // Resolve the health path against the configured base. Use
+  // `replace` rather than `Uri.resolve` so any prefix path on the base
+  // (e.g. `https://host/api/`) is preserved instead of silently
+  // replaced.
+  final probeUri = proxyBaseUri.replace(path: kForgeFlowProxyHealthPath);
+  HttpClient? client;
+  try {
+    client = (httpClientFactory ?? HttpClient.new)();
+    final req = await client.getUrl(probeUri).timeout(timeout);
+    final res = await req.close().timeout(timeout);
+    // Drain the body so the connection can be reused / closed cleanly,
+    // even when we don't parse it — `/healthz` returns a small JSON
+    // object we don't currently inspect.
+    await res.transform(utf8.decoder).join();
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      return AnthropicModelCheckResult.cannotCheck(
+        'F&F proxy returned HTTP ${res.statusCode} from '
+        '$kForgeFlowProxyHealthPath. Cannot verify advisor model '
+        'availability.',
+      );
+    }
+    return const AnthropicModelCheckResult.cannotCheck(
+      'F&F proxy is reachable but does not currently expose Anthropic '
+      'model availability to clients (Hard Promise #7). Configured '
+      'advisor model ids are assumed valid; check the proxy logs to '
+      'confirm.',
+    );
+  } on TimeoutException catch (e) {
+    return AnthropicModelCheckResult.cannotCheck(
+        'F&F proxy probe timed out: $e');
+  } catch (e) {
+    return AnthropicModelCheckResult.cannotCheck(
+        'F&F proxy probe failed: $e');
+  } finally {
+    client?.close(force: true);
+  }
+}
 
 Future<AnthropicModelCheckResult> defaultAnthropicOnlineCheck({
   required String quickModelId,
   required String nuancedModelId,
 }) async {
-  if (_kAnthropicApiKey.isEmpty) {
+  // The model ids are accepted to satisfy the [AnthropicOnlineCheckFn]
+  // typedef but no longer flow into the probe — the proxy doesn't
+  // expose Anthropic's catalog, so there is nothing to compare them
+  // against. Tests that need to assert availability/unavailability
+  // inject a fake [AnthropicOnlineCheckFn].
+  final base = _kProxyBaseUri.isEmpty ? null : Uri.tryParse(_kProxyBaseUri);
+  if (_kProxyBaseUri.isNotEmpty && base == null) {
     return const AnthropicModelCheckResult.cannotCheck(
-      'ANTHROPIC_API_KEY not provided. Re-launch with '
-      'scripts/run_flutter_dev.ps1 -App forgeflow, or pass '
-      '--dart-define=ANTHROPIC_API_KEY=...',
+      'FORGE_FLOW_PROXY_BASE_URI is not a valid URI.',
     );
   }
-  HttpClient? client;
-  try {
-    client = HttpClient();
-    final req = await client.getUrl(Uri.parse(_kAnthropicModelsUrl));
-    req.headers.set('x-api-key', _kAnthropicApiKey);
-    req.headers.set('anthropic-version', '2023-06-01');
-    final res = await req.close();
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      return AnthropicModelCheckResult.cannotCheck(
-          'Anthropic returned HTTP ${res.statusCode}.');
-    }
-    final body = await res.transform(utf8.decoder).join();
-    final decoded = jsonDecode(body);
-    final ids = <String>[];
-    if (decoded is Map && decoded['data'] is List) {
-      for (final item in decoded['data'] as List) {
-        if (item is Map && item['id'] is String) {
-          ids.add(item['id'] as String);
-        }
-      }
-    }
-    final hasQuick = ids.contains(quickModelId);
-    final hasNuanced = ids.contains(nuancedModelId);
-    if (hasQuick && hasNuanced) {
-      final latestQuick =
-          findUpdateCandidate(ids, quickModelId, _isHaikuFamily);
-      final latestNuanced =
-          findUpdateCandidate(ids, nuancedModelId, _isSonnetFamily);
-      final hasUpdate = latestQuick != null || latestNuanced != null;
-      final message = hasUpdate
-          ? 'Both configured models are listed, but newer same-family '
-              'candidates exist: '
-              '${[
-              if (latestQuick != null) 'Haiku=$latestQuick',
-              if (latestNuanced != null) 'Sonnet=$latestNuanced',
-            ].join(', ')}.'
-          : 'Both configured models are listed by Anthropic and are the '
-              'latest in their family (${ids.length} models in response).';
-      return AnthropicModelCheckResult(
-        status: AnthropicModelCheckStatus.available,
-        message: message,
-        seenModelIds: ids,
-        updateAvailable: hasUpdate,
-        latestQuickCandidate: latestQuick,
-        latestNuancedCandidate: latestNuanced,
-      );
-    }
-    final missing = <String>[
-      if (!hasQuick) quickModelId,
-      if (!hasNuanced) nuancedModelId,
-    ].join(', ');
-    return AnthropicModelCheckResult(
-      status: AnthropicModelCheckStatus.unavailable,
-      message: 'Missing from Anthropic response: $missing.',
-      seenModelIds: ids,
-    );
-  } catch (e) {
-    return AnthropicModelCheckResult.cannotCheck(
-        'Anthropic check failed: $e');
-  } finally {
-    client?.close(force: true);
-  }
+  return probeForgeFlowProxyHealth(proxyBaseUri: base);
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────

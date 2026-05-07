@@ -99,6 +99,8 @@ PostgresRow _requestRow({
   DateTime? processingStartedAt,
   String? processingOwner,
   String? lastError,
+  int attemptCount = 0,
+  DateTime? deadLetteredAt,
 }) {
   return <String, Object?>{
     'request_id': requestId,
@@ -115,6 +117,8 @@ PostgresRow _requestRow({
     'processing_started_at': processingStartedAt,
     'processing_owner': processingOwner,
     'last_error': lastError,
+    'attempt_count': attemptCount,
+    'dead_lettered_at': deadLetteredAt,
   };
 }
 
@@ -298,6 +302,9 @@ void main() {
         );
         expect(selectSql, contains('completed_at is null'));
         expect(selectSql, contains('cancelled_at is null'));
+        // M4: dead-lettered rows leave the active/due set so the worker
+        // and the user-listing both stop seeing them.
+        expect(selectSql, contains('dead_lettered_at is null'));
         expect(selectSql, contains('execute_after <= @now::timestamptz'));
         // Order — most-due first, with stable secondary tie-break on
         // requested_at.
@@ -367,6 +374,10 @@ void main() {
         // Pending rows only.
         expect(claimSql, contains('completed_at is null'));
         expect(claimSql, contains('cancelled_at is null'));
+        // M4: DLQ sentinel — dead-lettered rows are excluded from the
+        // worker claim CTE so a poison row stops being re-claimed once
+        // L7 stamps `dead_lettered_at`.
+        expect(claimSql, contains('dead_lettered_at is null'));
         // Delay-window expiry.
         expect(claimSql, contains('execute_after <= @now::timestamptz'));
         // Lease-stale expiry — claim is reclaimable when the lease has
@@ -746,6 +757,340 @@ void main() {
       },
     );
   });
+
+  group(
+      'MfaFactorRemovalRequestRecord — M4 projection round-trip '
+      'for attempt_count + dead_lettered_at', () {
+    test(
+      'a fresh row defaults to attempt_count = 0, deadLetteredAt = null, '
+      'and isPending=true / isDeadLettered=false',
+      () async {
+        final pool = _RemovalRequestsPool(insertedRow: _requestRow());
+        final repo = MfaFactorRemovalRequestsRepository(
+          TenantTransactionWrapper(pool),
+        );
+        final row = await repo.insertPending(
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+          factorId: _factorA,
+          requestedByUserId: _userA,
+          stepUpProofId: _stepUpProofA,
+          requestId: _requestA,
+          requestedAt: DateTime.utc(2026, 4, 28, 9),
+          executeAfter: DateTime.utc(2026, 4, 29, 9),
+        );
+        expect(row.attemptCount, equals(0));
+        expect(row.deadLetteredAt, isNull);
+        expect(row.isPending, isTrue);
+        expect(row.isDeadLettered, isFalse);
+      },
+    );
+
+    test(
+      'a row with attempt_count > 0 and dead_lettered_at non-null '
+      'projects through the row-mapper as isDeadLettered=true and '
+      'isPending=false (DLQ rows leave the active set)',
+      () async {
+        final deadAt = DateTime.utc(2026, 4, 30, 12);
+        final pool = _RemovalRequestsPool(
+          recentRows: <PostgresRow>[
+            _requestRow(
+              attemptCount: 11,
+              deadLetteredAt: deadAt,
+              lastError: 'firebase: PERMISSION_DENIED',
+            ),
+          ],
+        );
+        final repo = MfaFactorRemovalRequestsRepository(
+          TenantTransactionWrapper(pool),
+        );
+        final rows = await repo.listRecentForUser(
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+        );
+        expect(rows, hasLength(1));
+        final row = rows.single;
+        expect(row.attemptCount, equals(11));
+        expect(row.deadLetteredAt, equals(deadAt));
+        expect(row.isDeadLettered, isTrue);
+        expect(row.isPending, isFalse);
+        expect(row.lastError, equals('firebase: PERMISSION_DENIED'));
+      },
+    );
+
+    test(
+      'SELECT column lists project attempt_count + dead_lettered_at — '
+      "this is the contract that lets the worker observe the row's "
+      'retry state without a separate fetch',
+      () async {
+        final pool = _RemovalRequestsPool(
+          recentRows: <PostgresRow>[_requestRow()],
+        );
+        final repo = MfaFactorRemovalRequestsRepository(
+          TenantTransactionWrapper(pool),
+        );
+        await repo.listRecentForUser(
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+        );
+        final selectSql = pool.transactions.single.executedSql.firstWhere(
+          (s) =>
+              s.contains('from mfa_factor_removal_requests') &&
+              s.contains('order by requested_at desc'),
+        );
+        expect(selectSql, contains('attempt_count'));
+        expect(selectSql, contains('dead_lettered_at'));
+      },
+    );
+  });
+
+  group(
+      'MfaFactorRemovalRequestsRepository.incrementAttemptCount — '
+      'M4 retry counter (per-row)', () {
+    test(
+      'happy path: UPDATE … SET attempt_count = attempt_count + 1 '
+      'RETURNING attempt_count returns the new count; pending-only + '
+      'dead_lettered_at IS NULL guards keep terminal/DLQ rows out of '
+      'the bump path',
+      () async {
+        final pool = _RemovalRequestsPool(
+          incrementReturnRows: <PostgresRow>[
+            <String, Object?>{'attempt_count': 4},
+          ],
+        );
+        final repo = MfaFactorRemovalRequestsRepository(
+          TenantTransactionWrapper(pool),
+        );
+        final newCount = await repo.incrementAttemptCount(
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+          requestId: _requestA,
+        );
+        expect(newCount, equals(4));
+
+        final tx = pool.transactions.single;
+        final updateSql = tx.executedSql.firstWhere(
+          (s) =>
+              s.contains('update mfa_factor_removal_requests') &&
+              s.contains('set attempt_count = attempt_count + 1'),
+        );
+        // Pending-only + DLQ guards.
+        expect(updateSql, contains('and completed_at is null'));
+        expect(updateSql, contains('and cancelled_at is null'));
+        expect(updateSql, contains('and dead_lettered_at is null'));
+        // RETURNING the post-increment value so the caller doesn't
+        // need a follow-up read.
+        expect(updateSql, contains('returning attempt_count'));
+        // Operator + user + request_id triple-scope.
+        expect(updateSql, contains('request_id = @request_id::uuid'));
+        expect(updateSql, contains('operator_id = @operator_id::uuid'));
+        expect(updateSql, contains('user_id = @user_id::uuid'));
+        // Tenant SET LOCAL precedes the bump.
+        expect(tx.executedSql[0], contains("'app.operator_id'"));
+      },
+    );
+
+    test(
+      'throws StateError when no row is updated (row missing, terminal, '
+      'or already dead-lettered) — caller must notice that the row '
+      'left the active set',
+      () async {
+        final pool = _RemovalRequestsPool(
+          incrementReturnRows: const <PostgresRow>[],
+        );
+        final repo = MfaFactorRemovalRequestsRepository(
+          TenantTransactionWrapper(pool),
+        );
+        await expectLater(
+          repo.incrementAttemptCount(
+            operatorId: _opA,
+            locationId: _locA,
+            userId: _userA,
+            requestId: _requestA,
+          ),
+          throwsStateError,
+        );
+      },
+    );
+
+    test(
+      'is composable with markFailed in the same transaction sketch — '
+      'the L7 worker calls increment + markFailed back-to-back inside '
+      'one tenant transaction; this test pins the contract that '
+      'incrementAttemptCount does NOT itself touch last_error or '
+      'processing fields (so markFailed is the canonical place for '
+      'those writes and there is no double-update conflict)',
+      () async {
+        final pool = _RemovalRequestsPool(
+          incrementReturnRows: <PostgresRow>[
+            <String, Object?>{'attempt_count': 1},
+          ],
+        );
+        final repo = MfaFactorRemovalRequestsRepository(
+          TenantTransactionWrapper(pool),
+        );
+        await repo.incrementAttemptCount(
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+          requestId: _requestA,
+        );
+        final updateSql = pool.transactions.single.executedSql.firstWhere(
+          (s) =>
+              s.contains('update mfa_factor_removal_requests') &&
+              s.contains('set attempt_count'),
+        );
+        // Increment is a focused write — does not stamp last_error /
+        // processing_*.
+        expect(
+          updateSql,
+          isNot(contains('last_error')),
+          reason: 'increment is the counter-only write; markFailed '
+              'owns last_error so the two methods compose without '
+              'overwriting one another',
+        );
+        expect(updateSql, isNot(contains('processing_started_at')));
+        expect(updateSql, isNot(contains('processing_owner')));
+        expect(
+          updateSql,
+          isNot(contains('completed_at = ')),
+          reason: 'increment does not advance terminal seals',
+        );
+      },
+    );
+  });
+
+  group(
+      'MfaFactorRemovalRequestsRepository.markDeadLettered — '
+      'M4 DLQ sentinel write', () {
+    test(
+      'stamps dead_lettered_at = now(), captures the reason in '
+      'last_error, and clears processing_started_at + processing_owner '
+      'so a confused worker cannot keep re-claiming the row',
+      () async {
+        final pool = _RemovalRequestsPool(updateAffectedRows: 1);
+        final repo = MfaFactorRemovalRequestsRepository(
+          TenantTransactionWrapper(pool),
+        );
+        final affected = await repo.markDeadLettered(
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+          requestId: _requestA,
+          reason: 'retry budget exhausted (10 attempts)',
+        );
+        expect(affected, equals(1));
+
+        final tx = pool.transactions.single;
+        final updateSql = tx.executedSql.firstWhere(
+          (s) =>
+              s.contains('update mfa_factor_removal_requests') &&
+              s.contains('dead_lettered_at = now()'),
+        );
+        // DLQ stamp + worker-claim cleanup.
+        expect(updateSql, contains('last_error = @last_error'));
+        expect(updateSql, contains('processing_started_at = null'));
+        expect(updateSql, contains('processing_owner = null'));
+        // Terminal-state + idempotency guards (do not re-stamp DLQ on
+        // an already-DLQ row).
+        expect(updateSql, contains('and completed_at is null'));
+        expect(updateSql, contains('and cancelled_at is null'));
+        expect(updateSql, contains('and dead_lettered_at is null'));
+        // markDeadLettered must NOT advance completed_at — DLQ is its
+        // own terminal state, distinct from successful completion.
+        expect(
+          updateSql,
+          isNot(contains('completed_at = ')),
+          reason: 'DLQ is not the same as completion; the row needs '
+              'operator review, not a success seal',
+        );
+
+        final params = tx.parameters.firstWhere(
+          (p) => p['last_error'] != null,
+        );
+        expect(
+          params['last_error'],
+          equals('retry budget exhausted (10 attempts)'),
+        );
+      },
+    );
+
+    test(
+      'returns 0 when the row is already terminal or already '
+      'dead-lettered (idempotent re-call)',
+      () async {
+        final pool = _RemovalRequestsPool(updateAffectedRows: 0);
+        final repo = MfaFactorRemovalRequestsRepository(
+          TenantTransactionWrapper(pool),
+        );
+        final affected = await repo.markDeadLettered(
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+          requestId: _requestA,
+          reason: 'noop on settled row',
+        );
+        expect(affected, equals(0));
+      },
+    );
+  });
+
+  group(
+      'MfaFactorRemovalRequestsRepository — M4 dead-lettered rows leave '
+      'the active partial-index reads', () {
+    test(
+      'listDuePendingForUser filters dead_lettered_at IS NULL — a row '
+      'that L7 has DLQd does NOT come back as due even if execute_after '
+      'has passed',
+      () async {
+        final pool = _RemovalRequestsPool(
+          listDueRows: const <PostgresRow>[],
+        );
+        final repo = MfaFactorRemovalRequestsRepository(
+          TenantTransactionWrapper(pool),
+        );
+        await repo.listDuePendingForUser(
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+          now: DateTime.utc(2026, 4, 30, 9),
+        );
+        final selectSql = pool.transactions.single.executedSql.firstWhere(
+          (s) =>
+              s.contains('from mfa_factor_removal_requests') &&
+              s.contains('execute_after <= @now'),
+        );
+        expect(selectSql, contains('dead_lettered_at is null'));
+      },
+    );
+
+    test(
+      'claimDuePending CTE filters dead_lettered_at IS NULL — the '
+      'worker stops re-claiming poison rows once they are DLQd',
+      () async {
+        final pool = _RemovalRequestsPool(
+          claimedRows: const <PostgresRow>[],
+        );
+        final repo = MfaFactorRemovalRequestsRepository(
+          TenantTransactionWrapper(pool),
+        );
+        await repo.claimDuePending(
+          now: DateTime.utc(2026, 4, 30, 9),
+          workerOwner: _workerOwner,
+        );
+        final claimSql = pool.transactions.single.executedSql.firstWhere(
+          (s) =>
+              s.contains('from mfa_factor_removal_requests') &&
+              s.contains('for update skip locked'),
+        );
+        expect(claimSql, contains('dead_lettered_at is null'));
+      },
+    );
+  });
 }
 
 /// Recording fake `PostgresPool` shaped for the
@@ -756,6 +1101,8 @@ void main() {
 /// `recentRows` / `listDueRows` / `claimedRows` control the SELECT
 /// returns.
 /// `updateAffectedRows` controls every mark* UPDATE affected count.
+/// `incrementReturnRows` controls the `incrementAttemptCount`
+/// `UPDATE … RETURNING attempt_count` projection (M4).
 class _RemovalRequestsPool implements PostgresPool {
   _RemovalRequestsPool({
     this.insertedRow,
@@ -763,6 +1110,7 @@ class _RemovalRequestsPool implements PostgresPool {
     this.listDueRows = const <PostgresRow>[],
     this.claimedRows = const <PostgresRow>[],
     this.updateAffectedRows = 0,
+    this.incrementReturnRows = const <PostgresRow>[],
   });
 
   final PostgresRow? insertedRow;
@@ -770,6 +1118,7 @@ class _RemovalRequestsPool implements PostgresPool {
   final List<PostgresRow> listDueRows;
   final List<PostgresRow> claimedRows;
   final int updateAffectedRows;
+  final List<PostgresRow> incrementReturnRows;
   final List<_RemovalRequestsTransaction> transactions =
       <_RemovalRequestsTransaction>[];
 
@@ -781,6 +1130,7 @@ class _RemovalRequestsPool implements PostgresPool {
       listDueRows: listDueRows,
       claimedRows: claimedRows,
       updateAffectedRows: updateAffectedRows,
+      incrementReturnRows: incrementReturnRows,
     );
     transactions.add(tx);
     return tx;
@@ -794,6 +1144,7 @@ class _RemovalRequestsTransaction extends PostgresTransaction {
     required this.listDueRows,
     required this.claimedRows,
     required this.updateAffectedRows,
+    required this.incrementReturnRows,
   });
 
   final PostgresRow? insertedRow;
@@ -801,6 +1152,7 @@ class _RemovalRequestsTransaction extends PostgresTransaction {
   final List<PostgresRow> listDueRows;
   final List<PostgresRow> claimedRows;
   final int updateAffectedRows;
+  final List<PostgresRow> incrementReturnRows;
 
   final List<String> executedSql = <String>[];
   final List<PostgresParameters> parameters = <PostgresParameters>[];
@@ -819,6 +1171,14 @@ class _RemovalRequestsTransaction extends PostgresTransaction {
     if (sql.contains('insert into mfa_factor_removal_requests')) {
       if (insertedRow == null) return const <PostgresRow>[];
       return <PostgresRow>[insertedRow!];
+    }
+    // M4 — incrementAttemptCount routes UPDATE … RETURNING through
+    // query(). The RETURNING clause is the discriminator; tenant
+    // SET LOCAL statements share the `update` keyword but never
+    // touch this table.
+    if (sql.contains('update mfa_factor_removal_requests') &&
+        sql.contains('returning attempt_count')) {
+      return incrementReturnRows;
     }
     if (sql.contains('from mfa_factor_removal_requests')) {
       // claimDuePending CTE — outermost SELECT comes back from the

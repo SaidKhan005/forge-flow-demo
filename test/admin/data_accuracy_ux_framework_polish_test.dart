@@ -420,14 +420,18 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(
-          find.byKey(const Key('admin_location_data_accuracy_loc-1')),
+        final dataAccuracyAction = find.byKey(
+          const Key('admin_location_data_accuracy_loc-1'),
         );
+        await tester.ensureVisible(dataAccuracyAction);
+        await tester.tap(dataAccuracyAction);
         await tester.pumpAndSettle();
 
-        await tester.tap(
-          find.byKey(const Key('admin_location_polling_pricing_loc-1')),
+        final pollingPricingAction = find.byKey(
+          const Key('admin_location_polling_pricing_loc-1'),
         );
+        await tester.ensureVisible(pollingPricingAction);
+        await tester.tap(pollingPricingAction);
         await tester.pumpAndSettle();
 
         expect(scopes, hasLength(2));

@@ -20,17 +20,17 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   OperatorPickerResult demoPick() => const OperatorPickerResult(
-        operatorId: kDemoDinerOperatorId,
-        locationId: kDemoDinerLocationToronto,
-        operatorBusinessName: 'Demo Diner Co.',
-        locationName: 'Toronto Yorkville',
-      );
+    operatorId: kDemoDinerOperatorId,
+    locationId: kDemoDinerLocationToronto,
+    operatorBusinessName: 'Demo Diner Co.',
+    locationName: 'Toronto Yorkville',
+  );
 
   void wideViewport(WidgetTester tester) {
     tester.view.physicalSize = const Size(1600, 1400);
@@ -49,8 +49,9 @@ void main() {
   }
 
   group('audit log + actions panel render', () {
-    testWidgets('renders Actions panel + Audit log card after operator pick',
-        (tester) async {
+    testWidgets('renders Actions panel + Audit log card after operator pick', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
       await tester.pumpWidget(
@@ -71,14 +72,8 @@ void main() {
         find.byKey(const Key('admin_audited_support_actions_screen')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const Key('admin_asa_actions_panel')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_asa_audit_log')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('admin_asa_actions_panel')), findsOneWidget);
+      expect(find.byKey(const Key('admin_asa_audit_log')), findsOneWidget);
       // Each Actions panel row carries a stable key + button.
       expect(
         find.byKey(const Key('admin_asa_action_reset_mfa')),
@@ -88,10 +83,7 @@ void main() {
         find.byKey(const Key('admin_asa_action_password_reset')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const Key('admin_asa_action_erasure')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('admin_asa_action_erasure')), findsOneWidget);
     });
 
     testWidgets('audit log card lists seeded rows', (tester) async {
@@ -124,8 +116,9 @@ void main() {
   });
 
   group('Actions panel gating', () {
-    testWidgets('Reset MFA disabled when canResetMfaFactors is false',
-        (tester) async {
+    testWidgets('Reset MFA disabled when canResetMfaFactors is false', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
       await tester.pumpWidget(
@@ -145,8 +138,9 @@ void main() {
       expect(button.onPressed, isNull);
     });
 
-    testWidgets('Reset MFA enabled when canResetMfaFactors is true',
-        (tester) async {
+    testWidgets('Reset MFA enabled when canResetMfaFactors is true', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
       await tester.pumpWidget(
@@ -167,8 +161,9 @@ void main() {
       expect(button.onPressed, isNotNull);
     });
 
-    testWidgets('Issue erasure disabled when canIssuePairedErasure is false',
-        (tester) async {
+    testWidgets('Issue erasure disabled when canIssuePairedErasure is false', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
       await tester.pumpWidget(
@@ -188,8 +183,7 @@ void main() {
       expect(button.onPressed, isNull);
     });
 
-    testWidgets('view-only mode hides every mutate affordance',
-        (tester) async {
+    testWidgets('view-only mode hides every mutate affordance', (tester) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
       await tester.pumpWidget(
@@ -213,10 +207,7 @@ void main() {
       );
       // CSV export is hidden because canExport is the AND of editing
       // + canExportAuditLog; editingEnabled=false collapses both.
-      expect(
-        find.byKey(const Key('admin_asa_audit_log_export')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('admin_asa_audit_log_export')), findsNothing);
       // Action buttons render but are disabled (editing=false).
       final resetBtn = tester.widget<OutlinedButton>(
         find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
@@ -283,10 +274,7 @@ void main() {
 
         expect(gateway.capturedAdminActionLog, hasLength(1));
         final entry = gateway.capturedAdminActionLog.single;
-        expect(
-          entry.action,
-          equals(SupportActionsAuditAction.resetMfaFactors),
-        );
+        expect(entry.action, equals(SupportActionsAuditAction.resetMfaFactors));
         expect(entry.readerUserId, equals('demo-super-admin'));
         expect(entry.adminReason, equals('walkthrough verification'));
         // Audit log row also captured.
@@ -301,8 +289,9 @@ void main() {
   });
 
   group('Reset MFA reason dialog blocks empty submissions', () {
-    testWidgets('cancelling the reason dialog writes no audit row',
-        (tester) async {
+    testWidgets('cancelling the reason dialog writes no audit row', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
       await tester.pumpWidget(
@@ -317,13 +306,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(
+      await tester.ensureVisible(
         find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
       );
+      await tester.tap(find.byKey(const Key('admin_asa_action_reset_mfa_btn')));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('admin_asa_member_picker_submit')),
-      );
+      await tester.tap(find.byKey(const Key('admin_asa_member_picker_submit')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('admin_asa_reason_cancel')));
@@ -382,197 +370,189 @@ void main() {
       },
     );
 
-    testWidgets(
-      'selecting an action chip and applying narrows the table',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildDemoGateway();
-        await tester.pumpWidget(
-          wrap(
-            AuditedSupportActionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-            ),
+    testWidgets('selecting an action chip and applying narrows the table', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          AuditedSupportActionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.ensureVisible(
-          find.byKey(const Key(
-            'admin_asa_filter_action_admin.session.force_logout',
-          )),
-        );
-        await tester.tap(
-          find.byKey(const Key(
-            'admin_asa_filter_action_admin.session.force_logout',
-          )),
-        );
-        await tester.pumpAndSettle();
-        await tester.ensureVisible(
-          find.byKey(const Key('admin_asa_filter_apply')),
-        );
-        await tester.tap(find.byKey(const Key('admin_asa_filter_apply')));
-        await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(
+          const Key('admin_asa_filter_action_admin.session.force_logout'),
+        ),
+      );
+      await tester.tap(
+        find.byKey(
+          const Key('admin_asa_filter_action_admin.session.force_logout'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_asa_filter_apply')),
+      );
+      await tester.tap(find.byKey(const Key('admin_asa_filter_apply')));
+      await tester.pumpAndSettle();
 
-        // Only the admin.session.force_logout fixture row remains.
-        expect(
-          find.byKey(const Key('admin_asa_audit_row_seed-diner-3')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_asa_audit_row_seed-diner-1')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('admin_asa_audit_row_seed-diner-2')),
-          findsNothing,
-        );
-      },
-    );
+      // Only the admin.session.force_logout fixture row remains.
+      expect(
+        find.byKey(const Key('admin_asa_audit_row_seed-diner-3')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_asa_audit_row_seed-diner-1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_asa_audit_row_seed-diner-2')),
+        findsNothing,
+      );
+    });
 
-    testWidgets(
-      'selecting Custom range reveals the from/to date pickers',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildDemoGateway();
-        await tester.pumpWidget(
-          wrap(
-            AuditedSupportActionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-            ),
+    testWidgets('selecting Custom range reveals the from/to date pickers', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          AuditedSupportActionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Hidden by default.
-        expect(
-          find.byKey(const Key('admin_asa_filter_custom_from')),
-          findsNothing,
-        );
-        // Open the time-window dropdown and pick Custom range.
-        await tester.tap(find.byKey(const Key('admin_asa_filter_time_window')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Custom range').last);
-        await tester.pumpAndSettle();
+      // Hidden by default.
+      expect(
+        find.byKey(const Key('admin_asa_filter_custom_from')),
+        findsNothing,
+      );
+      // Open the time-window dropdown and pick Custom range.
+      await tester.tap(find.byKey(const Key('admin_asa_filter_time_window')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Custom range').last);
+      await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const Key('admin_asa_filter_custom_from')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_asa_filter_custom_to')),
-          findsOneWidget,
-        );
-      },
-    );
+      expect(
+        find.byKey(const Key('admin_asa_filter_custom_from')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_asa_filter_custom_to')),
+        findsOneWidget,
+      );
+    });
   });
 
   group('parity contract row rendering', () {
-    testWidgets(
-      'target_id copy button copies to system clipboard',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildDemoGateway();
-        // Stub the clipboard channel so the test can observe writes
-        // without depending on the host platform's clipboard.
-        final calls = <String>[];
+    testWidgets('target_id copy button copies to system clipboard', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      // Stub the clipboard channel so the test can observe writes
+      // without depending on the host platform's clipboard.
+      final calls = <String>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+            if (call.method == 'Clipboard.setData') {
+              final data = call.arguments as Map<Object?, Object?>;
+              calls.add(data['text'] as String);
+            }
+            return null;
+          });
+      addTearDown(() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-          if (call.method == 'Clipboard.setData') {
-            final data = call.arguments as Map<Object?, Object?>;
-            calls.add(data['text'] as String);
-          }
-          return null;
-        });
-        addTearDown(() {
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-              .setMockMethodCallHandler(SystemChannels.platform, null);
-        });
+            .setMockMethodCallHandler(SystemChannels.platform, null);
+      });
 
-        await tester.pumpWidget(
-          wrap(
-            AuditedSupportActionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-            ),
+      await tester.pumpWidget(
+        wrap(
+          AuditedSupportActionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.ensureVisible(
-          find.byKey(const Key(
-            'admin_asa_audit_row_copy_target_seed-diner-3',
-          )),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(const Key(
-            'admin_asa_audit_row_copy_target_seed-diner-3',
-          )),
-        );
-        await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_asa_audit_row_copy_target_seed-diner-3')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_asa_audit_row_copy_target_seed-diner-3')),
+      );
+      await tester.pumpAndSettle();
 
-        expect(calls, equals(<String>['session-diner-owner-mobile']));
-      },
-    );
+      expect(calls, equals(<String>['session-diner-owner-mobile']));
+    });
 
-    testWidgets(
-      'View payload toggle reveals + hides the formatted payload',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildDemoGateway();
-        await tester.pumpWidget(
-          wrap(
-            AuditedSupportActionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-            ),
+    testWidgets('View payload toggle reveals + hides the formatted payload', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          AuditedSupportActionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Default: payload hidden.
-        expect(
-          find.byKey(const Key('admin_asa_audit_row_payload_seed-diner-3')),
-          findsNothing,
-        );
-        await tester.ensureVisible(
-          find.byKey(const Key(
-            'admin_asa_audit_row_payload_toggle_seed-diner-3',
-          )),
-        );
-        await tester.tap(
-          find.byKey(const Key(
-            'admin_asa_audit_row_payload_toggle_seed-diner-3',
-          )),
-        );
-        await tester.pumpAndSettle();
+      // Default: payload hidden.
+      expect(
+        find.byKey(const Key('admin_asa_audit_row_payload_seed-diner-3')),
+        findsNothing,
+      );
+      await tester.ensureVisible(
+        find.byKey(
+          const Key('admin_asa_audit_row_payload_toggle_seed-diner-3'),
+        ),
+      );
+      await tester.tap(
+        find.byKey(
+          const Key('admin_asa_audit_row_payload_toggle_seed-diner-3'),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const Key('admin_asa_audit_row_payload_seed-diner-3')),
-          findsOneWidget,
-        );
-        // Payload contents render the canonical key.
-        expect(find.textContaining('user_id'), findsWidgets);
+      expect(
+        find.byKey(const Key('admin_asa_audit_row_payload_seed-diner-3')),
+        findsOneWidget,
+      );
+      // Payload contents render the canonical key.
+      expect(find.textContaining('user_id'), findsWidgets);
 
-        // Toggle off again.
-        await tester.tap(
-          find.byKey(const Key(
-            'admin_asa_audit_row_payload_toggle_seed-diner-3',
-          )),
-        );
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(const Key('admin_asa_audit_row_payload_seed-diner-3')),
-          findsNothing,
-        );
-      },
-    );
+      // Toggle off again.
+      await tester.tap(
+        find.byKey(
+          const Key('admin_asa_audit_row_payload_toggle_seed-diner-3'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('admin_asa_audit_row_payload_seed-diner-3')),
+        findsNothing,
+      );
+    });
   });
 
   group('cursor pagination', () {

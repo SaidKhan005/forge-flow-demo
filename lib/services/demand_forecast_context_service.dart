@@ -28,8 +28,10 @@ import '../domain/models/demand_forecast_context.dart';
 import '../domain/models/schedule_forecast_demand.dart';
 import '../domain/repositories/restaurant_scope_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';
+import '../domain/repositories/weekly_plan_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
 import 'business_date_authority_service.dart';
 
 /// Repository-backed service that builds [DemandForecastContext] v2 from
@@ -47,8 +49,9 @@ class DemandForecastContextService {
 
   final RestaurantScopeRepository _scopeRepo =
       SqliteRestaurantScopeRepository.instance;
-  final ShiftRecordRepository _shiftRepo =
-      SqliteShiftRecordRepository.instance;
+  final ShiftRecordRepository _shiftRepo = SqliteShiftRecordRepository.instance;
+  final WeeklyPlanSnapshotRepository _weeklyPlanSnapshotRepo =
+      SqliteWeeklyPlanSnapshotRepository.instance;
 
   /// The weeks-represented constant for the 60-day window: 60 / 7 ≈ 8.571.
   static const double _weeksIn60DayWindow = 60 / 7;
@@ -75,6 +78,12 @@ class DemandForecastContextService {
         coversSource: ForecastDemandSource.unavailable,
         builtAt: DateTime.now().toUtc().toIso8601String(),
       );
+    }
+
+    final serverContext = await _weeklyPlanSnapshotRepo
+        .getForecastContextForBusinessDate(restaurantId, anchorDate);
+    if (serverContext != null) {
+      return serverContext;
     }
 
     return getContextForAnchorDate(restaurantId, anchorDate);
@@ -107,10 +116,11 @@ class DemandForecastContextService {
       );
     }
 
-    final baselineTotal =
-        closedShifts60.fold<int>(0, (sum, shift) => sum + shift.covers);
-    final baselineWeeklyAvg =
-        (baselineTotal / _weeksIn60DayWindow).round();
+    final baselineTotal = closedShifts60.fold<int>(
+      0,
+      (sum, shift) => sum + shift.covers,
+    );
+    final baselineWeeklyAvg = (baselineTotal / _weeksIn60DayWindow).round();
 
     // ── Level 2: fixed 3-week recent trend ────────────────────────────────
     final recentStart = subtractDays(anchorDate, 20);
@@ -120,10 +130,11 @@ class DemandForecastContextService {
       anchorDate,
     );
 
-    final recentTotal =
-        closedShifts21.fold<int>(0, (sum, shift) => sum + shift.covers);
-    final recentWeeklyAvg =
-        (recentTotal / _weeksIn21DayWindow).round();
+    final recentTotal = closedShifts21.fold<int>(
+      0,
+      (sum, shift) => sum + shift.covers,
+    );
+    final recentWeeklyAvg = (recentTotal / _weeksIn21DayWindow).round();
 
     // ── Resolve rolling weekly forecast covers ────────────────────────────
     int resolvedWeekly;
@@ -132,8 +143,7 @@ class DemandForecastContextService {
     if (closedShifts21.isNotEmpty) {
       // Both windows have eligible closed shifts — apply smoothing rule.
       trendDelta = recentWeeklyAvg - baselineWeeklyAvg;
-      resolvedWeekly =
-          max(0, baselineWeeklyAvg + (trendDelta / 2).round());
+      resolvedWeekly = max(0, baselineWeeklyAvg + (trendDelta / 2).round());
     } else {
       // Only baseline window has eligible closed shifts — use baseline directly.
       resolvedWeekly = baselineWeeklyAvg;
@@ -145,10 +155,12 @@ class DemandForecastContextService {
       baselineTotalCovers: baselineTotal,
       baselineWeeklyAvgCovers: baselineWeeklyAvg,
       baselineWeeksRepresented: _weeksIn60DayWindow,
-      recentThreeWeekTotalCovers:
-          closedShifts21.isNotEmpty ? recentTotal : null,
-      recentThreeWeekWeeklyAvgCovers:
-          closedShifts21.isNotEmpty ? recentWeeklyAvg : null,
+      recentThreeWeekTotalCovers: closedShifts21.isNotEmpty
+          ? recentTotal
+          : null,
+      recentThreeWeekWeeklyAvgCovers: closedShifts21.isNotEmpty
+          ? recentWeeklyAvg
+          : null,
       recentTrendDeltaCovers: trendDelta,
       resolvedWeeklyForecastCovers: resolvedWeekly,
       coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
