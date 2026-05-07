@@ -156,7 +156,13 @@ if (-not $SkipSecretManagerSync) {
     'POSTGRES_ADMIN_URL',
     'FIREBASE_WEB_API_KEY',
     'SERVICE_PRINCIPAL_JWT_SECRET',
-    'FIREBASE_AUTH_SMOKE_PASSWORD'
+    'FIREBASE_AUTH_SMOKE_PASSWORD',
+    # PR #260 (8.framework.proxy-config-vendor-app-credentials) added
+    # PGCRYPTO_ENVELOPE_KEY to ProxySecretNames.required. The proxy
+    # refuses to boot when this name is missing, so the deploy must
+    # source it from Secret Manager alongside the other required
+    # secrets above.
+    'PGCRYPTO_ENVELOPE_KEY'
   )
 }
 Assert-PresentEnv -Names $requiredEnv
@@ -172,10 +178,49 @@ $secretSuffix = [ordered] @{
   'POSTGRES_ADMIN_URL'            = 'postgres-admin-url'
   'FIREBASE_WEB_API_KEY'          = 'firebase-web-api-key'
   'SERVICE_PRINCIPAL_JWT_SECRET'  = 'service-principal-jwt-secret'
+  # Phase 8 framework — pgcrypto symmetric envelope key required by
+  # ProxySecretNames.required (PR #260). The proxy fails closed at
+  # boot without it.
+  'PGCRYPTO_ENVELOPE_KEY'         = 'pgcrypto-envelope-key'
 }
 $secretEnv = [ordered] @{}
 foreach ($entry in $secretSuffix.GetEnumerator()) {
   $secretEnv[$entry.Key] = "$SecretPrefix$($entry.Value)"
+}
+
+# Phase 8 framework — optional vendor app-credential secrets. Each
+# entry is wired into Cloud Run --set-secrets ONLY when the matching
+# env var is present in the local secrets file. Absent entries are
+# skipped so the proxy boots in environments where a given vendor
+# isn't yet configured. The connector binders gate their own
+# activation on `ProxyConfig.has<Vendor>AppCredentials`.
+$optionalSecretSuffix = [ordered] @{
+  # Aloha NCR Voyix OAuth client_credentials bundle (4 secrets).
+  'ALOHA_NCR_VOYIX_CLIENT_ID'        = 'aloha-ncr-voyix-client-id'
+  'ALOHA_NCR_VOYIX_CLIENT_SECRET'    = 'aloha-ncr-voyix-client-secret'
+  'ALOHA_NCR_VOYIX_APPLICATION_KEY'  = 'aloha-ncr-voyix-application-key'
+  'ALOHA_NCR_VOYIX_ORGANIZATION_ID'  = 'aloha-ncr-voyix-organization-id'
+  # Square OAuth + webhook host bundle (3 secrets).
+  'SQUARE_CLIENT_ID'                 = 'square-client-id'
+  'SQUARE_CLIENT_SECRET'             = 'square-client-secret'
+  'SQUARE_NOTIFICATION_URL_HOST'     = 'square-notification-url-host'
+  # Clover app-level credentials bundle (2 secrets).
+  'CLOVER_APP_TOKEN'                 = 'clover-app-token'
+  'CLOVER_APP_ID'                    = 'clover-app-id'
+}
+# Build the optional secret env map only for entries that actually
+# have a local value. Missing entries do not fail the deploy — they
+# simply do not show up in --set-secrets, and ProxySecretNames.optional
+# handles their absence at boot.
+$optionalSecretEnv = [ordered] @{}
+$optionalSecretSkipped = [System.Collections.Generic.List[string]]::new()
+foreach ($entry in $optionalSecretSuffix.GetEnumerator()) {
+  $value = [Environment]::GetEnvironmentVariable($entry.Key)
+  if ([string]::IsNullOrWhiteSpace($value)) {
+    $optionalSecretSkipped.Add($entry.Key)
+    continue
+  }
+  $optionalSecretEnv[$entry.Key] = "$SecretPrefix$($entry.Value)"
 }
 
 function Sync-SecretManagerSecret {
@@ -251,10 +296,26 @@ if (-not $SkipSecretManagerSync) {
       -SecretName $entry.Value `
       -Value ([Environment]::GetEnvironmentVariable($entry.Key))
   }
+  foreach ($entry in $optionalSecretEnv.GetEnumerator()) {
+    Sync-SecretManagerSecret `
+      -SecretName $entry.Value `
+      -Value ([Environment]::GetEnvironmentVariable($entry.Key))
+  }
 }
 
+# Required secrets always show up in --set-secrets. Optional vendor
+# secrets only show up when the matching env var was present locally;
+# missing entries do not fail the deploy so the proxy can still boot
+# in environments that have not configured a given vendor yet.
+$combinedSecretEnv = [ordered] @{}
+foreach ($entry in $secretEnv.GetEnumerator()) {
+  $combinedSecretEnv[$entry.Key] = $entry.Value
+}
+foreach ($entry in $optionalSecretEnv.GetEnumerator()) {
+  $combinedSecretEnv[$entry.Key] = $entry.Value
+}
 $secretAssignments = (
-  $secretEnv.GetEnumerator() |
+  $combinedSecretEnv.GetEnumerator() |
     ForEach-Object { "$($_.Key)=$($_.Value):latest" }
 ) -join ','
 
@@ -386,8 +447,21 @@ Write-Host ' - FIREBASE_WEB_API_KEY'
 Write-Host ' - SERVICE_PRINCIPAL_JWT_SECRET'
 Write-Host ' - POSTGRES_URL'
 Write-Host ' - POSTGRES_ADMIN_URL'
+Write-Host ' - PGCRYPTO_ENVELOPE_KEY'
 Write-Host ' - ADMIN_CORS_ALLOWED_ORIGINS includes Firebase auth action hosts'
 Write-Host ' - Cloud Run secret env refs backed by Secret Manager'
+if ($optionalSecretEnv.Count -gt 0) {
+  Write-Host ' - Optional vendor app credentials wired:'
+  foreach ($entry in $optionalSecretEnv.GetEnumerator()) {
+    Write-Host "    - $($entry.Key)"
+  }
+}
+if ($optionalSecretSkipped.Count -gt 0) {
+  Write-Host ' - Optional vendor app credentials skipped (env not set; connector binders fail their own activation):'
+  foreach ($name in $optionalSecretSkipped) {
+    Write-Host "    - $name"
+  }
+}
 if (-not [string]::IsNullOrWhiteSpace($VpcConnector)) {
   Write-Host " - VPC connector: $VpcConnector ($VpcEgress)"
 }
