@@ -1307,6 +1307,12 @@ class RepositoryMobileOperationalSyncProxyGateway
         'select '
         'restaurant_id, week_id, day_label, daypart, status, '
         'business_date::text as business_date, '
+        'business_timing_profile_id::text as business_timing_profile_id, '
+        'coalesce('
+        '  business_timing_profile_version_id, '
+        '  business_timing_profile_id'
+        ')::text as business_timing_profile_version_id, '
+        'service_period_key, '
         'covers, forecast_covers, ppa, cplh, splh, '
         'foh_hours, boh_hours, '
         'foh_labor_dollar, boh_labor_dollar, '
@@ -1621,6 +1627,10 @@ class RepositoryMobileOperationalSyncProxyGateway
         row['theoretical_boh_labor_pct'],
       ),
       'business_date': _dateOnly(row['business_date']),
+      'business_timing_profile_id': row['business_timing_profile_id'],
+      'business_timing_profile_version_id':
+          row['business_timing_profile_version_id'],
+      'service_period_key': row['service_period_key'],
       'source_system': row['source_system'],
       'source_shift_id': row['source_shift_id'],
     };
