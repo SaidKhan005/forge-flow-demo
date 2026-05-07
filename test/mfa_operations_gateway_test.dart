@@ -916,6 +916,7 @@ class _RecordingUsersRepository extends UsersRepository {
   Future<String> firebaseUidForUserSystem({
     required String userId,
     required String adminReason,
+    String? requireOperatorId,
   }) async {
     return firebaseUid;
   }
