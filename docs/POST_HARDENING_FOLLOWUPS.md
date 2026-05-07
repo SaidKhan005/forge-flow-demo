@@ -123,6 +123,105 @@ deletable in isolation:
 (`export`, `diff`, `attemptCloudLoad`) is itself removed in a wider
 lane.
 
+## Code Health Residuals (post-Wave 5, 2026-05-08)
+
+Consolidated from the 2026-05-06 audit's open residuals after five
+remediation waves closed 52 of 64 findings. Historical context:
+`docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`.
+
+### P1 — Audit anchor cron unpause
+
+Operational change in Cloud Scheduler; not code. Worker code shipped
+Wave 1 ([#254](https://github.com/SaidKhan005/forge-flow-demo/pull/254))
+and the schema landed Wave 0
+([#210](https://github.com/SaidKhan005/forge-flow-demo/pull/210)).
+Action: flip the `audit-anchor-daily` cron from paused to active.
+Compliance posture; the tamper-evidence story has an unbounded window
+without it. The companion migration
+`202605080700_audit_anchor_cron_unpause.sql` is already queued in the
+P0 Production1 list above.
+
+### P2 — `backfill_dispatch.dart:368` bare `catch (_)`
+
+Same shape as the LB3 fix that closed Wave 5
+([#364](https://github.com/SaidKhan005/forge-flow-demo/pull/364)) but
+outside that lane's audit-cite scope. Apply the same pattern: typed
+`on TimeoutException` / `on Exception` / `on Object` arms with a
+structured-log reporter. Evidence:
+`tool/integration_sync_worker/backfill_dispatch.dart:368`. Silent
+failures in the backfill-dispatch loop until fixed.
+
+### P2 — Two widget contract violations
+
+Both are architecture-contract violations per CLAUDE.md "Architecture
+Guardrails" (`Widgets do not own source-truth or service-period
+bucketing`). No runtime failure today; contract decay if left.
+
+- `lib/screens/shift_dashboard.dart:35-41` — widget owns timezone
+  bootstrap (`_ensureTzInitialized`) plus service-period bucketing
+  (`_servicePeriodSlivers`). Action: move timezone init into a
+  service-layer initializer.
+- `lib/screens/settings/settings_wage_authority_section.dart:48,64,67`
+  — widget calls `SqliteWageRoleRowRepository.instance` directly.
+  Action: route through a service that owns the SQLite call.
+
+### P2 — No common worker base
+
+Every worker re-implements the claim loop, error catch, log, alert,
+and metric emission. Action: extract a `WorkerBase` abstract class or
+`WorkerLoopMixin` so new workers inherit the discipline rather than
+copy/paste it. Reduces drift across `tool/integration_sync_worker/`,
+`tool/audit_anchor/`, and the OAuth refresh worker.
+
+### P2 — Two-slot key vs counter-store granularity mismatch
+
+`usage_logs` keys are broader than the runtime counter-store
+`(operator_id, location_id, tier_id, minute_bucket)` UNIQUE shape.
+Two restaurants on the same operator can fight over the same
+rate-limit bucket. Evidence:
+`tool/advisor_proxy/advisor_proxy.dart:2418` (interface) and
+`lib/infrastructure/persistence/postgres/advisor_proxy_usage_counter_store.dart:57`
+(concrete store). Rate-limit fairness; not breaking anything today.
+
+### P3 — `admin_routes.dart` and `advisor_proxy.dart` monolith debt
+
+Structural; needs route-by-route migration plans for each. Reviewer-
+time multiplier rather than a runtime bug.
+
+- `lib/admin/admin_routes.dart` — 2,204 lines (audit cited ~1,906;
+  +298 net since 2026-05-06).
+- `tool/advisor_proxy/advisor_proxy.dart` — 16,949 lines (audit cited
+  14,500; +2,449 net since 2026-05-06). Debt is reaccumulating faster
+  than CODE_HEALTH lanes can clear it.
+
+Each warrants its own phase doc when the proxy split is sequenced.
+
+### P3 — Duplicated abstractions
+
+- Three adapter interfaces with identical method shapes.
+- ~12 proxy gateways re-implementing `_postJson + idempotency-key`.
+- Four trigger functions with the same body.
+
+Architectural; needs collapsing as the proxy monolith is split rather
+than as standalone lanes.
+
+### P3 — SQLite repos as process-global singletons
+
+Operator-switch leak partially closed by LB1's
+`DatabaseHelper.forScope` factory; full repo-level scope-keying
+remains a follow-up if a future incident exposes the gap. Latent; no
+active incident.
+
+### P3 — `vector_index_health` CLI placeholder
+
+`tool/vector_index_health/main.dart:62` passes `activeVectors: 0`
+(documented as `'CLI placeholder snapshot — no live DB query was
+issued'`). The production reader at
+`tool/advisor_proxy/health_producers/vector_producers.dart`
+(`vectorActiveCountPerCorpusProducer`) queries Postgres correctly.
+Action: replace the CLI placeholder with a Postgres-backed query, or
+document the CLI as a non-production tool more loudly.
+
 ## Closeout — items closed since 2026-05-02 (kept for cross-reference)
 
 Most items from the 2026-05-02 audit closed via the CODE_HEALTH

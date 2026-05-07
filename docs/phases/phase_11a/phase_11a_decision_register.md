@@ -781,6 +781,38 @@ If a parked decision becomes necessary for the current slice, surface it in
 Block 1 under `Human prerequisites -> Decision needed for this slice` before
 asking Claude to implement anything.
 
+## Code Health residuals carried forward (AI surfaces; paused for V1)
+
+Items surfaced by the 2026-05-06 CODE_HEALTH audit that touch AI
+surfaces. They activate when AI un-pauses for V1. Historical context:
+`docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`.
+
+### Cost-discipline lever wiring at the cap-fail path
+
+Caps still 402-fail with no model-downgrade / compression /
+context-trim / batching / semantic-cache fallback chain. Hard Promise
+#9 specifies the fallback chain (the Five Cost-Discipline Levers
+above); only the in-budget paths are wired today. Activates when AI
+surfaces un-pause for V1. Cite: archive's "Out of scope for this
+remediation" section.
+
+### Voyage embedding provider hardening
+
+`lib/services/voyage_embedding_provider.dart` has no chunking, retry,
+or concurrency cap. The class header documents `'HTTP/SDK gateway
+wiring is out of scope here'`. The provider delegates straight to an
+injected `VoyageEmbedFn` callback. Activates when AI un-pauses; the
+hardening lane should add batch-size guard, typed retry, and a
+semaphore in line with the production-resilience stack (Lock 7 above).
+
+### `labor_model.dart:266` decomposition rounding
+
+Naive rewrite would have flipped Primary Driver assignments in pinned
+tests; needs a phase doc that re-pins ~10 exact-equals assertions in
+`test/labor_model_dollar_attribution_test.dart` together with the
+rounding rewrite. Affects the 7.58 Primary Driver attribution
+contract. AI-paused — re-opens alongside 7.58.0 logic-deciding work.
+
 ## Production Hardening Locks (2026-04-26 audit)
 
 A standards audit against 2026 production RAG / multi-tenant Postgres /
