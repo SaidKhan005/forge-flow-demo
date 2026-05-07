@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../../../domain/models/restaurant_location.dart';
 import '../../../../domain/models/restaurant_timing_config.dart';
 import '../../../../domain/models/service_period_definition.dart';
 import '../../../../domain/repositories/restaurant_timing_config_repository.dart';
@@ -46,19 +47,22 @@ class SqliteRestaurantTimingConfigRepository
     final defsJson =
         jsonDecode(raw['service_period_definitions_json'] as String) as List;
     final definitions = defsJson
-        .map((e) => ServicePeriodDefinition.fromMap(
-            Map<String, dynamic>.from(e as Map)))
+        .map(
+          (e) => ServicePeriodDefinition.fromMap(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        )
         .toList();
 
     return RestaurantTimingConfig(
       restaurantId: raw['restaurant_id'] as String,
       businessTimezone: timezone,
-      businessDayStartLocalTime:
-          raw['business_day_start_local_time'] as String,
+      businessDayStartLocalTime: raw['business_day_start_local_time'] as String,
       weekStartDay: raw['week_start_day'] as int,
       servicePeriodDefinitions: definitions,
-      shiftCloseAuthority:
-          ShiftCloseAuthority.fromValue(raw['shift_close_authority'] as String),
+      shiftCloseAuthority: ShiftCloseAuthority.fromValue(
+        raw['shift_close_authority'] as String,
+      ),
       localCloseFallback: raw['local_close_fallback'] as String?,
       createdAt: raw['created_at'] as String,
       updatedAt: raw['updated_at'] as String,
@@ -68,6 +72,7 @@ class SqliteRestaurantTimingConfigRepository
   @override
   Future<void> saveTimingConfig(RestaurantTimingConfig config) async {
     final dao = await _daoReady;
+    await _hydrateScopeTimezone(config);
     await dao.upsert(
       restaurantId: config.restaurantId,
       businessDayStartLocalTime: config.businessDayStartLocalTime,
@@ -77,6 +82,35 @@ class SqliteRestaurantTimingConfigRepository
       localCloseFallback: config.localCloseFallback,
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
+    );
+  }
+
+  Future<void> _hydrateScopeTimezone(RestaurantTimingConfig config) async {
+    final timezone = config.businessTimezone.trim();
+    if (timezone.isEmpty) return;
+    final scopeDao = await _scopeDaoReady;
+    final existing = await scopeDao.getRestaurant(config.restaurantId);
+    if (existing == null) {
+      await scopeDao.insertRestaurant(
+        RestaurantLocation(
+          restaurantId: config.restaurantId,
+          displayName: 'Live location',
+          businessTimezone: timezone,
+          createdAt: config.createdAt,
+          updatedAt: config.updatedAt,
+        ),
+      );
+      return;
+    }
+    if (existing.businessTimezone == timezone) return;
+    await scopeDao.updateRestaurant(
+      RestaurantLocation(
+        restaurantId: existing.restaurantId,
+        displayName: existing.displayName,
+        businessTimezone: timezone,
+        createdAt: existing.createdAt,
+        updatedAt: config.updatedAt,
+      ),
     );
   }
 
