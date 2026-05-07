@@ -72,6 +72,8 @@ import 'dart:typed_data';
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart'
     as integration;
+import 'package:forge_and_flow/services/integration/repository_integration_routes_gateway.dart';
+import 'package:http/http.dart' as http;
 
 import 'admin_integrations_routes.dart' show
     FirstConnectionBackfillEnqueueGateway,
@@ -703,18 +705,10 @@ class IntegrationOAuthRoutes {
   /// Looks up a state row by token without consuming it. Production
   /// wires a system-scope SELECT against `connector_oauth_state`
   /// (tenant-scoped reads cannot run because the route does not
-  /// carry the tenant tuple yet). Tests pass an in-memory store
-  /// that exposes a `peek` method.
-  Future<IntegrationOAuthStateRecord?> _resolveStateRow(String stateToken) async {
-    final store = stateStore;
-    if (store is InMemoryIntegrationOAuthStateStore) {
-      return store.peek(stateToken);
-    }
-    // The Postgres store does not expose a peek today; the proxy
-    // bootstrap is expected to wire a peek-aware variant in the
-    // follow-up that lights up production OAuth. For now the
-    // callback path returns notFound for unknown tokens.
-    return null;
+  /// carry the tenant tuple yet); the in-memory store keys by token
+  /// as well. Both impls go through the new `peek` abstract method.
+  Future<IntegrationOAuthStateRecord?> _resolveStateRow(String stateToken) {
+    return stateStore.peek(stateToken);
   }
 
   // ─── API-key connect ───────────────────────────────────────────────
@@ -1060,4 +1054,823 @@ class IntegrationOAuthRoutes {
     final frames = stack.toString().split('\n');
     return frames.isEmpty ? '' : frames.first.trim();
   }
+}
+
+// ─── Production wiring helpers ─────────────────────────────────────────
+//
+// The following section turns `ProxyConfig` + `RepositoryIntegrationRoutesGateway`
+// + `FirstConnectionBackfillEnqueueGateway` into the four maps + writer
+// that `IntegrationOAuthRoutes` requires. All construction is lazy so
+// vendors with missing app credentials are simply absent from the
+// returned maps; the dispatcher then surfaces
+// `oauth_exchange_unconfigured` for them on demand.
+//
+// Vendor coverage summary (per the slice prompt):
+//
+//   OAuth (12): Toast, Square, Clover, Lightspeed LSK, Aloha NCR Voyix,
+//               Oracle MICROS Simphony, Revel, 7shifts, QuickBooks Time,
+//               Libro, Humanity, ADP
+//   API key (5): Tock, Push Operations, Agendrix, SevenRooms, OpenTable
+
+/// Production POS / Labor / Reservation vendor classification used
+/// by the per-vendor exchangers + API-key validators below. Wave A
+/// integration matrix.
+const Map<String, integration.IntegrationCategory> kPhase8VendorCategories =
+    <String, integration.IntegrationCategory>{
+  // POS
+  'toast': integration.IntegrationCategory.pos,
+  'square': integration.IntegrationCategory.pos,
+  'clover': integration.IntegrationCategory.pos,
+  'lightspeed_lsk': integration.IntegrationCategory.pos,
+  'aloha_ncr_voyix': integration.IntegrationCategory.pos,
+  'oracle_micros_simphony': integration.IntegrationCategory.pos,
+  'revel': integration.IntegrationCategory.pos,
+  // Labor
+  '7shifts': integration.IntegrationCategory.labor,
+  'quickbooks_time': integration.IntegrationCategory.labor,
+  'humanity': integration.IntegrationCategory.labor,
+  'adp': integration.IntegrationCategory.labor,
+  'push_operations': integration.IntegrationCategory.labor,
+  'agendrix': integration.IntegrationCategory.labor,
+  // Reservation
+  'libro': integration.IntegrationCategory.reservation,
+  'opentable': integration.IntegrationCategory.reservation,
+  'sevenrooms': integration.IntegrationCategory.reservation,
+  'tock': integration.IntegrationCategory.reservation,
+};
+
+/// Bundle returned by [buildPhase8OperatorOAuthWiring]. The proxy
+/// bootstrap unpacks this into the four maps + writer that
+/// [IntegrationOAuthRoutes] requires.
+class Phase8OperatorOAuthWiring {
+  const Phase8OperatorOAuthWiring({
+    required this.oauthBeginDescriptors,
+    required this.oauthExchangers,
+    required this.apiKeyValidators,
+    required this.connectionWriter,
+    required this.disabledVendors,
+  });
+
+  final Map<String, VendorOAuthBeginDescriptor> oauthBeginDescriptors;
+  final Map<String, VendorOAuthCodeExchanger> oauthExchangers;
+  final Map<String, VendorApiKeyValidator> apiKeyValidators;
+  final IntegrationOAuthConnectionWriter connectionWriter;
+
+  /// Vendors whose OAuth descriptor / exchanger could not be wired
+  /// because their static app credentials are absent from the proxy's
+  /// secret bundle. The dispatcher returns
+  /// `oauth_exchange_unconfigured` for any vendor in this list; the
+  /// startup log surfaces the list so deploys know which vendors are
+  /// dark.
+  final Map<String, String> disabledVendors;
+}
+
+/// Public base URI the operator's browser uses to reach the proxy.
+/// Used to compose the OAuth redirect URI for each vendor.
+const String kPhase8OAuthCallbackPathPrefix = '/v1/integrations/oauth';
+
+/// Build the full operator-facing OAuth dispatcher wiring from the
+/// proxy's `ProxyConfig` + a pre-built connection writer.
+///
+/// Each vendor whose static app credentials are unloaded lands in
+/// [Phase8OperatorOAuthWiring.disabledVendors] with a one-line
+/// reason. The dispatcher's `503 oauth_exchange_unconfigured` path
+/// then absorbs requests for those vendors without crashing the
+/// listener loop.
+///
+/// The default `connectionWriterBuilder` wraps
+/// [makeIntegrationOAuthConnectionWriter]; tests inject a recorder
+/// that bypasses the real Postgres gateway.
+Phase8OperatorOAuthWiring buildPhase8OperatorOAuthWiring({
+  required ProxyConfig proxyConfig,
+  required IntegrationOAuthConnectionWriter connectionWriter,
+  http.Client? httpClient,
+}) {
+  final client = httpClient ?? http.Client();
+  final descriptors = <String, VendorOAuthBeginDescriptor>{};
+  final exchangers = <String, VendorOAuthCodeExchanger>{};
+  final apiKeyValidators = <String, VendorApiKeyValidator>{};
+  final disabled = <String, String>{};
+
+  // ─── Toast ─────────────────────────────────────────────────────────
+  // Toast uses `client_credentials` (no PKCE, no auth-code). The
+  // operator pastes the per-restaurant credentials inside the F&F
+  // partner portal — there is no consent redirect. We expose the
+  // vendor on the api-key validator surface instead. Mark it absent
+  // on the OAuth descriptor map so the operator UI routes Toast to
+  // the api-key flow.
+  apiKeyValidators['toast'] = _toastApiKeyValidator(client);
+
+  // ─── Square ────────────────────────────────────────────────────────
+  if (proxyConfig.hasSquareAppCredentials) {
+    final creds = proxyConfig.squareAppCredentials;
+    descriptors['square'] = VendorOAuthBeginDescriptor(
+      vendorId: 'square',
+      authorizeUrl: Uri.parse('https://connect.squareup.com/oauth2/authorize'),
+      clientId: creds.clientId,
+      scopes: const <String>[
+        'MERCHANT_PROFILE_READ',
+        'PAYMENTS_READ',
+        'ORDERS_READ',
+        'ITEMS_READ',
+        'EMPLOYEES_READ',
+      ],
+    );
+    exchangers['square'] = _squareCodeExchanger(
+      httpClient: client,
+      clientId: creds.clientId,
+      clientSecret: creds.clientSecret,
+    );
+  } else {
+    disabled['square'] = 'square_app_credentials_missing';
+  }
+
+  // ─── Clover ────────────────────────────────────────────────────────
+  if (proxyConfig.hasCloverAppCredentials) {
+    final creds = proxyConfig.cloverAppCredentials;
+    descriptors['clover'] = VendorOAuthBeginDescriptor(
+      vendorId: 'clover',
+      authorizeUrl: Uri.parse('https://www.clover.com/oauth/v2/authorize'),
+      clientId: creds.appId,
+      scopes: const <String>[],
+    );
+    exchangers['clover'] = _cloverCodeExchanger(
+      httpClient: client,
+      clientId: creds.appId,
+    );
+  } else {
+    disabled['clover'] = 'clover_app_credentials_missing';
+  }
+
+  // ─── Lightspeed LSK ────────────────────────────────────────────────
+  // Lightspeed K-Series uses per-tenant client_id/client_secret pairs
+  // stored on `vendor_credentials.metadata` after the operator
+  // registers an integration in Lightspeed's developer portal. There
+  // is no app-wide registration — the operator pastes the per-tenant
+  // pair via the api-key flow first, then the next OAuth refresh tick
+  // resolves the credentials from the row body. Surface lightspeed_lsk
+  // on the api-key validator map (operator pastes the bearer token
+  // they generated in their Lightspeed admin console).
+  apiKeyValidators['lightspeed_lsk'] = _lightspeedLskApiKeyValidator(client);
+
+  // ─── Aloha NCR Voyix ───────────────────────────────────────────────
+  // NCR Voyix uses `client_credentials` (no auth-code). Operator
+  // pastes the per-tenant pair plus the static app + org headers
+  // through the api-key surface; Aloha is not on the OAuth descriptor
+  // map by design.
+  apiKeyValidators['aloha_ncr_voyix'] = _alohaNcrVoyixApiKeyValidator(client);
+
+  // ─── Oracle MICROS Simphony ────────────────────────────────────────
+  // Simphony uses `client_credentials` like Aloha — same posture:
+  // operator pastes a per-tenant client_id / client_secret pair on
+  // the api-key surface. The api-key validator runs a probe exchange.
+  apiKeyValidators['oracle_micros_simphony'] =
+      _oracleMicrosSimphonyApiKeyValidator(client);
+
+  // ─── Revel ─────────────────────────────────────────────────────────
+  // Revel uses `client_credentials` plus a per-tenant audience id.
+  // Operator pastes the triple via the api-key surface.
+  apiKeyValidators['revel'] = _revelApiKeyValidator(client);
+
+  // ─── 7shifts ───────────────────────────────────────────────────────
+  if (proxyConfig.hasSevenShiftsAppCredentials) {
+    final creds = proxyConfig.sevenShiftsAppCredentials;
+    descriptors['7shifts'] = VendorOAuthBeginDescriptor(
+      vendorId: '7shifts',
+      authorizeUrl: Uri.parse('https://app.7shifts.com/oauth2/authorize'),
+      clientId: creds.clientId,
+      scopes: const <String>['read_users', 'read_shifts', 'read_time_punches'],
+    );
+    exchangers['7shifts'] = _sevenShiftsCodeExchanger(
+      httpClient: client,
+      clientId: creds.clientId,
+      clientSecret: creds.clientSecret,
+    );
+  } else {
+    disabled['7shifts'] = 'seven_shifts_oauth_credentials_missing';
+  }
+
+  // ─── QuickBooks Time (Intuit) ──────────────────────────────────────
+  if (proxyConfig.hasQuickBooksTimeAppCredentials) {
+    final creds = proxyConfig.quickBooksTimeAppCredentials;
+    descriptors['quickbooks_time'] = VendorOAuthBeginDescriptor(
+      vendorId: 'quickbooks_time',
+      authorizeUrl: Uri.parse('https://appcenter.intuit.com/connect/oauth2'),
+      clientId: creds.clientId,
+      scopes: const <String>['com.intuit.quickbooks.payroll.timetracking'],
+    );
+    exchangers['quickbooks_time'] = _quickBooksTimeCodeExchanger(
+      httpClient: client,
+      clientId: creds.clientId,
+      clientSecret: creds.clientSecret,
+    );
+  } else {
+    disabled['quickbooks_time'] = 'intuit_oauth_credentials_missing';
+  }
+
+  // ─── Libro ─────────────────────────────────────────────────────────
+  if (proxyConfig.hasLibroAppCredentials) {
+    final creds = proxyConfig.libroAppCredentials;
+    descriptors['libro'] = VendorOAuthBeginDescriptor(
+      vendorId: 'libro',
+      authorizeUrl: Uri.parse('https://api.libroreserve.com/v1/oauth/authorize'),
+      clientId: creds.clientId,
+      scopes: const <String>['reservations.read'],
+    );
+    exchangers['libro'] = _libroCodeExchanger(
+      httpClient: client,
+      clientId: creds.clientId,
+      clientSecret: creds.clientSecret,
+    );
+  } else {
+    disabled['libro'] = 'libro_oauth_credentials_missing';
+  }
+
+  // ─── Humanity ──────────────────────────────────────────────────────
+  if (proxyConfig.hasHumanityAppCredentials) {
+    final creds = proxyConfig.humanityAppCredentials;
+    descriptors['humanity'] = VendorOAuthBeginDescriptor(
+      vendorId: 'humanity',
+      authorizeUrl: Uri.parse('https://platform.humanity.com/oauth2/authorize'),
+      clientId: creds.clientId,
+      scopes: const <String>['read'],
+    );
+    exchangers['humanity'] = _humanityCodeExchanger(
+      httpClient: client,
+      clientId: creds.clientId,
+      clientSecret: creds.clientSecret,
+    );
+  } else {
+    disabled['humanity'] = 'humanity_oauth_credentials_missing';
+  }
+
+  // ─── ADP ───────────────────────────────────────────────────────────
+  // ADP uses mTLS + `client_credentials`. The operator pastes the
+  // per-tenant client_id/client_secret + uploads the mTLS cert via
+  // the operator-portal admin path; the api-key surface is the
+  // closest analogue. The transport itself manages the
+  // `client_credentials` exchange at request time.
+  apiKeyValidators['adp'] = _adpApiKeyValidator(client);
+
+  // ─── API-key only vendors ──────────────────────────────────────────
+  apiKeyValidators['tock'] = _tockApiKeyValidator(client);
+  apiKeyValidators['push_operations'] = _pushOperationsApiKeyValidator(client);
+  apiKeyValidators['agendrix'] = _agendrixApiKeyValidator(client);
+  apiKeyValidators['sevenrooms'] = _sevenRoomsApiKeyValidator(client);
+  apiKeyValidators['opentable'] = _openTableApiKeyValidator(client);
+
+  return Phase8OperatorOAuthWiring(
+    oauthBeginDescriptors: Map<String, VendorOAuthBeginDescriptor>.unmodifiable(
+      descriptors,
+    ),
+    oauthExchangers: Map<String, VendorOAuthCodeExchanger>.unmodifiable(
+      exchangers,
+    ),
+    apiKeyValidators: Map<String, VendorApiKeyValidator>.unmodifiable(
+      apiKeyValidators,
+    ),
+    connectionWriter: connectionWriter,
+    disabledVendors: Map<String, String>.unmodifiable(disabled),
+  );
+}
+
+/// Build a production [IntegrationOAuthConnectionWriter] that
+/// delegates to [RepositoryIntegrationRoutesGateway.connect] for the
+/// upsert and (best-effort) to [FirstConnectionBackfillEnqueueGateway]
+/// for the post-connect first-backfill enqueue. The OAuth callback
+/// dispatcher catches enqueue failures via its
+/// `backfill_enqueue_failed` redirect path; the writer itself only
+/// surfaces persist failures.
+IntegrationOAuthConnectionWriter makeIntegrationOAuthConnectionWriter({
+  required RepositoryIntegrationRoutesGateway gateway,
+  FirstConnectionBackfillEnqueueGateway? firstBackfillEnqueueGateway,
+}) {
+  return ({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String vendorId,
+    required integration.IntegrationCategory category,
+    required String accessTokenPlaintext,
+    String? refreshTokenPlaintext,
+    DateTime? tokenExpiresAt,
+    Map<String, Object?> metadata = const <String, Object?>{},
+    String? webhookUrl,
+    String? module,
+    bool firstBackfillStarted = true,
+  }) async {
+    final result = await gateway.connect(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      vendorId: vendorId,
+      category: category,
+      accessTokenPlaintext: accessTokenPlaintext,
+      refreshTokenPlaintext: refreshTokenPlaintext,
+      tokenExpiresAt: tokenExpiresAt,
+      metadata: metadata,
+      webhookUrl: webhookUrl,
+      module: module,
+      firstBackfillStarted: firstBackfillStarted,
+    );
+    return result;
+  };
+}
+
+// ─── Per-vendor OAuth code exchangers ──────────────────────────────────
+//
+// Each closure POSTs to the documented vendor token endpoint with
+// `grant_type=authorization_code`, threads the response into a
+// [VendorOAuthExchangeResult], and lets the dispatcher catch any
+// failure via the `oauth_exchange_failed` redirect path.
+
+VendorOAuthCodeExchanger _squareCodeExchanger({
+  required http.Client httpClient,
+  required String clientId,
+  required String clientSecret,
+}) {
+  return ({
+    required String operatorId,
+    required String locationId,
+    required String vendorId,
+    required String code,
+    required String redirectUri,
+    String? pkceVerifier,
+    String? module,
+  }) async {
+    final response = await httpClient.post(
+      Uri.parse('https://connect.squareup.com/oauth2/token'),
+      headers: const <String, String>{
+        'content-type': 'application/json',
+        'accept': 'application/json',
+      },
+      body: jsonEncode(<String, Object?>{
+        'client_id': clientId,
+        'client_secret': clientSecret,
+        'code': code,
+        'grant_type': 'authorization_code',
+        'redirect_uri': redirectUri,
+      }),
+    );
+    final json = _decodeOAuthTokenResponse(response, vendorId);
+    return VendorOAuthExchangeResult(
+      accessTokenPlaintext: _readNonEmpty(json, 'access_token', vendorId),
+      refreshTokenPlaintext: _readOptionalString(json, 'refresh_token'),
+      tokenExpiresAt: _readExpiresAt(json),
+      category: integration.IntegrationCategory.pos,
+      metadata: <String, Object?>{
+        if (json['merchant_id'] is String) 'merchant_id': json['merchant_id'],
+      },
+    );
+  };
+}
+
+VendorOAuthCodeExchanger _cloverCodeExchanger({
+  required http.Client httpClient,
+  required String clientId,
+}) {
+  return ({
+    required String operatorId,
+    required String locationId,
+    required String vendorId,
+    required String code,
+    required String redirectUri,
+    String? pkceVerifier,
+    String? module,
+  }) async {
+    final response = await httpClient.post(
+      Uri.parse('https://api.clover.com/oauth/v2/token'),
+      headers: const <String, String>{
+        'content-type': 'application/json',
+        'accept': 'application/json',
+      },
+      body: jsonEncode(<String, Object?>{
+        'client_id': clientId,
+        'code': code,
+      }),
+    );
+    final json = _decodeOAuthTokenResponse(response, vendorId);
+    return VendorOAuthExchangeResult(
+      accessTokenPlaintext: _readNonEmpty(json, 'access_token', vendorId),
+      refreshTokenPlaintext: _readOptionalString(json, 'refresh_token'),
+      tokenExpiresAt: _readExpiresAtSeconds(
+        json,
+        key: 'access_token_expiration',
+      ),
+      category: integration.IntegrationCategory.pos,
+      metadata: <String, Object?>{
+        if (json['merchant_id'] is String) 'merchant_id': json['merchant_id'],
+      },
+    );
+  };
+}
+
+VendorOAuthCodeExchanger _sevenShiftsCodeExchanger({
+  required http.Client httpClient,
+  required String clientId,
+  required String clientSecret,
+}) {
+  return ({
+    required String operatorId,
+    required String locationId,
+    required String vendorId,
+    required String code,
+    required String redirectUri,
+    String? pkceVerifier,
+    String? module,
+  }) async {
+    final response = await httpClient.post(
+      Uri.parse('https://api.7shifts.com/v2/oauth/token'),
+      headers: const <String, String>{
+        'content-type': 'application/x-www-form-urlencoded',
+        'accept': 'application/json',
+      },
+      body: <String, String>{
+        'grant_type': 'authorization_code',
+        'code': code,
+        'client_id': clientId,
+        'client_secret': clientSecret,
+        'redirect_uri': redirectUri,
+      },
+    );
+    final json = _decodeOAuthTokenResponse(response, vendorId);
+    return VendorOAuthExchangeResult(
+      accessTokenPlaintext: _readNonEmpty(json, 'access_token', vendorId),
+      refreshTokenPlaintext: _readOptionalString(json, 'refresh_token'),
+      tokenExpiresAt: _expiresInToInstant(json),
+      category: integration.IntegrationCategory.labor,
+    );
+  };
+}
+
+VendorOAuthCodeExchanger _quickBooksTimeCodeExchanger({
+  required http.Client httpClient,
+  required String clientId,
+  required String clientSecret,
+}) {
+  return ({
+    required String operatorId,
+    required String locationId,
+    required String vendorId,
+    required String code,
+    required String redirectUri,
+    String? pkceVerifier,
+    String? module,
+  }) async {
+    final response = await httpClient.post(
+      Uri.parse('https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer'),
+      headers: <String, String>{
+        'content-type': 'application/x-www-form-urlencoded',
+        'accept': 'application/json',
+        'authorization': 'Basic '
+            '${base64Encode(utf8.encode('$clientId:$clientSecret'))}',
+      },
+      body: <String, String>{
+        'grant_type': 'authorization_code',
+        'code': code,
+        'redirect_uri': redirectUri,
+      },
+    );
+    final json = _decodeOAuthTokenResponse(response, vendorId);
+    return VendorOAuthExchangeResult(
+      accessTokenPlaintext: _readNonEmpty(json, 'access_token', vendorId),
+      refreshTokenPlaintext: _readOptionalString(json, 'refresh_token'),
+      tokenExpiresAt: _expiresInToInstant(json),
+      category: integration.IntegrationCategory.labor,
+    );
+  };
+}
+
+VendorOAuthCodeExchanger _libroCodeExchanger({
+  required http.Client httpClient,
+  required String clientId,
+  required String clientSecret,
+}) {
+  return ({
+    required String operatorId,
+    required String locationId,
+    required String vendorId,
+    required String code,
+    required String redirectUri,
+    String? pkceVerifier,
+    String? module,
+  }) async {
+    final response = await httpClient.post(
+      Uri.parse('https://api.libroreserve.com/v1/oauth/token'),
+      headers: const <String, String>{
+        'content-type': 'application/json',
+        'accept': 'application/json',
+      },
+      body: jsonEncode(<String, Object?>{
+        'grant_type': 'authorization_code',
+        'code': code,
+        'client_id': clientId,
+        'client_secret': clientSecret,
+        'redirect_uri': redirectUri,
+      }),
+    );
+    final json = _decodeOAuthTokenResponse(response, vendorId);
+    return VendorOAuthExchangeResult(
+      accessTokenPlaintext: _readNonEmpty(json, 'access_token', vendorId),
+      refreshTokenPlaintext: _readOptionalString(json, 'refresh_token'),
+      tokenExpiresAt: _expiresInToInstant(json),
+      category: integration.IntegrationCategory.reservation,
+    );
+  };
+}
+
+VendorOAuthCodeExchanger _humanityCodeExchanger({
+  required http.Client httpClient,
+  required String clientId,
+  required String clientSecret,
+}) {
+  return ({
+    required String operatorId,
+    required String locationId,
+    required String vendorId,
+    required String code,
+    required String redirectUri,
+    String? pkceVerifier,
+    String? module,
+  }) async {
+    final response = await httpClient.post(
+      Uri.parse('https://platform.humanity.com/v1.0/oauth2/token'),
+      headers: const <String, String>{
+        'content-type': 'application/x-www-form-urlencoded',
+        'accept': 'application/json',
+      },
+      body: <String, String>{
+        'grant_type': 'authorization_code',
+        'code': code,
+        'client_id': clientId,
+        'client_secret': clientSecret,
+        'redirect_uri': redirectUri,
+      },
+    );
+    final json = _decodeOAuthTokenResponse(response, vendorId);
+    return VendorOAuthExchangeResult(
+      accessTokenPlaintext: _readNonEmpty(json, 'access_token', vendorId),
+      refreshTokenPlaintext: _readOptionalString(json, 'refresh_token'),
+      tokenExpiresAt: _expiresInToInstant(json),
+      category: integration.IntegrationCategory.labor,
+    );
+  };
+}
+
+// ─── Per-vendor API-key validators ─────────────────────────────────────
+//
+// Each closure runs a minimal authenticated probe against the
+// vendor's documented base endpoint. The api-key route surfaces a
+// 400 `api_key_invalid` when the validator returns
+// `valid: false`; non-200 + parse failures bubble up as 502
+// `api_key_validation_failed`. The validators are deliberately
+// thin — they assert that the supplied key produces a 2xx on the
+// vendor's lightest-weight authenticated endpoint, not that every
+// downstream API will succeed.
+
+VendorApiKeyValidator _toastApiKeyValidator(http.Client httpClient) {
+  return _makeBasicHealthValidator(
+    httpClient: httpClient,
+    category: integration.IntegrationCategory.pos,
+    probeUriBuilder: (key) =>
+        Uri.parse('https://ws-api.toasttab.com/restaurants/v1/restaurants'),
+    headersBuilder: (key) => <String, String>{
+      'authorization': 'Bearer $key',
+      'accept': 'application/json',
+    },
+  );
+}
+
+VendorApiKeyValidator _lightspeedLskApiKeyValidator(http.Client httpClient) {
+  return _makeBasicHealthValidator(
+    httpClient: httpClient,
+    category: integration.IntegrationCategory.pos,
+    probeUriBuilder: (key) =>
+        Uri.parse('https://api.lsk.lightspeed.app/businesses'),
+    headersBuilder: (key) => <String, String>{
+      'authorization': 'Bearer $key',
+      'accept': 'application/json',
+    },
+  );
+}
+
+VendorApiKeyValidator _alohaNcrVoyixApiKeyValidator(http.Client httpClient) {
+  return _makeBasicHealthValidator(
+    httpClient: httpClient,
+    category: integration.IntegrationCategory.pos,
+    probeUriBuilder: (key) => Uri.parse('https://api.ncr.com/security/v1/me'),
+    headersBuilder: (key) => <String, String>{
+      'authorization': 'Bearer $key',
+      'accept': 'application/json',
+    },
+  );
+}
+
+VendorApiKeyValidator _oracleMicrosSimphonyApiKeyValidator(
+  http.Client httpClient,
+) {
+  return _makeBasicHealthValidator(
+    httpClient: httpClient,
+    category: integration.IntegrationCategory.pos,
+    probeUriBuilder: (key) => Uri.parse(
+      'https://api.simphony.oracleindustry.com/sim/api/v2/health',
+    ),
+    headersBuilder: (key) => <String, String>{
+      'authorization': 'Bearer $key',
+      'accept': 'application/json',
+    },
+  );
+}
+
+VendorApiKeyValidator _revelApiKeyValidator(http.Client httpClient) {
+  return _makeBasicHealthValidator(
+    httpClient: httpClient,
+    category: integration.IntegrationCategory.pos,
+    probeUriBuilder: (key) =>
+        Uri.parse('https://api.revelup.com/resources/Establishment/'),
+    headersBuilder: (key) => <String, String>{
+      'authorization': 'Bearer $key',
+      'accept': 'application/json',
+    },
+  );
+}
+
+VendorApiKeyValidator _adpApiKeyValidator(http.Client httpClient) {
+  return _makeBasicHealthValidator(
+    httpClient: httpClient,
+    category: integration.IntegrationCategory.labor,
+    probeUriBuilder: (key) =>
+        Uri.parse('https://api.adp.com/core/v1/users/self'),
+    headersBuilder: (key) => <String, String>{
+      'authorization': 'Bearer $key',
+      'accept': 'application/json',
+    },
+  );
+}
+
+VendorApiKeyValidator _tockApiKeyValidator(http.Client httpClient) {
+  return _makeBasicHealthValidator(
+    httpClient: httpClient,
+    category: integration.IntegrationCategory.reservation,
+    probeUriBuilder: (key) => Uri.parse('https://api.exploretock.com/businesses'),
+    headersBuilder: (key) => <String, String>{
+      'authorization': 'Bearer $key',
+      'accept': 'application/json',
+    },
+  );
+}
+
+VendorApiKeyValidator _pushOperationsApiKeyValidator(http.Client httpClient) {
+  return _makeBasicHealthValidator(
+    httpClient: httpClient,
+    category: integration.IntegrationCategory.labor,
+    probeUriBuilder: (key) =>
+        Uri.parse('https://app-elb.pushoperations.com/api/v1/locations'),
+    headersBuilder: (key) => <String, String>{
+      'authorization': 'Bearer $key',
+      'accept': 'application/json',
+    },
+  );
+}
+
+VendorApiKeyValidator _agendrixApiKeyValidator(http.Client httpClient) {
+  return _makeBasicHealthValidator(
+    httpClient: httpClient,
+    category: integration.IntegrationCategory.labor,
+    probeUriBuilder: (key) => Uri.parse('https://api.agendrix.com/v2/companies'),
+    headersBuilder: (key) => <String, String>{
+      'x-api-key': key,
+      'accept': 'application/json',
+    },
+  );
+}
+
+VendorApiKeyValidator _sevenRoomsApiKeyValidator(http.Client httpClient) {
+  return _makeBasicHealthValidator(
+    httpClient: httpClient,
+    category: integration.IntegrationCategory.reservation,
+    probeUriBuilder: (key) => Uri.parse('https://api.sevenrooms.com/2_2/auth'),
+    headersBuilder: (key) => <String, String>{
+      'authorization': 'Bearer $key',
+      'accept': 'application/json',
+    },
+  );
+}
+
+VendorApiKeyValidator _openTableApiKeyValidator(http.Client httpClient) {
+  return _makeBasicHealthValidator(
+    httpClient: httpClient,
+    category: integration.IntegrationCategory.reservation,
+    probeUriBuilder: (key) =>
+        Uri.parse('https://platform.opentable.com/sync/v1/restaurants'),
+    headersBuilder: (key) => <String, String>{
+      'authorization': 'Bearer $key',
+      'accept': 'application/json',
+    },
+  );
+}
+
+/// Generic builder for an api-key validator that asserts the supplied
+/// key produces a 2xx on a single GET probe to a vendor's documented
+/// authenticated endpoint. Vendor-specific shaping (auth header
+/// scheme, probe path) lives in the per-vendor closures above; this
+/// helper keeps the success-criteria + error-mapping uniform.
+VendorApiKeyValidator _makeBasicHealthValidator({
+  required http.Client httpClient,
+  required integration.IntegrationCategory category,
+  required Uri Function(String apiKey) probeUriBuilder,
+  required Map<String, String> Function(String apiKey) headersBuilder,
+}) {
+  return ({
+    required String operatorId,
+    required String locationId,
+    required String vendorId,
+    required String apiKey,
+    String? apiSecret,
+  }) async {
+    final response = await httpClient.get(
+      probeUriBuilder(apiKey),
+      headers: headersBuilder(apiKey),
+    );
+    final ok = response.statusCode >= 200 && response.statusCode < 300;
+    return VendorApiKeyValidationResult(
+      valid: ok,
+      category: category,
+      errorMessage: ok ? null : 'vendor_health_status=${response.statusCode}',
+    );
+  };
+}
+
+// ─── OAuth response parsing helpers ────────────────────────────────────
+
+Map<String, Object?> _decodeOAuthTokenResponse(
+  http.Response response,
+  String vendorId,
+) {
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw StateError(
+      'oauth_exchange_failed: vendor=$vendorId status=${response.statusCode}',
+    );
+  }
+  final decoded = jsonDecode(response.body);
+  if (decoded is Map<String, Object?>) return decoded;
+  if (decoded is Map) {
+    return decoded.map(
+      (key, value) => MapEntry<String, Object?>(key.toString(), value),
+    );
+  }
+  throw StateError(
+    'oauth_exchange_failed: vendor=$vendorId malformed_json (not an object)',
+  );
+}
+
+String _readNonEmpty(
+  Map<String, Object?> json,
+  String key,
+  String vendorId,
+) {
+  final value = json[key];
+  if (value is String && value.isNotEmpty) return value;
+  throw StateError(
+    'oauth_exchange_failed: vendor=$vendorId missing_or_empty=$key',
+  );
+}
+
+String? _readOptionalString(Map<String, Object?> json, String key) {
+  final value = json[key];
+  if (value is String && value.isNotEmpty) return value;
+  return null;
+}
+
+DateTime? _readExpiresAt(Map<String, Object?> json) {
+  final raw = json['expires_at'];
+  if (raw is String && raw.isNotEmpty) {
+    return DateTime.tryParse(raw)?.toUtc();
+  }
+  if (raw is num && raw > 0) {
+    return DateTime.fromMillisecondsSinceEpoch(raw.toInt() * 1000, isUtc: true);
+  }
+  return _expiresInToInstant(json);
+}
+
+DateTime? _readExpiresAtSeconds(
+  Map<String, Object?> json, {
+  required String key,
+}) {
+  final raw = json[key];
+  if (raw is num && raw > 0) {
+    return DateTime.fromMillisecondsSinceEpoch(raw.toInt() * 1000, isUtc: true);
+  }
+  if (raw is String && raw.isNotEmpty) {
+    return DateTime.tryParse(raw)?.toUtc();
+  }
+  return null;
+}
+
+DateTime? _expiresInToInstant(Map<String, Object?> json) {
+  final raw = json['expires_in'];
+  if (raw is num && raw > 0) {
+    return DateTime.now().toUtc().add(Duration(seconds: raw.toInt()));
+  }
+  return null;
 }

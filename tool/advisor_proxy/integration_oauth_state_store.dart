@@ -141,6 +141,23 @@ abstract class IntegrationOAuthStateStore {
     required String vendorId,
   });
 
+  /// Look up a state row by its primary key without consuming it.
+  /// Returns `null` when the token is not present.
+  ///
+  /// The OAuth callback dispatcher uses this to learn the row's
+  /// (operator, location) tuple before invoking [consume] under the
+  /// matching tenant context — the inbound HTTP request carries only
+  /// the state token and `code` query parameters.
+  ///
+  /// Production runs this through the admin pool's `runAsSystem`
+  /// path because the dispatcher does not yet hold the tenant tuple
+  /// (the row itself carries it). Defense in depth: [consume]
+  /// re-validates the (operator, location, vendor) tuple before
+  /// stamping `consumed_at`, so a peek that hands back stale tuple
+  /// data still cannot stamp the row under a different tenant
+  /// context.
+  Future<IntegrationOAuthStateRecord?> peek(String stateToken);
+
   /// Best-effort prune of expired rows for the given operator/location.
   /// V1 calls this opportunistically from the begin path; a future
   /// cron sweep can call [pruneExpiredAcrossTenants] via the admin
@@ -152,17 +169,23 @@ abstract class IntegrationOAuthStateStore {
   });
 }
 
-/// Postgres-backed [IntegrationOAuthStateStore]. All reads + writes
-/// run through the tenant-scoped wrapper so the per-tenant RLS
-/// policy on `public.connector_oauth_state` admits every row.
+/// Postgres-backed [IntegrationOAuthStateStore]. Issue / consume /
+/// pruneExpired run through the tenant-scoped wrapper so the
+/// per-tenant RLS policy on `public.connector_oauth_state` admits
+/// every row. [peek] uses the admin wrapper's `runAsSystem` lane
+/// because the OAuth callback dispatcher does not yet hold the
+/// tenant tuple — the row itself carries it.
 class PostgresIntegrationOAuthStateStore implements IntegrationOAuthStateStore {
   PostgresIntegrationOAuthStateStore({
     required TenantTransactionWrapper tenantWrapper,
+    TenantTransactionWrapper? adminWrapper,
     DateTime Function()? now,
   })  : _tenantWrapper = tenantWrapper,
+        _adminWrapper = adminWrapper,
         _now = now ?? DateTime.now;
 
   final TenantTransactionWrapper _tenantWrapper;
+  final TenantTransactionWrapper? _adminWrapper;
   final DateTime Function() _now;
 
   @override
@@ -335,6 +358,53 @@ class PostgresIntegrationOAuthStateStore implements IntegrationOAuthStateStore {
     });
   }
 
+  @override
+  Future<IntegrationOAuthStateRecord?> peek(String stateToken) async {
+    final adminWrapper = _adminWrapper;
+    if (adminWrapper == null) {
+      throw StateError(
+        'PostgresIntegrationOAuthStateStore.peek requires an adminWrapper; '
+        'pass one to the constructor (the proxy bootstrap supplies the '
+        'admin pool wrapper).',
+      );
+    }
+    return adminWrapper.runAsSystem<IntegrationOAuthStateRecord?>(
+      (exec) async {
+        final lookup = await exec.query(
+          'select state_token, operator_id::text as operator_id, '
+          'location_id::text as location_id, vendor_id, redirect_uri, '
+          'pkce_verifier, actor_user_id, module, '
+          'created_at, expires_at, consumed_at '
+          'from public.connector_oauth_state '
+          'where state_token = @state_token '
+          'limit 1',
+          parameters: <String, Object?>{
+            'state_token': stateToken,
+          },
+        );
+        if (lookup.isEmpty) return null;
+        final row = lookup.single;
+        final expiresAt = _coerceTimestamp(row['expires_at']);
+        final createdAt = _coerceTimestamp(row['created_at']);
+        final consumedAt = _coerceTimestamp(row['consumed_at']);
+        return IntegrationOAuthStateRecord(
+          stateToken: row['state_token'] as String,
+          operatorId: row['operator_id'] as String,
+          locationId: row['location_id'] as String,
+          vendorId: row['vendor_id'] as String,
+          redirectUri: row['redirect_uri'] as String,
+          createdAt: createdAt ?? _now().toUtc(),
+          expiresAt: expiresAt ?? _now().toUtc(),
+          consumedAt: consumedAt ?? createdAt ?? _now().toUtc(),
+          pkceVerifier: row['pkce_verifier'] as String?,
+          actorUserId: row['actor_user_id'] as String?,
+          module: row['module'] as String?,
+        );
+      },
+      reason: 'integration_oauth_state_peek_for_callback_dispatch',
+    );
+  }
+
   /// `userId` carries through `TenantContext.userId`, which in turn
   /// rejects non-UUID values (defense in depth around the SET LOCAL
   /// payload). The route may carry an opaque actor id like
@@ -471,9 +541,11 @@ class InMemoryIntegrationOAuthStateStore implements IntegrationOAuthStateStore {
     return toDelete.length;
   }
 
-  /// Test-only: peek a row by token. Returns null when the token is
-  /// not present.
-  IntegrationOAuthStateRecord? peek(String stateToken) {
+  /// Lookup a row by token without consuming it. Tests use this both
+  /// as the [IntegrationOAuthStateStore.peek] implementation and as a
+  /// direct sync inspection helper.
+  @override
+  Future<IntegrationOAuthStateRecord?> peek(String stateToken) async {
     final row = _rows[stateToken];
     if (row == null) return null;
     return IntegrationOAuthStateRecord(

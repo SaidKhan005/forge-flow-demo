@@ -859,7 +859,7 @@ Future<void> bindPhase8IntegrationsForProduction(
 
   // Step 7 — Bindings holder + global install.
   final bindings = _Phase8BindingsHolder(
-    gateway: _RepositoryToToolGatewayAdapter(integrationRoutesGateway),
+    gateway: RepositoryToToolGatewayAdapter(integrationRoutesGateway),
     actorResolver: (HttpRequest request) async {
       final libContext = await bridge.resolveAdminActorFromHttpRequest(
         request,
@@ -977,8 +977,18 @@ class _ToolToLibActorUserResolverAdapter
 /// expects. The gateway is structurally identical — same method names,
 /// parameter names, return types — so the adapter is one-line-per-method
 /// pass-through.
-class _RepositoryToToolGatewayAdapter implements IntegrationRoutesGateway {
-  _RepositoryToToolGatewayAdapter(this._inner);
+///
+/// Public so the operator-facing OAuth dispatcher (different gateway
+/// instance, same shape) can reuse the adapter without duplicating
+/// the pass-through methods.
+RepositoryToToolGatewayAdapter wrapRepositoryGatewayForToolApi(
+  RepositoryIntegrationRoutesGateway inner,
+) {
+  return RepositoryToToolGatewayAdapter(inner);
+}
+
+class RepositoryToToolGatewayAdapter implements IntegrationRoutesGateway {
+  RepositoryToToolGatewayAdapter(this._inner);
 
   final RepositoryIntegrationRoutesGateway _inner;
 
