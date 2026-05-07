@@ -130,7 +130,7 @@ void main() {
 
   group('ToastPosPostgresSink — B. idempotency replay', () {
     test(
-        'same canonical fact upserted twice -> 1 INSERT + 1 DO UPDATE '
+'same canonical fact upserted twice -> 1 INSERT + 1 DO UPDATE '
         '(same-timestamp >= guard passes, row updated in place)',
         () async {
       final pool = _FakeToastPool()
@@ -665,7 +665,7 @@ class _FakeToastPool implements PostgresPool {
   /// Keyed by `(operator_id, location_id, vendor_id)`.
   final Map<String, String> _connectionsByTenant = <String, String>{};
 
-  /// Keyed by the NEW canonical UNIQUE
+/// Keyed by the NEW canonical UNIQUE
   /// `(operator_id, location_id, vendor_id, vendor_entity_id)`.
   final Map<String, Map<String, Object?>> coverFacts =
       <String, Map<String, Object?>>{};
@@ -749,6 +749,23 @@ class _FakeToastTransaction implements PostgresTransaction {
         },
       ];
     }
+    if (sql.contains('from public.demo_mode_state') &&
+        sql.contains('for update')) {
+      // A2 fix: SELECT FOR UPDATE on demo_mode_state — used by the
+      // watermark advance to read the pending counter before flipping.
+      final operatorId = parameters['operator_id'] as String;
+      final locationId = parameters['location_id'] as String;
+      final category = parameters['category'] as String;
+      final key = '$operatorId|$locationId|$category';
+      final row = pool.demoModeState[key];
+      if (row == null) return const <PostgresRow>[];
+      return <PostgresRow>[
+        <String, Object?>{
+          'pending_inserts_count': row['pending_inserts_count'] ?? 0,
+          'is_demo': row['is_demo'] ?? true,
+        },
+      ];
+    }
     if (sql.contains(
         'select connection_id::text as connection_id from public.connector_connection')) {
       final operatorId = parameters['operator_id'] as String;
@@ -766,7 +783,7 @@ class _FakeToastTransaction implements PostgresTransaction {
       // Used by _writeWatermark to decide whether to fire the demo flip.
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
-      final category = parameters['category'] as String? ?? 'pos';
+final category = parameters['category'] as String? ?? 'pos';
       final key = '$operatorId|$locationId|$category';
       final row = pool.demoModeState[key];
       if (row == null) return const <PostgresRow>[];
@@ -786,7 +803,6 @@ class _FakeToastTransaction implements PostgresTransaction {
       final vendorEntityId = parameters['vendor_entity_id'] as String;
       final vendorModifiedAt = parameters['vendor_modified_at'] as DateTime;
       final key = '$operatorId|$locationId|$vendorId|$vendorEntityId';
-
       final existing = pool.coverFacts[key];
       if (existing == null) {
         // Fresh insert.
@@ -808,8 +824,7 @@ class _FakeToastTransaction implements PostgresTransaction {
           <String, Object?>{'inserted': 1},
         ];
       }
-
-      // Conflict: apply DO UPDATE WHERE excluded.vendor_modified_at >= stored.
+// Conflict: apply DO UPDATE WHERE excluded.vendor_modified_at >= stored.
       final storedModified = existing['vendor_modified_at'] as DateTime;
       if (vendorModifiedAt.compareTo(storedModified) >= 0) {
         // Guard passes: update in place.
@@ -825,8 +840,7 @@ class _FakeToastTransaction implements PostgresTransaction {
           <String, Object?>{'inserted': 1},
         ];
       }
-
-      // Guard fails: older arrival → DO UPDATE WHERE evaluates false →
+// Guard fails: older arrival → DO UPDATE WHERE evaluates false →
       // RETURNING returns empty (same as DO NOTHING for the caller).
       return const <PostgresRow>[];
     }
@@ -869,40 +883,23 @@ class _FakeToastTransaction implements PostgresTransaction {
       final locationId = parameters['location_id'] as String;
       final category = parameters['category'] as String;
       final key = '$operatorId|$locationId|$category';
-      if (sql.contains('pending_inserts_count + 1') ||
-          sql.contains('pending_inserts_count =')) {
-        // A2 fix path: INSERT ... ON CONFLICT DO UPDATE SET
-        // pending_inserts_count = pending_inserts_count + 1.
-        // Either insert fresh row or increment the counter.
-        final existing = pool.demoModeState[key];
-        if (existing == null) {
-          pool.demoModeState[key] = <String, Object?>{
-            'operator_id': operatorId,
-            'location_id': locationId,
-            'category': category,
-            'is_demo': true,
-            'pending_inserts_count': 1,
-            'flipped_to_live_at': null,
-            'flipped_by_connection_id': null,
-          };
-        } else {
-          final prev = (existing['pending_inserts_count'] as int? ?? 0);
-          existing['pending_inserts_count'] = prev + 1;
-        }
+      // A2 fix: ON CONFLICT DO UPDATE increments pending_inserts_count.
+      // putIfAbsent creates the row; if it exists the conflict path runs.
+      if (pool.demoModeState.containsKey(key)) {
+        // ON CONFLICT DO UPDATE SET pending_inserts_count = pending_inserts_count + 1
+        final existing = pool.demoModeState[key]!;
+        existing['pending_inserts_count'] =
+            (existing['pending_inserts_count'] as int? ?? 0) + 1;
       } else {
-        // evaluateDemoFlip path: INSERT ... ON CONFLICT DO NOTHING.
-        pool.demoModeState.putIfAbsent(
-          key,
-          () => <String, Object?>{
-            'operator_id': operatorId,
-            'location_id': locationId,
-            'category': category,
-            'is_demo': true,
-            'pending_inserts_count': 0,
-            'flipped_to_live_at': null,
-            'flipped_by_connection_id': null,
-          },
-        );
+        pool.demoModeState[key] = <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'category': category,
+          'is_demo': true,
+          'pending_inserts_count': 1,
+          'flipped_to_live_at': null,
+          'flipped_by_connection_id': null,
+        };
       }
       return 1;
     }

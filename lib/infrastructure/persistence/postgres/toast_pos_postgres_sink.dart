@@ -237,10 +237,9 @@ class ToastPosPostgresSink extends OperatorScopedRepository
         },
       );
       if (rows.isNotEmpty) {
-        // Increment the persisted pending counter inside the same
-        // transaction as the cover-facts row so the counter and the fact
-        // are always in sync, even if the pod crashes between the insert
-        // and the watermark advance (A2 fix).
+        // A2 fix: increment persisted pending counter inside the same
+        // transaction as the cover-facts row so counter and fact are
+        // always in sync (launch-blocker A2 fix).
         await exec.execute(
           'insert into public.demo_mode_state ('
           'operator_id, location_id, category, is_demo, '
@@ -364,12 +363,10 @@ class ToastPosPostgresSink extends OperatorScopedRepository
           'updated_at': _clock().toUtc(),
         },
       );
-
       // A2 fix: evaluate the demo-flip inside the same transaction as the
       // watermark commit so a crash between the two cannot leave the
-      // operator stuck in demo mode.  SELECT FOR UPDATE serialises
-      // concurrent pods; the UPDATE narrows to `is_demo = true` so the
-      // flip is idempotent across retries.
+      // operator stuck in demo mode. SELECT FOR UPDATE serialises
+      // concurrent pods; UPDATE narrows to is_demo = true for idempotency.
       final dmsRows = await exec.query(
         'select pending_inserts_count, is_demo '
         'from public.demo_mode_state '
