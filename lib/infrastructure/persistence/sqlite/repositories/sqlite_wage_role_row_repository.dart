@@ -26,6 +26,11 @@ class SqliteWageRoleRowRepository {
     return dao.upsertRow(row);
   }
 
+  Future<bool> replaceAll(String restaurantId, List<WageRoleRow> rows) async {
+    final dao = await _daoReady;
+    return dao.replaceAll(restaurantId, rows);
+  }
+
   Future<void> deleteRow(int id) async {
     final dao = await _daoReady;
     return dao.deleteRow(id);
@@ -34,5 +39,10 @@ class SqliteWageRoleRowRepository {
   Future<void> deleteAll(String restaurantId) async {
     final dao = await _daoReady;
     return dao.deleteAll(restaurantId);
+  }
+
+  Future<void> wipeForOtherScopes(String keepRestaurantId) async {
+    final dao = await _daoReady;
+    return dao.wipeForOtherScopes(keepRestaurantId);
   }
 }

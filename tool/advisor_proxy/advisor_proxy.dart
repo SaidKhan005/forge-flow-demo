@@ -6233,6 +6233,14 @@ abstract class MobileOperationalSyncProxyGateway {
     required String locationId,
   });
 
+  Future<Map<String, Object?>> fetchWageRoleRows({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String? modifiedSince,
+    required int pageSize,
+  });
+
   Future<Map<String, Object?>> fetchPollingTierAssignment({
     required OperatorContext scope,
     required String operatorId,
@@ -13768,6 +13776,13 @@ Future<void> _routeMobileOperationalSync({
           operatorId: target.operatorId,
           locationId: target.locationId,
         ),
+      'wage_role_rows' => await gateway.fetchWageRoleRows(
+        scope: scope,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+        modifiedSince: modifiedSince,
+        pageSize: pageSize,
+      ),
       'polling_tier_assignment' => await gateway.fetchPollingTierAssignment(
         scope: scope,
         operatorId: target.operatorId,
@@ -13862,6 +13877,7 @@ _MobileOperationalPath? _mobileOperationalPath(String path) {
     case 'demo_mode_states':
     case 'data_accuracy_settings':
     case 'data_accuracy_service_period_settings':
+    case 'wage_role_rows':
     case 'polling_tier_assignment':
     case 'first_backfill_status':
       return _MobileOperationalPath(

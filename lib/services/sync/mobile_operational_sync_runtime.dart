@@ -17,6 +17,7 @@ import '../../infrastructure/persistence/sqlite/repositories/sqlite_shift_record
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
 import '../../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../../state/auth_session_notifier.dart';
 import '../realtime/realtime_event.dart';
@@ -208,6 +209,55 @@ Future<void> defaultCrossTenantWipe(String keepRestaurantId) async {
   await SqliteWeeklyPlanSnapshotRepository.instance.wipeForOtherScopes(
     keepRestaurantId,
   );
+  await SqliteWageRoleRowRepository.instance.wipeForOtherScopes(
+    keepRestaurantId,
+  );
+}
+
+bool isMobileOperationalSyncInvalidationEvent(RealtimeEvent event) {
+  if (isBusinessScopeInvalidationEvent(event)) return true;
+  final topic = event.topic.toLowerCase();
+  if (topic.contains('shift_record') ||
+      topic.contains('open_shift_snapshot') ||
+      topic.contains('variance_week') ||
+      topic.contains('demo_mode') ||
+      topic.contains('data_accuracy') ||
+      topic.contains('wage_role') ||
+      topic.contains('wage.role') ||
+      topic.contains('job_code') ||
+      topic.contains('role_job') ||
+      topic.contains('polling_tier') ||
+      topic.contains('selected_star') ||
+      topic.contains('target_cycle') ||
+      topic.contains('active_target_profile') ||
+      topic.contains('target_profile_version') ||
+      topic.contains('weekly_plan_snapshot') ||
+      topic.contains('forecast_context') ||
+      topic.contains('backfill') ||
+      topic.contains('connector_backfill_job') ||
+      topic.contains('business_timing') ||
+      topic.contains('timing')) {
+    return true;
+  }
+  final table = event.payload['table']?.toString().toLowerCase();
+  return table == 'shift_records' ||
+      table == 'open_shift_snapshots' ||
+      table == 'demo_mode_state' ||
+      table == 'data_accuracy_settings' ||
+      table == 'data_accuracy_service_period_settings' ||
+      table == 'wage_role_rows' ||
+      table == 'forge_flow_polling_tier_assignment' ||
+      table == 'selected_star_shift_decisions' ||
+      table == 'target_cycles' ||
+      table == 'active_target_profiles' ||
+      table == 'target_profile_versions' ||
+      table == 'weekly_plan_snapshots' ||
+      table == 'forecast_contexts' ||
+      table == 'forecast_context' ||
+      table == 'connector_backfill_jobs' ||
+      table == 'business_timing_profiles' ||
+      table == 'business_timing_service_periods' ||
+      table == 'restaurant_timing_configs';
 }
 
 class MobileOperationalSyncHost extends StatefulWidget {
@@ -450,43 +500,6 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
   }
 
   bool _isOperationalInvalidation(RealtimeEvent event) {
-    if (isBusinessScopeInvalidationEvent(event)) return true;
-    final topic = event.topic.toLowerCase();
-    if (topic.contains('shift_record') ||
-        topic.contains('open_shift_snapshot') ||
-        topic.contains('variance_week') ||
-        topic.contains('demo_mode') ||
-        topic.contains('data_accuracy') ||
-        topic.contains('polling_tier') ||
-        topic.contains('selected_star') ||
-        topic.contains('target_cycle') ||
-        topic.contains('active_target_profile') ||
-        topic.contains('target_profile_version') ||
-        topic.contains('weekly_plan_snapshot') ||
-        topic.contains('forecast_context') ||
-        topic.contains('backfill') ||
-        topic.contains('connector_backfill_job') ||
-        topic.contains('business_timing') ||
-        topic.contains('timing')) {
-      return true;
-    }
-    final table = event.payload['table']?.toString().toLowerCase();
-    return table == 'shift_records' ||
-        table == 'open_shift_snapshots' ||
-        table == 'demo_mode_state' ||
-        table == 'data_accuracy_settings' ||
-        table == 'data_accuracy_service_period_settings' ||
-        table == 'forge_flow_polling_tier_assignment' ||
-        table == 'selected_star_shift_decisions' ||
-        table == 'target_cycles' ||
-        table == 'active_target_profiles' ||
-        table == 'target_profile_versions' ||
-        table == 'weekly_plan_snapshots' ||
-        table == 'forecast_contexts' ||
-        table == 'forecast_context' ||
-        table == 'connector_backfill_jobs' ||
-        table == 'business_timing_profiles' ||
-        table == 'business_timing_service_periods' ||
-        table == 'restaurant_timing_configs';
+    return isMobileOperationalSyncInvalidationEvent(event);
   }
 }

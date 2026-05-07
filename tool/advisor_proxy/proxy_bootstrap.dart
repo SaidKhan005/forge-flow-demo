@@ -1980,6 +1980,47 @@ class RepositoryMobileOperationalSyncProxyGateway
   }
 
   @override
+  Future<Map<String, Object?>> fetchWageRoleRows({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String? modifiedSince,
+    required int pageSize,
+  }) {
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final params = <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'limit': pageSize + 1,
+      };
+      final cursorSql = _modifiedSinceSql(modifiedSince, params);
+      final rows = await exec.query(
+        'select wage_role_row_id::text as server_id, '
+        'operator_id::text as operator_id, '
+        'location_id::text as location_id, restaurant_id, '
+        'role_name, labor_bucket, hourly_rate, weighted_hours, '
+        'job_code, vendor_id, vendor_role_id, source, is_active, '
+        'effective_at, metadata, created_at, updated_at, updated_by '
+        'from public.wage_role_rows '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'and is_active is true '
+        '$cursorSql'
+        'order by updated_at asc, labor_bucket asc, role_name asc, '
+        'wage_role_row_id asc '
+        'limit @limit',
+        parameters: params,
+      );
+      return _pagePayload(
+        key: 'wage_role_rows',
+        rows: rows,
+        pageSize: pageSize,
+        mapper: _wageRoleRowJson,
+      );
+    });
+  }
+
+  @override
   Future<Map<String, Object?>> fetchPollingTierAssignment({
     required OperatorContext scope,
     required String operatorId,
@@ -2239,6 +2280,29 @@ class RepositoryMobileOperationalSyncProxyGateway
       ),
       'covers_source': row['covers_source'] ?? 'vendor',
       'wage_source': row['wage_source'] ?? 'vendor_per_employee',
+      'created_at': _dateJson(row['created_at']) ?? _todayUtcInstant(),
+      'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
+      'updated_by': row['updated_by'],
+    };
+  }
+
+  static Map<String, Object?> _wageRoleRowJson(PostgresRow row) {
+    return <String, Object?>{
+      'server_id': row['server_id'],
+      'operator_id': row['operator_id'],
+      'location_id': row['location_id'],
+      'restaurant_id': row['restaurant_id'],
+      'role_name': row['role_name'],
+      'labor_bucket': row['labor_bucket'],
+      'hourly_rate': _asDouble(row['hourly_rate']),
+      'weighted_hours': _asDouble(row['weighted_hours']),
+      'job_code': row['job_code'],
+      'vendor_id': row['vendor_id'],
+      'vendor_role_id': row['vendor_role_id'],
+      'source': row['source'] ?? 'operator_manual',
+      'is_active': row['is_active'] ?? true,
+      'effective_at': _dateJson(row['effective_at']) ?? _todayUtcInstant(),
+      'metadata': _jsonMap(row['metadata']),
       'created_at': _dateJson(row['created_at']) ?? _todayUtcInstant(),
       'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
       'updated_by': row['updated_by'],

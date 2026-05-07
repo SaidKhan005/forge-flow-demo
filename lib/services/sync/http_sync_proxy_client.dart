@@ -8,6 +8,7 @@ import '../../domain/models/business_scope.dart';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/restaurant_timing_config.dart';
 import '../../domain/models/service_period_definition.dart';
+import '../../domain/models/wage_role_row.dart';
 import '../../models/shift_record.dart';
 import '../integration/demo_mode_state.dart';
 import '../integration/integration_adapter_common.dart';
@@ -208,6 +209,44 @@ class HttpSyncProxyClient
               _dataAccuracyServicePeriodSettingFromJson(_stringKeyMap(row)),
         )
         .toList(growable: false);
+  }
+
+  @override
+  Future<List<WageRoleRow>> fetchWageRoleRows({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final path = _locationPath(operatorId, locationId, const <String>[
+      'wage_role_rows',
+    ]);
+    final rows = <WageRoleRow>[];
+    String? cursor;
+    while (true) {
+      final body = await _getJson(
+        path,
+        queryParameters: _pageQuery(cursor: cursor, pageSize: 500),
+      );
+      final pageRows = _readList(body, const <String>[
+        'wage_role_rows',
+        'wage_roles',
+        'rows',
+        'items',
+        'data',
+      ]);
+      rows.addAll(
+        pageRows.map(
+          (row) => _wageRoleRowFromJson(
+            _stringKeyMap(row),
+            fallbackRestaurantId: locationId,
+          ),
+        ),
+      );
+      final next =
+          _readString(body['next_cursor']) ?? _readString(body['nextCursor']);
+      if (next == null || next.isEmpty) break;
+      cursor = next;
+    }
+    return rows;
   }
 
   @override
@@ -917,6 +956,34 @@ class HttpSyncProxyClient
     );
   }
 
+  static WageRoleRow _wageRoleRowFromJson(
+    Map<String, dynamic> json, {
+    required String fallbackRestaurantId,
+  }) {
+    return WageRoleRow(
+      restaurantId:
+          _readString(json['restaurant_id']) ??
+          _readString(json['restaurantId']) ??
+          fallbackRestaurantId,
+      roleName:
+          _readString(json['role_name']) ??
+          _readString(json['roleName']) ??
+          _requiredString(json, 'name'),
+      laborBucket:
+          _readString(json['labor_bucket']) ??
+          _readString(json['laborBucket']) ??
+          _requiredString(json, 'bucket'),
+      hourlyRate:
+          _readDouble(json['hourly_rate']) ??
+          _readDouble(json['hourlyRate']) ??
+          _requiredDouble(json, 'rate'),
+      weightedHours:
+          _readDouble(json['weighted_hours']) ??
+          _readDouble(json['weightedHours']) ??
+          _requiredDouble(json, 'hours'),
+    );
+  }
+
   static ForgeFlowPollingTierAssignmentSnapshot _pollingTierFromJson(
     Map<String, dynamic> json,
   ) {
@@ -1017,6 +1084,23 @@ class HttpSyncProxyClient
     if (value is num) return value.toInt();
     if (value is String) return int.tryParse(value);
     return null;
+  }
+
+  static double? _readDouble(Object? value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  static double _requiredDouble(Map<String, dynamic> json, String key) {
+    final value = _readDouble(json[key]);
+    if (value == null) {
+      throw SyncProxyClientException(
+        code: 'malformed_sync_proxy_response',
+        message: 'The sync proxy response was missing "$key".',
+      );
+    }
+    return value;
   }
 
   static List<int> _readIntList(Object? value) {

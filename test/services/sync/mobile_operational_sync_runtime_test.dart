@@ -21,6 +21,7 @@ import 'package:forge_and_flow/domain/models/business_scope.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
+import 'package:forge_and_flow/domain/models/wage_role_row.dart';
 import 'package:forge_and_flow/domain/repositories/open_shift_snapshot_repository.dart';
 import 'package:forge_and_flow/domain/repositories/restaurant_timing_config_repository.dart';
 import 'package:forge_and_flow/domain/repositories/shift_record_repository.dart';
@@ -28,6 +29,7 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/import_trac
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/services/integration/demo_mode_state.dart';
+import 'package:forge_and_flow/services/realtime/realtime_event.dart';
 import 'package:forge_and_flow/services/sync/mobile_operational_sync_runtime.dart';
 import 'package:forge_and_flow/services/sync/postgres_shift_record_to_mobile_sync.dart';
 import 'package:forge_and_flow/services/sync/sync_proxy_client.dart';
@@ -76,6 +78,7 @@ void main() {
       expect(client.shiftCallCount, 1);
       expect(client.demoCallCount, 0);
       expect(client.accuracyCallCount, 0);
+      expect(client.wageRoleRowsCallCount, 0);
       expect(client.tierCallCount, 0);
       expect(client.backfillStatusCallCount, 0);
     });
@@ -194,6 +197,26 @@ void main() {
         returnsNormally,
       );
     });
+
+    test('wage_role_rows realtime events trigger operational sync', () {
+      final tableEvent = RealtimeEvent(
+        eventId: 'evt-wage-table',
+        topic: 'db.change',
+        operatorId: 'op-1',
+        occurredAt: DateTime.utc(2026, 5, 7),
+        payload: const <String, Object?>{'table': 'wage_role_rows'},
+      );
+      final topicEvent = RealtimeEvent(
+        eventId: 'evt-wage-topic',
+        topic: 'settings.invalidate.wage_role_rows',
+        operatorId: 'op-1',
+        occurredAt: DateTime.utc(2026, 5, 7),
+        payload: const <String, Object?>{},
+      );
+
+      expect(isMobileOperationalSyncInvalidationEvent(tableEvent), isTrue);
+      expect(isMobileOperationalSyncInvalidationEvent(topicEvent), isTrue);
+    });
   });
 
   group('PostgresShiftRecordToMobileSync abort cooperation', () {
@@ -256,6 +279,7 @@ void main() {
           reason: 'BUG 2: aux pulls (demo/accuracy/tier) skipped on abort',
         );
         expect(client.accuracyCallCount, 0);
+        expect(client.wageRoleRowsCallCount, 0);
         expect(client.tierCallCount, 0);
         expect(client.backfillStatusCallCount, 0);
       },
@@ -365,6 +389,12 @@ class _StubSyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
   }) async => const <DataAccuracyServicePeriodSetting>[];
+
+  @override
+  Future<List<WageRoleRow>> fetchWageRoleRows({
+    required String operatorId,
+    required String locationId,
+  }) async => const <WageRoleRow>[];
 
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
@@ -482,6 +512,7 @@ class _CountingProxyClient implements SyncProxyClient {
   int openCallCount = 0;
   int demoCallCount = 0;
   int accuracyCallCount = 0;
+  int wageRoleRowsCallCount = 0;
   int tierCallCount = 0;
   int timingCallCount = 0;
   int backfillStatusCallCount = 0;
@@ -551,6 +582,15 @@ class _CountingProxyClient implements SyncProxyClient {
     required String locationId,
   }) async {
     return const <DataAccuracyServicePeriodSetting>[];
+  }
+
+  @override
+  Future<List<WageRoleRow>> fetchWageRoleRows({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    wageRoleRowsCallCount++;
+    return const <WageRoleRow>[];
   }
 
   @override

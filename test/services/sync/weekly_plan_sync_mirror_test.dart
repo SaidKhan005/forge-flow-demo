@@ -4,6 +4,7 @@ import 'package:forge_and_flow/domain/models/demand_forecast_context.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
+import 'package:forge_and_flow/domain/models/wage_role_row.dart';
 import 'package:forge_and_flow/domain/models/weekly_plan_snapshot.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
@@ -318,6 +319,12 @@ class _FakeWeeklyPlanClient
     required String operatorId,
     required String locationId,
   }) async => const <DataAccuracyServicePeriodSetting>[];
+
+  @override
+  Future<List<WageRoleRow>> fetchWageRoleRows({
+    required String operatorId,
+    required String locationId,
+  }) async => const <WageRoleRow>[];
 
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>

@@ -23,12 +23,31 @@ class WageRoleRowDao {
     );
   }
 
+  Future<bool> replaceAll(String restaurantId, List<WageRoleRow> rows) async {
+    return _db.transaction<bool>((txn) async {
+      final deleted = await txn.delete(
+        'wage_role_rows',
+        where: 'restaurant_id = ?',
+        whereArgs: [restaurantId],
+      );
+      var changed = deleted > 0;
+      for (final row in rows) {
+        final map = row.toMap()
+          ..remove('id')
+          ..['restaurant_id'] = restaurantId;
+        await txn.insert(
+          'wage_role_rows',
+          map,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        changed = true;
+      }
+      return changed;
+    });
+  }
+
   Future<void> deleteRow(int id) async {
-    await _db.delete(
-      'wage_role_rows',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await _db.delete('wage_role_rows', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> deleteAll(String restaurantId) async {
@@ -36,6 +55,14 @@ class WageRoleRowDao {
       'wage_role_rows',
       where: 'restaurant_id = ?',
       whereArgs: [restaurantId],
+    );
+  }
+
+  Future<void> wipeForOtherScopes(String keepRestaurantId) async {
+    await _db.delete(
+      'wage_role_rows',
+      where: 'restaurant_id <> ?',
+      whereArgs: [keepRestaurantId],
     );
   }
 }
