@@ -152,13 +152,16 @@ class _ScheduleBuilderContentState
                   children: [
                     AppHeaderStat(
                       label: 'COVERS',
-                      value: notifier.weeklyCovers.toString(),
+                      value: notifier.hasPlan
+                          ? notifier.weeklyCovers.toString()
+                          : '--',
                     ),
                     const SizedBox(width: 8),
                     AppHeaderStat(
                       label: 'SALES',
-                      value:
-                          '\$${Fmt.dollars(notifier.forecastedSales)}',
+                      value: notifier.hasPlan
+                          ? '\$${Fmt.dollars(notifier.forecastedSales)}'
+                          : '--',
                     ),
                   ],
                 ),
@@ -262,10 +265,15 @@ class _DerivedSummaryCards extends StatelessWidget {
         ? '${weekPct.toStringAsFixed(1)}%'
         : '--';
     final cards = [
-      ('FOH HRS', notifier.requiredFohHours.toString()),
-      ('BOH HRS', notifier.requiredBohHours.toString()),
+      ('FOH HRS', hasPlan ? notifier.requiredFohHours.toString() : '--'),
+      ('BOH HRS', hasPlan ? notifier.requiredBohHours.toString() : '--'),
       ('LABOR %', labor()),
-      ('LABOR \$', '\$${Fmt.dollars(notifier.forecastedTotalLaborDollar)}'),
+      (
+        'LABOR \$',
+        hasPlan
+            ? '\$${Fmt.dollars(notifier.forecastedTotalLaborDollar)}'
+            : '--',
+      ),
     ];
 
     return Padding(
@@ -371,6 +379,7 @@ class _CoverBarChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final days = notifier.adjustedDayViews;
     if (days.isEmpty) {
+      final message = _emptySchedulePlanMessage(notifier);
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 16),
         padding: const EdgeInsets.all(16),
@@ -379,7 +388,7 @@ class _CoverBarChart extends StatelessWidget {
           border: Border.all(color: AppColors.rule, width: 1),
         ),
         child: Text(
-          'No forecast data available',
+          message,
           style: AppTextStyles.mono10(color: AppColors.textMuted),
         ),
       );
@@ -516,6 +525,7 @@ class _DayTableState extends State<_DayTable> {
   Widget build(BuildContext context) {
     final days = widget.notifier.adjustedDayViews;
     if (days.isEmpty) {
+      final message = _emptySchedulePlanMessage(widget.notifier);
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 16),
         padding: const EdgeInsets.all(16),
@@ -524,7 +534,7 @@ class _DayTableState extends State<_DayTable> {
           border: Border.all(color: AppColors.rule, width: 1),
         ),
         child: Text(
-          'No schedule plan available',
+          message,
           style: AppTextStyles.mono10(color: AppColors.textMuted),
         ),
       );
@@ -606,5 +616,19 @@ class _DayTableState extends State<_DayTable> {
       ),
     );
   }
+}
+
+String _emptySchedulePlanMessage(ScheduleForecastNotifier notifier) {
+  if (!notifier.isLockedAuthority) {
+    return 'No schedule plan available';
+  }
+
+  return switch (notifier.lockedPlanLoadState) {
+    ScheduleLockedPlanLoadState.loading =>
+      'Loading locked server weekly plan',
+    ScheduleLockedPlanLoadState.unavailable =>
+      'No locked server weekly plan yet',
+    _ => 'No schedule plan available',
+  };
 }
 
