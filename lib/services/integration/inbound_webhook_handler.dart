@@ -289,17 +289,22 @@ extension InboundWebhookFailureKindExt on InboundWebhookFailureKind {
 /// record built at boot (transports, gateways, credential bridges,
 /// sinks) and returns a fully-wired adapter for the requested
 /// `(operatorId, locationId)`.
-typedef PosAdapterFactory = PosAdapter Function({
+///
+/// Returns are `Future<...>` so factories may `await` per-tenant
+/// runtime values (e.g. `PerTenantLocationConfigResolver.resolve`)
+/// before constructing the adapter. Vendors that need no async lookup
+/// can return `Future.value(...)` or be declared with `async =>`.
+typedef PosAdapterFactory = Future<PosAdapter> Function({
   required String operatorId,
   required String locationId,
 });
 
-typedef LaborAdapterFactory = LaborAdapter Function({
+typedef LaborAdapterFactory = Future<LaborAdapter> Function({
   required String operatorId,
   required String locationId,
 });
 
-typedef ReservationAdapterFactory = ReservationAdapter Function({
+typedef ReservationAdapterFactory = Future<ReservationAdapter> Function({
   required String operatorId,
   required String locationId,
 });
@@ -351,8 +356,11 @@ class InboundWebhookHandler {
     // The factory is invoked with the URL-resolved tenant tuple so
     // per-(operator, location) credential bridges materialise
     // correctly — a single global adapter cannot serve multiple
-    // tenants.
-    final adapterDispatch = _resolveAdapter(
+    // tenants. The factory itself is async so that per-tenant deps
+    // (e.g. timezone / rollover hour / webhook URL) resolved from the
+    // DB can be awaited inside the closure before constructing the
+    // adapter.
+    final adapterDispatch = await _resolveAdapter(
       vendorId: vendorId,
       operatorId: operatorId,
       locationId: locationId,
@@ -579,26 +587,35 @@ class InboundWebhookHandler {
   /// [vendorId]. The returned closure forwards directly to the
   /// adapter's `handleWebhook`. The factory is invoked exactly once
   /// per webhook delivery; the resulting adapter is short-lived and
-  /// closes over the per-tenant credential bridges.
-  Future<HandleWebhookResult> Function(HandleWebhookCommand)? _resolveAdapter({
+  /// closes over the per-tenant credential bridges. Factories are
+  /// async so per-tenant runtime values (timezone, rollover hour,
+  /// webhook URL) resolved from `PerTenantLocationConfigResolver`
+  /// can be awaited inside the closure.
+  Future<Future<HandleWebhookResult> Function(HandleWebhookCommand)?>
+      _resolveAdapter({
     required String vendorId,
     required String operatorId,
     required String locationId,
-  }) {
+  }) async {
     final posFactory = posAdapterFactories[vendorId];
     if (posFactory != null) {
-      return posFactory(operatorId: operatorId, locationId: locationId)
-          .handleWebhook;
+      final adapter =
+          await posFactory(operatorId: operatorId, locationId: locationId);
+      return adapter.handleWebhook;
     }
     final laborFactory = laborAdapterFactories[vendorId];
     if (laborFactory != null) {
-      return laborFactory(operatorId: operatorId, locationId: locationId)
-          .handleWebhook;
+      final adapter =
+          await laborFactory(operatorId: operatorId, locationId: locationId);
+      return adapter.handleWebhook;
     }
     final reservationFactory = reservationAdapterFactories[vendorId];
     if (reservationFactory != null) {
-      return reservationFactory(operatorId: operatorId, locationId: locationId)
-          .handleWebhook;
+      final adapter = await reservationFactory(
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      return adapter.handleWebhook;
     }
     return null;
   }

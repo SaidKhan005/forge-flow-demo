@@ -563,7 +563,7 @@ void main() {
         posAdapterFactories: const <String, PosAdapterFactory>{},
         laborAdapterFactories: <String, LaborAdapterFactory>{
           adapter.vendorId:
-              ({required operatorId, required locationId}) => adapter,
+              ({required operatorId, required locationId}) async => adapter,
         },
         reservationAdapterFactories:
             const <String, ReservationAdapterFactory>{},

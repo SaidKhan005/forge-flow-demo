@@ -516,7 +516,7 @@ void main() {
         laborAdapterFactories: const <String, LaborAdapterFactory>{},
         reservationAdapterFactories: <String, ReservationAdapterFactory>{
           adapter.vendorId:
-              ({required operatorId, required locationId}) => adapter,
+              ({required operatorId, required locationId}) async => adapter,
         },
         signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{
           'opentable': verifier,
