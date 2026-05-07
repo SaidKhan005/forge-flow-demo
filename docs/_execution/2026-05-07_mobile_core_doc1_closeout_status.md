@@ -20,7 +20,7 @@ Primary contract:
 
 | Gap | Next slice | Why it remains |
 | --- | --- | --- |
-| Admin/web business-control setting sync inventory | `audit.admin-web-setting-sync` | Doc 1 requires timing/data-accuracy/target-related setting changes to be inventoried and then remediated where mobile behavior depends on them. |
+| Admin/web business-control setting sync inventory | Closed by `docs/_execution/2026-05-07_admin_web_setting_sync_closeout.md` | Inventory is complete as documentation/tracker truth; remaining timing, keyed data accuracy, wage/role, rollup, and operator-blocked proof items are split out in the closeout truth table. |
 | Group/region/company scope rollup truth | `8.business-scope-rollup-truth` | PR #236 intentionally enables location switching only. Higher scopes are listed but not switchable until server rollup snapshots exist. |
 | Connected-device E2E proof | `8.connected-device-e2e-smoke` | Requires a physical or emulator device bound to the real proxy/mobile SQLite flow. |
 | Live provider proof | `8.<vendor>.live.sandbox` per vendor | Requires sandbox/live credentials and operator approval. |
@@ -29,11 +29,9 @@ Primary contract:
 
 ## Next Execution Order
 
-1. Run `audit.admin-web-setting-sync` first because it is code-discovery only
-   and determines whether mobile has any remaining non-operator-blocked logic
-   gaps.
-2. If the audit finds mobile behavior gaps, patch those as narrow remediation
-   slices.
+1. Use `docs/_execution/2026-05-07_admin_web_setting_sync_closeout.md`
+   as the admin/web setting sync truth table.
+2. Patch any non-operator-blocked partials as narrow remediation slices.
 3. Plan group/region/company rollup truth as a separate server-rollup sprint.
 4. Leave connected-device, live-provider, push, and pressure proof on their
    operator-gated tracks.
