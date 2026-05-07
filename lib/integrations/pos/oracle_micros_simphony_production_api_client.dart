@@ -39,7 +39,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' show pow;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:meta/meta.dart';
 import 'package:http/http.dart' as http;
 
 import 'oracle_micros_simphony_pos_adapter.dart';
