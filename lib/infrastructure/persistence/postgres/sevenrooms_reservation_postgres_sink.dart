@@ -316,9 +316,9 @@ class SevenRoomsReservationPostgresSink extends OperatorScopedRepository
       'seated_at, cancelled_at, raw_payload'
       ') values ('
       '@operator_id::uuid, @location_id::uuid, @connection_id::uuid, '
-      '@vendor_id, @vendor_entity_id, @vendor_modified_at, '
-      '@reservation_at, @business_date::date, @party_size, @status, '
-      '@seated_at, @cancelled_at, @raw_payload::jsonb'
+      '@vendor_id, @vendor_entity_id, @vendor_modified_at::timestamptz, '
+      '@reservation_at::timestamptz, @business_date::date, @party_size, @status, '
+      '@seated_at::timestamptz, @cancelled_at::timestamptz, @raw_payload::jsonb'
       ') '
       'on conflict (operator_id, vendor_id, vendor_entity_id, vendor_modified_at) '
       'do nothing',
