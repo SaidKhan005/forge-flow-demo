@@ -4,7 +4,7 @@ import '../domain/repositories/benchmark_selection_summary_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_benchmark_selection_summary_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import 'business_date_authority_service.dart';
-import '../dev/demo_fixture_data.dart';
+import 'baseline_authority_service.dart';
 import 'target_cycle_service.dart';
 import '../models/baseline_candidate_shift.dart';
 import 'baseline_manager_service.dart';

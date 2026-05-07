@@ -30,7 +30,7 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_re
 import '../models/baseline_candidate_shift.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import 'business_date_authority_service.dart';
-import '../dev/demo_fixture_data.dart';
+import 'baseline_authority_service.dart';
 import '../domain/services/recommended_benchmark_selection_service.dart';
 import 'star_target_selection_write_service.dart';
 import 'target_cycle_service.dart';
