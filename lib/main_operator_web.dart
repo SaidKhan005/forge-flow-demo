@@ -55,8 +55,8 @@ import 'operator_web/services/web_team_hierarchy_gateway.dart';
 import 'operator_web/services/web_team_roles_gateway.dart';
 import 'operator_web/services/web_team_sessions_gateway.dart';
 import 'operator_web/services/web_team_users_gateway.dart';
+import 'operator_web/widgets/init_failed_app.dart';
 import 'services/auth/firebase_auth_client_sdk.dart';
-import 'theme/app_theme.dart';
 
 /// Opt-in demo switch. **Must default to false** so a forgotten flag
 /// can never publish demo auth on a public Cloud Run service.
@@ -100,7 +100,7 @@ Future<void> main() async {
     // Fail-closed: any wiring error (Firebase init failure, missing
     // proxy URI, etc.) lands on the calm "wiring failed" surface
     // rather than silently falling back to demo.
-    runApp(_OperatorWebInitFailedApp(error: error, stack: stack));
+    runApp(OperatorWebInitFailedApp(error: error, stack: stack));
   }
 }
 
@@ -208,72 +208,3 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
   String? get currentSessionId => kDemoTeamSessionThisSessionId;
 }
 
-class _OperatorWebInitFailedApp extends StatelessWidget {
-  const _OperatorWebInitFailedApp({required this.error, required this.stack});
-
-  final Object error;
-  final StackTrace stack;
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Forge & Flow - Operator Web Console',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.themeData,
-      home: Scaffold(
-        backgroundColor: AppColors.backgroundDeep,
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.backgroundSurface,
-                    border: Border.all(color: AppColors.borderSubtle, width: 1),
-                  ),
-                  padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Operator Web Console wiring failed',
-                        style: AppTextStyles.mono15(
-                          color: AppColors.textPrimary,
-                          weight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'The Operator Web Console could not initialize. '
-                        'The console fails closed by design - fix '
-                        '`kOperatorWebFirebaseOptions` / '
-                        '`web/firebase-config.js`, set '
-                        '`OPERATOR_WEB_PROXY_BASE_URI`, or relaunch '
-                        'with `--dart-define=OPERATOR_WEB_DEMO_AUTH=true` '
-                        'for the fixture-login walkthrough.',
-                        style: AppTextStyles.body13(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '$error',
-                        style: AppTextStyles.mono10(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
