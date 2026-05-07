@@ -5,7 +5,11 @@ import '../theme/app_theme.dart';
 import '../state/active_target_profile_notifier.dart';
 import 'package:forge_and_flow/services/benchmark_tracker_read_service.dart';
 import '../data/app_defaults.dart';
-import '../dev/demo_fixture_data.dart';
+// ops-debt.demo-fallback-hardening: prod widgets must not import lib/dev/.
+// `BaselineData` and `BaselineRangeGraphModel` are owned by
+// `baseline_authority_service.dart` (Layer 3); the
+// `lib/dev/demo_fixture_data.dart` re-export is demo-only.
+import '../services/baseline_authority_service.dart';
 import '../domain/models/active_target_profile.dart';
 import '../widgets/app_screen_header.dart';
 import '../widgets/daypart_table.dart';

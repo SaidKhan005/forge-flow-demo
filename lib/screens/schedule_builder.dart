@@ -8,7 +8,9 @@ import '../theme/app_theme.dart';
 import '../state/active_target_profile_notifier.dart';
 import '../state/demand_forecast_context_notifier.dart';
 import '../data/app_defaults.dart';
-import '../dev/demo_fixture_data.dart';
+// ops-debt.demo-fallback-hardening: prod widgets must not import lib/dev/.
+// `BaselineData` is owned by `baseline_authority_service.dart` (Layer 3).
+import '../services/baseline_authority_service.dart';
 import '../state/schedule_distribution_weights_notifier.dart';
 import '../domain/models/active_target_profile.dart';
 import '../utils/formatters.dart';

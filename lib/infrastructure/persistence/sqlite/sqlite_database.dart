@@ -9,7 +9,13 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart' as sqflite_mobile;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../../../data/app_defaults.dart';
-import '../../../dev/demo_fixture_data.dart';
+// ops-debt.demo-fallback-hardening: SQLite bootstrap must not import
+// lib/dev/. The only symbol it needs (`BaselineData`) lives in
+// `baseline_authority_service.dart` (Layer 3); the seed code that
+// genuinely depends on demo fixtures has been moved to
+// `lib/dev/sqlite_demo_seeder.dart` (kDemoMode-only) — see
+// `_seedDemoRestaurant` / `_seedDemoActiveTargetProfile` parts.
+import '../../../services/baseline_authority_service.dart';
 import '../../../data/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/domain/services/recommended_benchmark_selection_service.dart';
 import '../../../domain/models/active_target_profile.dart';

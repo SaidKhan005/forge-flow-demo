@@ -9,7 +9,10 @@ import '../models/week_record.dart';
 import 'history_pattern_builder.dart';
 import 'labor_model.dart';
 import '../data/app_defaults.dart';
-import '../dev/demo_fixture_data.dart';
+// ops-debt.demo-fallback-hardening: prod paths must not import lib/dev/.
+// `BaselineData` lives in `baseline_authority_service.dart`; the demo
+// re-export in `lib/dev/demo_fixture_data.dart` is gone from prod code.
+import 'baseline_authority_service.dart';
 import 'mock_replay_data_source_provider.dart';
 import 'shift_service.dart';
 

@@ -27,6 +27,7 @@
 //     bypass.
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'admin/admin_app.dart';
@@ -83,38 +84,60 @@ Future<void> main() async {
   try {
     final authBinding = await _resolveAuthSource();
     final source = authBinding.source;
+    // ops-debt.demo-fallback-hardening: every gateway resolver hard-fails
+    // when `ADMIN_PROXY_BASE_URI` is missing/malformed AND demo mode is
+    // off. Demo mode (`ADMIN_DEMO_AUTH=true`) returns null, which is the
+    // single sanctioned path to the in-memory `_default*DemoGateway`s in
+    // `admin_routes.dart`. A typo in a deployed env var no longer
+    // serves seeded fixtures from a live Cloud Run service.
     final gateway = _resolveOperatorLocationGateway(authBinding.authClient);
-    final pricingGateway = gateway == null
-        ? null
-        : _resolvePricingTierAdminGateway(authBinding.authClient);
-    final dataAccuracyGateway = gateway == null
-        ? null
-        : _resolveDataAccuracyAdminGateway(authBinding.authClient);
-    final corpusGateway = gateway == null
-        ? null
-        : _resolveCorpusAdminGateway(authBinding.authClient);
-    final integrationGateway = gateway == null
-        ? null
-        : _resolveIntegrationAdminGateway(authBinding.authClient);
-    final healthGateway = gateway == null ? null : _resolveHealthAdminGateway();
-    final observabilityGateway = gateway == null
-        ? null
-        : _resolveObservabilityAdminGateway(authBinding.authClient);
-    final featureFlagsGateway = gateway == null
-        ? null
-        : _resolveFeatureFlagsAdminGateway(authBinding.authClient);
-    final debugConsoleGateway = gateway == null
-        ? null
-        : _resolveDebugConsoleAdminGateway(authBinding.authClient);
-    final membersAdminGateway = gateway == null
-        ? null
-        : _resolveMembersAdminGateway(authBinding.authClient);
-    final rolesHierarchySessionsAdminGateway = gateway == null
-        ? null
-        : _resolveRolesHierarchySessionsAdminGateway(authBinding.authClient);
-    final auditedSupportActionsAdminGateway = gateway == null
-        ? null
-        : _resolveAuditedSupportActionsAdminGateway(authBinding.authClient);
+    final pricingGateway = _resolvePricingTierAdminGateway(
+      authBinding.authClient,
+    );
+    final dataAccuracyGateway = _resolveDataAccuracyAdminGateway(
+      authBinding.authClient,
+    );
+    final corpusGateway = _resolveCorpusAdminGateway(authBinding.authClient);
+    final integrationGateway = _resolveIntegrationAdminGateway(
+      authBinding.authClient,
+    );
+    final healthGateway = _resolveHealthAdminGateway();
+    final observabilityGateway = _resolveObservabilityAdminGateway(
+      authBinding.authClient,
+    );
+    final featureFlagsGateway = _resolveFeatureFlagsAdminGateway(
+      authBinding.authClient,
+    );
+    final debugConsoleGateway = _resolveDebugConsoleAdminGateway(
+      authBinding.authClient,
+    );
+    final membersAdminGateway = _resolveMembersAdminGateway(
+      authBinding.authClient,
+    );
+    final rolesHierarchySessionsAdminGateway =
+        _resolveRolesHierarchySessionsAdminGateway(authBinding.authClient);
+    final auditedSupportActionsAdminGateway =
+        _resolveAuditedSupportActionsAdminGateway(authBinding.authClient);
+    // ops-debt.demo-fallback-hardening: emit a Cloud Run-visible banner
+    // listing each gateway's resolved transport so deploy logs make the
+    // live-vs-demo split obvious. Cloud Run captures stdout/stderr at
+    // INFO level, so `debugPrint` is sufficient here.
+    _logAdminGatewayBindings(
+      gateways: <String, Object?>{
+        'operatorLocation': gateway,
+        'pricingTier': pricingGateway,
+        'dataAccuracy': dataAccuracyGateway,
+        'corpus': corpusGateway,
+        'integration': integrationGateway,
+        'health': healthGateway,
+        'observability': observabilityGateway,
+        'featureFlags': featureFlagsGateway,
+        'debugConsole': debugConsoleGateway,
+        'members': membersAdminGateway,
+        'rolesHierarchySessions': rolesHierarchySessionsAdminGateway,
+        'auditedSupportActions': auditedSupportActionsAdminGateway,
+      },
+    );
     final adminApp = AdminConsoleApp(authSource: source);
     // Always wrap with `AdminConsoleServicesScope` so the Pricing /
     // Corpus / Integrations / Feature Flags routes can read
@@ -180,22 +203,16 @@ Future<_AdminAuthBinding> _resolveAuthSource() async {
 /// console. Production runs bind the HTTP-backed gateway with a
 /// Firebase ID-token bearer source. Demo mode returns null, which
 /// lets the route fall back to the seeded in-memory demo gateway in
-/// `admin_routes.dart`.
+/// `admin_routes.dart`. Live mode hard-fails at startup if
+/// `ADMIN_PROXY_BASE_URI` is missing/malformed (ops-debt
+/// .demo-fallback-hardening).
 OperatorLocationAdminGateway? _resolveOperatorLocationGateway(
   FirebaseAuthClient? authClient,
 ) {
   if (_kAdminDemoAuth) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) {
-    throw StateError(
-      'ADMIN_PROXY_BASE_URI is required when ADMIN_DEMO_AUTH is false',
-    );
-  }
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) {
-    throw StateError('ADMIN_PROXY_BASE_URI must be an absolute URI');
-  }
+  final baseUri =
+      _requireAdminProxyBaseUri('operator/location admin gateway');
   return HttpOperatorLocationAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
@@ -211,10 +228,7 @@ PricingTierAdminGateway? _resolvePricingTierAdminGateway(
 ) {
   if (_kAdminDemoAuth) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) return null;
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  final baseUri = _requireAdminProxyBaseUri('pricing tier admin gateway');
   return HttpPricingTierAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
@@ -230,10 +244,8 @@ DataAccuracyAdminGateway? _resolveDataAccuracyAdminGateway(
 ) {
   if (_kAdminDemoAuth) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) return null;
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  final baseUri =
+      _requireAdminProxyBaseUri('data accuracy admin gateway');
   return HttpDataAccuracyAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
@@ -246,10 +258,7 @@ DataAccuracyAdminGateway? _resolveDataAccuracyAdminGateway(
 CorpusAdminGateway? _resolveCorpusAdminGateway(FirebaseAuthClient? authClient) {
   if (_kAdminDemoAuth) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) return null;
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  final baseUri = _requireAdminProxyBaseUri('corpus admin gateway');
   return HttpCorpusAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
@@ -264,10 +273,7 @@ IntegrationAdminGateway? _resolveIntegrationAdminGateway(
 ) {
   if (_kAdminDemoAuth) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) return null;
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  final baseUri = _requireAdminProxyBaseUri('integration admin gateway');
   return HttpIntegrationAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
@@ -282,10 +288,7 @@ IntegrationAdminGateway? _resolveIntegrationAdminGateway(
 /// envelope in `admin_routes.dart`.
 HealthAdminGateway? _resolveHealthAdminGateway() {
   if (_kAdminDemoAuth) return null;
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) return null;
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  final baseUri = _requireAdminProxyBaseUri('health admin gateway');
   return HttpHealthAdminGateway(baseUri: baseUri);
 }
 
@@ -299,10 +302,7 @@ ObservabilityAdminGateway? _resolveObservabilityAdminGateway(
 ) {
   if (_kAdminDemoAuth) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) return null;
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  final baseUri = _requireAdminProxyBaseUri('observability admin gateway');
   return HttpObservabilityAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
@@ -317,10 +317,7 @@ FeatureFlagsAdminGateway? _resolveFeatureFlagsAdminGateway(
 ) {
   if (_kAdminDemoAuth) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) return null;
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  final baseUri = _requireAdminProxyBaseUri('feature flags admin gateway');
   return HttpFeatureFlagsAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
@@ -339,10 +336,7 @@ DebugConsoleAdminGateway? _resolveDebugConsoleAdminGateway(
 ) {
   if (_kAdminDemoAuth) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) return null;
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  final baseUri = _requireAdminProxyBaseUri('debug console admin gateway');
   return HttpDebugConsoleAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
@@ -358,10 +352,7 @@ MembersAdminGateway? _resolveMembersAdminGateway(
 ) {
   if (_kAdminDemoAuth) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) return null;
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  final baseUri = _requireAdminProxyBaseUri('members admin gateway');
   return HttpMembersAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
@@ -377,10 +368,9 @@ RolesHierarchySessionsAdminGateway? _resolveRolesHierarchySessionsAdminGateway(
 ) {
   if (_kAdminDemoAuth) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) return null;
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  final baseUri = _requireAdminProxyBaseUri(
+    'roles hierarchy sessions admin gateway',
+  );
   return HttpRolesHierarchySessionsAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
@@ -396,10 +386,9 @@ AuditedSupportActionsAdminGateway? _resolveAuditedSupportActionsAdminGateway(
 ) {
   if (_kAdminDemoAuth) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
-  final rawBaseUri = _kAdminProxyBaseUri.trim();
-  if (rawBaseUri.isEmpty) return null;
-  final baseUri = Uri.parse(rawBaseUri);
-  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  final baseUri = _requireAdminProxyBaseUri(
+    'audited support actions admin gateway',
+  );
   return HttpAuditedSupportActionsAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
@@ -411,6 +400,73 @@ FirebaseAuthClient _requireLiveAuthClient(FirebaseAuthClient? authClient) {
     throw StateError('live admin auth client is required outside demo mode');
   }
   return authClient;
+}
+
+/// Hard-fails at startup when `ADMIN_PROXY_BASE_URI` is missing or
+/// malformed and `ADMIN_DEMO_AUTH=false`. The gateway label identifies
+/// which surface tripped the failure so the Cloud Run log entry points
+/// at the offending env var (one URI powers all admin gateways, but
+/// surfacing the call site keeps the panic message informative).
+///
+/// This is the centralized fix for the silent demo-fallback violation
+/// (Hard Promise #2 in `CLAUDE.md`): a typo in `ADMIN_PROXY_BASE_URI`
+/// used to coerce 11 admin gateway accessors to `null`, and the routes
+/// then served seeded `_default*DemoGateway` fixtures from a
+/// publicly-deployed Cloud Run service. Now any deploy with a missing
+/// or malformed URI aborts at boot with a clear message.
+@visibleForTesting
+Uri requireAdminProxyBaseUriForTest(String gatewayLabel) =>
+    _requireAdminProxyBaseUri(gatewayLabel);
+
+Uri _requireAdminProxyBaseUri(String gatewayLabel) {
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) {
+    throw StateError(
+      'ADMIN_PROXY_BASE_URI is required when ADMIN_DEMO_AUTH is false '
+      '(needed by $gatewayLabel). Set '
+      '`--dart-define=ADMIN_PROXY_BASE_URI=https://<admin-proxy-host>` '
+      'on the deploy, or relaunch with '
+      '`--dart-define=ADMIN_DEMO_AUTH=true` for the fixture walkthrough. '
+      'Falling back to the in-memory demo gateway on a live deploy is '
+      'forbidden by Hard Promise #2.',
+    );
+  }
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) {
+    throw StateError(
+      'ADMIN_PROXY_BASE_URI must be an absolute URI '
+      '(needed by $gatewayLabel); got `$rawBaseUri`. Falling back to the '
+      'in-memory demo gateway on a live deploy is forbidden by Hard '
+      'Promise #2.',
+    );
+  }
+  return baseUri;
+}
+
+/// Emits a Cloud Run-visible startup banner listing each admin gateway
+/// and which transport it resolved to (`live HTTP` or `demo seed`).
+/// Cloud Run captures stdout/stderr at INFO and surfaces it in the
+/// service's "Logs" tab, so the on-call has a one-line audit of every
+/// gateway's transport every time the admin console boots.
+void _logAdminGatewayBindings({required Map<String, Object?> gateways}) {
+  final mode = _kAdminDemoAuth ? 'demo seed' : 'live HTTP';
+  final rows = <String>[];
+  for (final entry in gateways.entries) {
+    // In demo mode, every gateway is `null` (the route accessors fall
+    // back to `_default*DemoGateway`); in live mode, every gateway is
+    // a non-null Http<Surface>AdminGateway because the resolvers all
+    // hard-fail when the URI is missing. So presence vs absence of the
+    // gateway is a faithful proxy for "which transport is wired".
+    final wired = entry.value != null;
+    final transport = wired ? mode : 'demo seed';
+    rows.add('  ${entry.key.padRight(28)} -> $transport');
+  }
+  // Single multi-line debugPrint so the Cloud Run log line is
+  // self-contained and easy to grep for ("admin gateway bindings").
+  debugPrint(
+    '[main_admin] admin gateway bindings (mode=$mode):\n'
+    '${rows.join('\n')}',
+  );
 }
 
 Future<String> _firebaseIdTokenProvider(FirebaseAuthClient authClient) async {
