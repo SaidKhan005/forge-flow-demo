@@ -83,6 +83,7 @@ RUN flutter config --enable-web \
         --target=lib/main_operator_web.dart \
         --output=build/operator_web \
         --release \
+        --no-web-resources-cdn \
         --dart-define=OPERATOR_WEB_DEMO_AUTH=${OPERATOR_WEB_DEMO_AUTH} \
         --dart-define=OPERATOR_WEB_PROXY_BASE_URI=${OPERATOR_WEB_PROXY_BASE_URI}
 
