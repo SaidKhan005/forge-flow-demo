@@ -1,0 +1,71 @@
+# Forge & Flow — Alert Policy: FIREBASE_PROJECT_ID Unset at Boot
+#
+# Fires when the proxy starts in PROXY_ENVIRONMENT=prod without
+# FIREBASE_PROJECT_ID set. Without this, the proxy falls back to
+# ScaffoldRejectingJwtVerifier, which silently returns 401 to every
+# authenticated request — a worse failure mode than refusing to start.
+#
+# The proxy's evaluateProxyStartup() in proxy_bootstrap.dart detects
+# this and emits event=startup.failure with fields.reason=firebase_project_id_required_in_prod
+# before exiting with code 78. This alert catches it before Cloud Run
+# marks the revision as failed.
+#
+# Platform: Google Cloud Monitoring (log-based alert).
+# Severity: P1 — this is a silent-degrade detector.
+# Notification channel: PagerDuty.
+# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md
+---
+apiVersion: monitoring.googleapis.com/v3
+kind: AlertPolicy
+metadata:
+  name: forge-flow-firebase-project-id-unset
+  labels:
+    component: proxy-startup
+    severity: P1
+    phase: v1-launch
+  annotations:
+    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md
+spec:
+  displayName: "[P1] Proxy Boot Without FIREBASE_PROJECT_ID (Silent Degrade)"
+  documentation:
+    content: |
+      The proxy started in PROXY_ENVIRONMENT=prod without FIREBASE_PROJECT_ID set.
+      The proxy logged event=startup.failure with reason=firebase_project_id_required_in_prod
+      and exited with code 78. Cloud Run will retry until max-instances is hit.
+
+      This is the "silent degrade detector" — without FIREBASE_PROJECT_ID the JWT
+      verifier falls back to ScaffoldRejectingJwtVerifier, which rejects every
+      authenticated route with 401 silently.
+
+      Immediate actions:
+      1. Verify Secret Manager secret exists: gcloud secrets describe FIREBASE_PROJECT_ID --project=__PROJECT__
+      2. Verify the Cloud Run service account has secretAccessor role on the secret.
+      3. Check the Cloud Run service revision environment: gcloud run revisions describe <rev> --region=__REGION__ --format='yaml'
+      4. Add the secret binding to the Cloud Run service if missing:
+         gcloud run services update forge-flow-proxy --update-secrets=FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest --region=__REGION__
+      5. Confirm the new revision boots clean before routing traffic to it.
+
+      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md
+    mimeType: text/markdown
+  conditions:
+    - displayName: Proxy startup failure — firebase_project_id_required_in_prod
+      conditionMatchedLog:
+        # Matches the structured JSON log line emitted by evaluateProxyStartup().
+        # The proxy writes: severity=ERROR event=startup.failure fields.reason=firebase_project_id_required_in_prod
+        filter: >
+          resource.type="cloud_run_revision"
+          AND jsonPayload.event="startup.failure"
+          AND jsonPayload.fields.reason="firebase_project_id_required_in_prod"
+          AND severity="ERROR"
+  alertStrategy:
+    autoClose: 1800s
+    notificationRateLimit:
+      period: 300s  # Re-notify every 5 min until fixed (proxy keeps crashing)
+  combiner: OR
+  severity: CRITICAL
+  notificationChannels:
+    - projects/__PROJECT__/notificationChannels/__PAGERDUTY_CHANNEL_ID__
+  userLabels:
+    routing: pagerduty
+    severity: P1
+    component: proxy-startup

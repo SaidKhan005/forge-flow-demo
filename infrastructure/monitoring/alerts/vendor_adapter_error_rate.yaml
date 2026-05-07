@@ -1,0 +1,76 @@
+# Forge & Flow — Alert Policy: Vendor Adapter Error Rate (Per-Vendor)
+#
+# Fires when any single vendor adapter's error rate exceeds 5% over a
+# 10-minute sliding window. Evaluated per-vendor so a failure in one
+# integration (e.g. Toast POS credential expiry) does not mask healthy
+# adapters in the aggregated signal.
+#
+# Platform: Google Cloud Monitoring.
+# Severity: P2 (P1 if error rate > 25%).
+# Notification channel: PagerDuty.
+# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
+# SLO: docs/contracts/v1_launch_slos.md#vendor-adapter-success-slo (>95% per vendor/day)
+---
+apiVersion: monitoring.googleapis.com/v3
+kind: AlertPolicy
+metadata:
+  name: forge-flow-vendor-adapter-error-rate
+  labels:
+    component: vendor-adapter
+    severity: P2
+    phase: v1-launch
+  annotations:
+    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
+    forge-flow.dev/slo: docs/contracts/v1_launch_slos.md#vendor-adapter-success-slo
+spec:
+  displayName: "[P2] Vendor Adapter Error Rate > 5% (per vendor, 10 min)"
+  documentation:
+    content: |
+      A vendor adapter's error rate has exceeded 5% over the last 10 minutes.
+      The label `vendor_slug` identifies which adapter is failing.
+
+      Common causes by vendor slug:
+      - toast / square / revel / spoton: OAuth token expired → trigger OAuth refresh.
+      - 7shifts / homebase / deputy / when_i_work: scheduling API rate limit hit.
+      - sevenrooms / opentable / tock / resy: reservation API credentials rotated.
+
+      Immediate actions:
+      1. Identify the vendor: check alert label `vendor_slug`.
+      2. Check proxy logs: severity=ERROR event=vendor_adapter.sync.error fields.vendor_slug=<slug>
+      3. If 401 errors: trigger manual OAuth refresh for affected operators.
+      4. If 429 errors: check polling tier and reduce poll frequency.
+      5. If 5xx errors: confirm vendor status page; may be a vendor-side outage.
+
+      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
+    mimeType: text/markdown
+  conditions:
+    - displayName: Per-vendor error rate > 5% over 10 min
+      conditionPrometheusQueryLanguage:
+        # Log-based metric: custom/forgeflow/vendor_adapter/request_count
+        # with labels: vendor_slug, status (success|error).
+        # Error rate = error_count / (error_count + success_count).
+        query: |
+          fetch generic_task::custom.googleapis.com/forgeflow/vendor_adapter/request_count
+          | filter resource.labels.service_name = 'forge-flow-proxy'
+          | group_by [metric.labels.vendor_slug, metric.labels.status],
+              [count: aggregate(value.request_count)]
+          | join
+              errors: filter(metric.labels.status = 'error'),
+              total:  filter(true)
+          | group_by [metric.labels.vendor_slug],
+              [error_rate: safe_divide(sum(errors.count), sum(total.count)) * 100]
+          | condition val(error_rate) > 5
+        duration: 600s  # 10 minutes
+        evaluationInterval: 60s
+  alertStrategy:
+    autoClose: 3600s
+    notificationRateLimit:
+      period: 600s
+  combiner: OR
+  severity: WARNING
+  notificationChannels:
+    - projects/__PROJECT__/notificationChannels/__PAGERDUTY_CHANNEL_ID__
+  userLabels:
+    routing: pagerduty
+    severity: P2
+    component: vendor-adapter

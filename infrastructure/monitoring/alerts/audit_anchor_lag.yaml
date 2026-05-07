@@ -1,0 +1,69 @@
+# Forge & Flow — Alert Policy: Audit Anchor Lag
+#
+# Fires when the most recent successful audit_anchor sweep completion
+# is more than 26 hours ago. The daily job runs at 23:55 UTC; a 26-hour
+# window gives a 2-hour alert buffer before the next expected run.
+# Missing an anchor day breaks the SHA-256 hash chain and may block
+# SOC 2 compliance evidence for that operator-day.
+#
+# Platform: Google Cloud Monitoring.
+# Notification channel: PagerDuty (P1 — compliance-critical).
+# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#audit-anchor-crash
+# SLO: docs/contracts/v1_launch_slos.md (audit-anchor success SLO: 100%)
+---
+apiVersion: monitoring.googleapis.com/v3
+kind: AlertPolicy
+metadata:
+  name: forge-flow-audit-anchor-lag
+  labels:
+    component: audit-anchor
+    severity: P1
+    phase: v1-launch
+  annotations:
+    forge-flow.dev/runbook: runbooks/audit_chain_verify_runbook.md
+    forge-flow.dev/slo: docs/contracts/v1_launch_slos.md#audit-anchor-success-slo
+spec:
+  displayName: "[P1] Audit Anchor Lag > 26h (Compliance)"
+  documentation:
+    content: |
+      The daily audit_anchor sweep has not completed successfully for > 26 hours.
+
+      Compliance impact: HIGH. Missing anchor days break the SHA-256 chain
+      and constitute a gap in SOC 2 evidence.
+
+      Immediate actions:
+      1. Check Cloud Run Job status: gcloud run jobs executions list --job=forge-flow-audit-anchor --region=__REGION__
+      2. Read last execution logs: gcloud logging read 'resource.type="cloud_run_job" resource.labels.job_name="forge-flow-audit-anchor"' --limit=50
+      3. If job failed, trigger manual rerun: gcloud run jobs run forge-flow-audit-anchor --region=__REGION__
+      4. Verify Azure Blob container is reachable and not throttled.
+      5. If rerun succeeds, confirm audit_chain_anchors row inserted for yesterday.
+
+      Runbook: runbooks/audit_chain_verify_runbook.md
+      Stabilization: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#audit-anchor-crash
+    mimeType: text/markdown
+  conditions:
+    - displayName: No successful anchor sweep in 26h
+      conditionPrometheusQueryLanguage:
+        # Log-based metric: custom/forgeflow/audit_anchor/last_success_epoch_seconds
+        # Written by the audit_anchor job on successful completion.
+        # Alert fires when (now - last_success) > 93600 seconds (26h).
+        query: |
+          fetch generic_task::custom.googleapis.com/forgeflow/audit_anchor/last_success_epoch_seconds
+          | filter resource.labels.job_name = 'forge-flow-audit-anchor'
+          | group_by [], max(value.last_success_epoch_seconds)
+          | condition (timestamp_seconds(int64(system.now())) - val()) > 93600
+        duration: 60s
+        evaluationInterval: 300s
+  alertStrategy:
+    autoClose: 7200s
+    notificationRateLimit:
+      period: 1800s  # Re-notify every 30 min while unresolved (compliance urgency)
+  combiner: OR
+  severity: CRITICAL
+  notificationChannels:
+    - projects/__PROJECT__/notificationChannels/__PAGERDUTY_CHANNEL_ID__
+  userLabels:
+    routing: pagerduty
+    severity: P1
+    component: audit-anchor
+    compliance: soc2

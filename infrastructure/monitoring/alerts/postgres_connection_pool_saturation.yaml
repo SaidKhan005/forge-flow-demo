@@ -1,0 +1,64 @@
+# Forge & Flow — Alert Policy: Postgres Connection Pool Saturation
+#
+# Fires when the active Postgres connection pool across the proxy fleet
+# exceeds 80 % of the configured maximum for 5 consecutive minutes.
+# A sustained saturation event causes new inbound requests to queue or
+# reject, degrading Operator Web latency and vendor-adapter syncs.
+#
+# Platform: Google Cloud Monitoring (formerly Stackdriver).
+# Notification channel: PagerDuty (channel named "forgeflow-pagerduty").
+# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md
+# Authority: docs/contracts/v1_launch_slos.md
+---
+apiVersion: monitoring.googleapis.com/v3
+kind: AlertPolicy
+metadata:
+  name: forge-flow-postgres-pool-saturation
+  labels:
+    component: database
+    severity: P1
+    phase: v1-launch
+  annotations:
+    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#postgres-connection-storm
+    forge-flow.dev/slo: docs/contracts/v1_launch_slos.md
+spec:
+  displayName: "[P1] Postgres Connection Pool Saturation > 80%"
+  documentation:
+    content: |
+      The proxy Postgres connection pool is >= 80% saturated for 5+ minutes.
+
+      Immediate actions:
+      1. Check Cloud Run instance count — are replicas at max-instances cap?
+      2. Check for long-running queries: SELECT pid, now()-pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE state = 'active' ORDER BY duration DESC LIMIT 20;
+      3. If a vendor adapter has a stuck connection, see the "vendor adapter wedged" playbook in cutover_4_stabilization_runbook.md.
+      4. If total connections approaching pg_settings max_connections, trigger emergency scale-down of low-priority Cloud Run services.
+
+      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#postgres-connection-storm
+    mimeType: text/markdown
+  conditions:
+    - displayName: Pool saturation > 80% for 5 min
+      conditionPrometheusQueryLanguage:
+        # Metric emitted by the proxy via custom Cloud Monitoring metric.
+        # pool_active_connections / pool_max_connections * 100 > 80.
+        # The proxy logs `fields.pool_utilization_pct` per request; a
+        # Cloud Monitoring log-based metric `custom/forgeflow/proxy/pool_utilization_pct`
+        # aggregates this with ALIGN_MAX over 60-second windows.
+        query: |
+          fetch generic_task::custom.googleapis.com/forgeflow/proxy/pool_utilization_pct
+          | filter resource.labels.service_name = 'forge-flow-proxy'
+          | group_by [resource.labels.service_name], max(value.pool_utilization_pct)
+          | condition val() > 80
+        duration: 300s  # 5 minutes
+        evaluationInterval: 60s
+  alertStrategy:
+    autoClose: 1800s  # Auto-close after 30 min of no data (proxy restarted)
+    notificationRateLimit:
+      period: 300s
+  combiner: OR
+  severity: CRITICAL
+  notificationChannels:
+    - projects/__PROJECT__/notificationChannels/__PAGERDUTY_CHANNEL_ID__
+  userLabels:
+    routing: pagerduty
+    severity: P1
+    component: database
