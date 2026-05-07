@@ -323,6 +323,47 @@ void main() {
       },
     );
   });
+
+  group('CODE_HEALTH W5-LB3 — POOL-ENV stragger', () {
+    test(
+      'POSTGRES_POOL_MAX_CONNECTIONS=12 flows through the worker boot '
+      "resolver into PackagePostgresPool's maxConnectionCount",
+      () {
+        // The worker's `_defaultPoolFactory` calls
+        // `resolvePostgresMaxConnectionsPerPool()` with no args, which
+        // reads `Platform.environment`. The test seam exposes the same
+        // call site with an explicit env so we can assert the override
+        // flows through deterministically.
+        final resolved = integrationSyncWorkerResolvedPoolMaxConnections(
+          environment: const <String, String>{
+            'POSTGRES_POOL_MAX_CONNECTIONS': '12',
+          },
+        );
+        expect(resolved, 12,
+            reason:
+                'POSTGRES_POOL_MAX_CONNECTIONS env override must reach the '
+                'worker boot through resolvePostgresMaxConnectionsPerPool');
+      },
+    );
+
+    test(
+      'no POSTGRES_POOL_MAX_CONNECTIONS env → resolver falls back to the '
+      'default per the postgres_executor contract',
+      () {
+        final resolved = integrationSyncWorkerResolvedPoolMaxConnections(
+          environment: const <String, String>{},
+        );
+        // The resolver default is documented in
+        // `postgres_executor.dart` ("Falls back to 20 when..."); the
+        // call site in worker boot does not override it. We assert the
+        // value is positive (a non-zero integer) rather than pinning
+        // the exact default so the contract test in
+        // `postgres_executor_test.dart` remains the single source of
+        // truth for the fallback number.
+        expect(resolved, greaterThan(0));
+      },
+    );
+  });
 }
 
 // ─── Test fakes ──────────────────────────────────────────────────────
