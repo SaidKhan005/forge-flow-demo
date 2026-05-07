@@ -109,6 +109,17 @@ class EmailTemplateIds {
       'vendor_connection_auto_disabled';
   static const String tosVersionUpdatedNotice = 'tos_version_updated_notice';
 
+  /// V1 status: WIRED. Phase 8 lifecycle fan-out worker
+  /// (`tool/advisor_proxy/email_dispatch/vendor_lifecycle_notification_dispatcher.dart`)
+  /// enqueues one outbox row per matching `vendor_lifecycle_notification`
+  /// row whenever a vendor's lifecycle promotes to
+  /// `production_credentialed`. Source:
+  /// `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`
+  /// ("Triggers the `vendor_now_available` email to operators who
+  /// tapped Notify me when ready") and the V1.E lane in
+  /// `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md`.
+  static const String vendorNowAvailable = 'vendor_now_available';
+
   /// All V1 template ids in the order they appear in the slice doc.
   /// Runtime tests iterate this list to confirm every file renders
   /// with sample data.
@@ -121,6 +132,7 @@ class EmailTemplateIds {
     vendorWebhookSignatureAlert,
     vendorConnectionAutoDisabled,
     tosVersionUpdatedNotice,
+    vendorNowAvailable,
   ];
 }
 
@@ -144,6 +156,8 @@ const Map<String, String> _subjectByTemplate = <String, String>{
       '{{vendorName}} connection disabled',
   EmailTemplateIds.tosVersionUpdatedNotice:
       'Forge & Flow Terms of Service updated',
+  EmailTemplateIds.vendorNowAvailable:
+      '{{vendorName}} is ready to connect in Forge & Flow',
 };
 
 class EmailTemplateRenderer {
