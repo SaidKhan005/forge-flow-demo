@@ -73,8 +73,10 @@ import 'package:http/http.dart' as http;
 import 'package:forge_and_flow/integrations/_common/admin_actor_resolver_bridge.dart'
     as bridge;
 import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dart';
+import 'package:forge_and_flow/services/integration/canonical_fact_post_commit_projector.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
 import 'package:forge_and_flow/services/integration/per_tenant_location_config_resolver.dart';
+import 'package:forge_and_flow/services/integration/projecting_canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/repository_inbound_webhook_gateway.dart';
 import 'package:forge_and_flow/services/integration/repository_integration_routes_gateway.dart';
 
@@ -108,6 +110,21 @@ bool _alreadyBound = false;
 /// from the inbound `Authorization: Bearer ...` header before looking
 /// up the Postgres user UUID.
 ///
+/// [canonicalFactPostCommitProjector] is the projector that drains
+/// `open_shift_snapshots` / `closed_shift_aggregates` from the
+/// just-written canonical facts after each successful sink commit.
+/// When provided alongside [canonicalFactPeriodResolver] +
+/// [canonicalRestaurantIdResolver], the factories build a
+/// [ProjectingCanonicalSink] wrapper for each vendor sink that
+/// directly implements [CanonicalSink] (the 13 of 17 with a uniform
+/// canonical surface; Libro / OpenTable / Tock / SevenRooms expose a
+/// view-based surface that requires per-tenant context). The wrapped
+/// sinks are surfaced through
+/// `factories.projectingSinksByVendor` for downstream `.spine-bridge`
+/// sync worker dispatch. When any of these three is null the
+/// wrapping is skipped — the upstream caller has not yet surfaced a
+/// production-wired projector.
+///
 /// Idempotent — a second call is a no-op. Demo mode (`kDemoMode=true`)
 /// skips the binder entirely with a single info line.
 Future<void> bindPhase8IntegrationsForProduction(
@@ -116,6 +133,9 @@ Future<void> bindPhase8IntegrationsForProduction(
   required ProxyJwtVerifier proxyJwtVerifier,
   http.Client? httpClient,
   Map<String, String>? environmentOverride,
+  CanonicalFactPostCommitProjector? canonicalFactPostCommitProjector,
+  CanonicalFactPeriodResolver? canonicalFactPeriodResolver,
+  CanonicalRestaurantIdResolver? canonicalRestaurantIdResolver,
 }) async {
   if (_alreadyBound) {
     log(
@@ -210,12 +230,16 @@ Future<void> bindPhase8IntegrationsForProduction(
     libroAppCredentials: proxyConfig.hasLibroAppCredentials
         ? proxyConfig.libroAppCredentials
         : null,
+    canonicalFactPostCommitProjector: canonicalFactPostCommitProjector,
+    canonicalFactPeriodResolver: canonicalFactPeriodResolver,
+    canonicalRestaurantIdResolver: canonicalRestaurantIdResolver,
   );
   final posAdapterFactories = factories.posAdapterFactories;
   final laborAdapterFactories = factories.laborAdapterFactories;
   final reservationAdapterFactories = factories.reservationAdapterFactories;
   final signatureVerifiers = factories.signatureVerifiers;
   final disabledVendors = factories.disabledVendors;
+  final projectingSinks = factories.projectingSinksByVendor;
 
   // Step 5 — InboundWebhookHandler.
   final webhookHandler = InboundWebhookHandler(
@@ -258,6 +282,9 @@ Future<void> bindPhase8IntegrationsForProduction(
   );
   Phase80IntegrationRoutes.globalBindings = bindings;
   _alreadyBound = true;
+  _phase8ProjectingSinksByVendor
+    ..clear()
+    ..addAll(projectingSinks);
 
   log(
     LogSeverity.info,
@@ -270,15 +297,37 @@ Future<void> bindPhase8IntegrationsForProduction(
           reservationAdapterFactories.keys.toList()..sort(),
       'signature_verifiers_wired': signatureVerifiers.keys.toList()..sort(),
       'disabled_vendors': disabledVendors,
+      'projector_wiring_active': canonicalFactPostCommitProjector != null &&
+          canonicalFactPeriodResolver != null &&
+          canonicalRestaurantIdResolver != null,
+      'projecting_sinks_wired': projectingSinks.keys.toList()..sort(),
     },
   );
 }
+
+/// Module-level snapshot of the projecting canonical sinks the binder
+/// constructed on its most recent run. Empty before the first call to
+/// [bindPhase8IntegrationsForProduction] or when the caller did not
+/// surface a [CanonicalFactPostCommitProjector] + resolver pair.
+///
+/// Downstream consumers (the production backfill worker; the per-vendor
+/// poll worker) read this map to obtain the [ProjectingCanonicalSink]
+/// view of each vendor's canonical write surface so a successful
+/// commit-signal `appendSyncLog` projects the just-written facts.
+Map<String, ProjectingCanonicalSink> get phase8ProjectingSinksByVendor =>
+    Map<String, ProjectingCanonicalSink>.unmodifiable(
+      _phase8ProjectingSinksByVendor,
+    );
+
+final Map<String, ProjectingCanonicalSink> _phase8ProjectingSinksByVendor =
+    <String, ProjectingCanonicalSink>{};
 
 /// Test helper. Production never invokes this; tests call it between
 /// cases so each can assert against a freshly-installed holder.
 void resetPhase8BinderForTests() {
   _alreadyBound = false;
   Phase80IntegrationRoutes.globalBindings = null;
+  _phase8ProjectingSinksByVendor.clear();
 }
 
 /// Internal bindings holder.

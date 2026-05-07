@@ -168,8 +168,12 @@ import 'package:forge_and_flow/integrations/reservation/tock_reservation_adapter
 import 'package:forge_and_flow/integrations/reservation/tock_reservation_production_api_client.dart';
 import 'package:forge_and_flow/integrations/reservation/tock_webhook_signature_verifier.dart'
     hide kTockVendorId;
+import 'package:forge_and_flow/services/integration/canonical_fact_post_commit_projector.dart';
+import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
+import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/per_tenant_location_config_resolver.dart';
+import 'package:forge_and_flow/services/integration/projecting_canonical_sink.dart';
 
 import 'advisor_proxy.dart'
     show
@@ -214,6 +218,7 @@ class Phase8VendorIntegrationFactories {
     required this.reservationAdapterFactories,
     required this.signatureVerifiers,
     required this.disabledVendors,
+    this.projectingSinksByVendor = const <String, ProjectingCanonicalSink>{},
   });
 
   /// POS adapter factories keyed by vendor id (URL-path form).
@@ -234,6 +239,28 @@ class Phase8VendorIntegrationFactories {
   /// configuration (missing static app credentials, async-only location
   /// config, etc.) instead of throwing a stack-traced StateError.
   final Map<String, String> disabledVendors;
+
+  /// Per-vendor [ProjectingCanonicalSink] wrappers around each vendor's
+  /// [CanonicalSink] view. Populated when the binder threads a
+  /// [CanonicalFactPostCommitProjector] + [CanonicalFactPeriodResolver]
+  /// + [CanonicalRestaurantIdResolver] into the builder; empty
+  /// otherwise.
+  ///
+  /// Wraps the 13 vendor postgres sinks that directly implement
+  /// [CanonicalSink]: Toast, Aloha, Clover, Lightspeed LSK, Oracle
+  /// MICROS Simphony, Revel, Square, ADP, Agendrix, Humanity, Push
+  /// Operations, QuickBooks Time, 7shifts. The 4 view-based sinks
+  /// (Libro, OpenTable, Tock, SevenRooms) expose `CanonicalSink` only
+  /// through `asCanonicalSink(connectionIdResolver: ...)` — wiring
+  /// those requires per-tenant context the binder does not have at
+  /// boot, so they are out of scope here.
+  ///
+  /// The wrapped sinks are not currently fed to the per-vendor
+  /// adapters (which still take vendor-specific sink interfaces); the
+  /// map is the surface downstream `.spine-bridge` sync workers read
+  /// to reach the projecting view of each vendor's canonical write
+  /// surface so a successful commit signal projects buffered facts.
+  final Map<String, ProjectingCanonicalSink> projectingSinksByVendor;
 }
 
 /// Build the per-vendor adapter factory closures, signature verifiers,
@@ -266,6 +293,9 @@ Phase8VendorIntegrationFactories
   QuickBooksTimeAppCredentials? quickBooksTimeAppCredentials,
   SevenShiftsAppCredentials? sevenShiftsAppCredentials,
   LibroAppCredentials? libroAppCredentials,
+  CanonicalFactPostCommitProjector? canonicalFactPostCommitProjector,
+  CanonicalFactPeriodResolver? canonicalFactPeriodResolver,
+  CanonicalRestaurantIdResolver? canonicalRestaurantIdResolver,
 }) {
   // The body uses `wrapper` as a short alias for the parameter so the
   // per-vendor branches read identically to the previous binder body
@@ -277,8 +307,45 @@ Phase8VendorIntegrationFactories
   final reservationAdapterFactories = <String, ReservationAdapterFactory>{};
   final signatureVerifiers = <String, VendorWebhookSignatureVerifier>{};
 
+  // Per-vendor [ProjectingCanonicalSink] wrappers. Wrapping is
+  // active when the caller threads all three projector dependencies
+  // (projector + period resolver + restaurant id resolver). When any
+  // is null, [wrapCanonicalSink] is a no-op and the map stays empty —
+  // the upstream caller has not yet surfaced a production-wired
+  // projector. Vendor adapters are still passed the underlying
+  // vendor-specific sink type (e.g. `ToastFactSink`) — wrapping the
+  // unified [CanonicalSink] view alongside is observability-only at
+  // this layer; downstream `.spine-bridge` sync workers consume the
+  // wrapped surface so a successful canonical-fact commit projects
+  // `open_shift_snapshots` / `closed_shift_aggregates`.
+  final projectingSinksByVendor = <String, ProjectingCanonicalSink>{};
+  final bool projectorWiringActive =
+      canonicalFactPostCommitProjector != null &&
+          canonicalFactPeriodResolver != null &&
+          canonicalRestaurantIdResolver != null;
+  void wrapCanonicalSink({
+    required String vendorId,
+    required IntegrationCategory category,
+    required CanonicalSink underlying,
+  }) {
+    if (!projectorWiringActive) return;
+    projectingSinksByVendor[vendorId] = ProjectingCanonicalSink(
+      underlying: underlying,
+      projector: canonicalFactPostCommitProjector,
+      category: category,
+      vendorId: vendorId,
+      periodResolver: canonicalFactPeriodResolver,
+      restaurantIdResolver: canonicalRestaurantIdResolver,
+    );
+  }
+
   // ─── POS — Toast (PR #247 refresh closure) ──────────────────────────
   final toastSink = ToastPosPostgresSink(wrapper);
+  wrapCanonicalSink(
+    vendorId: kToastVendorId,
+    category: IntegrationCategory.pos,
+    underlying: toastSink,
+  );
   final toastRefresh = makeToastOauthRefreshClosure(
     httpClient: sharedHttpClient,
   );
@@ -309,6 +376,11 @@ Phase8VendorIntegrationFactories
 
   // ─── POS — Aloha NCR Voyix (optional static app credentials) ───────
   final alohaSink = AlohaNcrVoyixPostgresSink(wrapper);
+  wrapCanonicalSink(
+    vendorId: kAlohaNcrVoyixVendorId,
+    category: IntegrationCategory.pos,
+    underlying: alohaSink,
+  );
   if (alohaNcrVoyixCredentials != null) {
     final alohaCreds = alohaNcrVoyixCredentials;
     final alohaRefresh = makeAlohaNcrVoyixOauthRefreshClosure(
@@ -343,6 +415,11 @@ Phase8VendorIntegrationFactories
   // ─── POS — Clover (optional static app credentials) ────────────────
   if (cloverAppCredentials != null) {
     final cloverSink = CloverPostgresSink(wrapper);
+    wrapCanonicalSink(
+      vendorId: kCloverVendorId,
+      category: IntegrationCategory.pos,
+      underlying: cloverSink,
+    );
     final cloverCredStore = CloverPosPostgresCredentialStore(wrapper);
     final cloverAppCreds = cloverAppCredentials;
     final cloverRefresh = makeCloverOauthRefreshClosure(
@@ -404,6 +481,11 @@ Phase8VendorIntegrationFactories
   // hot path is wired separately by the admin-routes binding (which
   // materialises a fully-formed transport).
   final lightspeedLskSink = LightspeedLskPosPostgresSink(wrapper);
+  wrapCanonicalSink(
+    vendorId: kLightspeedLskVendorId,
+    category: IntegrationCategory.pos,
+    underlying: lightspeedLskSink,
+  );
   final lightspeedLskRefresh = makeLightspeedLskOauthRefreshClosure(
     httpClient: sharedHttpClient,
   );
@@ -441,6 +523,11 @@ Phase8VendorIntegrationFactories
 
   // ─── POS — Oracle MICROS Simphony ──────────────────────────────────
   final oracleSink = OracleMicrosSimphonyPostgresSink(wrapper);
+  wrapCanonicalSink(
+    vendorId: kOracleMicrosSimphonyVendorId,
+    category: IntegrationCategory.pos,
+    underlying: oracleSink,
+  );
   final simphonyExchange = makeOracleMicrosSimphonyOauthExchangeClosure(
     httpClient: sharedHttpClient,
   );
@@ -474,6 +561,11 @@ Phase8VendorIntegrationFactories
 
   // ─── POS — Revel ───────────────────────────────────────────────────
   final revelSink = RevelPosPostgresSink(wrapper);
+  wrapCanonicalSink(
+    vendorId: kRevelVendorId,
+    category: IntegrationCategory.pos,
+    underlying: revelSink,
+  );
   posAdapterFactories[kRevelVendorId] = ({
     required String operatorId,
     required String locationId,
@@ -493,6 +585,11 @@ Phase8VendorIntegrationFactories
   // ─── POS — Square (optional static app credentials) ────────────────
   if (squareAppCredentials != null) {
     final squareSink = SquarePosPostgresSink(wrapper);
+    wrapCanonicalSink(
+      vendorId: kSquareVendorId,
+      category: IntegrationCategory.pos,
+      underlying: squareSink,
+    );
     final squareAppCreds = squareAppCredentials;
     final squareRefresh = makeSquareOauthRefreshClosure(
       httpClient: sharedHttpClient,
@@ -545,6 +642,11 @@ Phase8VendorIntegrationFactories
 
   // ─── Labor — ADP ───────────────────────────────────────────────────
   final adpSink = AdpPostgresSink(tenantWrapper: wrapper);
+  wrapCanonicalSink(
+    vendorId: kAdpVendorId,
+    category: IntegrationCategory.labor,
+    underlying: adpSink,
+  );
   laborAdapterFactories[kAdpVendorId] = ({
     required String operatorId,
     required String locationId,
@@ -573,6 +675,11 @@ Phase8VendorIntegrationFactories
 
   // ─── Labor — Agendrix ──────────────────────────────────────────────
   final agendrixSink = AgendrixPostgresSink(tenantWrapper: wrapper);
+  wrapCanonicalSink(
+    vendorId: agendrixVendorId,
+    category: IntegrationCategory.labor,
+    underlying: agendrixSink,
+  );
   final agendrixCredentialStore = AgendrixBrokerCredentialStore(broker: broker);
   laborAdapterFactories[agendrixVendorId] = ({
     required String operatorId,
@@ -592,6 +699,11 @@ Phase8VendorIntegrationFactories
 
   // ─── Labor — Humanity (optional static app credentials) ────────────
   final humanitySink = HumanityPostgresSink(tenantWrapper: wrapper);
+  wrapCanonicalSink(
+    vendorId: kHumanityVendorId,
+    category: IntegrationCategory.labor,
+    underlying: humanitySink,
+  );
   // Humanity uses an app-wide OAuth client_id / client_secret pair
   // surfaced through `ProxyConfig.humanityAppCredentials`. Mirrors the
   // Aloha / Square / Clover warn-and-disable shape: when the typed
@@ -632,6 +744,11 @@ Phase8VendorIntegrationFactories
 
   // ─── Labor — Push Operations ───────────────────────────────────────
   final pushOpsSink = PushOperationsPostgresSink(tenantWrapper: wrapper);
+  wrapCanonicalSink(
+    vendorId: pushOperationsVendorId,
+    category: IntegrationCategory.labor,
+    underlying: pushOpsSink,
+  );
   final pushOpsBearerResolver = makePushOperationsBearerResolver(broker: broker);
   laborAdapterFactories[pushOperationsVendorId] = ({
     required String operatorId,
@@ -651,6 +768,11 @@ Phase8VendorIntegrationFactories
 
   // ─── Labor — QuickBooks Time (optional static app credentials) ─────
   final qbtSink = QuickBooksTimePostgresSink(tenantWrapper: wrapper);
+  wrapCanonicalSink(
+    vendorId: kQuickBooksTimeVendorId,
+    category: IntegrationCategory.labor,
+    underlying: qbtSink,
+  );
   // QuickBooks Time uses an app-wide Intuit client_id / client_secret
   // pair surfaced through `ProxyConfig.quickBooksTimeAppCredentials`.
   // Same warn-and-disable shape as the other optional vendors.
@@ -696,6 +818,11 @@ Phase8VendorIntegrationFactories
 
   // ─── Labor — 7shifts (optional static app credentials) ─────────────
   final sevenShiftsSink = SevenShiftsPostgresSink(tenantWrapper: wrapper);
+  wrapCanonicalSink(
+    vendorId: 'seven_shifts',
+    category: IntegrationCategory.labor,
+    underlying: sevenShiftsSink,
+  );
   // 7shifts uses an app-wide partner registration surfaced through
   // `ProxyConfig.sevenShiftsAppCredentials`. Same warn-and-disable
   // shape as the other optional vendors.
@@ -736,6 +863,14 @@ Phase8VendorIntegrationFactories
 
   // ─── Reservation — Libro (optional static app credentials) ─────────
   final libroSink = LibroPostgresSink(tenantWrapper: wrapper);
+  // Libro / OpenTable / Tock / SevenRooms expose their CanonicalSink
+  // surface as a private view (e.g. `_LibroCanonicalSinkView`) reached
+  // via `asCanonicalSink(connectionIdResolver: ...)`. The resolver
+  // requires per-tenant context the binder does not have at boot, so
+  // these 4 vendors are out of scope for the projecting wrapper at
+  // this layer. Downstream consumers (the spine-bridge sync worker)
+  // construct the view per-(operator, location) and may wrap it
+  // there.
   // Libro uses an app-wide registration surfaced through
   // `ProxyConfig.libroAppCredentials`. Same warn-and-disable shape as
   // the other optional vendors.
@@ -877,6 +1012,7 @@ Phase8VendorIntegrationFactories
     reservationAdapterFactories: reservationAdapterFactories,
     signatureVerifiers: signatureVerifiers,
     disabledVendors: disabledVendors,
+    projectingSinksByVendor: projectingSinksByVendor,
   );
 }
 
