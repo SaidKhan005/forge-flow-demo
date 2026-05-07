@@ -146,6 +146,28 @@ void main() {
           expect(periodRow['covers_source'], 'manual');
           expect(periodRow['wage_source'], 'manual_mix');
 
+          final wageRows = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/wage_role_rows'
+              '?modified_since=2026-05-06T12:00:00Z&page_size=1',
+            ),
+          );
+          expect(wageRows.statusCode, 200);
+          final wageBody = jsonDecode(wageRows.body) as Map<String, Object?>;
+          expect(wageBody['next_cursor'], '2026-05-06T12:30:00.000Z');
+          final rows = wageBody['wage_role_rows'] as List<Object?>;
+          expect(rows, hasLength(1));
+          final wageRow = rows.single as Map<String, Object?>;
+          expect(wageRow['server_id'], 'wage-row-1');
+          expect(wageRow.containsKey('id'), isFalse);
+          expect(wageRow['role_name'], 'Server');
+          expect(wageRow['labor_bucket'], 'foh');
+          expect(wageRow['hourly_rate'], 22.5);
+          expect(wageRow['weighted_hours'], 32.0);
+          expect(wageRow['job_code'], '5001');
+          expect(wageRow['source'], 'operator_manual');
+
           final tier = await _httpGet(
             ctx.client,
             ctx.baseUri.resolve(
@@ -172,6 +194,7 @@ void main() {
             'demo_mode_states:op-1:loc-1',
             'data_accuracy_settings:op-1:loc-1',
             'data_accuracy_service_period_settings:op-1:loc-1',
+            'wage_role_rows:op-1:loc-1:2026-05-06T12:00:00Z:1',
             'polling_tier_assignment:op-1:loc-1',
             'first_backfill_status:op-1:loc-1',
           ]);
@@ -189,6 +212,25 @@ void main() {
           final uri = ctx.baseUri.resolve(
             '/v1/operators/op-1/locations/loc-1/'
             'data_accuracy_service_period_settings',
+          );
+          final post = await _httpRequest(ctx.client, 'POST', uri);
+          expect(post.statusCode, 404);
+          final patch = await _httpRequest(ctx.client, 'PATCH', uri);
+          expect(patch.statusCode, 404);
+          expect(ctx.gateway.calls, isEmpty);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('does not accept writes for wage role rows', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final uri = ctx.baseUri.resolve(
+            '/v1/operators/op-1/locations/loc-1/wage_role_rows',
           );
           final post = await _httpRequest(ctx.client, 'POST', uri);
           expect(post.statusCode, 404);
@@ -481,6 +523,44 @@ class _FakeMobileOperationalSyncGateway
           'updated_by': 'user-1',
         },
       ],
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>> fetchWageRoleRows({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String? modifiedSince,
+    required int pageSize,
+  }) async {
+    calls.add(
+      'wage_role_rows:$operatorId:$locationId:$modifiedSince:$pageSize',
+    );
+    return const <String, Object?>{
+      'wage_role_rows': <Map<String, Object?>>[
+        <String, Object?>{
+          'server_id': 'wage-row-1',
+          'operator_id': 'op-1',
+          'location_id': 'loc-1',
+          'restaurant_id': 'loc-1',
+          'role_name': 'Server',
+          'labor_bucket': 'foh',
+          'hourly_rate': 22.5,
+          'weighted_hours': 32.0,
+          'job_code': '5001',
+          'vendor_id': 'quickbooks_time',
+          'vendor_role_id': '5001',
+          'source': 'operator_manual',
+          'is_active': true,
+          'effective_at': '2026-05-06T12:00:00Z',
+          'metadata': <String, Object?>{'source_label': 'manual mix'},
+          'created_at': '2026-05-06T12:00:00Z',
+          'updated_at': '2026-05-06T12:30:00Z',
+          'updated_by': 'user-1',
+        },
+      ],
+      'next_cursor': '2026-05-06T12:30:00.000Z',
     };
   }
 
