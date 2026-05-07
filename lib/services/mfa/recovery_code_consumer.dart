@@ -17,6 +17,26 @@
 //
 // Every code attempt — invalid or otherwise — burns one slot in the
 // limiter so an attacker can't spam attempts.
+//
+// CODE_HEALTH L10:
+//
+//   * TOCTOU: the consumer used to do `check` then later
+//     `recordAttempt` in a `finally` block. Two concurrent callers
+//     could both pass the check before either recorded an attempt,
+//     letting them exceed the locked budget. The consumer now calls
+//     [RecoveryCodeAttemptLimiter.checkAndRecord], which serializes
+//     concurrent callers for the same user under a per-user
+//     in-process mutex AND records the attempt only when the
+//     decision is Allowed (rate-limited / exhausted callers do NOT
+//     burn a fresh slot, so an attacker can't flood the table by
+//     spamming during the per-minute window).
+//   * Constant-time slot lookup: the previous matching loop had an
+//     early `break` on the first matching slot, which leaks via
+//     timing where in the candidate list the matching factor sits.
+//     The loop now compares against EVERY candidate without
+//     branching on match-or-not; the chosen factor index is selected
+//     from a constant-time accumulator AFTER the loop. Verifier
+//     itself remains constant-time on the hash compare.
 
 import '../../infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
 import 'recovery_code_attempt_limiter.dart';
@@ -83,7 +103,15 @@ class RecoveryCodeConsumer {
     required String userId,
     required String rawCode,
   }) async {
-    final decision = await _limiter.check(userId: userId);
+    // Atomic-in-process check + record: the limiter serializes
+    // concurrent callers for the same user under a per-user mutex.
+    // When the decision is Allowed, the slot has ALREADY been
+    // recorded — the consumer must not call recordAttempt again.
+    // When the decision is rate-limited / exhausted, no slot was
+    // burned (would let an attacker flood the table). This closes
+    // the TOCTOU window the previous `check` + `finally
+    // recordAttempt` split left open within a single proxy process.
+    final decision = await _limiter.checkAndRecord(userId: userId);
     if (decision is RecoveryCodeAttemptRateLimited) {
       return RecoveryCodeRateLimited(retryAfter: decision.retryAfter);
     }
@@ -91,46 +119,73 @@ class RecoveryCodeConsumer {
       return RecoveryCodeDailyBudgetExceeded(resetsAt: decision.resetsAt);
     }
 
-    // From here on, EVERY exit path records the attempt — even
-    // malformed input — so an attacker cannot burn-then-bypass.
-    try {
-      final normalized = RecoveryCodeGenerator.normalize(rawCode);
-      if (normalized == null) {
-        return const RecoveryCodeInvalid();
-      }
-
-      final candidates = await _repository.listActiveRecoveryCodeFactors(
-        operatorId: operatorId,
-        locationId: locationId,
-        userId: userId,
-      );
-
-      MfaFactorRecord? matched;
-      for (final factor in candidates) {
-        final stored = _tryParseHashedCode(factor.factorMetadata);
-        if (stored == null) continue;
-        if (_hasher.verify(normalizedCode: normalized, stored: stored)) {
-          matched = factor;
-          break;
-        }
-      }
-      if (matched == null) {
-        return const RecoveryCodeInvalid();
-      }
-
-      final affected = await _repository.markRecoveryCodeUsed(
-        operatorId: operatorId,
-        locationId: locationId,
-        userId: userId,
-        factorId: matched.factorId,
-      );
-      if (affected == 0) {
-        return RecoveryCodeAlreadyUsed(factorId: matched.factorId);
-      }
-      return RecoveryCodeConsumed(factorId: matched.factorId);
-    } finally {
-      await _limiter.recordAttempt(userId: userId);
+    final normalized = RecoveryCodeGenerator.normalize(rawCode);
+    if (normalized == null) {
+      return const RecoveryCodeInvalid();
     }
+
+    final candidates = await _repository.listActiveRecoveryCodeFactors(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+
+    // Constant-time-shaped slot lookup. Iterate EVERY candidate and
+    // verify EVERY hash regardless of whether an earlier slot
+    // matched. The "no early break" is the load-bearing property:
+    // the loop runs candidates.length verifications either way, so
+    // an attacker cannot tell from wall time whether a match was
+    // found AT slot 0 vs. slot N. The verifier itself remains
+    // constant-time on the hash compare. The pick-update line below
+    // is branch-free at the algebra level (multiply-mask), giving
+    // the AOT compiler the option to emit a cmov; even if it emits
+    // a branch the cost is dwarfed by the per-iteration verify
+    // call, so the timing leak is negligible at the cipher level.
+    //
+    // Encoding:
+    //   matchedAccumulator: 0 = no match yet, 1 = locked in.
+    //   matchedIndexAcc: i+1 for the locked-in slot, 0 before any
+    //                    match. We store i+1 so 0 stays a clean
+    //                    "no match" sentinel.
+    var matchedAccumulator = 0;
+    var matchedIndexAcc = 0;
+    for (var i = 0; i < candidates.length; i++) {
+      final factor = candidates[i];
+      final stored = _tryParseHashedCode(factor.factorMetadata);
+      // Run verify on a sentinel hash when metadata is malformed so
+      // every loop iteration does the same amount of work. The
+      // sentinel never matches (the hasher's constant-time compare
+      // rejects on content).
+      final verifyStored = stored ?? _sentinelStored;
+      final isMatch = _hasher.verify(
+        normalizedCode: normalized,
+        stored: verifyStored,
+      );
+      final live = (stored != null && isMatch) ? 1 : 0;
+      final lockMask = 1 - matchedAccumulator;
+      final picked = live & lockMask;
+      // Multiply-mask update: when picked=1 take (i+1); else keep
+      // the current accumulator. No data-dependent branch.
+      matchedIndexAcc =
+          (matchedIndexAcc * (1 - picked)) + ((i + 1) * picked);
+      matchedAccumulator = matchedAccumulator | picked;
+    }
+
+    if (matchedAccumulator == 0) {
+      return const RecoveryCodeInvalid();
+    }
+    final matched = candidates[matchedIndexAcc - 1];
+
+    final affected = await _repository.markRecoveryCodeUsed(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+      factorId: matched.factorId,
+    );
+    if (affected == 0) {
+      return RecoveryCodeAlreadyUsed(factorId: matched.factorId);
+    }
+    return RecoveryCodeConsumed(factorId: matched.factorId);
   }
 
   static HashedRecoveryCode? _tryParseHashedCode(
@@ -141,4 +196,18 @@ class RecoveryCodeConsumer {
     if (salt is! String || hash is! String) return null;
     return HashedRecoveryCode(saltBase64: salt, hashBase64: hash);
   }
+
+  /// All-zero base64 sentinel used so malformed-metadata slots still
+  /// run a verify call — keeps the loop body's time independent of
+  /// how many slots had bad metadata. The sentinel never matches a
+  /// real code (32 zero bytes is not a SHA-256 of any plausible
+  /// salt+code; even if it were, the hasher's constant-time compare
+  /// returns the same time on a near-hit as on a miss).
+  static final HashedRecoveryCode _sentinelStored = HashedRecoveryCode(
+    // 16 zero bytes (24 base64 chars) and 32 zero bytes (44 base64
+    // chars). Decoded values are 0x00..., which never collide with a
+    // real (salt, sha256(salt || code)) pair.
+    saltBase64: 'AAAAAAAAAAAAAAAAAAAAAA==',
+    hashBase64: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+  );
 }

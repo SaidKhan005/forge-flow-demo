@@ -10,6 +10,17 @@
 // Default policy when HIBP is unavailable is "fail-open + audit"
 // per the plan; high-security operator profiles can flip this via
 // [PasswordChangeService.failClosedOnHibpUnavailable].
+//
+// CODE_HEALTH L10 (HIBP order): the HIBP roundtrip is the only
+// network call on this path. Shape validation runs FIRST so an
+// obviously-invalid candidate (too short, control chars, leading
+// whitespace, etc.) never burns a HIBP request. Beyond saving the
+// outbound HTTP cost, the early return also defends the HIBP rate
+// budget against a brute-force attacker who fires malformed
+// candidates. The history check still runs after HIBP so an
+// otherwise-valid candidate that matches a stored hash also burns
+// the HIBP slot — that's intentional: HIBP results are cached at
+// the proxy edge and represent risk signal regardless of reuse.
 
 import '../../auth/password_policy.dart';
 import 'hibp_pwned_password_screener.dart';
@@ -77,9 +88,27 @@ class PasswordChangeService {
   }) async {
     final rejections = <PasswordChangeRejection>{};
 
+    // CODE_HEALTH L10: shape validation is the cheapest, most
+    // deterministic check + the only one that can prove the
+    // candidate is malformed without consulting any external
+    // dependency. Running it first means an obviously-invalid
+    // password (empty, too short, control chars, edge whitespace)
+    // returns immediately without burning a HIBP roundtrip or a
+    // history-check DB call.
     final shape = PasswordPolicy.validate(candidate);
     if (!shape.isValid) {
       rejections.add(PasswordChangeRejection.violatesPolicy);
+      // Skip HIBP + history when the shape itself failed. The
+      // outcome carries an empty `screenerUnavailable` to signal
+      // "HIBP not consulted"; the proxy's audit emitter logs
+      // `auth.password_change_rejected_shape` rather than the
+      // HIBP-specific events.
+      return PasswordChangeOutcome(
+        allowed: false,
+        rejections: rejections,
+        violations: shape.violations,
+        hibpResult: PwnedPasswordResult.screenerUnavailable,
+      );
     }
 
     final hibpResult = await _hibpScreener.screen(candidate);
