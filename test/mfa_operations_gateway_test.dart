@@ -47,6 +47,17 @@ void main() {
         auditRepo.events.single.eventType,
         equals('auth.mfa_totp_enrolled'),
       );
+      // ops-debt.actor-kind-audit: TOTP enrollment confirm runs on the
+      // user's HTTP path with their JWT; actor and target are the same
+      // user. The 'user' tag pins the actor on the hash-chained
+      // audit_logs row.
+      expect(
+        auditRepo.events.single.actorKind,
+        equals('user'),
+        reason:
+            'TOTP enrollment confirm runs on the HTTP path with the '
+            "actor's JWT and must tag the audit row 'user'",
+      );
     });
 
     test('listFactors projects active TOTP summaries', () async {
@@ -197,6 +208,18 @@ void main() {
         expect(
           auditRepo.events.single.eventType,
           equals('mfa_factor_revocation_initiated'),
+        );
+        // ops-debt.actor-kind-audit: revocation is initiated on the
+        // user's HTTP path with their JWT (the worker-driven completion
+        // is a separate audit row tagged 'system'); this row must
+        // carry actor_kind='user' so audit_logs.actor_user_id pins the
+        // initiating actor.
+        expect(
+          auditRepo.events.single.actorKind,
+          equals('user'),
+          reason:
+              'revocation initiation runs on the HTTP path with the '
+              "actor's JWT and must tag the audit row 'user'",
         );
         expect(
           auditRepo.events.single.payload['factor_id'],
@@ -422,6 +445,15 @@ void main() {
           auditRepo.events.single.eventType,
           equals('mfa_factor_revocation_cancelled'),
         );
+        // ops-debt.actor-kind-audit: cancellation runs on the user's
+        // HTTP path with their JWT.
+        expect(
+          auditRepo.events.single.actorKind,
+          equals('user'),
+          reason:
+              'cancellation runs on the HTTP path with the actor JWT '
+              "and must tag the audit row 'user'",
+        );
         expect(
           auditRepo.events.single.payload['request_id'],
           equals('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
@@ -485,6 +517,18 @@ void main() {
         expect(
           auditRepo.events.single.eventType,
           equals('mfa_factor_revocation_completed'),
+        );
+        // ops-debt.actor-kind-audit: the 24-hour MFA removal worker is
+        // a legacy worker boundary with no human / SP attribution, so
+        // the completion row tags actor_kind='system'. The corresponding
+        // 'mfa_factor_revocation_initiated' row is emitted separately
+        // by the user-path gateway with actor_kind='user'.
+        expect(
+          auditRepo.events.single.actorKind,
+          equals('system'),
+          reason:
+              'MFA removal worker has no human / SP actor and must '
+              "tag the completion audit row 'system'",
         );
         expect(
           outboxRepo.enqueued.single.topic,

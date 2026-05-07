@@ -302,6 +302,7 @@ void main() {
           operatorId: _opA,
           locationId: _locA,
           eventType: 'auth.user.signed_in',
+          actorKind: 'user',
           actorUserId: _userA,
         );
         final tx = pool.transactions.single;

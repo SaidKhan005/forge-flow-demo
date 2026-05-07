@@ -164,6 +164,19 @@ void main() {
         auditRepo.events.first.eventType,
         equals('mfa_factor_revocation_completed'),
       );
+      // ops-debt.actor-kind-audit: the 24-hour MFA removal worker runs
+      // outside any HTTP / SP context and must tag the completion row
+      // 'system' so audit_logs.actor_kind reflects the absence of a
+      // human / SP actor.
+      for (final event in auditRepo.events) {
+        expect(
+          event.actorKind,
+          equals('system'),
+          reason:
+              'MfaRemovalWorker is a legacy worker boundary with no '
+              "actor — every completion row must tag actor_kind='system'",
+        );
+      }
       expect(outbox.enqueued, hasLength(2));
       expect(
         outbox.enqueued.first.topic,
