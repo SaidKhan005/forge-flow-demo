@@ -195,6 +195,7 @@ class ProxyProductionBindings {
     required this.mfaTotpRetryCounter,
     required this.passwordResetThrottleCounter,
     required this.operatorWriteRouter,
+    required this.auditChainAnchorsGateway,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -337,6 +338,13 @@ class ProxyProductionBindings {
   /// [RepositoryOperatorBusinessTimingWriteGateway] +
   /// [ProductionOperatorWriteAuditSink].
   final OperatorWriteRouter operatorWriteRouter;
+
+  /// Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
+  /// Backed by [PostgresAuditChainAnchorsGateway]; the route
+  /// `GET /v1/operator/audit-chain-anchors/latest` reads through this
+  /// so the operator-web Audit Log screen can render an integrity
+  /// badge.
+  final AuditChainAnchorsGateway auditChainAnchorsGateway;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -902,6 +910,15 @@ ProxyProductionBindings buildProxyProductionBindings(
       window: kAuthPasswordResetWindow,
     ),
     operatorWriteRouter: operatorWriteRouter,
+    // Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
+    // Runs through the tenant transaction wrapper so the per-tenant
+    // RLS policy `audit_chain_anchors_per_tenant_select` clamps the
+    // SELECT to the caller's operator. Anchor rows are written by the
+    // L9 Cloud Run sweep (and verified server-side); this binding is
+    // strictly read-only.
+    auditChainAnchorsGateway: PostgresAuditChainAnchorsGateway(
+      tenantWrapper: tenantWrapper,
+    ),
   );
 }
 
@@ -7370,5 +7387,78 @@ const String phase10a2DlqCapEnvVar = 'EVENT_OUTBOX_DLQ_CAP';
 /// look up the producer by name and the deploy verifier can grep the
 /// `/health` envelope without re-declaring the literal.
 const String phase10a2DlqDepthMetricKey = 'event_outbox_dlq_depth';
+
+// ─── Operator Web W4.B — audit_chain_anchors per-tenant read ──────────
+//
+// Production-grade [AuditChainAnchorsGateway] backed by the tenant
+// transaction wrapper. Reads the most-recent
+// `public.audit_chain_anchors` row for the caller's operator using a
+// single indexed lookup against the `audit_chain_anchors_recent_idx`
+// (`(operator_id, chain_date desc)` from
+// `db/migrations/202604280005_phase_9_0sigma_f_audit_logs.sql`). The
+// wrapper issues `SET LOCAL app.operator_id` so the per-tenant RLS
+// policy `audit_chain_anchors_per_tenant_select` clamps the result.
+class PostgresAuditChainAnchorsGateway implements AuditChainAnchorsGateway {
+  PostgresAuditChainAnchorsGateway({
+    required TenantTransactionWrapper tenantWrapper,
+  }) : _tenantWrapper = tenantWrapper;
+
+  final TenantTransactionWrapper _tenantWrapper;
+
+  @override
+  Future<AuditChainAnchorRow?> latestForOperator({
+    required String operatorId,
+    required String locationId,
+    String? userId,
+  }) async {
+    final TenantContext tenantContext;
+    try {
+      tenantContext = TenantContext(
+        operatorId: operatorId,
+        locationId: locationId,
+        userId: userId,
+      );
+    } on TenantContextValidationError {
+      // Defense in depth: a malformed JWT operator/location id should
+      // never reach the route, but if it did we return null so the
+      // route surfaces the unknown badge instead of leaking the SET
+      // LOCAL error to the operator.
+      return null;
+    }
+    return _tenantWrapper.runInTenantContext(tenantContext, (exec) async {
+      final rows = await exec.query(
+        'select chain_date, anchored_at, row_count, blob_uri, '
+        'last_anchor_blob_url, last_anchor_blob_at '
+        'from public.audit_chain_anchors '
+        'where operator_id = @operator_id::uuid '
+        'order by chain_date desc '
+        'limit 1',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final chainDate = row['chain_date'];
+      final anchoredAt = row['anchored_at'];
+      if (chainDate is! DateTime || anchoredAt is! DateTime) return null;
+      final rowCountRaw = row['row_count'];
+      final rowCount = rowCountRaw is num ? rowCountRaw.toInt() : 0;
+      final blobUri = row['blob_uri']?.toString() ?? '';
+      final lastAnchorBlobUrl = row['last_anchor_blob_url']?.toString();
+      final lastAnchorBlobAt = row['last_anchor_blob_at'];
+      return AuditChainAnchorRow(
+        chainDate: chainDate.toUtc(),
+        anchoredAt: anchoredAt.toUtc(),
+        rowCount: rowCount,
+        blobUri: blobUri,
+        lastAnchorBlobUrl:
+            (lastAnchorBlobUrl != null && lastAnchorBlobUrl.isNotEmpty)
+                ? lastAnchorBlobUrl
+                : null,
+        lastAnchorBlobAt:
+            lastAnchorBlobAt is DateTime ? lastAnchorBlobAt.toUtc() : null,
+      );
+    });
+  }
+}
 
 // endregion

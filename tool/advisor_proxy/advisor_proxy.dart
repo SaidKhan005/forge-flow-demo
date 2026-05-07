@@ -77,6 +77,7 @@ import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 
 import '../advisor_corpus/advisor_corpus.dart'
     show CorpusManifest, defaultManifestPath;
+import 'audit_chain_anchors_routes.dart';
 import 'health_operation_budget.dart';
 import 'log.dart';
 import 'business_scope_routes.dart';
@@ -127,6 +128,17 @@ export 'business_scope_routes.dart'
         businessScopesOperatorsPrefix,
         businessScopesResource,
         businessScopesUsersPrefix;
+export 'audit_chain_anchors_routes.dart'
+    show
+        AuditChainAnchorRow,
+        AuditChainAnchorStatus,
+        AuditChainAnchorsGateway,
+        AuditChainAnchorsRouteMatch,
+        AuditChainAnchorsRouteResult,
+        AuditChainAnchorsRouter,
+        auditChainAnchorStatusWire,
+        classifyAnchorStatus,
+        operatorAuditChainAnchorsLatestPath;
 export 'star_target_routes.dart'
     show
         RepositorySelectedStarTargetGateway,
@@ -7996,6 +8008,11 @@ Future<void> routeRequest(
   // environments; when null the route returns a typed 503 and existing
   // token-exact sync behavior is preserved.
   BusinessScopeRouter? businessScopeRouter,
+  // Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
+  // Optional for tests and scaffold environments; when null the route
+  // returns a typed 503 so the Audit Log screen renders the unknown
+  // badge state without crashing.
+  AuditChainAnchorsGateway? auditChainAnchorsGateway,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -8462,6 +8479,63 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'business_scopes_unavailable',
               'message': 'business scopes are unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Operator Web W4.B - per-tenant audit-chain-anchor read.
+        // Operator-scoped: operatorId resolved from the JWT, never
+        // from the URL or body. RLS clamps the read inside the
+        // gateway via the tenant transaction wrapper.
+        final auditChainAnchorMatch =
+            AuditChainAnchorsRouter.match(path, request.method);
+        if (auditChainAnchorMatch != null) {
+          if (auditChainAnchorsGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'audit_chain_anchors_not_configured',
+              'message':
+                  'audit chain anchors gateway is not installed; please retry',
+            });
+            return;
+          }
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+          try {
+            final router = AuditChainAnchorsRouter(
+              gateway: auditChainAnchorsGateway,
+              now: clock,
+            );
+            final result = await router.handle(
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              userId: scope.userId,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'audit_chain_anchors',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'audit_chain_anchors_unavailable',
+              'message':
+                  'audit chain anchor lookup is unavailable; please retry',
             });
           }
           return;
@@ -13095,7 +13169,8 @@ bool _isAdminIntegrationsPath(String path) {
 bool _isAuthCorsPath(String path) {
   return path.startsWith('/v1/auth/') ||
       path.startsWith('/v1/admin/auth/') ||
-      BusinessScopeRouter.match(path, 'GET') != null;
+      BusinessScopeRouter.match(path, 'GET') != null ||
+      AuditChainAnchorsRouter.match(path, 'GET') != null;
 }
 
 bool _isAdminIntegrationsOperation(String path, String method) {

@@ -990,6 +990,12 @@ Future<void> main(List<String> args) async {
             // account routes. Without this binding the routes return
             // 503 operator_write_router_not_configured.
             operatorWriteRouter: productionBindings.operatorWriteRouter,
+            // Operator Web W4.B - per-tenant audit-chain-anchor read
+            // gateway for the operator-web Audit Log integrity badge.
+            // Without this binding the route returns 503
+            // audit_chain_anchors_not_configured.
+            auditChainAnchorsGateway:
+                productionBindings.auditChainAnchorsGateway,
           );
         } catch (error, stack) {
           log(
