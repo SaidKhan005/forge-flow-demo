@@ -75,8 +75,95 @@ const Set<String> _exemptKeys = <String>{
   // 'kFfReservedPlaceholder',       // Future top-level shape.
 };
 
+// ─── Raw-literal scan scope ───────────────────────────────────────
+//
+// The RAW_LITERAL pass enforces that operator-self-service widgets do
+// not bypass the frozen `PermissionKeys.*` catalog at
+// `lib/auth/permission_keys.dart`. Scanned paths are listed below;
+// adding a directory broadens the scope and MUST be a deliberate code
+// change (the explicit allowlist mirrors CODE_OPS_DEBT.md Theme F).
+//
+// Files inside the scope where literal permission-shaped strings are
+// intentional (catalog descriptions, fixture data, audit-log action
+// strings that happen to overlap dotted keys) are listed in
+// `_rawLiteralFileAllowlist`. Each entry carries an inline reason.
+//
+// Per-line escape hatch: append `// ignore-permission-key-lint: <reason>`
+// on the same line as the literal. The lint suppresses the finding for
+// that line only.
+
+/// Repo-relative directory or file paths whose Dart contents the
+/// RAW_LITERAL pass scans. Path separators are normalized to `/` before
+/// matching. Listing a directory matches every `*.dart` file beneath
+/// it (recursive).
+const Set<String> _rawLiteralScanScope = <String>{
+  'lib/operator_web/',
+  'lib/screens/team/',
+  'lib/screens/settings_screen.dart',
+};
+
+/// Files inside `_rawLiteralScanScope` where raw permission-shaped
+/// literals are intentional and the RAW_LITERAL pass MUST NOT flag.
+/// Each entry carries an inline reason. Default keeps the operator-
+/// self-service surfaces clean; the entries below are catalog /
+/// fixture / audit-log-action files that purposely enumerate dotted
+/// keys for non-gating uses.
+const Set<String> _rawLiteralFileAllowlist = <String>{
+  // Renders the verbatim seed-row description for every permission
+  // key in the catalog; the literals are the explainer's data shape,
+  // not an inline gate that bypasses PermissionKeys.*.
+  'lib/operator_web/screens/permission_explainer_screen.dart',
+  // Demo-only role-preset + audit-row fixtures. Replacing every
+  // literal with PermissionKeys.* references would not change the
+  // demo behaviour and is tracked as a separate clean-up slice.
+  'lib/operator_web/services/demo_team_fixtures.dart',
+  // `audit_logs.action` filter constants. The values overlap dotted
+  // permission keys by convention but they are action-string filters,
+  // not gating literals — see the file's class header for the
+  // contract distinction.
+  'lib/operator_web/services/web_team_audit_log_gateway.dart',
+  // Role + permission-snapshot bridging. Out of CODE_OPS_DEBT.md
+  // Theme F slice scope; flagged as a follow-up clean-up.
+  'lib/operator_web/auth/firebase_operator_web_auth_source.dart',
+  // Single `'integrations.configure'` gate; out of Theme F scope,
+  // tracked as follow-up clean-up.
+  'lib/operator_web/screens/vendor_connections_screen.dart',
+  'lib/operator_web/screens/my_account_screen.dart',
+};
+
+/// Permission-key category prefixes the RAW_LITERAL pass treats as a
+/// permission-key shape. A literal `'<category>.<rest>'` whose first
+/// segment is in this set fires a RAW_LITERAL finding when the literal
+/// appears on a non-allowlisted line. Mirrors the categories enumerated
+/// in `lib/auth/permission_keys.dart` (file header).
+const Set<String> _permissionCategoryPrefixes = <String>{
+  'team',
+  'admin',
+  'operator',
+  'product',
+  'forgeflow',
+  'barrio',
+  'billing',
+  'integration',
+  'integrations',
+  'workflow',
+};
+
+/// Per-line escape hatch token. A line that ends with
+/// `// ignore-permission-key-lint: <reason>` (case-insensitive) is
+/// excluded from the RAW_LITERAL pass. The reason text is required so
+/// suppressions are auditable.
+final RegExp _rawLiteralIgnorePattern = RegExp(
+  r'//\s*ignore-permission-key-lint:\s*\S',
+);
+
 /// Code for a finding emitted by the lint.
-enum PermissionKeyFindingCode { orphan, catalogDrift, catalogMissing }
+enum PermissionKeyFindingCode {
+  orphan,
+  catalogDrift,
+  catalogMissing,
+  rawLiteral,
+}
 
 /// Declaration shape for a parsed constant.
 enum PermissionKeyShape { classMember, topLevel }
@@ -88,6 +175,7 @@ class PermissionKeyFinding {
     required this.constName,
     required this.dottedKey,
     required this.detail,
+    this.location = '',
   });
 
   final PermissionKeyFindingCode code;
@@ -104,6 +192,10 @@ class PermissionKeyFinding {
   /// Free-form remediation hint.
   final String detail;
 
+  /// `path:line` of the offending line for `RAW_LITERAL`; empty for
+  /// other finding shapes.
+  final String location;
+
   String get codeString {
     switch (code) {
       case PermissionKeyFindingCode.orphan:
@@ -112,6 +204,8 @@ class PermissionKeyFinding {
         return 'CATALOG_DRIFT';
       case PermissionKeyFindingCode.catalogMissing:
         return 'CATALOG_MISSING';
+      case PermissionKeyFindingCode.rawLiteral:
+        return 'RAW_LITERAL';
     }
   }
 
@@ -119,6 +213,7 @@ class PermissionKeyFinding {
   String toString() {
     final parts = <String>[
       codeString,
+      if (location.isNotEmpty) 'at=$location',
       if (constName.isNotEmpty) 'const=$constName',
       if (dottedKey.isNotEmpty) 'key=$dottedKey',
       if (detail.isNotEmpty) detail,
@@ -156,6 +251,9 @@ class PermissionKeyLintResult {
   Iterable<PermissionKeyFinding> get missing =>
       findings.where((f) => f.code == PermissionKeyFindingCode.catalogMissing);
 
+  Iterable<PermissionKeyFinding> get rawLiterals =>
+      findings.where((f) => f.code == PermissionKeyFindingCode.rawLiteral);
+
   bool get isClean => findings.isEmpty;
 }
 
@@ -167,13 +265,22 @@ class PermissionKeyLintRunner {
     required this.referenceFiles,
     required this.catalogMarkdown,
     Set<String>? exemptKeys,
-  }) : exemptKeys = exemptKeys ?? _exemptKeys;
+    Set<String>? rawLiteralScanScope,
+    Set<String>? rawLiteralFileAllowlist,
+  }) : exemptKeys = exemptKeys ?? _exemptKeys,
+       rawLiteralScanScope = rawLiteralScanScope ?? _rawLiteralScanScope,
+       rawLiteralFileAllowlist =
+           rawLiteralFileAllowlist ?? _rawLiteralFileAllowlist;
 
   /// Source body of `lib/auth/permission_keys.dart`.
   final String permissionKeysSource;
 
   /// Map of `relative-path → file body` for every `*.dart` file in the
   /// ORPHAN-scan scope (lib/, EXCLUDING `lib/auth/permission_keys.dart`).
+  /// Also doubles as the input pool for the RAW_LITERAL pass; the pass
+  /// ignores any file whose path does not fall under
+  /// `rawLiteralScanScope` or that is listed in
+  /// `rawLiteralFileAllowlist`.
   final Map<String, String> referenceFiles;
 
   /// Raw markdown of `docs/contracts/auth_permission_key_catalog.md`.
@@ -181,6 +288,15 @@ class PermissionKeyLintRunner {
 
   /// Constant names exempt from ORPHAN findings.
   final Set<String> exemptKeys;
+
+  /// Repo-relative directory or file paths in scope for the RAW_LITERAL
+  /// pass. Listing a directory matches every `*.dart` file beneath it.
+  final Set<String> rawLiteralScanScope;
+
+  /// Files inside `rawLiteralScanScope` whose raw permission-shaped
+  /// literals are intentional (catalog descriptions, fixtures, audit-
+  /// log action strings) and MUST NOT fire RAW_LITERAL.
+  final Set<String> rawLiteralFileAllowlist;
 
   PermissionKeyLintResult run() {
     final findings = <PermissionKeyFinding>[];
@@ -264,6 +380,17 @@ class PermissionKeyLintRunner {
       }
     }
 
+    // RAW_LITERAL — operator-self-service widgets routed inline strings
+    // around the frozen catalog. Scope: every file under
+    // `rawLiteralScanScope` whose path is not in
+    // `rawLiteralFileAllowlist`. Per-line escape hatch:
+    // `// ignore-permission-key-lint: <reason>` on the same line.
+    findings.addAll(_scanRawLiterals(
+      referenceFiles: referenceFiles,
+      scanScope: rawLiteralScanScope,
+      fileAllowlist: rawLiteralFileAllowlist,
+    ));
+
     return PermissionKeyLintResult(
       findings: findings,
       parsedConstantCount: constants.length,
@@ -273,6 +400,70 @@ class PermissionKeyLintRunner {
       catalogKeyCount: catalogKeys.length,
       exemptCount: exemptKeys.length,
     );
+  }
+}
+
+/// Returns true iff [relPath] (forward-slash form) falls under any
+/// entry in [scope]. A directory entry must end in `/`; a file entry
+/// matches by exact equality.
+bool _pathInScope(String relPath, Set<String> scope) {
+  for (final entry in scope) {
+    if (entry.endsWith('/')) {
+      if (relPath.startsWith(entry)) return true;
+    } else if (relPath == entry) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Permission-key shaped string literal. Anchored on a quote followed
+/// by a lowercase first segment, then at least one `.`-separated
+/// subsegment, and a matching closing quote. Both `'` and `"` literal
+/// styles are accepted (the back-reference forces the pair to match).
+/// The first-segment filter keeps the regex from firing on unrelated
+/// dotted strings (e.g. URL paths, package names); callers cross-check
+/// against `_permissionCategoryPrefixes` before emitting a finding.
+final RegExp _rawLiteralPattern = RegExp(
+  r"""(['"])([a-z][a-z0-9_]*)\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*)\1""",
+);
+
+/// Scans [referenceFiles] for raw permission-key string literals and
+/// returns one RAW_LITERAL finding per offending line.
+Iterable<PermissionKeyFinding> _scanRawLiterals({
+  required Map<String, String> referenceFiles,
+  required Set<String> scanScope,
+  required Set<String> fileAllowlist,
+}) sync* {
+  final entries = referenceFiles.entries.toList()
+    ..sort((a, b) => a.key.compareTo(b.key));
+  for (final entry in entries) {
+    final path = entry.key;
+    if (!_pathInScope(path, scanScope)) continue;
+    if (fileAllowlist.contains(path)) continue;
+    final lines = entry.value.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      if (_rawLiteralIgnorePattern.hasMatch(line)) continue;
+      for (final m in _rawLiteralPattern.allMatches(line)) {
+        final firstSegment = m.group(2)!;
+        if (!_permissionCategoryPrefixes.contains(firstSegment)) continue;
+        final dotted = '$firstSegment.${m.group(3)!}';
+        yield PermissionKeyFinding(
+          code: PermissionKeyFindingCode.rawLiteral,
+          constName: '',
+          dottedKey: dotted,
+          location: '$path:${i + 1}',
+          detail: 'route this through the frozen catalog at '
+              'lib/auth/permission_keys.dart (e.g. PermissionKeys.<name>) '
+              'or add `// ignore-permission-key-lint: <reason>` on the '
+              'same line if the literal is intentional.',
+        );
+        // One finding per line is enough — repeated literals on the
+        // same line share a remediation.
+        break;
+      }
+    }
   }
 }
 
@@ -448,12 +639,15 @@ Future<void> main(List<String> args) async {
     '${result.topLevelCount} top-level k(Ff|Perm)*); '
     '${result.allSetMemberCount} entries in PermissionKeys.all; '
     'catalog declares ${result.catalogKeyCount} dotted key(s); '
-    '${result.exemptCount} exempt entries configured.',
+    '${result.exemptCount} exempt entries configured; '
+    'RAW_LITERAL pass scope: '
+    '${_rawLiteralScanScope.length} root(s), '
+    '${_rawLiteralFileAllowlist.length} file allowlist entry(ies).',
   );
 
   if (result.isClean) {
     stdout.writeln('permission_key_lint: clean — no orphans / drift / '
-        'missing entries.');
+        'missing entries / raw literals.');
     return;
   }
 

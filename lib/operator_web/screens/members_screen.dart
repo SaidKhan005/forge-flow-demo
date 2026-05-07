@@ -46,6 +46,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../auth/permission_keys.dart';
 import '../../services/auth/auth_operations_gateway.dart';
 import '../../services/team/team_users_list_controller.dart';
 import '../auth/operator_web_auth_source.dart';
@@ -77,26 +78,34 @@ const Set<String> kOperatorWebMembersWriteRoles = <String>{
 };
 
 /// Permission-key bound for the Members read surface. Live source
-/// hydrates from `/v1/auth/permissions/snapshot`.
-const String kMembersViewPermissionKey = 'team.users.view';
+/// hydrates from `/v1/auth/permissions/snapshot`. Aliased to the
+/// frozen catalog constant in `lib/auth/permission_keys.dart`.
+const String kMembersViewPermissionKey = PermissionKeys.teamUsersView;
 
-/// Permission-key bound for the Invite member action.
-const String kMembersInvitePermissionKey = 'team.users.invite';
+/// Permission-key bound for the Invite member action. Aliased to the
+/// frozen catalog constant in `lib/auth/permission_keys.dart`.
+const String kMembersInvitePermissionKey = PermissionKeys.teamUsersInvite;
 
 /// Permission-key bound for the Suspend / Reactivate / Soft delete
 /// status mutations. The contract gates each independently, but
-/// surfacing one row-action menu requires at least one of them.
+/// surfacing one row-action menu requires at least one of them. Each
+/// member is aliased to the frozen catalog constant in
+/// `lib/auth/permission_keys.dart`.
 const Set<String> kMembersStatusMutationKeys = <String>{
-  'team.users.deactivate',
-  'team.users.reactivate',
-  'team.users.soft_delete',
+  PermissionKeys.teamUsersDeactivate,
+  PermissionKeys.teamUsersReactivate,
+  PermissionKeys.teamUsersSoftDelete,
 };
 
-/// Permission-key bound for the Reset password action.
-const String kMembersResetPasswordPermissionKey = 'team.users.reset_password';
+/// Permission-key bound for the Reset password action. Aliased to the
+/// frozen catalog constant in `lib/auth/permission_keys.dart`.
+const String kMembersResetPasswordPermissionKey =
+    PermissionKeys.teamUsersResetPassword;
 
 /// Permission-key bound for the Reset two-factor sign-in action.
-const String kMembersResetMfaPermissionKey = 'team.users.reset_mfa';
+/// Aliased to the frozen catalog constant in
+/// `lib/auth/permission_keys.dart`.
+const String kMembersResetMfaPermissionKey = PermissionKeys.teamUsersResetMfa;
 
 /// Status filter chip catalog (locked by the parity contract).
 class MembersStatusOption {

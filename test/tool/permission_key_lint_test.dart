@@ -311,6 +311,257 @@ const String kPermTwo = 'admin.two';
       expect(result.classMemberCount, greaterThan(0));
       expect(result.classMemberCount, equals(result.catalogKeyCount));
     });
+
+    // ─── RAW_LITERAL pass ───────────────────────────────────────────
+    //
+    // Operator-self-service widgets must reach the frozen catalog at
+    // `lib/auth/permission_keys.dart` via `PermissionKeys.<name>`
+    // references. Inline `'team.users.invite'` style literals bypass
+    // the lint and let drift slip in. The RAW_LITERAL pass scans the
+    // operator-self-service widget directories + `settings_screen.dart`
+    // and flags raw permission-shaped literals.
+
+    const _keysSrcWithCatalogConst = '''
+class PermissionKeys {
+  static const String teamUsersView = 'team.users.view';
+  static const Set<String> all = <String>{teamUsersView};
+}
+''';
+    const _catalogWithTeamUsersView = '''
+| `team.users.view` | desc | — |
+''';
+
+    test('flags RAW_LITERAL — raw permission-shaped string in '
+        'operator_web widget', () {
+      final result = PermissionKeyLintRunner(
+        permissionKeysSource: _keysSrcWithCatalogConst,
+        referenceFiles: <String, String>{
+          'lib/operator_web/screens/foo_screen.dart': '''
+import 'package:flutter/material.dart';
+
+class FooScreen {
+  bool canView(Set<String> perms) =>
+      perms.contains('team.users.view');
+}
+''',
+        },
+        catalogMarkdown: _catalogWithTeamUsersView,
+        rawLiteralScanScope: const <String>{'lib/operator_web/'},
+        rawLiteralFileAllowlist: const <String>{},
+      ).run();
+      expect(result.rawLiterals, hasLength(1));
+      final finding = result.rawLiterals.single;
+      expect(finding.dottedKey, 'team.users.view');
+      expect(
+        finding.location,
+        'lib/operator_web/screens/foo_screen.dart:6',
+      );
+      // The other passes stay clean — the test fixture defines
+      // teamUsersView in the catalog and references it via
+      // PermissionKeys.all, so neither ORPHAN nor CATALOG_DRIFT /
+      // CATALOG_MISSING fires.
+      expect(result.orphans, isEmpty);
+      expect(result.drifts, isEmpty);
+      expect(result.missing, isEmpty);
+    });
+
+    test('accepts a `PermissionKeys.<name>` reference — no RAW_LITERAL',
+        () {
+      final result = PermissionKeyLintRunner(
+        permissionKeysSource: _keysSrcWithCatalogConst,
+        referenceFiles: <String, String>{
+          'lib/operator_web/screens/foo_screen.dart': '''
+import 'package:flutter/material.dart';
+import '../../auth/permission_keys.dart';
+
+class FooScreen {
+  bool canView(Set<String> perms) =>
+      perms.contains(PermissionKeys.teamUsersView);
+}
+''',
+        },
+        catalogMarkdown: _catalogWithTeamUsersView,
+        rawLiteralScanScope: const <String>{'lib/operator_web/'},
+        rawLiteralFileAllowlist: const <String>{},
+      ).run();
+      expect(result.rawLiterals, isEmpty);
+    });
+
+    test('accepts an aliased top-level constant pointing at the catalog '
+        '— no RAW_LITERAL on the alias declaration line', () {
+      // Operator-web screens declare named permission constants for
+      // their own surface (e.g. `kHierarchyViewPermissionKey`) and
+      // alias them to the frozen catalog: `= PermissionKeys.teamUsersView;`.
+      // The alias has no string literal in the right-hand side so the
+      // RAW_LITERAL pass must not flag it.
+      final result = PermissionKeyLintRunner(
+        permissionKeysSource: _keysSrcWithCatalogConst,
+        referenceFiles: <String, String>{
+          'lib/operator_web/screens/foo_screen.dart': '''
+import '../../auth/permission_keys.dart';
+
+const String kFooViewPermissionKey = PermissionKeys.teamUsersView;
+
+class FooScreen {
+  bool canView(Set<String> perms) =>
+      perms.contains(kFooViewPermissionKey);
+}
+''',
+        },
+        catalogMarkdown: _catalogWithTeamUsersView,
+        rawLiteralScanScope: const <String>{'lib/operator_web/'},
+        rawLiteralFileAllowlist: const <String>{},
+      ).run();
+      expect(result.rawLiterals, isEmpty);
+    });
+
+    test('honours the per-line `// ignore-permission-key-lint:` '
+        'escape hatch', () {
+      final result = PermissionKeyLintRunner(
+        permissionKeysSource: _keysSrcWithCatalogConst,
+        referenceFiles: <String, String>{
+          'lib/operator_web/screens/foo_screen.dart': '''
+class FooScreen {
+  static const String legacyKey =
+      'team.users.view'; // ignore-permission-key-lint: legacy migration row
+}
+''',
+        },
+        catalogMarkdown: _catalogWithTeamUsersView,
+        rawLiteralScanScope: const <String>{'lib/operator_web/'},
+        rawLiteralFileAllowlist: const <String>{},
+      ).run();
+      expect(result.rawLiterals, isEmpty);
+    });
+
+    test('honours the file-level allowlist — explainer catalog + demo '
+        'fixture files are exempt', () {
+      final result = PermissionKeyLintRunner(
+        permissionKeysSource: _keysSrcWithCatalogConst,
+        referenceFiles: <String, String>{
+          'lib/operator_web/screens/permission_explainer_screen.dart': '''
+const Map<String, String> kPermissionExplainerDescriptions =
+    <String, String>{
+  'team.users.view': "View the operator's user list.",
+};
+''',
+        },
+        catalogMarkdown: _catalogWithTeamUsersView,
+        rawLiteralScanScope: const <String>{'lib/operator_web/'},
+        rawLiteralFileAllowlist: const <String>{
+          'lib/operator_web/screens/permission_explainer_screen.dart',
+        },
+      ).run();
+      expect(result.rawLiterals, isEmpty);
+    });
+
+    test('RAW_LITERAL pass ignores files outside the configured scope',
+        () {
+      // A literal in `lib/services/...` is out of scope; the RAW_LITERAL
+      // pass MUST ignore it. (The orphan / catalog passes still apply
+      // — but with an empty key set they have nothing to flag here.)
+      final result = PermissionKeyLintRunner(
+        permissionKeysSource: _keysSrcWithCatalogConst,
+        referenceFiles: <String, String>{
+          'lib/services/some_service.dart': '''
+final perm = 'team.users.view';
+''',
+        },
+        catalogMarkdown: _catalogWithTeamUsersView,
+        rawLiteralScanScope: const <String>{'lib/operator_web/'},
+        rawLiteralFileAllowlist: const <String>{},
+      ).run();
+      expect(result.rawLiterals, isEmpty);
+    });
+
+    test('RAW_LITERAL pass ignores literals whose first segment is not '
+        'a permission category', () {
+      // `package.json`-style dotted strings, URL paths, and other
+      // dotted identifiers that share the literal shape but whose first
+      // segment is not in `_permissionCategoryPrefixes` must pass.
+      final result = PermissionKeyLintRunner(
+        permissionKeysSource: _keysSrcWithCatalogConst,
+        referenceFiles: <String, String>{
+          'lib/operator_web/screens/foo_screen.dart': '''
+final pkg = 'package.flutter.material';
+final url = 'api.v1.endpoint';
+''',
+        },
+        catalogMarkdown: _catalogWithTeamUsersView,
+        rawLiteralScanScope: const <String>{'lib/operator_web/'},
+        rawLiteralFileAllowlist: const <String>{},
+      ).run();
+      expect(result.rawLiterals, isEmpty);
+    });
+
+    test('RAW_LITERAL pass scans the named single-file scope entry '
+        '(settings_screen.dart)', () {
+      final result = PermissionKeyLintRunner(
+        permissionKeysSource: _keysSrcWithCatalogConst,
+        referenceFiles: <String, String>{
+          'lib/screens/settings_screen.dart': '''
+final perms = <String>{'team.users.view'};
+''',
+        },
+        catalogMarkdown: _catalogWithTeamUsersView,
+        rawLiteralScanScope: const <String>{
+          'lib/screens/settings_screen.dart',
+        },
+        rawLiteralFileAllowlist: const <String>{},
+      ).run();
+      expect(result.rawLiterals, hasLength(1));
+      expect(
+        result.rawLiterals.single.location,
+        'lib/screens/settings_screen.dart:1',
+      );
+    });
+
+    test('RAW_LITERAL pass fires on every permission-category prefix '
+        '(team / admin / operator / product / forgeflow / barrio / '
+        'billing / integration / integrations / workflow)', () {
+      // Pin every category prefix the lint treats as a permission-key
+      // shape. Each literal is on its own file so the per-line collapse
+      // does not hide a missing prefix; the test fails loudly if a new
+      // category is added to `_permissionCategoryPrefixes` without a
+      // corresponding test row here.
+      const probes = <String, String>{
+        'lib/operator_web/screens/probe_team.dart':
+            "final p = 'team.users.view';",
+        'lib/operator_web/screens/probe_admin.dart':
+            "final p = 'admin.audit_log.view';",
+        'lib/operator_web/screens/probe_operator.dart':
+            "final p = 'operator.something.do';",
+        'lib/operator_web/screens/probe_product.dart':
+            "final p = 'product.forgeflow.access';",
+        'lib/operator_web/screens/probe_forgeflow.dart':
+            "final p = 'forgeflow.shift.view';",
+        'lib/operator_web/screens/probe_barrio.dart':
+            "final p = 'barrio.handbook.view';",
+        'lib/operator_web/screens/probe_billing.dart':
+            "final p = 'billing.invoice.view';",
+        'lib/operator_web/screens/probe_integration.dart':
+            "final p = 'integration.toast.view';",
+        'lib/operator_web/screens/probe_integrations.dart':
+            "final p = 'integrations.configure';",
+        'lib/operator_web/screens/probe_workflow.dart':
+            "final p = 'workflow.run';",
+      };
+      final result = PermissionKeyLintRunner(
+        permissionKeysSource: _keysSrcWithCatalogConst,
+        referenceFiles: probes,
+        catalogMarkdown: _catalogWithTeamUsersView,
+        rawLiteralScanScope: const <String>{'lib/operator_web/'},
+        rawLiteralFileAllowlist: const <String>{},
+      ).run();
+      // One finding per probe file → ten findings total.
+      expect(result.rawLiterals, hasLength(probes.length));
+      // Every probe location is reported with `path:line` form so a
+      // failing CI run points the operator at the offending line.
+      for (final loc
+          in result.rawLiterals.map((f) => f.location).toList()..sort()) {
+        expect(loc, matches(RegExp(r'^lib/operator_web/screens/probe_\w+\.dart:1$')));
+      }
+    });
   });
 }
 

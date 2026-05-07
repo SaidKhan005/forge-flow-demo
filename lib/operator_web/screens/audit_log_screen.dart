@@ -48,6 +48,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../auth/permission_keys.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_audit_chain_anchors_gateway_provider.dart';
 import '../services/web_team_audit_log_gateway.dart';
@@ -56,11 +57,13 @@ import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 
 /// Permission-key bound for the Audit Log read surface. Live source
-/// hydrates from `/v1/auth/permissions/snapshot`.
-const String kAuditLogViewPermissionKey = 'team.audit_log.view';
+/// hydrates from `/v1/auth/permissions/snapshot`. Aliased to the
+/// frozen catalog constant in `lib/auth/permission_keys.dart`.
+const String kAuditLogViewPermissionKey = PermissionKeys.teamAuditLogView;
 
-/// Permission-key bound for the CSV export action.
-const String kAuditLogExportPermissionKey = 'team.audit_log.export';
+/// Permission-key bound for the CSV export action. Aliased to the
+/// frozen catalog constant in `lib/auth/permission_keys.dart`.
+const String kAuditLogExportPermissionKey = PermissionKeys.teamAuditLogExport;
 
 /// Roles admitted to the Audit Log read surface when the proxy
 /// permission snapshot is not yet hydrated. Authoritative gate is the

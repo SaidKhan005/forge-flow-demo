@@ -57,11 +57,14 @@ const Set<String> kOperatorWebRolesWriteRoles = <String>{
   'operator_admin',
 };
 
-/// Permission-key bound for the read surface.
-const String kRolesViewPermissionKey = 'team.roles.view';
+/// Permission-key bound for the read surface. Aliased to the frozen
+/// catalog constant in `lib/auth/permission_keys.dart`.
+const String kRolesViewPermissionKey = PermissionKeys.teamRolesView;
 
 /// Permission-key bound for the create / patch / delete actions.
-const String kRolesWritePermissionKey = 'team.roles.create_custom';
+/// Aliased to the frozen catalog constant in
+/// `lib/auth/permission_keys.dart`.
+const String kRolesWritePermissionKey = PermissionKeys.teamRolesCreateCustom;
 
 /// Operator Web Roles screen.
 class RolesScreen extends StatefulWidget {
