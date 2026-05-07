@@ -643,6 +643,14 @@ class MobilePushNotificationCoordinator
     return next;
   }
 
+  /// Re-validates the FCM token when the app resumes from background.
+  /// Ensures the token is fresh and synchronized with the backend.
+  /// Gracefully handles cases where the token is not yet initialized.
+  Future<void> reValidateToken() async {
+    if (!_environment.isMobile) return;
+    await _syncRegistration();
+  }
+
   @override
   Future<void> dispose() async {
     await _foregroundSubscription?.cancel();

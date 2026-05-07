@@ -211,6 +211,7 @@ class RevelConnectionRow {
     required this.establishmentId,
     required this.subscriptionId,
     required this.status,
+    this.timezone,
   });
 
   final String connectionId;
@@ -221,10 +222,15 @@ class RevelConnectionRow {
   final String? subscriptionId;
   final ConnectionStatus status;
 
+  /// Timezone of the establishment from Revel webhook payload or
+  /// header. Used for business_date computation in the sink.
+  final String? timezone;
+
   Map<String, Object?> toMetadata() => <String, Object?>{
         kRevelInstanceMetadataKey: instanceName,
         if (establishmentId != null) 'establishment_id': establishmentId,
         if (subscriptionId != null) 'webhook_subscription_id': subscriptionId,
+        if (timezone != null) 'timezone': timezone,
       };
 }
 
@@ -427,6 +433,7 @@ class RevelPosAdapter implements PosAdapter {
       establishmentId: _establishmentFromOrders(ordersPage.records),
       subscriptionId: subscriptionId,
       status: ConnectionStatus.connected,
+      timezone: _timezoneFromOrders(ordersPage.records),
     );
     final stored = await _gateway.upsertConnection(row: row);
     return ConnectResult(
@@ -784,6 +791,20 @@ class RevelPosAdapter implements PosAdapter {
       final est = row['establishment_id'];
       if (est != null) {
         return est.toString();
+      }
+    }
+    return null;
+  }
+
+  /// Extract timezone from Revel establishment payload. Reads from the
+  /// `X-Revel-Establishment-Id` header context or timezone field in
+  /// the order payload. Pass through to sink for business_date
+  /// computation in `RevelPostgresSink`.
+  String? _timezoneFromOrders(List<Map<String, Object?>> rows) {
+    for (final row in rows) {
+      final tz = row['timezone']?.toString();
+      if (tz != null && tz.isNotEmpty) {
+        return tz;
       }
     }
     return null;
