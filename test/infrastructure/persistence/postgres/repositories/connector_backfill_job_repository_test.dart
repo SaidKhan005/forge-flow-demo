@@ -255,6 +255,512 @@ void main() {
       },
     );
   });
+
+  // V1.F NEW coverage — input validation, state-transition guards,
+  // tenant isolation, RLS-block diagnostic, and mark* SQL shapes.
+  group('ConnectorBackfillJobRepository.enqueueFirstBackfill (NEW)', () {
+    test(
+      'forwards SET LOCAL operator_id, location_id, and user_id before '
+      'executing the enqueue CTE',
+      () async {
+        final pool = _Pool(
+          enqueueRows: <PostgresRow>[_jobRow(status: 'pending')],
+        );
+        final repo = ConnectorBackfillJobRepository(
+          TenantTransactionWrapper(pool),
+        );
+        await repo.enqueueFirstBackfill(
+          operatorId: _op,
+          locationId: _loc,
+          connectionId: _connection,
+          vendorId: 'square',
+          category: IntegrationCategory.pos,
+          windowStart: DateTime.utc(2026, 3, 7, 12),
+          windowEnd: DateTime.utc(2026, 5, 6, 12),
+          actorUserId: _actor,
+        );
+
+        final tx = pool.transactions.single;
+        final firstWriteIndex = tx.executedSql.indexWhere(
+          (sql) => sql.contains('connector_backfill_jobs'),
+        );
+        expect(
+          firstWriteIndex,
+          greaterThan(2),
+          reason: 'tenant SET LOCAL trio must run BEFORE the table is touched',
+        );
+        expect(
+          tx.executedSql.take(firstWriteIndex),
+          containsAll(<Matcher>[
+            contains("set_config('app.operator_id'"),
+            contains("set_config('app.location_id'"),
+            contains("set_config('app.user_id'"),
+          ]),
+        );
+      },
+    );
+
+    test('rejects blank connectionId / vendorId before opening a tx', () async {
+      final pool = _Pool();
+      final repo = ConnectorBackfillJobRepository(
+        TenantTransactionWrapper(pool),
+      );
+      expect(
+        () => repo.enqueueFirstBackfill(
+          operatorId: _op,
+          locationId: _loc,
+          connectionId: '   ',
+          vendorId: 'square',
+          category: IntegrationCategory.pos,
+          windowStart: DateTime.utc(2026, 3, 7, 12),
+          windowEnd: DateTime.utc(2026, 5, 6, 12),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => repo.enqueueFirstBackfill(
+          operatorId: _op,
+          locationId: _loc,
+          connectionId: _connection,
+          vendorId: '  ',
+          category: IntegrationCategory.pos,
+          windowStart: DateTime.utc(2026, 3, 7, 12),
+          windowEnd: DateTime.utc(2026, 5, 6, 12),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        pool.transactions,
+        isEmpty,
+        reason: 'guard rails must run before any transaction opens',
+      );
+    });
+
+    test(
+      'throws StateError when both the CTE and the SELECT-fallback '
+      'return zero rows (RLS denied or active row vanished)',
+      () async {
+        final pool = _Pool(
+          enqueueRows: const <PostgresRow>[],
+          fallbackRows: const <PostgresRow>[],
+        );
+        final repo = ConnectorBackfillJobRepository(
+          TenantTransactionWrapper(pool),
+        );
+        expect(
+          () => repo.enqueueFirstBackfill(
+            operatorId: _op,
+            locationId: _loc,
+            connectionId: _connection,
+            vendorId: 'square',
+            category: IntegrationCategory.pos,
+            windowStart: DateTime.utc(2026, 3, 7, 12),
+            windowEnd: DateTime.utc(2026, 5, 6, 12),
+          ),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
+
+    test(
+      'wires distinct tenant SET LOCAL chains for two different operators '
+      'so cross-tenant isolation holds at the wrapper boundary',
+      () async {
+        const String opB = '99999999-9999-1999-1999-999999999999';
+        const String locB = 'aaaaaaaa-aaaa-1aaa-1aaa-aaaaaaaaaaaa';
+        final pool = _Pool(
+          enqueueRows: <PostgresRow>[_jobRow(status: 'pending')],
+        );
+        final repo = ConnectorBackfillJobRepository(
+          TenantTransactionWrapper(pool),
+        );
+        await repo.enqueueFirstBackfill(
+          operatorId: _op,
+          locationId: _loc,
+          connectionId: _connection,
+          vendorId: 'square',
+          category: IntegrationCategory.pos,
+          windowStart: DateTime.utc(2026, 3, 7, 12),
+          windowEnd: DateTime.utc(2026, 5, 6, 12),
+        );
+        await repo.enqueueFirstBackfill(
+          operatorId: opB,
+          locationId: locB,
+          connectionId: _connection,
+          vendorId: 'square',
+          category: IntegrationCategory.pos,
+          windowStart: DateTime.utc(2026, 3, 7, 12),
+          windowEnd: DateTime.utc(2026, 5, 6, 12),
+        );
+
+        expect(
+          pool.transactions,
+          hasLength(2),
+          reason: 'each tenant gets its own transaction and SET LOCAL chain',
+        );
+        final txA = pool.transactions[0];
+        final txB = pool.transactions[1];
+        expect(
+          txA.parameters.firstWhere(
+            (p) => p.containsKey('value'),
+          )['value'],
+          equals(_op),
+        );
+        expect(
+          txB.parameters.firstWhere(
+            (p) => p.containsKey('value'),
+          )['value'],
+          equals(opB),
+        );
+      },
+    );
+  });
+
+  group('ConnectorBackfillJobRepository.claimNext (NEW)', () {
+    test(
+      'rejects blank workerId and non-positive claimStaleAfter before SQL',
+      () async {
+        final pool = _Pool();
+        final repo = ConnectorBackfillJobRepository(
+          TenantTransactionWrapper(pool),
+        );
+        expect(
+          () => repo.claimNext(
+            operatorId: _op,
+            locationId: _loc,
+            workerId: '  ',
+          ),
+          throwsArgumentError,
+        );
+        expect(
+          () => repo.claimNext(
+            operatorId: _op,
+            locationId: _loc,
+            workerId: 'worker-1',
+            claimStaleAfter: Duration.zero,
+          ),
+          throwsArgumentError,
+        );
+        expect(
+          () => repo.claimNext(
+            operatorId: _op,
+            locationId: _loc,
+            workerId: 'worker-1',
+            claimStaleAfter: const Duration(seconds: -5),
+          ),
+          throwsArgumentError,
+        );
+        expect(pool.transactions, isEmpty);
+      },
+    );
+
+    test(
+      'claim SQL contains the stale-lease recovery predicate so a worker '
+      'that crashed mid-claim can be re-claimed after the timeout',
+      () async {
+        final pool = _Pool(
+          claimRows: <PostgresRow>[
+            _jobRow(
+              status: 'running',
+              workerId: 'worker-2',
+              claimedAt: DateTime.utc(2026, 5, 6, 12),
+              attemptCount: 3,
+            ),
+          ],
+        );
+        final repo = ConnectorBackfillJobRepository(
+          TenantTransactionWrapper(pool),
+        );
+        await repo.claimNext(
+          operatorId: _op,
+          locationId: _loc,
+          workerId: 'worker-2',
+          claimStaleAfter: const Duration(minutes: 1),
+        );
+        final claimSql = pool.transactions.single.executedSql.firstWhere(
+          (sql) => sql.contains('for update skip locked'),
+        );
+        expect(claimSql, contains('claimed_at is null'));
+        expect(
+          claimSql,
+          contains("claimed_at < now() - (@claim_stale_seconds * interval"),
+        );
+        expect(claimSql, contains("mode = 'first_backfill'"));
+        expect(
+          pool.transactions.single.parameters.last['claim_stale_seconds'],
+          equals(60),
+        );
+      },
+    );
+  });
+
+  group('ConnectorBackfillJobRepository.markRunning (NEW)', () {
+    test(
+      'markRunning UPDATE shape: increments attempt_count, sets worker_id, '
+      'flips status to running, only matches pending/running rows',
+      () async {
+        final pool = _Pool(
+          updateRows: <PostgresRow>[
+            _jobRow(
+              status: 'running',
+              workerId: 'worker-resume',
+              claimedAt: DateTime.utc(2026, 5, 6, 12),
+              attemptCount: 4,
+            ),
+          ],
+        );
+        final repo = ConnectorBackfillJobRepository(
+          TenantTransactionWrapper(pool),
+        );
+        final job = await repo.markRunning(
+          operatorId: _op,
+          locationId: _loc,
+          jobId: '99999999-9999-9999-9999-999999999999',
+          workerId: 'worker-resume',
+          actorUserId: _actor,
+        );
+        expect(job, isNotNull);
+        expect(job!.status, equals(FirstConnectionBackfillJobStatus.running));
+        expect(job.workerId, equals('worker-resume'));
+
+        final updateSql = pool.transactions.single.executedSql.firstWhere(
+          (sql) => sql.startsWith('update public.connector_backfill_jobs'),
+        );
+        expect(updateSql, contains("status = 'running'"));
+        expect(updateSql, contains('claimed_at = now()'));
+        expect(updateSql, contains('completed_at = null'));
+        expect(updateSql, contains('attempt_count = attempt_count + 1'));
+        expect(updateSql, contains("status in ('pending', 'running')"));
+      },
+    );
+
+    test('markRunning rejects blank jobId and blank workerId', () async {
+      final pool = _Pool();
+      final repo = ConnectorBackfillJobRepository(
+        TenantTransactionWrapper(pool),
+      );
+      expect(
+        () => repo.markRunning(
+          operatorId: _op,
+          locationId: _loc,
+          jobId: '   ',
+          workerId: 'worker-1',
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => repo.markRunning(
+          operatorId: _op,
+          locationId: _loc,
+          jobId: '99999999-9999-9999-9999-999999999999',
+          workerId: ' ',
+        ),
+        throwsArgumentError,
+      );
+      expect(pool.transactions, isEmpty);
+    });
+  });
+
+  group('ConnectorBackfillJobRepository.markFailed (NEW)', () {
+    test(
+      'markFailed UPDATE shape: records last_error, stamps completed_at, '
+      'only matches a row already running',
+      () async {
+        final pool = _Pool(
+          updateRows: <PostgresRow>[
+            _jobRow(
+              status: 'failed',
+              completedAt: DateTime.utc(2026, 5, 6, 13),
+              lastError: 'vendor 500',
+            ),
+          ],
+        );
+        final repo = ConnectorBackfillJobRepository(
+          TenantTransactionWrapper(pool),
+        );
+        final job = await repo.markFailed(
+          operatorId: _op,
+          locationId: _loc,
+          jobId: '99999999-9999-9999-9999-999999999999',
+          errorMessage: 'vendor 500',
+          actorUserId: _actor,
+        );
+        expect(job, isNotNull);
+        expect(job!.status, equals(FirstConnectionBackfillJobStatus.failed));
+        expect(job.lastError, equals('vendor 500'));
+
+        final sql = pool.transactions.single.executedSql.firstWhere(
+          (statement) => statement.contains("status = 'failed'"),
+        );
+        expect(sql, contains('completed_at = now()'));
+        expect(sql, contains('last_error = @error_message'));
+        expect(sql, contains("and status = 'running'"));
+      },
+    );
+
+    test('markFailed rejects blank jobId or blank errorMessage', () async {
+      final pool = _Pool();
+      final repo = ConnectorBackfillJobRepository(
+        TenantTransactionWrapper(pool),
+      );
+      expect(
+        () => repo.markFailed(
+          operatorId: _op,
+          locationId: _loc,
+          jobId: '  ',
+          errorMessage: 'boom',
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => repo.markFailed(
+          operatorId: _op,
+          locationId: _loc,
+          jobId: '99999999-9999-9999-9999-999999999999',
+          errorMessage: '   ',
+        ),
+        throwsArgumentError,
+      );
+      expect(pool.transactions, isEmpty);
+    });
+  });
+
+  group('ConnectorBackfillJobRepository.markSucceeded (NEW)', () {
+    test(
+      'markSucceeded returns null when no row matches (lost lease, wrong '
+      'jobId, or row already finalized) so caller can no-op',
+      () async {
+        final pool = _Pool(updateRows: const <PostgresRow>[]);
+        final repo = ConnectorBackfillJobRepository(
+          TenantTransactionWrapper(pool),
+        );
+        final job = await repo.markSucceeded(
+          operatorId: _op,
+          locationId: _loc,
+          jobId: '99999999-9999-9999-9999-999999999999',
+          cursorToken: 'cursor-x',
+          lastModifiedSeen: DateTime.utc(2026, 5, 6, 11),
+        );
+        expect(
+          job,
+          isNull,
+          reason: 'no row to seal => null, the worker treats this as '
+              'a benign race outcome instead of crashing',
+        );
+
+        final tx = pool.transactions.single;
+        final sql = tx.executedSql.firstWhere(
+          (statement) => statement.contains("status = 'succeeded'"),
+        );
+        expect(sql, contains("and status = 'running'"));
+      },
+    );
+
+    test('markSucceeded rejects blank jobId or blank cursorToken', () async {
+      final pool = _Pool();
+      final repo = ConnectorBackfillJobRepository(
+        TenantTransactionWrapper(pool),
+      );
+      expect(
+        () => repo.markSucceeded(
+          operatorId: _op,
+          locationId: _loc,
+          jobId: '   ',
+          cursorToken: 'cursor-1',
+          lastModifiedSeen: DateTime.utc(2026, 5, 6, 11),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => repo.markSucceeded(
+          operatorId: _op,
+          locationId: _loc,
+          jobId: '99999999-9999-9999-9999-999999999999',
+          cursorToken: '',
+          lastModifiedSeen: DateTime.utc(2026, 5, 6, 11),
+        ),
+        throwsArgumentError,
+      );
+      expect(pool.transactions, isEmpty);
+    });
+  });
+
+  group('ConnectorBackfillJobRepository.releaseForResume (NEW)', () {
+    test(
+      'releaseForResume rejects blank jobId, blank cursorToken, and a '
+      'non-null but blank errorMessage',
+      () async {
+        final pool = _Pool();
+        final repo = ConnectorBackfillJobRepository(
+          TenantTransactionWrapper(pool),
+        );
+        expect(
+          () => repo.releaseForResume(
+            operatorId: _op,
+            locationId: _loc,
+            jobId: '   ',
+            cursorToken: 'c',
+            lastModifiedSeen: DateTime.utc(2026, 5, 6, 11),
+          ),
+          throwsArgumentError,
+        );
+        expect(
+          () => repo.releaseForResume(
+            operatorId: _op,
+            locationId: _loc,
+            jobId: '99999999-9999-9999-9999-999999999999',
+            cursorToken: '   ',
+            lastModifiedSeen: DateTime.utc(2026, 5, 6, 11),
+          ),
+          throwsArgumentError,
+        );
+        expect(
+          () => repo.releaseForResume(
+            operatorId: _op,
+            locationId: _loc,
+            jobId: '99999999-9999-9999-9999-999999999999',
+            cursorToken: 'c',
+            lastModifiedSeen: DateTime.utc(2026, 5, 6, 11),
+            errorMessage: '   ',
+          ),
+          throwsArgumentError,
+          reason: 'a blank string for errorMessage is meaningless and '
+              'should not silently be accepted',
+        );
+        expect(pool.transactions, isEmpty);
+      },
+    );
+
+    test(
+      'releaseForResume passes a null errorMessage through so a '
+      'non-error pause (e.g. quota tick) does not stamp a fake error',
+      () async {
+        final pool = _Pool(
+          updateRows: <PostgresRow>[
+            _jobRow(
+              status: 'pending',
+              cursorToken: 'cursor-pause',
+              lastModifiedSeen: DateTime.utc(2026, 5, 6, 11),
+            ),
+          ],
+        );
+        final repo = ConnectorBackfillJobRepository(
+          TenantTransactionWrapper(pool),
+        );
+        await repo.releaseForResume(
+          operatorId: _op,
+          locationId: _loc,
+          jobId: '99999999-9999-9999-9999-999999999999',
+          cursorToken: 'cursor-pause',
+          lastModifiedSeen: DateTime.utc(2026, 5, 6, 11),
+        );
+        final params = pool.transactions.single.parameters.firstWhere(
+          (p) => p['cursor_token'] == 'cursor-pause',
+        );
+        expect(params['error_message'], isNull);
+      },
+    );
+  });
 }
 
 PostgresRow _jobRow({
