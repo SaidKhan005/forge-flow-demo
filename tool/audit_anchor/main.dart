@@ -358,6 +358,21 @@ AuditAnchorOrchestrator buildOrchestrator(
 ///   * 3 — runtime error (DB unreachable, Blob unavailable, operator
 ///         enumeration failed). The message identifies the failing
 ///         component but never echoes secret values.
+/// Optional hook fired when an audit anchor outcome surfaces a
+/// failure (chain hash mismatch, blob unavailable, runtime error,
+/// recovered-failed). Phase 8 W2.B wires this to the
+/// `notif.audit.anchor_failure` fanout helper in
+/// `tool/advisor_proxy/email_dispatch/notification_event_hooks.dart`.
+///
+/// Hooks are best-effort -- the audit_anchor CLI swallows
+/// exceptions from the hook so a notification-side failure never
+/// changes the anchor exit code.
+typedef AuditAnchorFailureHook = Future<void> Function({
+  required String operatorId,
+  required String chainDateIso,
+  required String reason,
+});
+
 Future<int> runCli(
   List<String> rawArgs, {
   Map<String, String>? environment,
@@ -368,6 +383,7 @@ Future<int> runCli(
   SweepLockIdReader? sweepLockIdReaderOverride,
   SweepAdvisoryLock? sweepAdvisoryLockOverride,
   ShutdownSignals? shutdownSignals,
+  AuditAnchorFailureHook? onAnchorFailure,
   DateTime Function()? clock,
   IOSink? out,
   IOSink? err,
@@ -462,6 +478,7 @@ Future<int> runCli(
           shutdown: shutdown,
           out: stdoutSink,
           err: stderrSink,
+          onAnchorFailure: onAnchorFailure,
         );
       case AuditAnchorMode.verify:
         return await _runVerifyMode(
@@ -470,6 +487,7 @@ Future<int> runCli(
           chainDate: args.chainDateUtc!,
           out: stdoutSink,
           err: stderrSink,
+          onAnchorFailure: onAnchorFailure,
         );
     }
   } finally {
@@ -761,6 +779,7 @@ Future<int> _runAnchorMode({
   required ShutdownSignals shutdown,
   required IOSink out,
   required IOSink err,
+  AuditAnchorFailureHook? onAnchorFailure,
 }) async {
   var hadFailure = false;
   for (final operatorId in operatorIds) {
@@ -782,10 +801,22 @@ Future<int> _runAnchorMode({
       err.writeln('audit_anchor: blob client unavailable for '
           '$operatorId: ${error.reason}');
       hadFailure = true;
+      await _fireAnchorFailureHook(
+        onAnchorFailure: onAnchorFailure,
+        operatorId: operatorId,
+        chainDateIso: _formatChainDate(asOfUtc),
+        reason: 'blob_unavailable: ${error.reason}',
+      );
       continue;
     } catch (error) {
       err.writeln('audit_anchor: runtime error for $operatorId: $error');
       hadFailure = true;
+      await _fireAnchorFailureHook(
+        onAnchorFailure: onAnchorFailure,
+        operatorId: operatorId,
+        chainDateIso: _formatChainDate(asOfUtc),
+        reason: 'runtime_error: $error',
+      );
       continue;
     }
     if (results.isEmpty) {
@@ -811,6 +842,14 @@ Future<int> _runAnchorMode({
               '(${result.violations.length} violation(s); see '
               'runbooks/audit_chain_verify_runbook.md)');
           hadFailure = true;
+          await _fireAnchorFailureHook(
+            onAnchorFailure: onAnchorFailure,
+            operatorId: operatorId,
+            chainDateIso: _formatChainDate(result.chainDate),
+            reason:
+                'chain_hash_mismatch: ${result.violations.length} '
+                'violation(s)',
+          );
         case AnchorOutcome.recoveredCommitted:
         case AnchorOutcome.recoveredFailed:
           // runAnchor never emits recovery outcomes today; if a
@@ -819,10 +858,39 @@ Future<int> _runAnchorMode({
             'audit_anchor: ${result.outcome.name} $operatorId / '
             '${_formatChainDate(result.chainDate)}',
           );
+          if (result.outcome == AnchorOutcome.recoveredFailed) {
+            await _fireAnchorFailureHook(
+              onAnchorFailure: onAnchorFailure,
+              operatorId: operatorId,
+              chainDateIso: _formatChainDate(result.chainDate),
+              reason: 'recovered_failed: ${result.message ?? ''}',
+            );
+          }
       }
     }
   }
   return hadFailure ? 1 : 0;
+}
+
+/// Best-effort wrapper around the optional anchor-failure hook.
+/// Catches every exception so a notification-side issue never
+/// changes the audit_anchor exit code.
+Future<void> _fireAnchorFailureHook({
+  required AuditAnchorFailureHook? onAnchorFailure,
+  required String operatorId,
+  required String chainDateIso,
+  required String reason,
+}) async {
+  if (onAnchorFailure == null) return;
+  try {
+    await onAnchorFailure(
+      operatorId: operatorId,
+      chainDateIso: chainDateIso,
+      reason: reason,
+    );
+  } catch (_) {
+    // Swallow.
+  }
 }
 
 Future<int> _runVerifyMode({
@@ -831,6 +899,7 @@ Future<int> _runVerifyMode({
   required DateTime chainDate,
   required IOSink out,
   required IOSink err,
+  AuditAnchorFailureHook? onAnchorFailure,
 }) async {
   VerifyRunResult result;
   try {
@@ -841,10 +910,22 @@ Future<int> _runVerifyMode({
   } on AuditAnchorBlobUnavailable catch (error) {
     err.writeln('audit_anchor: blob client unavailable for $operatorId / '
         '${_formatChainDate(chainDate)}: ${error.reason}');
+    await _fireAnchorFailureHook(
+      onAnchorFailure: onAnchorFailure,
+      operatorId: operatorId,
+      chainDateIso: _formatChainDate(chainDate),
+      reason: 'verify_blob_unavailable: ${error.reason}',
+    );
     return 3;
   } catch (error) {
     err.writeln('audit_anchor: runtime error for $operatorId / '
         '${_formatChainDate(chainDate)}: $error');
+    await _fireAnchorFailureHook(
+      onAnchorFailure: onAnchorFailure,
+      operatorId: operatorId,
+      chainDateIso: _formatChainDate(chainDate),
+      reason: 'verify_runtime_error: $error',
+    );
     return 3;
   }
   switch (result.outcome) {
@@ -859,10 +940,22 @@ Future<int> _runVerifyMode({
       err.writeln('audit_anchor: ${result.outcome.name} $operatorId / '
           '${_formatChainDate(chainDate)} — ${result.message ?? '(no detail)'}'
           '; see runbooks/audit_chain_verify_runbook.md');
+      await _fireAnchorFailureHook(
+        onAnchorFailure: onAnchorFailure,
+        operatorId: operatorId,
+        chainDateIso: _formatChainDate(chainDate),
+        reason: 'verify_${result.outcome.name}: ${result.message ?? ''}',
+      );
       return 1;
     case VerifyOutcome.blobUnavailable:
       err.writeln('audit_anchor: blob unavailable $operatorId / '
           '${_formatChainDate(chainDate)} — ${result.message ?? '(no detail)'}');
+      await _fireAnchorFailureHook(
+        onAnchorFailure: onAnchorFailure,
+        operatorId: operatorId,
+        chainDateIso: _formatChainDate(chainDate),
+        reason: 'verify_blob_unavailable: ${result.message ?? ''}',
+      );
       return 3;
   }
 }

@@ -22,6 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/services/email/email_template_renderer.dart';
 
+import '../../../tool/advisor_proxy/email_dispatch/notification_event_fanout.dart';
 import '../../../tool/advisor_proxy/email_dispatch/vendor_lifecycle_notification_dispatcher.dart';
 
 void main() {
@@ -361,6 +362,107 @@ void main() {
       expect(notifications.isNotified('n-bad'), isFalse);
     });
 
+    test('delegates to NotificationEventFanout for notif.vendor.now_available '
+        'when an eventFanout is wired', () async {
+      // Phase 8 W2.B refactor: when the dispatcher is wired with a
+      // fanout seam, every per-operator pending batch fires the
+      // multi-channel fanout for notif.vendor.now_available so push +
+      // inbox channels layer on top of the legacy email path.
+      // Existing email-only callers continue to work because
+      // eventFanout is optional.
+      final notifications = _FakeNotificationRepo()
+        ..seedPending('op-1', 'toast', <_FakePending>[
+          _FakePending(id: 'n-1', email: 'admin@acme.test'),
+        ])
+        ..seedPending('op-2', 'toast', <_FakePending>[
+          _FakePending(id: 'n-2', email: 'admin@beta.test'),
+        ]);
+      final outbox = _FakeOutboxRepo();
+      final fanoutCalls = <_RecordedFanoutCall>[];
+
+      final dispatcher = VendorLifecycleNotificationDispatcher(
+        notificationRepository: notifications,
+        outboxRepository: outbox,
+        contextResolver: _staticContextResolver(
+          vendorDisplayName: 'Toast',
+          businessName: 'Acme Bistro',
+          integrationConsoleUrl: 'https://app.forgeflow.app',
+        ),
+        eventFanout: ({
+          required String operatorId,
+          required NotificationEventEnvelope envelope,
+        }) async {
+          fanoutCalls.add(_RecordedFanoutCall(
+            operatorId: operatorId,
+            envelope: envelope,
+          ));
+          return NotificationFanoutOutcome(
+            eventKey: envelope.eventKey,
+            usersConsidered: 0,
+            usersGated: 0,
+            pushDispatched: 0,
+            emailDispatched: 0,
+            inboxDispatched: 0,
+            skipped: 0,
+          );
+        },
+      );
+
+      final outcome = await dispatcher.dispatchForVendor(
+        vendorId: 'toast',
+        newLifecycleState: 'productionCredentialed',
+      );
+
+      // Email path still runs.
+      expect(outcome.notificationsEnqueued, 2);
+      // Fanout fires once per operator that had pending email rows.
+      expect(fanoutCalls, hasLength(2));
+      expect(
+        fanoutCalls.every((c) =>
+            c.envelope.eventKey == 'notif.vendor.now_available'),
+        isTrue,
+      );
+      expect(
+        fanoutCalls.first.envelope.dedupeKeyPrefix,
+        startsWith('notif.vendor.now_available:'),
+      );
+      expect(
+        fanoutCalls.first.envelope.emailTemplateData['vendorName'],
+        'Toast',
+      );
+    });
+
+    test('fanout failure does not block the email path', () async {
+      final notifications = _FakeNotificationRepo()
+        ..seedPending('op-1', 'toast', <_FakePending>[
+          _FakePending(id: 'n-1', email: 'admin@acme.test'),
+        ]);
+      final outbox = _FakeOutboxRepo();
+      final dispatcher = VendorLifecycleNotificationDispatcher(
+        notificationRepository: notifications,
+        outboxRepository: outbox,
+        contextResolver: _staticContextResolver(
+          vendorDisplayName: 'Toast',
+          businessName: 'Acme Bistro',
+          integrationConsoleUrl: 'https://app.forgeflow.app',
+        ),
+        eventFanout: ({
+          required String operatorId,
+          required NotificationEventEnvelope envelope,
+        }) async {
+          throw StateError('seeded fanout failure');
+        },
+      );
+
+      final outcome = await dispatcher.dispatchForVendor(
+        vendorId: 'toast',
+        newLifecycleState: 'productionCredentialed',
+      );
+
+      expect(outcome.notificationsEnqueued, 1);
+      expect(outbox.enqueued, hasLength(1));
+    });
+
     test('context resolver failure leaves the operator pending', () async {
       final notifications = _FakeNotificationRepo()
         ..seedPending('op-broken', 'toast', <_FakePending>[
@@ -526,6 +628,12 @@ class _FakeNotificationRepo
       }
     }
   }
+}
+
+class _RecordedFanoutCall {
+  _RecordedFanoutCall({required this.operatorId, required this.envelope});
+  final String operatorId;
+  final NotificationEventEnvelope envelope;
 }
 
 class _RecordedEnqueue {
