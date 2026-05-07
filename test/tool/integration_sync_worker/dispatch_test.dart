@@ -6,6 +6,7 @@
 // exercised without any real adapter or live HTTP.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
 import 'package:forge_and_flow/integrations/labor/adp_labor_adapter.dart'
     show kAdpVendorId;
 import 'package:forge_and_flow/integrations/reservation/libro_reservation_adapter.dart';
@@ -141,6 +142,311 @@ void main() {
         ),
         throwsA(isA<StateError>()),
       );
+    });
+
+    test(
+        'watermark atomicity: when the adapter throws AFTER the call '
+        'starts, watermark advance is NEVER issued (the only durable '
+        'side-effect on the failure path is the poll_error sync log)',
+        () async {
+      // Adapter records the call but throws — simulating the "vendor
+      // wrote some rows then we lost the connection" shape.
+      posAdapter.throwOnPoll = StateError('connection lost mid-poll');
+
+      await dispatcher.dispatchPollTick(
+        connectorConnectionRow: _posRow(),
+        adapterFactory: (_) => posAdapter,
+        canonicalSink: sink,
+      );
+
+      // The dispatcher's transactional contract on the failure path:
+      // watermark MUST NOT advance. (Cross-tx atomicity between adapter
+      // writes and the watermark itself requires an executor-bearing
+      // adapter API, which is the multi-file rewrite documented in the
+      // CODE_HEALTH ledger.)
+      expect(sink.watermarkAdvances, isEmpty,
+          reason: 'failed adapter call must NOT advance the watermark; '
+              'idempotency on the next tick re-replays absorbed-or-not '
+              'vendor double writes from the prior cursor');
+      expect(posAdapter.pollCalls, 1,
+          reason: 'adapter was invoked exactly once');
+      expect(sink.syncLogs, hasLength(1));
+      expect(sink.syncLogs.single.eventKind, 'poll_error');
+    });
+
+    test(
+        'watermark atomicity: on success the watermark advance and the '
+        'poll_success log are the only sink writes, in that order, so a '
+        'crash between fact upserts (inside the adapter) and the '
+        'watermark advance leaves the watermark unchanged',
+        () async {
+      posAdapter.pollResult = PollIncrementalResult(
+        recordsWritten: 3,
+        newCursorToken: 'cursor-tx-test',
+        newLastModifiedSeen: DateTime.utc(2026, 5, 6, 9, 0, 0),
+      );
+
+      await dispatcher.dispatchPollTick(
+        connectorConnectionRow: _posRow(),
+        adapterFactory: (_) => posAdapter,
+        canonicalSink: sink,
+      );
+
+      expect(sink.watermarkAdvances, hasLength(1));
+      expect(sink.watermarkAdvances.single.cursorToken, 'cursor-tx-test');
+      expect(sink.syncLogs, hasLength(1));
+      expect(sink.syncLogs.single.eventKind, 'poll_success');
+
+      // Sequencing assertion: watermark advance is recorded BEFORE the
+      // poll_success log row. The dispatcher relies on this ordering so
+      // a crash between the two leaves the watermark advanced and the
+      // log row absent — the next tick treats the prior poll as
+      // committed (acceptable per the canonical-sink contract).
+      expect(sink.callOrder, ['advanceWatermark', 'appendSyncLog']);
+    });
+  });
+
+  group(
+      'IntegrationSyncWorkerDispatch cadence resolver: resolved value is '
+      'now delivered to a consumer (CODE_HEALTH `dispatch.dart:373`)', () {
+    test(
+        'when resolvedCadenceSink is supplied, the resolved cadence '
+        'flows out of the dispatcher (no longer discarded)', () async {
+      final cadenceCalls = <_ResolvedCadenceCall>[];
+      final dispatcher = IntegrationSyncWorkerDispatch(
+        tierAssignmentLookup: (operatorId, locationId) async => null,
+        vendorMinimumCadenceLookup: (vendorId) => 300,
+        resolvedCadenceSink: ({
+          required connectionId,
+          required vendorId,
+          required operatorId,
+          required locationId,
+          required resolvedCadenceSeconds,
+        }) {
+          cadenceCalls.add(_ResolvedCadenceCall(
+            connectionId: connectionId,
+            vendorId: vendorId,
+            operatorId: operatorId,
+            locationId: locationId,
+            resolvedCadenceSeconds: resolvedCadenceSeconds,
+          ));
+        },
+      );
+      final sink = _RecordingCanonicalSink();
+      final adapter = _RecordingPosAdapter()
+        ..vendorIdOverride = 'oracle_micros_simphony'
+        ..pollResult = PollIncrementalResult(
+          recordsWritten: 0,
+          newCursorToken: 'c',
+          newLastModifiedSeen: DateTime.utc(2026, 5, 4),
+        );
+
+      await dispatcher.dispatchPollTick(
+        connectorConnectionRow: _posRow(vendorId: 'oracle_micros_simphony'),
+        adapterFactory: (_) => adapter,
+        canonicalSink: sink,
+      );
+
+      expect(cadenceCalls, hasLength(1),
+          reason: 'resolved cadence must be delivered exactly once per '
+              'poll tick when the resolver path is active');
+      expect(cadenceCalls.single.connectionId, 'conn-1');
+      expect(cadenceCalls.single.vendorId, 'oracle_micros_simphony');
+      expect(cadenceCalls.single.operatorId, _opId);
+      expect(cadenceCalls.single.locationId, _locId);
+      // Tier assignment was null -> resolver falls back to the standard
+      // preset for Oracle, which is 300s.
+      expect(cadenceCalls.single.resolvedCadenceSeconds, 300);
+
+      // The observability log emission still fires too.
+      expect(
+          sink.syncLogs.where((log) =>
+              log.eventKind == 'tier_assignment_missing'),
+          hasLength(1));
+    });
+
+    test(
+        'resolved cadence reflects per-vendor JSONB override on the '
+        'tier assignment (premium tier, custom override)', () async {
+      _ResolvedCadenceCall? cadenceCall;
+      final dispatcher = IntegrationSyncWorkerDispatch(
+        tierAssignmentLookup: (operatorId, locationId) async =>
+            ForgeFlowPollingTierAssignment(
+          assignmentId: '00000000-0000-4000-8000-0000000000aa',
+          operatorId: operatorId,
+          locationId: locationId,
+          tierKey: PollingTierKey.premium,
+          pollingCadencePerVendorSeconds: const <String, int>{
+            'quickbooks_time': 90,
+          },
+          effectiveAt: DateTime.utc(2026, 5, 1),
+          createdAt: DateTime.utc(2026, 5, 1),
+        ),
+        vendorMinimumCadenceLookup: (vendorId) => 60,
+        resolvedCadenceSink: ({
+          required connectionId,
+          required vendorId,
+          required operatorId,
+          required locationId,
+          required resolvedCadenceSeconds,
+        }) {
+          cadenceCall = _ResolvedCadenceCall(
+            connectionId: connectionId,
+            vendorId: vendorId,
+            operatorId: operatorId,
+            locationId: locationId,
+            resolvedCadenceSeconds: resolvedCadenceSeconds,
+          );
+        },
+      );
+      final sink = _RecordingCanonicalSink();
+      final adapter = _RecordingLaborAdapter(vendorId: 'quickbooks_time');
+
+      await dispatcher.dispatchPollTick(
+        connectorConnectionRow: ConnectorConnectionRow(
+          connectionId: 'conn-qbt-1',
+          operatorId: _opId,
+          locationId: _locId,
+          vendorId: 'quickbooks_time',
+          category: IntegrationCategory.labor,
+          status: ConnectionStatus.connected,
+          lastModifiedSeen: DateTime.utc(2026, 5, 3),
+        ),
+        adapterFactory: (_) => adapter,
+        canonicalSink: sink,
+      );
+
+      expect(cadenceCall, isNotNull);
+      expect(cadenceCall!.resolvedCadenceSeconds, 90,
+          reason: 'override of 90s is within [vendorMin=60, '
+              'frameworkMax=3600] so the resolver returns it as-is');
+    });
+
+    test(
+        'resolvedCadenceSink is NOT invoked when either lookup is null '
+        '(lane .0 baseline preserves backward compatibility)', () async {
+      final cadenceCalls = <_ResolvedCadenceCall>[];
+      final dispatcher = IntegrationSyncWorkerDispatch(
+        // Both lookups omitted (null).
+        resolvedCadenceSink: ({
+          required connectionId,
+          required vendorId,
+          required operatorId,
+          required locationId,
+          required resolvedCadenceSeconds,
+        }) {
+          cadenceCalls.add(_ResolvedCadenceCall(
+            connectionId: connectionId,
+            vendorId: vendorId,
+            operatorId: operatorId,
+            locationId: locationId,
+            resolvedCadenceSeconds: resolvedCadenceSeconds,
+          ));
+        },
+      );
+      final sink = _RecordingCanonicalSink();
+      final adapter = _RecordingPosAdapter();
+
+      await dispatcher.dispatchPollTick(
+        connectorConnectionRow: _posRow(),
+        adapterFactory: (_) => adapter,
+        canonicalSink: sink,
+      );
+
+      expect(cadenceCalls, isEmpty,
+          reason: 'sink must stay quiet when the resolver path is not '
+              'wired — production main.dart still passes neither lookup '
+              'and the dispatcher must not invoke the cadence sink');
+    });
+
+    test(
+        'resolvedCadenceSink is NOT invoked for vendors that are NOT '
+        'in pollOnlyVendorIds (webhook-driven vendors)', () async {
+      final cadenceCalls = <_ResolvedCadenceCall>[];
+      final dispatcher = IntegrationSyncWorkerDispatch(
+        tierAssignmentLookup: (operatorId, locationId) async => null,
+        vendorMinimumCadenceLookup: (vendorId) => 60,
+        resolvedCadenceSink: ({
+          required connectionId,
+          required vendorId,
+          required operatorId,
+          required locationId,
+          required resolvedCadenceSeconds,
+        }) {
+          cadenceCalls.add(_ResolvedCadenceCall(
+            connectionId: connectionId,
+            vendorId: vendorId,
+            operatorId: operatorId,
+            locationId: locationId,
+            resolvedCadenceSeconds: resolvedCadenceSeconds,
+          ));
+        },
+      );
+      final sink = _RecordingCanonicalSink();
+      // 7shifts is webhook-driven (autoRegister) — NOT in pollOnly.
+      final adapter = _RecordingLaborAdapter(vendorId: 'seven_shifts');
+
+      await dispatcher.dispatchPollTick(
+        connectorConnectionRow: ConnectorConnectionRow(
+          connectionId: 'conn-7s-1',
+          operatorId: _opId,
+          locationId: _locId,
+          vendorId: 'seven_shifts',
+          category: IntegrationCategory.labor,
+          status: ConnectionStatus.connected,
+          lastModifiedSeen: DateTime.utc(2026, 5, 3),
+        ),
+        adapterFactory: (_) => adapter,
+        canonicalSink: sink,
+      );
+
+      expect(cadenceCalls, isEmpty,
+          reason: 'webhook-driven vendors do not use polling cadence; '
+              'the dispatcher gate suppresses the resolver call entirely');
+    });
+
+    test(
+        'resolvedCadenceSink is NOT invoked when the tier-assignment '
+        'lookup throws — failure surfaces as a '
+        'tier_assignment_lookup_failed sync log row, then control '
+        'returns without delivering a cadence value', () async {
+      final cadenceCalls = <_ResolvedCadenceCall>[];
+      final dispatcher = IntegrationSyncWorkerDispatch(
+        tierAssignmentLookup: (operatorId, locationId) async {
+          throw StateError('tier repo down');
+        },
+        vendorMinimumCadenceLookup: (vendorId) => 300,
+        resolvedCadenceSink: ({
+          required connectionId,
+          required vendorId,
+          required operatorId,
+          required locationId,
+          required resolvedCadenceSeconds,
+        }) {
+          cadenceCalls.add(_ResolvedCadenceCall(
+            connectionId: connectionId,
+            vendorId: vendorId,
+            operatorId: operatorId,
+            locationId: locationId,
+            resolvedCadenceSeconds: resolvedCadenceSeconds,
+          ));
+        },
+      );
+      final sink = _RecordingCanonicalSink();
+      final adapter = _RecordingPosAdapter()
+        ..vendorIdOverride = 'oracle_micros_simphony';
+
+      await dispatcher.dispatchPollTick(
+        connectorConnectionRow: _posRow(vendorId: 'oracle_micros_simphony'),
+        adapterFactory: (_) => adapter,
+        canonicalSink: sink,
+      );
+
+      expect(cadenceCalls, isEmpty);
+      expect(
+          sink.syncLogs
+              .where((log) => log.eventKind == 'tier_assignment_lookup_failed'),
+          hasLength(1));
     });
   });
 
@@ -281,8 +587,14 @@ class _RecordingPosAdapter implements PosAdapter {
   );
   Object? throwOnPoll;
 
+  /// Override the adapter's vendor id at runtime so a single recording
+  /// fixture covers both the default `lightspeed_lsk` rows and the
+  /// poll-only `oracle_micros_simphony` rows the cadence-resolver
+  /// tests need.
+  String? vendorIdOverride;
+
   @override
-  String get vendorId => 'lightspeed_lsk';
+  String get vendorId => vendorIdOverride ?? 'lightspeed_lsk';
   @override
   String get displayName => 'Recording POS';
   @override
@@ -435,6 +747,13 @@ class _RecordingCanonicalSink implements CanonicalSink {
   final List<_WatermarkAdvance> watermarkAdvances = <_WatermarkAdvance>[];
   final List<_SyncLogEntry> syncLogs = <_SyncLogEntry>[];
 
+  /// Ordered tape of method names recorded across the sink. The
+  /// watermark-atomicity tests use this to assert the dispatcher
+  /// issues `advanceWatermark` BEFORE the `poll_success`
+  /// `appendSyncLog` so the durable state on a mid-tick crash is
+  /// well-defined.
+  final List<String> callOrder = <String>[];
+
   @override
   Future<bool> upsertCoverFact({
     required String operatorId,
@@ -467,6 +786,7 @@ class _RecordingCanonicalSink implements CanonicalSink {
     required String cursorToken,
     required DateTime lastModifiedSeen,
   }) async {
+    callOrder.add('advanceWatermark');
     watermarkAdvances.add(_WatermarkAdvance(
       operatorId: operatorId,
       locationId: locationId,
@@ -486,6 +806,7 @@ class _RecordingCanonicalSink implements CanonicalSink {
     int? recordsCount,
     Map<String, Object?>? payloadPreview,
   }) async {
+    callOrder.add('appendSyncLog');
     syncLogs.add(_SyncLogEntry(
       operatorId: operatorId,
       locationId: locationId,
@@ -538,4 +859,19 @@ class _SyncLogEntry {
   final String eventKind;
   final String? errorMessage;
   final int? recordsCount;
+}
+
+class _ResolvedCadenceCall {
+  const _ResolvedCadenceCall({
+    required this.connectionId,
+    required this.vendorId,
+    required this.operatorId,
+    required this.locationId,
+    required this.resolvedCadenceSeconds,
+  });
+  final String connectionId;
+  final String vendorId;
+  final String operatorId;
+  final String locationId;
+  final int resolvedCadenceSeconds;
 }

@@ -120,6 +120,23 @@ typedef PollingTierAssignmentLookup
 /// per-vendor capability profile; tests inject a small constant map.
 typedef VendorMinimumCadenceLookup = int Function(String vendorId);
 
+/// Sink signature: receives the resolved cadence (in seconds) the
+/// dispatcher computed for `(connectionId, vendorId)` on this tick.
+/// Replaces the prior pattern where the resolver's return value was
+/// computed-and-discarded. The callback is the seam the scheduling
+/// layer (Lane `.3` / loop main.dart) plugs into to drive a per-
+/// connection next-tick: e.g., `nextPollAt = now() + Duration(seconds:
+/// resolvedCadenceSeconds)`. Default null keeps the dispatcher
+/// backward-compatible — callers that have not opted in see the same
+/// surface as before, and the resolved-int is simply not delivered.
+typedef ResolvedCadenceSink = void Function({
+  required String connectionId,
+  required String vendorId,
+  required String operatorId,
+  required String locationId,
+  required int resolvedCadenceSeconds,
+});
+
 /// Pure-logic dispatcher exercised under fakes by
 /// `test/tool/integration_sync_worker/dispatch_test.dart`. The only
 /// I/O is whatever the supplied [CanonicalSink] performs.
@@ -128,6 +145,7 @@ class IntegrationSyncWorkerDispatch {
     DateTime Function()? now,
     this.tierAssignmentLookup,
     this.vendorMinimumCadenceLookup,
+    this.resolvedCadenceSink,
   }) : _now = now ?? DateTime.now;
 
   final DateTime Function() _now;
@@ -147,6 +165,19 @@ class IntegrationSyncWorkerDispatch {
   /// to enable the resolver call inside [dispatchPollTick]; either
   /// being null leaves the resolver path inactive.
   final VendorMinimumCadenceLookup? vendorMinimumCadenceLookup;
+
+  /// Optional consumer for the resolved cadence value. When the
+  /// resolver path is active (both lookups wired + the connection's
+  /// vendor is poll-only) the dispatcher delivers the resolved
+  /// cadence-seconds here so the scheduling layer can drive a per-
+  /// connection next-tick (e.g., `Duration(seconds: resolvedSeconds)`)
+  /// rather than the worker's single global tick interval. The prior
+  /// shape computed-and-discarded the resolver's return value
+  /// (CODE_HEALTH: "Cadence resolver's resolved value discarded —
+  /// tier assignments observability-only today"); routing the value
+  /// through this seam closes the seam-side half of that concern.
+  /// Default null preserves the lane `.0` baseline.
+  final ResolvedCadenceSink? resolvedCadenceSink;
 
   /// One poll tick for one [ConnectorConnectionRow]. The dispatcher:
   ///
@@ -326,13 +357,21 @@ class IntegrationSyncWorkerDispatch {
   /// max), and forwards the resolver's `onSyncLog` events to the
   /// canonical sink so `tier_assignment_missing` / `cadence_clamped` /
   /// `custom_tier_vendor_unset` rows surface in the per-tenant audit
-  /// timeline. The cadence value itself is the scheduling layer's
-  /// concern (Lane `.3`); per-tick dispatch does not act on it.
+  /// timeline.
+  ///
+  /// The resolved cadence value is delivered to [resolvedCadenceSink]
+  /// when one is supplied — that is the seam Lane `.3` (worker
+  /// scheduling) plugs into so per-connection next-tick uses the
+  /// resolved value instead of the worker's single global poll
+  /// interval. When [resolvedCadenceSink] is null the value is
+  /// dropped silently, which keeps the lane `.0` baseline intact.
+  /// (The audit's "tier assignments observability-only" concern lives
+  /// in the not-yet-wired downstream consumer, not in this seam.)
   ///
   /// Three gates keep this hook quiet for callers that have not opted
   /// in:
   ///   * Either lookup is null (Lane `.0` baseline + existing tests)
-  ///     -> no-op, no log row.
+  ///     -> no-op, no log row, resolvedCadenceSink not invoked.
   ///   * The connection's vendor is NOT in [pollOnlyVendorIds]
   ///     (webhook-driven vendors like Toast / 7shifts / ADP) ->
   ///     no-op. Polling cadence is irrelevant for `autoRegister` /
@@ -345,7 +384,8 @@ class IntegrationSyncWorkerDispatch {
   ///     `tier_assignment_lookup_failed` sync_log row is written and
   ///     the poll proceeds with default scheduling. The exception
   ///     does NOT bubble into the surrounding `try/catch` (which
-  ///     would mis-tag the failure as a `poll_error`).
+  ///     would mis-tag the failure as a `poll_error`), and
+  ///     resolvedCadenceSink is not invoked.
   Future<void> _resolveCadenceForRow(
     ConnectorConnectionRow row,
     CanonicalSink canonicalSink,
@@ -370,7 +410,7 @@ class IntegrationSyncWorkerDispatch {
     }
 
     final pendingLogs = <Future<void>>[];
-    PollingCadenceResolver.resolve(
+    final resolvedCadenceSeconds = PollingCadenceResolver.resolve(
       vendorId: row.vendorId,
       tierAssignment: tierAssignment,
       vendorMinimumCadenceSeconds: vendorMinLookup(row.vendorId),
@@ -385,6 +425,21 @@ class IntegrationSyncWorkerDispatch {
         ));
       },
     );
+    // Forward the resolved cadence to the scheduling-layer consumer.
+    // Prior shape: the resolver's return value was discarded, leaving
+    // tier assignments observability-only. Now the value flows out of
+    // the dispatcher cleanly so a downstream consumer can drive
+    // per-connection next-tick scheduling.
+    final cadenceSink = resolvedCadenceSink;
+    if (cadenceSink != null) {
+      cadenceSink(
+        connectionId: row.connectionId,
+        vendorId: row.vendorId,
+        operatorId: row.operatorId,
+        locationId: row.locationId,
+        resolvedCadenceSeconds: resolvedCadenceSeconds,
+      );
+    }
     if (pendingLogs.isNotEmpty) await Future.wait(pendingLogs);
   }
 
