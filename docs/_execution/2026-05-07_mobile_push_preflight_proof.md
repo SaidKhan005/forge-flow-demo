@@ -47,4 +47,3 @@ FCM, or use a physical Android/iOS device.
   `app_notifications`.
 - Repeat production Firebase proof only after staging evidence and explicit
   operator approval.
-

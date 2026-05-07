@@ -110,4 +110,3 @@ that records logs or screenshots for:
 5. Switch accessible locations in the mobile drawer, confirm sync cancellation
    and fresh pull, then verify prior-scope data is absent from dashboard,
    Variance, History, Plan, and Star Shifts.
-
