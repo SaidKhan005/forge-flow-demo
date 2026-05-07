@@ -181,8 +181,12 @@ import 'package:forge_and_flow/integrations/reservation/tock_reservation_adapter
 import 'package:forge_and_flow/integrations/reservation/tock_reservation_production_api_client.dart';
 import 'package:forge_and_flow/integrations/reservation/tock_webhook_signature_verifier.dart'
     hide kTockVendorId;
+import 'package:forge_and_flow/services/integration/canonical_fact_post_commit_projector.dart';
+import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
+import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/per_tenant_location_config_resolver.dart';
+import 'package:forge_and_flow/services/integration/projecting_canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/repository_inbound_webhook_gateway.dart';
 import 'package:forge_and_flow/services/integration/repository_integration_routes_gateway.dart';
 
@@ -219,6 +223,17 @@ bool _alreadyBound = false;
 /// from the inbound `Authorization: Bearer ...` header before looking
 /// up the Postgres user UUID.
 ///
+/// [canonicalFactPostCommitProjector] is the projector that drains
+/// `open_shift_snapshots` / `closed_shift_aggregates` from the
+/// just-written canonical facts after each successful sink commit.
+/// When provided alongside [canonicalFactPeriodResolver] +
+/// [canonicalRestaurantIdResolver], the binder wraps each vendor
+/// canonical sink with a [ProjectingCanonicalSink] so a successful
+/// `appendSyncLog` commit signal projects the buffered facts. When
+/// any of these three is null, the binder skips the wrapping with a
+/// structured info line — the upstream caller has not yet surfaced a
+/// production-wired projector.
+///
 /// Idempotent — a second call is a no-op. Demo mode (`kDemoMode=true`)
 /// skips the binder entirely with a single info line.
 Future<void> bindPhase8IntegrationsForProduction(
@@ -227,6 +242,9 @@ Future<void> bindPhase8IntegrationsForProduction(
   required ProxyJwtVerifier proxyJwtVerifier,
   http.Client? httpClient,
   Map<String, String>? environmentOverride,
+  CanonicalFactPostCommitProjector? canonicalFactPostCommitProjector,
+  CanonicalFactPeriodResolver? canonicalFactPeriodResolver,
+  CanonicalRestaurantIdResolver? canonicalRestaurantIdResolver,
 }) async {
   if (_alreadyBound) {
     log(
@@ -298,10 +316,50 @@ Future<void> bindPhase8IntegrationsForProduction(
   final reservationAdapterFactories = <String, ReservationAdapterFactory>{};
   final signatureVerifiers = <String, VendorWebhookSignatureVerifier>{};
 
+  // Step 4.5 — Per-vendor projecting canonical sinks. Wraps each
+  // vendor's [CanonicalSink] view so a successful canonical fact
+  // commit drains `open_shift_snapshots` / `closed_shift_aggregates`
+  // projection through [CanonicalFactPostCommitProjector]. When the
+  // caller has not yet surfaced a projector + resolvers, the wrapping
+  // is skipped (a single info line records the gap). Vendor adapter
+  // Deps records continue to receive the underlying vendor-specific
+  // sink type (e.g. `ToastFactSink`) — a follow-up lane widens those
+  // Deps types so the wrapped [CanonicalSink] view is the consumed
+  // surface; today the wrappers are reachable through
+  // [phase8ProjectingSinksByVendor] for downstream worker dispatch
+  // wiring.
+  final projectingSinksByVendor = <String, ProjectingCanonicalSink>{};
+  final bool projectorWiringActive = canonicalFactPostCommitProjector != null &&
+      canonicalFactPeriodResolver != null &&
+      canonicalRestaurantIdResolver != null;
+  ProjectingCanonicalSink wrap({
+    required String vendorId,
+    required IntegrationCategory category,
+    required CanonicalSink underlying,
+  }) {
+    final wrapped = ProjectingCanonicalSink(
+      underlying: underlying,
+      projector: canonicalFactPostCommitProjector!,
+      category: category,
+      vendorId: vendorId,
+      periodResolver: canonicalFactPeriodResolver!,
+      restaurantIdResolver: canonicalRestaurantIdResolver!,
+    );
+    projectingSinksByVendor[vendorId] = wrapped;
+    return wrapped;
+  }
+
   // ─── POS — Toast (PR #247 refresh closure) ──────────────────────────
   final toastSink = ToastPosPostgresSink(
     productionBindings.tenantTransactionWrapper,
   );
+  if (projectorWiringActive) {
+    wrap(
+      vendorId: kToastVendorId,
+      category: IntegrationCategory.pos,
+      underlying: toastSink,
+    );
+  }
   final toastRefresh = makeToastOauthRefreshClosure(
     httpClient: sharedHttpClient,
   );
@@ -327,6 +385,13 @@ Future<void> bindPhase8IntegrationsForProduction(
   final alohaSink = AlohaNcrVoyixPostgresSink(
     productionBindings.tenantTransactionWrapper,
   );
+  if (projectorWiringActive) {
+    wrap(
+      vendorId: kAlohaNcrVoyixVendorId,
+      category: IntegrationCategory.pos,
+      underlying: alohaSink,
+    );
+  }
   if (proxyConfig.hasAlohaNcrVoyixCredentials) {
     final alohaCreds = proxyConfig.alohaNcrVoyixCredentials;
     final alohaRefresh = makeAlohaNcrVoyixOauthRefreshClosure(
@@ -363,6 +428,13 @@ Future<void> bindPhase8IntegrationsForProduction(
     final cloverSink = CloverPostgresSink(
       productionBindings.tenantTransactionWrapper,
     );
+    if (projectorWiringActive) {
+      wrap(
+        vendorId: kCloverVendorId,
+        category: IntegrationCategory.pos,
+        underlying: cloverSink,
+      );
+    }
     final cloverCredStore = CloverPosPostgresCredentialStore(
       productionBindings.tenantTransactionWrapper,
     );
@@ -431,6 +503,13 @@ Future<void> bindPhase8IntegrationsForProduction(
   final oracleSink = OracleMicrosSimphonyPostgresSink(
     productionBindings.tenantTransactionWrapper,
   );
+  if (projectorWiringActive) {
+    wrap(
+      vendorId: kOracleMicrosSimphonyVendorId,
+      category: IntegrationCategory.pos,
+      underlying: oracleSink,
+    );
+  }
   final simphonyExchange = makeOracleMicrosSimphonyOauthExchangeClosure(
     httpClient: sharedHttpClient,
   );
@@ -466,6 +545,13 @@ Future<void> bindPhase8IntegrationsForProduction(
   final revelSink = RevelPosPostgresSink(
     productionBindings.tenantTransactionWrapper,
   );
+  if (projectorWiringActive) {
+    wrap(
+      vendorId: kRevelVendorId,
+      category: IntegrationCategory.pos,
+      underlying: revelSink,
+    );
+  }
   posAdapterFactories[kRevelVendorId] = ({
     required String operatorId,
     required String locationId,
@@ -487,6 +573,13 @@ Future<void> bindPhase8IntegrationsForProduction(
     final squareSink = SquarePosPostgresSink(
       productionBindings.tenantTransactionWrapper,
     );
+    if (projectorWiringActive) {
+      wrap(
+        vendorId: kSquareVendorId,
+        category: IntegrationCategory.pos,
+        underlying: squareSink,
+      );
+    }
     final squareAppCreds = proxyConfig.squareAppCredentials;
     final squareRefresh = makeSquareOauthRefreshClosure(
       httpClient: sharedHttpClient,
@@ -541,6 +634,13 @@ Future<void> bindPhase8IntegrationsForProduction(
   final adpSink = AdpPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
+  if (projectorWiringActive) {
+    wrap(
+      vendorId: kAdpVendorId,
+      category: IntegrationCategory.labor,
+      underlying: adpSink,
+    );
+  }
   laborAdapterFactories[kAdpVendorId] = ({
     required String operatorId,
     required String locationId,
@@ -571,6 +671,13 @@ Future<void> bindPhase8IntegrationsForProduction(
   final agendrixSink = AgendrixPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
+  if (projectorWiringActive) {
+    wrap(
+      vendorId: agendrixVendorId,
+      category: IntegrationCategory.labor,
+      underlying: agendrixSink,
+    );
+  }
   final agendrixCredentialStore = AgendrixBrokerCredentialStore(broker: broker);
   laborAdapterFactories[agendrixVendorId] = ({
     required String operatorId,
@@ -592,6 +699,13 @@ Future<void> bindPhase8IntegrationsForProduction(
   final humanitySink = HumanityPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
+  if (projectorWiringActive) {
+    wrap(
+      vendorId: kHumanityVendorId,
+      category: IntegrationCategory.labor,
+      underlying: humanitySink,
+    );
+  }
   // Humanity uses an app-wide OAuth client_id / client_secret pair the
   // proxy bootstrap has not yet surfaced as typed records (PR #260
   // covered Aloha / Square / Clover). Until those secrets land, the
@@ -634,6 +748,13 @@ Future<void> bindPhase8IntegrationsForProduction(
   final pushOpsSink = PushOperationsPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
+  if (projectorWiringActive) {
+    wrap(
+      vendorId: pushOperationsVendorId,
+      category: IntegrationCategory.labor,
+      underlying: pushOpsSink,
+    );
+  }
   final pushOpsBearerResolver = makePushOperationsBearerResolver(broker: broker);
   laborAdapterFactories[pushOperationsVendorId] = ({
     required String operatorId,
@@ -655,6 +776,13 @@ Future<void> bindPhase8IntegrationsForProduction(
   final qbtSink = QuickBooksTimePostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
+  if (projectorWiringActive) {
+    wrap(
+      vendorId: kQuickBooksTimeVendorId,
+      category: IntegrationCategory.labor,
+      underlying: qbtSink,
+    );
+  }
   // QuickBooks Time uses an app-wide Intuit client_id / client_secret
   // pair the bootstrap has not yet surfaced as a typed record. We
   // currently thread null-safe blanks; the refresh closure throws on
@@ -706,6 +834,13 @@ Future<void> bindPhase8IntegrationsForProduction(
   final sevenShiftsSink = SevenShiftsPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
+  if (projectorWiringActive) {
+    wrap(
+      vendorId: 'seven_shifts',
+      category: IntegrationCategory.labor,
+      underlying: sevenShiftsSink,
+    );
+  }
   // 7shifts uses an app-wide partner registration. Until the typed
   // ProxyConfig accessor lands, env reads are the staging shape.
   final sevenShiftsClientId = env['SEVEN_SHIFTS_OAUTH_CLIENT_ID'] ?? '';
@@ -748,6 +883,12 @@ Future<void> bindPhase8IntegrationsForProduction(
   final libroSink = LibroPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
+  // Libro / OpenTable / Tock / SevenRooms expose their CanonicalSink
+  // surface as a private view inside the sink file (e.g.
+  // `_LibroCanonicalSinkView`); the public sink class implements only
+  // the vendor gateway. Until those views surface as public getters,
+  // the projecting wrapper cannot front them. Out of scope for this
+  // wire-in lane (vendor sink files are read-only here).
   final libroClientId = env['LIBRO_OAUTH_CLIENT_ID'] ?? '';
   final libroClientSecret = env['LIBRO_OAUTH_CLIENT_SECRET'] ?? '';
   if (libroClientId.isEmpty || libroClientSecret.isEmpty) {
@@ -785,6 +926,7 @@ Future<void> bindPhase8IntegrationsForProduction(
   final opentableSink = OpenTableReservationPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
+  // OpenTable's CanonicalSink view is internal (see Libro note above).
   reservationAdapterFactories[kOpenTableVendorId] = ({
     required String operatorId,
     required String locationId,
@@ -823,6 +965,7 @@ Future<void> bindPhase8IntegrationsForProduction(
   final tockSink = TockReservationPostgresSink(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
   );
+  // Tock's CanonicalSink view is internal (see Libro note above).
   reservationAdapterFactories[kTockVendorId] = ({
     required String operatorId,
     required String locationId,
@@ -896,15 +1039,42 @@ Future<void> bindPhase8IntegrationsForProduction(
           reservationAdapterFactories.keys.toList()..sort(),
       'signature_verifiers_wired': signatureVerifiers.keys.toList()..sort(),
       'disabled_vendors': disabledVendors,
+      'projector_wiring_active': projectorWiringActive,
+      'projecting_sinks_wired': projectingSinksByVendor.keys.toList()..sort(),
     },
   );
+
+  // The wrapped sinks are reachable via the binder's module-level
+  // accessor [phase8ProjectingSinksByVendor] for downstream worker
+  // dispatch wiring. See file-header on `wrap` for the rationale.
+  _phase8ProjectingSinksByVendor
+    ..clear()
+    ..addAll(projectingSinksByVendor);
 }
+
+/// Module-level snapshot of the projecting canonical sinks the binder
+/// constructed on its most recent run. Empty before the first call to
+/// [bindPhase8IntegrationsForProduction] or when the caller did not
+/// surface a [CanonicalFactPostCommitProjector] + resolver pair.
+///
+/// Downstream consumers (the production backfill worker; the per-vendor
+/// poll worker) read this map to obtain the [ProjectingCanonicalSink]
+/// view of each vendor's canonical write surface so a successful
+/// commit-signal `appendSyncLog` projects the just-written facts.
+Map<String, ProjectingCanonicalSink> get phase8ProjectingSinksByVendor =>
+    Map<String, ProjectingCanonicalSink>.unmodifiable(
+      _phase8ProjectingSinksByVendor,
+    );
+
+final Map<String, ProjectingCanonicalSink> _phase8ProjectingSinksByVendor =
+    <String, ProjectingCanonicalSink>{};
 
 /// Test helper. Production never invokes this; tests call it between
 /// cases so each can assert against a freshly-installed holder.
 void resetPhase8BinderForTests() {
   _alreadyBound = false;
   Phase80IntegrationRoutes.globalBindings = null;
+  _phase8ProjectingSinksByVendor.clear();
 }
 
 /// Internal bindings holder.
