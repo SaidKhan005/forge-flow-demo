@@ -499,6 +499,75 @@ void main() {
       }
     });
   });
+
+  // Code Health LB#2 — `appendSyncLog` writes the `payload_preview`
+  // JSONB column through the shared `encodePayloadPreviewForSyncLog`
+  // helper, which redacts the payload via `redactWebhookPayload` BEFORE
+  // JSON-encoding. Operator-scoped Postgres must never carry vendor
+  // secrets / PII in the clear.
+  group('Code Health LB#2 — appendSyncLog redacts payload_preview', () {
+    test(
+      'sensitive fields are stripped from the connector_sync_log INSERT '
+      'before reaching Postgres',
+      () async {
+        final pool = _FakeToastPool()
+          ..seedLocation(operatorId: _opA, locationId: _locA)
+          ..seedConnection(
+            operatorId: _opA,
+            locationId: _locA,
+            connectionId: _connA,
+          );
+        final sink = ToastPosPostgresSink(
+          TenantTransactionWrapper(pool),
+          clock: () => DateTime.utc(2026, 5, 4, 22, 0, 0),
+        );
+
+        await sink.appendSyncLog(
+          operatorId: _opA,
+          locationId: _locA,
+          eventKind: 'poll_success',
+          recordsCount: 1,
+          connectionId: _connA,
+          payloadPreview: <String, Object?>{
+            'records_count': 1,
+            'password': 'hunter2',
+            'api_key': 'sk_live_xyz',
+            'refresh_token': 'rt_abc',
+            'email': 'guest@example.com',
+            'phone': '+15551234567',
+            'guest_name': 'Casey Riley',
+            'nested': <String, Object?>{
+              'secret': 'shhh',
+              'safe_field': 'keep-me',
+            },
+          },
+        );
+
+        expect(pool.syncLogInserts, hasLength(1));
+        final encoded = pool.syncLogInserts.single['payload_preview'];
+        expect(encoded, isA<String>(),
+            reason: 'helper must JSON-encode the redacted preview');
+        final decoded =
+            jsonDecode(encoded! as String) as Map<String, Object?>;
+        for (final stripped in <String>[
+          'password',
+          'api_key',
+          'refresh_token',
+          'email',
+          'phone',
+          'guest_name',
+        ]) {
+          expect(decoded.containsKey(stripped), isFalse,
+              reason: '$stripped must be redacted out of payload_preview');
+        }
+        final nested = decoded['nested']! as Map<String, Object?>;
+        expect(nested.containsKey('secret'), isFalse,
+            reason: 'nested secret must be redacted recursively');
+        expect(nested['safe_field'], 'keep-me');
+        expect(decoded['records_count'], 1);
+      },
+    );
+  });
 }
 
 // ─── Test doubles ────────────────────────────────────────────────────
@@ -597,6 +666,11 @@ class _FakeToastPool implements PostgresPool {
   /// Keyed by `(operator_id, location_id, category)`.
   final Map<String, Map<String, Object?>> demoModeState =
       <String, Map<String, Object?>>{};
+
+  /// Captured `connector_sync_log` INSERT parameter maps in execution
+  /// order. Code Health LB#2 — used to assert
+  /// `payload_preview` redaction.
+  final List<PostgresParameters> syncLogInserts = <PostgresParameters>[];
 
   final List<_FakeToastTransaction> transactions = <_FakeToastTransaction>[];
 
@@ -735,9 +809,9 @@ class _FakeToastTransaction implements PostgresTransaction {
       return 1;
     }
     if (sql.contains('insert into public.connector_sync_log')) {
-      // Append-only; we don't need to materialize rows for the
-      // 8.spine-bridge.1.TS tests, but the call is recorded so future
-      // tests can grow.
+      // Append-only; capture the parameter map so Code Health LB#2 can
+      // assert the `payload_preview` value the sink encoded.
+      pool.syncLogInserts.add(parameters);
       return 1;
     }
     if (sql.contains('insert into public.demo_mode_state')) {

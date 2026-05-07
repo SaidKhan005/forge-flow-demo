@@ -450,6 +450,77 @@ void main() {
               'or read key).');
     });
   });
+
+  // Code Health LB#2 — the unified CanonicalSink view's `appendSyncLog`
+  // forwards `payloadPreview` into the private sink writer, which goes
+  // through the shared `encodePayloadPreviewForSyncLog` helper. The
+  // helper redacts the payload via `redactWebhookPayload` BEFORE
+  // JSON-encoding so vendor secrets / PII never land in
+  // `connector_sync_log.payload_preview`.
+  group(
+      'OpenTableReservationPostgresSink — Code Health LB#2 redaction',
+      () {
+    test(
+      'CanonicalSink.appendSyncLog redacts sensitive fields before the '
+      'connector_sync_log INSERT reaches Postgres',
+      () async {
+        final db = _FakeDb()
+          ..seedConnection(_connA, _opA, _locA, _restaurantId)
+          ..seedLocation(_opA, _locA, 'UTC', 0);
+        final sink = OpenTableReservationPostgresSink(
+          tenantWrapper: TenantTransactionWrapper(_FakePool(db)),
+          now: () => DateTime.utc(2026, 5, 4, 12),
+        );
+        final canonicalSink = sink.asCanonicalSink(
+          connectionIdResolver: (_, __) => _connA,
+        );
+
+        await canonicalSink.appendSyncLog(
+          operatorId: _opA,
+          locationId: _locA,
+          connectionId: _connA,
+          eventKind: 'poll_success',
+          recordsCount: 1,
+          payloadPreview: <String, Object?>{
+            'records_count': 1,
+            'password': 'hunter2',
+            'api_key': 'sk_live_abc',
+            'refresh_token': 'rt_def',
+            'email': 'guest@example.com',
+            'phone': '+15551234567',
+            'guest_name': 'Casey Riley',
+            'nested': <String, Object?>{
+              'secret': 'shhh',
+              'safe_field': 'keep-me',
+            },
+          },
+        );
+
+        expect(db.syncLogs, hasLength(1));
+        final stored = db.syncLogs.single;
+        expect(stored.payloadPreview, isA<String>(),
+            reason: 'helper must JSON-encode the redacted preview');
+        final decoded = jsonDecode(stored.payloadPreview!)
+            as Map<String, Object?>;
+        for (final stripped in <String>[
+          'password',
+          'api_key',
+          'refresh_token',
+          'email',
+          'phone',
+          'guest_name',
+        ]) {
+          expect(decoded.containsKey(stripped), isFalse,
+              reason: '$stripped must be redacted out of payload_preview');
+        }
+        final nested = decoded['nested']! as Map<String, Object?>;
+        expect(nested.containsKey('secret'), isFalse,
+            reason: 'nested secret must be redacted recursively');
+        expect(nested['safe_field'], 'keep-me');
+        expect(decoded['records_count'], 1);
+      },
+    );
+  });
 }
 
 // The literal `'seated_at'` token built up at runtime so the
@@ -618,6 +689,7 @@ class _StoredLog {
     required this.connectionId,
     required this.eventKind,
     required this.recordsCount,
+    required this.payloadPreview,
   });
 
   final String operatorId;
@@ -625,6 +697,10 @@ class _StoredLog {
   final String connectionId;
   final String eventKind;
   final int? recordsCount;
+
+  /// Encoded JSON string the sink wrote into `payload_preview`. Code
+  /// Health LB#2 — used to assert post-redaction shape.
+  final String? payloadPreview;
 }
 
 class _StoredDemo {
@@ -1004,6 +1080,7 @@ class _FakeTx implements PostgresTransaction {
           connectionId: parameters['connection_id']! as String,
           eventKind: parameters['event_kind']! as String,
           recordsCount: parameters['records_count'] as int?,
+          payloadPreview: parameters['payload_preview'] as String?,
         ),
       );
       return 1;
