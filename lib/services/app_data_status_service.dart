@@ -1,6 +1,7 @@
 /// Evaluates app data readiness from persisted state.
 library;
 
+import '../domain/models/import_run.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_import_tracking_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
@@ -28,6 +29,15 @@ class AppDataStatusService {
     final latestImport = await SqliteImportTrackingRepository.instance
         .getLatestImportRun(restaurantId);
 
+    // First-backfill state derives from the same `import_runs` cache the
+    // sync runtime persists into via `_persistFirstBackfillStatus`. The
+    // proxy returns `first_backfill_status` per connection; the HTTP
+    // sync client parses it and the runtime mirrors it as an
+    // `ImportRun(mode: 'first_backfill')` row keyed on the job id. We
+    // read whatever the latest persisted row is, mapping the proxy
+    // status lexicon onto [FirstBackfillStatus].
+    final firstBackfill = _firstBackfillStatusFrom(latestImport);
+
     // 2. Check for failed import
     if (latestImport != null && latestImport.status == 'failed') {
       final timestamp = latestImport.completedAt ?? latestImport.startedAt;
@@ -35,11 +45,31 @@ class AppDataStatusService {
           ? AppDataStatus.backfillFailed(
               errorSummary: latestImport.errorSummary,
               timestamp: timestamp,
+              firstBackfillStatus: firstBackfill,
             )
           : AppDataStatus.failedImport(
               errorSummary: latestImport.errorSummary,
               timestamp: timestamp,
+              firstBackfillStatus: firstBackfill,
             );
+    }
+
+    // 2a. Defensive dead-letter handling. The current sync worker does
+    // not emit `dead_lettered` yet, but the proxy contract reserves the
+    // value (see `prompt.md` and the wider Phase 8 / 9 dead-letter
+    // surface). When it lands, we surface it as a backfill-failed state
+    // with a distinct [FirstBackfillStatus.deadLettered] field so the
+    // UI can route the operator to support / disconnect+reconnect
+    // without conflating with retryable failures.
+    if (latestImport != null &&
+        _isBackfillMode(latestImport.mode) &&
+        firstBackfill == FirstBackfillStatus.deadLettered) {
+      final timestamp = latestImport.completedAt ?? latestImport.startedAt;
+      return AppDataStatus.backfillFailed(
+        errorSummary: latestImport.errorSummary,
+        timestamp: timestamp,
+        firstBackfillStatus: FirstBackfillStatus.deadLettered,
+      );
     }
 
     // 3. Check for any data at all
@@ -62,8 +92,14 @@ class AppDataStatusService {
     if (_isPendingImport(latestImport?.status) && !hasOpenState) {
       final timestamp = latestImport!.completedAt ?? latestImport.startedAt;
       return _isBackfillMode(latestImport.mode)
-          ? AppDataStatus.backfillPending(timestamp: timestamp)
-          : AppDataStatus.firstSyncPending(timestamp: timestamp);
+          ? AppDataStatus.backfillPending(
+              timestamp: timestamp,
+              firstBackfillStatus: firstBackfill,
+            )
+          : AppDataStatus.firstSyncPending(
+              timestamp: timestamp,
+              firstBackfillStatus: firstBackfill,
+            );
     }
 
     if (!hasHistory && !hasOpenState && !hasCurrentWeekShifts) {
@@ -90,6 +126,7 @@ class AppDataStatusService {
           if (age.inHours >= staleThresholdHours) {
             return AppDataStatus.stale(
               timestamp: latestUpdated.toUtc().toIso8601String(),
+              firstBackfillStatus: firstBackfill,
             );
           }
         }
@@ -99,6 +136,7 @@ class AppDataStatusService {
     if (_demoMode && hasOpenState) {
       return AppDataStatus.demo(
         timestamp: latestImport?.completedAt ?? latestImport?.startedAt,
+        firstBackfillStatus: firstBackfill,
       );
     }
 
@@ -106,6 +144,7 @@ class AppDataStatusService {
     return AppDataStatus.current(
       importStatus: latestImport?.status,
       timestamp: latestImport?.completedAt ?? latestImport?.startedAt,
+      firstBackfillStatus: firstBackfill,
     );
   }
 
@@ -160,5 +199,54 @@ class AppDataStatusService {
   static bool _isBackfillMode(String mode) {
     final normalized = mode.toLowerCase();
     return normalized.contains('backfill') || normalized.contains('first_sync');
+  }
+
+  /// Maps the persisted import_run row (mode='first_backfill', mirrored
+  /// from the proxy's `first_backfill_status`) onto a
+  /// [FirstBackfillStatus] value the mobile UI can render.
+  ///
+  /// When the latest run is NOT a first_backfill row (or no row exists
+  /// at all) we report [FirstBackfillStatus.notStarted] — the operator
+  /// has not yet completed (or kicked off) a first-connection backfill
+  /// for this restaurant.
+  ///
+  /// Lexicon mirrors `_persistFirstBackfillStatus` on the sync side
+  /// (see `lib/services/sync/postgres_shift_record_to_mobile_sync.dart`)
+  /// plus the proxy's wider job-status enum (`pending|queued|started|
+  /// running|in_progress|succeeded|completed|failed|dead_lettered`):
+  ///   * any "active" status (`pending|queued|started|running|
+  ///     in_progress`)                   → [FirstBackfillStatus.inProgress].
+  ///     The operator's connection exists and the backfill is moving;
+  ///     UI must say "we're working on it", not "no data".
+  ///   * `completed` / `succeeded`       → [FirstBackfillStatus.completed]
+  ///   * `failed`                        → [FirstBackfillStatus.failed]
+  ///   * `dead_lettered`                 → [FirstBackfillStatus.deadLettered]
+  ///   * unknown statuses                → [FirstBackfillStatus.notStarted]
+  ///                                       (defensive)
+  ///
+  /// Returns [FirstBackfillStatus.notStarted] when the latest import
+  /// run is NOT a first_backfill row (or no row exists). That's the
+  /// "no connections" path — the operator has not yet kicked off a
+  /// first-connection backfill for this restaurant.
+  static FirstBackfillStatus _firstBackfillStatusFrom(ImportRun? run) {
+    if (run == null) return FirstBackfillStatus.notStarted;
+    if (!_isBackfillMode(run.mode)) return FirstBackfillStatus.notStarted;
+    switch (run.status) {
+      case 'pending':
+      case 'queued':
+      case 'started':
+      case 'running':
+      case 'in_progress':
+        return FirstBackfillStatus.inProgress;
+      case 'completed':
+      case 'succeeded':
+        return FirstBackfillStatus.completed;
+      case 'failed':
+        return FirstBackfillStatus.failed;
+      case 'dead_lettered':
+        return FirstBackfillStatus.deadLettered;
+      default:
+        return FirstBackfillStatus.notStarted;
+    }
   }
 }
