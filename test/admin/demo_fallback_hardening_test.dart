@@ -177,13 +177,69 @@ void main() {
       expect(source, contains("'live HTTP'"));
       expect(source, contains("'demo seed'"));
       expect(source, contains('admin gateway bindings'));
-      // Banner emits via debugPrint so Cloud Run captures it on
-      // stdout — same channel as every other Flutter Web INFO log.
+      // Banner emits via debugPrint so the browser devtools console (and
+      // any Flutter Web log forwarder) captures it on stdout — same
+      // channel as every other Flutter Web INFO log.
       final bannerBody = _functionBodyAfter(
         source,
         source.indexOf('void _logAdminGatewayBindings('),
       );
       expect(bannerBody, contains('debugPrint('));
+
+      // Banner is invoked from main() with a `gateways` map keyed by
+      // surface name. The map must enumerate every surface that has a
+      // dedicated `_resolve*` resolver so the log line is never
+      // silently incomplete after a future surface lands. The keys
+      // appear at the call site (inside `main()`), not inside the
+      // banner body itself.
+      final mainStart = source.indexOf('Future<void> main()');
+      expect(mainStart, isNonNegative,
+          reason: 'main() must exist in lib/main_admin.dart');
+      final mainBody = _functionBodyAfter(source, mainStart);
+      const surfaceKeys = <String>[
+        "'operatorLocation'",
+        "'pricingTier'",
+        "'dataAccuracy'",
+        "'corpus'",
+        "'integration'",
+        "'health'",
+        "'observability'",
+        "'featureFlags'",
+        "'debugConsole'",
+        "'members'",
+        "'rolesHierarchySessions'",
+        "'auditedSupportActions'",
+      ];
+      for (final key in surfaceKeys) {
+        expect(
+          mainBody,
+          contains(key),
+          reason:
+              'startup banner must enumerate $key so the live-vs-demo '
+              'audit covers every admin gateway',
+        );
+      }
+
+      // The banner call must appear before `runApp()` so the audit
+      // lands in logs even if `AdminConsoleApp` throws during build.
+      final invokeIdx = mainBody.indexOf('_logAdminGatewayBindings(');
+      final runAppIdx = mainBody.indexOf('runApp(');
+      expect(
+        invokeIdx,
+        isNonNegative,
+        reason: 'main() must invoke _logAdminGatewayBindings()',
+      );
+      expect(
+        runAppIdx,
+        isNonNegative,
+        reason: 'main() must reach runApp()',
+      );
+      expect(
+        invokeIdx < runAppIdx,
+        isTrue,
+        reason: '_logAdminGatewayBindings must be invoked before runApp() '
+            'so the audit lands in logs even on a build failure',
+      );
     });
 
     test(
