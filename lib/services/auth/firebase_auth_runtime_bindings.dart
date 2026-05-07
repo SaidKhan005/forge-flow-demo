@@ -11,6 +11,19 @@
 // `revokeSession` / `revokeAllSessionsForUser`. Without [proxyBaseUri]
 // the bindings expose `null` so the bootstrap can fall back to the
 // scaffold-failing default (matches the pre-B6 behavior).
+//
+// ops-debt.mobile-push-gating (P0 day-1 launch-blocker): the mobile push
+// token gateway is now feature-flagged behind
+// `MOBILE_PUSH_NOTIFICATIONS_ENABLED` (defaults to `false`). Until the
+// `202605060000_mobile_push_notifications.sql` migration is staging-applied
+// and the flag is flipped to `true` on the proxy + ForgeFlow Cloud Run
+// revisions, mobile clients receive the [NoopMobilePushTokenGateway] and
+// no token-register POSTs flow to the proxy (so the proxy cannot 500 on
+// a missing `mobile_push_tokens` table). See
+// `runbooks/phase_9_production1_migration_apply_runbook.md` for the
+// post-apply flag-flip step.
+
+import 'dart:developer' as developer;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/widgets.dart';
@@ -86,6 +99,62 @@ class FirebaseAuthRuntimeBindings {
   final PasswordResetDeepLinkSource? passwordResetDeepLinkSource;
 }
 
+/// ops-debt.mobile-push-gating — compile-time feature flag (via
+/// `--dart-define=MOBILE_PUSH_NOTIFICATIONS_ENABLED=true`) that gates
+/// the production [ProxyMobilePushTokenGateway] wiring.
+///
+/// Defaults to `false`. While `false`, [buildMobilePushTokenGateway]
+/// returns a [NoopMobilePushTokenGateway] so mobile clients can keep
+/// asking for FCM tokens without any POSTs flowing to the proxy
+/// `/v1/auth/mobile/push-token/register` route. This protects the
+/// production proxy from 500-ing on a missing `mobile_push_tokens`
+/// table when the migration has not yet been staging-applied.
+///
+/// Ops flips this to `true` on the proxy + ForgeFlow Cloud Run
+/// revisions (mobile builds re-cut with the dart-define) AFTER
+/// `db/migrations/202605060000_mobile_push_notifications.sql` is
+/// applied to staging and Production1.
+const bool kMobilePushNotificationsEnabled = bool.fromEnvironment(
+  'MOBILE_PUSH_NOTIFICATIONS_ENABLED',
+);
+
+/// Builds the [MobilePushTokenGateway] used by the mobile auth
+/// bindings, gated by [kMobilePushNotificationsEnabled].
+///
+/// - When [enabled] is `false` (default), returns a
+///   [NoopMobilePushTokenGateway] so the mobile client never POSTs to
+///   the proxy and a single startup line is logged.
+/// - When [enabled] is `true` and [proxyBaseUri] is non-null, returns
+///   a [ProxyMobilePushTokenGateway] wired against the proxy.
+/// - When [enabled] is `true` but [proxyBaseUri] is null (demo / no
+///   proxy), returns `null` to match the pre-flag behavior of the
+///   bindings — the coordinator simply has no gateway to call.
+///
+/// [logger] is injected for tests; production uses `dart:developer.log`.
+MobilePushTokenGateway? buildMobilePushTokenGateway({
+  required Uri? proxyBaseUri,
+  required Future<String?> Function() idTokenProvider,
+  bool enabled = kMobilePushNotificationsEnabled,
+  void Function(String message)? logger,
+}) {
+  if (!enabled) {
+    final emit =
+        logger ??
+        (String message) =>
+            developer.log(message, name: 'forge_flow.mobile_push');
+    emit('mobile_push: feature disabled, tokens not persisted');
+    return const NoopMobilePushTokenGateway();
+  }
+  if (proxyBaseUri == null) {
+    return null;
+  }
+  return ProxyMobilePushTokenGateway(
+    proxyBaseUri: proxyBaseUri,
+    idTokenProvider: idTokenProvider,
+    httpClient: DartIoProxyHttpJsonClient(),
+  );
+}
+
 /// Initializes Firebase using the native Android/iOS config files and returns
 /// the production auth + secure-storage bindings.
 ///
@@ -132,7 +201,15 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
   MfaOperationsGateway? mfaOperationsGateway;
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
   PasswordResetGateway? passwordResetGateway;
-  MobilePushTokenGateway? mobilePushTokenGateway;
+  // ops-debt.mobile-push-gating: build through the gated factory so a
+  // production phone never POSTs to `/v1/auth/mobile/push-token/register`
+  // until the migration is applied and `MOBILE_PUSH_NOTIFICATIONS_ENABLED`
+  // is flipped to `true`.
+  final MobilePushTokenGateway? mobilePushTokenGateway =
+      buildMobilePushTokenGateway(
+        proxyBaseUri: proxyBaseUri,
+        idTokenProvider: authClient.currentIdToken,
+      );
   if (proxyBaseUri != null) {
     ledgerWriter = ProxyAuthSessionLedgerWriter(
       proxyBaseUri: proxyBaseUri,
@@ -179,11 +256,6 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
     passwordResetGateway = ProxyPasswordResetGateway(
       proxyBaseUri: proxyBaseUri,
       httpClient: DartIoProxyAuthOperationsHttpClient(),
-    );
-    mobilePushTokenGateway = ProxyMobilePushTokenGateway(
-      proxyBaseUri: proxyBaseUri,
-      idTokenProvider: authClient.currentIdToken,
-      httpClient: DartIoProxyHttpJsonClient(),
     );
   }
   // Phase 9.UX.7: bind the deep-link source for both demo and live
