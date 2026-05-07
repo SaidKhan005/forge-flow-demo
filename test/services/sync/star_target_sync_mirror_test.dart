@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/target_cycle.dart';
@@ -466,6 +467,15 @@ class _StarTargetSyncClient
   }
 
   @override
+  Future<List<DataAccuracyServicePeriodSetting>>
+  fetchDataAccuracyServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    return const <DataAccuracyServicePeriodSetting>[];
+  }
+
+  @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
   fetchForgeFlowPollingTierAssignment({
     required String operatorId,
@@ -530,6 +540,15 @@ class _LegacySyncProxyClient implements SyncProxyClient {
     required String locationId,
   }) async {
     return null;
+  }
+
+  @override
+  Future<List<DataAccuracyServicePeriodSetting>>
+  fetchDataAccuracyServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    return const <DataAccuracyServicePeriodSetting>[];
   }
 
   @override

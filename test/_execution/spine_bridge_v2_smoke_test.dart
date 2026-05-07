@@ -40,6 +40,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart'
     show Daypart;
 import 'package:forge_and_flow/domain/models/demand_forecast_context.dart';
@@ -1340,6 +1341,13 @@ class _SmokeSyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
   }) async => _dataAccuracySettings;
+
+  @override
+  Future<List<DataAccuracyServicePeriodSetting>>
+  fetchDataAccuracyServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  }) async => const <DataAccuracyServicePeriodSetting>[];
 
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>

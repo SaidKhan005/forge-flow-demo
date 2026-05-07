@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/demand_forecast_context.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
@@ -310,6 +311,13 @@ class _FakeWeeklyPlanClient
     required String operatorId,
     required String locationId,
   }) async => null;
+
+  @override
+  Future<List<DataAccuracyServicePeriodSetting>>
+  fetchDataAccuracyServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  }) async => const <DataAccuracyServicePeriodSetting>[];
 
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>

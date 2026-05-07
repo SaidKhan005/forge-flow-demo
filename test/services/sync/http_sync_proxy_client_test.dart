@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
+import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
 import 'package:forge_and_flow/services/sync/http_sync_proxy_client.dart';
 
@@ -230,6 +231,23 @@ void main() {
                 'updated_at': '2026-05-06T12:00:00Z',
               },
             },
+          '/base/v1/operators/op/locations/loc/data_accuracy_service_period_settings' =>
+            <String, Object?>{
+              'service_period_settings': <Object?>[
+                <String, Object?>{
+                  'id': 'setting-1',
+                  'operator_id': 'op',
+                  'location_id': 'loc',
+                  'service_period_key': 'brunch',
+                  'covers_source': 'reservation_plus_walkin',
+                  'wage_source': 'manual_mix',
+                  'effective_at_business_date': '2026-05-04',
+                  'created_at': '2026-05-06T12:00:00Z',
+                  'updated_at': '2026-05-06T12:05:00Z',
+                  'updated_by': 'admin-1',
+                },
+              ],
+            },
           '/base/v1/operators/op/locations/loc/polling_tier_assignment' =>
             <String, Object?>{
               'assignment': <String, Object?>{
@@ -284,6 +302,10 @@ void main() {
       operatorId: 'op',
       locationId: 'loc',
     );
+    final keyedAccuracy = await client.fetchDataAccuracyServicePeriodSettings(
+      operatorId: 'op',
+      locationId: 'loc',
+    );
     final tier = await client.fetchForgeFlowPollingTierAssignment(
       operatorId: 'op',
       locationId: 'loc',
@@ -305,12 +327,16 @@ void main() {
     expect(demo.single.isDemo, isFalse);
     expect(accuracy!.coversSourceDinner, 'manual');
     expect(accuracy.coversManualEntries['2026-05-05']!['dinner'], 120);
+    expect(keyedAccuracy.single.servicePeriodKey, 'brunch');
+    expect(keyedAccuracy.single.coversSource.wire, 'reservation_plus_walkin');
+    expect(keyedAccuracy.single.wageSource.wire, 'manual_mix');
+    expect(keyedAccuracy.single.updatedBy, 'admin-1');
     expect(tier!.tierKey, 'premium');
     expect(tier.pollingCadencePerVendorSeconds['toast'], 300);
     expect(backfill!.status, 'running');
     expect(backfill.vendorId, 'toast');
     expect(backfill.isRunning, isTrue);
-    expect(requests, hasLength(6));
+    expect(requests, hasLength(7));
 
     // BUG 3 (MEDIUM): non-root proxyBaseUri prefix MUST be preserved.
     // The previous implementation called `proxyBaseUri.resolve` against

@@ -22,6 +22,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
@@ -356,6 +357,55 @@ void main() {
       expect(settings.coversManualEntries['2026-05-04']!['dinner'], 187);
       expect(settings.wageSource, 'manual_mix');
       expect(sync.latestDataAccuracySettings?.wageSource, 'manual_mix');
+    },
+  );
+
+  test(
+    'F2. keyed data accuracy service-period settings sync to mobile getter',
+    () async {
+      const rid = 'rest_F2';
+      final keyedSettings = <DataAccuracyServicePeriodSetting>[
+        _servicePeriodSetting(
+          servicePeriodKey: 'brunch',
+          coversSource: ServicePeriodCoversSource.reservationPlusWalkin,
+          wageSource: ServicePeriodWageSource.manualMix,
+        ),
+        _servicePeriodSetting(
+          servicePeriodKey: 'late_night',
+          coversSource: ServicePeriodCoversSource.forecast,
+          wageSource: ServicePeriodWageSource.targetSubstitution,
+        ),
+      ];
+      final client = _FakeSyncProxyClient()
+        ..scriptShiftPages([_Page(records: const [], nextCursor: null)])
+        ..scriptDataAccuracyServicePeriodSettings(keyedSettings);
+
+      final sync = PostgresShiftRecordToMobileSync(
+        client: client,
+        shiftRepository: SqliteShiftRecordRepository.instance,
+        watermarkDao: watermarkDao,
+        invalidationBus: bus,
+      );
+      final result = await sync.sync(
+        operatorId: _opId,
+        locationId: _locId,
+        restaurantId: rid,
+      );
+
+      expect(
+        result.dataAccuracyServicePeriodSettings.map(
+          (setting) => setting.servicePeriodKey,
+        ),
+        <String>['brunch', 'late_night'],
+      );
+      expect(
+        result.dataAccuracyServicePeriodSettings.first.coversSource,
+        ServicePeriodCoversSource.reservationPlusWalkin,
+      );
+      expect(
+        sync.latestDataAccuracyServicePeriodSettings.first.wageSource,
+        ServicePeriodWageSource.manualMix,
+      );
     },
   );
 
@@ -724,6 +774,8 @@ class _FakeSyncProxyClient implements SyncProxyClient {
   final List<String?> openCursorsObserved = <String?>[];
   List<DemoModeRecord> _demoModeStates = const <DemoModeRecord>[];
   DataAccuracySettingsSnapshot? _dataAccuracySettings;
+  List<DataAccuracyServicePeriodSetting> _dataAccuracyServicePeriodSettings =
+      const <DataAccuracyServicePeriodSetting>[];
   ForgeFlowPollingTierAssignmentSnapshot? _pollingTierAssignment;
   FirstBackfillStatusSnapshot? _firstBackfillStatus;
   RestaurantTimingConfig? _timingConfig;
@@ -750,6 +802,12 @@ class _FakeSyncProxyClient implements SyncProxyClient {
 
   void scriptDataAccuracySettings(DataAccuracySettingsSnapshot? snap) {
     _dataAccuracySettings = snap;
+  }
+
+  void scriptDataAccuracyServicePeriodSettings(
+    List<DataAccuracyServicePeriodSetting> settings,
+  ) {
+    _dataAccuracyServicePeriodSettings = settings;
   }
 
   void scriptPollingTierAssignment(
@@ -816,6 +874,13 @@ class _FakeSyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
   }) async => _dataAccuracySettings;
+
+  @override
+  Future<List<DataAccuracyServicePeriodSetting>>
+  fetchDataAccuracyServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  }) async => _dataAccuracyServicePeriodSettings;
 
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
@@ -903,6 +968,25 @@ OpenShiftSnapshot _openSnapshot(
     sourceShiftId: 'live-shift-1',
     lastEventAt: '2026-05-04T16:30:00.000Z',
     updatedAt: '2026-05-04T16:31:00.000Z',
+  );
+}
+
+DataAccuracyServicePeriodSetting _servicePeriodSetting({
+  required String servicePeriodKey,
+  required ServicePeriodCoversSource coversSource,
+  required ServicePeriodWageSource wageSource,
+}) {
+  return DataAccuracyServicePeriodSetting(
+    id: 'setting-$servicePeriodKey',
+    operatorId: _opId,
+    locationId: _locId,
+    servicePeriodKey: servicePeriodKey,
+    coversSource: coversSource,
+    wageSource: wageSource,
+    effectiveAtBusinessDate: '2026-05-04',
+    createdAt: DateTime.utc(2026, 5, 4, 10),
+    updatedAt: DateTime.utc(2026, 5, 4, 12),
+    updatedBy: 'admin-1',
   );
 }
 

@@ -41,6 +41,7 @@
 
 import 'dart:convert';
 
+import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/import_run.dart';
 import '../../domain/models/sync_watermark.dart';
 import '../../domain/repositories/baseline_selection_repository.dart';
@@ -75,6 +76,7 @@ class SyncResult {
     required this.timingConfigSynced,
     required this.demoModeStates,
     required this.dataAccuracySettings,
+    required this.dataAccuracyServicePeriodSettings,
     required this.pollingTierAssignment,
     required this.firstBackfillStatus,
     required this.starTargetMirrors,
@@ -120,6 +122,12 @@ class SyncResult {
   /// Snapshot of the current `data_accuracy_settings` row, or null
   /// when the operator has not customized.
   final DataAccuracySettingsSnapshot? dataAccuracySettings;
+
+  /// Snapshot of keyed service-period data accuracy settings for this
+  /// location. These rows are server-owned; mobile keeps them in memory
+  /// for display/explanation parity with shared truth.
+  final List<DataAccuracyServicePeriodSetting>
+  dataAccuracyServicePeriodSettings;
 
   /// Snapshot of the currently-effective
   /// `forge_flow_polling_tier_assignment` row, or null when not
@@ -210,6 +218,9 @@ class PostgresShiftRecordToMobileSync {
 
   List<DemoModeRecord> _latestDemoModeStates = const <DemoModeRecord>[];
   DataAccuracySettingsSnapshot? _latestDataAccuracySettings;
+  List<DataAccuracyServicePeriodSetting>
+  _latestDataAccuracyServicePeriodSettings =
+      const <DataAccuracyServicePeriodSetting>[];
   ForgeFlowPollingTierAssignmentSnapshot? _latestPollingTierAssignment;
   FirstBackfillStatusSnapshot? _latestFirstBackfillStatus;
   List<ForecastContextSyncRow> _latestForecastContexts =
@@ -224,6 +235,14 @@ class PostgresShiftRecordToMobileSync {
   /// sync'd (operator, location), or null when none exists server-side.
   DataAccuracySettingsSnapshot? get latestDataAccuracySettings =>
       _latestDataAccuracySettings;
+
+  /// Most-recent keyed service-period data accuracy settings for the
+  /// last sync'd (operator, location).
+  List<DataAccuracyServicePeriodSetting>
+  get latestDataAccuracyServicePeriodSettings =>
+      List<DataAccuracyServicePeriodSetting>.unmodifiable(
+        _latestDataAccuracyServicePeriodSettings,
+      );
 
   /// Most-recent `forge_flow_polling_tier_assignment` snapshot, or
   /// null when not provisioned.
@@ -357,6 +376,10 @@ class PostgresShiftRecordToMobileSync {
           _latestDemoModeStates,
         ),
         dataAccuracySettings: _latestDataAccuracySettings,
+        dataAccuracyServicePeriodSettings:
+            List<DataAccuracyServicePeriodSetting>.unmodifiable(
+              _latestDataAccuracyServicePeriodSettings,
+            ),
         pollingTierAssignment: _latestPollingTierAssignment,
         firstBackfillStatus: _latestFirstBackfillStatus,
         starTargetMirrors: StarTargetMirrorSyncResult.skipped(),
@@ -475,6 +498,10 @@ class PostgresShiftRecordToMobileSync {
           _latestDemoModeStates,
         ),
         dataAccuracySettings: _latestDataAccuracySettings,
+        dataAccuracyServicePeriodSettings:
+            List<DataAccuracyServicePeriodSetting>.unmodifiable(
+              _latestDataAccuracyServicePeriodSettings,
+            ),
         pollingTierAssignment: _latestPollingTierAssignment,
         firstBackfillStatus: _latestFirstBackfillStatus,
         starTargetMirrors: StarTargetMirrorSyncResult.skipped(),
@@ -491,6 +518,11 @@ class PostgresShiftRecordToMobileSync {
       operatorId: operatorId,
       locationId: locationId,
     );
+    _latestDataAccuracyServicePeriodSettings = await client
+        .fetchDataAccuracyServicePeriodSettings(
+          operatorId: operatorId,
+          locationId: locationId,
+        );
     _latestPollingTierAssignment = await client
         .fetchForgeFlowPollingTierAssignment(
           operatorId: operatorId,
@@ -531,6 +563,10 @@ class PostgresShiftRecordToMobileSync {
       timingConfigSynced: timingConfigSynced,
       demoModeStates: List<DemoModeRecord>.unmodifiable(_latestDemoModeStates),
       dataAccuracySettings: _latestDataAccuracySettings,
+      dataAccuracyServicePeriodSettings:
+          List<DataAccuracyServicePeriodSetting>.unmodifiable(
+            _latestDataAccuracyServicePeriodSettings,
+          ),
       pollingTierAssignment: _latestPollingTierAssignment,
       firstBackfillStatus: _latestFirstBackfillStatus,
       starTargetMirrors: starTargetMirrors,

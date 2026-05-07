@@ -25,6 +25,7 @@
 //     commits server-side.
 
 import '../../domain/models/open_shift_snapshot.dart';
+import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/restaurant_timing_config.dart';
 import '../../models/shift_record.dart';
 import '../integration/demo_mode_state.dart';
@@ -253,6 +254,15 @@ abstract class SyncProxyClient {
   /// operator has not yet customized accuracy settings (server-side
   /// defaults apply).
   Future<DataAccuracySettingsSnapshot?> fetchDataAccuracySettings({
+    required String operatorId,
+    required String locationId,
+  });
+
+  /// Pull current keyed service-period data accuracy settings for this
+  /// location. These rows are server-owned; mobile mirrors them for
+  /// display/explanation only and must not write them.
+  Future<List<DataAccuracyServicePeriodSetting>>
+  fetchDataAccuracyServicePeriodSettings({
     required String operatorId,
     required String locationId,
   });
