@@ -62,6 +62,7 @@ import '../screens/roles_screen.dart';
 import '../screens/security_screen.dart';
 import '../screens/sessions_screen.dart';
 import '../screens/settings_notifications_screen.dart';
+import '../screens/schedule_screen.dart';
 import '../screens/sign_in_screen.dart';
 import '../screens/tos_accept_screen.dart';
 import '../screens/vendor_connections_screen.dart';
@@ -90,6 +91,7 @@ const String kOperatorWebNavVendorConnections = 'vendor_connections';
 const String kOperatorWebNavDataAccuracy = 'data_accuracy';
 const String kOperatorWebNavNotifications = 'notifications';
 const String kOperatorWebNavWageAuthority = 'wage_authority';
+const String kOperatorWebNavSchedule = 'schedule';
 
 /// Sub-route names mounted under the Roles nav surface. The router
 /// keeps a small state machine here rather than registering full
@@ -679,6 +681,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         : null;
     final navItems = const <OperatorWebNavItem>[
       OperatorWebNavItem(
+        id: kOperatorWebNavSchedule,
+        title: 'Schedule',
+        icon: Icons.calendar_today_outlined,
+        group: 'Operations',
+      ),
+      OperatorWebNavItem(
         id: kOperatorWebNavAccount,
         title: 'Business account',
         icon: Icons.business_outlined,
@@ -891,6 +899,33 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           gateway: _notificationPreferencesGateway,
         );
         break;
+      case kOperatorWebNavSchedule:
+        body = locationScope == null
+            ? _RequiresLocationScopeSurface(
+                key: const Key('operator_web_schedule_requires_location'),
+                icon: Icons.calendar_today_outlined,
+                title: 'Choose a location',
+                body:
+                    'Forge & Flow locks one weekly plan per location. Use '
+                    'Managing to pick the location whose schedule you want '
+                    'to see.',
+                selectedScopeLabel: managementScope.label,
+              )
+            : ScheduleScreen(
+                session: session,
+                locationId: locationScope.id,
+                locationName: locationScope.label,
+                gateway: _scheduleGateway ??
+                    (_routerOwnedDemoScheduleGateway ??=
+                        OperatorWebDemoScheduleGateway(
+                      seed: demoScheduleSnapshotFor(
+                        operatorId: session.operatorId,
+                        locationId: locationScope.id,
+                        restaurantId: locationScope.id,
+                      ),
+                    )),
+              );
+        break;
       default:
         body = AccountScreen(session: session, gateway: _webAccountGateway);
     }
@@ -1102,6 +1137,20 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
 
   OperatorWebDemoWageAuthorityGateway?
       _routerOwnedDemoWageAuthorityGateway;
+
+  /// Phase 8 W5.B - Schedule screen gateway. Live wiring (Firebase
+  /// source + proxy) implements the provider mixin; demo / fixture
+  /// sources fall back to the in-memory demo gateway owned by the
+  /// router so the walkthrough renders without a live proxy.
+  OperatorWebScheduleGateway? get _scheduleGateway {
+    final source = widget.source;
+    if (source is OperatorWebScheduleGatewayProvider) {
+      return (source as OperatorWebScheduleGatewayProvider).scheduleGateway;
+    }
+    return null;
+  }
+
+  OperatorWebDemoScheduleGateway? _routerOwnedDemoScheduleGateway;
 
   String? get _currentSessionId {
     final source = widget.source;

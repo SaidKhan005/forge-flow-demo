@@ -38,7 +38,8 @@ class FirebaseOperatorWebAuthSource
         OperatorWebTeamAuditLogGatewayProvider,
         OperatorWebSecurityGatewayProvider,
         OperatorWebNotificationPreferencesGatewayProvider,
-        OperatorWebWageAuthorityGatewayProvider {
+        OperatorWebWageAuthorityGatewayProvider,
+        OperatorWebScheduleGatewayProvider {
   FirebaseOperatorWebAuthSource({
     required FirebaseAuthClient authClient,
     required OperatorWebProxyClient proxyClient,
@@ -94,6 +95,10 @@ class FirebaseOperatorWebAuthSource
          proxyBaseUri: proxyClient.baseUri,
          idTokenProvider: authClient.currentIdToken,
        ),
+       scheduleGateway = OperatorWebHttpScheduleGateway(
+         proxyBaseUri: proxyClient.baseUri,
+         idTokenProvider: authClient.currentIdToken,
+       ),
        vendorLifecycleRecentlyAvailableGateway =
            OperatorWebVendorLifecycleRecentlyAvailableGatewayLive(
          proxyBaseUri: proxyClient.baseUri,
@@ -145,6 +150,9 @@ class FirebaseOperatorWebAuthSource
 
   @override
   final OperatorWebWageAuthorityGateway wageAuthorityGateway;
+
+  @override
+  final OperatorWebScheduleGateway scheduleGateway;
 
   @override
   final OperatorWebVendorLifecycleRecentlyAvailableGateway
