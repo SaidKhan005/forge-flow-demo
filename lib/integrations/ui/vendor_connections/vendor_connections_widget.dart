@@ -46,6 +46,7 @@ import 'vendor_connections_gateway.dart';
 import 'vendor_connections_models.dart';
 
 part 'widgets/vendor_connections_action_error.dart';
+part 'widgets/vendor_connections_api_key_dialog.dart';
 part 'widgets/vendor_connections_brand.dart';
 part 'widgets/vendor_connections_category_section.dart';
 part 'widgets/vendor_connections_dialog_primitives.dart';
@@ -262,6 +263,10 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
         return;
       }
     }
+    if (picked.authMode == VendorAuthMode.keyPaste) {
+      await _runApiKeyPasteFlow(entry: picked, module: module);
+      return;
+    }
     try {
       final flow = await _gateway.startConnect(
         operatorId: widget.operatorId,
@@ -276,6 +281,40 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
     } catch (e, stack) {
       _handleTransportError(
         operationLabel: 'start the connection',
+        cause: e,
+        stack: stack,
+      );
+    }
+  }
+
+  /// Capture credentials for a key-paste vendor and POST them to the
+  /// proxy. Stays on-page (no OAuth redirect) — the dialog handles
+  /// validation, the gateway handles persistence, and a successful
+  /// response refreshes the bundle so the connected card appears.
+  Future<void> _runApiKeyPasteFlow({
+    required VendorPickerEntry entry,
+    required String? module,
+  }) async {
+    final credentials = await showDialog<_VendorApiKeyPasteResult>(
+      context: context,
+      builder: (_) => _VendorApiKeyPasteDialog(entry: entry),
+    );
+    if (credentials == null || !mounted) return;
+    try {
+      await _gateway.connectWithApiKey(
+        operatorId: widget.operatorId,
+        locationId: widget.locationId,
+        vendorId: entry.vendorId,
+        apiKey: credentials.apiKey,
+        apiSecret: credentials.apiSecret,
+        module: module,
+      );
+      await _refresh();
+    } on VendorConnectionsGatewayError catch (e) {
+      _showError(e.message, remediation: e.remediation);
+    } catch (e, stack) {
+      _handleTransportError(
+        operationLabel: 'connect this vendor',
         cause: e,
         stack: stack,
       );
