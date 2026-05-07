@@ -163,15 +163,32 @@ class PasswordHistoryRepository extends OperatorScopedRepository {
   /// [userId]. Caller establishes the
   /// `app.bypass_rls_audit = 'system:gdpr.erasure_executed'` audit
   /// marker via the wrapper's `withSystem` path.
+  ///
+  /// Code-health L3 (C5): `password_history` is a per-user table
+  /// without its own `operator_id` column, so the WHERE adds an
+  /// EXISTS subquery against `users` keyed on `(user_id, operator_id)`.
+  /// A `withSystem` (BYPASSRLS) DELETE that targets a `userId` from
+  /// operator A while the caller believes it lives in operator B
+  /// returns 0 affected rows instead of leaking across tenants.
   Future<int> clearForUser({
     required String userId,
+    required String operatorId,
     required String adminReason,
   }) {
     return withSystem<int>(
       (exec) async {
         return exec.execute(
-          'delete from password_history where user_id = @user_id::uuid',
-          parameters: <String, Object?>{'user_id': userId},
+          'delete from password_history '
+          'where user_id = @user_id::uuid '
+          'and exists ('
+          '  select 1 from users u '
+          '  where u.user_id = @user_id::uuid '
+          '  and u.operator_id = @operator_id::uuid'
+          ')',
+          parameters: <String, Object?>{
+            'user_id': userId,
+            'operator_id': operatorId,
+          },
         );
       },
       reason: adminReason,

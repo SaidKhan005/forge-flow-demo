@@ -739,6 +739,7 @@ void main() {
 
         await repo.revokeAllSessionsForUserAsAdmin(
           userId: _validUserId,
+          operatorId: _validOpId,
           reason: 'admin_force_logout',
           adminReason: 'admin.users.force_logout_all_sessions',
         );
@@ -750,11 +751,14 @@ void main() {
           equals('system:admin.users.force_logout_all_sessions'),
         );
         expect(tx.executedSql[1], equals('set local role forge_admin'));
-        // Acceptance: the actual UPDATE filtered by user_id only — the
-        // admin path does not need the row's tenant context.
+        // Acceptance: the actual UPDATE filters by user_id AND scopes to
+        // the row's tenant via an EXISTS check on `users.operator_id` so
+        // the BYPASSRLS path cannot leak across tenants.
         final updateSql = tx.executedSql.last;
         expect(updateSql, contains('update auth_sessions'));
         expect(updateSql, contains('where user_id = @user_id'));
+        expect(updateSql, contains('exists ('));
+        expect(updateSql, contains('u.operator_id = @operator_id::uuid'));
       },
     );
   });

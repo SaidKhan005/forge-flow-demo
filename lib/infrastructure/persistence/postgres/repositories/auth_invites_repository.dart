@@ -147,6 +147,13 @@ class AuthInvitesRepository extends OperatorScopedRepository {
   /// affected-row count (0 means already accepted, revoked, or
   /// gone). Caller (proxy) re-validates expiry / revocation on the
   /// returned record before completing the user-creation flow.
+  ///
+  /// Code-health L3 (C5): the WHERE includes `operator_id = $N` so a
+  /// caller passing an `inviteId` from operator A while believing it
+  /// lives in operator B writes 0 rows instead of accepting an invite
+  /// from a different tenant. RLS already filters reads through
+  /// `withTenant`, but the predicate keeps this defense-in-depth even
+  /// if RLS were ever loosened or bypassed.
   Future<int> markAccepted({
     required String operatorId,
     required String locationId,
@@ -163,10 +170,14 @@ class AuthInvitesRepository extends OperatorScopedRepository {
         'update auth_invites '
         'set accepted_at = now() '
         'where invite_id = @invite_id::uuid '
+        'and operator_id = @operator_id::uuid '
         'and accepted_at is null '
         'and revoked_at is null '
         'and expires_at > now()',
-        parameters: <String, Object?>{'invite_id': inviteId},
+        parameters: <String, Object?>{
+          'invite_id': inviteId,
+          'operator_id': operatorId,
+        },
       );
     });
   }
@@ -174,6 +185,13 @@ class AuthInvitesRepository extends OperatorScopedRepository {
   /// SET `revoked_at = now()` on a pending invite. Idempotent —
   /// re-revoking returns 0 affected rows so the caller knows not to
   /// emit a duplicate audit event.
+  ///
+  /// Code-health L3 (C5): the WHERE includes `operator_id = $N` so a
+  /// caller passing an `inviteId` from operator A while believing it
+  /// lives in operator B writes 0 rows instead of revoking an invite
+  /// from a different tenant. RLS already filters reads through
+  /// `withTenant`, but the predicate keeps this defense-in-depth even
+  /// if RLS were ever loosened or bypassed.
   Future<int> revokeInvite({
     required String operatorId,
     required String locationId,
@@ -190,9 +208,13 @@ class AuthInvitesRepository extends OperatorScopedRepository {
         'update auth_invites '
         'set revoked_at = now() '
         'where invite_id = @invite_id::uuid '
+        'and operator_id = @operator_id::uuid '
         'and accepted_at is null '
         'and revoked_at is null',
-        parameters: <String, Object?>{'invite_id': inviteId},
+        parameters: <String, Object?>{
+          'invite_id': inviteId,
+          'operator_id': operatorId,
+        },
       );
     });
   }
