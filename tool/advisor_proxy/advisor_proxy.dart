@@ -9598,6 +9598,24 @@ Future<void> routeRequest(
             return key;
           }
 
+          Future<Map<String, Object?>?> loadTeamUserJson(
+            String targetUserId,
+          ) async {
+            final listed = await authOperationsGateway.listUsers(
+              TeamUserListCommand(
+                actorUserId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+              ),
+            );
+            for (final user in listed.users) {
+              if (user.userId == targetUserId) {
+                return _teamUserToJson(user);
+              }
+            }
+            return null;
+          }
+
           try {
             if (request.method == 'GET' &&
                 authOperationPath == adminAuthRolesPath) {
@@ -9629,6 +9647,56 @@ Future<void> routeRequest(
               _writeJson(response, 200, <String, Object?>{
                 'users': listed.users.map(_teamUserToJson).toList(),
               });
+              return;
+            }
+
+            if (request.method == 'PATCH' &&
+                authOperationPath.startsWith(adminAuthUsersPrefix)) {
+              if (!await requirePermission('team.users.invite')) return;
+              final targetUserId = _pathSuffix(
+                authOperationPath,
+                adminAuthUsersPrefix,
+              );
+              final displayName = _nonBlankString(body['display_name']);
+              final reason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['reason']);
+              if (targetUserId == null ||
+                  displayName == null ||
+                  reason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_user_profile_fields',
+                  'message':
+                      'user id, display_name, and admin_reason are required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthUsersPrefix$targetUserId',
+                key: idempotencyKey,
+                compute: () async {
+                  final patched = await authOperationsGateway.patchUserProfile(
+                    TeamUserProfilePatchCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      targetUserId: targetUserId,
+                      displayName: displayName,
+                      reason: reason,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'user': _teamUserToJson(patched.user),
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
@@ -10014,13 +10082,19 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final permissionKey = switch (action.action) {
+              final canonicalAction = switch (action.action) {
+                'deactivate' => 'suspend',
+                'reset-mfa-factors' => 'reset-mfa',
+                _ => action.action,
+              };
+              final permissionKey = switch (canonicalAction) {
                 'suspend' => 'team.users.deactivate',
                 'reactivate' => 'team.users.reactivate',
                 'soft-delete' => 'team.users.soft_delete',
                 'reset-password' => 'team.users.reset_password',
                 'reset-mfa' => PermissionKeys.teamUsersResetMfa,
                 'cancel-mfa-removal' => PermissionKeys.teamUsersResetMfa,
+                'force-logout' => 'team.session.force_logout',
                 _ => null,
               };
               if (permissionKey == null) {
@@ -10033,8 +10107,8 @@ Future<void> routeRequest(
               }
               if (!await requirePermission(permissionKey)) return;
               final userActionRouteKey =
-                  '$adminAuthUsersPrefix${action.userId}/${action.action}';
-              if (action.action == 'reset-password') {
+                  '$adminAuthUsersPrefix${action.userId}/$canonicalAction';
+              if (canonicalAction == 'reset-password') {
                 final idempotencyKey = readIdempotencyKeyOrFail();
                 if (idempotencyKey == null) return;
                 final cached = await authOpsCache.runOrReplay(
@@ -10058,7 +10132,7 @@ Future<void> routeRequest(
                 _writeJson(response, cached.statusCode, cached.body);
                 return;
               }
-              if (action.action == 'reset-mfa') {
+              if (canonicalAction == 'reset-mfa') {
                 if (mfaOperationsGateway == null) {
                   _writeJson(response, 503, <String, Object?>{
                     'error': 'mfa_operations_not_configured',
@@ -10109,7 +10183,7 @@ Future<void> routeRequest(
                 _writeJson(response, cached.statusCode, cached.body);
                 return;
               }
-              if (action.action == 'cancel-mfa-removal') {
+              if (canonicalAction == 'cancel-mfa-removal') {
                 if (mfaOperationsGateway == null) {
                   _writeJson(response, 503, <String, Object?>{
                     'error': 'mfa_operations_not_configured',
@@ -10154,6 +10228,37 @@ Future<void> routeRequest(
                 _writeJson(response, cached.statusCode, cached.body);
                 return;
               }
+              if (canonicalAction == 'force-logout') {
+                final idempotencyKey = readIdempotencyKeyOrFail();
+                if (idempotencyKey == null) return;
+                final cached = await authOpsCache.runOrReplay(
+                  route: userActionRouteKey,
+                  key: idempotencyKey,
+                  compute: () async {
+                    final revoked = await authOperationsGateway.signOutAll(
+                      AuthAllSessionsRevokeCommand(
+                        actorUserId: scope.userId,
+                        operatorId: scope.operatorId,
+                        locationId: scope.locationId,
+                        targetUserId: action.userId,
+                        reason:
+                            _nonBlankString(body['admin_reason']) ??
+                            _nonBlankString(body['reason']) ??
+                            'admin.session.force_logout',
+                      ),
+                    );
+                    return CachedProxyResponse(
+                      statusCode: 200,
+                      body: <String, Object?>{
+                        'ok': true,
+                        'revoked_count': revoked.revokedCount,
+                      },
+                    );
+                  },
+                );
+                _writeJson(response, cached.statusCode, cached.body);
+                return;
+              }
 
               final idempotencyKey = readIdempotencyKeyOrFail();
               if (idempotencyKey == null) return;
@@ -10166,9 +10271,12 @@ Future<void> routeRequest(
                     operatorId: scope.operatorId,
                     locationId: scope.locationId,
                     targetUserId: action.userId,
-                    reason: _nonBlankString(body['reason']) ?? action.action,
+                    reason:
+                        _nonBlankString(body['admin_reason']) ??
+                        _nonBlankString(body['reason']) ??
+                        canonicalAction,
                   );
-                  final updated = switch (action.action) {
+                  final updated = switch (canonicalAction) {
                     'suspend' => await authOperationsGateway.suspendUser(
                       command,
                     ),
@@ -10180,11 +10288,13 @@ Future<void> routeRequest(
                     ),
                     _ => throw StateError('unreachable action'),
                   };
+                  final user = await loadTeamUserJson(action.userId);
                   return CachedProxyResponse(
                     statusCode: 200,
                     body: <String, Object?>{
                       'ok': true,
                       'updated': updated.updated,
+                      if (user != null) 'user': user,
                     },
                   );
                 },
@@ -14617,6 +14727,9 @@ bool _isAdminAuthOperation(String path, String method) {
     return true;
   }
   if (method == 'GET' && authOperationPath == adminAuthUsersPath) {
+    return true;
+  }
+  if (method == 'PATCH' && authOperationPath.startsWith(adminAuthUsersPrefix)) {
     return true;
   }
   if (method == 'GET' && authOperationPath == adminAuthSessionsPath) {

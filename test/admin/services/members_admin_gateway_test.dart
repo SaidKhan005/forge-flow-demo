@@ -734,6 +734,63 @@ void main() {
       },
     );
 
+    test(
+      'updateDisplayName pins PATCH /v1/admin/auth/users/<id> with display_name + admin_reason + idempotency-key',
+      () async {
+        late http.Request captured;
+        final mock = http_testing.MockClient((http.Request request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'user': <String, Object?>{
+                'user_id': 'u1',
+                'email': 'a@b.c',
+                'display_name': 'Updated Name',
+                'role_key': 'operator_staff',
+                'primary_location_id': 'loc-1',
+                'primary_location_name': 'Loc 1',
+                'status': 'active',
+                'mfa_enrolled': false,
+                'created_at': '2026-01-12T14:30:00Z',
+                'updated_at': '2026-05-04T12:00:00Z',
+                'created_by': 'demo-super-admin',
+                'updated_by': 'admin-1',
+              },
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+        final gateway = HttpMembersAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+
+        final row = await gateway.updateDisplayName(
+          operatorId: 'op-1',
+          userId: 'u1',
+          displayName: '  Updated Name  ',
+          idempotencyKey: 'idem-display-name-1',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'typo correction',
+        );
+
+        expect(captured.method, equals('PATCH'));
+        expect(captured.url.path, equals('/v1/admin/auth/users/u1'));
+        expect(
+          captured.headers['Idempotency-Key'],
+          equals('idem-display-name-1'),
+        );
+        final body = jsonDecode(captured.body) as Map<String, Object?>;
+        expect(body['operator_id'], equals('op-1'));
+        expect(body['display_name'], equals('Updated Name'));
+        expect(body['admin_reason'], equals('typo correction'));
+        expect(row.displayName, equals('Updated Name'));
+      },
+    );
+
     test('reset MFA pins /reset-mfa-factors path', () async {
       late http.Request captured;
       final mock = http_testing.MockClient((http.Request request) async {

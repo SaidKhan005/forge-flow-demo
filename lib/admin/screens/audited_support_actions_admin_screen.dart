@@ -431,13 +431,10 @@ class _AuditedSupportActionsAdminScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _ActionsPanelCard(
-            editingEnabled: widget.editingEnabled,
-            canResetMfaFactors: widget.canResetMfaFactors,
-            canIssuePairedErasure: widget.canIssuePairedErasure,
-            onResetMfa: _onResetMfa,
-            onPasswordReset: _onPasswordReset,
-            onIssueErasure: _onIssueErasure,
+          _SupportAuditSummaryStrip(
+            rows: _rows,
+            members: _members,
+            hasMoreRows: _nextCursor != null,
           ),
           const SizedBox(height: 16),
           _AuditLogCard(
@@ -451,8 +448,64 @@ class _AuditedSupportActionsAdminScreenState
             onLoadMore: _loadMore,
             onExportCsv: _onExportCsv,
           ),
+          const SizedBox(height: 16),
+          _ActionsPanelCard(
+            editingEnabled: widget.editingEnabled,
+            canResetMfaFactors: widget.canResetMfaFactors,
+            canIssuePairedErasure: widget.canIssuePairedErasure,
+            onResetMfa: _onResetMfa,
+            onPasswordReset: _onPasswordReset,
+            onIssueErasure: _onIssueErasure,
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _SupportAuditSummaryStrip extends StatelessWidget {
+  const _SupportAuditSummaryStrip({
+    required this.rows,
+    required this.members,
+    required this.hasMoreRows,
+  });
+
+  final List<AuditLogRow> rows;
+  final List<SupportActionsMember> members;
+  final bool hasMoreRows;
+
+  @override
+  Widget build(BuildContext context) {
+    final forgeAdminRows = rows
+        .where((row) => row.actorKind == AuditActorKind.forgeAdmin)
+        .length;
+    return AdminStatStrip(
+      items: <AdminStatItem>[
+        AdminStatItem(
+          label: 'Visible audit rows',
+          value: rows.length.toString(),
+          icon: Icons.history_outlined,
+          tone: AppColors.peacock,
+        ),
+        AdminStatItem(
+          label: 'Support actions',
+          value: forgeAdminRows.toString(),
+          icon: Icons.support_agent_outlined,
+          tone: AppColors.sunset,
+        ),
+        AdminStatItem(
+          label: 'Team members',
+          value: members.length.toString(),
+          icon: Icons.people_alt_outlined,
+          tone: AppColors.ocean,
+        ),
+        AdminStatItem(
+          label: 'More rows',
+          value: hasMoreRows ? 'Yes' : 'No',
+          icon: Icons.expand_more,
+          tone: hasMoreRows ? AppColors.warning : AppColors.positive,
+        ),
+      ],
     );
   }
 }
@@ -807,6 +860,27 @@ class _FiltersBarState extends State<_FiltersBar> {
       key: const Key('admin_asa_filters'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
+        Row(
+          children: [
+            const Icon(
+              Icons.filter_list,
+              size: 18,
+              color: AppColors.sunsetDark,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Filters',
+                style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
+              ),
+            ),
+            Text(
+              'Audit rows are newest first',
+              style: AppTextStyles.mono11(color: AppColors.textMuted),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
         Wrap(
           spacing: 12,
           runSpacing: 8,

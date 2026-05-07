@@ -447,10 +447,10 @@ class _RolesHierarchySessionsAdminScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             AdminPageHeader(
-              title: 'Access',
+              title: 'Team access',
               subtitle:
-                  '${widget.pickedOperator.operatorBusinessName}: roles, '
-                  'hierarchy, and active sessions. Changes require a reason.',
+                  '${widget.pickedOperator.operatorBusinessName}: role policy, '
+                  'location hierarchy, and active sessions. Changes require a reason.',
               trailing: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),
@@ -461,6 +461,8 @@ class _RolesHierarchySessionsAdminScreenState
                 key: const Key('admin_rhs_action_error'),
                 message: _actionError!,
               ),
+            _AccessScopeFilterCard(pickedOperator: widget.pickedOperator),
+            const SizedBox(height: 12),
             TabBar(
               key: const Key('admin_rhs_tab_bar'),
               controller: _tabController,
@@ -468,9 +470,15 @@ class _RolesHierarchySessionsAdminScreenState
               unselectedLabelColor: AppColors.textMuted,
               indicatorColor: AppColors.sunset,
               tabs: const <Widget>[
-                Tab(key: Key('admin_rhs_tab_roles'), text: 'Roles'),
-                Tab(key: Key('admin_rhs_tab_hierarchy'), text: 'Hierarchy'),
-                Tab(key: Key('admin_rhs_tab_sessions'), text: 'Sessions'),
+                Tab(key: Key('admin_rhs_tab_roles'), text: 'Role policy'),
+                Tab(
+                  key: Key('admin_rhs_tab_hierarchy'),
+                  text: 'Location hierarchy',
+                ),
+                Tab(
+                  key: Key('admin_rhs_tab_sessions'),
+                  text: 'Active sessions',
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -580,6 +588,74 @@ class _TabLoadBody extends StatelessWidget {
       return _ErrorBanner(key: errorKey, message: error!);
     }
     return child;
+  }
+}
+
+class _AccessScopeFilterCard extends StatelessWidget {
+  const _AccessScopeFilterCard({required this.pickedOperator});
+
+  final OperatorPickerResult pickedOperator;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      key: const Key('admin_rhs_filter_card'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Icon(Icons.filter_list, size: 18, color: AppColors.sunsetDark),
+          Text(
+            'Filters',
+            style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
+          ),
+          _ScopeChip(
+            icon: Icons.business_outlined,
+            label: pickedOperator.operatorBusinessName,
+          ),
+          _ScopeChip(
+            icon: Icons.location_on_outlined,
+            label: pickedOperator.locationName,
+          ),
+          Text(
+            'Role policy, hierarchy, and sessions use the selected business scope.',
+            style: AppTextStyles.mono11(color: AppColors.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScopeChip extends StatelessWidget {
+  const _ScopeChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: AppColors.textMuted),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: AppTextStyles.mono11(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
   }
 }
 

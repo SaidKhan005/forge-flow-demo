@@ -35,6 +35,9 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     this.onOpenSupportLogs,
     this.onOpenDataAccuracy,
     this.onOpenPollingPricing,
+    this.onOpenTeam,
+    this.onOpenAccess,
+    this.onOpenAuditSupport,
     this.onSelectOperatorScope,
     this.editingEnabled = true,
   });
@@ -43,6 +46,9 @@ class OperatorLocationAdminScreen extends StatefulWidget {
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
+  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenTeam;
+  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAccess;
+  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAuditSupport;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onSelectOperatorScope;
   final bool editingEnabled;
 
@@ -195,16 +201,16 @@ class _OperatorLocationAdminScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             AdminPageHeader(
-              title: 'Operators',
+              title: 'Business accounts',
               subtitle:
-                  'Add operators, manage their locations, and pause access when needed.',
+                  'Start with the business, then move into setup, locations, team, access, audit, and data controls.',
               trailing: widget.editingEnabled
                   ? FilledButton.icon(
                       key: const Key('admin_operators_new_button'),
                       onPressed: _openOnboardingDialog,
                       style: AdminButtonStyles.primary,
                       icon: const Icon(Icons.add, size: 16),
-                      label: const Text('New operator'),
+                      label: const Text('New business'),
                     )
                   : null,
             ),
@@ -255,12 +261,12 @@ class _OperatorLocationAdminScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'No operators yet',
+                  'No business accounts yet',
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Use "New operator" to add the operator, primary location, and first admin user.',
+                  'Use "New business" to add the account, primary location, and first admin user.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
@@ -291,6 +297,9 @@ class _OperatorLocationAdminScreenState
               onOpenSupportLogs: widget.onOpenSupportLogs,
               onOpenDataAccuracy: widget.onOpenDataAccuracy,
               onOpenPollingPricing: widget.onOpenPollingPricing,
+              onOpenTeam: widget.onOpenTeam,
+              onOpenAccess: widget.onOpenAccess,
+              onOpenAuditSupport: widget.onOpenAuditSupport,
               editingEnabled: widget.editingEnabled,
             ),
     );
@@ -436,6 +445,7 @@ class _OperatorList extends StatefulWidget {
 class _OperatorListState extends State<_OperatorList> {
   final _search = TextEditingController();
   late List<_SearchableOperatorBundle> _searchIndex;
+  _BusinessAccountFilter _accountFilter = _BusinessAccountFilter.all;
 
   @override
   void initState() {
@@ -469,7 +479,11 @@ class _OperatorListState extends State<_OperatorList> {
   Widget build(BuildContext context) {
     final query = _search.text.trim().toLowerCase();
     final filtered = _searchIndex
-        .where((entry) => entry.matches(query))
+        .where(
+          (entry) =>
+              entry.matches(query) &&
+              _matchesAccountFilter(entry.bundle, _accountFilter),
+        )
         .map((entry) => entry.bundle)
         .toList(growable: false);
 
@@ -486,60 +500,108 @@ class _OperatorListState extends State<_OperatorList> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-              child: TextField(
-                key: const Key('admin_operators_search_field'),
-                controller: _search,
-                onChanged: (_) => setState(() {}),
-                style: AppTextStyles.body14(color: AppColors.textPrimary),
-                decoration: InputDecoration(
-                  hintText: 'Search operators',
-                  hintStyle: AppTextStyles.body13(color: AppColors.textMuted),
-                  prefixIcon: const Icon(
-                    Icons.search,
-                    size: 18,
-                    color: AppColors.textMuted,
-                  ),
-                  suffixIcon: query.isEmpty
-                      ? null
-                      : IconButton(
-                          key: const Key('admin_operators_search_clear'),
-                          tooltip: 'Clear search',
-                          icon: const Icon(Icons.close, size: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      key: const Key('admin_operators_search_field'),
+                      controller: _search,
+                      onChanged: (_) => setState(() {}),
+                      style: AppTextStyles.body14(color: AppColors.textPrimary),
+                      decoration: InputDecoration(
+                        hintText: 'Search business accounts',
+                        hintStyle: AppTextStyles.body13(
                           color: AppColors.textMuted,
-                          onPressed: () {
-                            _search.clear();
-                            setState(() {});
-                          },
                         ),
-                  isDense: true,
-                  filled: true,
-                  fillColor: AppColors.backgroundSurface,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 10,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(6),
-                    borderSide: const BorderSide(
-                      color: AppColors.borderSubtle,
-                      width: 1,
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          size: 18,
+                          color: AppColors.textMuted,
+                        ),
+                        suffixIcon: query.isEmpty
+                            ? null
+                            : IconButton(
+                                key: const Key('admin_operators_search_clear'),
+                                tooltip: 'Clear search',
+                                icon: const Icon(Icons.close, size: 16),
+                                color: AppColors.textMuted,
+                                onPressed: () {
+                                  _search.clear();
+                                  setState(() {});
+                                },
+                              ),
+                        isDense: true,
+                        filled: true,
+                        fillColor: AppColors.backgroundSurface,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 10,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(6),
+                          borderSide: const BorderSide(
+                            color: AppColors.borderSubtle,
+                            width: 1,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(6),
+                          borderSide: const BorderSide(
+                            color: AppColors.borderSubtle,
+                            width: 1,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(6),
+                          borderSide: const BorderSide(
+                            color: AppColors.sunset,
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(6),
-                    borderSide: const BorderSide(
-                      color: AppColors.borderSubtle,
-                      width: 1,
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: 'Filter business accounts',
+                    child: PopupMenuButton<_BusinessAccountFilter>(
+                      key: const Key('admin_operators_filter_button'),
+                      tooltip: 'Filter business accounts',
+                      initialValue: _accountFilter,
+                      onSelected: (value) =>
+                          setState(() => _accountFilter = value),
+                      itemBuilder: (context) =>
+                          <PopupMenuEntry<_BusinessAccountFilter>>[
+                            for (final value in _BusinessAccountFilter.values)
+                              PopupMenuItem<_BusinessAccountFilter>(
+                                value: value,
+                                child: Text(value.label),
+                              ),
+                          ],
+                      child: Container(
+                        height: 44,
+                        width: 44,
+                        decoration: BoxDecoration(
+                          color: _accountFilter == _BusinessAccountFilter.all
+                              ? AppColors.backgroundSurface
+                              : AppColors.sunset.withValues(alpha: 0.10),
+                          border: Border.all(
+                            color: _accountFilter == _BusinessAccountFilter.all
+                                ? AppColors.borderSubtle
+                                : AppColors.sunset,
+                            width: 1,
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(
+                          Icons.filter_list,
+                          size: 18,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
                     ),
                   ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(6),
-                    borderSide: const BorderSide(
-                      color: AppColors.sunset,
-                      width: 1.5,
-                    ),
-                  ),
-                ),
+                ],
               ),
             ),
             Expanded(
@@ -547,7 +609,7 @@ class _OperatorListState extends State<_OperatorList> {
                   ? Center(
                       key: const Key('admin_operators_no_matches'),
                       child: Text(
-                        'No operators match',
+                        'No business accounts match',
                         style: AppTextStyles.body13(
                           color: AppColors.textSecondary,
                         ),
@@ -577,6 +639,47 @@ class _OperatorListState extends State<_OperatorList> {
         ),
       ),
     );
+  }
+
+  static bool _matchesAccountFilter(
+    OperatorAdminBundle bundle,
+    _BusinessAccountFilter filter,
+  ) {
+    switch (filter) {
+      case _BusinessAccountFilter.all:
+        return true;
+      case _BusinessAccountFilter.active:
+        return !bundle.operator.isSuspended;
+      case _BusinessAccountFilter.suspended:
+        return bundle.operator.isSuspended;
+      case _BusinessAccountFilter.missingPrimary:
+        return bundle.primaryLocation == null;
+      case _BusinessAccountFilter.setupNeedsReview:
+        return bundle.primaryLocation == null || bundle.locations.isEmpty;
+    }
+  }
+}
+
+enum _BusinessAccountFilter {
+  all,
+  active,
+  suspended,
+  missingPrimary,
+  setupNeedsReview;
+
+  String get label {
+    switch (this) {
+      case _BusinessAccountFilter.all:
+        return 'All accounts';
+      case _BusinessAccountFilter.active:
+        return 'Active';
+      case _BusinessAccountFilter.suspended:
+        return 'Suspended';
+      case _BusinessAccountFilter.missingPrimary:
+        return 'Missing primary location';
+      case _BusinessAccountFilter.setupNeedsReview:
+        return 'Setup needs review';
+    }
   }
 }
 
@@ -688,6 +791,9 @@ class _OperatorDetail extends StatelessWidget {
     required this.onOpenSupportLogs,
     required this.onOpenDataAccuracy,
     required this.onOpenPollingPricing,
+    required this.onOpenTeam,
+    required this.onOpenAccess,
+    required this.onOpenAuditSupport,
     required this.editingEnabled,
   });
 
@@ -702,6 +808,9 @@ class _OperatorDetail extends StatelessWidget {
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
+  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenTeam;
+  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAccess;
+  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAuditSupport;
   final bool editingEnabled;
 
   AdminOperatorLocationScopeIntent get _primaryScope {
@@ -769,66 +878,150 @@ class _OperatorDetail extends StatelessWidget {
                   value: bundle.primaryLocation?.name ?? 'No primary location',
                 ),
                 const SizedBox(height: 14),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (editingEnabled)
-                      OutlinedButton.icon(
-                        key: const Key('admin_operator_edit_button'),
-                        onPressed: () => onEditOperator(bundle),
-                        icon: const Icon(Icons.edit_outlined, size: 14),
-                        label: const Text('Edit operator'),
-                      ),
-                    OutlinedButton.icon(
-                      key: Key(
-                        'admin_operator_support_logs_${operator.operatorId}',
-                      ),
-                      onPressed: onOpenSupportLogs == null
-                          ? null
-                          : () => onOpenSupportLogs!(operator.operatorId, null),
-                      icon: const Icon(Icons.bug_report_outlined, size: 14),
-                      label: const Text('View logs'),
+                    _ActionRowWrap(
+                      children: [
+                        _OperatorActionButton(
+                          buttonKey: Key(
+                            'admin_operator_team_${operator.operatorId}',
+                          ),
+                          label: 'Team',
+                          icon: Icons.people_alt_outlined,
+                          tooltip: 'Open team and roles for this business',
+                          onPressed: onOpenTeam == null
+                              ? null
+                              : () => onOpenTeam!(_primaryScope),
+                        ),
+                        _OperatorActionButton(
+                          buttonKey: Key(
+                            'admin_operator_access_${operator.operatorId}',
+                          ),
+                          label: 'Access',
+                          icon: Icons.shield_outlined,
+                          tooltip:
+                              'Open hierarchy and sessions for this business',
+                          onPressed: onOpenAccess == null
+                              ? null
+                              : () => onOpenAccess!(_primaryScope),
+                        ),
+                        _OperatorActionButton(
+                          buttonKey: Key(
+                            'admin_operator_audit_support_${operator.operatorId}',
+                          ),
+                          label: 'Audit & support',
+                          icon: Icons.history_outlined,
+                          tooltip:
+                              'Open audit trail and support actions for this business',
+                          minWidth: 150,
+                          onPressed: onOpenAuditSupport == null
+                              ? null
+                              : () => onOpenAuditSupport!(_primaryScope),
+                        ),
+                      ],
                     ),
-                    OutlinedButton.icon(
-                      key: Key(
-                        'admin_operator_data_accuracy_${operator.operatorId}',
-                      ),
-                      onPressed: onOpenDataAccuracy == null
-                          ? null
-                          : () => onOpenDataAccuracy!(_primaryScope),
-                      icon: const Icon(Icons.fact_check_outlined, size: 14),
-                      label: const Text('Data accuracy'),
+                    const SizedBox(height: 8),
+                    _ActionRowWrap(
+                      children: [
+                        if (editingEnabled)
+                          _OperatorActionButton(
+                            buttonKey: const Key('admin_operator_edit_button'),
+                            label: 'Edit',
+                            icon: Icons.edit_outlined,
+                            tooltip: 'Edit business account',
+                            onPressed: () => onEditOperator(bundle),
+                          ),
+                        if (editingEnabled && operator.isSuspended)
+                          _OperatorActionButton(
+                            buttonKey: const Key(
+                              'admin_operator_reactivate_button',
+                            ),
+                            label: 'Reactivate',
+                            icon: Icons.play_arrow_outlined,
+                            tooltip: 'Reactivate this business account',
+                            onPressed: () => onReactivate(bundle),
+                          ),
+                        if (editingEnabled && !operator.isSuspended)
+                          _OperatorActionButton(
+                            buttonKey: const Key(
+                              'admin_operator_suspend_button',
+                            ),
+                            label: 'Suspend',
+                            icon: Icons.pause_outlined,
+                            tooltip: 'Suspend this business account',
+                            destructive: true,
+                            onPressed: () => onSuspend(bundle),
+                          ),
+                      ],
                     ),
-                    OutlinedButton.icon(
-                      key: Key(
-                        'admin_operator_polling_pricing_${operator.operatorId}',
-                      ),
-                      onPressed: onOpenPollingPricing == null
-                          ? null
-                          : () => onOpenPollingPricing!(_primaryScope),
-                      icon: const Icon(Icons.payments_outlined, size: 14),
-                      label: const Text('Polling & pricing'),
+                    const SizedBox(height: 8),
+                    _ActionRowWrap(
+                      children: [
+                        _OperatorActionButton(
+                          buttonKey: Key(
+                            'admin_operator_data_accuracy_${operator.operatorId}',
+                          ),
+                          label: 'Data accuracy',
+                          icon: Icons.fact_check_outlined,
+                          tooltip: 'Open data accuracy for this business',
+                          minWidth: 136,
+                          onPressed: onOpenDataAccuracy == null
+                              ? null
+                              : () => onOpenDataAccuracy!(_primaryScope),
+                        ),
+                        _OperatorActionButton(
+                          buttonKey: Key(
+                            'admin_operator_polling_pricing_${operator.operatorId}',
+                          ),
+                          label: 'Polling & pricing',
+                          icon: Icons.payments_outlined,
+                          tooltip: 'Open polling and pricing for this business',
+                          minWidth: 148,
+                          onPressed: onOpenPollingPricing == null
+                              ? null
+                              : () => onOpenPollingPricing!(_primaryScope),
+                        ),
+                        _OperatorActionButton(
+                          buttonKey: Key(
+                            'admin_operator_support_logs_${operator.operatorId}',
+                          ),
+                          label: 'View logs',
+                          icon: Icons.bug_report_outlined,
+                          tooltip: 'Open support logs for this business',
+                          minWidth: 116,
+                          onPressed: onOpenSupportLogs == null
+                              ? null
+                              : () => onOpenSupportLogs!(
+                                  operator.operatorId,
+                                  null,
+                                ),
+                        ),
+                      ],
                     ),
-                    if (editingEnabled && operator.isSuspended)
-                      OutlinedButton.icon(
-                        key: const Key('admin_operator_reactivate_button'),
-                        onPressed: () => onReactivate(bundle),
-                        icon: const Icon(Icons.play_arrow_outlined, size: 14),
-                        label: const Text('Reactivate'),
-                      ),
-                    if (editingEnabled && !operator.isSuspended)
-                      OutlinedButton.icon(
-                        key: const Key('admin_operator_suspend_button'),
-                        onPressed: () => onSuspend(bundle),
-                        icon: const Icon(Icons.pause_outlined, size: 14),
-                        label: const Text('Suspend'),
-                        style: AdminButtonStyles.dangerSecondary(),
-                      ),
                   ],
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 12),
+          _BusinessSetupCard(
+            bundle: bundle,
+            onOpenTeam: onOpenTeam == null
+                ? null
+                : () => onOpenTeam!(_primaryScope),
+            onOpenAccess: onOpenAccess == null
+                ? null
+                : () => onOpenAccess!(_primaryScope),
+            onOpenAuditSupport: onOpenAuditSupport == null
+                ? null
+                : () => onOpenAuditSupport!(_primaryScope),
+            onOpenDataAccuracy: onOpenDataAccuracy == null
+                ? null
+                : () => onOpenDataAccuracy!(_primaryScope),
+            onOpenPollingPricing: onOpenPollingPricing == null
+                ? null
+                : () => onOpenPollingPricing!(_primaryScope),
           ),
           const SizedBox(height: 12),
           ConstrainedBox(
@@ -898,6 +1091,36 @@ class _OperatorDetail extends StatelessWidget {
                                 locationName: location.name,
                               ),
                             ),
+                      onOpenTeam: onOpenTeam == null
+                          ? null
+                          : () => onOpenTeam!(
+                              AdminOperatorLocationScopeIntent(
+                                operatorId: operator.operatorId,
+                                locationId: location.locationId,
+                                operatorName: operator.businessName,
+                                locationName: location.name,
+                              ),
+                            ),
+                      onOpenAccess: onOpenAccess == null
+                          ? null
+                          : () => onOpenAccess!(
+                              AdminOperatorLocationScopeIntent(
+                                operatorId: operator.operatorId,
+                                locationId: location.locationId,
+                                operatorName: operator.businessName,
+                                locationName: location.name,
+                              ),
+                            ),
+                      onOpenAuditSupport: onOpenAuditSupport == null
+                          ? null
+                          : () => onOpenAuditSupport!(
+                              AdminOperatorLocationScopeIntent(
+                                operatorId: operator.operatorId,
+                                locationId: location.locationId,
+                                operatorName: operator.businessName,
+                                locationName: location.name,
+                              ),
+                            ),
                       editingEnabled: editingEnabled,
                     ),
                   ),
@@ -906,6 +1129,224 @@ class _OperatorDetail extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BusinessSetupCard extends StatelessWidget {
+  const _BusinessSetupCard({
+    required this.bundle,
+    required this.onOpenTeam,
+    required this.onOpenAccess,
+    required this.onOpenAuditSupport,
+    required this.onOpenDataAccuracy,
+    required this.onOpenPollingPricing,
+  });
+
+  final OperatorAdminBundle bundle;
+  final VoidCallback? onOpenTeam;
+  final VoidCallback? onOpenAccess;
+  final VoidCallback? onOpenAuditSupport;
+  final VoidCallback? onOpenDataAccuracy;
+  final VoidCallback? onOpenPollingPricing;
+
+  @override
+  Widget build(BuildContext context) {
+    final operator = bundle.operator;
+    final profileComplete =
+        operator.businessName.trim().isNotEmpty &&
+        operator.ownerEmail.trim().isNotEmpty &&
+        operator.subscriptionTier.trim().isNotEmpty &&
+        operator.preferredCurrency.trim().isNotEmpty;
+    final hasPrimary = bundle.primaryLocation != null;
+    return AdminCard(
+      key: Key('admin_business_setup_${operator.operatorId}'),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.checklist_rtl_outlined,
+                size: 18,
+                color: AppColors.sunsetDark,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Business setup',
+                  style: AppTextStyles.sectionTitle(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              Text(
+                '${bundle.locations.length} location'
+                '${bundle.locations.length == 1 ? '' : 's'}',
+                style: AppTextStyles.mono11(color: AppColors.textMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'This shows only setup facts already routed to the admin console. '
+            'Open each area to review the live team, access, data, and audit state.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _SetupTile(
+                label: 'Account profile',
+                value: profileComplete ? 'Ready' : 'Needs details',
+                icon: Icons.badge_outlined,
+                tone: profileComplete ? AppColors.positive : AppColors.warning,
+              ),
+              _SetupTile(
+                label: 'Primary location',
+                value: hasPrimary ? bundle.primaryLocation!.name : 'Missing',
+                icon: Icons.star_outline,
+                tone: hasPrimary ? AppColors.positive : AppColors.warning,
+              ),
+              _SetupTile(
+                label: 'Team & roles',
+                value: 'Review',
+                icon: Icons.people_alt_outlined,
+                tone: AppColors.peacock,
+                onPressed: onOpenTeam,
+              ),
+              _SetupTile(
+                label: 'Hierarchy & sessions',
+                value: 'Review',
+                icon: Icons.account_tree_outlined,
+                tone: AppColors.ocean,
+                onPressed: onOpenAccess,
+              ),
+              _SetupTile(
+                label: 'Data accuracy',
+                value: 'Review',
+                icon: Icons.fact_check_outlined,
+                tone: AppColors.sunset,
+                onPressed: onOpenDataAccuracy,
+              ),
+              _SetupTile(
+                label: 'Polling & pricing',
+                value: 'Review',
+                icon: Icons.payments_outlined,
+                tone: AppColors.peacockDark,
+                onPressed: onOpenPollingPricing,
+              ),
+              _SetupTile(
+                label: 'Audit & support',
+                value: 'Open',
+                icon: Icons.history_outlined,
+                tone: AppColors.textMuted,
+                onPressed: onOpenAuditSupport,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SetupTile extends StatelessWidget {
+  const _SetupTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.tone,
+    this.onPressed,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color tone;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Container(
+      width: 176,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: 0.08),
+        border: Border.all(color: tone.withValues(alpha: 0.28), width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: tone),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.mono11(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.body14(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+    if (onPressed == null) return content;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: onPressed,
+        child: content,
+      ),
+    );
+  }
+}
+
+class _OperatorActionButton extends StatelessWidget {
+  const _OperatorActionButton({
+    required this.buttonKey,
+    required this.label,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.minWidth = 104,
+    this.destructive = false,
+  });
+
+  final Key buttonKey;
+  final String label;
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final double minWidth;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: OutlinedButton.icon(
+        key: buttonKey,
+        onPressed: onPressed,
+        style: destructive
+            ? AdminButtonStyles.dangerSecondary()
+            : AdminButtonStyles.secondary(minWidth: minWidth),
+        icon: Icon(icon, size: 14),
+        label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
       ),
     );
   }
@@ -924,6 +1365,9 @@ class _LocationRow extends StatelessWidget {
     required this.onOpenSupportLogs,
     required this.onOpenDataAccuracy,
     required this.onOpenPollingPricing,
+    required this.onOpenTeam,
+    required this.onOpenAccess,
+    required this.onOpenAuditSupport,
     required this.editingEnabled,
   });
 
@@ -937,6 +1381,9 @@ class _LocationRow extends StatelessWidget {
   final VoidCallback? onOpenSupportLogs;
   final VoidCallback? onOpenDataAccuracy;
   final VoidCallback? onOpenPollingPricing;
+  final VoidCallback? onOpenTeam;
+  final VoidCallback? onOpenAccess;
+  final VoidCallback? onOpenAuditSupport;
   final bool editingEnabled;
 
   @override
@@ -977,6 +1424,9 @@ class _LocationRow extends StatelessWidget {
       onOpenSupportLogs: onOpenSupportLogs,
       onOpenDataAccuracy: onOpenDataAccuracy,
       onOpenPollingPricing: onOpenPollingPricing,
+      onOpenTeam: onOpenTeam,
+      onOpenAccess: onOpenAccess,
+      onOpenAuditSupport: onOpenAuditSupport,
       editingEnabled: editingEnabled,
     );
 
@@ -1019,6 +1469,9 @@ class _LocationActionWrap extends StatelessWidget {
     required this.onOpenSupportLogs,
     required this.onOpenDataAccuracy,
     required this.onOpenPollingPricing,
+    required this.onOpenTeam,
+    required this.onOpenAccess,
+    required this.onOpenAuditSupport,
     required this.editingEnabled,
   });
 
@@ -1031,7 +1484,169 @@ class _LocationActionWrap extends StatelessWidget {
   final VoidCallback? onOpenSupportLogs;
   final VoidCallback? onOpenDataAccuracy;
   final VoidCallback? onOpenPollingPricing;
+  final VoidCallback? onOpenTeam;
+  final VoidCallback? onOpenAccess;
+  final VoidCallback? onOpenAuditSupport;
   final bool editingEnabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        _ActionRowWrap(
+          children: [
+            _LocationActionButton(
+              buttonKey: Key('admin_location_team_${location.locationId}'),
+              label: 'Team',
+              icon: Icons.people_alt_outlined,
+              tooltip: 'Open team for this location scope',
+              minWidth: 96,
+              onPressed: onOpenTeam,
+            ),
+            _LocationActionButton(
+              buttonKey: Key('admin_location_access_${location.locationId}'),
+              label: 'Access',
+              icon: Icons.shield_outlined,
+              tooltip: 'Open access and hierarchy for this location scope',
+              minWidth: 104,
+              onPressed: onOpenAccess,
+            ),
+            _LocationActionButton(
+              buttonKey: Key(
+                'admin_location_audit_support_${location.locationId}',
+              ),
+              label: 'Audit & support',
+              icon: Icons.history_outlined,
+              tooltip: 'Open audit and support for this location scope',
+              minWidth: 144,
+              onPressed: onOpenAuditSupport,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _ActionRowWrap(
+          children: [
+            if (editingEnabled)
+              _LocationActionButton(
+                buttonKey: Key('admin_location_edit_${location.locationId}'),
+                label: 'Edit',
+                icon: Icons.edit_outlined,
+                tooltip: 'Edit location',
+                minWidth: 90,
+                onPressed: onEdit,
+              ),
+            if (editingEnabled && !isPrimary)
+              _LocationActionButton(
+                buttonKey: Key(
+                  'admin_location_make_primary_${location.locationId}',
+                ),
+                label: 'Make primary',
+                icon: Icons.star_outline,
+                tooltip: 'Make primary location',
+                minWidth: 132,
+                onPressed: onMakePrimary,
+              ),
+            if (editingEnabled)
+              _LocationActionButton(
+                buttonKey: Key('admin_location_remove_${location.locationId}'),
+                label: 'Remove',
+                icon: Icons.delete_outline,
+                tooltip: 'Remove location',
+                minWidth: 108,
+                destructive: true,
+                onPressed: isPrimary ? null : onRemove,
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _ActionRowWrap(
+          children: [
+            _LocationActionButton(
+              buttonKey: Key('admin_location_timing_${location.locationId}'),
+              label: 'Timing',
+              icon: Icons.schedule_outlined,
+              tooltip: 'View timing for this location',
+              minWidth: 108,
+              onPressed: () {
+                showDialog<void>(
+                  context: context,
+                  builder: (_) => _AdminLocationTimingDialog(
+                    operatorName: operatorName,
+                    location: location,
+                    editingEnabled: editingEnabled,
+                  ),
+                );
+              },
+            ),
+            _LocationActionButton(
+              buttonKey: Key(
+                'admin_location_data_accuracy_${location.locationId}',
+              ),
+              label: 'Data accuracy',
+              icon: Icons.fact_check_outlined,
+              tooltip: 'View data accuracy for this location',
+              minWidth: 136,
+              onPressed: onOpenDataAccuracy,
+            ),
+            _LocationActionButton(
+              buttonKey: Key(
+                'admin_location_polling_pricing_${location.locationId}',
+              ),
+              label: 'Polling & pricing',
+              icon: Icons.payments_outlined,
+              tooltip: 'View polling and pricing for this location',
+              minWidth: 148,
+              onPressed: onOpenPollingPricing,
+            ),
+            _LocationActionButton(
+              buttonKey: Key(
+                'admin_location_support_logs_${location.locationId}',
+              ),
+              label: 'View logs',
+              icon: Icons.bug_report_outlined,
+              tooltip: 'View logs for this location',
+              minWidth: 116,
+              onPressed: onOpenSupportLogs,
+            ),
+            Builder(
+              builder: (subContext) => _LocationActionButton(
+                buttonKey: Key(
+                  'admin_location_vendor_connections_${location.locationId}',
+                ),
+                label: 'Integrations',
+                icon: Icons.link,
+                tooltip: 'Manage integrations',
+                minWidth: 128,
+                emphasized: true,
+                onPressed: () {
+                  Navigator.of(subContext).push(
+                    MaterialPageRoute<void>(
+                      settings: const RouteSettings(
+                        name: '/vendor-connections',
+                      ),
+                      builder: (_) => VendorConnectionsAdminMount(
+                        operatorId: location.operatorId,
+                        locationId: location.locationId,
+                        locationName: location.name,
+                        canMutate: editingEnabled,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionRowWrap extends StatelessWidget {
+  const _ActionRowWrap({required this.children});
+
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
@@ -1040,106 +1655,7 @@ class _LocationActionWrap extends StatelessWidget {
       runSpacing: 8,
       alignment: WrapAlignment.end,
       crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        if (editingEnabled && !isPrimary)
-          _LocationActionButton(
-            buttonKey: Key(
-              'admin_location_make_primary_${location.locationId}',
-            ),
-            label: 'Make primary location',
-            icon: Icons.star_outline,
-            tooltip: 'Make primary location',
-            minWidth: 172,
-            onPressed: onMakePrimary,
-          ),
-        _LocationActionButton(
-          buttonKey: Key('admin_location_support_logs_${location.locationId}'),
-          label: 'View logs',
-          icon: Icons.bug_report_outlined,
-          tooltip: 'View logs for this location',
-          minWidth: 116,
-          onPressed: onOpenSupportLogs,
-        ),
-        _LocationActionButton(
-          buttonKey: Key('admin_location_timing_${location.locationId}'),
-          label: 'Timing',
-          icon: Icons.schedule_outlined,
-          tooltip: 'View timing for this location',
-          minWidth: 108,
-          onPressed: () {
-            showDialog<void>(
-              context: context,
-              builder: (_) => _AdminLocationTimingDialog(
-                operatorName: operatorName,
-                location: location,
-                editingEnabled: editingEnabled,
-              ),
-            );
-          },
-        ),
-        _LocationActionButton(
-          buttonKey: Key('admin_location_data_accuracy_${location.locationId}'),
-          label: 'Data accuracy',
-          icon: Icons.fact_check_outlined,
-          tooltip: 'View data accuracy for this location',
-          minWidth: 136,
-          onPressed: onOpenDataAccuracy,
-        ),
-        _LocationActionButton(
-          buttonKey: Key(
-            'admin_location_polling_pricing_${location.locationId}',
-          ),
-          label: 'Polling & pricing',
-          icon: Icons.payments_outlined,
-          tooltip: 'View polling and pricing for this location',
-          minWidth: 148,
-          onPressed: onOpenPollingPricing,
-        ),
-        if (editingEnabled)
-          _LocationActionButton(
-            buttonKey: Key('admin_location_edit_${location.locationId}'),
-            label: 'Edit',
-            icon: Icons.edit_outlined,
-            tooltip: 'Edit location',
-            minWidth: 90,
-            onPressed: onEdit,
-          ),
-        Builder(
-          builder: (subContext) => _LocationActionButton(
-            buttonKey: Key(
-              'admin_location_vendor_connections_${location.locationId}',
-            ),
-            label: 'Manage integrations',
-            icon: Icons.link,
-            tooltip: 'Manage integrations',
-            minWidth: 172,
-            emphasized: true,
-            onPressed: () {
-              Navigator.of(subContext).push(
-                MaterialPageRoute<void>(
-                  settings: const RouteSettings(name: '/vendor-connections'),
-                  builder: (_) => VendorConnectionsAdminMount(
-                    operatorId: location.operatorId,
-                    locationId: location.locationId,
-                    locationName: location.name,
-                    canMutate: editingEnabled,
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        if (editingEnabled)
-          _LocationActionButton(
-            buttonKey: Key('admin_location_remove_${location.locationId}'),
-            label: 'Remove',
-            icon: Icons.delete_outline,
-            tooltip: 'Remove location',
-            minWidth: 108,
-            destructive: true,
-            onPressed: isPrimary ? null : onRemove,
-          ),
-      ],
+      children: children,
     );
   }
 }
