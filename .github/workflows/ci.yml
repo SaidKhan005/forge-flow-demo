@@ -35,6 +35,36 @@ jobs:
       - name: Test
         run: flutter test
 
+  postgres-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: forgeflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+
+      - name: Postgres integration tests
+        run: flutter test --tags=postgres
+        env:
+          POSTGRES_TEST_URL: postgres://postgres:postgres@localhost:5432/forgeflow_test
+
   repo-lints:
     runs-on: ubuntu-latest
     steps:
