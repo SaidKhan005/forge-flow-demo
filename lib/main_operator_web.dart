@@ -35,6 +35,7 @@
 // gateway only and reads/writes through the proxy via HTTPS.
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 // ignore: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:html' as html;
@@ -91,6 +92,17 @@ const FirebaseOptions kOperatorWebFirebaseOptions = FirebaseOptions(
 );
 
 Future<void> main() async {
+  // B1.A5 — Release-build demo-auth assertion. Mirrors the guard in
+  // `lib/main_admin.dart`. See that file for full rationale.
+  assert(() {
+    if (!kDebugMode && _kOperatorWebDemoAuth) {
+      throw StateError(
+        'OPERATOR_WEB_DEMO_AUTH must not be true in a non-debug build. '
+        'Demo auth bypasses Firebase and must never ship on a public endpoint.',
+      );
+    }
+    return true;
+  }());
   WidgetsFlutterBinding.ensureInitialized();
   try {
     final source = await _resolveAuthSource();

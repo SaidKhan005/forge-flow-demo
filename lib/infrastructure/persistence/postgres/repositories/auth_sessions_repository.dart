@@ -116,6 +116,57 @@ class AuthSessionsRepository extends OperatorScopedRepository {
     );
   }
 
+  /// B1.A6 — Maximum concurrent sessions per user (device-limit cap).
+  ///
+  /// Returns the number of active (non-revoked) sessions for [userId]
+  /// regardless of operator, so the cap is per-user-globally, not per-
+  /// operator. Uses `withSystem` (BYPASSRLS) so the admin pool can count
+  /// across the entire `auth_sessions` table.
+  static const int kMaxConcurrentSessions = 5;
+
+  Future<int> countActiveSessions({
+    required String userId,
+    required String adminReason,
+  }) {
+    return withSystem<int>((exec) async {
+      final rows = await exec.query(
+        'select count(*)::int as cnt from auth_sessions '
+        'where user_id = @user_id::uuid and revoked_at is null',
+        parameters: <String, Object?>{'user_id': userId},
+      );
+      if (rows.isEmpty) return 0;
+      final v = rows.single['cnt'];
+      return v is int ? v : 0;
+    }, reason: adminReason);
+  }
+
+  /// Evicts the oldest active session for [userId] to make room for a
+  /// new one when [kMaxConcurrentSessions] is already reached. Returns
+  /// the revoked `session_id` or null if nothing was evicted (e.g. all
+  /// sessions were already revoked before the lock was taken).
+  Future<String?> evictOldestSession({
+    required String userId,
+    required String adminReason,
+  }) {
+    return withSystem<String?>((exec) async {
+      final rows = await exec.query(
+        'update auth_sessions '
+        'set revoked_at = now(), '
+        "revoked_reason = 'session_cap_eviction' "
+        'where session_id = ('
+        '  select session_id from auth_sessions '
+        '  where user_id = @user_id::uuid and revoked_at is null '
+        '  order by created_at asc limit 1'
+        ') '
+        'returning session_id::text as session_id',
+        parameters: <String, Object?>{'user_id': userId},
+      );
+      if (rows.isEmpty) return null;
+      final id = rows.single['session_id'];
+      return id is String && id.isNotEmpty ? id : null;
+    }, reason: adminReason);
+  }
+
   /// INSERT a new `auth_sessions` row at login time. Returns the
   /// freshly generated `session_id`. Caller stores the `session_id`
   /// alongside the [AuthSession] so subsequent
