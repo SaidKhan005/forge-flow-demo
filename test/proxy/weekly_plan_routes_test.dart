@@ -364,29 +364,39 @@ void main() {
       },
     );
 
-    test('GET returns null cursor for an empty page', () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp();
-        try {
-          final response = await _httpGet(
-            ctx.client,
-            ctx.baseUri.resolve(
-              '$_snapshotsPath?modified_since=2026-05-06T18:00:00Z'
-              '&page_size=25',
-            ),
-          );
+    test(
+      'GET returns honest-unavailable shape for an empty page (Theme H#3)',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '$_snapshotsPath?modified_since=2026-05-06T18:00:00Z'
+                '&page_size=25',
+              ),
+            );
 
-          expect(response.statusCode, equals(200));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body[weeklyPlanSnapshotsResource], isEmpty);
-          expect(body['next_cursor'], isNull);
-          expect(body['has_more'], isFalse);
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            // Honest-unavailable shape (Theme H#3) — clients short-circuit
+            // on `available:false` rather than treating zero rows as a
+            // synced empty page.
+            expect(body['available'], isFalse);
+            expect(body['status'], equals('unavailable'));
+            expect(body['unavailable_reason'], equals('no_projected_rows'));
+            expect(body['reason'], equals('no_projected_rows'));
+            expect(body[weeklyPlanSnapshotsResource], isEmpty);
+            expect(body['next_cursor'], isNull);
+            expect(body['has_more'], isFalse);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('GET rejects caller scope mismatch before gateway access', () async {
       await withRealHttp(() async {

@@ -281,17 +281,37 @@ Future<void> _createAllTables(Database db) async {
   ''');
 
   // ── Wage generator layer ───────────────────────────────────────────────
+  // Theme H#4 / H#5: server-truth fields mirrored from the proxy:
+  //   - server_id mirrors public.wage_role_rows.wage_role_row_id (UUID)
+  //   - job_code / vendor_id / vendor_role_id are vendor identifiers
+  //   - source / is_active / effective_at / metadata / updated_by are
+  //     emitted by the proxy on every wage-role-rows pull
+  // server_id is nullable so legacy / locally-seeded rows still work.
   await db.execute('''
     CREATE TABLE wage_role_rows (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      server_id       TEXT,
       restaurant_id   TEXT NOT NULL,
       role_name       TEXT NOT NULL,
       labor_bucket    TEXT NOT NULL,
       hourly_rate     REAL NOT NULL,
       weighted_hours  REAL NOT NULL,
+      job_code        TEXT,
+      vendor_id       TEXT,
+      vendor_role_id  TEXT,
+      source          TEXT,
+      is_active       INTEGER,
+      effective_at    TEXT,
+      metadata        TEXT,
+      updated_by      TEXT,
       UNIQUE(restaurant_id, role_name)
     )
   ''');
+  await db.execute(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_wage_role_rows_server_id '
+    'ON wage_role_rows (restaurant_id, server_id) '
+    'WHERE server_id IS NOT NULL',
+  );
 
   // ── Target cycle layer ────────────────────────────────────────────────
   await db.execute('''
@@ -319,6 +339,11 @@ Future<void> _createAllTables(Database db) async {
   ''');
 
   // ── Weekly plan snapshot layer ────────────────────────────────────────
+  // Theme H#6: lifecycle fields mirrored from server truth so the
+  // closed-truth `WeeklyPlanSnapshot` model can roundtrip the
+  // `is_active`, `supersedes_snapshot_id`, `lock_reason`,
+  // `locked_by_user_id`, and `metadata` columns the proxy already emits.
+  // All five are nullable so legacy mobile-only snapshots stay valid.
   await db.execute('''
     CREATE TABLE weekly_plan_snapshots (
       snapshot_id                    TEXT PRIMARY KEY NOT NULL,
@@ -342,6 +367,11 @@ Future<void> _createAllTables(Database db) async {
       locked_at                      TEXT NOT NULL,
       forecast_context_json          TEXT,
       day_rows_json                  TEXT NOT NULL,
+      is_active                      INTEGER,
+      supersedes_snapshot_id         TEXT,
+      lock_reason                    TEXT,
+      locked_by_user_id              TEXT,
+      metadata                       TEXT,
       UNIQUE(restaurant_id, week_key)
     )
   ''');
@@ -454,6 +484,47 @@ Future<void> _createAllTables(Database db) async {
   await db.execute('''
     CREATE INDEX ix_realtime_subscription_watermark_recent
     ON realtime_subscription_watermark(operator_id, occurred_at DESC)
+  ''');
+
+  // ── DAS service-period settings cache (Theme H#7) ────────────────────
+  // Mirrors `public.data_accuracy_service_period_settings` keyed rows.
+  // Previously kept only in volatile in-memory state on
+  // PostgresShiftRecordToMobileSync; this cache lets app-start rehydrate
+  // the most recent server pull so honest covers/wage source resolution
+  // works before the first sweep completes.
+  //
+  // Composite key matches the proxy emit shape:
+  //   (restaurant_id, service_period_key, effective_at_business_date)
+  // — the lookup picks the most recent row at-or-before the business
+  // date when resolving sources.
+  await db.execute('''
+    CREATE TABLE data_accuracy_service_period_settings_cache (
+      restaurant_id              TEXT NOT NULL,
+      service_period_key         TEXT NOT NULL,
+      effective_at_business_date TEXT NOT NULL,
+      id                         TEXT NOT NULL,
+      operator_id                TEXT NOT NULL,
+      location_id                TEXT NOT NULL,
+      covers_source              TEXT NOT NULL,
+      wage_source                TEXT NOT NULL,
+      created_at                 TEXT NOT NULL,
+      updated_at                 TEXT NOT NULL,
+      updated_by                 TEXT,
+      cached_at                  TEXT NOT NULL,
+      PRIMARY KEY (
+        restaurant_id,
+        service_period_key,
+        effective_at_business_date
+      )
+    )
+  ''');
+  await db.execute('''
+    CREATE INDEX ix_das_service_period_settings_cache_lookup
+    ON data_accuracy_service_period_settings_cache (
+      restaurant_id,
+      service_period_key,
+      effective_at_business_date DESC
+    )
   ''');
 }
 

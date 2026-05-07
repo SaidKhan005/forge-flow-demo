@@ -221,6 +221,156 @@ Future<void> _migrateToV30(Database db) async {
   }
 }
 
+/// Theme H#4 / H#5 — wage_role_rows server-truth columns.
+///
+/// Adds the 9 columns the proxy already emits but the SQLite DAO was
+/// dropping on the floor. `server_id` mirrors
+/// `public.wage_role_rows.wage_role_row_id` (UUID) so per-row writes can
+/// roundtrip without colliding with the legacy autoincrement `id`. The
+/// trailing UNIQUE index on `(restaurant_id, server_id) WHERE server_id
+/// IS NOT NULL` lets local-only seeded rows (server_id=NULL) coexist
+/// with mirrored rows.
+Future<void> _migrateToV31(Database db) async {
+  if (!await _columnExists(db, 'wage_role_rows', 'server_id')) {
+    await db.execute(
+      'ALTER TABLE wage_role_rows ADD COLUMN server_id TEXT',
+    );
+  }
+  if (!await _columnExists(db, 'wage_role_rows', 'job_code')) {
+    await db.execute(
+      'ALTER TABLE wage_role_rows ADD COLUMN job_code TEXT',
+    );
+  }
+  if (!await _columnExists(db, 'wage_role_rows', 'vendor_id')) {
+    await db.execute(
+      'ALTER TABLE wage_role_rows ADD COLUMN vendor_id TEXT',
+    );
+  }
+  if (!await _columnExists(db, 'wage_role_rows', 'vendor_role_id')) {
+    await db.execute(
+      'ALTER TABLE wage_role_rows ADD COLUMN vendor_role_id TEXT',
+    );
+  }
+  if (!await _columnExists(db, 'wage_role_rows', 'source')) {
+    await db.execute(
+      'ALTER TABLE wage_role_rows ADD COLUMN source TEXT',
+    );
+  }
+  if (!await _columnExists(db, 'wage_role_rows', 'is_active')) {
+    await db.execute(
+      'ALTER TABLE wage_role_rows ADD COLUMN is_active INTEGER',
+    );
+  }
+  if (!await _columnExists(db, 'wage_role_rows', 'effective_at')) {
+    await db.execute(
+      'ALTER TABLE wage_role_rows ADD COLUMN effective_at TEXT',
+    );
+  }
+  if (!await _columnExists(db, 'wage_role_rows', 'metadata')) {
+    await db.execute(
+      'ALTER TABLE wage_role_rows ADD COLUMN metadata TEXT',
+    );
+  }
+  if (!await _columnExists(db, 'wage_role_rows', 'updated_by')) {
+    await db.execute(
+      'ALTER TABLE wage_role_rows ADD COLUMN updated_by TEXT',
+    );
+  }
+  await db.execute(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_wage_role_rows_server_id '
+    'ON wage_role_rows (restaurant_id, server_id) '
+    'WHERE server_id IS NOT NULL',
+  );
+}
+
+/// Theme H#6 — weekly_plan_snapshots lifecycle columns.
+///
+/// Adds the 5 server-truth fields the proxy emits but the SQLite model
+/// previously dropped: `is_active`, `supersedes_snapshot_id`,
+/// `lock_reason`, `locked_by_user_id`, `metadata`. All nullable so
+/// legacy mobile-only snapshots remain valid.
+Future<void> _migrateToV33(Database db) async {
+  if (!await _columnExists(db, 'weekly_plan_snapshots', 'is_active')) {
+    await db.execute(
+      'ALTER TABLE weekly_plan_snapshots ADD COLUMN is_active INTEGER',
+    );
+  }
+  if (!await _columnExists(
+    db,
+    'weekly_plan_snapshots',
+    'supersedes_snapshot_id',
+  )) {
+    await db.execute(
+      'ALTER TABLE weekly_plan_snapshots '
+      'ADD COLUMN supersedes_snapshot_id TEXT',
+    );
+  }
+  if (!await _columnExists(db, 'weekly_plan_snapshots', 'lock_reason')) {
+    await db.execute(
+      'ALTER TABLE weekly_plan_snapshots ADD COLUMN lock_reason TEXT',
+    );
+  }
+  if (!await _columnExists(
+    db,
+    'weekly_plan_snapshots',
+    'locked_by_user_id',
+  )) {
+    await db.execute(
+      'ALTER TABLE weekly_plan_snapshots ADD COLUMN locked_by_user_id TEXT',
+    );
+  }
+  if (!await _columnExists(db, 'weekly_plan_snapshots', 'metadata')) {
+    await db.execute(
+      'ALTER TABLE weekly_plan_snapshots ADD COLUMN metadata TEXT',
+    );
+  }
+}
+
+/// Theme H#7 — DAS service-period settings persistent cache.
+///
+/// Previously the proxy's `data_accuracy_service_period_settings` rows
+/// only lived in volatile in-memory state on
+/// `PostgresShiftRecordToMobileSync`. This migration adds a persistent
+/// SQLite mirror keyed `(restaurant_id, service_period_key,
+/// effective_at_business_date)` so app-start can rehydrate honest
+/// per-period covers/wage source resolution before the first sweep.
+Future<void> _migrateToV32(Database db) async {
+  if (!await _tableExists(
+    db,
+    'data_accuracy_service_period_settings_cache',
+  )) {
+    await db.execute('''
+      CREATE TABLE data_accuracy_service_period_settings_cache (
+        restaurant_id              TEXT NOT NULL,
+        service_period_key         TEXT NOT NULL,
+        effective_at_business_date TEXT NOT NULL,
+        id                         TEXT NOT NULL,
+        operator_id                TEXT NOT NULL,
+        location_id                TEXT NOT NULL,
+        covers_source              TEXT NOT NULL,
+        wage_source                TEXT NOT NULL,
+        created_at                 TEXT NOT NULL,
+        updated_at                 TEXT NOT NULL,
+        updated_by                 TEXT,
+        cached_at                  TEXT NOT NULL,
+        PRIMARY KEY (
+          restaurant_id,
+          service_period_key,
+          effective_at_business_date
+        )
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX ix_das_service_period_settings_cache_lookup
+      ON data_accuracy_service_period_settings_cache (
+        restaurant_id,
+        service_period_key,
+        effective_at_business_date DESC
+      )
+    ''');
+  }
+}
+
 Future<void> _migrateToV29(Database db) async {
   if (!await _columnExists(
     db,

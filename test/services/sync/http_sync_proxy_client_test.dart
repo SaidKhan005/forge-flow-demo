@@ -255,10 +255,23 @@ void main() {
                 ? <String, Object?>{
                     'wage_role_rows': <Object?>[
                       <String, Object?>{
+                        // Theme H#4 / H#5 — proxy emits the full server
+                        // payload; the mobile client must consume every
+                        // field below, not just the legacy 4.
+                        'server_id':
+                            'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
                         'role_name': 'Line Cook',
                         'labor_bucket': 'boh',
                         'hourly_rate': '18.25',
                         'weighted_hours': 40,
+                        'job_code': 'JC-LINE',
+                        'vendor_id': 'seven_shifts',
+                        'vendor_role_id': 'vendor-line-1',
+                        'source': 'vendor_seven_shifts',
+                        'is_active': true,
+                        'effective_at': '2026-05-04T00:00:00Z',
+                        'metadata': <String, Object?>{'origin': 'mock'},
+                        'updated_by': 'admin-1',
                       },
                     ],
                     'next_cursor': '2026-05-06T12:00:00.000Z',
@@ -371,6 +384,17 @@ void main() {
     expect(wageRows.first.laborBucket, 'boh');
     expect(wageRows.first.hourlyRate, 18.25);
     expect(wageRows.last.weightedHours, 32);
+    // Theme H#4 / H#5 — full server payload consumed by the sync client.
+    expect(wageRows.first.serverId, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1');
+    expect(wageRows.first.jobCode, 'JC-LINE');
+    expect(wageRows.first.vendorId, 'seven_shifts');
+    expect(wageRows.first.vendorRoleId, 'vendor-line-1');
+    expect(wageRows.first.source, 'vendor_seven_shifts');
+    expect(wageRows.first.isActive, isTrue);
+    expect(wageRows.first.effectiveAt, '2026-05-04T00:00:00.000Z');
+    expect(wageRows.first.metadata, isNotNull);
+    expect(wageRows.first.metadata!['origin'], 'mock');
+    expect(wageRows.first.updatedBy, 'admin-1');
     expect(tier!.tierKey, 'premium');
     expect(tier.pollingCadencePerVendorSeconds['toast'], 300);
     expect(backfill!.status, 'running');

@@ -89,6 +89,19 @@ class WeeklyPlanSnapshot {
   final String lockedAt;
   final DemandForecastContext? forecastContext;
 
+  // ── Server-truth lifecycle (Theme H#6) ───────────────────────────────────
+  // Mirrored from `public.weekly_plan_snapshots`. Snapshots are append-only
+  // on the server; an in-force snapshot has `isActive == true` and a
+  // superseded one points back to the row that replaced it via
+  // `supersedesSnapshotId`. `lockReason` records why this snapshot
+  // displaced the previous one; `lockedByUserId` and `metadata` are the
+  // attribution + extension envelopes the proxy emits.
+  final bool? isActive;
+  final String? supersedesSnapshotId;
+  final String? lockReason;
+  final String? lockedByUserId;
+  final Map<String, Object?>? metadata;
+
   WeeklyPlanSnapshot({
     required this.snapshotId,
     required this.restaurantId,
@@ -108,6 +121,11 @@ class WeeklyPlanSnapshot {
     required this.lockedAt,
     this.forecastContext,
     List<WeeklyPlanSnapshotDay> dayRows = const [],
+    this.isActive,
+    this.supersedesSnapshotId,
+    this.lockReason,
+    this.lockedByUserId,
+    this.metadata,
   }) : dayRows = List.unmodifiable(dayRows);
 
   // ── Derived ──────────────────────────────────────────────────────────────
@@ -148,6 +166,12 @@ class WeeklyPlanSnapshot {
     'locked_at': lockedAt,
     'forecast_context': forecastContext?.toMap(),
     'day_rows': dayRows.map((d) => d.toMap()).toList(),
+    if (isActive != null) 'is_active': isActive,
+    if (supersedesSnapshotId != null)
+      'supersedes_snapshot_id': supersedesSnapshotId,
+    if (lockReason != null) 'lock_reason': lockReason,
+    if (lockedByUserId != null) 'locked_by_user_id': lockedByUserId,
+    if (metadata != null) 'metadata': metadata,
   };
 
   factory WeeklyPlanSnapshot.fromMap(Map<String, dynamic> m) {
@@ -197,8 +221,40 @@ class WeeklyPlanSnapshot {
       lockedAt: m['locked_at'] as String,
       forecastContext: _forecastContextFromMapValue(m['forecast_context']),
       dayRows: dayRowsList,
+      isActive: _readBoolValue(m['is_active']),
+      supersedesSnapshotId: m['supersedes_snapshot_id'] as String?,
+      lockReason: m['lock_reason'] as String?,
+      lockedByUserId: m['locked_by_user_id'] as String?,
+      metadata: _readMapValue(m['metadata']),
     );
   }
+}
+
+bool? _readBoolValue(Object? value) {
+  if (value == null) return null;
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  if (value is String) {
+    final lower = value.toLowerCase();
+    if (lower == 'true' || lower == '1') return true;
+    if (lower == 'false' || lower == '0') return false;
+  }
+  return null;
+}
+
+Map<String, Object?>? _readMapValue(Object? value) {
+  if (value == null) return null;
+  if (value is Map<String, Object?>) {
+    return value.isEmpty ? null : value;
+  }
+  if (value is Map) {
+    if (value.isEmpty) return null;
+    return <String, Object?>{
+      for (final entry in value.entries)
+        entry.key.toString(): entry.value,
+    };
+  }
+  return null;
 }
 
 DemandForecastContext? _forecastContextFromMapValue(Object? value) {
