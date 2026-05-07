@@ -42,10 +42,7 @@ import 'package:forge_and_flow/integrations/pos/revel_pos_adapter.dart';
 import 'package:forge_and_flow/integrations/pos/revel_webhook_signature_verifier.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
-import 'package:forge_and_flow/services/integration/labor_adapter.dart';
 import 'package:forge_and_flow/services/integration/oauth_refresh_cron.dart';
-import 'package:forge_and_flow/services/integration/pos_adapter.dart';
-import 'package:forge_and_flow/services/integration/reservation_adapter.dart';
 import 'package:forge_and_flow/services/integration/vendor_timestamp_policy.dart';
 
 import 'fixtures/revel_orders_fixture.dart';
@@ -460,9 +457,13 @@ void main() {
 
       final handler = InboundWebhookHandler(
         gateway: fakeWebhookGateway,
-        posAdapters: <String, PosAdapter>{adapter.vendorId: adapter},
-        laborAdapters: const <String, LaborAdapter>{},
-        reservationAdapters: const <String, ReservationAdapter>{},
+        posAdapterFactories: <String, PosAdapterFactory>{
+          adapter.vendorId:
+              ({required operatorId, required locationId}) => adapter,
+        },
+        laborAdapterFactories: const <String, LaborAdapterFactory>{},
+        reservationAdapterFactories:
+            const <String, ReservationAdapterFactory>{},
         signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{
           'revel': verifier,
         },

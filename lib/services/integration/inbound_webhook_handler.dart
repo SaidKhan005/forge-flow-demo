@@ -275,15 +275,46 @@ extension InboundWebhookFailureKindExt on InboundWebhookFailureKind {
   }
 }
 
-/// Inbound webhook handler. Holds adapter map + gateway as
-/// dependencies; no per-request state beyond what the dispatch
-/// scope contains.
+/// Per-tenant adapter factory typedefs.
+///
+/// Vendor credential bridges (e.g., `ToastBrokerAccessTokenResolver`)
+/// hardcode `(operatorId, locationId)` at construction. A single
+/// global adapter map can therefore only ever serve one tenant. The
+/// factory-per-vendor model lets the framework materialise the
+/// right-tenant adapter for each inbound webhook, mirroring the
+/// `AdapterFactory` pattern at
+/// `tool/integration_sync_worker/dispatch.dart`.
+///
+/// Each factory is a closure that closes over the per-vendor deps
+/// record built at boot (transports, gateways, credential bridges,
+/// sinks) and returns a fully-wired adapter for the requested
+/// `(operatorId, locationId)`.
+typedef PosAdapterFactory = PosAdapter Function({
+  required String operatorId,
+  required String locationId,
+});
+
+typedef LaborAdapterFactory = LaborAdapter Function({
+  required String operatorId,
+  required String locationId,
+});
+
+typedef ReservationAdapterFactory = ReservationAdapter Function({
+  required String operatorId,
+  required String locationId,
+});
+
+/// Inbound webhook handler. Holds per-vendor adapter factories +
+/// gateway as dependencies; no per-request state beyond what the
+/// dispatch scope contains. Each webhook delivery materialises the
+/// adapter for its `(operatorId, locationId)` via the registered
+/// factory so per-tenant credential bridges resolve correctly.
 class InboundWebhookHandler {
   InboundWebhookHandler({
     required this.gateway,
-    required this.posAdapters,
-    required this.laborAdapters,
-    required this.reservationAdapters,
+    required this.posAdapterFactories,
+    required this.laborAdapterFactories,
+    required this.reservationAdapterFactories,
     required this.signatureVerifiers,
     required this.bindingExtractor,
     VendorTimestampSanity? sanityChecker,
@@ -292,9 +323,9 @@ class InboundWebhookHandler {
         _now = now ?? DateTime.now;
 
   final InboundWebhookGateway gateway;
-  final Map<String, PosAdapter> posAdapters;
-  final Map<String, LaborAdapter> laborAdapters;
-  final Map<String, ReservationAdapter> reservationAdapters;
+  final Map<String, PosAdapterFactory> posAdapterFactories;
+  final Map<String, LaborAdapterFactory> laborAdapterFactories;
+  final Map<String, ReservationAdapterFactory> reservationAdapterFactories;
   final Map<String, VendorWebhookSignatureVerifier> signatureVerifiers;
   final WebhookBindingExtractor bindingExtractor;
   final VendorTimestampSanity sanityChecker;
@@ -317,7 +348,15 @@ class InboundWebhookHandler {
 
     // Step 0: vendor adapter must be registered. Avoid leaking that
     // we know nothing about this vendor by returning a generic 404.
-    final adapterDispatch = _resolveAdapter(vendorId);
+    // The factory is invoked with the URL-resolved tenant tuple so
+    // per-(operator, location) credential bridges materialise
+    // correctly — a single global adapter cannot serve multiple
+    // tenants.
+    final adapterDispatch = _resolveAdapter(
+      vendorId: vendorId,
+      operatorId: operatorId,
+      locationId: locationId,
+    );
     if (adapterDispatch == null) {
       return const WebhookDispatchResult(
         outcome: WebhookOutcome.unknownVendor,
@@ -536,18 +575,31 @@ class InboundWebhookHandler {
   }
 
   /// Type-safe dispatcher resolved from the per-category adapter
-  /// maps. Returns null when no adapter is registered for [vendorId].
-  /// The returned closure forwards directly to the adapter's
-  /// `handleWebhook`.
-  Future<HandleWebhookResult> Function(HandleWebhookCommand)? _resolveAdapter(
-    String vendorId,
-  ) {
-    final pos = posAdapters[vendorId];
-    if (pos != null) return pos.handleWebhook;
-    final labor = laborAdapters[vendorId];
-    if (labor != null) return labor.handleWebhook;
-    final reservation = reservationAdapters[vendorId];
-    if (reservation != null) return reservation.handleWebhook;
+  /// factory maps. Returns null when no factory is registered for
+  /// [vendorId]. The returned closure forwards directly to the
+  /// adapter's `handleWebhook`. The factory is invoked exactly once
+  /// per webhook delivery; the resulting adapter is short-lived and
+  /// closes over the per-tenant credential bridges.
+  Future<HandleWebhookResult> Function(HandleWebhookCommand)? _resolveAdapter({
+    required String vendorId,
+    required String operatorId,
+    required String locationId,
+  }) {
+    final posFactory = posAdapterFactories[vendorId];
+    if (posFactory != null) {
+      return posFactory(operatorId: operatorId, locationId: locationId)
+          .handleWebhook;
+    }
+    final laborFactory = laborAdapterFactories[vendorId];
+    if (laborFactory != null) {
+      return laborFactory(operatorId: operatorId, locationId: locationId)
+          .handleWebhook;
+    }
+    final reservationFactory = reservationAdapterFactories[vendorId];
+    if (reservationFactory != null) {
+      return reservationFactory(operatorId: operatorId, locationId: locationId)
+          .handleWebhook;
+    }
     return null;
   }
 

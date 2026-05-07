@@ -17,9 +17,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
-import 'package:forge_and_flow/services/integration/labor_adapter.dart';
 import 'package:forge_and_flow/services/integration/pos_adapter.dart';
-import 'package:forge_and_flow/services/integration/reservation_adapter.dart';
 
 void main() {
   group('InboundWebhookHandler', () {
@@ -36,9 +34,13 @@ void main() {
       adapter = _StubPosAdapter(vendorId: 'lightspeed_lsk');
       handler = InboundWebhookHandler(
         gateway: gateway,
-        posAdapters: <String, PosAdapter>{adapter.vendorId: adapter},
-        laborAdapters: const <String, LaborAdapter>{},
-        reservationAdapters: const <String, ReservationAdapter>{},
+        posAdapterFactories: <String, PosAdapterFactory>{
+          adapter.vendorId: ({required operatorId, required locationId}) =>
+              adapter,
+        },
+        laborAdapterFactories: const <String, LaborAdapterFactory>{},
+        reservationAdapterFactories:
+            const <String, ReservationAdapterFactory>{},
         signatureVerifiers: <String, VendorWebhookSignatureVerifier>{
           verifier.vendorId: verifier,
         },
@@ -290,6 +292,105 @@ void main() {
       expect(gateway.sanityDrops.single['rule'], 'closed_before_opened');
     });
 
+    test(
+        'per-tenant routing: same vendor, different (operator, location) '
+        'tuples → factory called per delivery with the right tuple', () async {
+      // Two tenants share the same vendor. The factory is invoked
+      // per webhook delivery; each call must hand back the
+      // correctly-tenant-scoped adapter so that the credential
+      // bridges close over the right (operator, location).
+      final perTenantAdapters = <String, _StubPosAdapter>{};
+      final factoryCalls = <Map<String, String>>[];
+      final perTenantHandler = InboundWebhookHandler(
+        gateway: gateway,
+        posAdapterFactories: <String, PosAdapterFactory>{
+          'lightspeed_lsk':
+              ({required operatorId, required locationId}) {
+            factoryCalls.add(<String, String>{
+              'operator_id': operatorId,
+              'location_id': locationId,
+            });
+            final key = '$operatorId|$locationId';
+            return perTenantAdapters.putIfAbsent(
+              key,
+              () => _StubPosAdapter(vendorId: 'lightspeed_lsk')
+                ..tenantTag = key
+                ..handleResult = const HandleWebhookResult(recordsWritten: 1),
+            );
+          },
+        },
+        laborAdapterFactories: const <String, LaborAdapterFactory>{},
+        reservationAdapterFactories:
+            const <String, ReservationAdapterFactory>{},
+        signatureVerifiers: <String, VendorWebhookSignatureVerifier>{
+          'lightspeed_lsk': verifier,
+        },
+        bindingExtractor: WebhookBindingExtractor(),
+        now: () => nowFixed,
+      );
+
+      gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
+        connectionId: 'conn-shared',
+        metadata: <String, Object?>{'business_id': 'lsk-biz-7c2f'},
+        status: ConnectionStatus.connected,
+      );
+      gateway.signingSecrets['lightspeed_lsk'] = 'secret';
+      verifier.shouldPass = true;
+
+      const tenantAOperator = '00000000-0000-4000-8000-0000000000a0';
+      const tenantALocation = '00000000-0000-4000-8000-0000000000a1';
+      const tenantBOperator = '00000000-0000-4000-8000-0000000000b0';
+      const tenantBLocation = '00000000-0000-4000-8000-0000000000b1';
+
+      Map<String, Object?> payloadFor(String eventId) => <String, Object?>{
+            'event_id': eventId,
+            'business_id': 'lsk-biz-7c2f',
+            'opened_at':
+                nowFixed.subtract(const Duration(hours: 2)).toIso8601String(),
+            'closed_at':
+                nowFixed.subtract(const Duration(hours: 1)).toIso8601String(),
+          };
+
+      final resultA = await perTenantHandler.dispatch(
+        operatorId: tenantAOperator,
+        locationId: tenantALocation,
+        vendorId: 'lightspeed_lsk',
+        rawBody: Uint8List.fromList(utf8.encode('{}')),
+        payload: payloadFor('evt-tenant-a'),
+        headers: const <String, String>{},
+      );
+      final resultB = await perTenantHandler.dispatch(
+        operatorId: tenantBOperator,
+        locationId: tenantBLocation,
+        vendorId: 'lightspeed_lsk',
+        rawBody: Uint8List.fromList(utf8.encode('{}')),
+        payload: payloadFor('evt-tenant-b'),
+        headers: const <String, String>{},
+      );
+
+      expect(resultA.outcome, WebhookOutcome.accepted);
+      expect(resultB.outcome, WebhookOutcome.accepted);
+      expect(factoryCalls, hasLength(2));
+      expect(factoryCalls[0], <String, String>{
+        'operator_id': tenantAOperator,
+        'location_id': tenantALocation,
+      });
+      expect(factoryCalls[1], <String, String>{
+        'operator_id': tenantBOperator,
+        'location_id': tenantBLocation,
+      });
+      // Each tenant got its own adapter instance.
+      expect(perTenantAdapters, hasLength(2));
+      expect(
+        perTenantAdapters['$tenantAOperator|$tenantALocation']!.handleCalls,
+        1,
+      );
+      expect(
+        perTenantAdapters['$tenantBOperator|$tenantBLocation']!.handleCalls,
+        1,
+      );
+    });
+
     test('dead-letter on 3rd consecutive failure', () async {
       gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
         connectionId: 'conn-1',
@@ -491,6 +592,11 @@ class _StubPosAdapter implements PosAdapter {
 
   @override
   final String vendorId;
+
+  /// Diagnostic-only label so the per-tenant routing test can assert
+  /// that distinct adapter instances were handed back for distinct
+  /// `(operator, location)` tuples.
+  String? tenantTag;
 
   @override
   String get displayName => 'Stub POS';

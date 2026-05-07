@@ -31,9 +31,6 @@ import 'package:forge_and_flow/integrations/reservation/sevenrooms_reservation_a
 import 'package:forge_and_flow/integrations/reservation/sevenrooms_webhook_signature_verifier.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
-import 'package:forge_and_flow/services/integration/labor_adapter.dart';
-import 'package:forge_and_flow/services/integration/pos_adapter.dart';
-import 'package:forge_and_flow/services/integration/reservation_adapter.dart';
 
 import 'fixtures/sevenrooms_reservations_fixture.dart';
 import 'fixtures/sevenrooms_webhook_fixture.dart';
@@ -300,10 +297,11 @@ void main() {
 
         final handler = InboundWebhookHandler(
           gateway: webhookGateway,
-          posAdapters: const <String, PosAdapter>{},
-          laborAdapters: const <String, LaborAdapter>{},
-          reservationAdapters: <String, ReservationAdapter>{
-            adapter.vendorId: adapter,
+          posAdapterFactories: const <String, PosAdapterFactory>{},
+          laborAdapterFactories: const <String, LaborAdapterFactory>{},
+          reservationAdapterFactories: <String, ReservationAdapterFactory>{
+            adapter.vendorId:
+                ({required operatorId, required locationId}) => adapter,
           },
           signatureVerifiers: <String, VendorWebhookSignatureVerifier>{
             verifier.vendorId: verifier,

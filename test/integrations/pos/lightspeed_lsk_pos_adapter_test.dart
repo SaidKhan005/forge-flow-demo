@@ -28,9 +28,6 @@ import 'package:forge_and_flow/integrations/pos/lightspeed_lsk_pos_adapter.dart'
 import 'package:forge_and_flow/integrations/pos/lightspeed_lsk_webhook_signature_verifier.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
-import 'package:forge_and_flow/services/integration/labor_adapter.dart';
-import 'package:forge_and_flow/services/integration/pos_adapter.dart';
-import 'package:forge_and_flow/services/integration/reservation_adapter.dart';
 
 import 'fixtures/lightspeed_lsk_orders_fixture.dart';
 import 'fixtures/lightspeed_lsk_webhook_fixture.dart';
@@ -303,9 +300,13 @@ void main() {
 
         final handler = InboundWebhookHandler(
           gateway: webhookGateway,
-          posAdapters: <String, PosAdapter>{adapter.vendorId: adapter},
-          laborAdapters: const <String, LaborAdapter>{},
-          reservationAdapters: const <String, ReservationAdapter>{},
+          posAdapterFactories: <String, PosAdapterFactory>{
+            adapter.vendorId:
+                ({required operatorId, required locationId}) => adapter,
+          },
+          laborAdapterFactories: const <String, LaborAdapterFactory>{},
+          reservationAdapterFactories:
+              const <String, ReservationAdapterFactory>{},
           signatureVerifiers: <String, VendorWebhookSignatureVerifier>{
             verifier.vendorId: verifier,
           },
