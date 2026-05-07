@@ -18,6 +18,8 @@ import 'admin_button_styles.dart';
 import 'admin_route_handoff.dart';
 import 'admin_routes.dart';
 
+const double _kCompactShellBreakpoint = 720;
+
 class AdminShell extends StatefulWidget {
   const AdminShell({
     super.key,
@@ -83,47 +85,185 @@ class _AdminShellState extends State<AdminShell> {
     _selectIntent(AdminRouteIntent(routeId: id));
   }
 
+  Widget _buildRouteBody() {
+    return AdminRouteHandoff(
+      selectedRouteId: _selectedRouteId,
+      supportLogFilter: _supportLogFilter,
+      operatorLocationScope: _operatorLocationScope,
+      onSelectRoute: _selectIntent,
+      child: _AdminBody(
+        key: ValueKey(
+          'admin-body-${_currentRoute.id}-'
+          '${_supportLogFilter?.cacheKey ?? 'none'}-'
+          '${_routeUsesOperatorScope(_currentRoute.id) ? _operatorLocationScope?.cacheKey ?? 'all' : 'global'}',
+        ),
+        route: _currentRoute,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('admin_shell_scaffold'),
       backgroundColor: AppColors.backgroundDeep,
       body: SafeArea(
-        child: Column(
-          children: [
-            _AdminHeaderBar(
-              session: widget.session,
-              onSignOut: () => widget.authSource.signOut(),
-            ),
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _AdminSideNav(
-                    routes: widget.routes,
-                    selectedRouteId: _selectedRouteId,
-                    onSelect: _select,
-                  ),
-                  Expanded(
-                    child: AdminRouteHandoff(
-                      selectedRouteId: _selectedRouteId,
-                      supportLogFilter: _supportLogFilter,
-                      operatorLocationScope: _operatorLocationScope,
-                      onSelectRoute: _selectIntent,
-                      child: _AdminBody(
-                        key: ValueKey(
-                          'admin-body-${_currentRoute.id}-'
-                          '${_supportLogFilter?.cacheKey ?? 'none'}-'
-                          '${_routeUsesOperatorScope(_currentRoute.id) ? _operatorLocationScope?.cacheKey ?? 'all' : 'global'}',
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < _kCompactShellBreakpoint;
+            return Column(
+              children: [
+                _AdminHeaderBar(
+                  session: widget.session,
+                  onSignOut: () => widget.authSource.signOut(),
+                ),
+                Expanded(
+                  child: compact
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _AdminCompactNav(
+                              routes: widget.routes,
+                              selectedRouteId: _selectedRouteId,
+                              onSelect: _select,
+                            ),
+                            Expanded(child: _buildRouteBody()),
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _AdminSideNav(
+                              routes: widget.routes,
+                              selectedRouteId: _selectedRouteId,
+                              onSelect: _select,
+                            ),
+                            Expanded(child: _buildRouteBody()),
+                          ],
                         ),
-                        route: _currentRoute,
-                      ),
-                    ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminCompactNav extends StatelessWidget {
+  const _AdminCompactNav({
+    required this.routes,
+    required this.selectedRouteId,
+    required this.onSelect,
+  });
+
+  final List<AdminRoute> routes;
+  final String selectedRouteId;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_compact_nav'),
+      height: 74,
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        border: Border(
+          bottom: BorderSide(
+            color: AppColors.borderSubtle.withValues(alpha: 0.7),
+            width: 1,
+          ),
+        ),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        child: Row(
+          children: [
+            for (final route in routes) ...[
+              _CompactNavItem(
+                key: Key('admin_nav_item_${route.id}'),
+                route: route,
+                selected: route.id == selectedRouteId,
+                onTap: () => onSelect(route.id),
+              ),
+              const SizedBox(width: 8),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CompactNavItem extends StatelessWidget {
+  const _CompactNavItem({
+    super.key,
+    required this.route,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AdminRoute route;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = selected ? AppColors.textPrimary : AppColors.textMuted;
+    return Semantics(
+      selected: selected,
+      button: true,
+      label: route.title,
+      child: Material(
+        color: selected
+            ? AppColors.sunset.withValues(alpha: 0.10)
+            : AppColors.backgroundDeep.withValues(alpha: 0.74),
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: Container(
+            width: 154,
+            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: selected
+                    ? AppColors.sunset.withValues(alpha: 0.45)
+                    : AppColors.borderSubtle.withValues(alpha: 0.75),
+                width: 1,
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  route.icon,
+                  size: 18,
+                  color: selected ? AppColors.sunsetDark : AppColors.textMuted,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    route.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.body13(color: foreground),
+                  ),
+                ),
+                if (route.placeholder) ...[
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.schedule_outlined,
+                    size: 14,
+                    color: AppColors.textMuted,
                   ),
                 ],
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -147,79 +287,104 @@ class _AdminHeaderBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_header_bar'),
-      height: 64,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.backgroundDeep,
-            AppColors.backgroundDeep.withValues(alpha: 0.85),
-          ],
-        ),
-        border: Border(
-          bottom: BorderSide(
-            color: AppColors.borderSubtle.withValues(alpha: 0.7),
-            width: 1,
-          ),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        children: [
-          ClipOval(
-            child: Image.asset(
-              'assets/images/forge_flow_splash_icon.png',
-              width: 32,
-              height: 32,
-              fit: BoxFit.cover,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Forge & Flow',
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
-                ),
-                Text(
-                  'Admin Console',
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 520;
+        return Container(
+          key: const Key('admin_header_bar'),
+          height: 64,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppColors.backgroundDeep,
+                AppColors.backgroundDeep.withValues(alpha: 0.85),
               ],
             ),
-          ),
-          const Spacer(),
-          _RolePill(roles: session.roles),
-          const SizedBox(width: 12),
-          Flexible(child: _IdentityChip(session: session)),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            key: const Key('admin_header_signout'),
-            style: AdminButtonStyles.secondary(
-              foregroundColor: AppColors.textSecondary,
-              borderColor: AppColors.borderSubtle,
-              minWidth: 116,
-              minHeight: 44,
+            border: Border(
+              bottom: BorderSide(
+                color: AppColors.borderSubtle.withValues(alpha: 0.7),
+                width: 1,
+              ),
             ),
-            onPressed: onSignOut,
-            icon: const Icon(
-              Icons.logout_outlined,
-              size: 18,
-              color: AppColors.textSecondary,
-            ),
-            label: const Text('Sign out'),
           ),
-        ],
-      ),
+          padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 20),
+          child: Row(
+            children: [
+              ClipOval(
+                child: Image.asset(
+                  'assets/images/forge_flow_splash_icon.png',
+                  width: 32,
+                  height: 32,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              if (!compact) ...[
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Forge & Flow',
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.display20(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        'Admin Console',
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.uiLabel(
+                          color: AppColors.sunsetDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const Spacer(),
+              _RolePill(roles: session.roles),
+              if (!compact) ...[
+                const SizedBox(width: 12),
+                Flexible(child: _IdentityChip(session: session)),
+              ],
+              SizedBox(width: compact ? 6 : 8),
+              if (compact)
+                IconButton(
+                  key: const Key('admin_header_signout'),
+                  tooltip: 'Sign out',
+                  onPressed: onSignOut,
+                  icon: const Icon(
+                    Icons.logout_outlined,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  key: const Key('admin_header_signout'),
+                  style: AdminButtonStyles.secondary(
+                    foregroundColor: AppColors.textSecondary,
+                    borderColor: AppColors.borderSubtle,
+                    minWidth: 116,
+                    minHeight: 44,
+                  ),
+                  onPressed: onSignOut,
+                  icon: const Icon(
+                    Icons.logout_outlined,
+                    size: 18,
+                    color: AppColors.textSecondary,
+                  ),
+                  label: const Text('Sign out'),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
