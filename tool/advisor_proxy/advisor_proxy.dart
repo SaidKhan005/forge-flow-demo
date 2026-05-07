@@ -6909,6 +6909,13 @@ abstract class MobileOperationalSyncProxyGateway {
     required Map<String, Object?> body,
   });
 
+  Future<Map<String, Object?>> upsertDataAccuracyServicePeriodSettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  });
+
   Future<Map<String, Object?>> fetchDataAccuracyServicePeriodSettings({
     required OperatorContext scope,
     required String operatorId,
@@ -8592,7 +8599,9 @@ Future<void> routeRequest(
         final mobileOperationalPath = _mobileOperationalPath(path);
         if (request.method == 'PATCH' &&
             mobileOperationalPath != null &&
-            mobileOperationalPath.resource == 'data_accuracy_settings') {
+            (mobileOperationalPath.resource == 'data_accuracy_settings' ||
+                mobileOperationalPath.resource ==
+                    'data_accuracy_service_period_settings')) {
           await _routeOperatorDataAccuracySettingsWrite(
             request: request,
             response: response,
@@ -15273,16 +15282,24 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
   }
 
   try {
-    final result = await gateway.upsertDataAccuracySettings(
-      scope: _operatorContextFromClaims(
-        claims,
-        operatorId: target.operatorId,
-        locationId: target.locationId,
-      ),
+    final writeScope = _operatorContextFromClaims(
+      claims,
       operatorId: target.operatorId,
       locationId: target.locationId,
-      body: bodyResult.body!,
     );
+    final result = target.resource == 'data_accuracy_service_period_settings'
+        ? await gateway.upsertDataAccuracyServicePeriodSettings(
+            scope: writeScope,
+            operatorId: target.operatorId,
+            locationId: target.locationId,
+            body: bodyResult.body!,
+          )
+        : await gateway.upsertDataAccuracySettings(
+            scope: writeScope,
+            operatorId: target.operatorId,
+            locationId: target.locationId,
+            body: bodyResult.body!,
+          );
     _writeJson(response, 200, result);
   } on MobileOperationalSyncProxyGatewayException catch (error) {
     _writeJson(response, error.statusCode, <String, Object?>{
