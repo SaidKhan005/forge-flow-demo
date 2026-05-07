@@ -169,8 +169,36 @@ class BackfillBatchDispatchResult {
   final int failed;
 }
 
+/// Optional hook fired when a backfill job reaches a terminal
+/// outcome. Phase 8 W2.B wires this to the notification fanout so
+/// `notif.backfill.complete` / `notif.backfill.failed` events fire
+/// at the moment the job repository transitions the row.
+///
+/// Hooks are best-effort -- the dispatcher swallows exceptions from
+/// the hook so a notification-side failure never strands a
+/// backfill outcome.
+typedef BackfillTerminalHook = Future<void> Function({
+  required FirstConnectionBackfillJob job,
+  required BackfillDispatchOutcome outcome,
+  String? errorMessage,
+});
+
 class IntegrationSyncWorkerBackfillDispatch {
-  const IntegrationSyncWorkerBackfillDispatch();
+  const IntegrationSyncWorkerBackfillDispatch({
+    this.onTerminalOutcome,
+  });
+
+  /// Optional hook fired AFTER `markSucceeded` / `markFailed` lands
+  /// the row's terminal state. Production binds this to the
+  /// notification fanout's `emitBackfillComplete` /
+  /// `emitBackfillFailed` helpers in
+  /// `tool/advisor_proxy/email_dispatch/notification_event_hooks.dart`.
+  /// Tests pass a recording closure to assert the trigger fired.
+  ///
+  /// The hook is NOT called for `BackfillDispatchOutcome.resumable`
+  /// -- only succeeded and failed are terminal for notification
+  /// purposes; resumable just releases the row for the next claim.
+  final BackfillTerminalHook? onTerminalOutcome;
 
   Future<BackfillDispatchResult> dispatchNext({
     required String operatorId,
@@ -210,6 +238,11 @@ class IntegrationSyncWorkerBackfillDispatch {
         errorMessage: message,
         actorUserId: effectiveActorUserId,
         eventKind: 'vendor_not_registered',
+      );
+      await _fireTerminalHook(
+        job: job,
+        outcome: BackfillDispatchOutcome.failed,
+        errorMessage: message,
       );
       return BackfillDispatchResult(
         outcome: BackfillDispatchOutcome.failed,
@@ -262,6 +295,10 @@ class IntegrationSyncWorkerBackfillDispatch {
           eventKind: 'backfill_success',
           recordsCount: result.recordsWritten,
         );
+        await _fireTerminalHook(
+          job: job,
+          outcome: BackfillDispatchOutcome.succeeded,
+        );
         return BackfillDispatchResult(
           outcome: BackfillDispatchOutcome.succeeded,
           job: job,
@@ -299,11 +336,38 @@ class IntegrationSyncWorkerBackfillDispatch {
         actorUserId: effectiveActorUserId,
         eventKind: 'backfill_error',
       );
+      await _fireTerminalHook(
+        job: job,
+        outcome: BackfillDispatchOutcome.failed,
+        errorMessage: message,
+      );
       return BackfillDispatchResult(
         outcome: BackfillDispatchOutcome.failed,
         job: job,
         errorMessage: message,
       );
+    }
+  }
+
+  /// Best-effort terminal hook. Catches any exception so a
+  /// notification-side failure (Postgres outage, fanout bug) never
+  /// rolls back the backfill outcome.
+  Future<void> _fireTerminalHook({
+    required FirstConnectionBackfillJob job,
+    required BackfillDispatchOutcome outcome,
+    String? errorMessage,
+  }) async {
+    final hook = onTerminalOutcome;
+    if (hook == null) return;
+    try {
+      await hook(
+        job: job,
+        outcome: outcome,
+        errorMessage: errorMessage,
+      );
+    } catch (_) {
+      // Swallow -- the row is already in its terminal state and the
+      // CanonicalSink sync log captured the primary outcome.
     }
   }
 

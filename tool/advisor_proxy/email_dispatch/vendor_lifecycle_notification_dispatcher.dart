@@ -39,6 +39,18 @@
 
 import 'package:forge_and_flow/services/email/email_template_renderer.dart';
 
+import 'notification_event_fanout.dart';
+
+/// Narrow seam the dispatcher calls into for the `notif.vendor.now_available`
+/// fanout. Production binds this to `NotificationEventFanout.fanOut`;
+/// tests pass a recording closure to assert the dispatcher emits the
+/// envelope without forcing tests to construct the full fanout.
+typedef VendorLifecycleEventFanoutSeam
+    = Future<NotificationFanoutOutcome> Function({
+  required String operatorId,
+  required NotificationEventEnvelope envelope,
+});
+
 /// One pending Notify-me subscription returned by
 /// [VendorLifecycleNotificationReadRepository.fetchPendingForVendor].
 /// The dispatcher only needs the columns it stitches into the email
@@ -230,21 +242,39 @@ class VendorLifecycleNotificationDispatchOutcome {
 
 /// Pure orchestrator. Construction is dependency-injected so tests
 /// can pass fakes for every seam without touching disk or Postgres.
+///
+/// Phase 8 W2.B refactor: when an [eventFanout] is supplied, the
+/// dispatcher delegates `notif.vendor.now_available` push + inbox
+/// channels to [NotificationEventFanout.fanOut] in addition to the
+/// existing per-row email enqueue. The legacy email path stays
+/// unchanged so the V1.E "Notify me" pending-row table remains the
+/// source of truth for email recipients (those rows are picker-side
+/// opt-ins, not preference rows). The fanout layers push/inbox on
+/// top for users whose `notification_preferences` admit them.
 class VendorLifecycleNotificationDispatcher {
   VendorLifecycleNotificationDispatcher({
     required VendorLifecycleNotificationReadRepository notificationRepository,
     required EmailOutboxEnqueueRepository outboxRepository,
     required VendorNotificationContextResolver contextResolver,
+    VendorLifecycleEventFanoutSeam? eventFanout,
     DateTime Function()? now,
   })  : _notificationRepository = notificationRepository,
         _outboxRepository = outboxRepository,
         _contextResolver = contextResolver,
+        _eventFanout = eventFanout,
         _now = now ?? DateTime.now;
 
   final VendorLifecycleNotificationReadRepository _notificationRepository;
   final EmailOutboxEnqueueRepository _outboxRepository;
   final VendorNotificationContextResolver _contextResolver;
+  final VendorLifecycleEventFanoutSeam? _eventFanout;
   final DateTime Function() _now;
+
+  /// Catalog event_key the dispatcher fans out when
+  /// [_eventFanout] is wired. Constant so the trigger site and the
+  /// fanout share the same string verbatim.
+  static const String kVendorNowAvailableEventKey =
+      'notif.vendor.now_available';
 
   /// Fan out the `vendor_now_available` email to every operator that
   /// has at least one pending row in `vendor_lifecycle_notification`
@@ -308,6 +338,47 @@ class VendorLifecycleNotificationDispatcher {
         'businessName': operatorContext.operatorBusinessName,
         'integrationConsoleUrl': operatorContext.integrationConsoleUrl,
       };
+
+      // Phase 8 W2.B: invoke the multi-channel fanout once per
+      // operator BEFORE walking the pending email rows. The fanout
+      // layers push + inbox channels on top of the legacy per-row
+      // email path for any user in the operator whose preference
+      // matrix admits them. Failures from the fanout do not block
+      // the email path -- preferences are an enrichment, not a
+      // gate, for the V1.E "Notify me" picker rows.
+      final fanout = _eventFanout;
+      if (fanout != null) {
+        try {
+          await fanout(
+            operatorId: operatorId,
+            envelope: NotificationEventEnvelope(
+              eventKey: kVendorNowAvailableEventKey,
+              dedupeKeyPrefix:
+                  'notif.vendor.now_available:$operatorId:$vendorId',
+              pushTitle: '${operatorContext.vendorDisplayName} is now '
+                  'available',
+              pushBody: 'You can connect '
+                  '${operatorContext.vendorDisplayName} from the '
+                  'integrations console.',
+              emailTemplateId: EmailTemplateIds.vendorNowAvailable,
+              emailTemplateData: <String, String>{
+                'vendorName': operatorContext.vendorDisplayName,
+                'businessName': operatorContext.operatorBusinessName,
+                'integrationConsoleUrl':
+                    operatorContext.integrationConsoleUrl,
+              },
+              deeplink: operatorContext.integrationConsoleUrl,
+              pushData: <String, Object?>{
+                'vendor_id': vendorId,
+              },
+            ),
+          );
+        } catch (_) {
+          // Fanout failures are tolerated -- the V1.E email path
+          // still runs below. A retry of the route picks up missed
+          // push/inbox rows.
+        }
+      }
 
       for (final notification in pending) {
         final recipientName = _resolveRecipientName(
