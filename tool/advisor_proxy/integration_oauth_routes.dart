@@ -1267,7 +1267,12 @@ const Map<String, integration.IntegrationCategory> kPhase8VendorCategories =
   'oracle_micros_simphony': integration.IntegrationCategory.pos,
   'revel': integration.IntegrationCategory.pos,
   // Labor
-  '7shifts': integration.IntegrationCategory.labor,
+  // 7shifts is the operator-facing brand. The internal vendor_id key
+  // is snake_case (`seven_shifts`) — matches the adapter's
+  // `kSevenShiftsVendorId`, the labor adapter registry, the dispatcher's
+  // `_isVendorRegistered` set, and the canonical
+  // `connector_connection.vendor_id` value.
+  'seven_shifts': integration.IntegrationCategory.labor,
   'quickbooks_time': integration.IntegrationCategory.labor,
   'humanity': integration.IntegrationCategory.labor,
   'adp': integration.IntegrationCategory.labor,
@@ -1414,21 +1419,25 @@ Phase8OperatorOAuthWiring buildPhase8OperatorOAuthWiring({
   apiKeyValidators['revel'] = _revelApiKeyValidator(client);
 
   // ─── 7shifts ───────────────────────────────────────────────────────
+  // Internal vendor_id key is `'seven_shifts'` (snake_case, matches
+  // the adapter's `kSevenShiftsVendorId` and the dispatcher's
+  // `_isVendorRegistered` labor set). `'7shifts'` is the operator-
+  // facing display name only — never the descriptor key.
   if (proxyConfig.hasSevenShiftsAppCredentials) {
     final creds = proxyConfig.sevenShiftsAppCredentials;
-    descriptors['7shifts'] = VendorOAuthBeginDescriptor(
-      vendorId: '7shifts',
+    descriptors['seven_shifts'] = VendorOAuthBeginDescriptor(
+      vendorId: 'seven_shifts',
       authorizeUrl: Uri.parse('https://app.7shifts.com/oauth2/authorize'),
       clientId: creds.clientId,
       scopes: const <String>['read_users', 'read_shifts', 'read_time_punches'],
     );
-    exchangers['7shifts'] = _sevenShiftsCodeExchanger(
+    exchangers['seven_shifts'] = _sevenShiftsCodeExchanger(
       httpClient: client,
       clientId: creds.clientId,
       clientSecret: creds.clientSecret,
     );
   } else {
-    disabled['7shifts'] = 'seven_shifts_oauth_credentials_missing';
+    disabled['seven_shifts'] = 'seven_shifts_oauth_credentials_missing';
   }
 
   // ─── QuickBooks Time (Intuit) ──────────────────────────────────────

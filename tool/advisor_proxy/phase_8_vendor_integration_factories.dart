@@ -72,13 +72,10 @@ import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dar
 // files (used by the registry / capability profiles). To avoid Dart
 // `ambiguous_import` errors we hide the duplicate symbol on the
 // adapter-side import where the credential-bridge name is already
-// pulled in. The bridge-side const is the one used as the broker
-// `vendor_id`; the adapter-side const may differ for legacy reasons
-// (notably `seven_shifts_credential_bridge.dart` declares
-// `kSevenShiftsVendorId='7shifts'` while the adapter declares the same
-// symbol with value `'seven_shifts'`). The framework dispatcher uses
-// the URL-path string (always `'seven_shifts'`); the bridge uses
-// whatever the credential row stores.
+// pulled in. The bridge-side const matches the adapter-side const for
+// every vendor — the bridge for 7shifts simply re-exports the
+// `'seven_shifts'` constant from the adapter so the broker, dispatcher,
+// refresh worker, and registry all key off one canonical value.
 import 'package:forge_and_flow/integrations/labor/adp_credential_bridge.dart';
 import 'package:forge_and_flow/integrations/labor/adp_labor_adapter.dart'
     hide kAdpVendorId;
@@ -102,12 +99,11 @@ import 'package:forge_and_flow/integrations/labor/quickbooks_time_labor_adapter.
     hide kQuickBooksTimeVendorId;
 import 'package:forge_and_flow/integrations/labor/quickbooks_time_labor_production_api_client.dart';
 import 'package:forge_and_flow/integrations/labor/quickbooks_time_webhook_signature_verifier.dart';
-// 7shifts: the bridge file's `kSevenShiftsVendorId='7shifts'` differs
-// from the adapter file's `kSevenShiftsVendorId='seven_shifts'`. We
-// import the bridge under a prefix and hide the symbol from the
-// adapter; the binder uses the literal `'seven_shifts'` for factory
-// keys and signature verifiers (the URL-path vendor id) and the
-// bridge's `'7shifts'` for broker `vendor_credentials` rows.
+// 7shifts: the bridge re-exports the adapter's `kSevenShiftsVendorId`
+// constant (value `'seven_shifts'`) so there is one canonical vendor_id
+// across broker rows, dispatcher registration, and factory keys. The
+// bridge is imported under a prefix only to disambiguate the helper
+// `makeSevenShiftsAccessTokenProvider`.
 import 'package:forge_and_flow/integrations/labor/seven_shifts_credential_bridge.dart'
     as seven_shifts_bridge;
 import 'package:forge_and_flow/integrations/labor/seven_shifts_labor_adapter.dart';
