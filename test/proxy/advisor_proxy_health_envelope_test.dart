@@ -748,6 +748,72 @@ void main() {
         expect(secondStartedBeforeFirstSettled, isFalse);
       },
     );
+
+    test(
+      'route budget returns timeout warnings for unfinished producer sweep',
+      () async {
+        ProxyHealthMetric metricFor(
+          String unit,
+          ProxyHealthRegistryContext ctx,
+        ) {
+          return ProxyHealthMetric(
+            status: 'green',
+            value: 1,
+            unit: unit,
+            description: 'test',
+            owner: 'test',
+            observedAt: ctx.now,
+            thresholds: const <String, Object?>{},
+          );
+        }
+
+        final store = RegistryProxyHealthCheckStore(
+          runnerFn:
+              (
+                String sql, {
+                Map<String, Object?> parameters = const <String, Object?>{},
+              }) async => const <Map<String, Object?>>[],
+          dependencyProbe: (fn, now) async => const ProxyHealthDependencyProbe(
+            postgresOk: true,
+            ageOk: true,
+            pgvectorOk: true,
+          ),
+          producers: <String, ProxyHealthRegistryProducer>{
+            'audit_chain_lag_seconds': (context) async {
+              await Future<void>.delayed(const Duration(milliseconds: 50));
+              return metricFor('seconds', context);
+            },
+            'audit_chain_anchor_age_seconds': (context) async {
+              await Future<void>.delayed(const Duration(milliseconds: 50));
+              return metricFor('seconds', context);
+            },
+          },
+          producerConcurrency: 1,
+          outerProducerBudget: const Duration(seconds: 1),
+          producerRouteBudget: const Duration(milliseconds: 5),
+          now: () => DateTime.utc(2026, 5, 1, 12),
+        );
+
+        final startedAt = DateTime.now();
+        final status = await store.check();
+        final elapsed = DateTime.now().difference(startedAt);
+
+        expect(elapsed, lessThan(const Duration(milliseconds: 100)));
+        final json = status.toJson(checkedAt: DateTime.utc(2026, 5, 1, 12));
+        final warnings = (json['warnings'] as List<Object?>)
+            .cast<Map<String, Object?>>();
+        expect(
+          warnings,
+          contains(
+            allOf(
+              containsPair('metric', 'audit_chain_lag_seconds'),
+              containsPair('warning', 'registry_route_budget_exceeded'),
+              containsPair('budget_ms', 5),
+            ),
+          ),
+        );
+      },
+    );
   });
 
   group('defaultProxyHealthDependencyProbe — liveness vs data presence', () {

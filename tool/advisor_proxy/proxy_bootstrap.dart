@@ -1162,7 +1162,7 @@ RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
   TenantTransactionWrapper adminWrapper, {
   List<String> expectedMigrationFilenames = const <String>[],
 }) {
-  const healthStatementTimeout = Duration(milliseconds: 1500);
+  const healthStatementTimeout = Duration(milliseconds: 150);
   const healthProducerConcurrency = kPostgresDefaultMaxConnectionsPerPool;
 
   Future<List<Map<String, Object?>>> runnerFn(
@@ -1193,8 +1193,9 @@ RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
     producers: buildProxyHealthRegistryProducers(
       expectedMigrationFilenames: expectedMigrationFilenames,
     ),
-    producerBudget: const Duration(seconds: 3),
-    outerProducerBudget: const Duration(seconds: 4),
+    producerBudget: const Duration(milliseconds: 300),
+    outerProducerBudget: const Duration(milliseconds: 450),
+    producerRouteBudget: const Duration(seconds: 3),
     producerConcurrency: healthProducerConcurrency,
   );
 }

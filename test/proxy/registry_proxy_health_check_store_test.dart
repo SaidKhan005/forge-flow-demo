@@ -401,6 +401,18 @@ void main() {
         source,
         contains('producerConcurrency: healthProducerConcurrency'),
       );
+      expect(
+        source,
+        contains('producerBudget: const Duration(milliseconds: 300)'),
+      );
+      expect(
+        source,
+        contains('outerProducerBudget: const Duration(milliseconds: 450)'),
+      );
+      expect(
+        source,
+        contains('producerRouteBudget: const Duration(seconds: 3)'),
+      );
     });
 
     test('emits gemini_slot_enabled diagnostics line', () {
