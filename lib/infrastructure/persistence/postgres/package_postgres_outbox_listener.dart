@@ -30,20 +30,29 @@ typedef PackagePostgresListenerConnectionFactory =
 class PackagePostgresOutboxListener implements OutboxNotificationListener {
   PackagePostgresOutboxListener({
     required PackagePostgresListenerConnectionFactory openConnection,
-    String channelName = 'event_outbox',
+    List<String>? channelNames,
   }) : _openConnection = openConnection,
-       _channelName = channelName;
+       _channelNames = channelNames ?? defaultChannels;
 
   PackagePostgresOutboxListener.fromUrl(String connectionString)
     : this(
         openConnection: () => pg.Connection.openFromUrl(connectionString),
       );
 
+  // Default channels: per-category channels (PF5) + legacy fallback.
+  static const List<String> defaultChannels = [
+    'event_outbox_pos',
+    'event_outbox_labor',
+    'event_outbox_reservation',
+    'event_outbox_admin',
+    'event_outbox', // fallback for events not matched by category
+  ];
+
   final PackagePostgresListenerConnectionFactory _openConnection;
-  final String _channelName;
+  final List<String> _channelNames;
 
   pg.Connection? _connection;
-  StreamSubscription<String>? _subscription;
+  final List<StreamSubscription<String>> _subscriptions = [];
   final StreamController<OutboxNotification> _controller =
       StreamController<OutboxNotification>.broadcast();
 
@@ -60,16 +69,28 @@ class PackagePostgresOutboxListener implements OutboxNotificationListener {
     // metadata are not exposed by this API). The bridge only needs
     // the payload because the contract says NOTIFY is wake-up only —
     // the bridge claims the row from the table on every drain.
-    _subscription = connection.channels[_channelName].listen(
-      _handleNotificationPayload,
-      onError: _handleError,
-    );
+    //
+    // PF5 (performance hardening): listen on per-category channels
+    // (event_outbox_pos, event_outbox_labor, etc.) + legacy fallback.
+    // Each category channel receives events for its topic prefix; the
+    // fallback receives everything else. Both are needed until the
+    // database guarantees all rows go to at least one category channel
+    // (current trigger sends to both for backward compatibility).
+    for (final channelName in _channelNames) {
+      final sub = connection.channels[channelName].listen(
+        _handleNotificationPayload,
+        onError: _handleError,
+      );
+      _subscriptions.add(sub);
+    }
   }
 
   @override
   Future<void> stop() async {
-    await _subscription?.cancel();
-    _subscription = null;
+    for (final sub in _subscriptions) {
+      await sub.cancel();
+    }
+    _subscriptions.clear();
     final connection = _connection;
     _connection = null;
     if (connection != null) {
