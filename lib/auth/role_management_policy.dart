@@ -184,7 +184,18 @@ abstract class RoleManagementPolicy {
           'operator_owner cannot manage grants for another operator',
         );
       }
-      // Owners may grant any operator-scoped role within their
+      // Privilege-escalation guard: operator_owner is an operator-tier
+      // role and must never be able to grant or revoke F&F platform
+      // roles (`super_admin`, `ff_support`) — even within their own
+      // tenant. Those tiers are reserved for super_admin (BYPASSRLS).
+      const platformOnlyRoles = <String>{'super_admin', 'ff_support'};
+      if (platformOnlyRoles.contains(grant.targetRoleKey)) {
+        return RoleManagementDecision.deny(
+          'operator_owner cannot grant or revoke F&F platform roles '
+          '(super_admin / ff_support)',
+        );
+      }
+      // Owners may grant any other operator-scoped role within their
       // operator (the seeded-role-protection is on EDIT, not on
       // GRANT — granting an existing seeded role like
       // operator_supervisor to a user is fine).
