@@ -14054,6 +14054,8 @@ bool _isAdminIntegrationsPath(String path) {
 
 bool _isAuthCorsPath(String path) {
   return path.startsWith('/v1/auth/') ||
+      path.startsWith('/v1/operator/') ||
+      path.startsWith('/v1/operators/') ||
       path.startsWith('/v1/admin/auth/') ||
       BusinessScopeRouter.match(path, 'GET') != null ||
       AuditChainAnchorsRouter.match(path, 'GET') != null;
@@ -16971,6 +16973,7 @@ const List<String> kAdminHealthCorsMethods = <String>['GET', 'OPTIONS'];
 const List<String> kAuthCorsMethods = <String>[
   'GET',
   'POST',
+  'PUT',
   'PATCH',
   'DELETE',
   'OPTIONS',
