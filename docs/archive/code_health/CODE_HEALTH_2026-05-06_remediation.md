@@ -332,3 +332,36 @@ The class cited in the "two-slot key vs counter store granularity mismatch" resi
 
 - `tool/advisor_proxy/advisor_proxy.dart`: 15,863 → 16,949 lines (+1,086 in one day; PR [#342](https://github.com/SaidKhan005/forge-flow-demo/pull/342) `vendor-capability-polish` is the main contributor).
 - `lib/admin/admin_routes.dart`: 1,953 → 2,204 lines (+251).
+
+---
+
+# Wave 5 closures (2026-05-08)
+
+A fifth remediation wave landed four parallel lanes. Three closed cleanly; one closed partially with the watermark-tx half deferred; the doc-only re-locate corrected a stale cite.
+
+## Closed via Wave 5
+
+| Finding | PR | Lane |
+|---|---|---|
+| **Launch Blocker #3 — sync worker bare-catch + claim discipline + POOL-ENV stragger.** Replaced `catch (_)` at `integration_sync_worker.dart` with typed `on TimeoutException` / `on Exception` / `on Object` arms and structured-log reporter; added `FOR UPDATE OF cc SKIP LOCKED` to the `connector_connection` claim SELECT in `postgres_sync_worker_source.dart`; wired `resolvePostgresMaxConnectionsPerPool()` into `tool/integration_sync_worker/main.dart:1110` (the W4 stragger). | [#364](https://github.com/SaidKhan005/forge-flow-demo/pull/364) | W5-LB3 |
+| `dispatch.dart:373` cadence resolver value discarded — `IntegrationSyncWorkerDispatch` now exposes a `ResolvedCadenceSink` typedef + `resolvedCadenceSink` field; `_resolveCadenceForRow` forwards the resolver's `int` return through the sink (default null preserves baseline). The audit-cited "value discarded" is no longer a discard. | [#363](https://github.com/SaidKhan005/forge-flow-demo/pull/363) | W5-DISPATCH (sub-task b only) |
+| Permission-key sweep on operator-web screens — 3 screens (`my_account_screen.dart`, `schedule_screen.dart`, `vendor_connections_screen.dart`) had hand-typed permission strings matching catalog constants and were swept. Importer count 7/26 → 10/26. | [#362](https://github.com/SaidKhan005/forge-flow-demo/pull/362) | W5-PKEYS |
+| `ProxyUsageCounterStore` re-locate — class wasn't renamed, it was SPLIT: runtime interface stays at `tool/advisor_proxy/advisor_proxy.dart:2418`; concrete Postgres seam extracted to `lib/infrastructure/persistence/postgres/advisor_proxy_usage_counter_store.dart:57` (with `proxy_bootstrap.dart:1396` as adapter). Unique key shape unchanged: `(operator_id, location_id, tier_id, minute_bucket)`. Concern still real; cite corrected. | [#359](https://github.com/SaidKhan005/forge-flow-demo/pull/359) | W5-CSTORE-RELOCATE |
+
+## Closed partially in Wave 5 (deferred half logged in active CODE_HEALTH "Deferred" table)
+
+| Finding | What landed in Wave 5 | What still needs to land | PR |
+|---|---|---|---|
+| Worker watermark not transactional with adapter writes (`dispatch.dart:268`) | (none — sub-task stopped) | Threading executor through `PollIncrementalCommand` → 17 vendor adapters → bespoke sinks → `CanonicalSink.advanceWatermark`. Goes well beyond a one-file diff. Needs its own phase doc. | n/a — deferred from [#363](https://github.com/SaidKhan005/forge-flow-demo/pull/363) |
+
+## Wave 5 lane discoveries worth recording
+
+- **W5-LB3 found another bare `catch (_)` at `tool/integration_sync_worker/backfill_dispatch.dart:368`** — same shape as the LB3 bug, outside the cite scope. Recorded as a small new residual in active CODE_HEALTH.md.
+- **W5-PKEYS found the "19 hand-typing screens" framing was misleading.** Of the 19 screens that didn't import `permission_keys.dart`, only 3 actually used permission-string literals matching catalog constants. The remaining 16 didn't use permission keys at all — sign-in screens, onboarding flows, dialog scaffolds, and read-only surfaces. This is the kind of finding only an actual sweep surfaces.
+- **W5-PKEYS surfaced 3 NEW screens with new-namespace strings:** `account_screen.dart`, `business_setup_screen.dart`, `business_timing_editor_screen.dart` hand-type `account.configure` and `business_timing.configure` permissions. These namespaces aren't in the frozen catalog — adding them needs catalog-sync work (the catalog mirrors a contract doc + a seed migration), which is a separate concern. Recorded as a small new residual.
+- **W5-CSTORE-RELOCATE corrected a 2026-05-08 fact-check error.** The earlier check searched only `tool/` for `ProxyUsageCounterStore` and reported "renamed/relocated; can't determine". The class was actually still at the same `tool/` location; the agent missed the `lib/`-side concrete seam that was added during the broader Postgres-bootstrap work. The class shape didn't move; the concern shape didn't change.
+- **W5-DISPATCH stopped honestly on sub-task (a)** rather than ship a half-baked watermark wiring. The agent's own assessment: "Per the prompt's 'two halves not entangled with each other' clause, the (b) fix shipped standalone."
+
+## Wave 5 closeout PR
+
+- This archive PR — records Wave 5 closures and trims `/CODE_HEALTH.md` to remove the now-closed items.
