@@ -355,7 +355,7 @@ The scope selector must:
 
 Location scope can use existing screen models.
 
-Group, region, or company scope requires server rollup models. It must not fake rollups by mixing location rows locally unless that is explicitly designed and tested.
+Group, region, or company scope requires server rollup models. In this mobile sprint, higher-level grants must instead expand server-side into their underlying selectable location rows. Mobile must not fake rollups by mixing location rows locally.
 
 Acceptance: a consultant with access to two locations can switch between them from the hamburger menu and never see data leakage from the prior scope.
 
@@ -987,7 +987,7 @@ This work is done when a real operator can:
 - [ ] Hamburger scope selector exists on mobile.
 - [ ] Scope options are permission-scoped.
 - [ ] Scope switch cancels old sync and refreshes new scope.
-- [ ] Group/region/company scope uses server rollup truth.
+- [ ] Higher-level grants expose underlying locations unless a future server rollup truth exists.
 - [ ] Realtime invalidates, proxy pull persists.
 - [ ] Empty screens explain what is missing.
 - [ ] Connected-device E2E proof covers all core paths.

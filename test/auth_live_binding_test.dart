@@ -334,6 +334,39 @@ void main() {
       },
     );
 
+    test(
+      'global super_admin can sign in before selecting a location',
+      () async {
+        final client = _FakeFirebaseAuthClient(
+          nextSignInOutcome: FirebaseAuthSignInSucceeded(
+            buildCredential(
+              userId: _validUserId,
+              claims: const <String, Object?>{
+                'is_super_admin': true,
+                'roles_version': 7,
+              },
+            ),
+          ),
+        );
+        final service = FirebaseAuthLoginService(
+          client: client,
+          locationResolver: const ScaffoldFailingAuthLocationResolver(),
+        );
+
+        final result = await service.signInWithEmailPassword(
+          email: 'admin@example.test',
+          password: 'pw',
+        );
+
+        expect(result, isA<AuthLoginSuccess>());
+        final session = (result as AuthLoginSuccess).session;
+        expect(session.userId, equals(_validUserId));
+        expect(session.operatorId, isEmpty);
+        expect(session.locationId, isEmpty);
+        expect(session.roles, contains('super_admin'));
+      },
+    );
+
     test('completeTotpChallenge Succeeded -> AuthLoginSuccess', () async {
       final client = _FakeFirebaseAuthClient(
         nextSignInOutcome: FirebaseAuthSignInSucceeded(

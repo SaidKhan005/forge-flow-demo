@@ -620,6 +620,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   String? _businessScopesLoadedFor;
   String? _businessScopesLoadingFor;
   String? _businessScopesPendingReloadFor;
+  final TextEditingController _businessScopeSearchController =
+      TextEditingController();
+  String _businessScopeSearchQuery = '';
   RealtimeEventBus? _businessScopeRealtimeBus;
   StreamSubscription<RealtimeEvent>? _businessScopeRealtimeSubscription;
 
@@ -811,6 +814,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Widget _buildBusinessScopeDrawer(BuildContext context) {
     final notifier = context.watch<RestaurantScopeNotifier>();
     final scopes = notifier.availableScopes;
+    final locationScopes = filterBusinessScopeLocationsForDrawer(scopes, '');
+    final filteredScopes = filterBusinessScopeLocationsForDrawer(
+      scopes,
+      _businessScopeSearchQuery,
+    );
     final activeKey = notifier.activeScope?.stableKey;
     return Drawer(
       backgroundColor: AppColors.backgroundDeep,
@@ -821,15 +829,59 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
               child: Text(
-                'Business',
+                'Locations',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: TextField(
+                key: const Key('business_scope_location_search'),
+                controller: _businessScopeSearchController,
+                onChanged: (value) {
+                  setState(() {
+                    _businessScopeSearchQuery = value;
+                  });
+                },
+                style: const TextStyle(color: AppColors.textPrimary),
+                decoration: InputDecoration(
+                  hintText: 'Search locations',
+                  hintStyle: const TextStyle(color: AppColors.textMuted),
+                  prefixIcon: const Icon(
+                    Icons.search,
+                    color: AppColors.textMuted,
+                  ),
+                  suffixIcon: _businessScopeSearchQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          icon: const Icon(Icons.close),
+                          color: AppColors.textMuted,
+                          onPressed: () {
+                            _businessScopeSearchController.clear();
+                            setState(() {
+                              _businessScopeSearchQuery = '';
+                            });
+                          },
+                        ),
+                  filled: true,
+                  fillColor: AppColors.backgroundMid.withValues(alpha: 0.65),
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 12,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
             Expanded(
-              child: scopes.isEmpty
+              child: locationScopes.isEmpty
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(24),
@@ -840,16 +892,26 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                         ),
                       ),
                     )
+                  : filteredScopes.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          'No matching locations.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.textMuted),
+                        ),
+                      ),
+                    )
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
-                      itemCount: scopes.length,
+                      itemCount: filteredScopes.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 2),
                       itemBuilder: (context, index) {
-                        final scope = scopes[index];
-                        final enabled = scope.isLocationScope;
+                        final scope = filteredScopes[index];
                         final selected = scope.stableKey == activeKey;
                         return ListTile(
-                          enabled: enabled,
+                          enabled: true,
                           selected: selected,
                           selectedTileColor: AppColors.backgroundMid.withValues(
                             alpha: 0.7,
@@ -865,9 +927,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: enabled
-                                  ? AppColors.textPrimary
-                                  : AppColors.textMuted,
+                              color: AppColors.textPrimary,
                               fontWeight: selected
                                   ? FontWeight.w700
                                   : FontWeight.w500,
@@ -888,12 +948,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                                   color: AppColors.sunsetDark,
                                 )
                               : null,
-                          onTap: enabled
-                              ? () {
-                                  Navigator.of(context).maybePop();
-                                  unawaited(_selectBusinessScope(scope));
-                                }
-                              : null,
+                          onTap: () {
+                            Navigator.of(context).maybePop();
+                            unawaited(_selectBusinessScope(scope));
+                          },
                         );
                       },
                     ),
@@ -912,7 +970,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   };
 
   String _businessScopeSubtitle(BusinessScope scope) {
-    if (scope.isLocationScope) return 'Location';
+    if (scope.isLocationScope) {
+      final sortPath = scope.sortPath;
+      if (sortPath != null && sortPath.isNotEmpty && sortPath != scope.label) {
+        return sortPath;
+      }
+      return 'Location';
+    }
     if (scope.scopeType == 'operator') return 'All locations';
     return 'Location views only';
   }
@@ -937,6 +1001,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _businessScopeRealtimeSubscription = null;
     _businessScopeRealtimeBus = null;
     _businessScopesPendingReloadFor = null;
+    _businessScopeSearchController.dispose();
     _scopeListenedFor?.removeListener(_syncSupervisorToScope);
     _scopeListenedFor = null;
     _boundarySupervisor?.dispose();
@@ -2356,6 +2421,29 @@ class _AppBottomNav extends StatelessWidget {
 // ─── App shell icon button ───────────────────────────────────────────────
 // Pill-style icon button used in the standalone app bar so settings and
 // notifications read as their own affordances rather than tiny hint icons.
+
+@visibleForTesting
+List<BusinessScope> filterBusinessScopeLocationsForDrawer(
+  Iterable<BusinessScope> scopes,
+  String query,
+) {
+  final normalizedQuery = query.trim().toLowerCase();
+  final locationScopes = scopes.where((scope) => scope.isLocationScope);
+  if (normalizedQuery.isEmpty) {
+    return locationScopes.toList(growable: false);
+  }
+  return locationScopes
+      .where((scope) {
+        final searchable = <String>[
+          scope.label,
+          scope.operatorId,
+          if (scope.locationId != null) scope.locationId!,
+          if (scope.sortPath != null) scope.sortPath!,
+        ].join(' ').toLowerCase();
+        return searchable.contains(normalizedQuery);
+      })
+      .toList(growable: false);
+}
 
 class _AppShellIconButton extends StatelessWidget {
   final IconData icon;

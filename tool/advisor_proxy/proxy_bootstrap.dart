@@ -1625,23 +1625,28 @@ class RepositoryBusinessScopeProxyGateway implements BusinessScopeProxyGateway {
       rowsByKey['${row.scopeType}:${row.scopeId}'] = row;
     }
 
+    void addLocationById(String locationId) {
+      final location = locationById[locationId];
+      if (location != null) {
+        add(_locationScope(location));
+      } else {
+        add(
+          BusinessScopeProxyRow(
+            scopeId: locationId,
+            scopeType: 'location',
+            operatorId: operatorId,
+            locationId: locationId,
+            label: 'Location',
+            sortPath: 'z:$locationId',
+          ),
+        );
+      }
+    }
+
     final hasOperatorWideGrant = grants.any(
       (grant) => grant.scopeType == UserRoleScope.operatorWide.sqlKey,
     );
     if (hasOperatorWideGrant) {
-      final root = _firstRoot(orgUnits);
-      add(
-        BusinessScopeProxyRow(
-          scopeId: operatorId,
-          scopeType: 'operator',
-          operatorId: operatorId,
-          label: root?.name ?? 'Current business',
-          sortPath: root?.path ?? '0',
-        ),
-      );
-      for (final org in orgUnits) {
-        add(_orgUnitScope(org));
-      }
       for (final location in locations) {
         add(_locationScope(location));
       }
@@ -1652,9 +1657,17 @@ class RepositoryBusinessScopeProxyGateway implements BusinessScopeProxyGateway {
       if (grant.scopeType == UserRoleScope.orgUnit.sqlKey &&
           orgUnitId != null) {
         final org = orgById[orgUnitId];
-        if (org != null) {
-          add(_orgUnitScope(org));
+        final effectiveLocationIds = grant.effectiveLocationIds.isNotEmpty
+            ? grant.effectiveLocationIds
+            : <String>[
+                if (org != null)
+                  for (final location in _locationsUnderOrg(locations, org))
+                    location.locationId,
+              ];
+        for (final effectiveLocationId in effectiveLocationIds) {
+          addLocationById(effectiveLocationId);
         }
+        continue;
       }
       final effectiveLocationIds = grant.effectiveLocationIds.isNotEmpty
           ? grant.effectiveLocationIds
@@ -1663,25 +1676,27 @@ class RepositoryBusinessScopeProxyGateway implements BusinessScopeProxyGateway {
                 _nonBlank(grant.locationId)!,
             ];
       for (final effectiveLocationId in effectiveLocationIds) {
-        final location = locationById[effectiveLocationId];
-        if (location != null) {
-          add(_locationScope(location));
-        } else {
-          add(
-            BusinessScopeProxyRow(
-              scopeId: effectiveLocationId,
-              scopeType: 'location',
-              operatorId: operatorId,
-              locationId: effectiveLocationId,
-              label: 'Location',
-              sortPath: 'z:$effectiveLocationId',
-            ),
-          );
-        }
+        addLocationById(effectiveLocationId);
       }
     }
 
     final rows = rowsByKey.values.toList(growable: false);
+    rows.sort(_compareBusinessScopes);
+    return rows;
+  }
+
+  @override
+  Future<List<BusinessScopeProxyRow>> listAllLocationScopesForAdmin({
+    required String adminUserId,
+  }) async {
+    final locations = await _orgUnitsRepository.listAllLocationsAsAdmin(
+      adminReason: 'business_scope_global_mobile_read:$adminUserId',
+    );
+    final rows = locations
+        .map(
+          (location) => _locationScope(location, includeOperatorInLabel: true),
+        )
+        .toList(growable: false);
     rows.sort(_compareBusinessScopes);
     return rows;
   }
@@ -1703,26 +1718,29 @@ class RepositoryBusinessScopeProxyGateway implements BusinessScopeProxyGateway {
     );
   }
 
-  static BusinessScopeProxyRow _orgUnitScope(OrgUnitRow row) {
-    return BusinessScopeProxyRow(
-      scopeId: row.id,
-      scopeType: 'org_unit',
-      operatorId: row.operatorId,
-      parentScopeId: row.parentId,
-      label: row.name,
-      sortPath: row.path,
-    );
-  }
-
-  static BusinessScopeProxyRow _locationScope(OrgLocationRow row) {
+  static BusinessScopeProxyRow _locationScope(
+    OrgLocationRow row, {
+    bool includeOperatorInLabel = false,
+  }) {
+    final operatorName = _nonBlank(row.operatorName);
+    final label = includeOperatorInLabel && operatorName != null
+        ? '$operatorName - ${row.name}'
+        : row.name;
+    final locationPath = row.orgUnitPath.isEmpty
+        ? row.name
+        : '${row.orgUnitPath} / ${row.name}';
+    final sortPath = includeOperatorInLabel && operatorName != null
+        ? '$operatorName / $locationPath'
+        : locationPath;
     return BusinessScopeProxyRow(
       scopeId: row.locationId,
       scopeType: 'location',
       operatorId: row.operatorId,
       locationId: row.locationId,
       parentScopeId: row.parentOrgUnitId,
-      label: row.name,
-      sortPath: '${row.orgUnitPath}.${row.name}',
+      label: label,
+      businessTimezone: row.businessTimezone,
+      sortPath: sortPath,
     );
   }
 
@@ -1754,11 +1772,18 @@ class RepositoryBusinessScopeProxyGateway implements BusinessScopeProxyGateway {
     return trimmed.isEmpty ? null : trimmed;
   }
 
-  static OrgUnitRow? _firstRoot(List<OrgUnitRow> rows) {
-    for (final row in rows) {
-      if (row.parentId == null) return row;
+  static Iterable<OrgLocationRow> _locationsUnderOrg(
+    Iterable<OrgLocationRow> locations,
+    OrgUnitRow org,
+  ) sync* {
+    final path = org.path;
+    final childPrefix = '$path.';
+    for (final location in locations) {
+      if (location.orgUnitPath == path ||
+          location.orgUnitPath.startsWith(childPrefix)) {
+        yield location;
+      }
     }
-    return null;
   }
 }
 
@@ -6343,7 +6368,7 @@ class PostgresAdminRequestIdempotencyStore
     try {
       final rows = await tx.query(
         'select idempotency_key, request_type, request_body_hash, '
-        '       response_status, response_payload, completed_at '
+        '       response_status, response_payload, completed_at, expires_at '
         '  from public.admin_request_idempotency '
         ' where idempotency_key = @key '
         ' limit 1',
@@ -6389,6 +6414,7 @@ class PostgresAdminRequestIdempotencyStore
         responseStatus: status is int ? status : null,
         responsePayload: payload,
         completedAt: row['completed_at'] as DateTime?,
+        expiresAt: row['expires_at'] as DateTime?,
       );
     } catch (_) {
       await tx.rollback();
@@ -6447,6 +6473,44 @@ class PostgresAdminRequestIdempotencyStore
         },
       );
       await tx.commit();
+    } catch (_) {
+      await tx.rollback();
+      rethrow;
+    }
+  }
+
+  @override
+  Future<bool> tryReclaimOrphan({required String idempotencyKey}) async {
+    final tx = await _pool.beginTransaction();
+    try {
+      final affected = await tx.execute(
+        'delete from public.admin_request_idempotency '
+        'where idempotency_key = @key '
+        'and response_status is null '
+        'and completed_at is null '
+        'and expires_at < now()',
+        parameters: <String, Object?>{'key': idempotencyKey},
+      );
+      await tx.commit();
+      return affected > 0;
+    } catch (_) {
+      await tx.rollback();
+      rethrow;
+    }
+  }
+
+  @override
+  Future<int> sweepExpiredOrphans() async {
+    final tx = await _pool.beginTransaction();
+    try {
+      final affected = await tx.execute(
+        'delete from public.admin_request_idempotency '
+        'where response_status is null '
+        'and completed_at is null '
+        'and expires_at < now()',
+      );
+      await tx.commit();
+      return affected;
     } catch (_) {
       await tx.rollback();
       rethrow;
