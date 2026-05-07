@@ -66,6 +66,27 @@ import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 /// `operator_id`, but the SET LOCAL bookkeeping needs both.
 typedef BridgeLocationResolver = Future<String> Function(String operatorId);
 
+/// Code-Health L8 — invoked on every failed publish so the row's
+/// `attempt_count` actually increments. Without this seam the DLQ
+/// counter is theatre: `attempt_count` stayed at 0 for the row's
+/// entire 7-day retention, so the partition `attempt_count > _dlqCap`
+/// never fired and a poison-pill row recycled until retention swept
+/// it. Production wires this to a tenant-scoped UPDATE against
+/// `event_outbox` (SET attempt_count = attempt_count + 1, last_error
+/// = $msg, last_error_at = now(), picked_up_at = NULL); tests inject
+/// an in-memory counter that mirrors the same shape.
+///
+/// Returns the new `attempt_count` AFTER the increment so the bridge
+/// can decide whether to MOVE the row to the dead-letter table
+/// immediately (without waiting for the next claim cycle to
+/// re-discover the row past-cap).
+typedef BridgeOutboxFailureMarker = Future<int> Function({
+  required String operatorId,
+  required String locationId,
+  required String eventId,
+  required String errorMessage,
+});
+
 /// Discovers operators with undelivered `event_outbox` rows. Called
 /// at every poll tick so a row enqueued before the bridge came up — or
 /// a row whose NOTIFY was dropped under queue pressure — does not get
@@ -167,6 +188,7 @@ class RealtimeBridgeWorker {
     required BridgeLocationResolver locationResolver,
     EventOutboxDeadLetterRepository? deadLetterRepository,
     BridgeOperatorDiscoverer? operatorDiscoverer,
+    BridgeOutboxFailureMarker? outboxFailureMarker,
     Set<String> bootstrapOperatorIds = const <String>{},
     Duration pollInterval = const Duration(seconds: 60),
     int batchSize = 50,
@@ -182,6 +204,7 @@ class RealtimeBridgeWorker {
        _publisher = publisher,
        _locationResolver = locationResolver,
        _operatorDiscoverer = operatorDiscoverer ?? _emptyDiscoverer,
+       _outboxFailureMarker = outboxFailureMarker,
        _knownOperatorIds = Set<String>.from(bootstrapOperatorIds),
        _pollInterval = pollInterval,
        _batchSize = batchSize,
@@ -204,6 +227,14 @@ class RealtimeBridgeWorker {
   final RealtimeEventPublisher _publisher;
   final BridgeLocationResolver _locationResolver;
   final BridgeOperatorDiscoverer _operatorDiscoverer;
+
+  /// Code-Health L8 — bumps `attempt_count` on every publish failure.
+  /// Null preserves the pre-L8 behaviour for callers that have not yet
+  /// wired the marker; with the marker null, the bridge logs the
+  /// failure but the row's `attempt_count` stays at 0 forever (which
+  /// is the documented theatre the L8 lane removed). Production
+  /// SHOULD wire this marker; tests inject an in-memory counter.
+  final BridgeOutboxFailureMarker? _outboxFailureMarker;
   final Set<String> _knownOperatorIds;
   final Duration _pollInterval;
   final int _batchSize;
@@ -532,12 +563,23 @@ class RealtimeBridgeWorker {
             stack: stack,
           ),
         );
-        // Lease-based retry: the row stays unmarked, so the next
-        // claim cycle (after `claimReclaimAfter`, default 5 min) will
-        // pick it up. The `attempt_count` / `last_error*` retry
-        // ledger is documented as a Phase 10a follow-up — this
-        // scaffold uses the lease only. Phase 10a.2 caps the lease's
-        // recycle loop at `_dlqCap` attempts via the partition above.
+        // Code-Health L8 — bump `attempt_count` on the row so the
+        // partition `attempt_count >= _dlqCap` actually fires the
+        // DLQ MOVE eventually. Without this call, the row's
+        // `attempt_count` stayed at 0 forever and the lease window
+        // would recycle the row until 7-day retention swept it.
+        await _markPublishFailureAndMaybeDlq(
+          operatorId: operatorId,
+          locationId: locationId,
+          row: row,
+          error: error,
+        );
+        // Lease-based retry: the row stays unmarked-as-delivered, so
+        // the next claim cycle (after `claimReclaimAfter`, default 5
+        // min) will pick it up — UNLESS the marker just MOVEd it to
+        // DLQ above. Phase 10a.2 caps the lease's recycle loop at
+        // `_dlqCap` attempts via the claim-time partition; L8 closes
+        // the gap that let attempt_count stay at 0 indefinitely.
         continue;
       }
       try {
@@ -562,6 +604,97 @@ class RealtimeBridgeWorker {
         // contract acknowledges this at-least-once shape.
       }
     }
+  }
+
+  /// Code-Health L8 — bump `attempt_count` on the failing row and, if
+  /// the new count is at or past the configured cap, MOVE the row to
+  /// `event_outbox_dead_letter` immediately (rather than waiting for
+  /// the next claim cycle). Both writes are best-effort: a marker
+  /// failure is logged and the row is left to the lease's recycle
+  /// path; a MOVE failure is logged via the existing
+  /// `deadLetterMoveFailed` event so log search still surfaces it.
+  Future<void> _markPublishFailureAndMaybeDlq({
+    required String operatorId,
+    required String locationId,
+    required EventOutboxClaimedRow row,
+    required Object error,
+  }) async {
+    final marker = _outboxFailureMarker;
+    if (marker == null) return;
+    final errorMessage = _truncateError(error.toString());
+    int newAttemptCount;
+    try {
+      newAttemptCount = await marker(
+        operatorId: operatorId,
+        locationId: locationId,
+        eventId: row.id,
+        errorMessage: errorMessage,
+      );
+    } catch (markErr, markStack) {
+      _logger(
+        RealtimeBridgeLogEvent.publishFailed(
+          operatorId: operatorId,
+          outboxId: row.id,
+          topic: row.topic,
+          error: markErr,
+          stack: markStack,
+        ),
+      );
+      return;
+    }
+
+    // Inline DLQ MOVE when the increment crossed the cap. The MOVE
+    // CTE's own `attempt_count > @threshold` predicate is the
+    // server-side check, so we pass `_dlqCap - 1` here so the new
+    // count of `_dlqCap` qualifies (`_dlqCap > _dlqCap - 1`). The
+    // claim-time partition keeps its existing strictly-greater-than
+    // semantics for backward compat with rows that were already
+    // past-cap before the L8 fix landed.
+    if (newAttemptCount < _dlqCap) return;
+    final dlq = _deadLetterRepository;
+    if (dlq == null) return;
+    try {
+      final movedId = await dlq.moveFromOutbox(
+        operatorId: operatorId,
+        locationId: locationId,
+        eventId: row.id,
+        attemptCountThreshold: _dlqCap - 1,
+      );
+      if (movedId != null) {
+        _deadLetteredTotal += 1;
+        _logger(
+          RealtimeBridgeLogEvent.deadLettered(
+            operatorId: operatorId,
+            outboxId: row.id,
+            topic: row.topic,
+            attemptCount: newAttemptCount,
+            cap: _dlqCap,
+          ),
+        );
+      }
+    } catch (moveErr, moveStack) {
+      _logger(
+        RealtimeBridgeLogEvent.deadLetterMoveFailed(
+          operatorId: operatorId,
+          outboxId: row.id,
+          topic: row.topic,
+          attemptCount: newAttemptCount,
+          cap: _dlqCap,
+          error: moveErr,
+          stack: moveStack,
+        ),
+      );
+    }
+  }
+
+  /// Bound the marker's `last_error` payload so a misbehaving
+  /// publisher cannot push a megabyte stack trace into the queue
+  /// row. The migration's CHECK constraint admits up to 4096 chars
+  /// on `event_outbox.last_error`; this truncation matches the
+  /// pattern in `RetryCappingBackfillJobStore._truncateForLastError`.
+  static String _truncateError(String raw) {
+    const maxLen = 1024;
+    return raw.length <= maxLen ? raw : raw.substring(0, maxLen);
   }
 
   /// Phase 10a.4 — truncate `now` to the start of its UTC minute so
