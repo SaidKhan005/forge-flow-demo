@@ -48,6 +48,7 @@ import 'dart:convert';
 import '../../../integrations/reservation/libro_reservation_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
 import 'postgres_executor.dart';
 import 'tenant_context.dart';
@@ -401,8 +402,7 @@ class LibroPostgresSink extends OperatorScopedRepository
         'event_kind': eventKind,
         'records_count': recordsCount,
         'error_message': errorMessage,
-        'payload_preview':
-            payloadPreview == null ? null : json.encode(payloadPreview),
+        'payload_preview': encodePayloadPreviewForSyncLog(payloadPreview),
       },
     );
   }

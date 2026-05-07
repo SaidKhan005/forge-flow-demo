@@ -27,6 +27,7 @@
 //      the wage-dollar write-side tokens forbidden by the V1
 //      hours-only invariant).
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -745,6 +746,130 @@ void main() {
         expect(source.contains("import 'package:postgres/"), isFalse,
             reason: 'sink uses PostgresExecutor seam; direct '
                 'package:postgres import not required');
+      },
+    );
+  });
+
+  // Code Health LB#2 — `appendSyncLog` writes the `payload_preview`
+  // JSONB column through the shared `encodePayloadPreviewForSyncLog`
+  // helper, which redacts the payload via `redactWebhookPayload` BEFORE
+  // JSON-encoding. Operator-scoped Postgres must never carry vendor
+  // secrets / PII in the clear, so any sensitive field name supplied in
+  // `payloadPreview` MUST be absent from the encoded INSERT row.
+  group('Code Health LB#2 — appendSyncLog redacts payload_preview', () {
+    test(
+      'sensitive fields (password / api_key / refresh_token / email / '
+      'phone / first_name / nested secret) are stripped from the '
+      'connector_sync_log INSERT row',
+      () async {
+        final pool = _SinkPool();
+        final sink = AdpPostgresSink(
+          tenantWrapper: TenantTransactionWrapper(pool),
+          now: () => DateTime.utc(2026, 5, 4, 12, 0, 0),
+        );
+
+        await sink.appendSyncLog(
+          operatorId: _opA,
+          locationId: _locA,
+          connectionId: _connId,
+          eventKind: 'poll_success',
+          recordsCount: 1,
+          payloadPreview: <String, Object?>{
+            'records_count': 1,
+            'password': 'hunter2',
+            'api_key': 'sk_live_abc123',
+            'refresh_token': 'rt_def456',
+            'email': 'guest@example.com',
+            'phone': '+15551234567',
+            'first_name': 'Casey',
+            'nested': <String, Object?>{
+              'secret': 'shhh',
+              'safe_field': 'keep-me',
+            },
+            'tags': <Object?>[
+              <String, Object?>{
+                'access_token': 'leak',
+                'kind': 'visible',
+              },
+            ],
+          },
+        );
+
+        expect(pool.transactions, hasLength(1));
+        final tx = pool.transactions.single;
+        final insertIndex = tx.executedSql.indexWhere(
+          (s) => s.contains('insert into public.connector_sync_log'),
+        );
+        expect(insertIndex, isNonNegative,
+            reason: 'appendSyncLog must execute the connector_sync_log INSERT');
+        final params = tx.parameters[insertIndex];
+        final encoded = params['payload_preview'];
+        expect(encoded, isA<String>(),
+            reason: 'helper must JSON-encode the redacted preview before write');
+        final decoded =
+            jsonDecode(encoded! as String) as Map<String, Object?>;
+
+        // Surface fields the redactor strips.
+        for (final stripped in <String>[
+          'password',
+          'api_key',
+          'refresh_token',
+          'email',
+          'phone',
+          'first_name',
+        ]) {
+          expect(decoded.containsKey(stripped), isFalse,
+              reason: '$stripped must be redacted out of payload_preview');
+        }
+
+        // Nested map: `secret` stripped, sibling preserved.
+        expect(decoded['nested'], isA<Map<String, Object?>>());
+        final nested = decoded['nested']! as Map<String, Object?>;
+        expect(nested.containsKey('secret'), isFalse,
+            reason: 'nested secret must be redacted recursively');
+        expect(nested['safe_field'], 'keep-me',
+            reason: 'non-sensitive nested fields must round-trip');
+
+        // List of maps: token-bearing entry has the token field
+        // stripped, neighbours preserved.
+        expect(decoded['tags'], isA<List<Object?>>());
+        final tags = decoded['tags']! as List<Object?>;
+        expect(tags, hasLength(1));
+        final tagEntry = tags.single as Map<String, Object?>;
+        expect(tagEntry.containsKey('access_token'), isFalse,
+            reason: 'access_token in nested list-of-maps must be redacted');
+        expect(tagEntry['kind'], 'visible',
+            reason: 'non-sensitive sibling in list-of-maps must survive');
+
+        // Non-sensitive top-level field kept intact.
+        expect(decoded['records_count'], 1);
+      },
+    );
+
+    test(
+      'null payloadPreview round-trips as a SQL NULL (no JSON literal '
+      'on the wire)',
+      () async {
+        final pool = _SinkPool();
+        final sink = AdpPostgresSink(
+          tenantWrapper: TenantTransactionWrapper(pool),
+          now: () => DateTime.utc(2026, 5, 4, 12, 0, 0),
+        );
+
+        await sink.appendSyncLog(
+          operatorId: _opA,
+          locationId: _locA,
+          connectionId: _connId,
+          eventKind: 'poll_success',
+          recordsCount: 0,
+        );
+
+        final tx = pool.transactions.single;
+        final insertIndex = tx.executedSql.indexWhere(
+          (s) => s.contains('insert into public.connector_sync_log'),
+        );
+        expect(insertIndex, isNonNegative);
+        expect(tx.parameters[insertIndex]['payload_preview'], isNull);
       },
     );
   });
