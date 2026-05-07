@@ -36,6 +36,7 @@
 //   - The proxy is recommendation/read-only infrastructure — write /
 //     action paths are not part of the launch product.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -4396,6 +4397,7 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
     this.now,
     this.producerBudget = const Duration(milliseconds: 250),
     this.outerProducerBudget = const Duration(milliseconds: 750),
+    this.producerRouteBudget = const Duration(seconds: 3),
     this.producerConcurrency = 4,
     this.inMemoryBreakerStates,
   }) : assert(producerConcurrency > 0);
@@ -4411,6 +4413,7 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
   final DateTime Function()? now;
   final Duration producerBudget;
   final Duration outerProducerBudget;
+  final Duration producerRouteBudget;
   final int producerConcurrency;
   final Map<String, CircuitState> Function()? inMemoryBreakerStates;
 
@@ -4429,8 +4432,9 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
         if (allowedKeys.contains(entry.key)) entry.key: entry.value,
     };
 
+    final selectedEntries = selected.entries.toList(growable: false);
     final results = probe.postgresOk
-        ? await _runSelected(selected.entries.toList(growable: false), asOf)
+        ? await _runSelectedWithRouteBudget(selectedEntries, asOf)
         : const <MapEntry<String, ProxyHealthMetric>>[];
     final metrics = <String, ProxyHealthMetric>{
       for (final entry in results) entry.key: entry.value,
@@ -4443,6 +4447,29 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
       metrics: metrics,
       useFullEnvelope: featureFlags.healthEnvelopeFullV1,
     );
+  }
+
+  Future<List<MapEntry<String, ProxyHealthMetric>>> _runSelectedWithRouteBudget(
+    List<MapEntry<String, ProxyHealthRegistryProducer>> selected,
+    DateTime asOf,
+  ) async {
+    if (selected.isEmpty) return const <MapEntry<String, ProxyHealthMetric>>[];
+    try {
+      return await _runSelected(selected, asOf).timeout(producerRouteBudget);
+    } on TimeoutException {
+      return <MapEntry<String, ProxyHealthMetric>>[
+        for (final entry in selected)
+          MapEntry(
+            entry.key,
+            _unknownProducerMetric(
+              key: entry.key,
+              observedAt: asOf,
+              warning: 'registry_route_budget_exceeded',
+              budget: producerRouteBudget,
+            ),
+          ),
+      ];
+    }
   }
 
   Future<List<MapEntry<String, ProxyHealthMetric>>> _runSelected(
@@ -4491,28 +4518,42 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
       );
       return MapEntry(key, metric);
     } catch (_) {
-      final reserved =
-          proxyHealthReservedMetrics[key] ??
-          _legacyReservedProxyHealthMetrics[key];
       return MapEntry(
         key,
-        ProxyHealthMetric(
-          status: 'unknown',
-          value: null,
-          unit: reserved?.unit ?? 'unknown',
-          description:
-              reserved?.description ?? 'Producer failed in registry runner.',
-          source: reserved?.source,
-          owner: reserved?.owner ?? 'B42',
+        _unknownProducerMetric(
+          key: key,
           observedAt: context.now,
-          thresholds: reserved?.thresholds ?? const <String, Object?>{},
-          metadata: <String, Object?>{
-            ...?reserved?.metadata,
-            'warning': 'registry_outer_failure',
-          },
+          warning: 'registry_outer_failure',
         ),
       );
     }
+  }
+
+  ProxyHealthMetric _unknownProducerMetric({
+    required String key,
+    required DateTime observedAt,
+    required String warning,
+    Duration? budget,
+  }) {
+    final reserved =
+        proxyHealthReservedMetrics[key] ??
+        _legacyReservedProxyHealthMetrics[key];
+    return ProxyHealthMetric(
+      status: 'unknown',
+      value: null,
+      unit: reserved?.unit ?? 'unknown',
+      description:
+          reserved?.description ?? 'Producer failed in registry runner.',
+      source: reserved?.source,
+      owner: reserved?.owner ?? 'B42',
+      observedAt: observedAt,
+      thresholds: reserved?.thresholds ?? const <String, Object?>{},
+      metadata: <String, Object?>{
+        ...?reserved?.metadata,
+        'warning': warning,
+        if (budget != null) 'budget_ms': budget.inMilliseconds,
+      },
+    );
   }
 }
 

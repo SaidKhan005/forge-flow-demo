@@ -456,7 +456,7 @@ class _HealthCheckConfirmDialog extends StatelessWidget {
       icon: Icons.health_and_safety_outlined,
       title: 'Run system check',
       description:
-          'This reads live staging health and dependency status. It is read-only and can take 15-30 seconds.',
+          'This reads live staging health and dependency status. It is read-only and usually finishes in a few seconds.',
       confirmLabel: 'Run system check',
       facts: [
         AdminRunCheckFact(

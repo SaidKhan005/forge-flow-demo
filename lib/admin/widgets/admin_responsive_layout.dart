@@ -149,6 +149,95 @@ class AdminCard extends StatelessWidget {
   }
 }
 
+@immutable
+class AdminStatItem {
+  const AdminStatItem({
+    required this.label,
+    required this.value,
+    this.icon,
+    this.tone = AppColors.textPrimary,
+  });
+
+  final String label;
+  final String value;
+  final IconData? icon;
+  final Color tone;
+}
+
+class AdminStatStrip extends StatelessWidget {
+  const AdminStatStrip({super.key, required this.items});
+
+  final List<AdminStatItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return AdminCard(
+      padding: const EdgeInsets.all(12),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: <Widget>[
+          for (final item in items)
+            _AdminStatTile(
+              key: ValueKey('admin_stat_${item.label}'),
+              item: item,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminStatTile extends StatelessWidget {
+  const _AdminStatTile({super.key, required this.item});
+
+  final AdminStatItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 132, maxWidth: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: item.tone.withValues(alpha: 0.07),
+        border: Border.all(color: item.tone.withValues(alpha: 0.22), width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (item.icon != null) ...<Widget>[
+            Icon(item.icon, size: 16, color: item.tone),
+            const SizedBox(width: 8),
+          ],
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  item.value,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.sectionTitle(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  item.label,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.mono11(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class AdminDetailRow extends StatelessWidget {
   const AdminDetailRow({
     super.key,

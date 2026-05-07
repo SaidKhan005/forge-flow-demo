@@ -49,6 +49,11 @@ void main() {
         contains('add_header Cache-Control "no-store, max-age=0" always;'),
       );
     });
+
+    test('precompresses large static assets for nginx gzip_static serving', () {
+      expect(dockerfile, contains('gzip -9 -c "\$1" > "\$1.gz"'));
+      expect(dockerfile, contains('gzip_static on;'));
+    });
   });
 
   group('deploy_staging_proxy.ps1', () {

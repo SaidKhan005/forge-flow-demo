@@ -368,12 +368,10 @@ class _AuditedSupportActionsAdminScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             AdminPageHeader(
-              title: 'Audit log and support actions',
+              title: 'Audit & support',
               subtitle:
-                  'Review the audit log and run support actions for '
-                  '${widget.pickedOperator.operatorBusinessName}. '
-                  'Every action you run here is recorded with your name, '
-                  'a reason, and a record of what was touched.',
+                  '${widget.pickedOperator.operatorBusinessName}: audit '
+                  'history and gated support actions.',
               trailing: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),
@@ -961,7 +959,8 @@ class _FiltersBarState extends State<_FiltersBar> {
             for (final action in kAuditLogFilterableActions)
               FilterChip(
                 key: Key('admin_asa_filter_action_$action'),
-                label: Text(action),
+                tooltip: action,
+                label: Text(humanizeAuditAction(action)),
                 selected: _draft.actions.contains(action),
                 onSelected: (selected) {
                   final next = List<String>.of(_draft.actions);

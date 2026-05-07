@@ -460,12 +460,10 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             AdminPageHeader(
-              title: 'Members',
+              title: 'Team',
               subtitle:
-                  'Review the team for '
-                  '${widget.pickedOperator.operatorBusinessName}. '
-                  'Every change you make here is recorded with your '
-                  'name and reason so the operator can see it later.',
+                  '${widget.pickedOperator.operatorBusinessName}: members, '
+                  'invites, and support actions. Changes require a reason.',
               trailing: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),
@@ -505,6 +503,10 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
               },
             ),
             const SizedBox(height: 12),
+            if (!_loading && _loadError == null) ...<Widget>[
+              _MembersSummaryStrip(members: _members, invites: _invites),
+              const SizedBox(height: 12),
+            ],
             Expanded(child: _buildBody()),
           ],
         ),
@@ -580,6 +582,49 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           _InvitesPanel(invites: _invites),
         ],
       ),
+    );
+  }
+}
+
+class _MembersSummaryStrip extends StatelessWidget {
+  const _MembersSummaryStrip({required this.members, required this.invites});
+
+  final List<MemberAdminRow> members;
+  final List<MemberInviteRow> invites;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = members
+        .where((member) => member.status == MemberStatus.active)
+        .length;
+    final mfaOff = members.where((member) => !member.mfaEnrolled).length;
+    return AdminStatStrip(
+      items: <AdminStatItem>[
+        AdminStatItem(
+          label: 'Visible members',
+          value: members.length.toString(),
+          icon: Icons.people_alt_outlined,
+          tone: AppColors.peacock,
+        ),
+        AdminStatItem(
+          label: 'Active',
+          value: active.toString(),
+          icon: Icons.check_circle_outline,
+          tone: AppColors.positive,
+        ),
+        AdminStatItem(
+          label: 'MFA off',
+          value: mfaOff.toString(),
+          icon: Icons.gpp_maybe_outlined,
+          tone: mfaOff == 0 ? AppColors.positive : AppColors.warning,
+        ),
+        AdminStatItem(
+          label: 'Pending invites',
+          value: invites.length.toString(),
+          icon: Icons.mail_outline,
+          tone: AppColors.sunset,
+        ),
+      ],
     );
   }
 }

@@ -589,26 +589,17 @@ void main() {
             headers: <String, String>{'content-type': 'application/json'},
           );
         }
-        if (path.endsWith('/org-units') &&
-            request.url.queryParameters['include'] == 'locations') {
-          return http.Response(
-            jsonEncode(<String, Object?>{
-              'locations': <Object?>[
-                <String, Object?>{
-                  'location_id': 'loc-1',
-                  'location_label': '95 Water Street',
-                },
-              ],
-            }),
-            200,
-            headers: <String, String>{'content-type': 'application/json'},
-          );
-        }
         if (path.endsWith('/org-units')) {
           return http.Response(
             jsonEncode(<String, Object?>{
               'org_units': <Object?>[
                 <String, Object?>{'org_unit_id': 'unit-1', 'label': 'Front'},
+              ],
+              'locations': <Object?>[
+                <String, Object?>{
+                  'location_id': 'loc-1',
+                  'location_label': '95 Water Street',
+                },
               ],
             }),
             200,
@@ -649,6 +640,50 @@ void main() {
       expect(sessions.single.userDisplayName, equals('user@op.test'));
       expect(sessions.single.deviceFingerprint, equals('Unknown device'));
       expect(sessions.single.createdAt, equals(sessions.single.lastActiveAt));
+    });
+
+    test('hierarchy reads coalesce simultaneous org-unit and location loads',
+        () async {
+      var orgUnitRequests = 0;
+      final mock = http_testing.MockClient((http.Request request) async {
+        if (request.url.path.endsWith('/org-units')) {
+          orgUnitRequests += 1;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'org_units': <Object?>[
+                <String, Object?>{'org_unit_id': 'unit-1', 'name': 'Front'},
+              ],
+              'locations': <Object?>[
+                <String, Object?>{
+                  'location_id': 'loc-1',
+                  'name': '95 Water Street',
+                  'org_unit_id': 'unit-1',
+                },
+              ],
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        }
+        return http.Response('{}', 404);
+      });
+      final gateway = HttpRolesHierarchySessionsAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      final results = await Future.wait<Object>([
+        gateway.listOrgUnits(operatorId: 'op-1'),
+        gateway.listHierarchyLocations(operatorId: 'op-1'),
+      ]);
+
+      expect((results[0] as List<OrgUnitAdminNode>).single.name, 'Front');
+      expect(
+        (results[1] as List<HierarchyLocationLeaf>).single.name,
+        '95 Water Street',
+      );
+      expect(orgUnitRequests, equals(1));
     });
 
     test('createCustomRole POST pins payload + admin_reason', () async {

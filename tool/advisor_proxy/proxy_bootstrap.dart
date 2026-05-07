@@ -844,7 +844,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     usageCounterStore: _AdvisorProxyUsageCounterStoreAdapter(
       AdvisorProxyUsageCounterStore(tenantWrapper),
     ),
-    // HARD-A — registry-backed `/health`. Runs all 58 producers
+    // HARD-A — registry-backed `/health`. Runs the producer catalog
     // with bounded concurrency against a separate admin-role pool with `set local role
     // forge_admin` (BYPASSRLS) so platform-wide reads (graph_health,
     // event_outbox, audit_logs, vector indexes, etc.) succeed without
@@ -1162,8 +1162,8 @@ RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
   TenantTransactionWrapper adminWrapper, {
   List<String> expectedMigrationFilenames = const <String>[],
 }) {
-  const healthStatementTimeout = Duration(milliseconds: 1500);
-  const healthProducerConcurrency = 2;
+  const healthStatementTimeout = Duration(milliseconds: 150);
+  const healthProducerConcurrency = kPostgresDefaultMaxConnectionsPerPool;
 
   Future<List<Map<String, Object?>>> runnerFn(
     String sql, {
@@ -1193,8 +1193,9 @@ RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
     producers: buildProxyHealthRegistryProducers(
       expectedMigrationFilenames: expectedMigrationFilenames,
     ),
-    producerBudget: const Duration(seconds: 3),
-    outerProducerBudget: const Duration(seconds: 4),
+    producerBudget: const Duration(milliseconds: 300),
+    outerProducerBudget: const Duration(milliseconds: 450),
+    producerRouteBudget: const Duration(seconds: 3),
     producerConcurrency: healthProducerConcurrency,
   );
 }

@@ -74,6 +74,48 @@ void main() {
       expect(find.byKey(const Key('admin_rhs_roles_tab')), findsOneWidget);
     });
 
+    testWidgets('loads only the selected tab until another tab is opened',
+        (tester) async {
+      wideViewport(tester);
+      final gateway = _CountingRolesHierarchySessionsGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+        locationsByOperator: kDemoHierarchyLocationsByOperator(),
+        sessionsByOperator: kDemoSessionsByOperator(),
+      );
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.listRolesCalls, equals(1));
+      expect(gateway.listOrgUnitsCalls, equals(0));
+      expect(gateway.listHierarchyLocationsCalls, equals(0));
+      expect(gateway.listSessionsCalls, equals(0));
+
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+
+      expect(gateway.listRolesCalls, equals(1));
+      expect(gateway.listOrgUnitsCalls, equals(1));
+      expect(gateway.listHierarchyLocationsCalls, equals(1));
+      expect(gateway.listSessionsCalls, equals(0));
+
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_sessions')));
+      await tester.pumpAndSettle();
+
+      expect(gateway.listRolesCalls, equals(1));
+      expect(gateway.listOrgUnitsCalls, equals(1));
+      expect(gateway.listHierarchyLocationsCalls, equals(1));
+      expect(gateway.listSessionsCalls, equals(1));
+    });
+
     testWidgets('Hierarchy tab renders org-unit tree + locations',
         (tester) async {
       wideViewport(tester);
@@ -526,4 +568,47 @@ void main() {
       }
     });
   });
+}
+
+class _CountingRolesHierarchySessionsGateway
+    extends InMemoryRolesHierarchySessionsAdminGateway {
+  _CountingRolesHierarchySessionsGateway({
+    required super.rolesByOperator,
+    required super.orgUnitsByOperator,
+    required super.locationsByOperator,
+    required super.sessionsByOperator,
+  });
+
+  int listRolesCalls = 0;
+  int listOrgUnitsCalls = 0;
+  int listHierarchyLocationsCalls = 0;
+  int listSessionsCalls = 0;
+
+  @override
+  Future<List<RoleAdminRow>> listRoles({required String operatorId}) {
+    listRolesCalls += 1;
+    return super.listRoles(operatorId: operatorId);
+  }
+
+  @override
+  Future<List<OrgUnitAdminNode>> listOrgUnits({
+    required String operatorId,
+  }) {
+    listOrgUnitsCalls += 1;
+    return super.listOrgUnits(operatorId: operatorId);
+  }
+
+  @override
+  Future<List<HierarchyLocationLeaf>> listHierarchyLocations({
+    required String operatorId,
+  }) {
+    listHierarchyLocationsCalls += 1;
+    return super.listHierarchyLocations(operatorId: operatorId);
+  }
+
+  @override
+  Future<List<SessionAdminRow>> listSessions({required String operatorId}) {
+    listSessionsCalls += 1;
+    return super.listSessions(operatorId: operatorId);
+  }
 }

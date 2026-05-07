@@ -75,15 +75,24 @@ class _RolesHierarchySessionsAdminScreenState
     vsync: this,
   );
 
-  bool _loading = true;
-  String? _loadError;
+  bool _rolesLoading = true;
+  bool _hierarchyLoading = false;
+  bool _sessionsLoading = false;
+  bool _rolesLoaded = false;
+  bool _hierarchyLoaded = false;
+  bool _sessionsLoaded = false;
+  String? _rolesLoadError;
+  String? _hierarchyLoadError;
+  String? _sessionsLoadError;
   String? _actionError;
 
   List<RoleAdminRow> _roles = const <RoleAdminRow>[];
   List<OrgUnitAdminNode> _orgUnits = const <OrgUnitAdminNode>[];
   List<HierarchyLocationLeaf> _locations = const <HierarchyLocationLeaf>[];
   List<SessionAdminRow> _sessions = const <SessionAdminRow>[];
-  int _refreshGeneration = 0;
+  int _rolesGeneration = 0;
+  int _hierarchyGeneration = 0;
+  int _sessionsGeneration = 0;
 
   int _idempotencyCounter = 0;
 
@@ -98,71 +107,161 @@ class _RolesHierarchySessionsAdminScreenState
   @override
   void initState() {
     super.initState();
-    _refresh();
+    _tabController.addListener(_ensureCurrentTabLoaded);
+    _refreshRoles();
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_ensureCurrentTabLoaded);
     _tabController.dispose();
     super.dispose();
   }
 
-  Future<void> _refresh() async {
-    final generation = ++_refreshGeneration;
+  void _ensureCurrentTabLoaded() {
+    switch (_tabController.index) {
+      case 0:
+        if (!_rolesLoaded && !_rolesLoading) {
+          _refreshRoles();
+        }
+      case 1:
+        if (!_hierarchyLoaded && !_hierarchyLoading) {
+          _refreshHierarchy();
+        }
+      case 2:
+        if (!_sessionsLoaded && !_sessionsLoading) {
+          _refreshSessions();
+        }
+    }
+  }
+
+  Future<void> _refreshRoles() async {
+    final generation = ++_rolesGeneration;
     setState(() {
-      _loading = true;
-      _loadError = null;
+      _rolesLoading = true;
+      _rolesLoadError = null;
     });
     try {
       final operatorId = widget.pickedOperator.operatorId;
-      final results = await Future.wait<Object>([
-        widget.gateway.listRoles(operatorId: operatorId),
-        widget.gateway.listOrgUnits(operatorId: operatorId),
-        widget.gateway.listHierarchyLocations(operatorId: operatorId),
-        widget.gateway.listSessions(operatorId: operatorId),
-      ]);
-      if (generation != _refreshGeneration) return;
-      final roles = results[0] as List<RoleAdminRow>;
-      final orgUnits = results[1] as List<OrgUnitAdminNode>;
-      final locations = results[2] as List<HierarchyLocationLeaf>;
-      final sessions = results[3] as List<SessionAdminRow>;
+      final roles = await widget.gateway.listRoles(operatorId: operatorId);
+      if (generation != _rolesGeneration) return;
       if (!mounted) return;
       setState(() {
         _roles = roles;
-        _orgUnits = orgUnits;
-        _locations = locations;
-        _sessions = sessions;
-        _loading = false;
+        _rolesLoaded = true;
+        _rolesLoading = false;
       });
     } on RolesHierarchySessionsGatewayError catch (error) {
       if (!mounted) return;
       setState(() {
-        _loadError = error.message;
-        _loading = false;
+        _rolesLoadError = error.message;
+        _rolesLoading = false;
       });
     } on RolesHierarchySessionsForbiddenException catch (error) {
       if (!mounted) return;
       setState(() {
-        _loadError = error.message;
-        _loading = false;
+        _rolesLoadError = error.message;
+        _rolesLoading = false;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _loadError = 'Could not load: $error';
-        _loading = false;
+        _rolesLoadError = 'Could not load roles: $error';
+        _rolesLoading = false;
+      });
+    }
+  }
+
+  Future<void> _refreshHierarchy() async {
+    final generation = ++_hierarchyGeneration;
+    setState(() {
+      _hierarchyLoading = true;
+      _hierarchyLoadError = null;
+    });
+    try {
+      final operatorId = widget.pickedOperator.operatorId;
+      final results = await Future.wait<Object>([
+        widget.gateway.listOrgUnits(operatorId: operatorId),
+        widget.gateway.listHierarchyLocations(operatorId: operatorId),
+      ]);
+      if (generation != _hierarchyGeneration) return;
+      final orgUnits = results[0] as List<OrgUnitAdminNode>;
+      final locations = results[1] as List<HierarchyLocationLeaf>;
+      if (!mounted) return;
+      setState(() {
+        _orgUnits = orgUnits;
+        _locations = locations;
+        _hierarchyLoaded = true;
+        _hierarchyLoading = false;
+      });
+    } on RolesHierarchySessionsGatewayError catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _hierarchyLoadError = error.message;
+        _hierarchyLoading = false;
+      });
+    } on RolesHierarchySessionsForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _hierarchyLoadError = error.message;
+        _hierarchyLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _hierarchyLoadError = 'Could not load hierarchy: $error';
+        _hierarchyLoading = false;
+      });
+    }
+  }
+
+  Future<void> _refreshSessions() async {
+    final generation = ++_sessionsGeneration;
+    setState(() {
+      _sessionsLoading = true;
+      _sessionsLoadError = null;
+    });
+    try {
+      final sessions = await widget.gateway.listSessions(
+        operatorId: widget.pickedOperator.operatorId,
+      );
+      if (generation != _sessionsGeneration) return;
+      if (!mounted) return;
+      setState(() {
+        _sessions = sessions;
+        _sessionsLoaded = true;
+        _sessionsLoading = false;
+      });
+    } on RolesHierarchySessionsGatewayError catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _sessionsLoadError = error.message;
+        _sessionsLoading = false;
+      });
+    } on RolesHierarchySessionsForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _sessionsLoadError = error.message;
+        _sessionsLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _sessionsLoadError = 'Could not load sessions: $error';
+        _sessionsLoading = false;
       });
     }
   }
 
   Future<void> _runAndRefresh(
     Future<void> Function() action, {
+    required Future<void> Function() refresh,
     String? successHint,
   }) async {
     setState(() => _actionError = null);
     try {
       await action();
-      await _refresh();
+      await refresh();
       if (successHint != null && mounted) {
         ScaffoldMessenger.of(
           context,
@@ -206,6 +305,7 @@ class _RolesHierarchySessionsAdminScreenState
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: result.adminReason,
       ),
+      refresh: _refreshRoles,
       successHint: 'Updated ${roleAdminDisplayLabel(row)}',
     );
   }
@@ -230,6 +330,7 @@ class _RolesHierarchySessionsAdminScreenState
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: result.adminReason,
       ),
+      refresh: _refreshRoles,
       successHint: 'Created ${result.displayName}',
     );
   }
@@ -248,6 +349,7 @@ class _RolesHierarchySessionsAdminScreenState
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: reason,
       ),
+      refresh: _refreshRoles,
       successHint: 'Deleted ${roleAdminDisplayLabel(row)}',
     );
   }
@@ -274,6 +376,7 @@ class _RolesHierarchySessionsAdminScreenState
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: result.adminReason,
       ),
+      refresh: _refreshHierarchy,
       successHint: 'Moved ${node.name}',
     );
   }
@@ -296,6 +399,7 @@ class _RolesHierarchySessionsAdminScreenState
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: result.adminReason,
       ),
+      refresh: _refreshHierarchy,
       successHint: 'Moved ${leaf.name}',
     );
   }
@@ -325,6 +429,7 @@ class _RolesHierarchySessionsAdminScreenState
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: reason,
       ),
+      refresh: _refreshSessions,
       successHint: 'Signed out ${row.userDisplayName}',
     );
   }
@@ -342,13 +447,10 @@ class _RolesHierarchySessionsAdminScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             AdminPageHeader(
-              title: 'Roles, hierarchy, and sessions',
+              title: 'Access',
               subtitle:
-                  'Inspect and audit-edit the role catalog, org-unit '
-                  'hierarchy, and active sessions for '
-                  '${widget.pickedOperator.operatorBusinessName}. '
-                  'Every change you make here is recorded with your '
-                  'name and reason.',
+                  '${widget.pickedOperator.operatorBusinessName}: roles, '
+                  'hierarchy, and active sessions. Changes require a reason.',
               trailing: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),
@@ -397,10 +499,74 @@ class _RolesHierarchySessionsAdminScreenState
   }
 
   Widget _buildBody() {
-    if (_loading) {
-      return const Center(
-        key: Key('admin_rhs_loading'),
-        child: SizedBox(
+    return TabBarView(
+      controller: _tabController,
+      children: <Widget>[
+        _TabLoadBody(
+          loading: _rolesLoading,
+          error: _rolesLoadError,
+          loadingKey: const Key('admin_rhs_loading'),
+          errorKey: const Key('admin_rhs_load_error'),
+          child: _RolesTab(
+            roles: _roles,
+            editingEnabled: widget.editingEnabled,
+            canEditSeededRoles: widget.canEditSeededRoles,
+            onEditSeeded: _onEditSeededRole,
+            onCreateCustom: _onCreateCustomRole,
+            onDeleteCustom: _onDeleteCustomRole,
+          ),
+        ),
+        _TabLoadBody(
+          loading: _hierarchyLoading,
+          error: _hierarchyLoadError,
+          loadingKey: const Key('admin_rhs_hierarchy_loading'),
+          errorKey: const Key('admin_rhs_hierarchy_load_error'),
+          child: _HierarchyTab(
+            orgUnits: _orgUnits,
+            locations: _locations,
+            editingEnabled: widget.editingEnabled,
+            onMoveOrgUnit: _onMoveOrgUnit,
+            onMoveLocation: _onMoveLocation,
+          ),
+        ),
+        _TabLoadBody(
+          loading: _sessionsLoading,
+          error: _sessionsLoadError,
+          loadingKey: const Key('admin_rhs_sessions_loading'),
+          errorKey: const Key('admin_rhs_sessions_load_error'),
+          child: _SessionsTab(
+            sessions: _sessions,
+            editingEnabled: widget.editingEnabled,
+            actorUserId: widget.actorUserId,
+            onForceLogout: _onForceLogoutSession,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TabLoadBody extends StatelessWidget {
+  const _TabLoadBody({
+    required this.loading,
+    required this.error,
+    required this.loadingKey,
+    required this.errorKey,
+    required this.child,
+  });
+
+  final bool loading;
+  final String? error;
+  final Key loadingKey;
+  final Key errorKey;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return Center(
+        key: loadingKey,
+        child: const SizedBox(
           width: 28,
           height: 28,
           child: CircularProgressIndicator(
@@ -410,38 +576,10 @@ class _RolesHierarchySessionsAdminScreenState
         ),
       );
     }
-    if (_loadError != null) {
-      return _ErrorBanner(
-        key: const Key('admin_rhs_load_error'),
-        message: _loadError!,
-      );
+    if (error != null) {
+      return _ErrorBanner(key: errorKey, message: error!);
     }
-    return TabBarView(
-      controller: _tabController,
-      children: <Widget>[
-        _RolesTab(
-          roles: _roles,
-          editingEnabled: widget.editingEnabled,
-          canEditSeededRoles: widget.canEditSeededRoles,
-          onEditSeeded: _onEditSeededRole,
-          onCreateCustom: _onCreateCustomRole,
-          onDeleteCustom: _onDeleteCustomRole,
-        ),
-        _HierarchyTab(
-          orgUnits: _orgUnits,
-          locations: _locations,
-          editingEnabled: widget.editingEnabled,
-          onMoveOrgUnit: _onMoveOrgUnit,
-          onMoveLocation: _onMoveLocation,
-        ),
-        _SessionsTab(
-          sessions: _sessions,
-          editingEnabled: widget.editingEnabled,
-          actorUserId: widget.actorUserId,
-          onForceLogout: _onForceLogoutSession,
-        ),
-      ],
-    );
+    return child;
   }
 }
 
@@ -475,7 +613,28 @@ class _RolesTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          const _PermissionExplainerCard(),
+          AdminStatStrip(
+            items: <AdminStatItem>[
+              AdminStatItem(
+                label: 'Seeded roles',
+                value: seeded.length.toString(),
+                icon: Icons.verified_user_outlined,
+                tone: AppColors.peacock,
+              ),
+              AdminStatItem(
+                label: 'Custom roles',
+                value: custom.length.toString(),
+                icon: Icons.person_add_alt_outlined,
+                tone: AppColors.sunset,
+              ),
+              AdminStatItem(
+                label: 'Permission keys',
+                value: PermissionKeys.all.length.toString(),
+                icon: Icons.key_outlined,
+                tone: AppColors.textMuted,
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
           AdminCard(
             child: Column(
@@ -569,6 +728,8 @@ class _RolesTab extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          const _PermissionExplainerCard(),
         ],
       ),
     );
@@ -895,53 +1056,75 @@ class _HierarchyTab extends StatelessWidget {
     final roots = byParent[null] ?? const <OrgUnitAdminNode>[];
     return SingleChildScrollView(
       key: const Key('admin_rhs_hierarchy_tab'),
-      child: AdminCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          AdminStatStrip(
+            items: <AdminStatItem>[
+              AdminStatItem(
+                label: 'Org units',
+                value: orgUnits.length.toString(),
+                icon: Icons.account_tree_outlined,
+                tone: AppColors.peacock,
+              ),
+              AdminStatItem(
+                label: 'Locations',
+                value: locations.length.toString(),
+                icon: Icons.location_on_outlined,
+                tone: AppColors.sunset,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          AdminCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Expanded(
-                  child: Text(
-                    'Org units and locations',
-                    style: AppTextStyles.sectionTitle(
-                      color: AppColors.textPrimary,
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        'Org units and locations',
+                        style: AppTextStyles.sectionTitle(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
                     ),
-                  ),
+                    Text(
+                      '${orgUnits.length} unit'
+                      '${orgUnits.length == 1 ? '' : 's'}, '
+                      '${locations.length} location'
+                      '${locations.length == 1 ? '' : 's'}',
+                      style: AppTextStyles.mono11(color: AppColors.textMuted),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 4),
                 Text(
-                  '${orgUnits.length} unit${orgUnits.length == 1 ? '' : 's'}, '
-                  '${locations.length} location'
-                  '${locations.length == 1 ? '' : 's'}',
-                  style: AppTextStyles.mono11(color: AppColors.textMuted),
+                  'Move actions are audit-logged with your name and reason.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
+                const SizedBox(height: 8),
+                if (roots.isEmpty)
+                  Text(
+                    'No org units yet for this operator.',
+                    style: AppTextStyles.body13(color: AppColors.textMuted),
+                  )
+                else
+                  for (final root in roots)
+                    _OrgUnitNodeRow(
+                      node: root,
+                      byParent: byParent,
+                      locationsByOrgUnit: locationsByOrgUnit,
+                      depth: 0,
+                      editingEnabled: editingEnabled,
+                      onMoveOrgUnit: onMoveOrgUnit,
+                      onMoveLocation: onMoveLocation,
+                    ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Read-mostly view. Move actions are audit-logged with your '
-              'name and reason.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 8),
-            if (roots.isEmpty)
-              Text(
-                'No org units yet for this operator.',
-                style: AppTextStyles.body13(color: AppColors.textMuted),
-              )
-            else
-              for (final root in roots)
-                _OrgUnitNodeRow(
-                  node: root,
-                  byParent: byParent,
-                  locationsByOrgUnit: locationsByOrgUnit,
-                  depth: 0,
-                  editingEnabled: editingEnabled,
-                  onMoveOrgUnit: onMoveOrgUnit,
-                  onMoveLocation: onMoveLocation,
-                ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1077,51 +1260,75 @@ class _SessionsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       key: const Key('admin_rhs_sessions_tab'),
-      child: AdminCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          AdminStatStrip(
+            items: <AdminStatItem>[
+              AdminStatItem(
+                label: 'Active sessions',
+                value: sessions.length.toString(),
+                icon: Icons.devices_outlined,
+                tone: AppColors.peacock,
+              ),
+              AdminStatItem(
+                label: 'Other users',
+                value: sessions
+                    .where((row) => row.userId != actorUserId)
+                    .length
+                    .toString(),
+                icon: Icons.logout_outlined,
+                tone: AppColors.warning,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          AdminCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Expanded(
-                  child: Text(
-                    'Active sessions',
-                    style: AppTextStyles.sectionTitle(
-                      color: AppColors.textPrimary,
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        'Active sessions',
+                        style: AppTextStyles.sectionTitle(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
                     ),
-                  ),
+                    Text(
+                      '${sessions.length} session'
+                      '${sessions.length == 1 ? '' : 's'}',
+                      style: AppTextStyles.mono11(color: AppColors.textMuted),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 4),
                 Text(
-                  '${sessions.length} session'
-                  '${sessions.length == 1 ? '' : 's'}',
-                  style: AppTextStyles.mono11(color: AppColors.textMuted),
+                  'Force logout is audit-logged. You cannot sign yourself out '
+                  'from this surface.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
+                const SizedBox(height: 8),
+                if (sessions.isEmpty)
+                  Text(
+                    'No active sessions.',
+                    style: AppTextStyles.body13(color: AppColors.textMuted),
+                  )
+                else
+                  for (final row in sessions)
+                    _SessionRowTile(
+                      key: Key('admin_rhs_session_row_${row.sessionId}'),
+                      row: row,
+                      isOwn: row.userId == actorUserId,
+                      editingEnabled: editingEnabled,
+                      onForceLogout: onForceLogout,
+                    ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Every session for every member of this operator. '
-              'Forcing a sign-out is audit-logged with your name and reason. '
-              'You cannot sign yourself out from this surface.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 8),
-            if (sessions.isEmpty)
-              Text(
-                'No active sessions.',
-                style: AppTextStyles.body13(color: AppColors.textMuted),
-              )
-            else
-              for (final row in sessions)
-                _SessionRowTile(
-                  key: Key('admin_rhs_session_row_${row.sessionId}'),
-                  row: row,
-                  isOwn: row.userId == actorUserId,
-                  editingEnabled: editingEnabled,
-                  onForceLogout: onForceLogout,
-                ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
