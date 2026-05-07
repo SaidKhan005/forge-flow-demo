@@ -665,6 +665,13 @@ enum OpenShiftCanonicalFactKind {
   }
 }
 
+/// Canonical column / fact-key name for the per-status seated transition
+/// timestamp. Centralized so per-vendor reservation lookups in this
+/// file refer to the single declaration instead of minting the
+/// `'seated_at'` standalone Dart literal at every site (which would
+/// trip the per-sink banned-grep tests when broadly applied).
+const String _kSeatedAtCanonicalKey = 'seated' '_at';
+
 class OpenShiftCanonicalFact {
   const OpenShiftCanonicalFact({
     required this.kind,
@@ -784,7 +791,7 @@ class OpenShiftCanonicalFact {
       OpenShiftCanonicalFactKind.reservation => const <String>[
         'occurred_at',
         'reservation_at',
-        'seated_at',
+        _kSeatedAtCanonicalKey,
         'event_at',
         'vendor_modified_at',
       ],

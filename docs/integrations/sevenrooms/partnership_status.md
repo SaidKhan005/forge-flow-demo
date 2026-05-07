@@ -32,13 +32,16 @@ operator's behalf) completes the partnership form linked from
 
 ## Application status
 
-`not_started`.
+`not_started`
 
 **Date of last status change**: 2026-05-04 (engineering slice ship).
 **Notes**: Application kicks off when ops submits the SevenRooms
 partnership form. The first batch of partner credentials (sandbox)
 typically arrives within 4-8 weeks of form submission per industry
-norms; production credentials follow after sandbox sign-off.
+norms; production credentials follow after sandbox sign-off. Once
+ops submits the partnership form, this row flips to
+`Application status: under_review` per the same convention OpenTable
+and ADP carry.
 
 ---
 

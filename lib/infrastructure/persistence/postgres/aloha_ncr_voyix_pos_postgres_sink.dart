@@ -64,11 +64,15 @@
 //      resumes from the last successful cursor.
 //
 //   7. Tolerates `covers = null` in the canonical-fact dict. Aloha's
-//      `coversFieldExposed` capability boolean is currently flipped
-//      to `false` in the adapter; the live shape is likely tri-state
-//      (numberOfGuests can be omitted on certain check kinds). The
-//      sink stores NULL for that column without throwing — the
-//      adapter may not change, only the sink respects the shape.
+//      `coversFieldExposed` capability boolean is `true` in the
+//      adapter + integration registry; the live shape is likely
+//      tri-state (numberOfGuests can be omitted on certain check
+//      kinds). The sink stores NULL for that column without throwing
+//      — the adapter may not change, only the sink respects the
+//      shape. The `8.AL.live.sandbox` slice is the gate for either
+//      flipping `coversFieldExposed` to `false` or adopting an enum;
+//      see `docs/contracts/integration_spine_architecture_contract.md`
+//      §"Aloha NCR Voyix coversFieldExposed: true is RISKY".
 //
 // V1 lean cut 2 alignment (`memory/project_v1_lean_cut_2_2026_05_03.md`):
 // none of the banned items appear in this file. The sink stays at

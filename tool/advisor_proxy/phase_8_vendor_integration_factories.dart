@@ -128,7 +128,10 @@ import 'package:forge_and_flow/integrations/pos/clover_webhook_signature_verifie
 import 'package:forge_and_flow/integrations/pos/oracle_micros_simphony_credential_bridge.dart';
 import 'package:forge_and_flow/integrations/pos/oracle_micros_simphony_pos_adapter.dart';
 import 'package:forge_and_flow/integrations/pos/oracle_micros_simphony_production_api_client.dart';
-import 'package:forge_and_flow/integrations/pos/oracle_micros_simphony_webhook_signature_verifier.dart';
+// `oracle_micros_simphony_webhook_signature_verifier.dart` is intentionally
+// not imported here — Simphony's documented v2 API has no webhook
+// delivery surface and the adapter declares `webhookSupport = pollOnly`,
+// so the framework never dispatches into a verifier for this vendor.
 import 'package:forge_and_flow/integrations/pos/revel_credential_bridge.dart';
 import 'package:forge_and_flow/integrations/pos/revel_pos_adapter.dart'
     hide kRevelVendorId;
@@ -285,6 +288,13 @@ Phase8VendorIntegrationFactories
   AlohaNcrVoyixOauthClientCredentials? alohaNcrVoyixCredentials,
   SquareAppCredentials? squareAppCredentials,
   CloverAppCredentials? cloverAppCredentials,
+  // Humanity is `authMode = keyPaste`; the per-tenant connect/poll path
+  // does not consume app-wide creds. The OAuth refresh worker reads
+  // `ProxyConfig.humanityAppCredentials` directly for `refresh_token`
+  // rotation, so this builder no longer accepts the bundle. Parameter
+  // retained as a no-op for source compat with the binder call site
+  // until the binder drops the pass-through (separate cleanup).
+  // ignore: unused_element
   HumanityAppCredentials? humanityAppCredentials,
   QuickBooksTimeAppCredentials? quickBooksTimeAppCredentials,
   SevenShiftsAppCredentials? sevenShiftsAppCredentials,
@@ -552,8 +562,14 @@ Phase8VendorIntegrationFactories
       canonicalSink: oracleSink,
     );
   } as PosAdapterFactory;
-  signatureVerifiers[kOracleMicrosSimphonyVendorId] =
-      const OracleMicrosSimphonyWebhookSignatureVerifier();
+  // Oracle MICROS Simphony's documented v2 (STSGen2) API exposes no
+  // webhook delivery surface — see
+  // `docs/integrations/oracle_micros_simphony/api_consumed.md` and
+  // `docs/integrations/oracle_micros_simphony/webhook_signature.md`.
+  // The adapter declares `webhookSupport = pollOnly` and
+  // `handleWebhook` throws `UnsupportedError`, so the
+  // `InboundWebhookHandler` would never dispatch into a verifier
+  // here. Registering one is unreachable code; intentionally absent.
 
   // ─── POS — Revel ───────────────────────────────────────────────────
   final revelSink = RevelPosPostgresSink(wrapper);
@@ -693,50 +709,38 @@ Phase8VendorIntegrationFactories
   signatureVerifiers[agendrixVendorId] =
       const AgendrixWebhookSignatureVerifier();
 
-  // ─── Labor — Humanity (optional static app credentials) ────────────
+  // ─── Labor — Humanity (keyPaste; no app-cred boot gate) ────────────
   final humanitySink = HumanityPostgresSink(tenantWrapper: wrapper);
   wrapCanonicalSink(
     vendorId: kHumanityVendorId,
     category: IntegrationCategory.labor,
     underlying: humanitySink,
   );
-  // Humanity uses an app-wide OAuth client_id / client_secret pair
-  // surfaced through `ProxyConfig.humanityAppCredentials`. Mirrors the
-  // Aloha / Square / Clover warn-and-disable shape: when the typed
-  // record is absent at boot, the vendor lands on the disabled-warn
-  // list and the per-tenant factory is NOT registered.
-  if (humanityAppCredentials == null) {
-    disabledVendors[kHumanityVendorId] = 'humanity_oauth_credentials_missing';
-  } else {
-    final humanityCreds = humanityAppCredentials;
-    final humanityRefresh = makeHumanityOauthRefreshClosure(
+  // Humanity v1 is `authMode = keyPaste` per the capability profile in
+  // `lib/integrations/labor/humanity_labor_adapter.dart` and
+  // `docs/integrations/humanity/api_consumed.md` (operator pastes
+  // username + password; password-grant runs proxy-side). The optional
+  // app-wide `client_id` / `client_secret` (`ProxyConfig.humanityAppCredentials`)
+  // is consumed by the OAuth refresh worker (`tool/oauth_refresh_worker/main.dart`)
+  // for `refresh_token` rotation, NOT by the connect/poll path the
+  // adapter runs at runtime. So unlike Aloha / Square / Clover (which
+  // are real authorization-code OAuth and CANNOT connect without app
+  // creds), Humanity registers unconditionally — missing app creds
+  // only impacts long-lived refresh, surfaced via the dedicated worker.
+  laborAdapterFactories[kHumanityVendorId] = ({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final transport = HumanityLaborProductionApiClient(
       httpClient: sharedHttpClient,
-      clientId: humanityCreds.clientId,
-      clientSecret: humanityCreds.clientSecret,
     );
-    laborAdapterFactories[kHumanityVendorId] = ({
-      required String operatorId,
-      required String locationId,
-    }) async {
-      // Construct a per-tenant bridge so refresh + revoke paths run
-      // with the right (operator, location) tuple wired in.
-      HumanityBrokerCredentialBridge(
-        broker: broker,
-        operatorId: operatorId,
-        locationId: locationId,
-        oauthRefresh: humanityRefresh,
-      );
-      final transport = HumanityLaborProductionApiClient(
-        httpClient: sharedHttpClient,
-      );
-      return HumanityLaborAdapter(
-        httpClient: transport,
-        gateway: humanitySink,
-      );
-    } as LaborAdapterFactory;
-    signatureVerifiers[kHumanityVendorId] =
-        const HumanityWebhookSignatureVerifier();
-  }
+    return HumanityLaborAdapter(
+      httpClient: transport,
+      gateway: humanitySink,
+    );
+  } as LaborAdapterFactory;
+  signatureVerifiers[kHumanityVendorId] =
+      const HumanityWebhookSignatureVerifier();
 
   // ─── Labor — Push Operations ───────────────────────────────────────
   final pushOpsSink = PushOperationsPostgresSink(tenantWrapper: wrapper);

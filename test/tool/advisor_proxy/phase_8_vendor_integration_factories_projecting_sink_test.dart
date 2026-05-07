@@ -63,8 +63,9 @@ void main() {
         'adp',
         'agendrix',
         'push_operations',
-        'humanity', // humanitySink is built unconditionally; only the
-        // factory closure is gated on credentials.
+        'humanity', // Humanity is `authMode = keyPaste`; both the
+        // sink AND the factory closure are unconditional. App creds
+        // are read by the OAuth refresh worker only.
         'quickbooks_time', // qbtSink is built unconditionally; the
         // factory closure is gated.
       };
