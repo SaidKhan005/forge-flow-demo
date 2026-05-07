@@ -19,6 +19,8 @@ class MfaFactorRemovalRequestRecord {
     this.processingStartedAt,
     this.processingOwner,
     this.lastError,
+    this.attemptCount = 0,
+    this.deadLetteredAt,
   });
 
   final String requestId;
@@ -36,8 +38,21 @@ class MfaFactorRemovalRequestRecord {
   final String? processingOwner;
   final String? lastError;
 
-  bool get isPending => completedAt == null && cancelledAt == null;
+  /// Per-row retry counter. Schema CHECK caps at 100; the L7 worker
+  /// enforces the tighter app-level cap (default 10) before calling
+  /// [MfaFactorRemovalRequestsRepository.markDeadLettered].
+  final int attemptCount;
+
+  /// DLQ sentinel. Non-null once the worker has decided this row
+  /// exceeded its retry budget. Dead-lettered rows are excluded from
+  /// the partial indexes that drive `claimDuePending` /
+  /// `listDuePendingForUser`, so they stop being retried automatically.
+  final DateTime? deadLetteredAt;
+
+  bool get isPending =>
+      completedAt == null && cancelledAt == null && deadLetteredAt == null;
   bool get isCompleted => completedAt != null;
+  bool get isDeadLettered => deadLetteredAt != null;
 }
 
 class MfaFactorRemovalRequestsRepository extends OperatorScopedRepository {
@@ -77,7 +92,8 @@ class MfaFactorRemovalRequestsRepository extends OperatorScopedRepository {
         'user_id::text as user_id, factor_id::text as factor_id, '
         'requested_by_user_id::text as requested_by_user_id, '
         'step_up_proof_id, requested_at, execute_after, completed_at, '
-        'cancelled_at, processing_started_at, processing_owner, last_error',
+        'cancelled_at, processing_started_at, processing_owner, last_error, '
+        'attempt_count, dead_lettered_at',
         parameters: <String, Object?>{
           'request_id': requestId,
           'operator_id': operatorId,
@@ -112,7 +128,8 @@ class MfaFactorRemovalRequestsRepository extends OperatorScopedRepository {
         'user_id::text as user_id, factor_id::text as factor_id, '
         'requested_by_user_id::text as requested_by_user_id, '
         'step_up_proof_id, requested_at, execute_after, completed_at, '
-        'cancelled_at, processing_started_at, processing_owner, last_error '
+        'cancelled_at, processing_started_at, processing_owner, last_error, '
+        'attempt_count, dead_lettered_at '
         'from mfa_factor_removal_requests '
         'where operator_id = @operator_id::uuid '
         'and location_id = @location_id::uuid '
@@ -149,13 +166,15 @@ class MfaFactorRemovalRequestsRepository extends OperatorScopedRepository {
         'user_id::text as user_id, factor_id::text as factor_id, '
         'requested_by_user_id::text as requested_by_user_id, '
         'step_up_proof_id, requested_at, execute_after, completed_at, '
-        'cancelled_at, processing_started_at, processing_owner, last_error '
+        'cancelled_at, processing_started_at, processing_owner, last_error, '
+        'attempt_count, dead_lettered_at '
         'from mfa_factor_removal_requests '
         'where operator_id = @operator_id::uuid '
         'and location_id = @location_id::uuid '
         'and user_id = @user_id::uuid '
         'and completed_at is null '
         'and cancelled_at is null '
+        'and dead_lettered_at is null '
         'and execute_after <= @now::timestamptz '
         'order by execute_after, requested_at '
         'limit @limit',
@@ -195,6 +214,7 @@ class MfaFactorRemovalRequestsRepository extends OperatorScopedRepository {
         '  from mfa_factor_removal_requests '
         '  where completed_at is null '
         '  and cancelled_at is null '
+        '  and dead_lettered_at is null '
         '  and execute_after <= @now::timestamptz '
         '  and (processing_started_at is null '
         '       or processing_started_at < '
@@ -217,7 +237,8 @@ class MfaFactorRemovalRequestsRepository extends OperatorScopedRepository {
         '    r.requested_by_user_id::text as requested_by_user_id, '
         '    r.step_up_proof_id, r.requested_at, r.execute_after, '
         '    r.completed_at, r.cancelled_at, r.processing_started_at, '
-        '    r.processing_owner, r.last_error'
+        '    r.processing_owner, r.last_error, '
+        '    r.attempt_count, r.dead_lettered_at'
         ') '
         'select * from claimed order by execute_after, request_id',
         parameters: <String, Object?>{
@@ -336,6 +357,105 @@ class MfaFactorRemovalRequestsRepository extends OperatorScopedRepository {
     });
   }
 
+  /// Bumps the row's `attempt_count` by one and returns the new value.
+  ///
+  /// Intentionally separate from [markFailed] so the L7 worker can
+  /// compose `incrementAttemptCount` with its own success/failure
+  /// write atomically inside one tenant transaction. This method does
+  /// not enforce the retry cap — that's app-level policy. The schema
+  /// CHECK (attempt_count <= 100) is the defensive backstop.
+  ///
+  /// Returns the post-increment count. Throws [StateError] if the row
+  /// is missing or has been dead-lettered (so the caller is forced to
+  /// notice that the row left the active set).
+  Future<int> incrementAttemptCount({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String requestId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<int>(ctx, (exec) async {
+      final rows = await exec.query(
+        'update mfa_factor_removal_requests '
+        'set attempt_count = attempt_count + 1, '
+        'updated_at = now() '
+        'where request_id = @request_id::uuid '
+        'and operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'and user_id = @user_id::uuid '
+        'and completed_at is null '
+        'and cancelled_at is null '
+        'and dead_lettered_at is null '
+        'returning attempt_count',
+        parameters: <String, Object?>{
+          'request_id': requestId,
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'user_id': userId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw StateError(
+          'mfa_factor_removal_requests increment_attempt_count returned no rows '
+          '(row missing, dead-lettered, or already terminal)',
+        );
+      }
+      return _int(rows.single['attempt_count']);
+    });
+  }
+
+  /// Stamps `dead_lettered_at = now()`, captures the [reason] in
+  /// `last_error`, and clears the worker-claim fields so a confused
+  /// worker cannot keep re-claiming the row. The pending-only partial
+  /// indexes also exclude `dead_lettered_at IS NOT NULL`, so once this
+  /// runs the row drops out of `claimDuePending` /
+  /// `listDuePendingForUser` results.
+  ///
+  /// Returns the number of rows updated (0 if the row is already
+  /// terminal — this method is idempotent).
+  Future<int> markDeadLettered({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String requestId,
+    required String reason,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<int>(ctx, (exec) {
+      return exec.execute(
+        'update mfa_factor_removal_requests '
+        'set dead_lettered_at = now(), '
+        'last_error = @last_error, '
+        'processing_started_at = null, '
+        'processing_owner = null, '
+        'updated_at = now() '
+        'where request_id = @request_id::uuid '
+        'and operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'and user_id = @user_id::uuid '
+        'and completed_at is null '
+        'and cancelled_at is null '
+        'and dead_lettered_at is null',
+        parameters: <String, Object?>{
+          'request_id': requestId,
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'user_id': userId,
+          'last_error': reason,
+        },
+      );
+    });
+  }
+
   static MfaFactorRemovalRequestRecord _projectSingle(
     List<Map<String, Object?>> rows,
     String operation,
@@ -364,6 +484,8 @@ class MfaFactorRemovalRequestsRepository extends OperatorScopedRepository {
       processingStartedAt: _nullableDate(row['processing_started_at']),
       processingOwner: row['processing_owner'] as String?,
       lastError: row['last_error'] as String?,
+      attemptCount: _int(row['attempt_count']),
+      deadLetteredAt: _nullableDate(row['dead_lettered_at']),
     );
   }
 
@@ -380,5 +502,17 @@ class MfaFactorRemovalRequestsRepository extends OperatorScopedRepository {
     if (value is DateTime) return value.toUtc();
     if (value is String) return DateTime.parse(value).toUtc();
     throw StateError('unsupported timestamp value ${value.runtimeType}');
+  }
+
+  /// Projects an integer column. The schema declares `attempt_count`
+  /// `NOT NULL DEFAULT 0`, but older rows projected from a JOIN or a
+  /// fixture that omits the column should default to 0 rather than
+  /// throw.
+  static int _int(Object? value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.parse(value);
+    throw StateError('unsupported integer value ${value.runtimeType}');
   }
 }
