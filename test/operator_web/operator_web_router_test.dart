@@ -181,7 +181,11 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.byKey(const Key('operator_web_nav_group_people_access')),
+          find.byKey(const Key('operator_web_nav_group_people')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_nav_group_access')),
           findsOneWidget,
         );
         expect(

@@ -131,9 +131,9 @@ void main() {
       await sizeViewport(tester, const Size(360, 1200));
       await pumpScreen(tester, session: sessionWithRole('operator_owner'));
 
-      final titleSize = tester.getSize(find.text('Roles'));
+      final titleSize = tester.getSize(find.text('Roles & permissions'));
       expect(titleSize.width, greaterThan(50));
-      expect(titleSize.height, lessThan(40));
+      expect(titleSize.height, lessThan(60));
 
       final subtitleSize = tester.getSize(
         find.byKey(const Key('operator_web_roles_subtitle')),

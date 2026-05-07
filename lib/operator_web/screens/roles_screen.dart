@@ -474,17 +474,21 @@ class _RolesHeader extends StatelessWidget {
               color: AppColors.sunsetDark,
             ),
             const SizedBox(width: 10),
-            Text(
-              'Roles',
-              style: AppTextStyles.display20(color: AppColors.textPrimary),
+            Flexible(
+              child: Text(
+                'Roles & permissions',
+                maxLines: 2,
+                softWrap: true,
+                style: AppTextStyles.display20(color: AppColors.textPrimary),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 6),
         Text(
-          'Roles decide what each teammate can do in Forge & Flow. '
-          'Use a seeded role for the standard mix, or build a custom '
-          'role when you need a different set of permissions.',
+          'Set what each role can do, then assign roles from Team members. '
+          'Use seeded roles for the standard mix, or build a custom role '
+          'when permissions need to be different.',
           key: const Key('operator_web_roles_subtitle'),
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
