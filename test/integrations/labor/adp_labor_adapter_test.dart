@@ -43,9 +43,6 @@ import 'package:forge_and_flow/integrations/labor/adp_labor_adapter.dart';
 import 'package:forge_and_flow/integrations/labor/adp_webhook_signature_verifier.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
-import 'package:forge_and_flow/services/integration/labor_adapter.dart';
-import 'package:forge_and_flow/services/integration/pos_adapter.dart';
-import 'package:forge_and_flow/services/integration/reservation_adapter.dart';
 import 'package:forge_and_flow/services/integration/vendor_timestamp_policy.dart';
 
 import 'fixtures/adp_punches_fixture.dart';
@@ -531,11 +528,13 @@ void main() {
 
       final handler = InboundWebhookHandler(
         gateway: fakeWebhookGateway,
-        posAdapters: const <String, PosAdapter>{},
-        laborAdapters: <String, LaborAdapter>{
-          adapter.vendorId: adapter,
+        posAdapterFactories: const <String, PosAdapterFactory>{},
+        laborAdapterFactories: <String, LaborAdapterFactory>{
+          adapter.vendorId:
+              ({required operatorId, required locationId}) => adapter,
         },
-        reservationAdapters: const <String, ReservationAdapter>{},
+        reservationAdapterFactories:
+            const <String, ReservationAdapterFactory>{},
         signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{
           'adp': verifier,
         },

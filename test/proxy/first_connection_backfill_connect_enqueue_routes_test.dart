@@ -6,9 +6,6 @@ import 'package:forge_and_flow/services/integration/first_connection_backfill_jo
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart'
     as integration;
-import 'package:forge_and_flow/services/integration/labor_adapter.dart';
-import 'package:forge_and_flow/services/integration/pos_adapter.dart';
-import 'package:forge_and_flow/services/integration/reservation_adapter.dart';
 
 import '../../tool/advisor_proxy/admin_integrations_routes.dart';
 
@@ -59,9 +56,10 @@ void main() {
         ),
         webhookHandler: InboundWebhookHandler(
           gateway: _FakeInboundWebhookGateway(),
-          posAdapters: const <String, PosAdapter>{},
-          laborAdapters: const <String, LaborAdapter>{},
-          reservationAdapters: const <String, ReservationAdapter>{},
+          posAdapterFactories: const <String, PosAdapterFactory>{},
+          laborAdapterFactories: const <String, LaborAdapterFactory>{},
+          reservationAdapterFactories:
+              const <String, ReservationAdapterFactory>{},
           signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
           bindingExtractor: WebhookBindingExtractor(),
         ),
