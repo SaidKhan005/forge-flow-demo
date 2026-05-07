@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_gateway.dart';
+import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_proxy_client.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_vendor_connections_gateway.dart';
 
@@ -264,6 +265,206 @@ void main() {
         ),
         throwsA(isA<VendorConnectionsGatewayError>()),
       );
+    },
+  );
+
+  test(
+    'loadBundle parses the first_backfill object on each connection row '
+    'and translates the wire status into the typed enum',
+    () async {
+      final gateway = OperatorWebHttpVendorConnectionsGateway(
+        proxyClient: OperatorWebProxyClient(
+          baseUri: Uri.parse(proxyBase),
+          httpClient: MockClient((request) async {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'operator_id': 'op-1',
+                'location_id': 'loc-1',
+                'connections': <Object?>[
+                  <String, Object?>{
+                    'connection_id': 'cnx-running',
+                    'vendor_id': 'toast',
+                    'category': 'pos',
+                    'status': 'connected',
+                    'first_backfill': <String, Object?>{
+                      'status': 'running',
+                      'started_at': '2026-05-07T11:00:00.000Z',
+                      'completed_at': null,
+                      'failure_reason': null,
+                      'processed_days': 12,
+                      'total_days': 60,
+                    },
+                  },
+                  <String, Object?>{
+                    'connection_id': 'cnx-done',
+                    'vendor_id': 'humanity',
+                    'category': 'labor',
+                    'status': 'connected',
+                    'first_backfill': <String, Object?>{
+                      'status': 'succeeded',
+                      'started_at': '2026-05-06T22:00:00.000Z',
+                      'completed_at': '2026-05-06T22:22:00.000Z',
+                    },
+                  },
+                  <String, Object?>{
+                    'connection_id': 'cnx-fail',
+                    'vendor_id': 'square',
+                    'category': 'pos',
+                    'status': 'connected',
+                    'first_backfill': <String, Object?>{
+                      'status': 'failed',
+                      'failure_reason': 'token revoked mid-pull',
+                    },
+                  },
+                  <String, Object?>{
+                    'connection_id': 'cnx-dl',
+                    'vendor_id': 'opentable',
+                    'category': 'reservation',
+                    'status': 'connected',
+                    'first_backfill': <String, Object?>{
+                      'status': 'dead_lettered',
+                      'failure_reason': 'attempts exhausted',
+                    },
+                  },
+                  <String, Object?>{
+                    'connection_id': 'cnx-legacy',
+                    'vendor_id': '7shifts',
+                    'category': 'labor',
+                    'status': 'connected',
+                  },
+                ],
+                'demo_flags': const <String, Object?>{
+                  'pos': false,
+                  'labor': false,
+                  'reservation': false,
+                },
+              }),
+              200,
+            );
+          }),
+        ),
+        idTokenProvider: tokenProvider,
+      );
+
+      final bundle = await gateway.loadBundle(
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+      );
+
+      // Pos slot picks up the first POS connection encountered (toast).
+      final pos = bundle.posConnection!;
+      expect(pos.firstBackfill, isNotNull);
+      expect(
+        pos.firstBackfill!.status,
+        VendorConnectionFirstBackfillStatus.running,
+      );
+      expect(pos.firstBackfill!.processedDays, 12);
+      expect(pos.firstBackfill!.totalDays, 60);
+      expect(
+        pos.firstBackfill!.startedAt,
+        equals(DateTime.utc(2026, 5, 7, 11)),
+      );
+      expect(pos.firstBackfill!.completedAt, isNull);
+
+      final labor = bundle.laborConnection!;
+      expect(
+        labor.firstBackfill!.status,
+        VendorConnectionFirstBackfillStatus.succeeded,
+      );
+      expect(
+        labor.firstBackfill!.completedAt,
+        equals(DateTime.utc(2026, 5, 6, 22, 22)),
+      );
+
+      final reservation = bundle.reservationConnection!;
+      expect(
+        reservation.firstBackfill!.status,
+        VendorConnectionFirstBackfillStatus.deadLettered,
+      );
+      expect(
+        reservation.firstBackfill!.failureReason,
+        'attempts exhausted',
+      );
+    },
+  );
+
+  test(
+    'loadBundle returns null firstBackfill when the connection JSON omits '
+    'the field',
+    () async {
+      final gateway = OperatorWebHttpVendorConnectionsGateway(
+        proxyClient: OperatorWebProxyClient(
+          baseUri: Uri.parse(proxyBase),
+          httpClient: MockClient((request) async {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'operator_id': 'op-1',
+                'location_id': 'loc-1',
+                'connections': <Object?>[
+                  <String, Object?>{
+                    'connection_id': 'cnx',
+                    'vendor_id': '7shifts',
+                    'category': 'labor',
+                    'status': 'connected',
+                  },
+                ],
+                'demo_flags': const <String, Object?>{},
+              }),
+              200,
+            );
+          }),
+        ),
+        idTokenProvider: tokenProvider,
+      );
+
+      final bundle = await gateway.loadBundle(
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+      );
+
+      expect(bundle.laborConnection!.firstBackfill, isNull);
+    },
+  );
+
+  test(
+    'loadBundle ignores an unknown first_backfill status without throwing',
+    () async {
+      final gateway = OperatorWebHttpVendorConnectionsGateway(
+        proxyClient: OperatorWebProxyClient(
+          baseUri: Uri.parse(proxyBase),
+          httpClient: MockClient((request) async {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'operator_id': 'op-1',
+                'location_id': 'loc-1',
+                'connections': <Object?>[
+                  <String, Object?>{
+                    'connection_id': 'cnx',
+                    'vendor_id': 'toast',
+                    'category': 'pos',
+                    'status': 'connected',
+                    'first_backfill': <String, Object?>{
+                      'status': 'martian-state',
+                    },
+                  },
+                ],
+                'demo_flags': const <String, Object?>{},
+              }),
+              200,
+            );
+          }),
+        ),
+        idTokenProvider: tokenProvider,
+      );
+
+      final bundle = await gateway.loadBundle(
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+      );
+
+      // Unknown status is dropped — UI hides the indicator rather
+      // than crashing on a wire shape it does not recognise.
+      expect(bundle.posConnection!.firstBackfill, isNull);
     },
   );
 

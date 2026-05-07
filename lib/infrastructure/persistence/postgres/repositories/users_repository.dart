@@ -23,7 +23,7 @@
 // the lifecycle action so audit trails can attribute the bypass
 // correctly.
 
-import 'dart:convert' show jsonDecode;
+import 'dart:convert' show jsonDecode, jsonEncode;
 
 import '../operator_scoped_repository.dart';
 import '../tenant_context.dart';
@@ -217,6 +217,7 @@ class FirebaseCustomClaimsProjection {
     required this.rolesVersion,
     required this.isSuperAdmin,
     required this.isFfSupport,
+    this.permissionVersion = 0,
   });
 
   final String firebaseUid;
@@ -227,12 +228,18 @@ class FirebaseCustomClaimsProjection {
   final bool isSuperAdmin;
   final bool isFfSupport;
 
+  /// B1.A3 — monotonically increasing stamp bumped on every grant/revoke.
+  /// Embedded in JWT custom claims; proxy compares against DB on every
+  /// request and returns 401 on mismatch.
+  final int permissionVersion;
+
   Map<String, Object?> toCustomClaims() {
     return <String, Object?>{
       'postgres_user_id': userId,
       'operator_id': operatorId,
       'location_id': locationId,
       'roles_version': rolesVersion,
+      'permission_version': permissionVersion,
       if (isSuperAdmin) 'is_super_admin': true,
       if (isFfSupport) 'is_ff_support': true,
     };
@@ -916,6 +923,7 @@ class UsersRepository extends OperatorScopedRepository {
         'select u.firebase_uid::text as firebase_uid, '
         'u.user_id::text as postgres_user_id, '
         'u.roles_version, '
+        'u.permission_version, '
         '('
         '  exists ('
         '    select 1 '
@@ -1041,13 +1049,22 @@ class UsersRepository extends OperatorScopedRepository {
   ///
   /// Code-health L3 (C5): operator scope is required so a
   /// `withSystem` (BYPASSRLS) bump cannot leak across tenants.
+  ///
+  /// Code-health PCACHE-FANOUT-PRODUCERS: when the bump lands (affected
+  /// > 0), queue an in-transaction
+  /// `pg_notify('permission_cache_invalidate', ...)` so peer Cloud Run
+  /// proxy instances drop the user's cached permission snapshot the
+  /// moment this transaction commits. Payload shape mirrors
+  /// `PermissionCacheInvalidation.fromPayload` byte-for-byte and the
+  /// JSON is parameter-bound (never concatenated). Skipped on affected
+  /// == 0 — a no-op write must not burn cache-invalidation budget.
   Future<int> bumpRolesVersion({
     required String userId,
     required String operatorId,
     required String adminReason,
   }) {
     return withSystem<int>((exec) async {
-      return exec.execute(
+      final affected = await exec.execute(
         'update users '
         'set roles_version = roles_version + 1, updated_at = now() '
         'where user_id = @user_id::uuid '
@@ -1057,6 +1074,19 @@ class UsersRepository extends OperatorScopedRepository {
           'operator_id': operatorId,
         },
       );
+      if (affected > 0) {
+        await exec.execute(
+          "select pg_notify('permission_cache_invalidate', @payload)",
+          parameters: <String, Object?>{
+            'payload': jsonEncode(<String, Object?>{
+              'user_id': userId,
+              'operator_id': operatorId,
+              'location_id': null,
+            }),
+          },
+        );
+      }
+      return affected;
     }, reason: adminReason);
   }
 
@@ -1372,6 +1402,14 @@ class UsersRepository extends OperatorScopedRepository {
         isFfSupport is! bool) {
       throw StateError('users lookup returned malformed Firebase claims row');
     }
+    // B1.A3 — permission_version: coerce null to 0 so rows predating the
+    // migration still produce a valid projection (the migration sets a
+    // DEFAULT 0, but a deferred SELECT against an older snapshot may yield
+    // null before the column propagates).
+    final rawPermissionVersion = row['permission_version'];
+    final permissionVersion =
+        rawPermissionVersion is int ? rawPermissionVersion : 0;
+
     return FirebaseCustomClaimsProjection(
       firebaseUid: firebaseUid,
       userId: userId,
@@ -1380,7 +1418,44 @@ class UsersRepository extends OperatorScopedRepository {
       rolesVersion: rolesVersion,
       isSuperAdmin: isSuperAdmin,
       isFfSupport: isFfSupport,
+      permissionVersion: permissionVersion,
     );
+  }
+
+  /// B1.A3 — Bump `permission_version` on every role grant or revoke.
+  /// Runs as BYPASSRLS (admin pool) so the update is not blocked by the
+  /// per-tenant RLS policy that would otherwise prevent cross-operator
+  /// writes. The [adminReason] string is audited via the wrapper's
+  /// `app.bypass_rls_audit` marker.
+  Future<int> bumpPermissionVersion({
+    required String userId,
+    required String adminReason,
+  }) {
+    return withSystem<int>((exec) async {
+      return exec.execute(
+        'update users '
+        'set permission_version = permission_version + 1, updated_at = now() '
+        'where user_id = @user_id::uuid',
+        parameters: <String, Object?>{'user_id': userId},
+      );
+    }, reason: adminReason);
+  }
+
+  /// B1.A3 — Read the current `permission_version` for a user. Used by
+  /// the proxy auth-middleware to compare against the JWT claim.
+  Future<int?> fetchPermissionVersion({
+    required String userId,
+    required String adminReason,
+  }) {
+    return withSystem<int?>((exec) async {
+      final rows = await exec.query(
+        'select permission_version from users where user_id = @user_id::uuid',
+        parameters: <String, Object?>{'user_id': userId},
+      );
+      if (rows.isEmpty) return null;
+      final value = rows.single['permission_version'];
+      return value is int ? value : null;
+    }, reason: adminReason);
   }
 }
 

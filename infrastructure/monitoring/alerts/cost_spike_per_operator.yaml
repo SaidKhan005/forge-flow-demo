@@ -1,0 +1,78 @@
+# Forge & Flow — Alert Policy: AI Cost Spike Per Operator
+#
+# Fires when a single operator's AI usage in a given hour exceeds
+# 10× their 7-day rolling average for the same hour-of-day slot.
+# This catches runaway advisor loops, prompt injection abuse, and
+# automated clients hammering the AI endpoint.
+#
+# Platform: Google Cloud Monitoring.
+# Severity: P2.
+# Notification channel: PagerDuty.
+# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#cost-controls
+# Authority: CLAUDE.md Hard Promise 9 — AI cost metered by class; 75–95% margin target.
+---
+apiVersion: monitoring.googleapis.com/v3
+kind: AlertPolicy
+metadata:
+  name: forge-flow-cost-spike-per-operator
+  labels:
+    component: ai-usage
+    severity: P2
+    phase: v1-launch
+  annotations:
+    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#cost-controls
+    forge-flow.dev/slo: docs/contracts/v1_launch_slos.md
+spec:
+  displayName: "[P2] AI Cost Spike: Operator Usage > 10x 7-day Average"
+  documentation:
+    content: |
+      An operator's AI usage cost has spiked to more than 10× their
+      7-day rolling hourly average. This may indicate:
+      - A runaway advisor loop (client retrying rapidly on error).
+      - Prompt injection abuse via a compromised operator session.
+      - An automated integration incorrectly calling AI endpoints.
+      - A legitimate but sudden spike in operator usage (pre-launch).
+
+      Immediate actions:
+      1. Identify the operator: check alert label `operator_id`.
+      2. Query current usage: SELECT * FROM usage_caps WHERE operator_id = '<id>' ORDER BY window_start DESC LIMIT 10;
+      3. If runaway: temporarily cap the operator's AI tokens via the usage_caps table.
+         UPDATE usage_caps SET hard_cap_tokens = 0 WHERE operator_id = '<id>' AND cap_class = 'advisor_default';
+         (Restores after review.)
+      4. Check audit_logs for anomalous call patterns from the operator's sessions.
+      5. Notify the operator if the spike is legitimate; adjust their tier cap proactively.
+
+      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#cost-controls
+    mimeType: text/markdown
+  conditions:
+    - displayName: Operator hourly AI cost > 10x 7-day average
+      conditionPrometheusQueryLanguage:
+        # Log-based metric: custom/forgeflow/ai_usage/cost_usd_per_operator
+        # Labels: operator_id, cap_class.
+        # The rolling baseline is maintained as a separate metric:
+        #   custom/forgeflow/ai_usage/rolling_7d_hourly_avg_cost_usd
+        # Ratio alert: current / baseline > 10.
+        query: |
+          fetch generic_task::custom.googleapis.com/forgeflow/ai_usage/cost_usd_per_operator
+          | join
+              baseline: {
+                fetch generic_task::custom.googleapis.com/forgeflow/ai_usage/rolling_7d_hourly_avg_cost_usd
+              }
+          | group_by [metric.labels.operator_id], [
+              ratio: safe_divide(aggregate(val()), aggregate(baseline.val()))
+            ]
+          | condition val(ratio) > 10
+        duration: 300s  # 5-minute sustained window (not a single spike)
+        evaluationInterval: 60s
+  alertStrategy:
+    autoClose: 3600s
+    notificationRateLimit:
+      period: 1800s
+  combiner: OR
+  severity: WARNING
+  notificationChannels:
+    - projects/__PROJECT__/notificationChannels/__PAGERDUTY_CHANNEL_ID__
+  userLabels:
+    routing: pagerduty
+    severity: P2
+    component: ai-usage

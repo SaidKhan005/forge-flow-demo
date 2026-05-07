@@ -42,6 +42,65 @@ export 'operator_web_data_accuracy_gateway.dart'
         OperatorWebDataAccuracyGateway,
         OperatorWebHttpDataAccuracyGateway;
 
+/// Phase 8 W5.A.2 - Operator Web Wage authority gateway provider seam.
+/// Auth sources mix this provider in to surface the live HTTP gateway
+/// to the Wage authority screen; demo sources mix in the in-memory
+/// demo impl. Re-exports keep this file the single registration index
+/// for operator-web gateway providers.
+export 'operator_web_wage_authority_gateway.dart'
+    show
+        OperatorWebDemoWageAuthorityGateway,
+        OperatorWebHttpWageAuthorityGateway,
+        OperatorWebWageAuthorityGateway,
+        OperatorWebWageAuthorityGatewayProvider,
+        WageAuthorityGatewayException,
+        WageRoleRowUpsert;
+
+/// Phase 8 W5.B - Operator Web Schedule gateway provider seam.
+/// Auth sources mix this provider in to surface the live HTTP gateway
+/// that reads the locked weekly plan + matching forecast context for
+/// the Schedule screen. Demo sources may omit the mixin and the router
+/// falls back to an in-memory demo gateway so the walkthrough renders
+/// without a live proxy.
+export 'operator_web_schedule_gateway.dart'
+    show
+        OperatorWebDemoScheduleGateway,
+        OperatorWebHttpScheduleGateway,
+        OperatorWebScheduleGateway,
+        OperatorWebScheduleGatewayException,
+        OperatorWebScheduleGatewayProvider,
+        ScheduleForecastContext,
+        ScheduleSnapshot,
+        ScheduleSnapshotDay,
+        demoScheduleSnapshotFor;
+
+/// Operator Web W4.B - re-export the chain anchor gateway provider so
+/// router/auth-source wiring sees one canonical sentinel surface.
+export 'operator_web_audit_chain_anchors_gateway_provider.dart'
+    show
+        OperatorWebAuditChainAnchorsGateway,
+        OperatorWebAuditChainAnchorsGatewayDemo,
+        OperatorWebAuditChainAnchorsGatewayLive,
+        OperatorWebAuditChainAnchorsGatewayProvider,
+        OperatorWebAuditChainAnchorSnapshot,
+        OperatorWebAuditChainAnchorStatus;
+
+/// Phase 11W.8 follow-up - re-export the recently-available vendors
+/// gateway provider so router/auth-source wiring sees one canonical
+/// sentinel surface. The Vendor Connections screen mounts the panel
+/// when this provider is mixed into the active auth source; demo
+/// sources omit the mixin and the screen renders an honest empty
+/// state instead of faking promotions.
+export 'operator_web_vendor_lifecycle_recently_available_gateway.dart'
+    show
+        OperatorWebRecentlyAvailableVendor,
+        OperatorWebRecentlyAvailableVendorsBundle,
+        OperatorWebVendorLifecycleRecentlyAvailableError,
+        OperatorWebVendorLifecycleRecentlyAvailableGateway,
+        OperatorWebVendorLifecycleRecentlyAvailableGatewayInMemory,
+        OperatorWebVendorLifecycleRecentlyAvailableGatewayLive,
+        OperatorWebVendorLifecycleRecentlyAvailableGatewayProvider;
+
 /// Sentinel the operator-web shell stamps on the auth source when it
 /// can supply a [WebTeamUsersGateway] for the Members surface. Demo
 /// auth source mixes this in with `DemoWebTeamUsersGateway`;

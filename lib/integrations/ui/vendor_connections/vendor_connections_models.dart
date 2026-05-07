@@ -25,6 +25,47 @@ enum VendorCategory { pos, labor, reservation }
 /// is true.
 enum VendorConnectionStatus { connected, disconnected, error }
 
+/// Lifecycle of the first 60-day history pull that runs after a
+/// connection is established. Drives the inline progress indicator
+/// rendered in the connected card; mirrors
+/// `connector_backfill_jobs.status` plus the operationally
+/// distinguishable "dead-lettered" state the worker tier surfaces
+/// once attempts are exhausted.
+enum VendorConnectionFirstBackfillStatus {
+  pending,
+  running,
+  succeeded,
+  failed,
+  deadLettered,
+}
+
+/// First 60-day history pull state for one vendor connection.
+///
+/// `null` on a [VendorConnectionRow] means the connection predates
+/// the backfill queue (legacy row) or no job has been enqueued yet —
+/// in either case the UI hides the progress indicator entirely.
+///
+/// `processedDays` / `totalDays` are optional progress hints from the
+/// worker. When either is null the widget falls back to an
+/// indeterminate "we are still pulling" indicator.
+class VendorConnectionFirstBackfill {
+  const VendorConnectionFirstBackfill({
+    required this.status,
+    this.startedAt,
+    this.completedAt,
+    this.failureReason,
+    this.processedDays,
+    this.totalDays,
+  });
+
+  final VendorConnectionFirstBackfillStatus status;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+  final String? failureReason;
+  final int? processedDays;
+  final int? totalDays;
+}
+
 /// One vendor card row.
 class VendorConnectionRow {
   const VendorConnectionRow({
@@ -41,6 +82,7 @@ class VendorConnectionRow {
     this.webhookUrl,
     this.recordsLast24h,
     this.errorsLast24h,
+    this.firstBackfill,
   });
 
   final String connectionId;
@@ -56,6 +98,10 @@ class VendorConnectionRow {
   final String? webhookUrl;
   final int? recordsLast24h;
   final int? errorsLast24h;
+
+  /// First 60-day history pull state. Null when the row predates the
+  /// backfill queue or no job has been enqueued for this connection.
+  final VendorConnectionFirstBackfill? firstBackfill;
 }
 
 /// One vendor entry in the picker dialog. The picker renders ALL

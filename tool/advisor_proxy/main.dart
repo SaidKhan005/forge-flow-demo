@@ -41,6 +41,8 @@ import 'package:forge_and_flow/services/realtime/realtime_event.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 import 'package:forge_and_flow/services/realtime/realtime_replay_resolver.dart';
 
+import 'package:forge_and_flow/services/auth/kms_pepper_store.dart';
+
 import 'admin_email_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
@@ -48,6 +50,7 @@ import 'advisor_response_cache.dart';
 import 'integration_oauth_routes.dart';
 import 'integration_oauth_state_store.dart';
 import 'log.dart';
+import 'pepper_routes.dart';
 import 'phase_8_production_binder.dart';
 import 'phase_8_test_connection_executor.dart';
 import 'proxy_bootstrap.dart';
@@ -590,6 +593,48 @@ Future<void> main(List<String> args) async {
   );
   // endregion
 
+  // region: M2_pepper_runtime_routes
+  // fix(M2.pepper-runtime): pepper retrieval endpoints.
+  //   GET /v1/auth/peppers/active   — active pepper (forge_admin + service-principals)
+  //   GET /v1/auth/peppers/:id      — specific pepper by id
+  //
+  // Reads from EnvKmsPepperStore (backed by FORGE_PEPPER_ACTIVE_ID +
+  // FORGE_PEPPER_<id> env vars for V1; swap to KMS implementation
+  // without changing the route layer).
+  //
+  // Validation at startup: if the store is misconfigured (active id
+  // missing), we log a warning but do NOT exit — the proxy boots and
+  // the route returns 500 on pepper-fetch attempts. This allows the
+  // proxy to still serve non-pepper routes even when the pepper vars
+  // are not yet set (e.g. dev environment).
+  final pepperStore = EnvKmsPepperStore(environment: Platform.environment);
+  final pepperStoreErrors = pepperStore.validate();
+  if (pepperStoreErrors.isNotEmpty) {
+    log(
+      LogSeverity.warning,
+      'startup.pepper_store.misconfigured',
+      fields: <String, Object?>{
+        'errors': pepperStoreErrors,
+        'hint':
+            'Set FORGE_PEPPER_ACTIVE_ID and FORGE_PEPPER_<id> env vars. '
+            'Pepper routes will return 500 until corrected.',
+      },
+    );
+  } else {
+    log(
+      LogSeverity.info,
+      'startup.pepper_store.ok',
+      fields: <String, Object?>{
+        'active_id': pepperStore.activeId,
+      },
+    );
+  }
+  final pepperRouter = PepperRouter(
+    store: pepperStore,
+    authGuard: authGuard,
+  );
+  // endregion
+
   // Phase 8 — wire the inbound integration chain (vendor credential
   // broker, 17 per-tenant adapter factories, signature verifiers,
   // RepositoryInboundWebhookGateway, RepositoryIntegrationRoutesGateway)
@@ -864,6 +909,14 @@ Future<void> main(List<String> args) async {
     unawaited(
       (() async {
         try {
+          // region: M2_pepper_runtime_routes
+          // fix(M2.pepper-runtime): pepper retrieval endpoints.
+          // GET /v1/auth/peppers/active and GET /v1/auth/peppers/:id
+          // short-circuit the monolithic dispatcher.
+          if (await pepperRouter.tryHandle(request)) {
+            return;
+          }
+          // endregion
           // region: phase_9_8_email_routes
           // Pre-check: email-provider routes (today: POST
           // /v1/admin/integrations/email/test) short-circuit the
@@ -990,6 +1043,32 @@ Future<void> main(List<String> args) async {
             // account routes. Without this binding the routes return
             // 503 operator_write_router_not_configured.
             operatorWriteRouter: productionBindings.operatorWriteRouter,
+            // Operator Web W4.B - per-tenant audit-chain-anchor read
+            // gateway for the operator-web Audit Log integrity badge.
+            // Without this binding the route returns 503
+            // audit_chain_anchors_not_configured.
+            auditChainAnchorsGateway:
+                productionBindings.auditChainAnchorsGateway,
+            // Wave W2.D - operator-scoped read of
+            // `connector_backfill_jobs`. Without this binding the
+            // route returns 503 connector_backfill_jobs_router_not_configured.
+            connectorBackfillJobsRouter:
+                productionBindings.connectorBackfillJobsRouter,
+            // Phase 11W.8 follow-up - operator-scoped read of recently-
+            // available vendors. Without this binding the route returns
+            // 503 vendor_lifecycle_recently_available_router_not_configured.
+            vendorLifecycleRecentlyAvailableRouter:
+                productionBindings.vendorLifecycleRecentlyAvailableRouter,
+            // Phase 8 W2.B - per-actor notification preferences
+            // router for the three `/v1/operator/notification-
+            // preferences` routes. Without this binding the routes
+            // return 503 notification_preferences_router_not_configured.
+            notificationPreferencesRouter:
+                productionBindings.notificationPreferencesRouter,
+            // Phase 8 W5.A.1 - operator-scoped wage role rows write
+            // router. Without this binding the POST/DELETE routes
+            // return 503 wage_role_rows_router_not_configured.
+            wageRoleRowsRouter: productionBindings.wageRoleRowsRouter,
           );
         } catch (error, stack) {
           log(

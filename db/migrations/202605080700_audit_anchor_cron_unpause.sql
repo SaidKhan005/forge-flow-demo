@@ -1,80 +1,93 @@
--- Code-Health Lane M3 / L9 — unpause the daily audit-anchor pg_cron job.
+-- Code-Health Lane M3 / L9 — unpause the forge_audit_anchor_daily cron job.
 --
 -- Context:
---   `db/migrations/202605061700_hardening_audit_anchor_daily_schedule.sql`
---   created the `forge_audit_anchor_daily` pg_cron job in a NOTIFY-only
---   mode but intentionally left its schedule / active state in whatever
---   state `cron.schedule()` sets (Azure DB Flexible Server enables new
---   jobs by default, but the Cloud Scheduler trigger
---   `forge-flow-audit-anchor-daily` was paused and a follow-up note was
---   recorded to resume both cadences under code lane L9).
+--   Migration `202605061700_hardening_audit_anchor_daily_schedule.sql`
+--   registered the `forge_audit_anchor_daily` pg_cron job with schedule
+--   `'0 2 * * *'` and `active = true`. However the Cloud Scheduler
+--   trigger `forge-flow-audit-anchor-daily` was left PAUSED (per the
+--   punchlist §5 note in `docs/_execution/2026-05-05_v1_launch_punchlist.md`).
+--   Code-Health Lane L9 wires the advisory lock guard and the Azure Blob
+--   daily write in the Cloud Run binary; this migration ensures the
+--   in-DB pg_cron job is active and on the expected schedule so the
+--   daily cadence is verifiable from inside Postgres
+--   (`cron.job_run_details`) regardless of Cloud Scheduler state.
 --
---   `db/migrations/202605070200_audit_anchor_advisory_lock_infra.sql`
---   wired the advisory-lock infra and breadcrumb columns. L9 code-lane
---   wired the advisory lock + rollforward path in the Cloud Run binary.
---   This migration is the final L9 step: resume the in-DB pg_cron tick
---   so `cron.job_run_details` reflects daily firings going forward.
+-- Azure DB Flexible Server note:
+--   Azure DB Flexible Server does NOT expose `cron.alter_job()` — the
+--   extension ships without that helper. The only supported mutation
+--   path is a direct UPDATE on `cron.job` (table-level write) inside
+--   the cron database. This migration does a direct UPDATE; the guard
+--   first checks that the table exists in this database.
 --
--- This migration only acts on the existing job. It does NOT re-create the
--- job if it is absent (that is the prior migration's responsibility).
--- Re-running this migration on a host where it has already applied is a
--- clean no-op (the DO block is guarded by IF EXISTS).
+-- Replay-safe:
+--   The DO block checks whether `cron.job` is present and whether the
+--   target row exists before touching anything. Re-running on a host
+--   where it has already applied is a clean no-op (the UPDATE is
+--   idempotent). A NOTICE is raised instead of an ERROR when pg_cron
+--   metadata is not in this database so the migration does not block
+--   batch application on the app database (Azure keeps pg_cron metadata
+--   in the database named by `cron.database_name`, typically `postgres`).
 --
 -- Authority:
---   * `CODE_HEALTH.md` — "Audit-anchor cadence is paused"
+--   * `docs/_execution/2026-05-05_v1_launch_punchlist.md` §5
 --   * `db/migrations/202605061700_hardening_audit_anchor_daily_schedule.sql`
---     (job creation)
---   * `db/migrations/202605070200_audit_anchor_advisory_lock_infra.sql`
---     (advisory-lock infra this unpause enables safely)
---   * `runbooks/audit_chain_verify_runbook.md` §Daily anchor procedure
+--     (the original schedule registration that left active=true; this
+--     migration is a belt-and-suspenders unpause for the code-lane
+--     graduation).
+--   * `CODE_HEALTH.md` — "Audit-anchor cadence is paused" finding.
 --
--- Azure DB Flexible Server pg_cron topology note:
---   pg_cron metadata lives in the database named by `cron.database_name`
---   (typically `postgres` on staging + Production1). The DO block below
---   emits a NOTICE and returns when pg_cron metadata is not in this
---   database; the runbook captures the manual follow-up step if needed.
---   Pattern matches `202605061700_hardening_audit_anchor_daily_schedule.sql`
---   byte-for-byte.
+-- Verification SQL (run in the cron database, typically `postgres`):
+--
+--   select jobname, schedule, active, command
+--     from cron.job
+--    where jobname = 'forge_audit_anchor_daily';
+--   -- expected: schedule = '0 2 * * *', active = true
 
 begin;
 
 do $$
+declare
+  v_rows int;
 begin
-  -- Guard: pg_cron metadata must be in this database.
+  -- Guard 1: pg_cron schema not present in this database.
   if to_regnamespace('cron') is null
      or to_regclass('cron.job') is null then
     raise notice
-      'pg_cron metadata is not in this database; resume the job from '
-      'the cron.database_name database with: UPDATE cron.job '
-      'SET active = TRUE WHERE jobname = ''forge_audit_anchor_daily'';';
+      'pg_cron metadata is not in this database; '
+      'connect to the cron database (cron.database_name) and re-run, '
+      'or use cron.schedule_in_database(''forge_audit_anchor_daily'', '
+      '''forgeflow'') to register there. Skipping unpause.';
     return;
   end if;
 
-  -- Guard: job must exist (created by the prior migration).
-  if not exists (
-    select 1 from cron.job
-     where jobname = 'forge_audit_anchor_daily'
-  ) then
+  -- Guard 2: job row does not exist yet (e.g. migration applied out
+  -- of order or cron database is fresh). Emit a NOTICE rather than
+  -- silently doing nothing.
+  select count(*)
+    into v_rows
+    from cron.job
+   where jobname = 'forge_audit_anchor_daily';
+
+  if v_rows = 0 then
     raise notice
-      'forge_audit_anchor_daily does not exist in cron.job; '
-      'apply 202605061700_hardening_audit_anchor_daily_schedule.sql first.';
+      'forge_audit_anchor_daily job not found in cron.job; '
+      'apply 202605061700_hardening_audit_anchor_daily_schedule.sql '
+      'first, then re-run this migration.';
     return;
   end if;
 
-  -- Ensure the schedule is exactly ''0 2 * * *'' and the job is active.
-  -- Using a direct UPDATE on cron.job (Azure DB Flexible Server does not
-  -- expose cron.alter_job; the portable pattern used by the prior
-  -- migration batch is direct DML on cron.job inside a migration DO block
-  -- protected by the Live-Mutation Gate in the apply runbook).
+  -- Idempotent UPDATE: set the canonical schedule and mark active.
+  -- Azure DB Flexible Server does not expose cron.alter_job(), so a
+  -- direct UPDATE on cron.job is the only supported mutation path.
   update cron.job
      set schedule = '0 2 * * *',
          active   = true
    where jobname = 'forge_audit_anchor_daily';
 
   raise notice
-    'forge_audit_anchor_daily: schedule set to ''0 2 * * *'' and '
+    'forge_audit_anchor_daily: schedule set to ''0 2 * * *'', '
     'active = true.';
-end
+end;
 $$;
 
 commit;

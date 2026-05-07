@@ -107,7 +107,9 @@ void main() {
   });
 
   group('OracleMicrosSimphonyPostgresSink — B. idempotency replay', () {
-    test('same canonical fact upserted twice -> 1 INSERT + 1 conflict-no-op',
+    test(
+        'same canonical fact upserted twice -> 1 INSERT + 1 DO UPDATE '
+        '(same-timestamp >= guard passes, row updated in place)',
         () async {
       final pool = _FakeSimphonyPool()
         ..seedLocation(operatorId: _opA, locationId: _locA)
@@ -133,7 +135,10 @@ void main() {
       );
 
       expect(firstWrite, isTrue);
-      expect(secondWrite, isFalse, reason: 'conflict-no-op on replay');
+      expect(secondWrite, isTrue,
+          reason:
+              'same-timestamp replay fires DO UPDATE (>= guard passes); '
+              'still only one row in the table');
       expect(pool.coverFacts, hasLength(1));
     });
   });
@@ -511,8 +516,8 @@ class _FakeSimphonyPool implements PostgresPool {
   /// Keyed by `(operator_id, location_id, vendor_id)`.
   final Map<String, String> _connectionsByTenant = <String, String>{};
 
-  /// Keyed by the canonical UNIQUE
-  /// `(operator_id, vendor_id, vendor_entity_id, vendor_modified_at)`.
+  /// Keyed by the NEW canonical UNIQUE
+  /// `(operator_id, location_id, vendor_id, vendor_entity_id)`.
   final Map<String, Map<String, Object?>> coverFacts =
       <String, Map<String, Object?>>{};
 
@@ -606,13 +611,12 @@ class _FakeTransaction implements PostgresTransaction {
         <String, Object?>{'connection_id': connId},
       ];
     }
-    if (sql.contains('from public.demo_mode_state') &&
-        sql.contains('for update')) {
-      // A2 fix: SELECT FOR UPDATE on demo_mode_state — used by the
+    if (sql.contains('from public.demo_mode_state')) {
+      // SELECT FOR UPDATE on demo_mode_state — used by the
       // watermark advance to read the pending counter before flipping.
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
-      final category = parameters['category'] as String;
+      final category = parameters['category'] as String? ?? 'pos';
       final key = '$operatorId|$locationId|$category';
       final row = pool.demoModeState[key];
       if (row == null) return const <PostgresRow>[];
@@ -625,33 +629,47 @@ class _FakeTransaction implements PostgresTransaction {
     }
     if (sql.contains('insert into public.cover_facts')) {
       final operatorId = parameters['operator_id'] as String;
+      final locationId = parameters['location_id'] as String;
       final vendorId = parameters['vendor_id'] as String;
       final vendorEntityId = parameters['vendor_entity_id'] as String;
       final vendorModifiedAt = parameters['vendor_modified_at'] as DateTime;
-      final key = '$operatorId|$vendorId|$vendorEntityId|'
-          '${vendorModifiedAt.toIso8601String()}';
-      if (pool.coverFacts.containsKey(key)) {
-        // Idempotency UNIQUE collapses → conflict-no-op → empty
-        // RETURNING.
-        return const <PostgresRow>[];
+      final key = '$operatorId|$locationId|$vendorId|$vendorEntityId';
+
+      final existing = pool.coverFacts[key];
+      if (existing == null) {
+        pool.coverFacts[key] = <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'vendor_id': vendorId,
+          'vendor_entity_id': vendorEntityId,
+          'vendor_modified_at': vendorModifiedAt,
+          'covers': parameters['covers'],
+          'covers_source': parameters['covers_source'],
+          'opened_at': parameters['opened_at'],
+          'closed_at': parameters['closed_at'],
+          'business_date': parameters['business_date'],
+          'actual_sales': parameters['actual_sales'],
+          'raw_payload': parameters['raw_payload'],
+        };
+        return <PostgresRow>[
+          <String, Object?>{'inserted': 1},
+        ];
       }
-      pool.coverFacts[key] = <String, Object?>{
-        'operator_id': operatorId,
-        'location_id': parameters['location_id'],
-        'vendor_id': vendorId,
-        'vendor_entity_id': vendorEntityId,
-        'vendor_modified_at': vendorModifiedAt,
-        'covers': parameters['covers'],
-        'covers_source': parameters['covers_source'],
-        'opened_at': parameters['opened_at'],
-        'closed_at': parameters['closed_at'],
-        'business_date': parameters['business_date'],
-        'actual_sales': parameters['actual_sales'],
-        'raw_payload': parameters['raw_payload'],
-      };
-      return <PostgresRow>[
-        <String, Object?>{'inserted': 1},
-      ];
+      final storedModified = existing['vendor_modified_at'] as DateTime;
+      if (vendorModifiedAt.compareTo(storedModified) >= 0) {
+        existing['vendor_modified_at'] = vendorModifiedAt;
+        existing['covers'] = parameters['covers'];
+        existing['covers_source'] = parameters['covers_source'];
+        existing['opened_at'] = parameters['opened_at'];
+        existing['closed_at'] = parameters['closed_at'];
+        existing['business_date'] = parameters['business_date'];
+        existing['actual_sales'] = parameters['actual_sales'];
+        existing['raw_payload'] = parameters['raw_payload'];
+        return <PostgresRow>[
+          <String, Object?>{'inserted': 1},
+        ];
+      }
+      return const <PostgresRow>[];
     }
     return const <PostgresRow>[];
   }
@@ -718,8 +736,6 @@ class _FakeTransaction implements PostgresTransaction {
       final key = '$operatorId|$locationId|$category';
       final row = pool.demoModeState[key];
       if (row == null) return 0;
-      // The SQL narrows by `is_demo = true`; idempotent re-flip when
-      // already false.
       if (row['is_demo'] == false) return 0;
       row['is_demo'] = false;
       row['flipped_to_live_at'] = parameters['now'];

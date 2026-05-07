@@ -1,0 +1,67 @@
+# Forge & Flow — Alert Policy: OAuth Refresh Failures
+#
+# Fires when the count of consecutive OAuth token-refresh failures
+# across all operators exceeds 5 within a 1-hour window.
+# OAuth refresh failures are silent from the operator's perspective:
+# the adapter stops syncing without an error surfaced to the console.
+# This alert is the primary early-warning signal for mass revocation
+# events (e.g. a vendor rotates their OAuth app secret).
+#
+# Platform: Google Cloud Monitoring.
+# Severity: P1 (mass revocation is a silent data-loss risk).
+# Notification channel: PagerDuty.
+# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#oauth-mass-revocation
+---
+apiVersion: monitoring.googleapis.com/v3
+kind: AlertPolicy
+metadata:
+  name: forge-flow-oauth-refresh-failures
+  labels:
+    component: oauth
+    severity: P1
+    phase: v1-launch
+  annotations:
+    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#oauth-mass-revocation
+spec:
+  displayName: "[P1] OAuth Refresh Failures > 5 in 1h (cross-operator)"
+  documentation:
+    content: |
+      More than 5 OAuth token refresh failures have occurred across operators
+      in the last hour. This may indicate a mass revocation event — a vendor
+      has rotated their OAuth app credentials or revoked F&F's app registration.
+
+      Immediate actions:
+      1. Identify affected vendor: check logs for event=oauth.refresh.failed fields.vendor_slug=<slug>
+      2. Check if failures span multiple operators or are concentrated in one.
+         - Multi-operator + same vendor → vendor-side revocation. Contact vendor immediately.
+         - Single operator → likely that operator revoked the connection; notify them.
+      3. If vendor-side: pause that vendor's polling to prevent thundering herd of refresh retries.
+      4. Re-authenticate via the F&F vendor OAuth app registration in the affected vendor's developer portal.
+      5. Once new credentials are provisioned, update Secret Manager and redeploy.
+
+      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#oauth-mass-revocation
+    mimeType: text/markdown
+  conditions:
+    - displayName: Cumulative OAuth refresh failures > 5 in 60 min
+      conditionPrometheusQueryLanguage:
+        # Log-based counter metric: custom/forgeflow/oauth/refresh_failure_count
+        # Incremented by proxy on each 401/403 response to a token refresh call.
+        query: |
+          fetch generic_task::custom.googleapis.com/forgeflow/oauth/refresh_failure_count
+          | filter resource.labels.service_name = 'forge-flow-proxy'
+          | group_by [], [sum_val: aggregate(value.refresh_failure_count)]
+          | condition val(sum_val) > 5
+        duration: 3600s  # 1 hour window
+        evaluationInterval: 60s
+  alertStrategy:
+    autoClose: 7200s
+    notificationRateLimit:
+      period: 900s  # Re-notify every 15 min while unresolved
+  combiner: OR
+  severity: CRITICAL
+  notificationChannels:
+    - projects/__PROJECT__/notificationChannels/__PAGERDUTY_CHANNEL_ID__
+  userLabels:
+    routing: pagerduty
+    severity: P1
+    component: oauth

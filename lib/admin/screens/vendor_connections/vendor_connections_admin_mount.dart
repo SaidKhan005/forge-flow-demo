@@ -24,6 +24,7 @@ class VendorConnectionsAdminMount extends StatelessWidget {
     required this.locationName,
     this.gateway,
     this.canMutate = true,
+    this.embedded = false,
   });
 
   final String operatorId;
@@ -38,21 +39,33 @@ class VendorConnectionsAdminMount extends StatelessWidget {
   /// disconnect buttons but still renders status.
   final bool canMutate;
 
+  /// True when the mount is hosted inside another admin workspace
+  /// instead of being pushed as its own route.
+  final bool embedded;
+
   @override
   Widget build(BuildContext context) {
     final resolvedGateway = gateway;
+    final body = resolvedGateway == null
+        ? _VendorLifecycleUnavailablePanel(locationName: locationName)
+        : VendorConnectionsWidget(
+            operatorId: operatorId,
+            locationId: locationId,
+            locationNameOverride: locationName,
+            gateway: resolvedGateway,
+            canMutate: canMutate,
+          );
+    if (embedded) {
+      return ColoredBox(
+        key: const Key('admin_vendor_connections_screen'),
+        color: AppColors.backgroundDeep,
+        child: body,
+      );
+    }
     return Scaffold(
       key: const Key('admin_vendor_connections_screen'),
       appBar: AppBar(title: const Text('Vendor integrations')),
-      body: resolvedGateway == null
-          ? _VendorLifecycleUnavailablePanel(locationName: locationName)
-          : VendorConnectionsWidget(
-              operatorId: operatorId,
-              locationId: locationId,
-              locationNameOverride: locationName,
-              gateway: resolvedGateway,
-              canMutate: canMutate,
-            ),
+      body: body,
     );
   }
 }

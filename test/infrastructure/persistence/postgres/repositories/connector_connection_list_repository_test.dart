@@ -99,7 +99,12 @@ void main() {
         );
         expect(selectSql, contains('operator_id = @operator_id::uuid'));
         expect(selectSql, contains('location_id = @location_id::uuid'));
-        expect(selectSql, contains('order by category asc'));
+        expect(selectSql, contains('order by cc.category asc'));
+        // The first-backfill LEFT JOIN + projected columns must be
+        // present so the operator-web UI can render the progress
+        // indicator alongside the connection row.
+        expect(selectSql, contains('public.connector_backfill_jobs'));
+        expect(selectSql, contains('first_backfill_status'));
 
         // Bound params must carry the operator + location passed in.
         final selectParams = tx.parameters.firstWhere(
@@ -218,6 +223,126 @@ void main() {
       );
     });
 
+    test(
+      'projects first_backfill columns when the LEFT JOIN finds a job row',
+      () async {
+        final pool = _Pool(
+          listRows: <PostgresRow>[
+            _connectionRow(
+              connectionId: 'cnx-running',
+              vendorId: 'toast',
+              category: 'pos',
+              status: 'connected',
+              firstBackfillStatus: 'running',
+              firstBackfillStartedAt: DateTime.utc(2026, 5, 7, 11),
+            ),
+            _connectionRow(
+              connectionId: 'cnx-success',
+              vendorId: 'humanity',
+              category: 'labor',
+              status: 'connected',
+              firstBackfillStatus: 'succeeded',
+              firstBackfillStartedAt: DateTime.utc(2026, 5, 6, 22),
+              firstBackfillCompletedAt: DateTime.utc(2026, 5, 6, 22, 22),
+            ),
+            _connectionRow(
+              connectionId: 'cnx-failed',
+              vendorId: 'square',
+              category: 'pos',
+              status: 'connected',
+              firstBackfillStatus: 'failed',
+              firstBackfillStartedAt: DateTime.utc(2026, 5, 7, 9),
+              firstBackfillCompletedAt: DateTime.utc(2026, 5, 7, 9, 5),
+              firstBackfillFailureReason: 'vendor 5xx during day 14 batch',
+            ),
+            // Connection without a job row: the LEFT JOIN yields nulls
+            // and the projection passes them through as null fields.
+            _connectionRow(
+              connectionId: 'cnx-legacy',
+              vendorId: 'opentable',
+              category: 'reservation',
+              status: 'connected',
+            ),
+          ],
+        );
+        final repo = ConnectorConnectionListRepository(
+          TenantTransactionWrapper(pool),
+        );
+
+        final bundle = await repo.listForLocation(
+          operatorId: _op,
+          locationId: _loc,
+        );
+
+        final running = bundle.rows.firstWhere((r) => r.vendorId == 'toast');
+        expect(running.firstBackfillStatus, FirstBackfillStatus.running);
+        expect(
+          running.firstBackfillStartedAt,
+          equals(DateTime.utc(2026, 5, 7, 11)),
+        );
+        expect(running.firstBackfillCompletedAt, isNull);
+        expect(running.firstBackfillFailureReason, isNull);
+
+        final succeeded = bundle.rows.firstWhere(
+          (r) => r.vendorId == 'humanity',
+        );
+        expect(succeeded.firstBackfillStatus, FirstBackfillStatus.succeeded);
+        expect(
+          succeeded.firstBackfillCompletedAt,
+          equals(DateTime.utc(2026, 5, 6, 22, 22)),
+        );
+
+        final failed = bundle.rows.firstWhere((r) => r.vendorId == 'square');
+        expect(failed.firstBackfillStatus, FirstBackfillStatus.failed);
+        expect(
+          failed.firstBackfillFailureReason,
+          equals('vendor 5xx during day 14 batch'),
+        );
+
+        final legacy = bundle.rows.firstWhere(
+          (r) => r.vendorId == 'opentable',
+        );
+        expect(legacy.firstBackfillStatus, isNull);
+        expect(legacy.firstBackfillStartedAt, isNull);
+        expect(legacy.firstBackfillCompletedAt, isNull);
+        expect(legacy.firstBackfillFailureReason, isNull);
+        expect(legacy.firstBackfillProcessedDays, isNull);
+        expect(legacy.firstBackfillTotalDays, isNull);
+      },
+    );
+
+    test(
+      'tolerates a dead_lettered status emitted by the worker tier',
+      () async {
+        final pool = _Pool(
+          listRows: <PostgresRow>[
+            _connectionRow(
+              connectionId: 'cnx-dl',
+              vendorId: 'toast',
+              category: 'pos',
+              status: 'connected',
+              firstBackfillStatus: 'dead_lettered',
+              firstBackfillFailureReason: 'attempts exhausted after 5 retries',
+            ),
+          ],
+        );
+        final repo = ConnectorConnectionListRepository(
+          TenantTransactionWrapper(pool),
+        );
+
+        final bundle = await repo.listForLocation(
+          operatorId: _op,
+          locationId: _loc,
+        );
+
+        expect(bundle.rows, hasLength(1));
+        expect(
+          bundle.rows.single.firstBackfillStatus,
+          FirstBackfillStatus.deadLettered,
+        );
+      },
+    );
+
     test('rejects blank operatorId / locationId before opening a tx', () async {
       final pool = _Pool();
       final repo = ConnectorConnectionListRepository(
@@ -246,6 +371,10 @@ PostgresRow _connectionRow({
   bool webhookProvisioned = false,
   String? disconnectReason,
   String? lastErrorMessage,
+  String? firstBackfillStatus,
+  DateTime? firstBackfillStartedAt,
+  DateTime? firstBackfillCompletedAt,
+  String? firstBackfillFailureReason,
 }) {
   return <String, Object?>{
     'connection_id': connectionId,
@@ -263,6 +392,13 @@ PostgresRow _connectionRow({
     'webhook_url_provisioned': webhookProvisioned,
     'created_at': DateTime.utc(2026, 5, 7, 9),
     'updated_at': DateTime.utc(2026, 5, 7, 11, 30),
+    'first_backfill_status': firstBackfillStatus,
+    'first_backfill_started_at': firstBackfillStartedAt,
+    'first_backfill_completed_at': firstBackfillCompletedAt,
+    'first_backfill_failure_reason': firstBackfillFailureReason,
+    // Schema does not track per-day progress yet — projection emits null.
+    'first_backfill_processed_days': null,
+    'first_backfill_total_days': null,
   };
 }
 

@@ -36,6 +36,7 @@ import '../services/demo_team_hierarchy_gateway.dart';
 import '../services/demo_team_roles_gateway.dart';
 import '../services/demo_team_sessions_gateway.dart';
 import '../services/demo_team_users_gateway.dart';
+import '../services/operator_web_notification_preferences_gateway_provider.dart';
 import '../services/operator_web_team_gateway_providers.dart';
 import '../services/web_account_gateway.dart';
 import '../services/web_business_timing_gateway.dart';
@@ -60,9 +61,12 @@ import '../screens/permission_explainer_screen.dart';
 import '../screens/roles_screen.dart';
 import '../screens/security_screen.dart';
 import '../screens/sessions_screen.dart';
+import '../screens/settings_notifications_screen.dart';
+import '../screens/schedule_screen.dart';
 import '../screens/sign_in_screen.dart';
 import '../screens/tos_accept_screen.dart';
 import '../screens/vendor_connections_screen.dart';
+import '../screens/wage_authority_screen.dart';
 import '../screens/welcome_screen.dart';
 import '../widgets/web_app_shell.dart';
 import '../../theme/app_theme.dart';
@@ -85,6 +89,9 @@ const String kOperatorWebNavAuditLog = 'audit_log';
 const String kOperatorWebNavSecurity = 'security';
 const String kOperatorWebNavVendorConnections = 'vendor_connections';
 const String kOperatorWebNavDataAccuracy = 'data_accuracy';
+const String kOperatorWebNavNotifications = 'notifications';
+const String kOperatorWebNavWageAuthority = 'wage_authority';
+const String kOperatorWebNavSchedule = 'schedule';
 
 /// Sub-route names mounted under the Roles nav surface. The router
 /// keeps a small state machine here rather than registering full
@@ -674,6 +681,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         : null;
     final navItems = const <OperatorWebNavItem>[
       OperatorWebNavItem(
+        id: kOperatorWebNavSchedule,
+        title: 'Schedule',
+        icon: Icons.calendar_today_outlined,
+        group: 'Operations',
+      ),
+      OperatorWebNavItem(
         id: kOperatorWebNavAccount,
         title: 'Business account',
         icon: Icons.business_outlined,
@@ -738,6 +751,18 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         title: 'Data accuracy',
         icon: Icons.tune_outlined,
         group: 'Data & integrations',
+      ),
+      OperatorWebNavItem(
+        id: kOperatorWebNavWageAuthority,
+        title: 'Wage authority',
+        icon: Icons.payments_outlined,
+        group: 'Data & integrations',
+      ),
+      OperatorWebNavItem(
+        id: kOperatorWebNavNotifications,
+        title: 'Notifications',
+        icon: Icons.notifications_outlined,
+        group: 'People & access',
       ),
     ];
     final Widget body;
@@ -844,6 +869,61 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 locationId: locationScope.id,
                 locationName: locationScope.label,
                 dataAccuracyGateway: _dataAccuracyGateway,
+              );
+        break;
+      case kOperatorWebNavWageAuthority:
+        body = locationScope == null
+            ? _RequiresLocationScopeSurface(
+                key: const Key(
+                  'operator_web_wage_authority_requires_location',
+                ),
+                icon: Icons.payments_outlined,
+                title: 'Choose a location',
+                body:
+                    'Wage rows are saved per location. Use Managing to pick the '
+                    'location whose wage mix you want to manage.',
+                selectedScopeLabel: managementScope.label,
+              )
+            : WageAuthorityScreen(
+                session: session,
+                locationId: locationScope.id,
+                locationName: locationScope.label,
+                gateway: _wageAuthorityGateway ??
+                    (_routerOwnedDemoWageAuthorityGateway ??=
+                        OperatorWebDemoWageAuthorityGateway()),
+              );
+        break;
+      case kOperatorWebNavNotifications:
+        body = SettingsNotificationsScreen(
+          session: session,
+          gateway: _notificationPreferencesGateway,
+        );
+        break;
+      case kOperatorWebNavSchedule:
+        body = locationScope == null
+            ? _RequiresLocationScopeSurface(
+                key: const Key('operator_web_schedule_requires_location'),
+                icon: Icons.calendar_today_outlined,
+                title: 'Choose a location',
+                body:
+                    'Forge & Flow locks one weekly plan per location. Use '
+                    'Managing to pick the location whose schedule you want '
+                    'to see.',
+                selectedScopeLabel: managementScope.label,
+              )
+            : ScheduleScreen(
+                session: session,
+                locationId: locationScope.id,
+                locationName: locationScope.label,
+                gateway: _scheduleGateway ??
+                    (_routerOwnedDemoScheduleGateway ??=
+                        OperatorWebDemoScheduleGateway(
+                      seed: demoScheduleSnapshotFor(
+                        operatorId: session.operatorId,
+                        locationId: locationScope.id,
+                        restaurantId: locationScope.id,
+                      ),
+                    )),
               );
         break;
       default:
@@ -1023,6 +1103,54 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   }
 
   DemoWebSecurityGateway? _routerOwnedSecurityGateway;
+
+  /// Phase 8 W2.B - per-actor notification preferences gateway.
+  /// Returns the live gateway when the auth source mixes in the
+  /// provider; otherwise falls back to the in-memory demo gateway so
+  /// the screen renders + toggles end-to-end without a live proxy.
+  WebNotificationPreferencesGateway? get _notificationPreferencesGateway {
+    final source = widget.source;
+    if (source is OperatorWebNotificationPreferencesGatewayProvider) {
+      return (source as OperatorWebNotificationPreferencesGatewayProvider)
+          .notificationPreferencesGateway;
+    }
+    return _routerOwnedNotificationPreferencesGateway ??=
+        DemoWebNotificationPreferencesGateway();
+  }
+
+  DemoWebNotificationPreferencesGateway?
+      _routerOwnedNotificationPreferencesGateway;
+
+  /// Phase 8 W5.A.2 - Wage authority screen gateway. Live wiring (the
+  /// Firebase source plus the proxy) implements the provider mixin;
+  /// demo / fixture sources fall back to the in-memory demo gateway
+  /// owned by the router so the walkthrough renders + edits end-to-end
+  /// without a live proxy.
+  OperatorWebWageAuthorityGateway? get _wageAuthorityGateway {
+    final source = widget.source;
+    if (source is OperatorWebWageAuthorityGatewayProvider) {
+      return (source as OperatorWebWageAuthorityGatewayProvider)
+          .wageAuthorityGateway;
+    }
+    return null;
+  }
+
+  OperatorWebDemoWageAuthorityGateway?
+      _routerOwnedDemoWageAuthorityGateway;
+
+  /// Phase 8 W5.B - Schedule screen gateway. Live wiring (Firebase
+  /// source + proxy) implements the provider mixin; demo / fixture
+  /// sources fall back to the in-memory demo gateway owned by the
+  /// router so the walkthrough renders without a live proxy.
+  OperatorWebScheduleGateway? get _scheduleGateway {
+    final source = widget.source;
+    if (source is OperatorWebScheduleGatewayProvider) {
+      return (source as OperatorWebScheduleGatewayProvider).scheduleGateway;
+    }
+    return null;
+  }
+
+  OperatorWebDemoScheduleGateway? _routerOwnedDemoScheduleGateway;
 
   String? get _currentSessionId {
     final source = widget.source;

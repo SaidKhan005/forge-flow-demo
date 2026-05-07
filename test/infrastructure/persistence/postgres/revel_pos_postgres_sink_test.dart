@@ -123,7 +123,7 @@ void main() {
       final secondWrite = await sink.writeOrderFact(fact);
 
       expect(firstWrite, isTrue);
-      expect(secondWrite, isFalse, reason: 'conflict-no-op on replay');
+      expect(secondWrite, isTrue, reason: 'same-timestamp replay fires DO UPDATE >= guard');
       expect(pool.coverFacts, hasLength(1));
     });
   });
@@ -568,8 +568,8 @@ class _FakeRevelPool implements PostgresPool {
   /// Keyed by `(operator_id, location_id, vendor_id)`.
   final Map<String, String?> _accessTokens = <String, String?>{};
 
-  /// Keyed by the canonical UNIQUE
-  /// `(operator_id, vendor_id, vendor_entity_id, vendor_modified_at)`.
+  /// Keyed by the NEW canonical UNIQUE
+  /// `(operator_id, location_id, vendor_id, vendor_entity_id)`.
   final Map<String, Map<String, Object?>> coverFacts =
       <String, Map<String, Object?>>{};
 
@@ -677,9 +677,8 @@ class _FakeTransaction implements PostgresTransaction {
         <String, Object?>{'access_token_ciphertext': token},
       ];
     }
-    if (sql.contains('from public.demo_mode_state') &&
-        sql.contains('for update')) {
-      // A2 fix: SELECT FOR UPDATE on demo_mode_state — used by the
+    if (sql.contains('from public.demo_mode_state')) {
+      // SELECT FOR UPDATE on demo_mode_state — used by the
       // watermark advance to read the pending counter before flipping.
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
@@ -696,17 +695,31 @@ class _FakeTransaction implements PostgresTransaction {
     }
     if (sql.contains('insert into public.cover_facts')) {
       final operatorId = parameters['operator_id'] as String;
+      final locationId = parameters['location_id'] as String;
       final vendorId = parameters['vendor_id'] as String;
       final vendorEntityId = parameters['vendor_entity_id'] as String;
       final vendorModifiedAt = parameters['vendor_modified_at'] as DateTime;
-      final key = '$operatorId|$vendorId|$vendorEntityId|'
-          '${vendorModifiedAt.toIso8601String()}';
-      if (pool.coverFacts.containsKey(key)) {
-        return const <PostgresRow>[];
+      final key = '$operatorId|$locationId|$vendorId|$vendorEntityId';
+      final existing = pool.coverFacts[key];
+      if (existing != null) {
+        // DO UPDATE WHERE excluded.vendor_modified_at >= stored
+        final stored = existing['vendor_modified_at'] as DateTime;
+        if (vendorModifiedAt.isBefore(stored)) {
+          return const <PostgresRow>[];
+        }
+        existing['vendor_modified_at'] = vendorModifiedAt;
+        existing['covers'] = parameters['covers'];
+        existing['covers_source'] = parameters['covers_source'];
+        existing['opened_at'] = parameters['opened_at'];
+        existing['closed_at'] = parameters['closed_at'];
+        existing['business_date'] = parameters['business_date'];
+        existing['actual_sales'] = parameters['actual_sales'];
+        existing['raw_payload'] = parameters['raw_payload'];
+        return <PostgresRow>[<String, Object?>{'inserted': 1}];
       }
       pool.coverFacts[key] = <String, Object?>{
         'operator_id': operatorId,
-        'location_id': parameters['location_id'],
+        'location_id': locationId,
         'vendor_id': vendorId,
         'vendor_entity_id': vendorEntityId,
         'vendor_modified_at': vendorModifiedAt,
@@ -718,9 +731,7 @@ class _FakeTransaction implements PostgresTransaction {
         'actual_sales': parameters['actual_sales'],
         'raw_payload': parameters['raw_payload'],
       };
-      return <PostgresRow>[
-        <String, Object?>{'inserted': 1},
-      ];
+      return <PostgresRow>[<String, Object?>{'inserted': 1}];
     }
     return const <PostgresRow>[];
   }
@@ -794,6 +805,7 @@ class _FakeTransaction implements PostgresTransaction {
       // already false.
       if (row['is_demo'] == false) return 0;
       row['is_demo'] = false;
+      row['pending_inserts_count'] = 0;
       row['flipped_to_live_at'] = parameters['now'];
       row['flipped_by_connection_id'] = parameters['connection_id'];
       row['pending_inserts_count'] = 0;

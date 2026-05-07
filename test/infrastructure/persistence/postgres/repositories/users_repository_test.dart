@@ -15,6 +15,8 @@
 //     `operator_id = $N`; when null (pre-auth login resolution path),
 //     behavior is unchanged.
 
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/users_repository.dart';
@@ -143,6 +145,81 @@ void main() {
           adminReason: 'admin.users.roles_changed',
         );
         expect(affected, equals(1));
+      },
+    );
+
+    test(
+      'PCACHE-FANOUT-PRODUCERS — bumpRolesVersion emits ONE pg_notify '
+      'on permission_cache_invalidate after the bump lands; payload '
+      'matches PermissionCacheInvalidation.fromPayload byte-for-byte; '
+      'JSON is bound via @payload (never concatenated)',
+      () async {
+        final pool = _UpdatesPool(rowsAffected: 1);
+        final repo = UsersRepository(TenantTransactionWrapper(pool));
+
+        await repo.bumpRolesVersion(
+          userId: _userInOpA,
+          operatorId: _opA,
+          adminReason: 'admin.users.roles_changed',
+        );
+
+        final tx = pool.transactions.single;
+        final notifyIndexes = <int>[
+          for (var i = 0; i < tx.executedSql.length; i++)
+            if (tx.executedSql[i]
+                .contains("pg_notify('permission_cache_invalidate'"))
+              i,
+        ];
+        expect(
+          notifyIndexes,
+          hasLength(1),
+          reason: 'a successful bump must queue exactly one NOTIFY',
+        );
+        final notifyIdx = notifyIndexes.single;
+        final notifySql = tx.executedSql[notifyIdx];
+        expect(notifySql, contains('@payload'));
+        expect(notifySql, isNot(contains('||')));
+        expect(notifySql, isNot(contains("' || ")));
+        final payload = tx.parameters[notifyIdx]['payload'];
+        expect(payload, isA<String>());
+        final decoded =
+            jsonDecode(payload! as String) as Map<String, Object?>;
+        expect(decoded['user_id'], equals(_userInOpA));
+        expect(decoded['operator_id'], equals(_opA));
+        expect(decoded['location_id'], isNull);
+
+        // NOTIFY runs AFTER the UPDATE on `users`.
+        final bumpIdx = tx.executedSql.indexWhere(
+          (s) =>
+              s.contains('update users') &&
+              s.contains('roles_version = roles_version + 1'),
+        );
+        expect(bumpIdx, isNonNegative);
+        expect(notifyIdx, greaterThan(bumpIdx));
+      },
+    );
+
+    test(
+      'PCACHE-FANOUT-PRODUCERS — bumpRolesVersion with rowsAffected '
+      '== 0 (mismatched operator / no-op) emits NO NOTIFY: a no-op '
+      'write must not burn cache-invalidation budget',
+      () async {
+        final pool = _UpdatesPool(rowsAffected: 0);
+        final repo = UsersRepository(TenantTransactionWrapper(pool));
+
+        await repo.bumpRolesVersion(
+          userId: _userInOpA,
+          operatorId: _opB,
+          adminReason: 'admin.users.roles_changed',
+        );
+
+        final tx = pool.transactions.single;
+        expect(
+          tx.executedSql.where(
+            (s) => s.contains("pg_notify('permission_cache_invalidate'"),
+          ),
+          isEmpty,
+        );
       },
     );
 

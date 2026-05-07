@@ -206,62 +206,88 @@ void main() {
       });
     });
 
-    test('does not accept writes for service-period settings', () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp();
-        try {
-          final uri = ctx.baseUri.resolve(
-            '/v1/operators/op-1/locations/loc-1/'
-            'data_accuracy_service_period_settings',
-          );
-          final post = await _httpRequest(ctx.client, 'POST', uri);
-          expect(post.statusCode, 404);
-          final patch = await _httpRequest(ctx.client, 'PATCH', uri);
-          expect(patch.statusCode, 404);
-          expect(ctx.gateway.calls, isEmpty);
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
-
-    test('PATCH data accuracy settings writes through owner/admin scope', () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp();
-        try {
-          final response = await _httpRequest(
-            ctx.client,
-            'PATCH',
-            ctx.baseUri.resolve(
-              '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
-            ),
-            body: const <String, Object?>{
-              'covers_source_lunch': 'manual',
-              'covers_source_dinner': 'vendor',
-              'covers_source_late_night': 'forecast',
-              'covers_manual_entries': <String, Object?>{
-                '2026-05-06': <String, Object?>{'lunch': 42},
+    test(
+      'PATCH service-period settings writes through owner/admin scope',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final uri = ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/'
+              'data_accuracy_service_period_settings',
+            );
+            final post = await _httpRequest(ctx.client, 'POST', uri);
+            expect(post.statusCode, 404);
+            final patch = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: const <String, Object?>{
+                'service_period_key': 'breakfast',
+                'covers_source': 'reservation_plus_walkin',
+                'wage_source': 'target_substitution',
+                'effective_at_business_date': '2026-05-07',
               },
-              'wage_source': 'manual_mix',
-              'walk_in_handling_mode': 'walk_ins_added_to_reservations',
-              'walk_in_manual_entries': <String, Object?>{'2026-05-06': 8},
-            },
-          );
-          expect(response.statusCode, 200);
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          final data = body['data'] as Map<String, Object?>;
-          expect(data['covers_source_lunch'], 'manual');
-          expect(data['wage_source'], 'manual_mix');
-          expect(ctx.gateway.calls, <String>[
-            'data_accuracy_settings_write:op-1:loc-1:manual:manual_mix',
-          ]);
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+            );
+            expect(patch.statusCode, 200);
+            final body = jsonDecode(patch.body) as Map<String, Object?>;
+            final data = body['data'] as Map<String, Object?>;
+            expect(data['service_period_key'], 'breakfast');
+            expect(data['covers_source'], 'reservation_plus_walkin');
+            expect(data['wage_source'], 'target_substitution');
+            expect(data['effective_at_business_date'], '2026-05-07');
+            final expectedCall =
+                'data_accuracy_service_period_settings_write:op-1:loc-1:'
+                'breakfast:reservation_plus_walkin:target_substitution:'
+                '2026-05-07';
+            expect(ctx.gateway.calls, <String>[expectedCall]);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'PATCH data accuracy settings writes through owner/admin scope',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
+              ),
+              body: const <String, Object?>{
+                'covers_source_lunch': 'manual',
+                'covers_source_dinner': 'vendor',
+                'covers_source_late_night': 'forecast',
+                'covers_manual_entries': <String, Object?>{
+                  '2026-05-06': <String, Object?>{'lunch': 42},
+                },
+                'wage_source': 'manual_mix',
+                'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+                'walk_in_manual_entries': <String, Object?>{'2026-05-06': 8},
+              },
+            );
+            expect(response.statusCode, 200);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            final data = body['data'] as Map<String, Object?>;
+            expect(data['covers_source_lunch'], 'manual');
+            expect(data['wage_source'], 'manual_mix');
+            expect(ctx.gateway.calls, <String>[
+              'data_accuracy_settings_write:op-1:loc-1:manual:manual_mix',
+            ]);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('PATCH data accuracy settings rejects location manager', () async {
       await withRealHttp(() async {
@@ -598,6 +624,35 @@ class _FakeMobileOperationalSyncGateway
             body['walk_in_manual_entries'] ?? const <String, Object?>{},
         'created_at': '2026-05-06T12:00:00Z',
         'updated_at': '2026-05-06T12:01:00Z',
+        'updated_by': scope.userId,
+      },
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>> upsertDataAccuracyServicePeriodSettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) async {
+    calls.add(
+      'data_accuracy_service_period_settings_write:$operatorId:$locationId:'
+      '${body['service_period_key']}:${body['covers_source']}:'
+      '${body['wage_source']}:${body['effective_at_business_date']}',
+    );
+    return <String, Object?>{
+      'data': <String, Object?>{
+        'id': 'period-setting-1',
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'service_period_key': body['service_period_key'] ?? 'breakfast',
+        'covers_source': body['covers_source'] ?? 'vendor',
+        'wage_source': body['wage_source'] ?? 'vendor_per_employee',
+        'effective_at_business_date':
+            body['effective_at_business_date'] ?? '2026-05-07',
+        'created_at': '2026-05-07T12:00:00Z',
+        'updated_at': '2026-05-07T12:01:00Z',
         'updated_by': scope.userId,
       },
     };

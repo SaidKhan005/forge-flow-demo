@@ -135,6 +135,7 @@ void main() {
           .map((route) => route.id),
       <String>[
         kAdminOperatorsRouteId,
+        kAdminSupportOperatorViewRouteId,
         kAdminDataAccuracyRouteId,
         kAdminPollingPricingRouteId,
         kAdminMembersRouteId,
@@ -150,6 +151,49 @@ void main() {
         reason: 'side nav must surface ${route.id}',
       );
     }
+  });
+
+  testWidgets('compact nav keeps narrow admin pages readable', (tester) async {
+    tester.view.physicalSize = const Size(390, 820);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(
+        AdminShell(
+          session: superAdmin,
+          authSource: source,
+          initialRouteId: kAdminSupportOperatorViewRouteId,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_side_nav')), findsNothing);
+    expect(find.byKey(const Key('admin_compact_nav')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_nav_item_support-operator-view')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_support_operator_view_no_scope_state')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .getSize(
+            find.byKey(const Key('admin_support_operator_view_no_scope_state')),
+          )
+          .width,
+      greaterThan(320),
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('default route renders the live operator surface', (
@@ -348,6 +392,31 @@ void main() {
     },
   );
 
+  testWidgets('support workspace waits inline until a business is chosen', (
+    tester,
+  ) async {
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(
+        AdminShell(
+          session: superAdmin,
+          authSource: source,
+          initialRouteId: kAdminSupportOperatorViewRouteId,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_support_operator_view_no_scope_state')),
+      findsOneWidget,
+    );
+    expect(find.text('Choose a business'), findsOneWidget);
+    expect(find.byKey(const Key('admin_operator_picker_screen')), findsNothing);
+  });
+
   testWidgets(
     'Operations routes reuse selected operator context across Team, Access, and Audit',
     (tester) async {
@@ -414,6 +483,48 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('Business accounts opens the scoped support workspace', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(AdminShell(session: superAdmin, authSource: source)),
+    );
+    await tester.pumpAndSettle();
+
+    final supportViewButton = find.byKey(
+      const Key(
+        'admin_operator_support_view_00000000-0000-4000-8000-000000000001',
+      ),
+    );
+    await tester.ensureVisible(supportViewButton);
+    await tester.pumpAndSettle();
+    await tester.tap(supportViewButton);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_support_operator_view_screen')),
+      findsOneWidget,
+    );
+    expect(find.text('Support workspace'), findsWidgets);
+    expect(find.text('Demo Diner Co.'), findsWidgets);
+    expect(find.text('Toronto Yorkville'), findsWidgets);
+    expect(
+      find.byKey(const Key('admin_support_operator_view_no_scope_state')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('operator action buttons keep the same scope for Team', (
     tester,

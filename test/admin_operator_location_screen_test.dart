@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_app.dart';
 import 'package:forge_and_flow/admin/admin_auth_gate.dart';
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart';
@@ -154,6 +155,54 @@ void main() {
     expect(supportLogRequests, hasLength(2));
     expect(supportLogRequests.last, <String?>['op-support', 'loc-support']);
   });
+
+  testWidgets(
+    'support workspace actions preserve business and location scope',
+    (tester) async {
+      final scopes = <AdminOperatorLocationScopeIntent>[];
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[
+          seedBundle(
+            operatorId: 'op-workspace',
+            primaryLocationId: 'loc-workspace',
+            businessName: 'Workspace Cafe',
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(
+          OperatorLocationAdminScreen(
+            gateway: gateway,
+            onOpenSupportOperatorView: scopes.add,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('admin_operator_support_view_op-workspace')),
+      );
+      await tester.pumpAndSettle();
+      expect(scopes, hasLength(1));
+      expect(scopes.single.operatorId, 'op-workspace');
+      expect(scopes.single.locationId, 'loc-workspace');
+      expect(scopes.single.operatorName, 'Workspace Cafe');
+      expect(scopes.single.locationName, 'HQ');
+
+      final locationSupportView = find.byKey(
+        const Key('admin_location_support_view_loc-workspace'),
+      );
+      await tester.ensureVisible(locationSupportView);
+      await tester.pumpAndSettle();
+      await tester.tap(locationSupportView);
+      await tester.pumpAndSettle();
+      expect(scopes, hasLength(2));
+      expect(scopes.last.operatorId, 'op-workspace');
+      expect(scopes.last.locationId, 'loc-workspace');
+      expect(scopes.last.operatorName, 'Workspace Cafe');
+      expect(scopes.last.locationName, 'HQ');
+    },
+  );
 
   testWidgets('location Timing action opens a scoped non-destructive dialog', (
     tester,
@@ -323,7 +372,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_operators_empty')), findsOneWidget);
-    expect(find.text('No operators yet'), findsOneWidget);
+    expect(find.text('No business accounts yet'), findsOneWidget);
   });
 
   testWidgets('onboarding dialog creates a new operator end-to-end', (
@@ -586,7 +635,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(integrationsButton, findsOneWidget);
-    expect(find.text('Manage integrations'), findsOneWidget);
+    expect(find.text('Integrations'), findsOneWidget);
 
     await tester.tap(integrationsButton);
     await tester.pumpAndSettle();

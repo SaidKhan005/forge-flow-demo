@@ -574,6 +574,23 @@ class AdpLaborAdapter implements LaborAdapter {
         timestampPolicyDocId: 'docs/integrations/adp/field_mapping.md',
       );
 
+  /// Discover available ADP modules before OAuth. Returns list of
+  /// modules the operator has access to. Called by operator-web vendor
+  /// wizard to pre-filter unavailable picker options. Post-OAuth
+  /// [ModuleRefusalException] becomes fallback for unsupported modules.
+  Future<List<String>> getAvailableModules({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    // Documented slice returns all three modules; live slices override
+    // with actual discovery via ADP admin APIs.
+    return <String>[
+      kAdpModuleWorkforceNow,
+      kAdpModuleWorkforceManager,
+      kAdpModuleRun,
+    ];
+  }
+
   @override
   Future<ConnectResult> connect(ConnectCommand command) async {
     if (command.vendorId != kAdpVendorId) {

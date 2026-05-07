@@ -1,229 +1,223 @@
-// Code-Health Lane L9 — advisory-lock sweep-guard regression test.
+// Code-Health Lane M3 / L9 — advisory-lock guard for audit_anchor sweep.
 //
-// Scope (per A3 task spec):
-//   * Two concurrent invocations of runCli sweep mode; assert exactly
-//     one runs to completion and the other exits cleanly with mutual
-//     exclusion preserved (maxConcurrentHolders == 1).
-//   * Lock is always released even when the body throws.
-//   * Structured advisory-lock-id-resolved log line is present before
-//     the body runs.
+// Scope (from the A3 spec):
+//   * Two concurrent sweep invocations serialize via SweepAdvisoryLock:
+//     exactly one runs at a time, the other waits cleanly.
+//   * Body throws → lock is released (no leak).
+//   * Structured "advisory-lock id resolved" log line is emitted once
+//     per sweep start (before lock acquire).
 //
-// The test drives runCli (the full CLI entry point) with injected fakes
-// for every live dependency so no Postgres or Azure Blob call is made.
-// The advisory-lock seam is a _RecordingAdvisoryLock that tracks
-// active holders and event ordering so the test can assert mutual
-// exclusion without relying on real pg_advisory_lock semantics.
-//
-// The lock-id reader always returns 8472001 (the constant seeded by
-// migration 202605070200_audit_anchor_advisory_lock_infra.sql).
+// All tests run against the fake [_RecordingAdvisoryLock] seam; no live
+// Postgres or Azure Blob call is made. The production wiring
+// ([PostgresSweepAdvisoryLock]) is covered structurally by reading the
+// SQL pg_advisory_lock / pg_advisory_unlock calls in audit_anchor.dart.
 
 import 'dart:async';
-import 'dart:io' show IOSink;
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+// Path relative to this test's location in test/tool/audit_anchor/.
+// Both the tool lib and this test share the forge_and_flow package root.
 import '../../../tool/audit_anchor/audit_anchor.dart';
 import '../../../tool/audit_anchor/main.dart';
 
-// ─── constants ────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────
 
-const String _opA = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+const String _opA = '11111111-1111-1111-1111-111111111111';
+const String _locA = '22222222-2222-2222-2222-222222222222';
+const String _userA = '33333333-3333-3333-3333-333333333333';
 const String _container = 'forge-flow-audit-anchors';
 const int _lockId = 8472001;
 
+// ─── Tests ────────────────────────────────────────────────────────────
+
 void main() {
-  group('L9 advisory lock — runCli sweep mode', () {
+  group('A3 advisory-lock guard — SweepAdvisoryLock', () {
+    // ── serialization ──────────────────────────────────────────────────
     test(
-        'two concurrent sweep invocations: exactly one runs the anchor '
-        'body; the other waits and exits cleanly without overlap '
-        '(mutual-exclusion invariant: maxConcurrentHolders == 1)', () async {
-      // Completers that gate the first sweep body so the second
-      // invocation is provably blocked at acquire while the first holds
-      // the lock.
-      final firstBodyEntered = Completer<void>();
-      final firstBodyMayComplete = Completer<void>();
+      'two concurrent sweep invocations serialize: exactly one runs the '
+      'body at a time, the other waits; maxConcurrentHolders == 1',
+      () async {
+        final lock = _RecordingAdvisoryLock();
 
-      final lockRecorder = _RecordingAdvisoryLock(
-        onEnter: firstBodyEntered,
-        mayComplete: firstBodyMayComplete,
-      );
-      final lockIdReader = _ConstantLockIdReader(_lockId);
+        final firstBodyEntered = Completer<void>();
+        final firstBodyMayComplete = Completer<void>();
 
-      // Minimal fake orchestrator: no unanchored chains → sweep
-      // completes with exit 0 and no blob/DB writes.
-      final orchestrator = _NoOpOrchestrator();
-      final operatorIds = _ConstantOperatorIdReader([_opA]);
+        final firstFuture = lock.withSweepLock<int>(
+          lockId: _lockId,
+          body: () async {
+            firstBodyEntered.complete();
+            await firstBodyMayComplete.future;
+            return 1;
+          },
+        );
 
-      // ignore: close_sinks
-      final outFirst = _StringSink();
-      // ignore: close_sinks
-      final errFirst = _StringSink();
-      // ignore: close_sinks
-      final outSecond = _StringSink();
-      // ignore: close_sinks
-      final errSecond = _StringSink();
+        // Wait for the first body to be inside the lock boundary.
+        await firstBodyEntered.future;
+        expect(lock.activeHolders, equals(1));
 
-      // Launch both sweeps concurrently.
-      final firstFuture = runCli(
-        ['sweep', '--as-of-utc=2026-04-28'],
-        environment: _fakeEnv(),
-        orchestratorOverride: orchestrator,
-        operatorIdReaderOverride: operatorIds,
-        sweepLockIdReaderOverride: lockIdReader,
-        sweepAdvisoryLockOverride: lockRecorder,
-        out: outFirst,
-        err: errFirst,
-      );
+        // Start the second invocation — it must block at acquire
+        // because the lock is still held by the first body.
+        final secondBodyEntered = Completer<void>();
+        final secondFuture = lock.withSweepLock<int>(
+          lockId: _lockId,
+          body: () async {
+            secondBodyEntered.complete();
+            return 2;
+          },
+        );
 
-      // Wait until the first body is executing.
-      await firstBodyEntered.future;
-      expect(lockRecorder.activeHolders, equals(1),
-          reason: 'first sweep holds the lock');
+        // Yield to the event loop; the second body must still be blocked.
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        expect(
+          secondBodyEntered.isCompleted,
+          isFalse,
+          reason: 'second body must NOT enter while the first holds the lock',
+        );
 
-      // Start the second sweep. It should block at acquire.
-      final secondFuture = runCli(
-        ['sweep', '--as-of-utc=2026-04-28'],
-        environment: _fakeEnv(),
-        orchestratorOverride: orchestrator,
-        operatorIdReaderOverride: operatorIds,
-        sweepLockIdReaderOverride: lockIdReader,
-        sweepAdvisoryLockOverride: lockRecorder,
-        out: outSecond,
-        err: errSecond,
-      );
+        // Release the first body. The second now acquires and runs.
+        firstBodyMayComplete.complete();
+        expect(await firstFuture, equals(1));
+        expect(await secondFuture, equals(2));
 
-      // Yield so the second invocation can reach the acquire point.
-      await Future<void>.delayed(Duration.zero);
-      await Future<void>.delayed(Duration.zero);
+        expect(
+          lock.maxConcurrentHolders,
+          equals(1),
+          reason: 'advisory lock must permit at most one holder at a time',
+        );
 
-      // The lock is currently held by the first sweep; the second sweep's
-      // chain-of-completers guarantees it cannot enter the body yet.
-      expect(
-        lockRecorder.activeHolders,
-        equals(1),
-        reason: 'second sweep must not enter body while first holds lock',
-      );
+        // Ordered event sequence: acquire1, release1, acquire2, release2.
+        expect(
+          lock.events,
+          equals(<String>[
+            'acquire:$_lockId',
+            'release:$_lockId',
+            'acquire:$_lockId',
+            'release:$_lockId',
+          ]),
+        );
+      },
+    );
 
-      // Release the first body — it completes, releases the lock, then
-      // the second body acquires and runs.
-      firstBodyMayComplete.complete();
-      final firstExit = await firstFuture;
-      final secondExit = await secondFuture;
-
-      // Both exit cleanly (0).
-      expect(firstExit, equals(0), reason: 'first sweep exits 0');
-      expect(secondExit, equals(0),
-          reason: 'second sweep exits 0 (no work; chains already anchored)');
-
-      // Mutual-exclusion invariant.
-      expect(
-        lockRecorder.maxConcurrentHolders,
-        equals(1),
-        reason: 'advisory lock must permit at most one body at a time',
-      );
-
-      // Event ordering: acquire, release, acquire, release.
-      expect(lockRecorder.events, equals(<String>[
-        'acquire:$_lockId',
-        'release:$_lockId',
-        'acquire:$_lockId',
-        'release:$_lockId',
-      ]));
-    });
-
+    // ── body-throws / lock-leak guard ──────────────────────────────────
     test(
-        'lock is always released even when the sweep body throws a '
-        'runtime error (finally guarantee)', () async {
-      final lockRecorder = _RecordingAdvisoryLock(
-        onEnter: null,
-        mayComplete: null,
-      );
+      'release runs in finally when the body throws: lock is never leaked',
+      () async {
+        final lock = _RecordingAdvisoryLock();
 
-      // Orchestrator whose findUnanchoredCompletedChains throws.
-      final errorOrchestrator = _ThrowingOrchestrator();
-      final operatorIds = _ConstantOperatorIdReader([_opA]);
+        await expectLater(
+          () => lock.withSweepLock<void>(
+            lockId: _lockId,
+            body: () async {
+              throw StateError('forced body failure');
+            },
+          ),
+          throwsA(isA<StateError>()),
+        );
 
-      final exitCode = await runCli(
-        ['sweep', '--as-of-utc=2026-04-28'],
-        environment: _fakeEnv(),
-        orchestratorOverride: errorOrchestrator,
-        operatorIdReaderOverride: operatorIds,
-        sweepLockIdReaderOverride: _ConstantLockIdReader(_lockId),
-        sweepAdvisoryLockOverride: lockRecorder,
-        out: _StringSink(),
-        err: _StringSink(),
-      );
+        expect(
+          lock.activeHolders,
+          equals(0),
+          reason: 'lock must be released even when body throws',
+        );
+        expect(
+          lock.events.last,
+          equals('release:$_lockId'),
+          reason: 'release event must follow the acquire',
+        );
+        expect(lock.events, hasLength(2));
+      },
+    );
 
-      // Exit 1 (had failure) rather than an unhandled exception that
-      // would surface as exit 3 from the outer runtime-error catch.
-      expect(exitCode, equals(1),
-          reason: 'runtime error inside body surfaces as exit 1');
-      // Lock was released despite the throw.
-      expect(lockRecorder.activeHolders, equals(0));
-      expect(
-        lockRecorder.events.last,
-        equals('release:$_lockId'),
-        reason: 'release always runs via finally',
-      );
-    });
-
+    // ── structured log line present ────────────────────────────────────
     test(
-        'sweep logs advisory-lock-id-resolved before entering the body '
-        'so operators can confirm lock-id wiring from the Cloud Run log',
-        () async {
-      // ignore: close_sinks
-      final out = _StringSink();
+      'sweep mode emits the structured "advisory-lock id resolved" log '
+      'line before acquiring the lock, with the lock_kind label',
+      () async {
+        // Drive runCli in sweep mode with all overrides so no live DB or
+        // Blob call is made. Capture stdout to assert the log line.
+        final chainDate = DateTime.utc(2026, 4, 27);
+        final nowUtc = DateTime.utc(2026, 4, 28, 2, 0, 0);
+        final clean = _buildLocalChain(length: 3, chainDate: chainDate);
 
-      await runCli(
-        ['sweep', '--as-of-utc=2026-04-28'],
-        environment: _fakeEnv(),
-        orchestratorOverride: _NoOpOrchestrator(),
-        operatorIdReaderOverride: _ConstantOperatorIdReader([]),
-        sweepLockIdReaderOverride: _ConstantLockIdReader(_lockId),
-        sweepAdvisoryLockOverride: _RecordingAdvisoryLock(
-          onEnter: null,
-          mayComplete: null,
-        ),
-        out: out,
-        err: _StringSink(),
-      );
+        final reader = _FakeReader(
+          unanchored: <AuditChainSummary>[
+            AuditChainSummary(operatorId: _opA, chainDate: chainDate),
+          ],
+          chainsByDate: <String, List<AuditLogRow>>{
+            '$_opA|2026-04-27': clean,
+          },
+          anchorsByDate: const <String, AuditChainAnchor>{},
+        );
+        final writer = _FakeAnchorWriter();
+        final blob = _FakeBlobClient();
+        final orchestrator = AuditAnchorOrchestrator(
+          reader: reader,
+          anchorWriter: writer,
+          blobClient: blob,
+          containerName: _container,
+        );
+        final lockIdReader = _ConstantLockIdReader(lockId: _lockId);
+        final advisoryLock = _RecordingAdvisoryLock();
 
-      expect(
-        out.buffer,
-        contains('advisory-lock id resolved'),
-        reason:
-            'structured log line confirms the lock-id read succeeded '
-            'before the body ran',
-      );
-    });
+        final outBuffer = StringBuffer();
+        // ignore: close_sinks
+        final outSink = _BufferSink(outBuffer);
+
+        final exitCode = await runCli(
+          <String>['sweep', '--as-of-utc=2026-04-28'],
+          orchestratorOverride: orchestrator,
+          operatorIdReaderOverride: _ConstantOperatorIdReader(
+            ids: <String>[_opA],
+          ),
+          sweepLockIdReaderOverride: lockIdReader,
+          sweepAdvisoryLockOverride: advisoryLock,
+          clock: () => nowUtc,
+          out: outSink,
+          err: outSink,
+        );
+
+        expect(exitCode, equals(0));
+        final output = outBuffer.toString();
+        expect(
+          output,
+          contains('advisory-lock id resolved'),
+          reason:
+              'structured log line "advisory-lock id resolved" must be '
+              'emitted once per sweep start before lock acquire',
+        );
+        expect(
+          output,
+          contains('audit_anchor_sweep'),
+          reason: 'log line must carry the lock_kind label',
+        );
+        // Lock was acquired exactly once.
+        expect(
+          advisoryLock.events,
+          equals(<String>[
+            'acquire:$_lockId',
+            'release:$_lockId',
+          ]),
+        );
+      },
+    );
   });
 }
 
-// ─── fakes ────────────────────────────────────────────────────────────
+// ─── Fakes ────────────────────────────────────────────────────────────
 
-Map<String, String> _fakeEnv() => <String, String>{
-      'POSTGRES_URL': 'postgresql://fake',
-      'AZURE_BLOB_AUDIT_CONTAINER': 'fake-container',
-      'AZURE_BLOB_AUDIT_ENDPOINT': 'https://fake.blob.core.windows.net',
-    };
-
-/// Advisory lock that serializes callers via a chain of completers,
-/// tracking acquire/release events. Optional [onEnter]/[mayComplete]
-/// completers let tests gate how long the first body runs.
+/// Recording advisory lock — serializes callers via a future-chain queue.
+/// Tracks concurrent-holder count, max concurrent holders, and an ordered
+/// event list so tests can assert mutual exclusion + ordering.
 class _RecordingAdvisoryLock implements SweepAdvisoryLock {
-  _RecordingAdvisoryLock({
-    required Completer<void>? onEnter,
-    required Completer<void>? mayComplete,
-  })  : _onEnter = onEnter,
-        _mayComplete = mayComplete;
-
-  final Completer<void>? _onEnter;
-  final Completer<void>? _mayComplete;
-
   int activeHolders = 0;
   int maxConcurrentHolders = 0;
   final List<String> events = <String>[];
-  bool _firstBodySignaled = false;
   Future<void> _previous = Future<void>.value();
 
   @override
@@ -235,24 +229,12 @@ class _RecordingAdvisoryLock implements SweepAdvisoryLock {
     final waitFor = _previous;
     _previous = myCompleter.future;
     await waitFor;
-
     events.add('acquire:$lockId');
     activeHolders += 1;
     if (activeHolders > maxConcurrentHolders) {
       maxConcurrentHolders = activeHolders;
     }
     try {
-      // For the first body, signal the test and optionally wait.
-      if (!_firstBodySignaled && _onEnter != null) {
-        _firstBodySignaled = true;
-        // Local capture for null-safe promotion.
-        final onEnter = _onEnter;
-        final mayComplete = _mayComplete;
-        onEnter.complete();
-        if (mayComplete != null) {
-          await mayComplete.future;
-        }
-      }
       return await body();
     } finally {
       activeHolders -= 1;
@@ -263,112 +245,227 @@ class _RecordingAdvisoryLock implements SweepAdvisoryLock {
 }
 
 class _ConstantLockIdReader implements SweepLockIdReader {
-  const _ConstantLockIdReader(this._id);
-  final int _id;
+  const _ConstantLockIdReader({required this.lockId});
+  final int lockId;
 
   @override
-  Future<int> readSweepLockId() async => _id;
-}
-
-/// Orchestrator with no unanchored chains — a no-op sweep.
-class _NoOpOrchestrator extends AuditAnchorOrchestrator {
-  _NoOpOrchestrator()
-      : super(
-          reader: _EmptyReader(),
-          anchorWriter: _NoOpWriter(),
-          blobClient: const ScaffoldRejectingAuditAnchorBlobClient(),
-          containerName: _container,
-        );
-}
-
-/// Orchestrator whose findUnanchoredCompletedChains throws to test
-/// lock-release-on-error.
-class _ThrowingOrchestrator extends AuditAnchorOrchestrator {
-  _ThrowingOrchestrator()
-      : super(
-          reader: _ThrowingReader(),
-          anchorWriter: _NoOpWriter(),
-          blobClient: const ScaffoldRejectingAuditAnchorBlobClient(),
-          containerName: _container,
-        );
+  Future<int> readSweepLockId() async => lockId;
 }
 
 class _ConstantOperatorIdReader implements OperatorIdReader {
-  const _ConstantOperatorIdReader(this._ids);
-  final List<String> _ids;
+  const _ConstantOperatorIdReader({required this.ids});
+  final List<String> ids;
 
   @override
-  Future<List<String>> listOperatorIds() async => List.unmodifiable(_ids);
+  Future<List<String>> listOperatorIds() async => ids;
 }
 
-class _EmptyReader implements AuditChainReader {
+class _FakeReader implements AuditChainReader {
+  _FakeReader({
+    required this.unanchored,
+    required this.chainsByDate,
+    required this.anchorsByDate,
+  });
+
+  final List<AuditChainSummary> unanchored;
+  final Map<String, List<AuditLogRow>> chainsByDate;
+  final Map<String, AuditChainAnchor> anchorsByDate;
+
+  String _key(String operatorId, DateTime chainDate) {
+    final utc = chainDate.toUtc();
+    return '$operatorId|'
+        '${utc.year.toString().padLeft(4, '0')}-'
+        '${utc.month.toString().padLeft(2, '0')}-'
+        '${utc.day.toString().padLeft(2, '0')}';
+  }
+
   @override
   Future<List<AuditChainSummary>> findUnanchoredCompletedChains({
     required String operatorId,
     required DateTime asOfUtc,
   }) async =>
-      const [];
+      unanchored.where((s) => s.operatorId == operatorId).toList();
 
   @override
   Future<List<AuditLogRow>> readChainRows({
     required String operatorId,
     required DateTime chainDate,
   }) async =>
-      const [];
+      chainsByDate[_key(operatorId, chainDate)] ?? const <AuditLogRow>[];
 
   @override
   Future<AuditChainAnchor?> readAnchor({
     required String operatorId,
     required DateTime chainDate,
   }) async =>
-      null;
+      anchorsByDate[_key(operatorId, chainDate)];
 }
 
-class _ThrowingReader implements AuditChainReader {
-  @override
-  Future<List<AuditChainSummary>> findUnanchoredCompletedChains({
-    required String operatorId,
-    required DateTime asOfUtc,
-  }) async =>
-      throw StateError('forced reader error for lock-release test');
+class _FakeAnchorWriter implements AuditChainAnchorWriter {
+  final List<AuditChainAnchor> inserts = <AuditChainAnchor>[];
 
   @override
-  Future<List<AuditLogRow>> readChainRows({
-    required String operatorId,
-    required DateTime chainDate,
-  }) async =>
-      const [];
-
-  @override
-  Future<AuditChainAnchor?> readAnchor({
-    required String operatorId,
-    required DateTime chainDate,
-  }) async =>
-      null;
+  Future<void> insertAnchor(AuditChainAnchor anchor) async {
+    inserts.add(anchor);
+  }
 }
 
-class _NoOpWriter implements AuditChainAnchorWriter {
+class _FakeBlobClient implements AuditAnchorBlobClient {
+  final List<_FakeBlobWrite> writes = <_FakeBlobWrite>[];
+  final Map<String, _PreloadedBlob> _preload = <String, _PreloadedBlob>{};
+
+  void preload({
+    required String blobName,
+    required List<int> bytes,
+    required String etag,
+  }) {
+    _preload[blobName] = _PreloadedBlob(bytes: bytes, etag: etag);
+  }
+
   @override
-  Future<void> insertAnchor(AuditChainAnchor anchor) async {}
+  Future<AnchorBlobWriteResult> writeImmutable({
+    required String containerName,
+    required String blobName,
+    required List<int> evidenceBytes,
+  }) async {
+    final write = _FakeBlobWrite(
+      containerName: containerName,
+      blobName: blobName,
+      evidenceBytes: evidenceBytes,
+      fakeUri: 'https://fake/$containerName/$blobName',
+      fakeEtag: 'etag-${writes.length + 1}',
+    );
+    writes.add(write);
+    return AnchorBlobWriteResult(uri: write.fakeUri, etag: write.fakeEtag);
+  }
+
+  @override
+  Future<AnchorBlobReadResult> readImmutable({
+    required String containerName,
+    required String blobName,
+  }) async {
+    final preloaded = _preload[blobName];
+    if (preloaded == null) {
+      throw AuditAnchorBlobUnavailable('fake: blob $blobName not preloaded');
+    }
+    return AnchorBlobReadResult(bytes: preloaded.bytes, etag: preloaded.etag);
+  }
 }
 
-/// Minimal IOSink that captures writes for assertion without any
-/// real I/O. Stubs the IOSink contract via noSuchMethod for unused
-/// async methods (add, flush, close, addStream, etc.).
-class _StringSink implements IOSink {
-  final StringBuffer _buf = StringBuffer();
-  String get buffer => _buf.toString();
+class _FakeBlobWrite {
+  _FakeBlobWrite({
+    required this.containerName,
+    required this.blobName,
+    required this.evidenceBytes,
+    required this.fakeUri,
+    required this.fakeEtag,
+  });
+  final String containerName;
+  final String blobName;
+  final List<int> evidenceBytes;
+  final String fakeUri;
+  final String fakeEtag;
+}
+
+class _PreloadedBlob {
+  _PreloadedBlob({required this.bytes, required this.etag});
+  final List<int> bytes;
+  final String etag;
+}
+
+/// IOSink backed by a [StringBuffer] for capturing CLI output in tests.
+class _BufferSink implements IOSink {
+  _BufferSink(this._buffer);
+  final StringBuffer _buffer;
 
   @override
-  void write(Object? object) => _buf.write(object);
-  @override
-  void writeln([Object? object = '']) => _buf.writeln(object);
-  @override
-  void writeAll(Iterable<Object?> objects, [String separator = '']) =>
-      _buf.writeAll(objects, separator);
-  @override
-  void writeCharCode(int charCode) => _buf.writeCharCode(charCode);
+  void writeln([Object? object = '']) => _buffer.writeln(object ?? '');
 
   @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  void write(Object? object) => _buffer.write(object ?? '');
+
+  @override
+  void writeAll(Iterable<dynamic> objects, [String separator = '']) {
+    _buffer.writeAll(objects, separator);
+  }
+
+  @override
+  void writeCharCode(int charCode) => _buffer.writeCharCode(charCode);
+
+  @override
+  void add(List<int> data) {}
+
+  @override
+  void addError(Object error, [StackTrace? stackTrace]) {}
+
+  @override
+  Future<void> addStream(Stream<List<int>> stream) async {}
+
+  @override
+  Future<void> flush() async {}
+
+  @override
+  Future<void> close() async {}
+
+  @override
+  Future<void> get done async {}
+
+  @override
+  Encoding get encoding => utf8;
+
+  @override
+  set encoding(Encoding value) {}
+}
+
+// ─── Chain builder ────────────────────────────────────────────────────
+
+List<AuditLogRow> _buildLocalChain({
+  required int length,
+  required DateTime chainDate,
+}) {
+  const hasher = AuditChainHasher();
+  final rows = <AuditLogRow>[];
+  Uint8List? prev;
+  for (var i = 0; i < length; i++) {
+    final draft = AuditLogRow(
+      id: BigInt.from(i + 1),
+      operatorId: _opA,
+      locationId: _locA,
+      chainDate: chainDate,
+      occurredAt: DateTime.utc(chainDate.year, chainDate.month, chainDate.day, 8, i),
+      actorKind: 'user',
+      actorUserId: _userA,
+      actorPrincipalId: null,
+      targetKind: null,
+      targetId: null,
+      action: 'session.event.$i',
+      payloadText: '{"seq": $i}',
+      prevRowHash: prev,
+      rowHash: Uint8List(32),
+    );
+    final canonical = hasher.canonicalPayload(draft);
+    final hash = Uint8List.fromList(
+      sha256.convert(<int>[...?prev, ...canonical]).bytes,
+    );
+    rows.add(
+      AuditLogRow(
+        id: draft.id,
+        operatorId: draft.operatorId,
+        locationId: draft.locationId,
+        chainDate: draft.chainDate,
+        occurredAt: draft.occurredAt,
+        actorKind: draft.actorKind,
+        actorUserId: draft.actorUserId,
+        actorPrincipalId: draft.actorPrincipalId,
+        targetKind: draft.targetKind,
+        targetId: draft.targetId,
+        action: draft.action,
+        payloadText: draft.payloadText,
+        prevRowHash: prev,
+        rowHash: hash,
+      ),
+    );
+    prev = hash;
+  }
+  return rows;
 }

@@ -206,6 +206,21 @@ Future<void> _migrateToV28(Database db) async {
   ''');
 }
 
+/// W2.A — push-extended inbox tracks read state per notification.
+///
+/// Adds the `read_at` column to `app_notifications` so the bell badge
+/// can count unread rows, the inbox can render read/unread visual
+/// treatment, and the "Mark all as read" action has a place to land
+/// the timestamp. Nullable + additive: legacy rows surface as unread
+/// and the existing emit + dedupe path is unchanged.
+Future<void> _migrateToV30(Database db) async {
+  if (!await _columnExists(db, 'app_notifications', 'read_at')) {
+    await db.execute(
+      'ALTER TABLE app_notifications ADD COLUMN read_at TEXT',
+    );
+  }
+}
+
 Future<void> _migrateToV29(Database db) async {
   if (!await _columnExists(
     db,

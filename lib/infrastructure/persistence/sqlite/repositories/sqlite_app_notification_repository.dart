@@ -1,4 +1,5 @@
 // Phase 7.55p.4d — SQLite-backed app notification repository.
+// W2.A — extended with read-state operations.
 
 import '../../../../domain/models/app_notification.dart';
 import '../../../../domain/repositories/app_notification_repository.dart';
@@ -30,5 +31,23 @@ class SqliteAppNotificationRepository implements AppNotificationRepository {
       String restaurantId, {int limit = 20}) async {
     final dao = await _daoReady;
     return dao.getNotifications(restaurantId, limit: limit);
+  }
+
+  @override
+  Future<void> markAsRead(String notificationId) async {
+    final dao = await _daoReady;
+    return dao.markAsRead(notificationId);
+  }
+
+  @override
+  Future<void> markAllAsRead(String restaurantId) async {
+    final dao = await _daoReady;
+    return dao.markAllAsRead(restaurantId);
+  }
+
+  @override
+  Future<int> getUnreadCount(String restaurantId) async {
+    final dao = await _daoReady;
+    return dao.getUnreadCount(restaurantId);
   }
 }

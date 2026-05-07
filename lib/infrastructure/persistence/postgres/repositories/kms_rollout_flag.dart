@@ -93,7 +93,7 @@ class FeatureFlagsTableKmsRolloutFlag implements KmsRolloutFlag {
     final rows = await exec.query(
       'select enabled from public.feature_flags '
       'where flag_name = @flag_name '
-      'and operator_id is null '
+      'and operator_id = public.feature_flag_system_wide_operator_id() '
       'and location_id is null '
       'limit 1',
       parameters: <String, Object?>{'flag_name': flagName},

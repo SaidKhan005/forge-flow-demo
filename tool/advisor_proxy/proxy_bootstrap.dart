@@ -36,6 +36,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_recovery_request_attempts_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_tokens_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/notification_preferences_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
@@ -55,6 +56,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/usage_caps_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/user_roles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/users_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/wage_role_rows_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
@@ -101,13 +103,22 @@ import '../advisor_corpus/advisor_corpus.dart'
         graphifyNodeCandidatesFileName;
 import 'advisor_proxy.dart';
 import 'admin_integrations_routes.dart';
+import 'connector_backfill_jobs_routes.dart';
 import 'anthropic_http_complete_fn.dart';
 import 'health_producers/producer_registry.dart';
 import 'log.dart';
 import 'mobile_push_notifications.dart';
 import 'vendor_admin_status_catalog.dart' as vendor_status;
+import 'vendor_capability_index.dart';
 
 typedef PostgresPoolFactory = PostgresPool Function(String connectionString);
+
+// Honor POSTGRES_POOL_MAX_CONNECTIONS env override; falls back to default 4.
+PostgresPool _defaultPostgresPoolFactory(String connectionString) =>
+    PackagePostgresPool.fromUrl(
+      connectionString,
+      maxConnectionCount: resolvePostgresMaxConnectionsPerPool(),
+    );
 
 /// HARD-A — early-exit decision for the proxy entrypoint.
 ///
@@ -195,6 +206,14 @@ class ProxyProductionBindings {
     required this.mfaTotpRetryCounter,
     required this.passwordResetThrottleCounter,
     required this.operatorWriteRouter,
+    required this.auditChainAnchorsGateway,
+    required this.connectorBackfillJobsRouter,
+    required this.vendorLifecycleRecentlyAvailableRouter,
+    required this.notificationPreferencesRouter,
+    required this.wageRoleRowsRouter,
+    required this.passwordResetEmailShortCounter,
+    required this.passwordResetIpCounter,
+    required this.permissionVersionChecker,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -337,6 +356,63 @@ class ProxyProductionBindings {
   /// [RepositoryOperatorBusinessTimingWriteGateway] +
   /// [ProductionOperatorWriteAuditSink].
   final OperatorWriteRouter operatorWriteRouter;
+
+  /// Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
+  /// Backed by [PostgresAuditChainAnchorsGateway]; the route
+  /// `GET /v1/operator/audit-chain-anchors/latest` reads through this
+  /// so the operator-web Audit Log screen can render an integrity
+  /// badge.
+  final AuditChainAnchorsGateway auditChainAnchorsGateway;
+
+  /// Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
+  /// Backed by [ConnectorBackfillJobRepository]; per-tenant RLS rides
+  /// `SET LOCAL` in the gateway so the route returns only rows the
+  /// signed-in (operator_id, location_id) is permitted to see.
+  final ConnectorBackfillJobsRouter connectorBackfillJobsRouter;
+
+  /// Phase 11W.8 follow-up - operator-scoped read of recently-available
+  /// vendors. Backed by a tenant-pool query against
+  /// `vendor_lifecycle_notification` (filtered to `notified_at >=
+  /// since`); per-tenant RLS rides `SET LOCAL` in the gateway so the
+  /// route returns only rows the signed-in operator is permitted to
+  /// see.
+  final OperatorVendorLifecycleRecentlyAvailableRouter
+      vendorLifecycleRecentlyAvailableRouter;
+
+  /// Phase 8 W2.B - per-actor notification preferences router. Backed
+  /// by [NotificationPreferencesRepository] (tenant pool, per-user
+  /// RLS). Wired into `routeRequest` for the three operator-scoped
+  /// notification-preferences routes.
+  final NotificationPreferencesRouter notificationPreferencesRouter;
+
+  /// Phase 8 W5.A.1 - operator-scoped wage role rows write router.
+  /// Handles POST /v1/operator/wage-role-rows (upsert) and DELETE
+  /// /v1/operator/wage-role-rows/:wage_role_row_id (soft delete) so the
+  /// wage editor (mobile + future op-web W3.D parity) can write the
+  /// per-tenant wage mix through the same Idempotency-Key + tenant-RLS
+  /// discipline as every other operator write. Wired through
+  /// [RepositoryWageRoleRowsGateway] over [WageRoleRowsRepository].
+  final WageRoleRowsRouter wageRoleRowsRouter;
+
+  /// B1.S8 — per-email 5-min short-window rolling counter for the
+  /// password-reset / magic-link request endpoint. Keyed by
+  /// SHA-256(normalised email). Volatile across proxy restarts; the
+  /// same counter instance is shared across all requests so the window
+  /// is server-process-wide.
+  final RollingWindowAttemptCounter passwordResetEmailShortCounter;
+
+  /// B1.S8 — per-IP 24h rolling counter for the password-reset /
+  /// magic-link request endpoint. Keyed by SHA-256(client IP).
+  /// Volatile across proxy restarts.
+  final RollingWindowAttemptCounter passwordResetIpCounter;
+
+  /// B1.A3 — production [PermissionVersionChecker] backed by the
+  /// admin-pool [UsersRepository]. On each authenticated request the
+  /// proxy compares the JWT `permission_version` claim against the DB
+  /// value; a mismatch (role revoked since token was issued) returns
+  /// 401 so the client re-authenticates and gets a fresh token that
+  /// reflects the updated permissions.
+  final PermissionVersionChecker permissionVersionChecker;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -441,7 +517,7 @@ buildProxyLlmProviders(ProxyConfig config) {
 /// but unauthenticated probes like `/health` keep working).
 ProxyProductionBindings buildProxyProductionBindings(
   ProxyConfig config, {
-  PostgresPoolFactory postgresPoolFactory = PackagePostgresPool.fromUrl,
+  PostgresPoolFactory postgresPoolFactory = _defaultPostgresPoolFactory,
   bool requireFirebase = true,
   List<String> expectedMigrationFilenames = const <String>[],
 }) {
@@ -594,6 +670,47 @@ ProxyProductionBindings buildProxyProductionBindings(
           },
         );
       },
+    ),
+  );
+  // Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
+  // Reuses the existing [ConnectorBackfillJobRepository] so the read
+  // path rides the same tenant pool + RLS posture as the write path
+  // shipped by `8.first-connect-backfill-wire-in`.
+  final connectorBackfillJobsRouter = ConnectorBackfillJobsRouter(
+    gateway: _RepositoryConnectorBackfillJobsReadGateway(
+      repository: ConnectorBackfillJobRepository(tenantWrapper),
+    ),
+  );
+  // Phase 11W.8 follow-up - operator-scoped read of recently-promoted
+  // vendors. Reads `vendor_lifecycle_notification.notified_at >= since`
+  // against the tenant pool; per-tenant RLS rides `SET LOCAL` so the
+  // route returns only rows the signed-in operator is permitted to
+  // see. The display name resolver leans on the existing capability
+  // registries so the proxy never imports the `lib/integrations/ui`
+  // surface.
+  final vendorLifecycleRecentlyAvailableRouter =
+      OperatorVendorLifecycleRecentlyAvailableRouter(
+    gateway: _PostgresOperatorRecentlyAvailableVendorsGateway(
+      tenantWrapper: tenantWrapper,
+    ),
+    displayNameResolver: (vendorId) =>
+        lookupVendorCapability(vendorId)?.displayName,
+  );
+  // Phase 8 W2.B - per-actor notification preferences router. Tenant
+  // pool + per-user RLS policy on the table; the repository pattern is
+  // the primary defense.
+  final notificationPreferencesRouter = NotificationPreferencesRouter(
+    gateway: RepositoryNotificationPreferencesGateway(
+      repository: NotificationPreferencesRepository(tenantWrapper),
+    ),
+  );
+  // Phase 8 W5.A.1 - operator-scoped wage role rows write router.
+  // Wired through tenant-pool repository so RLS + per-operator
+  // isolation hold; the read path stays in `fetchWageRoleRows`
+  // (lower in this file).
+  final wageRoleRowsRouter = WageRoleRowsRouter(
+    gateway: RepositoryWageRoleRowsGateway(
+      repository: WageRoleRowsRepository(tenantWrapper),
     ),
   );
   SelectedStarTargetRouter.installGlobal(
@@ -901,8 +1018,121 @@ ProxyProductionBindings buildProxyProductionBindings(
     passwordResetThrottleCounter: RollingWindowAttemptCounter(
       window: kAuthPasswordResetWindow,
     ),
+    // B1.S8 — per-email 5-min short-window + per-IP 24h rate limiters for
+    // password-reset and magic-link request endpoints. In-memory rolling
+    // counters keyed by SHA-256(email) and SHA-256(IP) respectively.
+    passwordResetEmailShortCounter: RollingWindowAttemptCounter(
+      window: kAuthPasswordResetEmailShortWindow,
+    ),
+    passwordResetIpCounter: RollingWindowAttemptCounter(
+      window: kAuthPasswordResetIpWindow,
+    ),
+    // B1.A3 — permission_version revoke-forces-logout. Hits the admin
+    // pool (BYPASSRLS) so the lookup is not blocked by per-tenant RLS.
+    permissionVersionChecker: _PostgresPermissionVersionChecker(
+      usersRepository: UsersRepository(adminWrapper),
+    ),
     operatorWriteRouter: operatorWriteRouter,
+    // Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
+    // Runs through the tenant transaction wrapper so the per-tenant
+    // RLS policy `audit_chain_anchors_per_tenant_select` clamps the
+    // SELECT to the caller's operator. Anchor rows are written by the
+    // L9 Cloud Run sweep (and verified server-side); this binding is
+    // strictly read-only.
+    auditChainAnchorsGateway: PostgresAuditChainAnchorsGateway(
+      tenantWrapper: tenantWrapper,
+    ),
+    connectorBackfillJobsRouter: connectorBackfillJobsRouter,
+    vendorLifecycleRecentlyAvailableRouter:
+        vendorLifecycleRecentlyAvailableRouter,
+    notificationPreferencesRouter: notificationPreferencesRouter,
+    wageRoleRowsRouter: wageRoleRowsRouter,
   );
+}
+
+/// Wave W2.D - bridges the [ConnectorBackfillJobRepository] (in
+/// `lib/`, the only tenant-pool seam) to the proxy-level
+/// [ConnectorBackfillJobsReadGateway] surface so the route file does
+/// not pull `package:postgres` into the proxy import graph directly.
+class _RepositoryConnectorBackfillJobsReadGateway
+    implements ConnectorBackfillJobsReadGateway {
+  _RepositoryConnectorBackfillJobsReadGateway({required this.repository});
+
+  final ConnectorBackfillJobRepository repository;
+
+  @override
+  Future<List<FirstConnectionBackfillJob>> listLatestPerConnection({
+    required String operatorId,
+    required String locationId,
+    String? connectionId,
+    String? actorUserId,
+  }) {
+    return repository.listLatestPerConnection(
+      operatorId: operatorId,
+      locationId: locationId,
+      connectionId: connectionId,
+      actorUserId: actorUserId,
+    );
+  }
+}
+
+/// Phase 11W.8 follow-up - tenant-pool query against
+/// `vendor_lifecycle_notification` keyed on `notified_at >= since`.
+/// Wrapped in [TenantTransactionWrapper.runInTenantContext] so per-
+/// tenant RLS rides `SET LOCAL` for every read.
+class _PostgresOperatorRecentlyAvailableVendorsGateway
+    implements OperatorRecentlyAvailableVendorsGateway {
+  _PostgresOperatorRecentlyAvailableVendorsGateway({
+    required TenantTransactionWrapper tenantWrapper,
+  }) : _tenantWrapper = tenantWrapper;
+
+  final TenantTransactionWrapper _tenantWrapper;
+
+  @override
+  Future<List<OperatorRecentlyAvailableVendorRow>> listRecentlyPromoted({
+    required String operatorId,
+    required String locationId,
+    required DateTime since,
+    String? actorUserId,
+  }) async {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return _tenantWrapper.runInTenantContext<
+        List<OperatorRecentlyAvailableVendorRow>>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select vendor_id, max(notified_at) as promoted_at '
+        'from public.vendor_lifecycle_notification '
+        'where operator_id = @operator_id::uuid '
+        '  and notified_at is not null '
+        '  and notified_at >= @since::timestamptz '
+        'group by vendor_id '
+        'order by max(notified_at) desc, vendor_id asc',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'since': since.toUtc(),
+        },
+      );
+      return <OperatorRecentlyAvailableVendorRow>[
+        for (final row in rows)
+          OperatorRecentlyAvailableVendorRow(
+            vendorId: (row['vendor_id'] as String).trim(),
+            promotedAt: _readDateTime(row['promoted_at']),
+          ),
+      ];
+    });
+  }
+
+  static DateTime _readDateTime(Object? value) {
+    if (value is DateTime) return value.toUtc();
+    if (value is String) return DateTime.parse(value).toUtc();
+    throw StateError(
+      'vendor_lifecycle_notification.notified_at returned non-timestamp '
+      'value (${value.runtimeType})',
+    );
+  }
 }
 
 /// HARD-B - production [AuthLockoutEnforcer] backed by the
@@ -1120,6 +1350,25 @@ class AuthEventsAuditAuthLockoutAuditSink implements AuthLockoutAuditSink {
         'retry_after_seconds': retryAfter.inSeconds,
       },
       adminReason: 'auth.password_reset_throttled',
+    );
+  }
+}
+
+/// B1.A3 — Production [PermissionVersionChecker] backed by the admin-pool
+/// [UsersRepository]. Reads `permission_version` via BYPASSRLS (admin pool)
+/// so the lookup is not blocked by the per-tenant RLS policy. The check is
+/// fast: a single indexed point-read on `users(user_id, permission_version)`.
+class _PostgresPermissionVersionChecker implements PermissionVersionChecker {
+  _PostgresPermissionVersionChecker({required UsersRepository usersRepository})
+    : _usersRepository = usersRepository;
+
+  final UsersRepository _usersRepository;
+
+  @override
+  Future<int?> fetch(String userId) {
+    return _usersRepository.fetchPermissionVersion(
+      userId: userId,
+      adminReason: 'auth.permission_version_check',
     );
   }
 }
@@ -2088,6 +2337,61 @@ class RepositoryMobileOperationalSyncProxyGateway
   }
 
   @override
+  Future<Map<String, Object?>> upsertDataAccuracyServicePeriodSettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) {
+    final servicePeriodKey = _bodyServicePeriodKey(body);
+    final effectiveAt = _bodyBusinessDate(body, 'effective_at_business_date');
+    final coversSource = _bodyServicePeriodCoversSource(body);
+    final wageSource = _bodyServicePeriodWageSource(body);
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final rows = await exec.query(
+        'insert into public.data_accuracy_service_period_settings ('
+        'operator_id, location_id, service_period_key, covers_source, '
+        'wage_source, effective_at_business_date, updated_by) '
+        'values (@operator_id::uuid, @location_id::uuid, '
+        '@service_period_key, @covers_source, @wage_source, '
+        '@effective_at::date, @updated_by) '
+        'on conflict (operator_id, location_id, service_period_key, '
+        'effective_at_business_date) do update set '
+        'covers_source = excluded.covers_source, '
+        'wage_source = excluded.wage_source, '
+        'updated_at = now(), '
+        'updated_by = excluded.updated_by '
+        'returning id::text as id, '
+        'operator_id::text as operator_id, '
+        'location_id::text as location_id, '
+        'service_period_key, covers_source, wage_source, '
+        'effective_at_business_date::text as effective_at_business_date, '
+        'created_at, updated_at, updated_by',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'service_period_key': servicePeriodKey,
+          'covers_source': coversSource,
+          'wage_source': wageSource,
+          'effective_at': effectiveAt,
+          'updated_by': scope.userId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw const MobileOperationalSyncProxyGatewayException(
+          statusCode: 503,
+          code: 'data_accuracy_service_period_settings_write_failed',
+          message:
+              'data accuracy service-period settings write returned no row',
+        );
+      }
+      return <String, Object?>{
+        'data': _dataAccuracyServicePeriodJson(rows.single),
+      };
+    });
+  }
+
+  @override
   Future<Map<String, Object?>> fetchDataAccuracyServicePeriodSettings({
     required OperatorContext scope,
     required String operatorId,
@@ -2563,6 +2867,67 @@ class RepositoryMobileOperationalSyncProxyGateway
       statusCode: 400,
       code: 'invalid_$field',
       message: '$field must be a non-empty string',
+    );
+  }
+
+  static String _bodyServicePeriodKey(Map<String, Object?> body) {
+    final key = _bodyString(body, 'service_period_key');
+    final pattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
+    if (key != null && pattern.hasMatch(key)) return key;
+    throw const MobileOperationalSyncProxyGatewayException(
+      statusCode: 400,
+      code: 'invalid_service_period_key',
+      message:
+          'service_period_key must start with a lowercase letter and contain '
+          'only lowercase letters, numbers, or underscores',
+    );
+  }
+
+  static String _bodyBusinessDate(Map<String, Object?> body, String field) {
+    final value = _bodyString(body, field);
+    if (value != null && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) {
+      return value;
+    }
+    throw MobileOperationalSyncProxyGatewayException(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be a YYYY-MM-DD business date',
+    );
+  }
+
+  static String _bodyServicePeriodCoversSource(Map<String, Object?> body) {
+    final value = _bodyString(body, 'covers_source') ?? 'vendor';
+    const allowed = <String>{
+      'vendor',
+      'forecast',
+      'manual',
+      'reservation_plus_walkin',
+    };
+    if (allowed.contains(value)) return value;
+    throw const MobileOperationalSyncProxyGatewayException(
+      statusCode: 400,
+      code: 'invalid_covers_source',
+      message:
+          'covers_source must be vendor, forecast, manual, or '
+          'reservation_plus_walkin',
+    );
+  }
+
+  static String _bodyServicePeriodWageSource(Map<String, Object?> body) {
+    final value = _bodyString(body, 'wage_source') ?? 'vendor_per_employee';
+    const allowed = <String>{
+      'vendor_per_employee',
+      'vendor_per_position',
+      'target_substitution',
+      'manual_mix',
+    };
+    if (allowed.contains(value)) return value;
+    throw const MobileOperationalSyncProxyGatewayException(
+      statusCode: 400,
+      code: 'invalid_wage_source',
+      message:
+          'wage_source must be vendor_per_employee, vendor_per_position, '
+          'target_substitution, or manual_mix',
     );
   }
 
@@ -6793,7 +7158,7 @@ class RepositoryIntegrationAdminActorResolver
 /// connection.
 AuthSessionLedgerWriter buildAuthSessionLedgerWriter(
   ProxyConfig config, {
-  PostgresPoolFactory postgresPoolFactory = PackagePostgresPool.fromUrl,
+  PostgresPoolFactory postgresPoolFactory = _defaultPostgresPoolFactory,
 }) {
   final pool = postgresPoolFactory(
     config.secretFor(ProxySecretNames.postgresUrl),
@@ -7162,7 +7527,7 @@ class FeatureFlagsTableAdminCorsOriginsExtraFlag
       final rows = await tx.query(
         'select enabled, description from public.feature_flags '
         "where flag_name = '$kAdminCorsOriginsExtraFlagName' "
-        'and operator_id is null '
+        'and operator_id = public.feature_flag_system_wide_operator_id() '
         'and location_id is null '
         'limit 1',
       );
@@ -7370,5 +7735,78 @@ const String phase10a2DlqCapEnvVar = 'EVENT_OUTBOX_DLQ_CAP';
 /// look up the producer by name and the deploy verifier can grep the
 /// `/health` envelope without re-declaring the literal.
 const String phase10a2DlqDepthMetricKey = 'event_outbox_dlq_depth';
+
+// ─── Operator Web W4.B — audit_chain_anchors per-tenant read ──────────
+//
+// Production-grade [AuditChainAnchorsGateway] backed by the tenant
+// transaction wrapper. Reads the most-recent
+// `public.audit_chain_anchors` row for the caller's operator using a
+// single indexed lookup against the `audit_chain_anchors_recent_idx`
+// (`(operator_id, chain_date desc)` from
+// `db/migrations/202604280005_phase_9_0sigma_f_audit_logs.sql`). The
+// wrapper issues `SET LOCAL app.operator_id` so the per-tenant RLS
+// policy `audit_chain_anchors_per_tenant_select` clamps the result.
+class PostgresAuditChainAnchorsGateway implements AuditChainAnchorsGateway {
+  PostgresAuditChainAnchorsGateway({
+    required TenantTransactionWrapper tenantWrapper,
+  }) : _tenantWrapper = tenantWrapper;
+
+  final TenantTransactionWrapper _tenantWrapper;
+
+  @override
+  Future<AuditChainAnchorRow?> latestForOperator({
+    required String operatorId,
+    required String locationId,
+    String? userId,
+  }) async {
+    final TenantContext tenantContext;
+    try {
+      tenantContext = TenantContext(
+        operatorId: operatorId,
+        locationId: locationId,
+        userId: userId,
+      );
+    } on TenantContextValidationError {
+      // Defense in depth: a malformed JWT operator/location id should
+      // never reach the route, but if it did we return null so the
+      // route surfaces the unknown badge instead of leaking the SET
+      // LOCAL error to the operator.
+      return null;
+    }
+    return _tenantWrapper.runInTenantContext(tenantContext, (exec) async {
+      final rows = await exec.query(
+        'select chain_date, anchored_at, row_count, blob_uri, '
+        'last_anchor_blob_url, last_anchor_blob_at '
+        'from public.audit_chain_anchors '
+        'where operator_id = @operator_id::uuid '
+        'order by chain_date desc '
+        'limit 1',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final chainDate = row['chain_date'];
+      final anchoredAt = row['anchored_at'];
+      if (chainDate is! DateTime || anchoredAt is! DateTime) return null;
+      final rowCountRaw = row['row_count'];
+      final rowCount = rowCountRaw is num ? rowCountRaw.toInt() : 0;
+      final blobUri = row['blob_uri']?.toString() ?? '';
+      final lastAnchorBlobUrl = row['last_anchor_blob_url']?.toString();
+      final lastAnchorBlobAt = row['last_anchor_blob_at'];
+      return AuditChainAnchorRow(
+        chainDate: chainDate.toUtc(),
+        anchoredAt: anchoredAt.toUtc(),
+        rowCount: rowCount,
+        blobUri: blobUri,
+        lastAnchorBlobUrl:
+            (lastAnchorBlobUrl != null && lastAnchorBlobUrl.isNotEmpty)
+                ? lastAnchorBlobUrl
+                : null,
+        lastAnchorBlobAt:
+            lastAnchorBlobAt is DateTime ? lastAnchorBlobAt.toUtc() : null,
+      );
+    });
+  }
+}
 
 // endregion

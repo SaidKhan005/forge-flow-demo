@@ -16,8 +16,29 @@ class RepositoryAuthSessionLedgerWriter implements AuthSessionLedgerWriter {
 
   final AuthSessionsRepository _repository;
 
+  /// B1.A6 — Concurrent-session cap enforcement.
+  ///
+  /// Before inserting the new session, count active sessions for the user.
+  /// When already at [AuthSessionsRepository.kMaxConcurrentSessions], evict
+  /// the oldest active session (LRU eviction) to make room. This means a
+  /// legitimate user on a new device automatically "pushes out" their oldest
+  /// session, giving a clear UX signal via the Active Sessions viewer.
+  ///
+  /// Eviction is best-effort: a race between two concurrent logins may
+  /// temporarily allow N+1 sessions. The cap is eventually enforced on
+  /// the next login attempt.
   @override
-  Future<String> recordLogin(AuthSessionLedgerLogin login) {
+  Future<String> recordLogin(AuthSessionLedgerLogin login) async {
+    final activeCount = await _repository.countActiveSessions(
+      userId: login.userId,
+      adminReason: 'auth.session_cap_check',
+    );
+    if (activeCount >= AuthSessionsRepository.kMaxConcurrentSessions) {
+      await _repository.evictOldestSession(
+        userId: login.userId,
+        adminReason: 'auth.session_cap_eviction',
+      );
+    }
     return _repository.insertLogin(
       operatorId: login.operatorId,
       locationId: login.locationId,

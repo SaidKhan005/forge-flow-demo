@@ -60,8 +60,12 @@
 import 'package:flutter/material.dart';
 
 import '../auth/operator_web_auth_source.dart';
+import '../services/operator_web_connector_backfill_jobs_gateway.dart';
 import '../services/operator_web_url_launcher.dart';
+import '../services/operator_web_vendor_lifecycle_recently_available_gateway.dart';
 import '../widgets/operator_web_summary_strip.dart';
+import '../widgets/vendor_connections_backfill_progress_panel.dart';
+import '../widgets/vendor_connections_recently_available_panel.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
 import '../../theme/app_theme.dart';
@@ -79,13 +83,15 @@ const Set<String> kOperatorWebVendorConnectionsAdmittedRoles = <String>{
 
 /// Operator Web Console Vendor Connections screen. Lives behind
 /// the `kOperatorWebNavVendorConnections` side-nav item.
-class VendorConnectionsScreen extends StatelessWidget {
+class VendorConnectionsScreen extends StatefulWidget {
   const VendorConnectionsScreen({
     super.key,
     required this.session,
     required this.locationId,
     this.locationName,
     this.gateway,
+    this.backfillJobsGateway,
+    this.recentlyAvailableGateway,
   });
 
   /// Authenticated operator-web session — drives operator_id, the
@@ -103,11 +109,48 @@ class VendorConnectionsScreen extends StatelessWidget {
   /// in-memory gateway with seeded vendors.
   final VendorConnectionsGateway? gateway;
 
+  /// Wave W2.D — optional gateway for the per-connection backfill
+  /// progress panel that sits inside the existing vendor card area.
+  /// Null in demo mode (no fixture lying about progress) and when the
+  /// host shell has not wired the live HTTP gateway yet; the panel
+  /// renders an honest "progress not available" state in that case.
+  final OperatorWebConnectorBackfillJobsGateway? backfillJobsGateway;
+
+  /// Phase 11W.8 follow-up — optional gateway for the "Recently
+  /// available" panel that mirrors the vendor_now_available email
+  /// fan-out. Null in demo mode and during early wiring; the panel
+  /// hides itself entirely in that case.
+  final OperatorWebVendorLifecycleRecentlyAvailableGateway?
+      recentlyAvailableGateway;
+
+  @override
+  State<VendorConnectionsScreen> createState() =>
+      _VendorConnectionsScreenState();
+}
+
+class _VendorConnectionsScreenState extends State<VendorConnectionsScreen> {
+  final GlobalKey _vendorWidgetHostKey = GlobalKey(
+    debugLabel: 'operator_web_vendor_connections_widget_host',
+  );
+
   /// True iff the session has `integrations.configure` (i.e. role
   /// is `operator_admin` or `operator_owner`).
   bool get _canConfigureIntegrations =>
-      session.roles.any(kOperatorWebVendorConnectionsAdmittedRoles.contains) ||
-      session.permissions.contains('integrations.configure');
+      widget.session.roles
+          .any(kOperatorWebVendorConnectionsAdmittedRoles.contains) ||
+      widget.session.permissions.contains('integrations.configure');
+
+  void _handleConnectFromRecentlyAvailable(
+    OperatorWebRecentlyAvailableVendor vendor,
+  ) {
+    final ctx = _vendorWidgetHostKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 240),
+      alignment: 0,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +159,7 @@ class VendorConnectionsScreen extends StatelessWidget {
         key: const Key('operator_web_vendor_connections_forbidden'),
       );
     }
-    if (locationId.trim().isEmpty) {
+    if (widget.locationId.trim().isEmpty) {
       return _NoLocationSurface(
         key: const Key('operator_web_vendor_connections_no_location'),
       );
@@ -169,8 +212,8 @@ class VendorConnectionsScreen extends StatelessWidget {
               OperatorWebSummaryItem(
                 icon: Icons.open_in_new_outlined,
                 label: 'Connect flow',
-                value: gateway == null ? 'Demo' : 'Live',
-                helper: gateway == null
+                value: widget.gateway == null ? 'Demo' : 'Live',
+                helper: widget.gateway == null
                     ? 'fixture catalog'
                     : 'opens vendor auth',
               ),
@@ -183,6 +226,21 @@ class VendorConnectionsScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
+          VendorConnectionsRecentlyAvailablePanel(
+            key: const Key(
+              'operator_web_vendor_connections_recently_available',
+            ),
+            gateway: widget.recentlyAvailableGateway,
+            onConnectRequested: _handleConnectFromRecentlyAvailable,
+          ),
+          const SizedBox(height: 12),
+          VendorConnectionsBackfillProgressPanel(
+            key: const Key(
+              'operator_web_vendor_connections_backfill_progress',
+            ),
+            gateway: widget.backfillJobsGateway,
+          ),
+          const SizedBox(height: 12),
           Container(
             key: const Key('operator_web_vendor_connections_widget_host'),
             decoration: BoxDecoration(
@@ -190,14 +248,17 @@ class VendorConnectionsScreen extends StatelessWidget {
               border: Border.all(color: AppColors.borderSubtle, width: 1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: VendorConnectionsWidget(
-              operatorId: session.operatorId,
-              locationId: locationId,
-              locationNameOverride: locationLabel,
-              gateway: gateway,
-              onConnectFlowStarted: gateway == null
-                  ? null
-                  : (flow) => openOperatorWebRedirect(flow.redirectUrl),
+            child: KeyedSubtree(
+              key: _vendorWidgetHostKey,
+              child: VendorConnectionsWidget(
+                operatorId: widget.session.operatorId,
+                locationId: widget.locationId,
+                locationNameOverride: locationLabel,
+                gateway: widget.gateway,
+                onConnectFlowStarted: widget.gateway == null
+                    ? null
+                    : (flow) => openOperatorWebRedirect(flow.redirectUrl),
+              ),
             ),
           ),
         ],
@@ -206,10 +267,10 @@ class VendorConnectionsScreen extends StatelessWidget {
   }
 
   String _locationLabel() {
-    final provided = locationName?.trim();
+    final provided = widget.locationName?.trim();
     if (provided != null && provided.isNotEmpty) return provided;
-    if (locationId == session.primaryLocationId) {
-      return session.primaryLocationName;
+    if (widget.locationId == widget.session.primaryLocationId) {
+      return widget.session.primaryLocationName;
     }
     return 'this location';
   }

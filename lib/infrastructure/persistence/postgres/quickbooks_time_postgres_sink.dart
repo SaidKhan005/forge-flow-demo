@@ -283,8 +283,21 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
       '@vendor_id, @vendor_entity_id, @vendor_modified_at::timestamptz, '
       '@raw_payload::jsonb, @business_date::date'
       ') '
-      'on conflict (operator_id, vendor_id, vendor_entity_id, '
-      'vendor_modified_at) do nothing',
+      'on conflict (operator_id, location_id, vendor_id, vendor_entity_id) '
+      'where vendor_id is not null '
+      'and vendor_entity_id is not null '
+      'do update set '
+      'vendor_modified_at = excluded.vendor_modified_at, '
+      'employee_source_id = excluded.employee_source_id, '
+      'role_name = excluded.role_name, '
+      'shift_start = excluded.shift_start, '
+      'shift_end = excluded.shift_end, '
+      'hours_worked = excluded.hours_worked, '
+      'pay_rate = excluded.pay_rate, '
+      'raw_payload = excluded.raw_payload, '
+      'business_date = excluded.business_date '
+      'where excluded.vendor_modified_at >= '
+      'public.labor_punches.vendor_modified_at',
       parameters: <String, Object?>{
         'operator_id': operatorId,
         'location_id': locationId,
