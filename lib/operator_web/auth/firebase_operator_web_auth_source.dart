@@ -703,11 +703,12 @@ class _OperatorWebLiveSessionsGateway implements WebTeamSessionsGateway {
 
   @override
   Future<WebTeamSessionsListed> listTeamSessions() {
-    throw const WebTeamSessionsError(
-      code: 'team_sessions_not_routed',
-      message: 'Team-wide session listing is not routed by the proxy yet.',
-      statusCode: 501,
-    );
+    // 11W.4 ops-debt fix — `/v1/auth/team/sessions` now exists on the
+    // proxy (see `tool/advisor_proxy/advisor_proxy.dart`); route the
+    // call through the live delegate so the operator-web Sessions
+    // screen no longer silently degrades to "own sessions only" in
+    // production.
+    return _delegate.listTeamSessions();
   }
 
   @override

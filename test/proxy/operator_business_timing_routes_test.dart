@@ -515,6 +515,12 @@ class _NoopAccountGateway implements OperatorAccountWriteGateway {
   }) async {
     throw UnimplementedError();
   }
+
+  @override
+  Future<OperatorAccountRecord?> loadAccount({
+    required String operatorId,
+  }) async =>
+      null;
 }
 
 class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
@@ -606,6 +612,15 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
     required String profileId,
   }) async {
     return _seeded[profileId];
+  }
+
+  @override
+  Future<List<OperatorBusinessTimingProfileRecord>> listProfiles({
+    required String operatorId,
+  }) async {
+    return List<OperatorBusinessTimingProfileRecord>.unmodifiable(
+      _seeded.values,
+    );
   }
 
   @override

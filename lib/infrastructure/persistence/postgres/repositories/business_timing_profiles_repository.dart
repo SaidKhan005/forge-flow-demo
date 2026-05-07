@@ -536,6 +536,56 @@ class BusinessTimingProfilesRepository extends OperatorScopedRepository {
     }
   }
 
+  /// 11W.7 ops-debt — lists every business-timing profile owned by
+  /// [operatorId] (operator-scoped, org-unit-scoped, and
+  /// location-scoped), ordered by scope kind so the operator-web
+  /// editor renders them in resolver-precedence order.
+  Future<List<BusinessTimingProfileRow>> listProfilesForOperator({
+    required String operatorId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      // operators-scoped reads need a UUID for SET LOCAL even when
+      // the row's scope is operator-wide; pass operatorId as the
+      // sentinel.
+      locationId: operatorId,
+      userId: userId,
+    );
+    return withTenant<List<BusinessTimingProfileRow>>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select $_profileColumns, '
+        '       null::text as location_timezone, '
+        '       $_periodJson '
+        'from public.business_timing_profiles p '
+        'left join public.business_timing_service_periods sp '
+        '  on sp.operator_id = p.operator_id '
+        ' and sp.profile_id = p.profile_id '
+        'where p.operator_id = @operator_id::uuid '
+        'group by '
+        '  p.profile_id, p.operator_id, p.scope_type, p.scope_id, '
+        '  p.display_name, p.business_day_start_local_time, '
+        '  p.week_start_day, p.close_authority, '
+        '  p.local_close_fallback_time, '
+        '  p.effective_from_business_date, '
+        '  p.effective_until_business_date, '
+        '  p.supersedes_profile_id, p.created_by, p.updated_by, '
+        '  p.created_at, p.updated_at '
+        "order by case p.scope_type "
+        "           when 'operator' then 0 "
+        "           when 'org_unit' then 1 "
+        "           when 'location' then 2 "
+        '           else 3 end asc, '
+        '         p.effective_from_business_date asc, '
+        '         p.created_at asc',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      return <BusinessTimingProfileRow>[
+        for (final row in rows) _profileRowFromMap(row),
+      ];
+    });
+  }
+
   Future<BusinessTimingProfileRow?> _fetchProfileById(
     PostgresExecutor exec, {
     required String operatorId,

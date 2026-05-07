@@ -1,10 +1,13 @@
 // Phase 11W.7 / Wave A2 - operator-scoped account + business-timing
-// proxy write routes.
+// proxy routes.
 //
-// Five routes, all operator-scoped, all role-gated to operator owner /
-// operator admin, all idempotent by Idempotency-Key.
+// Seven routes, all operator-scoped, all role-gated to operator owner /
+// operator admin. Writes are idempotent by Idempotency-Key. Reads
+// (GETs) skip the Idempotency-Key check.
 //
+//   GET   /v1/operator/account                       (11W.7 ops-debt)
 //   PATCH /v1/operator/account
+//   GET   /v1/operator/business-timing-profiles      (11W.7 ops-debt)
 //   POST  /v1/operator/business-timing-profiles
 //   PATCH /v1/operator/business-timing-profiles/:id
 //   POST  /v1/operator/business-timing-profiles/:id/service-periods
@@ -47,8 +50,14 @@ import 'package:forge_and_flow/services/business_timing/operator_write_contracts
 export 'package:forge_and_flow/services/business_timing/operator_write_contracts.dart';
 
 /// Route paths. Exported so the frontend gateway tests and the proxy
-/// dispatcher reference one canonical set of strings.
-const String operatorAccountPatchPath = '/v1/operator/account';
+/// dispatcher reference one canonical set of strings. The PATCH +
+/// GET share the same path; the dispatcher branches by method.
+const String operatorAccountPath = '/v1/operator/account';
+
+/// Backward-compatible alias for the PATCH-only route name. Existing
+/// tests + frontend gateway tests grep on this constant.
+const String operatorAccountPatchPath = operatorAccountPath;
+
 const String operatorBusinessTimingProfilesPath =
     '/v1/operator/business-timing-profiles';
 const String operatorBusinessTimingProfilePrefix =
@@ -185,11 +194,20 @@ class OperatorWriteRouter {
   final OperatorWriteIdempotencyCache _idempotencyCache;
   final DateTime Function() _now;
 
-  /// True when [path] / [method] match one of the five routes. The
+  /// True when [path] / [method] match one of the seven routes. The
   /// dispatcher uses this to short-circuit the catch-all 404 in the
-  /// monolithic `routeRequest` without wiring 5 separate ifs.
+  /// monolithic `routeRequest` without wiring 7 separate ifs.
+  ///
+  /// 11W.7 ops-debt — GETs added for `/v1/operator/account` and
+  /// `/v1/operator/business-timing-profiles`. The dispatcher honours
+  /// these without an Idempotency-Key header (writes still require
+  /// one).
   static bool matches(String path, String method) {
-    if (method == 'PATCH' && path == operatorAccountPatchPath) return true;
+    if (method == 'GET' && path == operatorAccountPath) return true;
+    if (method == 'PATCH' && path == operatorAccountPath) return true;
+    if (method == 'GET' && path == operatorBusinessTimingProfilesPath) {
+      return true;
+    }
     if (method == 'POST' && path == operatorBusinessTimingProfilesPath) {
       return true;
     }
@@ -199,8 +217,19 @@ class OperatorWriteRouter {
     return false;
   }
 
+  /// True when the route is a read-only GET that should bypass the
+  /// Idempotency-Key requirement at the dispatch layer.
+  static bool isReadOnly(String path, String method) {
+    if (method != 'GET') return false;
+    if (path == operatorAccountPath) return true;
+    if (path == operatorBusinessTimingProfilesPath) return true;
+    return false;
+  }
+
   /// Handles one request once auth + role gate + Idempotency-Key
-  /// header have been resolved by the caller.
+  /// header have been resolved by the caller. 11W.7 ops-debt: GETs
+  /// bypass the idempotency cache (the dispatcher passes an empty
+  /// key for read-only methods).
   Future<({int statusCode, Map<String, Object?> body})> handle({
     required String method,
     required String path,
@@ -210,6 +239,28 @@ class OperatorWriteRouter {
     required String idempotencyKey,
     required Map<String, Object?> body,
   }) async {
+    if (isReadOnly(path, method)) {
+      try {
+        return await _dispatch(
+          method: method,
+          path: path,
+          operatorId: operatorId,
+          actorUserId: actorUserId,
+          actorKind: actorKind,
+          idempotencyKey: idempotencyKey,
+          body: body,
+        );
+      } on OperatorWriteRejected catch (rejected) {
+        return (
+          statusCode: rejected.statusCode,
+          body: <String, Object?>{
+            'error': rejected.code,
+            'message': rejected.message,
+            ...rejected.extras,
+          },
+        );
+      }
+    }
     final bodyHash = hashOperatorRequestBody(body);
     final route = '$method $path';
     try {
@@ -249,7 +300,10 @@ class OperatorWriteRouter {
     required String idempotencyKey,
     required Map<String, Object?> body,
   }) async {
-    if (method == 'PATCH' && path == operatorAccountPatchPath) {
+    if (method == 'GET' && path == operatorAccountPath) {
+      return _handleAccountGet(operatorId: operatorId);
+    }
+    if (method == 'PATCH' && path == operatorAccountPath) {
       return _handleAccountPatch(
         operatorId: operatorId,
         actorUserId: actorUserId,
@@ -257,6 +311,9 @@ class OperatorWriteRouter {
         idempotencyKey: idempotencyKey,
         body: body,
       );
+    }
+    if (method == 'GET' && path == operatorBusinessTimingProfilesPath) {
+      return _handleBusinessTimingList(operatorId: operatorId);
     }
     if (method == 'POST' && path == operatorBusinessTimingProfilesPath) {
       return _handleProfileCreate(
@@ -318,6 +375,61 @@ class OperatorWriteRouter {
         'message': 'route not found',
       },
     );
+  }
+
+  Future<({int statusCode, Map<String, Object?> body})> _handleAccountGet({
+    required String operatorId,
+  }) async {
+    try {
+      final record = await accountGateway.loadAccount(operatorId: operatorId);
+      if (record == null) {
+        return (
+          statusCode: 404,
+          body: const <String, Object?>{
+            'error': 'operator_not_found',
+            'message': 'operator row was not found',
+          },
+        );
+      }
+      return (statusCode: 200, body: record.toJson());
+    } on OperatorWriteRejected catch (rejected) {
+      return (
+        statusCode: rejected.statusCode,
+        body: <String, Object?>{
+          'error': rejected.code,
+          'message': rejected.message,
+          ...rejected.extras,
+        },
+      );
+    }
+  }
+
+  Future<({int statusCode, Map<String, Object?> body})>
+      _handleBusinessTimingList({
+    required String operatorId,
+  }) async {
+    try {
+      final records = await businessTimingGateway.listProfiles(
+        operatorId: operatorId,
+      );
+      return (
+        statusCode: 200,
+        body: <String, Object?>{
+          'profiles': <Map<String, Object?>>[
+            for (final record in records) record.toJson(),
+          ],
+        },
+      );
+    } on OperatorWriteRejected catch (rejected) {
+      return (
+        statusCode: rejected.statusCode,
+        body: <String, Object?>{
+          'error': rejected.code,
+          'message': rejected.message,
+          ...rejected.extras,
+        },
+      );
+    }
   }
 
   Future<({int statusCode, Map<String, Object?> body})> _handleAccountPatch({

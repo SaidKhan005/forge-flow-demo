@@ -75,6 +75,43 @@ void main() {
       );
     });
 
+    // 11W.7 ops-debt - GET /v1/operator/account companion. The
+    // Settings shell hydrates the AccountScreen by GETting the
+    // operator row before letting the user PATCH it.
+    test('GET hits /v1/operator/account with Bearer auth + parses 200',
+        () async {
+      final gateway = buildGateway();
+      final identity = await gateway.getAccount();
+      expect(capturedRequests, hasLength(1));
+      final request = capturedRequests.single;
+      expect(request.method, 'GET');
+      expect(request.url.path, '/v1/operator/account');
+      expect(request.headers['authorization'], 'Bearer demo-id-token');
+      expect(identity.operatorId, 'op-1');
+      expect(identity.businessName, 'Brio Restaurants');
+    });
+
+    test('GET surfaces 503 as a typed OperatorWebProxyException', () async {
+      sequenceStatuses = <int>[503];
+      sequenceBodies = <Map<String, Object?>>[
+        <String, Object?>{
+          'error': 'account_unavailable',
+          'message': 'offline',
+        },
+      ];
+      final gateway = buildGateway();
+      await expectLater(
+        () => gateway.getAccount(),
+        throwsA(
+          isA<OperatorWebProxyException>().having(
+            (e) => e.code,
+            'code',
+            'account_unavailable',
+          ),
+        ),
+      );
+    });
+
     test('PATCH carries Idempotency-Key + Bearer auth + JSON body', () async {
       final gateway = buildGateway();
       await gateway.patchAccount(

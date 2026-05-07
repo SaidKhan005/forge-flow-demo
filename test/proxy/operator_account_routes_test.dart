@@ -451,8 +451,10 @@ class _SettableVerifier implements ProxyJwtVerifier {
 
 class _RecordingAccountGateway implements OperatorAccountWriteGateway {
   int patchCalls = 0;
+  int loadCalls = 0;
   String? lastOperatorId;
   ValidatedOperatorAccountPatch? lastPatch;
+  bool loadReturnsNull = false;
 
   @override
   Future<OperatorAccountRecord> patchAccount({
@@ -479,6 +481,25 @@ class _RecordingAccountGateway implements OperatorAccountWriteGateway {
       updatedAt: DateTime.utc(2026, 5, 7),
     );
   }
+
+  @override
+  Future<OperatorAccountRecord?> loadAccount({
+    required String operatorId,
+  }) async {
+    loadCalls += 1;
+    lastOperatorId = operatorId;
+    if (loadReturnsNull) return null;
+    return OperatorAccountRecord(
+      operatorId: operatorId,
+      businessName: 'Recording Co',
+      logoUrl: null,
+      currencyCode: 'CAD',
+      localeTag: 'en-CA',
+      weekStartDay: 'monday',
+      rolloverHour: 4,
+      updatedAt: DateTime.utc(2026, 5, 7),
+    );
+  }
 }
 
 class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
@@ -499,6 +520,12 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
     required String profileId,
   }) async =>
       null;
+
+  @override
+  Future<List<OperatorBusinessTimingProfileRecord>> listProfiles({
+    required String operatorId,
+  }) async =>
+      const <OperatorBusinessTimingProfileRecord>[];
 
   @override
   Future<OperatorBusinessTimingProfileRecord> replaceServicePeriodSet({

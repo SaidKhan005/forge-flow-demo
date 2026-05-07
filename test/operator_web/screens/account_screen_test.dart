@@ -22,6 +22,23 @@ class _FakeAccountGateway implements WebAccountGateway {
 
   final OperatorWebProxyException? failWith;
   final List<AccountIdentityPatch> calls = <AccountIdentityPatch>[];
+  int getCalls = 0;
+
+  @override
+  Future<AccountIdentity> getAccount() async {
+    getCalls += 1;
+    if (failWith != null) throw failWith!;
+    return AccountIdentity(
+      operatorId: 'op-1',
+      businessName: 'Brio Restaurants',
+      logoUrl: null,
+      currencyCode: 'USD',
+      localeTag: 'en-US',
+      weekStartDay: 'monday',
+      rolloverHour: 4,
+      updatedAt: DateTime.utc(2026, 5, 6, 18),
+    );
+  }
 
   @override
   Future<AccountIdentity> patchAccount(AccountIdentityPatch patch) async {

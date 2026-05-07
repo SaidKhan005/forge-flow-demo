@@ -49,8 +49,110 @@ class AuthSessionRow {
   final String? revokedReason;
 }
 
+/// 11W.4 ops-debt — read projection for team-wide active sessions.
+/// Wraps an [AuthSessionRow] with the row's owning user identity so
+/// the operator-web Sessions screen can render which member each row
+/// belongs to. The display name is server-projected from
+/// `users.display_name`, falling back to first/last name then email.
+class TeamAuthSessionRow {
+  const TeamAuthSessionRow({
+    required this.session,
+    required this.userId,
+    this.userDisplayName,
+    this.userEmail,
+  });
+
+  final AuthSessionRow session;
+  final String userId;
+  final String? userDisplayName;
+  final String? userEmail;
+}
+
 class AuthSessionsRepository extends OperatorScopedRepository {
   AuthSessionsRepository(super.tenantWrapper);
+
+  /// 11W.4 ops-debt - Lists every active (non-revoked) session for
+  /// users belonging to [operatorId]. Joins `auth_sessions` to the
+  /// `users` table on `users.user_id = auth_sessions.user_id` and
+  /// filters by `users.operator_id = operatorId` so a row from a
+  /// different operator never crosses the seam. Runs through
+  /// `withSystem` (BYPASSRLS) because the per-user RLS policy on
+  /// `auth_sessions` would only admit the caller's own rows. The
+  /// proxy is responsible for gating this on
+  /// `team.session.force_logout` before invoking.
+  Future<List<TeamAuthSessionRow>> listActiveSessionsForOperator({
+    required String operatorId,
+    required String adminReason,
+  }) {
+    return withSystem<List<TeamAuthSessionRow>>(
+      (exec) async {
+        final rows = await exec.query(
+          'select s.session_id::text as session_id, '
+          's.user_id::text as user_id, '
+          's.created_at, s.last_seen_at, '
+          's.user_agent, host(s.ip) as ip, '
+          's.geo_country, s.device_fingerprint, '
+          's.revoked_at, s.revoked_reason, '
+          'u.email as user_email, '
+          "coalesce(nullif(u.display_name, ''), "
+          "nullif(trim(concat_ws(' ', u.first_name, u.last_name)), ''), "
+          'u.email) as user_display_name '
+          'from auth_sessions s '
+          'inner join users u on u.user_id = s.user_id '
+          'where u.operator_id = @operator_id::uuid '
+          'and s.revoked_at is null '
+          'order by s.last_seen_at desc, s.created_at desc',
+          parameters: <String, Object?>{'operator_id': operatorId},
+        );
+        return rows.map(_projectTeamSessionRow).toList(growable: false);
+      },
+      reason: adminReason,
+    );
+  }
+
+  static TeamAuthSessionRow _projectTeamSessionRow(Map<String, Object?> row) {
+    DateTime asDateTime(Object? value) {
+      if (value is DateTime) return value.toUtc();
+      if (value is String) return DateTime.parse(value).toUtc();
+      throw StateError('auth_sessions team row missing timestamp');
+    }
+
+    DateTime? asOptionalDateTime(Object? value) {
+      if (value == null) return null;
+      return asDateTime(value);
+    }
+
+    String? asOptionalString(Object? value) {
+      if (value is! String) return null;
+      final trimmed = value.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+
+    final sessionId = row['session_id'];
+    final userId = row['user_id'];
+    if (sessionId is! String || sessionId.isEmpty) {
+      throw StateError('auth_sessions team row missing session_id');
+    }
+    if (userId is! String || userId.isEmpty) {
+      throw StateError('auth_sessions team row missing user_id');
+    }
+    return TeamAuthSessionRow(
+      session: AuthSessionRow(
+        sessionId: sessionId,
+        createdAt: asDateTime(row['created_at']),
+        lastSeenAt: asDateTime(row['last_seen_at']),
+        userAgent: asOptionalString(row['user_agent']),
+        ip: asOptionalString(row['ip']),
+        geoCountry: asOptionalString(row['geo_country']),
+        deviceFingerprint: asOptionalString(row['device_fingerprint']),
+        revokedAt: asOptionalDateTime(row['revoked_at']),
+        revokedReason: asOptionalString(row['revoked_reason']),
+      ),
+      userId: userId,
+      userDisplayName: asOptionalString(row['user_display_name']),
+      userEmail: asOptionalString(row['user_email']),
+    );
+  }
 
   /// Returns the actor's own active (non-revoked) sessions, newest
   /// first. The per-user RLS policy filters cross-user rows server-
