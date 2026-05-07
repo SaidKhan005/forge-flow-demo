@@ -270,8 +270,16 @@ class AuthSessionsRepository extends OperatorScopedRepository {
   /// (BYPASSRLS) because the actor is not the row owner. The
   /// [adminReason] string is audited via the wrapper's
   /// `app.bypass_rls_audit = 'system:<reason>'` marker.
+  ///
+  /// Code-health L3 (C5): `auth_sessions` is a per-user table without
+  /// its own `operator_id` column, so the WHERE adds an EXISTS
+  /// subquery against `users` keyed on `(user_id, operator_id)`. A
+  /// `withSystem` (BYPASSRLS) UPDATE that targets a `userId` from
+  /// operator A while the caller believes it lives in operator B
+  /// returns 0 affected rows instead of leaking across tenants.
   Future<int> revokeAllSessionsForUserAsAdmin({
     required String userId,
+    required String operatorId,
     required String reason,
     required String adminReason,
   }) {
@@ -281,9 +289,15 @@ class AuthSessionsRepository extends OperatorScopedRepository {
           'update auth_sessions '
           'set revoked_at = now(), revoked_reason = @reason '
           'where user_id = @user_id::uuid '
-          'and revoked_at is null',
+          'and revoked_at is null '
+          'and exists ('
+          '  select 1 from users u '
+          '  where u.user_id = @user_id::uuid '
+          '  and u.operator_id = @operator_id::uuid'
+          ')',
           parameters: <String, Object?>{
             'user_id': userId,
+            'operator_id': operatorId,
             'reason': reason,
           },
         );

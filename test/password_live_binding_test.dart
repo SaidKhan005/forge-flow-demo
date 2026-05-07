@@ -130,6 +130,7 @@ void main() {
 
       await repo.clearForUser(
         userId: _validUserId,
+        operatorId: _validOpId,
         adminReason: 'gdpr.erasure_executed',
       );
 
@@ -141,6 +142,14 @@ void main() {
       );
       expect(tx.executedSql[1], equals('set local role forge_admin'));
       expect(tx.executedSql.last, contains('delete from password_history'));
+      // Acceptance: defense-in-depth predicate scopes the DELETE to
+      // the row's tenant via an EXISTS check on `users.operator_id`
+      // so the BYPASSRLS path cannot leak across tenants.
+      expect(tx.executedSql.last, contains('exists ('));
+      expect(
+        tx.executedSql.last,
+        contains('u.operator_id = @operator_id::uuid'),
+      );
     });
 
     test('recordHash throws when RETURNING produces no rows', () async {
