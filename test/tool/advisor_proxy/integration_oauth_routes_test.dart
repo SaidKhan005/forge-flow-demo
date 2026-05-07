@@ -63,7 +63,7 @@ void main() {
       expect(authorizeUrl.queryParameters['redirect_uri'],
           contains('/v1/integrations/oauth/toast/callback'));
 
-      final stored = store.peek(stateToken);
+      final stored = await store.peek(stateToken);
       expect(stored, isNotNull);
       expect(stored!.operatorId, _operatorA);
       expect(stored.locationId, _locationA);
@@ -399,7 +399,163 @@ void main() {
       expect(request.response.statusCode, 403);
     });
   });
+
+  group('buildPhase8OperatorOAuthWiring — 17-vendor coverage', () {
+    test(
+      'wires OAuth descriptors + exchangers when every app credential '
+      'is loaded; api-key validators present for the 5 key-paste + 5 '
+      'client-credentials vendors',
+      () {
+        final config = _proxyConfigWithAllVendorCredentials();
+        final wiring = buildPhase8OperatorOAuthWiring(
+          proxyConfig: config,
+          connectionWriter: _defaultRecordingWriter,
+        );
+
+        // Every OAuth-using vendor whose static app credentials live
+        // in ProxyConfig should land on the descriptor map (Square,
+        // Clover, 7shifts, QuickBooks Time, Libro, Humanity). The
+        // remaining six OAuth vendors (Toast, Aloha, Lightspeed LSK,
+        // Oracle MICROS Simphony, Revel, ADP) use client_credentials
+        // or per-tenant pairs and ship on the api-key validator
+        // surface.
+        expect(
+          wiring.oauthBeginDescriptors.keys.toSet(),
+          equals(<String>{
+            'square',
+            'clover',
+            '7shifts',
+            'quickbooks_time',
+            'libro',
+            'humanity',
+          }),
+        );
+        expect(
+          wiring.oauthExchangers.keys.toSet(),
+          equals(<String>{
+            'square',
+            'clover',
+            '7shifts',
+            'quickbooks_time',
+            'libro',
+            'humanity',
+          }),
+        );
+        // API-key validators cover the 5 documented key-paste vendors
+        // (Tock, Push Operations, Agendrix, SevenRooms, OpenTable)
+        // plus the 6 client_credentials / per-tenant-pair vendors
+        // (Toast, Lightspeed LSK, Aloha NCR Voyix, Oracle MICROS
+        // Simphony, Revel, ADP).
+        expect(
+          wiring.apiKeyValidators.keys.toSet(),
+          equals(<String>{
+            'toast',
+            'lightspeed_lsk',
+            'aloha_ncr_voyix',
+            'oracle_micros_simphony',
+            'revel',
+            'adp',
+            'tock',
+            'push_operations',
+            'agendrix',
+            'sevenrooms',
+            'opentable',
+          }),
+        );
+        expect(wiring.disabledVendors, isEmpty);
+        // All 17 documented Phase 8 vendor ids are reachable through
+        // either the OAuth descriptor map or the api-key validator
+        // map.
+        final reachable = <String>{
+          ...wiring.oauthBeginDescriptors.keys,
+          ...wiring.apiKeyValidators.keys,
+        };
+        expect(
+          reachable,
+          equals(kPhase8VendorCategories.keys.toSet()),
+        );
+      },
+    );
+
+    test(
+      'when OAuth app credentials are missing the dispatcher reports '
+      'the vendor in disabledVendors and omits it from the descriptor '
+      'map',
+      () {
+        final config = _proxyConfigBareSecrets();
+        final wiring = buildPhase8OperatorOAuthWiring(
+          proxyConfig: config,
+          connectionWriter: _defaultRecordingWriter,
+        );
+        // Square / Clover / 7shifts / QuickBooks Time / Libro /
+        // Humanity all need optional static app credentials; without
+        // them they are absent from descriptors / exchangers but
+        // present in disabledVendors.
+        expect(wiring.oauthBeginDescriptors, isEmpty);
+        expect(wiring.oauthExchangers, isEmpty);
+        expect(
+          wiring.disabledVendors.keys.toSet(),
+          equals(<String>{
+            'square',
+            'clover',
+            '7shifts',
+            'quickbooks_time',
+            'libro',
+            'humanity',
+          }),
+        );
+        // The 11 always-on api-key validators still light up — none
+        // of them depend on optional static app credentials.
+        expect(wiring.apiKeyValidators, hasLength(11));
+      },
+    );
+  });
 }
+
+// ─── ProxyConfig helpers for the wiring tests ─────────────────────────
+
+ProxyConfig _proxyConfigBareSecrets() {
+  return ProxyConfig.fromEnvironment(<String, String>{
+    ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
+    ProxySecretNames.voyageApiKey: 'placeholder-voyage',
+    ProxySecretNames.postgresUrl: 'postgres://app-role.example/forgeflow',
+    ProxySecretNames.postgresAdminUrl: 'postgres://admin-role.example/forgeflow',
+    ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web',
+    ProxySecretNames.servicePrincipalJwtSecret: 'placeholder-sp-jwt',
+    ProxySecretNames.pgcryptoEnvelopeKey: 'placeholder-pgcrypto',
+    ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
+  });
+}
+
+ProxyConfig _proxyConfigWithAllVendorCredentials() {
+  return ProxyConfig.fromEnvironment(<String, String>{
+    ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
+    ProxySecretNames.voyageApiKey: 'placeholder-voyage',
+    ProxySecretNames.postgresUrl: 'postgres://app-role.example/forgeflow',
+    ProxySecretNames.postgresAdminUrl: 'postgres://admin-role.example/forgeflow',
+    ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web',
+    ProxySecretNames.servicePrincipalJwtSecret: 'placeholder-sp-jwt',
+    ProxySecretNames.pgcryptoEnvelopeKey: 'placeholder-pgcrypto',
+    ProxySecretNames.publicBaseUri: 'https://api.forgeflow.app',
+    // Optional vendor app credentials — every loaded together so the
+    // descriptor / exchanger maps are fully populated for the
+    // coverage assertions.
+    ProxySecretNames.squareClientId: 'sq-client',
+    ProxySecretNames.squareClientSecret: 'sq-secret',
+    ProxySecretNames.squareNotificationUrlHost: 'https://api.forgeflow.app',
+    ProxySecretNames.cloverAppToken: 'cl-app-token',
+    ProxySecretNames.cloverAppId: 'cl-app-id',
+    ProxySecretNames.humanityClientId: 'hum-client',
+    ProxySecretNames.humanityClientSecret: 'hum-secret',
+    ProxySecretNames.quickBooksTimeClientId: 'qbt-client',
+    ProxySecretNames.quickBooksTimeClientSecret: 'qbt-secret',
+    ProxySecretNames.sevenShiftsClientId: '7s-client',
+    ProxySecretNames.sevenShiftsClientSecret: '7s-secret',
+    ProxySecretNames.libroClientId: 'libro-client',
+    ProxySecretNames.libroClientSecret: 'libro-secret',
+  });
+}
+
 
 // ─── Test fixtures ─────────────────────────────────────────────────────
 

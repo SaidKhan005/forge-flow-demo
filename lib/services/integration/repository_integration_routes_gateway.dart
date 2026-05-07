@@ -437,6 +437,60 @@ class RepositoryIntegrationRoutesGateway extends OperatorScopedRepository {
     );
   }
 
+  // ─── Connect (OAuth bundle) ────────────────────────────────────────
+
+  /// Persist a freshly minted OAuth bundle as a `connector_connection`
+  /// + `vendor_credentials` row. Used by the operator-facing
+  /// `/v1/integrations/oauth/{vendor}/callback` route after the
+  /// per-vendor token-exchange step succeeds.
+  ///
+  /// The caller has already verified the state token, exchanged the
+  /// authorization code for tokens, and resolved (operator, location,
+  /// actor) — this method writes the encrypted bundle into the
+  /// canonical Phase 8.0 tables and emits the audit + sync-log rows.
+  ///
+  /// Idempotent on the same `(operator_id, location_id, vendor_id,
+  /// coalesce(module, ''))` triple: a second connect with the same
+  /// key rotates the credential ciphertext rather than creating a
+  /// duplicate row.
+  ///
+  /// Permission gate: requires `integrations.configure` for the
+  /// (operator, actor) pair, same as the key-paste path.
+  Future<Map<String, Object?>> connect({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String vendorId,
+    required IntegrationCategory category,
+    required String accessTokenPlaintext,
+    String? refreshTokenPlaintext,
+    DateTime? tokenExpiresAt,
+    Map<String, Object?> metadata = const <String, Object?>{},
+    String? webhookUrl,
+    String? module,
+    bool firstBackfillStarted = true,
+  }) async {
+    await _requirePermission(
+      operatorId: operatorId,
+      userId: actorUserId,
+    );
+    return _persistConnect(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      vendorId: vendorId,
+      category: category,
+      module: module,
+      accessTokenPlaintext: accessTokenPlaintext,
+      refreshTokenPlaintext: refreshTokenPlaintext,
+      tokenExpiresAt: tokenExpiresAt,
+      metadata: metadata,
+      webhookUrl: webhookUrl,
+      firstBackfillStarted: firstBackfillStarted,
+      authMode: 'oauth',
+    );
+  }
+
   // ─── Connect via key paste ─────────────────────────────────────────
 
   Future<Map<String, Object?>> connectViaKeyPaste({

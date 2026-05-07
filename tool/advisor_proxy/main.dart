@@ -34,6 +34,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/realtime/pubsub_realtime_publisher.dart';
+import 'package:forge_and_flow/services/integration/repository_integration_routes_gateway.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 import 'package:forge_and_flow/services/realtime/realtime_replay_resolver.dart';
@@ -43,6 +44,7 @@ import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
 import 'advisor_response_cache.dart';
 import 'integration_oauth_routes.dart';
+import 'integration_oauth_state_store.dart';
 import 'log.dart';
 import 'phase_8_production_binder.dart';
 import 'proxy_bootstrap.dart';
@@ -598,6 +600,65 @@ Future<void> main(List<String> args) async {
     proxyJwtVerifier: verifier,
   );
 
+  // Phase 8 — operator-facing OAuth begin/callback + API-key connect.
+  // Wires the per-vendor OAuth descriptors / token exchangers /
+  // API-key validators built from the loaded ProxyConfig secret
+  // bundle, plus a connection-writer adapter that funnels OAuth
+  // bundles through `RepositoryIntegrationRoutesGateway.connect` and
+  // first-backfill enqueues through
+  // `productionBindings.firstConnectionBackfillEnqueueGateway`. Demo
+  // mode skips this — the per-vendor adapter map is empty so the
+  // dispatcher always returns 503 oauth_exchange_unconfigured.
+  final operatorOAuthGateway = RepositoryIntegrationRoutesGateway(
+    tenantWrapper: productionBindings.tenantTransactionWrapper,
+    permissionGuard: productionBindings.adminPermissionGuard,
+    credentialEnvelopeKey: productionBindings.pgcryptoEnvelopeKey,
+  );
+  final operatorOAuthStateStore = PostgresIntegrationOAuthStateStore(
+    tenantWrapper: productionBindings.tenantTransactionWrapper,
+    adminWrapper: TenantTransactionWrapper(productionBindings.adminPool),
+  );
+  final operatorOAuthConnectionWriter = makeIntegrationOAuthConnectionWriter(
+    gateway: operatorOAuthGateway,
+    firstBackfillEnqueueGateway:
+        productionBindings.firstConnectionBackfillEnqueueGateway,
+  );
+  final operatorOAuthWiring = buildPhase8OperatorOAuthWiring(
+    proxyConfig: config,
+    connectionWriter: operatorOAuthConnectionWriter,
+  );
+  IntegrationOAuthRoutes.globalBindings = _OperatorOAuthRoutesBindingsHolder(
+    requestGuard: authGuard,
+    stateStore: operatorOAuthStateStore,
+    integrationRoutesGateway:
+        wrapRepositoryGatewayForToolApi(operatorOAuthGateway),
+    connectionWriter: operatorOAuthWiring.connectionWriter,
+    oauthBeginDescriptors: operatorOAuthWiring.oauthBeginDescriptors,
+    oauthExchangers: operatorOAuthWiring.oauthExchangers,
+    apiKeyValidators: operatorOAuthWiring.apiKeyValidators,
+    firstBackfillEnqueueGateway:
+        productionBindings.firstConnectionBackfillEnqueueGateway,
+    integrationCategoryResolver: productionBindings.integrationCategoryResolver,
+    operatorUiBaseUri: config.publicBaseUri,
+  );
+  log(
+    LogSeverity.info,
+    'startup.operator_oauth_routes.installed',
+    fields: <String, Object?>{
+      'oauth_descriptors_wired': operatorOAuthWiring
+          .oauthBeginDescriptors.keys
+          .toList()
+        ..sort(),
+      'oauth_exchangers_wired': operatorOAuthWiring.oauthExchangers.keys
+          .toList()
+        ..sort(),
+      'api_key_validators_wired': operatorOAuthWiring.apiKeyValidators.keys
+          .toList()
+        ..sort(),
+      'disabled_vendors': operatorOAuthWiring.disabledVendors,
+    },
+  );
+
   final server = await HttpServer.bind(InternetAddress.anyIPv4, config.port);
 
   // CODE_HEALTH L4 — graceful shutdown.
@@ -1148,4 +1209,49 @@ List<String> loadProxyMigrationFilenames({Directory? directory}) {
           .toList()
         ..sort();
   return List<String>.unmodifiable(filenames);
+}
+
+/// Production [IntegrationOAuthRoutesBindingsHolder] backed by the
+/// resolved per-vendor OAuth descriptors / exchangers / API-key
+/// validators + the `RepositoryIntegrationRoutesGateway` connect
+/// adapter. The proxy bootstrap installs a single instance once at
+/// startup; the listener loop's marked region calls into
+/// `IntegrationOAuthRoutes.tryHandleStatic` on every request.
+class _OperatorOAuthRoutesBindingsHolder
+    implements IntegrationOAuthRoutesBindingsHolder {
+  _OperatorOAuthRoutesBindingsHolder({
+    required this.requestGuard,
+    required this.stateStore,
+    required this.integrationRoutesGateway,
+    required this.connectionWriter,
+    required this.oauthBeginDescriptors,
+    required this.oauthExchangers,
+    required this.apiKeyValidators,
+    required this.firstBackfillEnqueueGateway,
+    required this.integrationCategoryResolver,
+    required this.operatorUiBaseUri,
+  }) : stateTokenTtl = const Duration(minutes: 10);
+
+  @override
+  final ProxyRequestGuard requestGuard;
+  @override
+  final IntegrationOAuthStateStore stateStore;
+  @override
+  final IntegrationRoutesGateway integrationRoutesGateway;
+  @override
+  final IntegrationOAuthConnectionWriter connectionWriter;
+  @override
+  final Map<String, VendorOAuthBeginDescriptor> oauthBeginDescriptors;
+  @override
+  final Map<String, VendorOAuthCodeExchanger> oauthExchangers;
+  @override
+  final Map<String, VendorApiKeyValidator> apiKeyValidators;
+  @override
+  final FirstConnectionBackfillEnqueueGateway? firstBackfillEnqueueGateway;
+  @override
+  final IntegrationCategoryResolver? integrationCategoryResolver;
+  @override
+  final Uri? operatorUiBaseUri;
+  @override
+  final Duration stateTokenTtl;
 }
