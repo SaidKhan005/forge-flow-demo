@@ -18,10 +18,9 @@ import '../models/shift_dashboard_read_model.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_screen_header.dart';
 import '../widgets/data_source_health_pill.dart';
-import '../widgets/metric_card_not_yet_available.dart';
+import '../widgets/metric_pill.dart';
 import '../widgets/sticky_section_delegate.dart';
 import '../widgets/zone_status_card.dart';
-import '../widgets/input_metric_card.dart';
 import '../widgets/sales_forecast_card.dart';
 import '../domain/models/metric_provenance.dart';
 
@@ -500,24 +499,46 @@ class _SectionHeaderWithIcon extends StatelessWidget {
 
 // ─── Outputs section (Sales, Labor%, Covers, Blended Wage) ──────────────────
 
+/// Converts a domain provenance ID string (e.g. "vendor_toast_pos",
+/// "vendor_quickbooks_time_partial_sync", "none") into a short human-
+/// readable label for [MetricPillProvenance.label].
+///
+/// TODO(11W.metric-pill): replace with a proper vendor-display-name
+/// lookup table once Phase 8 connector metadata exposes display names.
+String _provenanceLabelFor(String provenanceId) {
+  if (provenanceId == provenanceNone || provenanceId.isEmpty) return 'Unknown';
+  final stripped = provenanceId
+      .replaceFirst('vendor_', '')
+      .replaceAll('_with_fallback_labor_dollars', '')
+      .replaceAll('_partial_sync', ' (partial)')
+      .replaceAll('_', ' ');
+  // Title-case the first letter only.
+  return stripped.isEmpty
+      ? 'Unknown'
+      : stripped[0].toUpperCase() + stripped.substring(1);
+}
+
+/// Adapts a [MetricProvenance] domain object to the widget-layer
+/// [MetricPillProvenance] descriptor used by [MetricPill].
+MetricPillProvenance _toPillProvenance(
+  MetricProvenance prov, {
+  String? unavailableTooltip,
+}) {
+  return MetricPillProvenance(
+    label: _provenanceLabelFor(prov.provenance),
+    tooltip: prov.state == MetricState.unavailable ? unavailableTooltip : null,
+  );
+}
+
 class _OutputsSection extends StatelessWidget {
   final ShiftDashboardReadModel readModel;
   const _OutputsSection({required this.readModel});
 
   @override
   Widget build(BuildContext context) {
-    // Extract output metric cards: COVERS and BLENDED WAGE
-    final coversCard = readModel.metricCards
-        .where((m) => m.name == 'COVERS')
-        .toList();
-    final wageCard = readModel.metricCards
-        .where((m) => m.name == 'BLENDED WAGE')
-        .toList();
-
-    // Phase 8.0 V1 lean cut 2 — switch on MetricProvenance state
-    // BEFORE rendering. When state is `unavailable`, render
-    // MetricCardNotYetAvailable in the same slot so the dashboard
-    // never produces a phantom zero.
+    // feat(11W.metric-pill): converted from InputMetricCard /
+    // MetricCardNotYetAvailable conditional to MetricPill, which
+    // enforces state + provenance at the widget boundary.
     final coversProv = readModel.coversProvenance;
     final wageProv = readModel.blendedWageProvenance;
 
@@ -548,25 +569,31 @@ class _OutputsSection extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
-                  child: coversProv.state == MetricState.unavailable
-                      ? const MetricCardNotYetAvailable(metricLabel: 'COVERS')
-                      : (coversCard.isNotEmpty
-                            ? InputMetricCard(metric: coversCard.first)
-                            : const MetricCardNotYetAvailable(
-                                metricLabel: 'COVERS',
-                              )),
+                  child: MetricPill(
+                    state: coversProv.state,
+                    provenance: _toPillProvenance(
+                      coversProv,
+                      unavailableTooltip:
+                          'Connect a POS vendor to see covers.',
+                    ),
+                    label: 'COVERS',
+                    value: coversProv.value,
+                    formatter: (v) => '${v.toInt()}',
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: wageProv.state == MetricState.unavailable
-                      ? const MetricCardNotYetAvailable(
-                          metricLabel: 'BLENDED WAGE',
-                        )
-                      : (wageCard.isNotEmpty
-                            ? InputMetricCard(metric: wageCard.first)
-                            : const MetricCardNotYetAvailable(
-                                metricLabel: 'BLENDED WAGE',
-                              )),
+                  child: MetricPill(
+                    state: wageProv.state,
+                    provenance: _toPillProvenance(
+                      wageProv,
+                      unavailableTooltip:
+                          'Connect a labor vendor to see blended wage.',
+                    ),
+                    label: 'BLENDED WAGE',
+                    value: wageProv.value,
+                    formatter: (v) => '\$${v.toStringAsFixed(2)}',
+                  ),
                 ),
               ],
             ),
@@ -585,25 +612,15 @@ class _InputsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Input metric cards: PPA, CPLH, SPLH (exclude COVERS and BLENDED WAGE)
-    final inputCards = readModel.metricCards
-        .where((m) => m.name != 'COVERS' && m.name != 'BLENDED WAGE')
-        .toList();
+    // feat(11W.metric-pill): converted from InputMetricCard /
+    // MetricCardNotYetAvailable conditional to MetricPill for PPA,
+    // CPLH, and SPLH. Provenance state flows from the read model;
+    // no state is hardcoded as live.
 
-    // Phase 8.0 V1 lean cut 2 — provenance lookup per metric.
-    final provByName = <String, MetricProvenance>{
-      'PPA': readModel.ppaProvenance,
-      'CPLH': readModel.cplhProvenance,
-      'SPLH': readModel.splhProvenance,
-    };
-
-    Widget renderInputCard(InputMetric m) {
-      final prov = provByName[m.name];
-      if (prov != null && prov.state == MetricState.unavailable) {
-        return MetricCardNotYetAvailable(metricLabel: m.name);
-      }
-      return InputMetricCard(metric: m);
-    }
+    // Provenance objects from read model (carry state + provenance string).
+    final ppaProv = readModel.ppaProvenance;
+    final cplhProv = readModel.cplhProvenance;
+    final splhProv = readModel.splhProvenance;
 
     // Hours data — plan targets from SchedulePlan day row
     final fohScheduled = readModel.scheduledFohHours;
@@ -618,7 +635,7 @@ class _InputsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // PPA, CPLH, SPLH in grid
+          // PPA, CPLH, SPLH in grid — each rendered via MetricPill.
           GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
@@ -626,7 +643,41 @@ class _InputsSection extends StatelessWidget {
             crossAxisSpacing: 8,
             mainAxisSpacing: 8,
             childAspectRatio: 1.05,
-            children: inputCards.map(renderInputCard).toList(),
+            children: [
+              MetricPill(
+                state: ppaProv.state,
+                provenance: _toPillProvenance(
+                  ppaProv,
+                  unavailableTooltip:
+                      'Connect a POS vendor to see per-person average.',
+                ),
+                label: 'PPA',
+                value: ppaProv.value,
+                formatter: (v) => '\$${v.toStringAsFixed(2)}',
+              ),
+              MetricPill(
+                state: cplhProv.state,
+                provenance: _toPillProvenance(
+                  cplhProv,
+                  unavailableTooltip:
+                      'Connect a labor vendor to see covers per labor hour.',
+                ),
+                label: 'CPLH',
+                value: cplhProv.value,
+                formatter: (v) => v.toStringAsFixed(2),
+              ),
+              MetricPill(
+                state: splhProv.state,
+                provenance: _toPillProvenance(
+                  splhProv,
+                  unavailableTooltip:
+                      'Connect a labor vendor to see sales per labor hour.',
+                ),
+                label: 'SPLH',
+                value: splhProv.value,
+                formatter: (v) => '\$${v.toStringAsFixed(0)}',
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           // FOH + BOH hours side by side
@@ -1581,6 +1632,13 @@ class _ShiftDashboardHealthPill extends StatelessWidget {
         case MetricState.partial:
           summary = '$label: partial sync';
           break;
+        case MetricState.stale:
+          summary = '$label: stale — sync lapsed';
+          break;
+        case MetricState.empty:
+          summary = '$label: no data yet';
+          break;
+        case MetricState.demo:
         case MetricState.live:
           return;
       }

@@ -163,6 +163,36 @@ class SyncResult {
 /// mobile SQLite via the proxy, fires `AppRuntimeInvalidationBus` per
 /// write, and refreshes the demo-mode + data-accuracy + polling-tier
 /// snapshots in the same sweep.
+/// Structured event emitted when a sync page cursor violation is
+/// detected (A9.SY2 — cursor stability hardening).
+///
+/// A violation occurs when the server returns a [nextCursor] that
+/// sorts before the [inputCursor] we just sent, indicating a
+/// server-side row slipped behind the high-water mark. The
+/// [revisedCursor] is the cursor the sweep will re-pull from.
+class CursorViolationEvent {
+  const CursorViolationEvent({
+    required this.resource,
+    required this.inputCursor,
+    required this.nextCursor,
+    required this.revisedCursor,
+  });
+
+  /// Logical name of the sync resource (e.g. `'shift_records'`).
+  final String resource;
+
+  /// The cursor value sent to the proxy in the request that returned
+  /// [nextCursor].
+  final String inputCursor;
+
+  /// The non-monotone [nextCursor] the proxy returned.
+  final String nextCursor;
+
+  /// The cursor the sweep will re-pull from (1 ms before [nextCursor]),
+  /// or null if [nextCursor] could not be parsed as a timestamp.
+  final String? revisedCursor;
+}
+
 class PostgresShiftRecordToMobileSync {
   PostgresShiftRecordToMobileSync({
     required this.client,
@@ -177,6 +207,7 @@ class PostgresShiftRecordToMobileSync {
     SqliteWageRoleRowRepository? wageRoleRowRepository,
     AppRuntimeInvalidationBus? invalidationBus,
     this.pageSize = 200,
+    void Function(CursorViolationEvent)? onCursorViolation,
   }) : assert(pageSize > 0, 'pageSize must be positive'),
        openShiftSnapshotRepository =
            openShiftSnapshotRepository ??
@@ -196,7 +227,8 @@ class PostgresShiftRecordToMobileSync {
            SqliteWeeklyPlanSnapshotRepository.instance,
        wageRoleRowRepository =
            wageRoleRowRepository ?? SqliteWageRoleRowRepository.instance,
-       invalidationBus = invalidationBus ?? AppRuntimeInvalidationBus.instance;
+       invalidationBus = invalidationBus ?? AppRuntimeInvalidationBus.instance,
+       _onCursorViolation = onCursorViolation;
 
   final SyncProxyClient client;
   final ShiftRecordRepository shiftRepository;
@@ -210,6 +242,9 @@ class PostgresShiftRecordToMobileSync {
   final ImportTrackingDao watermarkDao;
   final AppRuntimeInvalidationBus invalidationBus;
   final int pageSize;
+
+  // A9.SY2 — cursor stability: optional structured violation callback.
+  final void Function(CursorViolationEvent)? _onCursorViolation;
 
   static const String _watermarkType = 'cursor';
   static const String _sourceTypePrefix = 'pg_shift_record_sync';
@@ -350,6 +385,49 @@ class PostgresShiftRecordToMobileSync {
     );
   }
 
+  // ── A9.SY2 — Cursor stability helpers ─────────────────────────────────────
+
+  /// Asserts cursor monotonicity for one page result.
+  ///
+  /// [nextCursor] should be lexicographically >= [inputCursor] since the
+  /// cursor encodes an ISO 8601 `modified_since` high-water mark (ISO 8601
+  /// strings are lexicographically ordered). When [inputCursor] is null
+  /// (first sweep) no comparison is possible and [nextCursor] is returned
+  /// unchanged. When a violation is detected the [_onCursorViolation]
+  /// callback fires with a structured [CursorViolationEvent] and the
+  /// sweep re-pulls from a cursor 1 ms before [nextCursor] so the slipped
+  /// row is included.
+  String _enforceMonotonicity({
+    required String resource,
+    required String? inputCursor,
+    required String nextCursor,
+  }) {
+    if (inputCursor == null || nextCursor.compareTo(inputCursor) >= 0) {
+      return nextCursor;
+    }
+    // Violation: next cursor regressed behind input cursor.
+    String? revisedCursor;
+    try {
+      final ts = DateTime.parse(nextCursor);
+      revisedCursor = ts
+          .subtract(const Duration(milliseconds: 1))
+          .toUtc()
+          .toIso8601String();
+    } catch (_) {
+      // Cursor is not a parseable timestamp — return as-is.
+      revisedCursor = null;
+    }
+    _onCursorViolation?.call(
+      CursorViolationEvent(
+        resource: resource,
+        inputCursor: inputCursor,
+        nextCursor: nextCursor,
+        revisedCursor: revisedCursor,
+      ),
+    );
+    return revisedCursor ?? nextCursor;
+  }
+
   /// Run one sync sweep for the (operator, location).
   ///
   /// Pull semantics:
@@ -485,13 +563,19 @@ class PostgresShiftRecordToMobileSync {
       if (next == null) {
         break;
       }
+      // A9.SY2 — assert cursor monotonicity before persisting.
+      final safeCursor = _enforceMonotonicity(
+        resource: 'shift_records',
+        inputCursor: cursor,
+        nextCursor: next,
+      );
       await _writeCursor(
         restaurantId: restaurantId,
         operatorId: operatorId,
         locationId: locationId,
-        cursorToken: next,
+        cursorToken: safeCursor,
       );
-      cursor = next;
+      cursor = safeCursor;
     }
 
     while (true) {

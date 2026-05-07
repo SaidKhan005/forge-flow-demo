@@ -606,6 +606,23 @@ class _FakeTransaction implements PostgresTransaction {
         <String, Object?>{'connection_id': connId},
       ];
     }
+    if (sql.contains('from public.demo_mode_state') &&
+        sql.contains('for update')) {
+      // A2 fix: SELECT FOR UPDATE on demo_mode_state — used by the
+      // watermark advance to read the pending counter before flipping.
+      final operatorId = parameters['operator_id'] as String;
+      final locationId = parameters['location_id'] as String;
+      final category = parameters['category'] as String;
+      final key = '$operatorId|$locationId|$category';
+      final row = pool.demoModeState[key];
+      if (row == null) return const <PostgresRow>[];
+      return <PostgresRow>[
+        <String, Object?>{
+          'pending_inserts_count': row['pending_inserts_count'] ?? 0,
+          'is_demo': row['is_demo'] ?? true,
+        },
+      ];
+    }
     if (sql.contains('insert into public.cover_facts')) {
       final operatorId = parameters['operator_id'] as String;
       final vendorId = parameters['vendor_id'] as String;
@@ -675,17 +692,23 @@ class _FakeTransaction implements PostgresTransaction {
       final locationId = parameters['location_id'] as String;
       final category = parameters['category'] as String;
       final key = '$operatorId|$locationId|$category';
-      pool.demoModeState.putIfAbsent(
-        key,
-        () => <String, Object?>{
+      // A2 fix: ON CONFLICT DO UPDATE increments pending_inserts_count.
+      if (pool.demoModeState.containsKey(key)) {
+        // ON CONFLICT DO UPDATE SET pending_inserts_count = pending_inserts_count + 1
+        final existing = pool.demoModeState[key]!;
+        existing['pending_inserts_count'] =
+            (existing['pending_inserts_count'] as int? ?? 0) + 1;
+      } else {
+        pool.demoModeState[key] = <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,
           'category': category,
           'is_demo': true,
+          'pending_inserts_count': 1,
           'flipped_to_live_at': null,
           'flipped_by_connection_id': null,
-        },
-      );
+        };
+      }
       return 1;
     }
     if (sql.contains('update public.demo_mode_state')) {
@@ -701,6 +724,7 @@ class _FakeTransaction implements PostgresTransaction {
       row['is_demo'] = false;
       row['flipped_to_live_at'] = parameters['now'];
       row['flipped_by_connection_id'] = parameters['connection_id'];
+      row['pending_inserts_count'] = 0;
       return 1;
     }
     if (sql.contains('update public.vendor_credentials')) {

@@ -1,4 +1,7 @@
 // Phase 7.55o.5 — Baseline Manager action bars.
+// A9.SY1 — Done button now uses ConnectivityRequiredButton so the star
+// target write is blocked with an explicit "Requires connection" label
+// when the device is offline.
 //
 // Clear All bar and the bottom Cancel / Done bar. Extracted from
 // baseline_manager_screen.dart. Callback wiring, copy, and disabled
@@ -8,6 +11,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/connectivity_required_button.dart';
 
 // ─── Clear All bar ────────────────────────────────────────────────────────────
 
@@ -82,23 +86,14 @@ class BottomBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          // Done — always enabled; empty draft clears the override
+          // Done — gated on connectivity (A9.SY1). Empty draft still
+          // routes through _done() which clears the override server-side
+          // only when online; offline taps are blocked.
           Expanded(
             flex: 2,
-            child: GestureDetector(
-              onTap: onDone,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: const BoxDecoration(
-                  color: AppColors.sunset,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  'DONE',
-                  style: AppTextStyles.mono8(
-                      color: AppColors.backgroundDeep),
-                ),
-              ),
+            child: ConnectivityRequiredButton(
+              label: 'DONE',
+              onPressed: () => onDone(),
             ),
           ),
         ],
