@@ -8,6 +8,7 @@ Branch: `codex/admin-console-performance-ux-polish`
 
 - Base observed before this pass: `origin/master` `cb8afb80`
 - Deployed source commit: `40e04629`
+- Rebased follow-up branch source commit: `63a9ca53`
 - Admin URL: https://forge-flow-preview-backend-surface-additions-admi-rf7nosnoka-pd.a.run.app
 - Proxy URL: https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app
 - Admin revision: `forge-flow-preview-backend-surface-additions-admin-00026-5d9`, 100% traffic
@@ -82,7 +83,7 @@ The implementation kept tabs for related, repeat-use admin work, made labels cle
 
 - `flutter test test/admin --concurrency=1`
 - `flutter test test/proxy_auth_operations_gateway_test.dart test/proxy_auth_operations_route_test.dart test/proxy_auth_operations_route_grants_test.dart test/user_lifecycle_live_binding_test.dart`
-- `flutter analyze`
+- `flutter analyze` passed before the rebase. After rebasing onto `origin/master` `489538ae`, it is blocked by inherited latest-master analyzer issues outside this admin patch: invalid fake overrides in MFA tests, missing idempotency-store methods in `tool/advisor_proxy/proxy_bootstrap.dart`, and unrelated lint warnings/infos in auth/tool tests. The proxy compile blocker was fixed in `63a9ca53`; the remaining analyzer issues pre-exist this admin diff.
 - `flutter build web --release --target=lib/main_admin.dart --dart-define=ADMIN_PROXY_BASE_URI=https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app --pwa-strategy=none`
 - `dart run tool/perf_gate/staging_console_probe.dart --run --enforce-budgets --admin-url=https://forge-flow-preview-backend-surface-additions-admi-rf7nosnoka-pd.a.run.app --proxy-url=https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app --admin-revision=forge-flow-preview-backend-surface-additions-admin-00026-5d9 --proxy-revision=forge-flow-preview-backend-surface-additions-proxy-00071-jmv --label=admin-console-performance-ux-polish-40e04629 --write-json=build/perf_gate/admin-console-performance-ux-polish-40e04629.json`
 
@@ -90,4 +91,4 @@ The implementation kept tabs for related, repeat-use admin work, made labels cle
 
 - Browser Use visual screenshots were blocked by in-app browser screenshot timeout, so this note records console/route-click evidence rather than image evidence.
 - The preview is runtime-isolated but data-shared with staging secrets; successful live mutation proof should use a data-isolated preview or a specific approved target action.
-- The deployed commit is `40e04629`; this note itself will be committed after deployment as documentation evidence.
+- The branch was rebased onto latest `origin/master` after PR 243 was found merged. A redeploy from the rebased source built the proxy image but Cloud Run rejected the new revision because `forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com` lacks `secretmanager.versions.access` on `forge-flow-staging-pgcrypto-envelope-key`. I did not grant IAM without explicit approval. Live traffic remained on admin `00026-5d9` and proxy `00071-jmv`.
