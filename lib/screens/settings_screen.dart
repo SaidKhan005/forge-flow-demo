@@ -15,24 +15,29 @@ import '../services/auth/password_change_gateway.dart';
 import '../services/mfa/mfa_operations_gateway.dart';
 import '../services/shift_service.dart';
 import '../services/team/team_invite_form_controller.dart';
-import '../services/team/team_scope_visibility_policy.dart';
 import '../services/team/team_users_list_controller.dart';
 import '../state/app_refresh_coordinator.dart';
 import '../state/auth_session_notifier.dart';
 import '../state/restaurant_scope_notifier.dart';
+import '../services/team/team_scope_visibility_policy.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sticky_section_delegate.dart';
 import 'settings/settings_active_sessions_section.dart';
-import 'settings/settings_advisor_corpus_section.dart';
 import 'settings/settings_audit_log_section.dart';
-import 'settings/settings_advisor_model_section.dart';
 import 'settings/settings_custom_roles_section.dart';
 import 'settings/settings_data_sections.dart';
 import 'settings/settings_mfa_section.dart';
 import 'settings/settings_org_hierarchy_section.dart';
+import 'settings/settings_pointer_row.dart';
 import 'settings/settings_timing_authority_section.dart';
 import 'settings/settings_wage_authority_section.dart';
 import 'team/team_settings_section.dart';
+
+/// W3.A — mobile Settings is a 3-tab read-only mirror of the operator
+/// web console. `kDemoMode` toggles demo-only rows (Data reset + Demo
+/// date) without changing the production layout. Defined as a top-
+/// level const so widget tests can flip it via `--dart-define`.
+const bool _kDemoMode = bool.fromEnvironment('kDemoMode');
 
 class SettingsScreen extends StatefulWidget {
   /// Optional injected status for testability. When null, loads from service.
@@ -281,21 +286,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     final session = authNotifier?.session;
     final showAccount = session != null;
-    final showAdvisorModels =
-        widget.forceShowAdvisorModelSection ||
-        (advisorModelSectionEnabled &&
-            widget.advisorModelConfigService != null);
-    final showAdvisorCorpus =
-        widget.forceShowAdvisorCorpusSection ||
-        (advisorCorpusSectionEnabled &&
-            widget.advisorCorpusAdminService != null);
-    final effectiveTeamActor =
-        widget.teamActor ??
-        (widget.forceShowTeamSection ? _debugTeamActor : null);
-    final showTeam =
-        effectiveTeamActor != null &&
-        (widget.forceShowTeamSection ||
-            TeamScopeVisibilityPolicy.canSeeTeamNav(effectiveTeamActor));
+    // W3.A — Team / Diagnostics / Advisor params remain on the
+    // constructor for backward compatibility with existing widget tests
+    // and call sites, but mobile no longer mounts those tabs. The
+    // Operator Web console owns Team management + advisor admin.
+    final effectiveTeamActor = widget.teamActor;
     // Non-admin signed-in users see only the Account tab. Admin tier
     // (operator_owner / operator_manager / super_admin / ff_support)
     // sees the rest. The gate is opt-in: a null teamActor (e.g.
@@ -307,12 +302,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         !showAccount ||
         effectiveTeamActor == null ||
         _isAdminTier(effectiveTeamActor);
+    final showFFSupport =
+        effectiveTeamActor != null && _isFFAccount(effectiveTeamActor);
     final tabs = <_SettingsTabSpec>[
       if (showAccount) _accountSettingsTab,
-      if (showTeam) _teamSettingsTab,
       if (showAdminTabs) _authoritySettingsTab,
       if (showAdminTabs) _dataSettingsTab,
-      if (showAdminTabs) _developerSettingsTab,
     ];
 
     return DefaultTabController(
@@ -353,7 +348,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _settingsSection(
                     title: 'Two-factor security',
                     description:
-                        'Add an authenticator app to better protect your account.',
+                        'Review the authenticator factors enrolled on your account.',
                     child: SettingsMfaSection(
                       gateway: widget.mfaOperationsGateway,
                       actor:
@@ -363,21 +358,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             restaurant?.restaurantId,
                           ),
                       refreshGeneration: _manualRefreshGeneration,
+                      viewOnly: true,
+                    ),
+                  ),
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: SettingsPointerRow(
+                        label: 'Manage two-factor security on Operator Web',
+                        opWebPath: 'security',
+                      ),
                     ),
                   ),
                   _settingsSection(
                     title: 'Account',
-                    description: 'Review your sign-in details and password.',
+                    description: 'Review your sign-in details.',
                     child: SettingsAccountSection(
                       accountInfoGateway: widget.accountInfoGateway,
                       passwordChangeGateway: widget.passwordChangeGateway,
                       refreshGeneration: _manualRefreshGeneration,
+                      viewOnly: true,
+                    ),
+                  ),
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: SettingsPointerRow(
+                        label: 'Manage account on Operator Web',
+                        opWebPath: 'my_account',
+                      ),
                     ),
                   ),
                   _settingsSection(
                     title: 'Active sessions',
                     description:
-                        'See where your account is signed in and sign out devices you do not recognize.',
+                        'See where your account is signed in. Sign-out controls live in Operator Web.',
                     child: SettingsActiveSessionsSection(
                       gateway: widget.authOperationsGateway,
                       actor:
@@ -389,129 +404,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       allowDemoGatewayFallback:
                           widget.allowDemoActiveSessionsFallback,
                       refreshGeneration: _manualRefreshGeneration,
-                      onSignOutAllDevices: () async {
-                        await authNotifier?.signOutAllSessions();
-                      },
+                      viewOnly: true,
                     ),
                   ),
-                  _settingsSection(
-                    title: 'Audit log',
-                    description: 'Review recent account and security activity.',
-                    child: SettingsAuditLogSection(
-                      gateway: widget.authOperationsGateway,
-                      actor:
-                          widget.auditLogActor ??
-                          _auditLogActorForSession(session),
-                      allowDemoGatewayFallback:
-                          widget.allowDemoAuditLogFallback,
-                      refreshGeneration: _manualRefreshGeneration,
-                    ),
-                  ),
-                ],
-              ),
-            if (showTeam)
-              _SettingsTabScrollView(
-                tabId: 'team',
-                onRefresh: _handlePullToRefresh,
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: _TeamSettingsLiveDataScope(
-                      roleOptions: widget.teamRoleOptions,
-                      roleOptionsListenable: widget.teamRoleOptionsListenable,
-                      users: widget.teamUsers,
-                      usersListenable: widget.teamUsersListenable,
-                      pendingInvites: widget.teamPendingInvites,
-                      pendingInvitesListenable:
-                          widget.teamPendingInvitesListenable,
-                      dataLoadState: widget.teamDataLoadState,
-                      dataLoadStateListenable:
-                          widget.teamDataLoadStateListenable,
-                      builder:
-                          (roleOptions, users, pendingInvites, dataLoadState) =>
-                              _OrgUnitOptionsListenableScope(
-                                seed: widget.teamOrgUnitOptions,
-                                listenable: widget.teamOrgUnitOptionsListenable,
-                                builder: (orgUnitOptions) =>
-                                    _RoleCatalogToOptionsScope(
-                                      fallback: roleOptions,
-                                      catalogSeed: widget.teamRoleCatalog,
-                                      catalogListenable:
-                                          widget.teamRoleCatalogListenable,
-                                      builder:
-                                          (
-                                            effectiveRoleOptions,
-                                            effectiveRoleCatalog,
-                                          ) => TeamSettingsSection(
-                                            actor: effectiveTeamActor,
-                                            users: users,
-                                            roleOptions: effectiveRoleOptions,
-                                            roleCatalog:
-                                                effectiveRoleCatalog.isEmpty
-                                                ? widget.teamRoleCatalog
-                                                : effectiveRoleCatalog,
-                                            locationOptions:
-                                                widget.teamLocationOptions,
-                                            orgUnitOptions: orgUnitOptions,
-                                            pendingInvites: pendingInvites,
-                                            dataLoadState: dataLoadState,
-                                            usersController:
-                                                widget.teamUsersListController,
-                                            inviteFormController:
-                                                widget.teamInviteFormController,
-                                            onInviteSubmitted:
-                                                widget.onTeamInviteSubmitted,
-                                            onInviteRevoked:
-                                                widget.onTeamInviteRevoked,
-                                            onUserAction:
-                                                widget.onTeamUserAction,
-                                            onDataRetry: widget.onTeamDataRetry,
-                                          ),
-                                    ),
-                              ),
-                    ),
-                  ),
-                  _settingsSection(
-                    title: 'Business structure',
-                    description:
-                        'Group locations into regions or districts for team access.',
-                    child: _OrgHierarchyListenableScope(
-                      seedOrgUnits: widget.teamOrgUnits,
-                      seedLocations: widget.teamOrgLocations,
-                      orgUnitsListenable: widget.teamOrgUnitsListenable,
-                      orgLocationsListenable: widget.teamOrgLocationsListenable,
-                      loadState: widget.teamOrgHierarchyLoadState,
-                      loadStateListenable:
-                          widget.teamOrgHierarchyLoadStateListenable,
-                      builder: (orgUnits, locations, loadState) =>
-                          SettingsOrgHierarchySection(
-                            actor: effectiveTeamActor,
-                            orgUnits: orgUnits,
-                            locations: locations,
-                            loadState: loadState,
-                            onCreateOrgUnit: widget.onTeamOrgUnitCreate,
-                            onMoveLocation: widget.onTeamLocationMove,
-                          ),
-                    ),
-                  ),
-                  _settingsSection(
-                    title: 'Team roles',
-                    description:
-                        'Create and review the access roles your team can receive.',
-                    child: _RoleCatalogLoadStateScope(
-                      seed: widget.teamRoleCatalogLoadState,
-                      listenable: widget.teamRoleCatalogLoadStateListenable,
-                      builder: (loadState) => _RoleCatalogListenableScope(
-                        seed: widget.teamRoleCatalog,
-                        listenable: widget.teamRoleCatalogListenable,
-                        builder: (catalog) => SettingsCustomRolesSection(
-                          actor: effectiveTeamActor,
-                          roleCatalog: catalog,
-                          loadState: loadState,
-                          onRetry: widget.onTeamDataRetry,
-                          onCreateRole: widget.onTeamRoleCreate,
-                          onPatchRole: widget.onTeamRolePatch,
-                          onDeleteRole: widget.onTeamRoleDelete,
-                        ),
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: SettingsPointerRow(
+                        label: 'Manage active sessions on Operator Web',
+                        opWebPath: 'sessions',
                       ),
                     ),
                   ),
@@ -533,11 +434,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           icon: Icons.storefront_outlined,
                           title: 'No restaurant selected',
                           description:
-                              'Pick a restaurant before editing business timing and wage settings.',
+                              'Pick a restaurant before reviewing business timing and wage settings.',
                         ),
                       ),
                     ),
-                  if (restaurant != null)
+                  if (restaurant != null) ...[
                     _settingsSection(
                       title: 'Business timing',
                       description:
@@ -546,11 +447,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         restaurantId: restaurant.restaurantId,
                       ),
                     ),
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: SettingsPointerRow(
+                          label: 'Manage business timing on Operator Web',
+                          opWebPath: 'business_setup',
+                        ),
+                      ),
+                    ),
+                  ],
                   _settingsSection(
                     title: 'Wage setup',
                     description:
                         'Review the wage mix used for labor targets and cost estimates.',
-                    child: WageAuthoritySection(onChanged: _refreshAppState),
+                    child: WageAuthoritySection(
+                      onChanged: _refreshAppState,
+                      viewOnly: true,
+                    ),
+                  ),
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: SettingsPointerRow(
+                        label: 'Manage wage setup on Operator Web',
+                        // Wage authority editor on Operator Web is
+                        // queued for W3.D — pre-stage as coming soon
+                        // so the pointer shape is consistent today.
+                        opWebPath: '',
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -576,15 +502,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'Shows when shared restaurant data last updated on this device.',
                     child: const SettingsDataFreshnessSection(),
                   ),
-                  _settingsSection(
-                    title: 'Data reset',
-                    description:
-                        'Use carefully when clearing local demo or operational data.',
-                    child: SettingsDataManagementSection(
-                      onAfterWrite: _refreshAfterWrite,
+                  if (_kDemoMode)
+                    _settingsSection(
+                      title: 'Data reset',
+                      description:
+                          'Use carefully when clearing local demo or operational data.',
+                      child: SettingsDataManagementSection(
+                        onAfterWrite: _refreshAfterWrite,
+                      ),
                     ),
-                  ),
-                  if (kDebugMode)
+                  if (_kDemoMode)
                     _settingsSection(
                       title: 'Demo date',
                       description:
@@ -594,40 +521,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onAfterWrite: _refreshAfterWrite,
                       ),
                     ),
-                ],
-              ),
-            if (showAdminTabs)
-              _SettingsTabScrollView(
-                tabId: 'developer',
-                onRefresh: _handlePullToRefresh,
-                slivers: [
-                  _settingsSection(
-                    title: 'Internal diagnostics',
-                    description:
-                        'Check whether core data sources line up before testing.',
-                    child: const SettingsAuditSection(),
-                  ),
-                  if (showAdvisorModels)
+                  if (showFFSupport)
                     _settingsSection(
-                      title: 'Advisor routing',
+                      title: 'Data alignment',
                       description:
-                          'Review which models answer quick and detailed advisor requests.',
-                      child: SettingsAdvisorModelSection(
-                        service:
-                            widget.advisorModelConfigService ??
-                            AdvisorModelConfigService(),
-                      ),
-                    ),
-                  if (showAdvisorCorpus)
-                    _settingsSection(
-                      title: 'Advisor content',
-                      description:
-                          'Inspect the content bundle the advisor can search.',
-                      child: SettingsAdvisorCorpusSection(
-                        service:
-                            widget.advisorCorpusAdminService ??
-                            AdvisorCorpusAdminService(),
-                      ),
+                          'F&F support diagnostics for canonical fact alignment.',
+                      child: const SettingsAuditSection(),
                     ),
                 ],
               ),
@@ -675,6 +574,16 @@ bool _isAdminTier(TeamScopeActor? actor) {
       actor.actorRoles.contains('ff_support');
 }
 
+/// W3.A — F&F support gate. The Data alignment section in the Data tab
+/// surfaces canonical-fact diagnostics that only super_admin /
+/// ff_support actors should see. Operators (owner / manager / etc.)
+/// stay out — the section is removed from their Data tab.
+bool _isFFAccount(TeamScopeActor? actor) {
+  if (actor == null) return false;
+  return actor.actorRoles.contains('super_admin') ||
+      actor.actorRoles.contains('ff_support');
+}
+
 ActiveSessionsActor _activeSessionsActorForSession(
   AuthSession session,
   String? activeSessionId,
@@ -684,14 +593,6 @@ ActiveSessionsActor _activeSessionsActorForSession(
     operatorId: session.operatorId,
     locationId: session.locationId,
     currentSessionId: activeSessionId,
-  );
-}
-
-AuditLogActor _auditLogActorForSession(AuthSession session) {
-  return AuditLogActor(
-    actorUserId: session.userId,
-    operatorId: session.operatorId,
-    locationId: session.locationId,
   );
 }
 
@@ -735,12 +636,6 @@ const _SettingsTabSpec _accountSettingsTab = _SettingsTabSpec(
   icon: Icons.person_outline,
 );
 
-const _SettingsTabSpec _teamSettingsTab = _SettingsTabSpec(
-  id: 'team',
-  label: 'Team',
-  icon: Icons.group_outlined,
-);
-
 const _SettingsTabSpec _authoritySettingsTab = _SettingsTabSpec(
   id: 'authority',
   label: 'Setup',
@@ -753,31 +648,6 @@ const _SettingsTabSpec _dataSettingsTab = _SettingsTabSpec(
   icon: Icons.storage_rounded,
 );
 
-const _SettingsTabSpec _developerSettingsTab = _SettingsTabSpec(
-  id: 'developer',
-  label: 'Diagnostics',
-  icon: Icons.terminal_rounded,
-);
-
-const TeamScopeActor _debugTeamActor = TeamScopeActor(
-  actorRoles: <String>{'operator_owner'},
-  actorOperatorId: 'debug-operator',
-  actorAssignedLocationIds: <String>{},
-  actorPermissions: <String>{
-    'team.users.view',
-    'team.users.invite',
-    'team.users.deactivate',
-    'team.users.reactivate',
-    'team.users.soft_delete',
-    'team.users.reset_password',
-    'team.users.reset_mfa',
-    'team.roles.view',
-    'team.roles.create_custom',
-    'team.roles.assign',
-    'team.roles.revoke',
-  },
-);
-
 class _SettingsTabSpec {
   final String id;
   final String label;
@@ -788,264 +658,6 @@ class _SettingsTabSpec {
     required this.label,
     required this.icon,
   });
-}
-
-class _TeamSettingsLiveDataScope extends StatelessWidget {
-  const _TeamSettingsLiveDataScope({
-    required this.roleOptions,
-    required this.users,
-    required this.pendingInvites,
-    required this.dataLoadState,
-    required this.builder,
-    this.roleOptionsListenable,
-    this.usersListenable,
-    this.pendingInvitesListenable,
-    this.dataLoadStateListenable,
-  });
-
-  final List<TeamRoleOption> roleOptions;
-  final List<TeamUserListItem> users;
-  final List<TeamPendingInviteListItem> pendingInvites;
-  final TeamSettingsDataLoadState dataLoadState;
-  final ValueListenable<List<TeamRoleOption>>? roleOptionsListenable;
-  final ValueListenable<List<TeamUserListItem>>? usersListenable;
-  final ValueListenable<List<TeamPendingInviteListItem>>?
-  pendingInvitesListenable;
-  final ValueListenable<TeamSettingsDataLoadState>? dataLoadStateListenable;
-  final Widget Function(
-    List<TeamRoleOption> roleOptions,
-    List<TeamUserListItem> users,
-    List<TeamPendingInviteListItem> pendingInvites,
-    TeamSettingsDataLoadState dataLoadState,
-  )
-  builder;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget withLoadState(
-      List<TeamRoleOption> roleValue,
-      List<TeamUserListItem> userValue,
-      List<TeamPendingInviteListItem> inviteValue,
-    ) {
-      final listenable = dataLoadStateListenable;
-      if (listenable == null) {
-        return builder(roleValue, userValue, inviteValue, dataLoadState);
-      }
-      return ValueListenableBuilder<TeamSettingsDataLoadState>(
-        valueListenable: listenable,
-        builder: (context, loadState, _) =>
-            builder(roleValue, userValue, inviteValue, loadState),
-      );
-    }
-
-    Widget withInvites(
-      List<TeamRoleOption> roleValue,
-      List<TeamUserListItem> userValue,
-    ) {
-      final listenable = pendingInvitesListenable;
-      if (listenable == null) {
-        return withLoadState(roleValue, userValue, pendingInvites);
-      }
-      return ValueListenableBuilder<List<TeamPendingInviteListItem>>(
-        valueListenable: listenable,
-        builder: (context, inviteValue, _) =>
-            withLoadState(roleValue, userValue, inviteValue),
-      );
-    }
-
-    Widget withUsers(List<TeamRoleOption> roleValue) {
-      final listenable = usersListenable;
-      if (listenable == null) return withInvites(roleValue, users);
-      return ValueListenableBuilder<List<TeamUserListItem>>(
-        valueListenable: listenable,
-        builder: (context, userValue, _) => withInvites(roleValue, userValue),
-      );
-    }
-
-    final listenable = roleOptionsListenable;
-    if (listenable == null) return withUsers(roleOptions);
-    return ValueListenableBuilder<List<TeamRoleOption>>(
-      valueListenable: listenable,
-      builder: (context, roleValue, _) {
-        return withUsers(roleValue);
-      },
-    );
-  }
-}
-
-class _OrgUnitOptionsListenableScope extends StatelessWidget {
-  const _OrgUnitOptionsListenableScope({
-    required this.seed,
-    required this.listenable,
-    required this.builder,
-  });
-
-  final List<TeamOrgUnitOption> seed;
-  final ValueListenable<List<TeamOrgUnitOption>>? listenable;
-  final Widget Function(List<TeamOrgUnitOption> orgUnitOptions) builder;
-
-  @override
-  Widget build(BuildContext context) {
-    final l = listenable;
-    if (l == null) return builder(seed);
-    return ValueListenableBuilder<List<TeamOrgUnitOption>>(
-      valueListenable: l,
-      builder: (context, value, _) => builder(value),
-    );
-  }
-}
-
-class _RoleCatalogListenableScope extends StatelessWidget {
-  const _RoleCatalogListenableScope({
-    required this.seed,
-    required this.listenable,
-    required this.builder,
-  });
-
-  final List<TeamRoleCatalogEntry> seed;
-  final ValueListenable<List<TeamRoleCatalogEntry>>? listenable;
-  final Widget Function(List<TeamRoleCatalogEntry> catalog) builder;
-
-  @override
-  Widget build(BuildContext context) {
-    final l = listenable;
-    if (l == null) return builder(seed);
-    return ValueListenableBuilder<List<TeamRoleCatalogEntry>>(
-      valueListenable: l,
-      builder: (context, value, _) => builder(value),
-    );
-  }
-}
-
-class _RoleCatalogLoadStateScope extends StatelessWidget {
-  const _RoleCatalogLoadStateScope({
-    required this.seed,
-    required this.listenable,
-    required this.builder,
-  });
-
-  final TeamRoleCatalogLoadState seed;
-  final ValueListenable<TeamRoleCatalogLoadState>? listenable;
-  final Widget Function(TeamRoleCatalogLoadState loadState) builder;
-
-  @override
-  Widget build(BuildContext context) {
-    final l = listenable;
-    if (l == null) return builder(seed);
-    return ValueListenableBuilder<TeamRoleCatalogLoadState>(
-      valueListenable: l,
-      builder: (context, value, _) => builder(value),
-    );
-  }
-}
-
-/// Phase 9.UX.2 — bridges the role catalog into
-/// [TeamSettingsSection.roleOptions]. When the catalog has entries,
-/// it is the source of truth for invite + role-grant role pickers
-/// (a custom role created on the Roles surface must be grantable
-/// without reopening Settings, per slice acceptance). When empty, the
-/// adapter falls back to whatever [_TeamSettingsLiveDataScope] passed
-/// in — keeping the legacy `teamRoleOptions` /
-/// `teamRoleOptionsListenable` wiring intact for app shells that have
-/// not yet plumbed the catalog listenable.
-class _RoleCatalogToOptionsScope extends StatelessWidget {
-  const _RoleCatalogToOptionsScope({
-    required this.fallback,
-    required this.catalogSeed,
-    required this.catalogListenable,
-    required this.builder,
-  });
-
-  final List<TeamRoleOption> fallback;
-  final List<TeamRoleCatalogEntry> catalogSeed;
-  final ValueListenable<List<TeamRoleCatalogEntry>>? catalogListenable;
-  final Widget Function(
-    List<TeamRoleOption> options,
-    List<TeamRoleCatalogEntry> catalog,
-  )
-  builder;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget resolve(List<TeamRoleCatalogEntry> catalog) {
-      if (catalog.isEmpty) return builder(fallback, catalog);
-      return builder(_optionsFromCatalog(catalog), catalog);
-    }
-
-    final l = catalogListenable;
-    if (l == null) return resolve(catalogSeed);
-    return ValueListenableBuilder<List<TeamRoleCatalogEntry>>(
-      valueListenable: l,
-      builder: (context, value, _) => resolve(value),
-    );
-  }
-
-  static List<TeamRoleOption> _optionsFromCatalog(
-    List<TeamRoleCatalogEntry> catalog,
-  ) {
-    return List<TeamRoleOption>.unmodifiable(
-      catalog.map(
-        (entry) =>
-            TeamRoleOption(roleId: entry.roleId, label: entry.displayName),
-      ),
-    );
-  }
-}
-
-class _OrgHierarchyListenableScope extends StatelessWidget {
-  const _OrgHierarchyListenableScope({
-    required this.seedOrgUnits,
-    required this.seedLocations,
-    required this.orgUnitsListenable,
-    required this.orgLocationsListenable,
-    required this.loadState,
-    required this.loadStateListenable,
-    required this.builder,
-  });
-
-  final List<TeamOrgUnitEntry> seedOrgUnits;
-  final List<TeamOrgLocationEntry> seedLocations;
-  final ValueListenable<List<TeamOrgUnitEntry>>? orgUnitsListenable;
-  final ValueListenable<List<TeamOrgLocationEntry>>? orgLocationsListenable;
-  final TeamOrgHierarchyLoadState loadState;
-  final ValueListenable<TeamOrgHierarchyLoadState>? loadStateListenable;
-  final Widget Function(
-    List<TeamOrgUnitEntry> orgUnits,
-    List<TeamOrgLocationEntry> locations,
-    TeamOrgHierarchyLoadState loadState,
-  )
-  builder;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget withLoadState(
-      List<TeamOrgUnitEntry> units,
-      List<TeamOrgLocationEntry> locations,
-    ) {
-      final l = loadStateListenable;
-      if (l == null) return builder(units, locations, loadState);
-      return ValueListenableBuilder<TeamOrgHierarchyLoadState>(
-        valueListenable: l,
-        builder: (context, value, _) => builder(units, locations, value),
-      );
-    }
-
-    Widget withLocations(List<TeamOrgUnitEntry> units) {
-      final l = orgLocationsListenable;
-      if (l == null) return withLoadState(units, seedLocations);
-      return ValueListenableBuilder<List<TeamOrgLocationEntry>>(
-        valueListenable: l,
-        builder: (context, value, _) => withLoadState(units, value),
-      );
-    }
-
-    final units = orgUnitsListenable;
-    if (units == null) return withLocations(seedOrgUnits);
-    return ValueListenableBuilder<List<TeamOrgUnitEntry>>(
-      valueListenable: units,
-      builder: (context, value, _) => withLocations(value),
-    );
-  }
 }
 
 class _SettingsBottomNav extends StatelessWidget {

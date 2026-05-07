@@ -73,12 +73,18 @@ class SettingsMfaSection extends StatefulWidget {
     this.actor,
     this.allowDemoGatewayFallback = false,
     this.refreshGeneration = 0,
+    this.viewOnly = false,
   });
 
   final MfaOperationsGateway? gateway;
   final MfaActorContext? actor;
   final bool allowDemoGatewayFallback;
   final int refreshGeneration;
+
+  /// W3.A — when true, mobile renders the enrolled-factor list as a
+  /// read-only summary. Enrollment + removal flows live in the
+  /// Operator Web console.
+  final bool viewOnly;
 
   @override
   State<SettingsMfaSection> createState() => _SettingsMfaSectionState();
@@ -411,26 +417,29 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
           loading: _loadingFactors,
           factors: visibleFactors,
           removalRequests: _removalRequests,
-          onRevoke: _busyRevoke ? null : _onRevoke,
-          onCancelRemoval: _busyCancelRemoval ? null : _onCancelRemoval,
+          onRevoke: widget.viewOnly || _busyRevoke ? null : _onRevoke,
+          onCancelRemoval:
+              widget.viewOnly || _busyCancelRemoval ? null : _onCancelRemoval,
         ),
-        const SettingsRowDivider(),
-        if (_enrollStage == _EnrollmentStage.idle &&
-            !_loadingFactors &&
-            visibleFactors.isEmpty &&
-            _errorMessage == null)
-          _MfaEnrollButton(
-            busy: _busyEnroll,
-            onPressed: () => _onBeginEnrollment(),
-          ),
-        if (_enrollStage == _EnrollmentStage.scanning && _pendingSetup != null)
-          _MfaScanRow(
-            setup: _pendingSetup!,
-            codeController: _codeController,
-            busy: _busyEnroll,
-            onConfirm: _onConfirmEnrollment,
-            onCancel: _onCancelEnrollment,
-          ),
+        if (!widget.viewOnly) ...[
+          const SettingsRowDivider(),
+          if (_enrollStage == _EnrollmentStage.idle &&
+              !_loadingFactors &&
+              visibleFactors.isEmpty &&
+              _errorMessage == null)
+            _MfaEnrollButton(
+              busy: _busyEnroll,
+              onPressed: () => _onBeginEnrollment(),
+            ),
+          if (_enrollStage == _EnrollmentStage.scanning && _pendingSetup != null)
+            _MfaScanRow(
+              setup: _pendingSetup!,
+              codeController: _codeController,
+              busy: _busyEnroll,
+              onConfirm: _onConfirmEnrollment,
+              onCancel: _onCancelEnrollment,
+            ),
+        ],
         if (_errorMessage != null) ...[
           const SettingsRowDivider(),
           _MfaStatusRow(

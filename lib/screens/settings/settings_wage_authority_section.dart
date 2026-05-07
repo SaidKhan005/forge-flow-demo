@@ -20,7 +20,16 @@ import '../../theme/app_theme.dart';
 
 class WageAuthoritySection extends StatefulWidget {
   final VoidCallback onChanged;
-  const WageAuthoritySection({super.key, required this.onChanged});
+
+  /// W3.A — when true, the mobile mirror suppresses the editor button
+  /// and renders only the read-only summary. The Operator Web console
+  /// owns wage-mix mutations.
+  final bool viewOnly;
+  const WageAuthoritySection({
+    super.key,
+    required this.onChanged,
+    this.viewOnly = false,
+  });
 
   @override
   State<WageAuthoritySection> createState() => _WageAuthoritySectionState();
@@ -204,14 +213,16 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
                 'Management roles help estimate the average wage, but do not change front or back staffing.',
           ),
 
-          const SizedBox(height: 16),
+          if (!widget.viewOnly) ...[
+            const SizedBox(height: 16),
 
-          // ── Single whole-mix edit action (primary button) ────────────
-          _WageMixPrimaryButton(
-            icon: Icons.edit_outlined,
-            label: 'Edit wage mix',
-            onTap: _openMixEditor,
-          ),
+            // ── Single whole-mix edit action (primary button) ────────────
+            _WageMixPrimaryButton(
+              icon: Icons.edit_outlined,
+              label: 'Edit wage mix',
+              onTap: _openMixEditor,
+            ),
+          ],
         ],
       ),
     );

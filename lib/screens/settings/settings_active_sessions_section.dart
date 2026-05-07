@@ -141,6 +141,7 @@ class SettingsActiveSessionsSection extends StatefulWidget {
     this.allowDemoGatewayFallback = false,
     this.refreshGeneration = 0,
     this.onSignOutAllDevices,
+    this.viewOnly = false,
   });
 
   final AuthOperationsGateway? gateway;
@@ -150,6 +151,11 @@ class SettingsActiveSessionsSection extends StatefulWidget {
   /// the demo fixture lets the walkthrough click path complete.
   final bool allowDemoGatewayFallback;
   final int refreshGeneration;
+
+  /// W3.A — when true, the mobile mirror hides every revoke / sign-out
+  /// affordance. Operators still see their session list with last-
+  /// active timestamps; mutations move to the Operator Web console.
+  final bool viewOnly;
 
   /// Callback the Account-tab shell wires to
   /// `AuthSessionNotifier.signOutAllSessions()` so the notifier state
@@ -418,7 +424,8 @@ class _SettingsActiveSessionsSectionState
                 isRevoking: _revokingSessionIds.contains(
                   _sessions[i].sessionId,
                 ),
-                onRevoke: () => _revoke(_sessions[i]),
+                onRevoke: widget.viewOnly ? null : () => _revoke(_sessions[i]),
+                viewOnly: widget.viewOnly,
               ),
               if (i != _sessions.length - 1) const SettingsRowDivider(),
             ],
@@ -428,23 +435,25 @@ class _SettingsActiveSessionsSectionState
             ],
           ],
         ),
-        const SizedBox(height: 10),
-        SettingsCard(
-          children: [
-            SettingsActionRow(
-              key: const Key('active_sessions_sign_out_everywhere'),
-              icon: Icons.phonelink_lock_rounded,
-              label: _signingOutAll
-                  ? 'Signing out of all devices'
-                  : 'Sign out of all devices',
-              description:
-                  'Signs out every active session for your account. You will need '
-                  'to sign in again on every device.',
-              tone: SettingsRowTone.danger,
-              onTap: _signingOutAll ? () {} : _signOutAllDevices,
-            ),
-          ],
-        ),
+        if (!widget.viewOnly) ...[
+          const SizedBox(height: 10),
+          SettingsCard(
+            children: [
+              SettingsActionRow(
+                key: const Key('active_sessions_sign_out_everywhere'),
+                icon: Icons.phonelink_lock_rounded,
+                label: _signingOutAll
+                    ? 'Signing out of all devices'
+                    : 'Sign out of all devices',
+                description:
+                    'Signs out every active session for your account. You will need '
+                    'to sign in again on every device.',
+                tone: SettingsRowTone.danger,
+                onTap: _signingOutAll ? () {} : _signOutAllDevices,
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -540,12 +549,14 @@ class _ActiveSessionRow extends StatelessWidget {
     required this.isCurrent,
     required this.isRevoking,
     required this.onRevoke,
+    this.viewOnly = false,
   });
 
   final AuthSessionSummary summary;
   final bool isCurrent;
   final bool isRevoking;
-  final VoidCallback onRevoke;
+  final VoidCallback? onRevoke;
+  final bool viewOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -640,6 +651,8 @@ class _ActiveSessionRow extends StatelessWidget {
                 style: AppTextStyles.mono10(color: AppColors.textMuted),
               ),
             )
+          else if (viewOnly || onRevoke == null)
+            const SizedBox.shrink()
           else if (isRevoking)
             const SizedBox(
               width: 18,
