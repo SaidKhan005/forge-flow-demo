@@ -39,12 +39,20 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
+
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
+import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart'
+    show MetadataServerAccessTokenProvider, OAuthAccessTokenProvider;
 
+import 'checks/age_cypher_match.dart';
 import 'checks/check_result.dart';
 import 'checks/dns_resolution.dart';
 import 'checks/firewall_reachability.dart';
+import 'checks/health_endpoint.dart';
+import 'checks/partman_cron_active.dart';
+import 'checks/pgvector_cosine.dart';
 import 'checks/rls_isolation.dart';
 import 'checks/schema_presence.dart';
 import 'checks/secret_manager_reachability.dart';
@@ -78,6 +86,10 @@ class PreflightConfig {
     this.locationBUuid,
     this.dnsHostnames = const <String>[],
     this.requiredSecrets = const <String>[],
+    this.ageGraphName,
+    this.proxyBaseUri,
+    this.gcpProjectId,
+    this.skipHealthEndpoint = false,
   });
 
   final bool run;
@@ -100,6 +112,10 @@ class PreflightConfig {
   final String? locationBUuid;
   final List<String> dnsHostnames;
   final List<String> requiredSecrets;
+  final String? ageGraphName;
+  final String? proxyBaseUri;
+  final String? gcpProjectId;
+  final bool skipHealthEndpoint;
 
   static PreflightConfig parse(List<String> args) {
     var run = false;
@@ -122,6 +138,10 @@ class PreflightConfig {
     String? locationBUuid;
     final dnsHostnames = <String>[];
     final requiredSecrets = <String>[];
+    String? ageGraphName;
+    String? proxyBaseUri;
+    String? gcpProjectId;
+    var skipHealthEndpoint = false;
 
     for (final arg in args) {
       if (arg == '--run') {
@@ -165,6 +185,14 @@ class PreflightConfig {
         dnsHostnames.add(_value('dns-hostname', arg));
       } else if (arg.startsWith('--required-secret=')) {
         requiredSecrets.add(_value('required-secret', arg));
+      } else if (arg.startsWith('--age-graph-name=')) {
+        ageGraphName = _value('age-graph-name', arg);
+      } else if (arg.startsWith('--proxy-base-uri=')) {
+        proxyBaseUri = _value('proxy-base-uri', arg);
+      } else if (arg.startsWith('--gcp-project-id=')) {
+        gcpProjectId = _value('gcp-project-id', arg);
+      } else if (arg == '--skip-health-endpoint') {
+        skipHealthEndpoint = true;
       } else {
         throw UsageException('unknown argument: $arg');
       }
@@ -180,6 +208,7 @@ class PreflightConfig {
         includeFirewallProbe: includeFirewallProbe,
         skipFirewall: skipFirewall,
         skipSecrets: skipSecrets,
+        skipHealthEndpoint: skipHealthEndpoint,
       );
     }
 
@@ -222,6 +251,10 @@ class PreflightConfig {
       locationBUuid: locationBUuid,
       dnsHostnames: List.unmodifiable(dnsHostnames),
       requiredSecrets: List.unmodifiable(requiredSecrets),
+      ageGraphName: ageGraphName,
+      proxyBaseUri: proxyBaseUri,
+      gcpProjectId: gcpProjectId,
+      skipHealthEndpoint: skipHealthEndpoint,
     );
   }
 
@@ -285,6 +318,10 @@ Future<PreflightReport> runPreflight({
   FirewallReachabilityCheck? firewallCheck,
   SecretManagerReachabilityCheck? secretsCheck,
   DnsResolutionCheck? dnsCheck,
+  AgeCypherMatchCheck? ageCypherMatchCheck,
+  PgvectorCosineCheck? pgvectorCosineCheck,
+  HealthEndpointCheck? healthEndpointCheck,
+  PartmanCronActiveCheck? partmanCronActiveCheck,
 }) async {
   final results = <CheckResult>[];
 
@@ -294,8 +331,20 @@ Future<PreflightReport> runPreflight({
   if (config.includeRlsIsolation && rlsIsolationCheck != null) {
     results.add(await rlsIsolationCheck.run());
   }
+  if (ageCypherMatchCheck != null) {
+    results.add(await ageCypherMatchCheck.run());
+  }
+  if (pgvectorCosineCheck != null) {
+    results.add(await pgvectorCosineCheck.run());
+  }
+  if (partmanCronActiveCheck != null) {
+    results.add(await partmanCronActiveCheck.run());
+  }
   if (config.includeFirewallProbe && firewallCheck != null) {
     results.add(await firewallCheck.run());
+  }
+  if (healthEndpointCheck != null) {
+    results.add(await healthEndpointCheck.run());
   }
   if (secretsCheck != null) {
     results.add(await secretsCheck.run());
@@ -323,8 +372,25 @@ String formatPlan(PreflightConfig config) {
       'fixture write under operator A, read under B; expect zero rows',
     )
     ..writeln(
+      '  - age_cypher_match — trivial Cypher MATCH on the AGE graph; '
+      'proves the AGE extension is installed and the graph exists',
+    )
+    ..writeln(
+      '  - pgvector_cosine — `<=>` cosine distance probe; proves '
+      'pgvector is installed and the operator is registered',
+    )
+    ..writeln(
+      '  - partman_cron_active — pg_partman + pg_cron extensions '
+      'installed, and cron.job has at least one scheduled job',
+    )
+    ..writeln(
       '  - firewall_reachability (optional, --include-firewall-probe) '
       '— TCP probe to Postgres host',
+    )
+    ..writeln(
+      '  - health_endpoint — HTTP GET on the production proxy /health '
+      'route; expects 200 + body marker. Pass --proxy-base-uri=<uri> '
+      'or set PROXY_BASE_URI; --skip-health-endpoint omits the check',
     )
     ..writeln(
       '  - secret_manager_reachability — every named production '
@@ -419,6 +485,23 @@ Check toggles:
   --skip-firewall                 force firewall_reachability to yellow
   --skip-secrets                  force secret_manager_reachability to
                                     yellow (workstation runs)
+  --skip-health-endpoint          omit the /health probe (no proxy
+                                    deployed yet, or no network egress)
+
+AGE / pgvector / partman + cron:
+  --age-graph-name=<name>         override the default AGE graph name
+                                    (default: forge_graph)
+
+Health endpoint:
+  --proxy-base-uri=<uri>          base URI for the Cloud Run proxy;
+                                    /health is appended. Falls back to
+                                    PROXY_BASE_URI env var when unset.
+
+GCP Secret Manager (live read):
+  --gcp-project-id=<id>           override the default GCP project id
+                                    (default: GOOGLE_CLOUD_PROJECT env
+                                    var). Required when running with
+                                    live secret reads.
 
 Schema presence overrides:
   --expect-table=<name>           extend the expected-table set; may
@@ -438,11 +521,15 @@ Future<void> main(List<String> args) async {
 }
 
 /// Visible for tests: same as [main] but with the production pool
-/// factory injected. Test bypasses the real `package:postgres`
-/// connection by passing a fake.
+/// factory + secret-read + http probe injected. Tests bypass the real
+/// `package:postgres` / GCP Secret Manager / Cloud Run network IO by
+/// passing fakes.
 Future<void> runMain(
   List<String> args, {
   required PostgresPool Function(String connectionString) defaultPoolFactory,
+  SecretReadProbe? secretReadOverride,
+  HealthHttpProbe? healthHttpProbeOverride,
+  Map<String, String>? environment,
 }) async {
   final PreflightConfig config;
   try {
@@ -465,6 +552,7 @@ Future<void> runMain(
   }
 
   final pool = defaultPoolFactory(config.connectionString!);
+  final env = environment ?? Platform.environment;
 
   final schemaPresenceCheck = SchemaPresenceCheck(
     pool: pool,
@@ -481,6 +569,12 @@ Future<void> runMain(
       fixtureTable: config.fixtureTable ?? kDefaultRlsFixtureTable,
     );
   }
+  final ageCypherMatchCheck = AgeCypherMatchCheck(
+    pool: pool,
+    graphName: config.ageGraphName ?? kDefaultAgeGraphName,
+  );
+  final pgvectorCosineCheck = PgvectorCosineCheck(pool: pool);
+  final partmanCronActiveCheck = PartmanCronActiveCheck(pool: pool);
   FirewallReachabilityCheck? firewallCheck;
   if (config.includeFirewallProbe && !config.skipFirewall) {
     firewallCheck = FirewallReachabilityCheck(
@@ -491,8 +585,36 @@ Future<void> runMain(
   // If both --include-firewall-probe and --skip-firewall are set,
   // skip wins; we never construct the check, so it is silently
   // omitted from the report (the operator chose to skip).
+
+  // Health endpoint check. Skip when --skip-health-endpoint is set or
+  // no proxy base URI is provided (workstation runs without a deployed
+  // proxy). The harness never silently invents a default URI; the
+  // operator must opt in via --proxy-base-uri or PROXY_BASE_URI.
+  HealthEndpointCheck? healthEndpointCheck;
+  if (!config.skipHealthEndpoint) {
+    final baseUriRaw = config.proxyBaseUri ?? env['PROXY_BASE_URI'];
+    if (baseUriRaw != null && baseUriRaw.isNotEmpty) {
+      final base = Uri.parse(baseUriRaw);
+      final healthUri = base.replace(
+        path: base.path.endsWith('/')
+            ? '${base.path}health'
+            : '${base.path}/health',
+      );
+      healthEndpointCheck = HealthEndpointCheck(
+        healthUri: healthUri,
+        probe: healthHttpProbeOverride ?? _defaultHealthProbe,
+      );
+    }
+  }
+
+  final SecretReadProbe secretRead = secretReadOverride ??
+      _buildDefaultSecretRead(
+        gcpProjectId: config.gcpProjectId ??
+            env['GOOGLE_CLOUD_PROJECT'] ??
+            env['GCP_PROJECT'],
+      );
   final secretsCheck = SecretManagerReachabilityCheck(
-    secretRead: _defaultSecretRead,
+    secretRead: secretRead,
     skipped: config.skipSecrets,
     skipReason: config.skipSecrets ? 'workstation_run' : null,
     requiredSecrets: config.requiredSecrets.isEmpty
@@ -514,6 +636,10 @@ Future<void> runMain(
     firewallCheck: firewallCheck,
     secretsCheck: secretsCheck,
     dnsCheck: dnsCheck,
+    ageCypherMatchCheck: ageCypherMatchCheck,
+    pgvectorCosineCheck: pgvectorCosineCheck,
+    healthEndpointCheck: healthEndpointCheck,
+    partmanCronActiveCheck: partmanCronActiveCheck,
   );
 
   final encoded = const JsonEncoder.withIndent('  ').convert(report.toJson());
@@ -549,26 +675,117 @@ Future<bool> _connectivityProbe(PostgresPool pool) async {
   }
 }
 
-/// Default secret-read probe — returns false until a real
-/// implementation lands. The harness ships code-ready, but reading a
-/// production GCP Secret Manager secret requires the gcloud SDK or
-/// a service-account key on the local environment, neither of which
-/// can be assumed at run time. The runbook tells the operator to
-/// pass `--skip-secrets` from a workstation. When the lane to wire
-/// in a real GCP SDK call lands (post-cutover infra, not blocking
-/// V1), this stub flips to a real call.
-Future<bool> _defaultSecretRead(String secretName) async {
-  // Returning false would emit a red verdict for every secret on a
-  // workstation run, which is noise. We instead throw — the caller
-  // surfaces a clear "skip with --skip-secrets" hint via the yellow
-  // path. This means a fresh `--run` without `--skip-secrets` will
-  // be red on the secrets check, naming the right escalation in
-  // the runbook.
-  throw StateError(
-    'secret read probe is not yet wired to a live GCP Secret Manager '
-    'client; pass --skip-secrets when running from a workstation, '
-    'or run from the production deploy account once the SDK call '
-    'lands',
+/// Builds the default secret-read probe. The probe authenticates via
+/// Application Default Credentials (Cloud Run / Compute Engine
+/// metadata server, or `GOOGLE_APPLICATION_CREDENTIALS` for
+/// developer machines that have a service-account key on disk) and
+/// hits the Secret Manager REST API at
+/// `projects/<project>/secrets/<name>/versions/latest:access`.
+///
+/// When [gcpProjectId] is null/empty the probe does not throw —
+/// it returns false for every read, which the wrapper converts into
+/// a red verdict listing every required secret. The operator can
+/// either pass `--gcp-project-id=<id>`, set `GOOGLE_CLOUD_PROJECT`,
+/// or pass `--skip-secrets` from a workstation that does not carry
+/// production credentials.
+SecretReadProbe _buildDefaultSecretRead({String? gcpProjectId}) {
+  if (gcpProjectId == null || gcpProjectId.isEmpty) {
+    return (_) async => false;
+  }
+  final probe = _GcpSecretManagerSecretReadProbe(
+    projectId: gcpProjectId,
+    accessTokenProvider: MetadataServerAccessTokenProvider(),
+    httpClient: http.Client(),
+  );
+  return probe.read;
+}
+
+/// Hostname for the Secret Manager REST API. Same constant the
+/// production KMS provider uses (lib/infrastructure/kms/
+/// gcp_secret_manager_kms_provider.dart).
+const String _secretManagerHost = 'secretmanager.googleapis.com';
+
+/// Reads `projects/<project>/secrets/<name>/versions/latest:access`
+/// and returns true iff the response is HTTP 200 + a non-empty
+/// payload. All other outcomes (404, 403, transport error, malformed
+/// JSON, empty payload) return false; callers convert false into a
+/// red verdict naming the offending secret. We never throw on a
+/// network or authorization failure — the SecretManagerReachabilityCheck
+/// is responsible for accumulating offenders, not for hard-stopping
+/// on the first error.
+class _GcpSecretManagerSecretReadProbe {
+  _GcpSecretManagerSecretReadProbe({
+    required this.projectId,
+    required OAuthAccessTokenProvider accessTokenProvider,
+    required http.Client httpClient,
+    this.timeout = const Duration(seconds: 10),
+  })  : _accessTokenProvider = accessTokenProvider,
+        _httpClient = httpClient;
+
+  final String projectId;
+  final Duration timeout;
+  final OAuthAccessTokenProvider _accessTokenProvider;
+  final http.Client _httpClient;
+
+  Future<bool> read(String secretName) async {
+    final String token;
+    try {
+      token = await _accessTokenProvider.accessToken().timeout(timeout);
+    } catch (_) {
+      // No ADC / metadata server unreachable → caller marks this
+      // secret unreadable and escalates per the runbook.
+      return false;
+    }
+    final uri = Uri.https(
+      _secretManagerHost,
+      '/v1/projects/$projectId/secrets/$secretName/versions/latest:access',
+    );
+    final http.Response response;
+    try {
+      response = await _httpClient
+          .get(
+            uri,
+            headers: <String, String>{
+              'Authorization': 'Bearer $token',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(timeout);
+    } catch (_) {
+      return false;
+    }
+    if (response.statusCode != 200) return false;
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } catch (_) {
+      return false;
+    }
+    if (decoded is! Map) return false;
+    final payload = decoded['payload'];
+    if (payload is! Map) return false;
+    final data = payload['data'];
+    if (data is! String || data.isEmpty) return false;
+    // GCP returns base64; decode to confirm the value is non-empty.
+    try {
+      final bytes = base64Decode(data);
+      return bytes.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
+/// Default `/health` HTTP probe. Wraps `package:http` so the harness
+/// stays consistent with the rest of the proxy code paths. Tests
+/// inject a fake.
+Future<HealthProbeResponse> _defaultHealthProbe(Uri uri) async {
+  final response = await http
+      .get(uri, headers: const <String, String>{'Accept': 'text/plain'})
+      .timeout(const Duration(seconds: 10));
+  return HealthProbeResponse(
+    statusCode: response.statusCode,
+    body: response.body,
   );
 }
 

@@ -22,9 +22,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 
+import '../../../tool/cutover/checks/age_cypher_match.dart';
 import '../../../tool/cutover/checks/check_result.dart';
 import '../../../tool/cutover/checks/dns_resolution.dart';
 import '../../../tool/cutover/checks/firewall_reachability.dart';
+import '../../../tool/cutover/checks/health_endpoint.dart';
+import '../../../tool/cutover/checks/partman_cron_active.dart';
+import '../../../tool/cutover/checks/pgvector_cosine.dart';
 import '../../../tool/cutover/checks/rls_isolation.dart';
 import '../../../tool/cutover/checks/schema_presence.dart';
 import '../../../tool/cutover/checks/secret_manager_reachability.dart';
@@ -356,6 +360,365 @@ void main() {
       expect(result.details['unreadable_secret_names'], <String>[
         'forge-flow-production-anthropic-api-key',
       ]);
+    });
+  });
+
+  group('AgeCypherMatchCheck', () {
+    test('AGE MATCH returns rows → green', () async {
+      final pool = _ScriptedPool([
+        _ScriptedTransaction(
+          queryResponses: <String, List<PostgresRow>>{
+            "cypher('forge_graph'": <PostgresRow>[
+              <String, Object?>{'n': '{"id": 1}::vertex'},
+            ],
+          },
+        ),
+      ]);
+      final check = AgeCypherMatchCheck(pool: pool);
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.green);
+      expect(result.details['returned_row_count'], 1);
+      expect(result.details['graph_name'], 'forge_graph');
+      expect(pool.transactions[0].rolledBack, isTrue);
+    });
+
+    test('empty result → green (graph just empty)', () async {
+      final pool = _ScriptedPool([
+        _ScriptedTransaction(
+          queryResponses: const <String, List<PostgresRow>>{},
+        ),
+      ]);
+      final check = AgeCypherMatchCheck(pool: pool);
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.green);
+      expect(result.details['returned_row_count'], 0);
+    });
+
+    test('query throws (extension missing) → red', () async {
+      final pool = _ScriptedPool([
+        _ScriptedTransaction(throwOnQuery: 'extension "age" does not exist'),
+      ]);
+      final check = AgeCypherMatchCheck(pool: pool);
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.red);
+      expect(
+        result.message,
+        contains('cutover_preflight_red_age_cypher_match'),
+      );
+      expect(pool.transactions[0].rolledBack, isTrue);
+    });
+
+    test('unsafe graph name → red, no DB calls', () async {
+      final pool = _ScriptedPool([]);
+      final check = AgeCypherMatchCheck(
+        pool: pool,
+        graphName: "evil'; drop table users",
+      );
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.red);
+      expect(result.message, contains('safe SQL identifier'));
+      expect(pool.beginTransactionCount, 0);
+    });
+  });
+
+  group('PgvectorCosineCheck', () {
+    test('cosine distance in range → green', () async {
+      final pool = _ScriptedPool([
+        _ScriptedTransaction(
+          queryResponses: <String, List<PostgresRow>>{
+            'as distance': <PostgresRow>[
+              <String, Object?>{'distance': 1.0},
+            ],
+          },
+        ),
+      ]);
+      final check = PgvectorCosineCheck(pool: pool);
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.green);
+      expect(result.details['distance'], 1.0);
+      expect(pool.transactions[0].rolledBack, isTrue);
+    });
+
+    test('cosine distance returned as String parses → green', () async {
+      final pool = _ScriptedPool([
+        _ScriptedTransaction(
+          queryResponses: <String, List<PostgresRow>>{
+            'as distance': <PostgresRow>[
+              <String, Object?>{'distance': '1.0'},
+            ],
+          },
+        ),
+      ]);
+      final check = PgvectorCosineCheck(pool: pool);
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.green);
+    });
+
+    test('cosine distance out of range → red', () async {
+      final pool = _ScriptedPool([
+        _ScriptedTransaction(
+          queryResponses: <String, List<PostgresRow>>{
+            'as distance': <PostgresRow>[
+              <String, Object?>{'distance': 5.0},
+            ],
+          },
+        ),
+      ]);
+      final check = PgvectorCosineCheck(pool: pool);
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.red);
+      expect(
+        result.message,
+        contains('cutover_preflight_red_pgvector_cosine'),
+      );
+    });
+
+    test('query throws (extension missing) → red', () async {
+      final pool = _ScriptedPool([
+        _ScriptedTransaction(
+          throwOnQuery: 'operator does not exist: vector <=> vector',
+        ),
+      ]);
+      final check = PgvectorCosineCheck(pool: pool);
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.red);
+      expect(
+        result.message,
+        contains('cutover_preflight_red_pgvector_cosine'),
+      );
+      expect(pool.transactions[0].rolledBack, isTrue);
+    });
+
+    test('null distance → red (does not throw)', () async {
+      final pool = _ScriptedPool([
+        _ScriptedTransaction(
+          queryResponses: <String, List<PostgresRow>>{
+            'as distance': <PostgresRow>[
+              <String, Object?>{'distance': null},
+            ],
+          },
+        ),
+      ]);
+      final check = PgvectorCosineCheck(pool: pool);
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.red);
+    });
+  });
+
+  group('HealthEndpointCheck', () {
+    test('200 with marker → green', () async {
+      final check = HealthEndpointCheck(
+        healthUri: Uri.parse('https://proxy.example/health'),
+        probe: (uri) async => const HealthProbeResponse(
+          statusCode: 200,
+          body: '{"status":"ok","app":"forge-flow"}',
+        ),
+      );
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.green);
+      expect(result.details['status_code'], 200);
+    });
+
+    test('200 without marker → red', () async {
+      final check = HealthEndpointCheck(
+        healthUri: Uri.parse('https://proxy.example/health'),
+        probe: (uri) async => const HealthProbeResponse(
+          statusCode: 200,
+          body: '{"status":"ok"}',
+        ),
+      );
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.red);
+      expect(
+        result.message,
+        contains('cutover_preflight_red_health_endpoint'),
+      );
+    });
+
+    test('non-200 status → red', () async {
+      final check = HealthEndpointCheck(
+        healthUri: Uri.parse('https://proxy.example/health'),
+        probe: (uri) async => const HealthProbeResponse(
+          statusCode: 502,
+          body: 'bad gateway',
+        ),
+      );
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.red);
+      expect(result.details['status_code'], 502);
+    });
+
+    test('probe throws → red, does not propagate', () async {
+      final check = HealthEndpointCheck(
+        healthUri: Uri.parse('https://proxy.example/health'),
+        probe: (uri) async {
+          throw const SocketTestException('connection refused');
+        },
+      );
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.red);
+      expect(
+        result.message,
+        contains('cutover_preflight_red_health_endpoint'),
+      );
+    });
+  });
+
+  group('PartmanCronActiveCheck', () {
+    test('both extensions present, ≥1 cron job → green', () async {
+      final pool = _ScriptedPool([
+        _ScriptedTransaction(
+          queryResponses: <String, List<PostgresRow>>{
+            'pg_extension': <PostgresRow>[
+              <String, Object?>{'extname': 'pg_partman'},
+              <String, Object?>{'extname': 'pg_cron'},
+            ],
+            'cron.job': <PostgresRow>[
+              <String, Object?>{'n': 3},
+            ],
+          },
+        ),
+      ]);
+      final check = PartmanCronActiveCheck(pool: pool);
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.green);
+      expect(result.details['cron_job_count'], 3);
+      expect(pool.transactions[0].rolledBack, isTrue);
+    });
+
+    test('one extension missing → red, names offender', () async {
+      final pool = _ScriptedPool([
+        _ScriptedTransaction(
+          queryResponses: <String, List<PostgresRow>>{
+            'pg_extension': <PostgresRow>[
+              <String, Object?>{'extname': 'pg_partman'},
+              // pg_cron missing
+            ],
+          },
+        ),
+      ]);
+      final check = PartmanCronActiveCheck(pool: pool);
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.red);
+      expect(result.details['missing_extensions'], <String>['pg_cron']);
+    });
+
+    test('no cron jobs scheduled → red', () async {
+      final pool = _ScriptedPool([
+        _ScriptedTransaction(
+          queryResponses: <String, List<PostgresRow>>{
+            'pg_extension': <PostgresRow>[
+              <String, Object?>{'extname': 'pg_partman'},
+              <String, Object?>{'extname': 'pg_cron'},
+            ],
+            'cron.job': <PostgresRow>[
+              <String, Object?>{'n': 0},
+            ],
+          },
+        ),
+      ]);
+      final check = PartmanCronActiveCheck(pool: pool);
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.red);
+      expect(
+        result.message,
+        contains('cutover_preflight_red_partman_cron_active'),
+      );
+      expect(result.details['cron_job_count'], 0);
+    });
+
+    test('query throws → red, does not propagate', () async {
+      final pool = _ScriptedPool([
+        _ScriptedTransaction(throwOnQuery: 'permission denied'),
+      ]);
+      final check = PartmanCronActiveCheck(pool: pool);
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.red);
+      expect(
+        result.message,
+        contains('cutover_preflight_red_partman_cron_active_query_failed'),
+      );
+      expect(pool.transactions[0].rolledBack, isTrue);
+    });
+  });
+
+  group('SecretReadProbe (live wiring via override)', () {
+    test('all secrets readable → green', () async {
+      final read = <String>[];
+      final check = SecretManagerReachabilityCheck(
+        secretRead: (name) async {
+          read.add(name);
+          return true;
+        },
+        requiredSecrets: const <String>[
+          'forge-flow-production-postgres-url',
+          'forge-flow-production-anthropic-api-key',
+        ],
+      );
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.green);
+      expect(read, hasLength(2));
+    });
+
+    test('probe throws on one secret → red, names offender', () async {
+      final check = SecretManagerReachabilityCheck(
+        secretRead: (name) async {
+          if (name == 'forge-flow-production-voyage-api-key') {
+            throw const SocketTestException('unauthorized');
+          }
+          return true;
+        },
+        requiredSecrets: const <String>[
+          'forge-flow-production-postgres-url',
+          'forge-flow-production-voyage-api-key',
+        ],
+      );
+
+      final result = await check.run();
+
+      expect(result.status, CheckStatus.red);
+      expect(result.details['unreadable_secret_names'], <String>[
+        'forge-flow-production-voyage-api-key',
+      ]);
+      // Errors map records the runtime type without leaking the message.
+      final errors = result.details['errors_by_name'] as Map?;
+      expect(errors!['forge-flow-production-voyage-api-key'], isNotNull);
     });
   });
 
