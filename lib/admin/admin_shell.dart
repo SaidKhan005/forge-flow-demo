@@ -133,6 +133,7 @@ class _AdminShellState extends State<AdminShell> {
 bool _routeUsesOperatorScope(String routeId) {
   return routeId == kAdminDataAccuracyRouteId ||
       routeId == kAdminPollingPricingRouteId ||
+      routeId == kAdminSupportOperatorViewRouteId ||
       routeId == kAdminMembersRouteId ||
       routeId == kAdminRolesHierarchySessionsRouteId ||
       routeId == kAdminAuditedSupportActionsRouteId;

@@ -36,6 +36,7 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     this.onOpenSupportLogs,
     this.onOpenDataAccuracy,
     this.onOpenPollingPricing,
+    this.onOpenSupportOperatorView,
     this.onOpenTeam,
     this.onOpenAccess,
     this.onOpenAuditSupport,
@@ -47,6 +48,8 @@ class OperatorLocationAdminScreen extends StatefulWidget {
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
+  final ValueChanged<AdminOperatorLocationScopeIntent>?
+  onOpenSupportOperatorView;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenTeam;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAccess;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAuditSupport;
@@ -310,6 +313,7 @@ class _OperatorLocationAdminScreenState
               onOpenSupportLogs: widget.onOpenSupportLogs,
               onOpenDataAccuracy: widget.onOpenDataAccuracy,
               onOpenPollingPricing: widget.onOpenPollingPricing,
+              onOpenSupportOperatorView: widget.onOpenSupportOperatorView,
               onOpenTeam: widget.onOpenTeam,
               onOpenAccess: widget.onOpenAccess,
               onOpenAuditSupport: widget.onOpenAuditSupport,
@@ -817,6 +821,7 @@ class _OperatorDetail extends StatelessWidget {
     required this.onOpenSupportLogs,
     required this.onOpenDataAccuracy,
     required this.onOpenPollingPricing,
+    required this.onOpenSupportOperatorView,
     required this.onOpenTeam,
     required this.onOpenAccess,
     required this.onOpenAuditSupport,
@@ -834,6 +839,8 @@ class _OperatorDetail extends StatelessWidget {
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
+  final ValueChanged<AdminOperatorLocationScopeIntent>?
+  onOpenSupportOperatorView;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenTeam;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAccess;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAuditSupport;
@@ -911,79 +918,17 @@ class _OperatorDetail extends StatelessWidget {
                       children: [
                         _OperatorActionButton(
                           buttonKey: Key(
-                            'admin_operator_team_${operator.operatorId}',
+                            'admin_operator_support_view_${operator.operatorId}',
                           ),
-                          label: 'Team',
-                          icon: Icons.people_alt_outlined,
-                          tooltip: 'Open team and roles for this business',
-                          onPressed: onOpenTeam == null
-                              ? null
-                              : () => onOpenTeam!(_primaryScope),
-                        ),
-                        _OperatorActionButton(
-                          buttonKey: Key(
-                            'admin_operator_access_${operator.operatorId}',
-                          ),
-                          label: 'Access',
-                          icon: Icons.shield_outlined,
+                          label: 'Support view',
+                          icon: Icons.support_agent_outlined,
                           tooltip:
-                              'Open hierarchy and sessions for this business',
-                          onPressed: onOpenAccess == null
+                              'Open people, access, security, audit, and vendors',
+                          minWidth: 142,
+                          onPressed: onOpenSupportOperatorView == null
                               ? null
-                              : () => onOpenAccess!(_primaryScope),
+                              : () => onOpenSupportOperatorView!(_primaryScope),
                         ),
-                        _OperatorActionButton(
-                          buttonKey: Key(
-                            'admin_operator_audit_support_${operator.operatorId}',
-                          ),
-                          label: 'Audit & support',
-                          icon: Icons.history_outlined,
-                          tooltip:
-                              'Open audit trail and support actions for this business',
-                          minWidth: 150,
-                          onPressed: onOpenAuditSupport == null
-                              ? null
-                              : () => onOpenAuditSupport!(_primaryScope),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    _ActionRowWrap(
-                      children: [
-                        if (editingEnabled)
-                          _OperatorActionButton(
-                            buttonKey: const Key('admin_operator_edit_button'),
-                            label: 'Edit',
-                            icon: Icons.edit_outlined,
-                            tooltip: 'Edit business account',
-                            onPressed: () => onEditOperator(bundle),
-                          ),
-                        if (editingEnabled && operator.isSuspended)
-                          _OperatorActionButton(
-                            buttonKey: const Key(
-                              'admin_operator_reactivate_button',
-                            ),
-                            label: 'Reactivate',
-                            icon: Icons.play_arrow_outlined,
-                            tooltip: 'Reactivate this business account',
-                            onPressed: () => onReactivate(bundle),
-                          ),
-                        if (editingEnabled && !operator.isSuspended)
-                          _OperatorActionButton(
-                            buttonKey: const Key(
-                              'admin_operator_suspend_button',
-                            ),
-                            label: 'Suspend',
-                            icon: Icons.pause_outlined,
-                            tooltip: 'Suspend this business account',
-                            destructive: true,
-                            onPressed: () => onSuspend(bundle),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    _ActionRowWrap(
-                      children: [
                         _OperatorActionButton(
                           buttonKey: Key(
                             'admin_operator_data_accuracy_${operator.operatorId}',
@@ -1025,6 +970,40 @@ class _OperatorDetail extends StatelessWidget {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    _ActionRowWrap(
+                      children: [
+                        if (editingEnabled)
+                          _OperatorActionButton(
+                            buttonKey: const Key('admin_operator_edit_button'),
+                            label: 'Edit',
+                            icon: Icons.edit_outlined,
+                            tooltip: 'Edit business account',
+                            onPressed: () => onEditOperator(bundle),
+                          ),
+                        if (editingEnabled && operator.isSuspended)
+                          _OperatorActionButton(
+                            buttonKey: const Key(
+                              'admin_operator_reactivate_button',
+                            ),
+                            label: 'Reactivate',
+                            icon: Icons.play_arrow_outlined,
+                            tooltip: 'Reactivate this business account',
+                            onPressed: () => onReactivate(bundle),
+                          ),
+                        if (editingEnabled && !operator.isSuspended)
+                          _OperatorActionButton(
+                            buttonKey: const Key(
+                              'admin_operator_suspend_button',
+                            ),
+                            label: 'Suspend',
+                            icon: Icons.pause_outlined,
+                            tooltip: 'Suspend this business account',
+                            destructive: true,
+                            onPressed: () => onSuspend(bundle),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ],
@@ -1033,6 +1012,9 @@ class _OperatorDetail extends StatelessWidget {
           const SizedBox(height: 12),
           _BusinessSetupCard(
             bundle: bundle,
+            onOpenSupportOperatorView: onOpenSupportOperatorView == null
+                ? null
+                : () => onOpenSupportOperatorView!(_primaryScope),
             onOpenTeam: onOpenTeam == null
                 ? null
                 : () => onOpenTeam!(_primaryScope),
@@ -1117,6 +1099,17 @@ class _OperatorDetail extends StatelessWidget {
                                 locationName: location.name,
                               ),
                             ),
+                      onOpenSupportOperatorView:
+                          onOpenSupportOperatorView == null
+                          ? null
+                          : () => onOpenSupportOperatorView!(
+                              AdminOperatorLocationScopeIntent(
+                                operatorId: operator.operatorId,
+                                locationId: location.locationId,
+                                operatorName: operator.businessName,
+                                locationName: location.name,
+                              ),
+                            ),
                       onOpenTeam: onOpenTeam == null
                           ? null
                           : () => onOpenTeam!(
@@ -1163,6 +1156,7 @@ class _OperatorDetail extends StatelessWidget {
 class _BusinessSetupCard extends StatelessWidget {
   const _BusinessSetupCard({
     required this.bundle,
+    required this.onOpenSupportOperatorView,
     required this.onOpenTeam,
     required this.onOpenAccess,
     required this.onOpenAuditSupport,
@@ -1171,6 +1165,7 @@ class _BusinessSetupCard extends StatelessWidget {
   });
 
   final OperatorAdminBundle bundle;
+  final VoidCallback? onOpenSupportOperatorView;
   final VoidCallback? onOpenTeam;
   final VoidCallback? onOpenAccess;
   final VoidCallback? onOpenAuditSupport;
@@ -1239,39 +1234,46 @@ class _BusinessSetupCard extends StatelessWidget {
                 tone: hasPrimary ? AppColors.positive : AppColors.warning,
               ),
               _SetupTile(
-                label: 'Team & roles',
+                label: 'Support workspace',
+                value: 'Open',
+                icon: Icons.support_agent_outlined,
+                tone: AppColors.sunset,
+                onPressed: onOpenSupportOperatorView,
+              ),
+              _SetupTile(
+                label: 'People',
                 value: 'Review',
                 icon: Icons.people_alt_outlined,
                 tone: AppColors.peacock,
                 onPressed: onOpenTeam,
               ),
               _SetupTile(
-                label: 'Hierarchy & sessions',
+                label: 'Access',
                 value: 'Review',
                 icon: Icons.account_tree_outlined,
                 tone: AppColors.ocean,
                 onPressed: onOpenAccess,
               ),
               _SetupTile(
-                label: 'Data accuracy',
+                label: 'Data',
                 value: 'Review',
                 icon: Icons.fact_check_outlined,
-                tone: AppColors.sunset,
+                tone: AppColors.peacockDark,
                 onPressed: onOpenDataAccuracy,
+              ),
+              _SetupTile(
+                label: 'Security & audit',
+                value: 'Review',
+                icon: Icons.history_outlined,
+                tone: AppColors.textMuted,
+                onPressed: onOpenAuditSupport,
               ),
               _SetupTile(
                 label: 'Polling & pricing',
                 value: 'Review',
                 icon: Icons.payments_outlined,
-                tone: AppColors.peacockDark,
+                tone: AppColors.warning,
                 onPressed: onOpenPollingPricing,
-              ),
-              _SetupTile(
-                label: 'Audit & support',
-                value: 'Open',
-                icon: Icons.history_outlined,
-                tone: AppColors.textMuted,
-                onPressed: onOpenAuditSupport,
               ),
             ],
           ),
@@ -1391,6 +1393,7 @@ class _LocationRow extends StatelessWidget {
     required this.onOpenSupportLogs,
     required this.onOpenDataAccuracy,
     required this.onOpenPollingPricing,
+    required this.onOpenSupportOperatorView,
     required this.onOpenTeam,
     required this.onOpenAccess,
     required this.onOpenAuditSupport,
@@ -1407,6 +1410,7 @@ class _LocationRow extends StatelessWidget {
   final VoidCallback? onOpenSupportLogs;
   final VoidCallback? onOpenDataAccuracy;
   final VoidCallback? onOpenPollingPricing;
+  final VoidCallback? onOpenSupportOperatorView;
   final VoidCallback? onOpenTeam;
   final VoidCallback? onOpenAccess;
   final VoidCallback? onOpenAuditSupport;
@@ -1450,6 +1454,7 @@ class _LocationRow extends StatelessWidget {
       onOpenSupportLogs: onOpenSupportLogs,
       onOpenDataAccuracy: onOpenDataAccuracy,
       onOpenPollingPricing: onOpenPollingPricing,
+      onOpenSupportOperatorView: onOpenSupportOperatorView,
       onOpenTeam: onOpenTeam,
       onOpenAccess: onOpenAccess,
       onOpenAuditSupport: onOpenAuditSupport,
@@ -1495,6 +1500,7 @@ class _LocationActionWrap extends StatelessWidget {
     required this.onOpenSupportLogs,
     required this.onOpenDataAccuracy,
     required this.onOpenPollingPricing,
+    required this.onOpenSupportOperatorView,
     required this.onOpenTeam,
     required this.onOpenAccess,
     required this.onOpenAuditSupport,
@@ -1510,6 +1516,7 @@ class _LocationActionWrap extends StatelessWidget {
   final VoidCallback? onOpenSupportLogs;
   final VoidCallback? onOpenDataAccuracy;
   final VoidCallback? onOpenPollingPricing;
+  final VoidCallback? onOpenSupportOperatorView;
   final VoidCallback? onOpenTeam;
   final VoidCallback? onOpenAccess;
   final VoidCallback? onOpenAuditSupport;
@@ -1523,30 +1530,30 @@ class _LocationActionWrap extends StatelessWidget {
         _ActionRowWrap(
           children: [
             _LocationActionButton(
+              buttonKey: Key(
+                'admin_location_support_view_${location.locationId}',
+              ),
+              label: 'Support view',
+              icon: Icons.support_agent_outlined,
+              tooltip: 'Open the support workspace for this location scope',
+              minWidth: 132,
+              onPressed: onOpenSupportOperatorView,
+            ),
+            _LocationActionButton(
               buttonKey: Key('admin_location_team_${location.locationId}'),
-              label: 'Team',
+              label: 'People',
               icon: Icons.people_alt_outlined,
-              tooltip: 'Open team for this location scope',
-              minWidth: 96,
+              tooltip: 'Open people for this location scope',
+              minWidth: 104,
               onPressed: onOpenTeam,
             ),
             _LocationActionButton(
               buttonKey: Key('admin_location_access_${location.locationId}'),
               label: 'Access',
-              icon: Icons.shield_outlined,
+              icon: Icons.account_tree_outlined,
               tooltip: 'Open access and hierarchy for this location scope',
-              minWidth: 104,
+              minWidth: 108,
               onPressed: onOpenAccess,
-            ),
-            _LocationActionButton(
-              buttonKey: Key(
-                'admin_location_audit_support_${location.locationId}',
-              ),
-              label: 'Audit & support',
-              icon: Icons.history_outlined,
-              tooltip: 'Open audit and support for this location scope',
-              minWidth: 144,
-              onPressed: onOpenAuditSupport,
             ),
           ],
         ),
@@ -1624,6 +1631,16 @@ class _LocationActionWrap extends StatelessWidget {
               tooltip: 'View polling and pricing for this location',
               minWidth: 148,
               onPressed: onOpenPollingPricing,
+            ),
+            _LocationActionButton(
+              buttonKey: Key(
+                'admin_location_audit_support_${location.locationId}',
+              ),
+              label: 'Security',
+              icon: Icons.security_outlined,
+              tooltip: 'Open security and audit for this location scope',
+              minWidth: 112,
+              onPressed: onOpenAuditSupport,
             ),
             _LocationActionButton(
               buttonKey: Key(
