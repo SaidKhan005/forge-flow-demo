@@ -270,8 +270,20 @@ class LibroPostgresSink extends OperatorScopedRepository
       '@reservation_at::timestamptz, @business_date::date, @party_size, @status, '
       '@seated_at::timestamptz, @cancelled_at::timestamptz, @raw_payload::jsonb'
       ') '
-      'on conflict (operator_id, vendor_id, vendor_entity_id, vendor_modified_at) '
-      'do nothing',
+      'on conflict (operator_id, location_id, vendor_id, vendor_entity_id) '
+      'where vendor_id is not null '
+      'and vendor_entity_id is not null '
+      'do update set '
+      'vendor_modified_at = excluded.vendor_modified_at, '
+      'reservation_at = excluded.reservation_at, '
+      'business_date = excluded.business_date, '
+      'party_size = excluded.party_size, '
+      'status = excluded.status, '
+      'seated_at = excluded.seated_at, '
+      'cancelled_at = excluded.cancelled_at, '
+      'raw_payload = excluded.raw_payload '
+      'where excluded.vendor_modified_at >= '
+      'public.reservation_facts.vendor_modified_at',
       parameters: <String, Object?>{
         'operator_id': operatorId,
         'location_id': locationId,

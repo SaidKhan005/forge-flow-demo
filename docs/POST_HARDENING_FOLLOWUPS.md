@@ -38,8 +38,9 @@ before staging-apply + Production1-apply runs.
 | `202605080200_phase_8_wage_role_rows_server_truth.sql` | Phase 8 wage-role row server truth | code-ready |
 | `202605080300_phase_8_data_accuracy_walk_in_settings.sql` | Phase 8 walk-in handling additive fields | code-ready |
 | `202605080400_phase_8_connector_oauth_state.sql` | Phase 8 connector OAuth CSRF/PKCE state table | code-ready |
+| `202605080600_phase_8_idempotency_location_id_rekey.sql` | A1 idempotency rekey: add location_id, switch to vendor_modified_at >= guard | code-ready |
 
-**Action:** apply all 21 in next Production1 event per
+**Action:** apply all 22 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

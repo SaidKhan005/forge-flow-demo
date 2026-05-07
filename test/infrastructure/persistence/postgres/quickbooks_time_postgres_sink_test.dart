@@ -115,9 +115,18 @@ void main() {
         expect(insertSql, isNot(contains('labor_dollars')),
             reason: 'sink must NOT supply labor_dollars; aggregator '
                 'computes via rate × duration');
-        expect(insertSql, contains('on conflict (operator_id, vendor_id, '
-            'vendor_entity_id, vendor_modified_at) do nothing'),
-            reason: 'idempotency UNIQUE shape per spine contract');
+        expect(
+          insertSql,
+          contains(
+            'on conflict (operator_id, location_id, vendor_id, vendor_entity_id)',
+          ),
+          reason: 'idempotency UNIQUE shape per spine contract (A1 rekey)',
+        );
+        expect(
+          insertSql,
+          contains('do update set'),
+          reason: 'A1: upsert uses DO UPDATE with >= guard, not DO NOTHING',
+        );
 
         // Bind params for fact columns. Filter on `employee_source_id`
         // because the connector_connection module SELECT also binds

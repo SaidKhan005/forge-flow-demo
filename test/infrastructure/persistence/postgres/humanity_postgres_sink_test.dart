@@ -110,9 +110,18 @@ void main() {
         expect(insertSql, isNot(contains('labor_dollars')),
             reason: 'sink must NOT supply labor_dollars; Humanity is '
                 'scheduling-only with no wage data');
-        expect(insertSql, contains('on conflict (operator_id, vendor_id, '
-            'vendor_entity_id, vendor_modified_at) do nothing'),
-            reason: 'idempotency UNIQUE shape per spine contract');
+        expect(
+          insertSql,
+          contains(
+            'on conflict (operator_id, location_id, vendor_id, vendor_entity_id)',
+          ),
+          reason: 'idempotency UNIQUE shape per spine contract (A1 rekey)',
+        );
+        expect(
+          insertSql,
+          contains('do update set'),
+          reason: 'A1: upsert uses DO UPDATE with >= guard, not DO NOTHING',
+        );
 
         // Bind params for fact columns. Filter on `employee_source_id`
         // because the locations SELECT also binds `vendor_id`-shaped
@@ -183,9 +192,13 @@ void main() {
         final insertSql = tx.executedSql.firstWhere(
           (s) => s.contains('insert into public.labor_punches'),
         );
-        // Same INSERT shape as the Map-dispatch path.
-        expect(insertSql, contains('on conflict (operator_id, vendor_id, '
-            'vendor_entity_id, vendor_modified_at) do nothing'));
+        // Same INSERT shape as the Map-dispatch path (A1 rekey).
+        expect(
+          insertSql,
+          contains(
+            'on conflict (operator_id, location_id, vendor_id, vendor_entity_id)',
+          ),
+        );
         final insertParams = tx.parameters.firstWhere(
           (p) => p.containsKey('employee_source_id'),
         );

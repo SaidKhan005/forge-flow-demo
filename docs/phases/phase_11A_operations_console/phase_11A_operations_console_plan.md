@@ -148,7 +148,10 @@ queues `202605080300_phase_8_data_accuracy_walk_in_settings.sql`; it is not an
 mobile mirrors as cache. Phase 8 connector OAuth state then queues
 `202605080400_phase_8_connector_oauth_state.sql`; it is not an 11A surface,
 but it adds tenant-scoped state for operator-facing vendor OAuth
-begin/callback flows and is now the shared cutoff watched by this plan.
+begin/callback flows. A1 idempotency rekey then queues
+`202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
+surface, but it adds `location_id` to the fact/webhook idempotency keys and
+is now the shared cutoff watched by this plan.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin
