@@ -174,6 +174,40 @@ class UserAuthLookupRow {
   final String? firebaseUid;
 }
 
+class EmailConflictUsageRow {
+  const EmailConflictUsageRow({
+    required this.userId,
+    required this.email,
+    required this.operatorId,
+    required this.operatorName,
+    required this.locationId,
+    required this.locationName,
+    required this.status,
+    required this.roleLabel,
+  });
+
+  final String userId;
+  final String email;
+  final String operatorId;
+  final String operatorName;
+  final String locationId;
+  final String locationName;
+  final String status;
+  final String roleLabel;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'source': 'team_member',
+    'user_id': userId,
+    'email': email,
+    'operator_id': operatorId,
+    'operator_name': operatorName,
+    'location_id': locationId,
+    'location_name': locationName,
+    'status': status,
+    'role_label': roleLabel,
+  };
+}
+
 class FirebaseCustomClaimsProjection {
   const FirebaseCustomClaimsProjection({
     required this.firebaseUid,
@@ -613,6 +647,43 @@ class UsersRepository extends OperatorScopedRepository {
             ? firebaseUid
             : null,
       );
+    }, reason: adminReason);
+  }
+
+  Future<List<EmailConflictUsageRow>> listEmailConflictUsages({
+    required String email,
+    required String adminReason,
+  }) {
+    return withSystem<List<EmailConflictUsageRow>>((exec) async {
+      final rows = await exec.query(
+        'select u.user_id::text as user_id, '
+        'u.email, '
+        'u.operator_id::text as operator_id, '
+        "coalesce(nullif(o.business_name, ''), u.operator_id::text) "
+        'as operator_name, '
+        'coalesce(u.primary_location_id::text, '
+        'o.primary_location_id::text, \'\') as location_id, '
+        "coalesce(nullif(l.name, ''), nullif(primary_l.name, ''), "
+        "'Unassigned') as location_name, "
+        'u.status, '
+        "coalesce(nullif(r.display_name, ''), u.primary_role_id::text, "
+        "'Unassigned') as role_label "
+        'from users u '
+        'left join operators o on o.operator_id = u.operator_id '
+        'left join locations l on l.location_id = u.primary_location_id '
+        'left join locations primary_l '
+        'on primary_l.location_id = o.primary_location_id '
+        'left join roles r on r.role_id = u.primary_role_id '
+        'where lower(u.email) = lower(@email) '
+        'and u.deleted_at is null '
+        "and u.status != 'deleted' "
+        'order by lower(o.business_name), lower(location_name), lower(u.email) '
+        'limit 20',
+        parameters: <String, Object?>{'email': email},
+      );
+      return <EmailConflictUsageRow>[
+        for (final row in rows) _projectEmailConflictUsageRow(row),
+      ];
     }, reason: adminReason);
   }
 
@@ -1137,6 +1208,46 @@ class UsersRepository extends OperatorScopedRepository {
       passwordUpdatedAt: passwordUpdatedAt is DateTime
           ? passwordUpdatedAt
           : null,
+    );
+  }
+
+  static EmailConflictUsageRow _projectEmailConflictUsageRow(
+    Map<String, Object?> row,
+  ) {
+    final userId = row['user_id'];
+    final email = row['email'];
+    final operatorId = row['operator_id'];
+    final operatorName = row['operator_name'];
+    final locationId = row['location_id'];
+    final locationName = row['location_name'];
+    final status = row['status'];
+    final roleLabel = row['role_label'];
+    if (userId is! String ||
+        userId.isEmpty ||
+        email is! String ||
+        email.isEmpty ||
+        operatorId is! String ||
+        operatorId.isEmpty ||
+        operatorName is! String ||
+        operatorName.isEmpty ||
+        locationId is! String ||
+        status is! String ||
+        status.isEmpty ||
+        roleLabel is! String ||
+        roleLabel.isEmpty) {
+      throw StateError('email conflict lookup returned a malformed row');
+    }
+    return EmailConflictUsageRow(
+      userId: userId,
+      email: email,
+      operatorId: operatorId,
+      operatorName: operatorName,
+      locationId: locationId,
+      locationName: locationName is String && locationName.isNotEmpty
+          ? locationName
+          : 'Unassigned',
+      status: status,
+      roleLabel: roleLabel,
     );
   }
 

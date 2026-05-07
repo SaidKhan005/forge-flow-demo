@@ -345,10 +345,11 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       );
     } on FirebaseAdminAuthError catch (error) {
       if (error.code == 'email_exists') {
-        throw const AuthOperationRejected(
+        throw AuthOperationRejected(
           code: 'invite_email_already_exists',
           message: 'an account with this email already exists',
           statusCode: 409,
+          details: await _emailConflictDetails(command.email),
         );
       }
       rethrow;
@@ -417,6 +418,26 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       expiresAt: expiresAt,
       userId: userId,
     );
+  }
+
+  Future<Map<String, Object?>> _emailConflictDetails(String email) async {
+    try {
+      final rows = await usersRepository.listEmailConflictUsages(
+        email: email,
+        adminReason: 'team.invite_email_conflict_lookup',
+      );
+      return <String, Object?>{
+        'email': email,
+        'email_conflicts': <Map<String, Object?>>[
+          for (final row in rows) row.toJson(),
+        ],
+        if (rows.isEmpty)
+          'email_conflict_note':
+              'Firebase has an account for this email, but no active Forge & Flow team row was found.',
+      };
+    } catch (_) {
+      return <String, Object?>{'email': email};
+    }
   }
 
   void _validateOperatorOwnerBootstrap({

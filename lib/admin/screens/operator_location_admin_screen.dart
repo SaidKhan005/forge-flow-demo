@@ -18,6 +18,7 @@ import '../../theme/app_theme.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
+import '../models/email_conflict_details.dart';
 import '../../utils/iana_timezones.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
@@ -64,6 +65,8 @@ class _OperatorLocationAdminScreenState
   List<OperatorAdminBundle> _bundles = const <OperatorAdminBundle>[];
   String? _selectedOperatorId;
   String? _actionError;
+  List<AdminEmailConflictUsage> _actionEmailConflicts =
+      const <AdminEmailConflictUsage>[];
   int _idempotencyCounter = 0;
 
   /// Mints a fresh idempotency key per user action so a retried POST
@@ -166,7 +169,10 @@ class _OperatorLocationAdminScreenState
     Future<void> Function() action, {
     String? successHint,
   }) async {
-    setState(() => _actionError = null);
+    setState(() {
+      _actionError = null;
+      _actionEmailConflicts = const <AdminEmailConflictUsage>[];
+    });
     try {
       await action();
       await _refresh();
@@ -177,7 +183,12 @@ class _OperatorLocationAdminScreenState
       }
     } on OperatorLocationAdminGatewayError catch (error) {
       if (!mounted) return;
-      setState(() => _actionError = error.message);
+      setState(() {
+        _actionError = error.message;
+        _actionEmailConflicts = AdminEmailConflictUsage.listFromDetails(
+          error.details,
+        );
+      });
     } catch (error) {
       if (!mounted) return;
       setState(() => _actionError = error.toString());
@@ -215,6 +226,8 @@ class _OperatorLocationAdminScreenState
               _ErrorBanner(
                 key: const Key('admin_operators_action_error'),
                 message: _actionError!,
+                emailConflicts: _actionEmailConflicts,
+                onShowConflict: _showEmailConflict,
               ),
             Expanded(child: _buildBody()),
           ],
@@ -415,6 +428,19 @@ class _OperatorLocationAdminScreenState
         ),
       );
     }, successHint: 'Primary location updated.');
+  }
+
+  void _showEmailConflict(AdminEmailConflictUsage usage) {
+    final operatorId = usage.operatorId;
+    if (operatorId == null || operatorId.isEmpty) return;
+    OperatorAdminBundle? selected;
+    setState(() {
+      _selectedOperatorId = operatorId;
+      _actionError = null;
+      _actionEmailConflicts = const <AdminEmailConflictUsage>[];
+      selected = _selected;
+    });
+    _notifyOperatorScope(selected);
   }
 }
 
@@ -1448,9 +1474,16 @@ class _ReadOnlyBanner extends StatelessWidget {
 }
 
 class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({super.key, required this.message});
+  const _ErrorBanner({
+    super.key,
+    required this.message,
+    this.emailConflicts = const <AdminEmailConflictUsage>[],
+    this.onShowConflict,
+  });
 
   final String message;
+  final List<AdminEmailConflictUsage> emailConflicts;
+  final ValueChanged<AdminEmailConflictUsage>? onShowConflict;
 
   @override
   Widget build(BuildContext context) {
@@ -1472,11 +1505,92 @@ class _ErrorBanner extends StatelessWidget {
           const Icon(Icons.error_outline, size: 16, color: AppColors.negative),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              message,
-              style: AppTextStyles.body13(color: AppColors.negative),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  message,
+                  style: AppTextStyles.body13(color: AppColors.negative),
+                ),
+                if (emailConflicts.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Where this email is used',
+                    style: AppTextStyles.uiLabel(color: AppColors.textPrimary),
+                  ),
+                  const SizedBox(height: 6),
+                  for (final usage in emailConflicts)
+                    _OperatorEmailConflictTile(
+                      usage: usage,
+                      onShowConflict: onShowConflict,
+                    ),
+                ],
+              ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OperatorEmailConflictTile extends StatelessWidget {
+  const _OperatorEmailConflictTile({
+    required this.usage,
+    required this.onShowConflict,
+  });
+
+  final AdminEmailConflictUsage usage;
+  final ValueChanged<AdminEmailConflictUsage>? onShowConflict;
+
+  @override
+  Widget build(BuildContext context) {
+    final details = <String>[
+      usage.sourceLabel,
+      if (usage.roleLabel != null) usage.roleLabel!,
+      if (usage.status != null) usage.status!,
+    ].join(' | ');
+    final canOpen = usage.operatorId != null && onShowConflict != null;
+    return Container(
+      key: Key('admin_operators_email_conflict_${usage.email}'),
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.manage_search, size: 16, color: AppColors.textMuted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  usage.scopeLabel,
+                  style: AppTextStyles.body13(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  details,
+                  style: AppTextStyles.mono11(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+          if (canOpen) ...[
+            const SizedBox(width: 8),
+            TextButton(
+              key: Key('admin_operators_email_conflict_open_${usage.email}'),
+              onPressed: () => onShowConflict!(usage),
+              child: const Text('Open operator'),
+            ),
+          ],
         ],
       ),
     );

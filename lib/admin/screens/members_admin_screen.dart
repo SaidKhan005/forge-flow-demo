@@ -32,6 +32,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
+import '../models/email_conflict_details.dart';
 import '../services/members_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'invite_member_admin_dialog.dart';
@@ -81,6 +82,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   bool _loading = true;
   String? _loadError;
   String? _actionError;
+  List<AdminEmailConflictUsage> _actionEmailConflicts =
+      const <AdminEmailConflictUsage>[];
   List<MemberAdminRow> _members = const <MemberAdminRow>[];
   List<MemberInviteRow> _invites = const <MemberInviteRow>[];
   Timer? _searchDebounce;
@@ -232,7 +235,10 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     Future<void> Function() action, {
     String? successHint,
   }) async {
-    setState(() => _actionError = null);
+    setState(() {
+      _actionError = null;
+      _actionEmailConflicts = const <AdminEmailConflictUsage>[];
+    });
     try {
       await action();
       await _refresh();
@@ -246,7 +252,12 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       setState(() => _actionError = error.message);
     } on MembersAdminGatewayError catch (error) {
       if (!mounted) return;
-      setState(() => _actionError = error.message);
+      setState(() {
+        _actionError = error.message;
+        _actionEmailConflicts = AdminEmailConflictUsage.listFromDetails(
+          error.details,
+        );
+      });
     } catch (error) {
       if (!mounted) return;
       setState(() => _actionError = error.toString());
@@ -405,12 +416,39 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       for (final m in _members) m.email.toLowerCase(),
       for (final i in _invites) i.email.toLowerCase(),
     };
+    final existingUsages = <String, AdminEmailConflictUsage>{
+      for (final m in _members)
+        m.email.toLowerCase(): AdminEmailConflictUsage(
+          email: m.email,
+          userId: m.userId,
+          operatorId: widget.pickedOperator.operatorId,
+          operatorName: widget.pickedOperator.operatorBusinessName,
+          locationId: m.primaryLocationId,
+          locationName: m.primaryLocationName,
+          status: memberStatusLabel(m.status),
+          roleLabel: memberRoleLabel(m.roleKey),
+          source: 'team_member',
+        ),
+      for (final i in _invites)
+        i.email.toLowerCase(): AdminEmailConflictUsage(
+          email: i.email,
+          operatorId: widget.pickedOperator.operatorId,
+          operatorName: widget.pickedOperator.operatorBusinessName,
+          locationId: i.primaryLocationId,
+          locationName: i.primaryLocationName,
+          status: 'Pending invite',
+          roleLabel: memberRoleLabel(i.roleKey),
+          source: 'pending_invite',
+        ),
+    };
     final draft = await showDialog<InviteMemberAdminDraft>(
       context: context,
       builder: (_) => InviteMemberAdminDialog(
         operatorBusinessName: widget.pickedOperator.operatorBusinessName,
         locations: _availableLocations,
         existingEmails: existing,
+        existingEmailUsages: existingUsages,
+        onReviewExistingEmail: _showEmailUsage,
       ),
     );
     if (draft == null) return;
@@ -431,6 +469,23 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     );
   }
 
+  void _showEmailUsage(AdminEmailConflictUsage usage) {
+    setState(() {
+      _statusFilter = null;
+      _roleFilter = null;
+      _locationFilter =
+          usage.operatorId == null ||
+              usage.operatorId == widget.pickedOperator.operatorId
+          ? usage.locationId
+          : null;
+      _mfaEnrolledFilter = null;
+      _searchQuery = usage.email;
+      _actionError = null;
+      _actionEmailConflicts = const <AdminEmailConflictUsage>[];
+    });
+    _refresh();
+  }
+
   List<MemberLocationRef> get _availableLocations {
     final byId = <String, MemberLocationRef>{};
     byId[widget.pickedOperator.locationId] = MemberLocationRef(
@@ -443,6 +498,15 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         () => MemberLocationRef(
           locationId: m.primaryLocationId,
           name: m.primaryLocationName,
+        ),
+      );
+    }
+    for (final i in _invites) {
+      byId.putIfAbsent(
+        i.primaryLocationId,
+        () => MemberLocationRef(
+          locationId: i.primaryLocationId,
+          name: i.primaryLocationName,
         ),
       );
     }
@@ -473,6 +537,10 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
               _ErrorBanner(
                 key: const Key('admin_members_action_error'),
                 message: _actionError!,
+                emailConflicts: _actionEmailConflicts,
+                currentOperatorId: widget.pickedOperator.operatorId,
+                onShowConflict: _showEmailUsage,
+                onChangeOperator: widget.onChangeOperator,
               ),
             _MembersFilterBar(
               statusFilter: _statusFilter,
@@ -1241,9 +1309,20 @@ class _ReadOnlyBanner extends StatelessWidget {
 }
 
 class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({super.key, required this.message});
+  const _ErrorBanner({
+    super.key,
+    required this.message,
+    this.emailConflicts = const <AdminEmailConflictUsage>[],
+    this.currentOperatorId,
+    this.onShowConflict,
+    this.onChangeOperator,
+  });
 
   final String message;
+  final List<AdminEmailConflictUsage> emailConflicts;
+  final String? currentOperatorId;
+  final ValueChanged<AdminEmailConflictUsage>? onShowConflict;
+  final VoidCallback? onChangeOperator;
 
   @override
   Widget build(BuildContext context) {
@@ -1255,9 +1334,99 @@ class _ErrorBanner extends StatelessWidget {
         border: Border.all(color: AppColors.negative, width: 1),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(
-        message,
-        style: AppTextStyles.mono11(color: AppColors.negative),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(message, style: AppTextStyles.mono11(color: AppColors.negative)),
+          if (emailConflicts.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Where this email is used',
+              style: AppTextStyles.uiLabel(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 6),
+            for (final usage in emailConflicts)
+              _EmailConflictUsageTile(
+                usage: usage,
+                currentOperatorId: currentOperatorId,
+                onShowConflict: onShowConflict,
+                onChangeOperator: onChangeOperator,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EmailConflictUsageTile extends StatelessWidget {
+  const _EmailConflictUsageTile({
+    required this.usage,
+    this.currentOperatorId,
+    this.onShowConflict,
+    this.onChangeOperator,
+  });
+
+  final AdminEmailConflictUsage usage;
+  final String? currentOperatorId;
+  final ValueChanged<AdminEmailConflictUsage>? onShowConflict;
+  final VoidCallback? onChangeOperator;
+
+  @override
+  Widget build(BuildContext context) {
+    final sameOperator =
+        usage.operatorId == null || usage.operatorId == currentOperatorId;
+    final details = <String>[
+      usage.sourceLabel,
+      if (usage.roleLabel != null) usage.roleLabel!,
+      if (usage.status != null) usage.status!,
+    ].join(' | ');
+    return Container(
+      key: Key('admin_members_email_conflict_${usage.email}'),
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep.withValues(alpha: 0.45),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.manage_search, size: 16, color: AppColors.textMuted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  usage.scopeLabel,
+                  style: AppTextStyles.body13(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  details,
+                  style: AppTextStyles.mono11(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (sameOperator && onShowConflict != null)
+            TextButton(
+              key: Key('admin_members_email_conflict_show_${usage.email}'),
+              onPressed: () => onShowConflict!(usage),
+              child: const Text('Show row'),
+            )
+          else if (!sameOperator && onChangeOperator != null)
+            TextButton(
+              key: Key('admin_members_email_conflict_change_${usage.email}'),
+              onPressed: onChangeOperator,
+              child: const Text('Change operator'),
+            ),
+        ],
       ),
     );
   }

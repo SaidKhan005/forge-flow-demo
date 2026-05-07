@@ -17,12 +17,14 @@ Source commit: `6ff7c2d8` (`origin/master` after rebase)
 - Selector options include business-wide, org-unit groups, and locations. Location-scoped tabs require a location selection and show a clear stop for business/group scopes.
 - Business setup, Business timing editor, Vendor connections, and Data accuracy now use the selected location instead of always using `session.primaryLocationId`.
 - Members invite/filter location options now come from the loaded hierarchy location catalog when available.
+- Duplicate owner/member invite email errors now carry actionable placement details when the backend can resolve them, and the admin Members dialog can jump/filter to the existing row before the admin decides whether to revoke, edit, or choose another email.
 
 ## UX Notes
 
 - Toast-style pattern followed: keep the structural hierarchy in the Locations surface, but expose a compact top-level context selector for day-to-day management.
 - Business/group scopes are intentionally not faked on location-only routes. Vendor connections and Data accuracy remain location-scoped.
 - The header hides lower-priority identity/role details at narrow widths so the selector and sign-out control remain reachable.
+- Duplicate-email copy stays direct, but no longer dead-ends the admin. The visible panel names the operator/location and record type, with a `Show row` or `Open operator` action when the current surface can navigate there safely.
 
 ## Verification
 
@@ -30,6 +32,8 @@ Source commit: `6ff7c2d8` (`origin/master` after rebase)
 - `flutter test test\operator_web`
 - `flutter test test\admin_operator_location_screen_test.dart`
 - `flutter test test\operator_web\operator_web_router_test.dart` after rebasing onto latest `origin/master`
+- `flutter test test\admin\screens\members_admin_screen_test.dart test\admin_operator_location_screen_test.dart test\admin\services\members_admin_gateway_test.dart`
+- `flutter test test\proxy_auth_operations_route_grants_test.dart test\proxy_auth_operations_gateway_test.dart`
 - `flutter build web --release --target=lib\main_operator_web.dart` with `OPERATOR_WEB_PROXY_BASE_URI` set
 - Browser Use local demo smoke at `http://127.0.0.1:8196/?token=demo-magic-link-token&codexQa=scope-picker-local`:
   - completed demo onboarding
