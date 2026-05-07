@@ -75,6 +75,7 @@ import 'dart:convert';
 import '../../../integrations/pos/revel_pos_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
+
 import '../../../services/integration/integration_adapter_common.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
