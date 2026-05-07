@@ -248,3 +248,49 @@ CODE_HEALTH lists these but no Wave 0/1/2 lane covered them — they need their 
 - Webhook synthetic event-id growth (`inbound_webhook_handler.dart:565`); `CanonicalSink.appendSyncLog` schema-less map intake.
 - Audit anchor cron unpause — operational change in Cloud Scheduler, not code.
 
+## Addendum — fact-check against master (2026-05-07)
+
+A second pass after this Resolution table was first written verified each row against the actual current state of `origin/master`. All 24 items in "Closed" remain in place — zero regressions. The list below records what the second pass turned up that contradicts or refines the original record.
+
+### Items moved out of "Skipped" or "Out of scope" into "Closed"
+
+- **L6 OAuth refresh claim discipline** — closed by [#281](https://github.com/SaidKhan005/forge-flow-demo/pull/281) (the parallel onboarding lane's Cloud Run refresh worker). `tool/oauth_refresh_worker/main.dart` now uses `FOR UPDATE SKIP LOCKED` so concurrent refreshes never race on the same row.
+- **Webhook synthetic event-id unbounded growth** — closed in `lib/services/integration/inbound_webhook_handler.dart`: `_vendorEventIdOrSynthetic()` now hashes the payload deterministically (no random UUID), and the framework dead-letters at attempt 3.
+- **5 widgets importing frozen `lib/data/`** — closed; zero such imports remain on master. Resolved incidentally by other UI work.
+- **6 duplicate `YYYYMMDDHHMM` migration prefixes** — not present on current master. Either renamed during a prior cleanup or the audit's list was already stale at write time. Effectively closed.
+- **`ProxyLlmProvider` vs `LLMProvider` parallel hierarchies** — partially closed; `ProxyLlmProvider` no longer exists as a separate abstract class, leaving `LLMProvider` as the single hierarchy. Phase 12 collapse work is reduced but not zero.
+
+### Items where the surface moved — concern status now unknown
+
+These need a re-locate pass before being declared closed; the file at the audit's cited path no longer exists, but the underlying concern may have carried forward into the new code:
+
+- `lib/services/embeddings/voyage_embedding_provider.dart` (Voyage chunking / retry / concurrency cap) — file not found at audit path.
+- `vector_index_health.activeVectors` re-embed path — surface not found at audit-cited location.
+- `lib/widgets/settings_wage_authority_section.dart` (widget→SQLite direct call) — file not found; wage role surfaces were actively reworked between the audit and this addendum.
+- `lib/widgets/shift_dashboard.dart` (timezone init in widget) — file not found at audit path; `ShiftDashboardNotifier._load` race (separate finding) is verified still real.
+- Permission keys hand-typed in `lib/operator_web/screens/**` — that path doesn't exist on master.
+- `admin_routes.dart` (~1.9k lines) — not found at the cited path.
+
+### Items where the concern is now relocated rather than the file missing
+
+- `CanonicalSink.appendSyncLog` schema-less map intake — the offending Postgres write is no longer in `lib/services/integration/canonical_sink.dart`; it now lives in `lib/infrastructure/persistence/postgres/toast_pos_postgres_sink.dart:139–158` where `appendSyncLog` writes `payloadPreview` straight into the INSERT with no redactor. Concern is **still real, file path different**.
+
+### Items confirmed still open (and stable shape)
+
+- Conflicting `actor_kind` constraint definitions (`202604280004` + `202604280013`).
+- `phase_8_set_business_date()` is still `SECURITY DEFINER` granted EXECUTE to `service_role`.
+- `DatabaseHelper.instance` still hardcoded to `DemoScope.restaurantId`.
+- Postgres pool size still pinned at `kPostgresDefaultMaxConnectionsPerPool = 4` with no env override.
+- Pre-flight token estimate still client-supplied via `cost_telemetry_limit` query param, default 100.
+- Cost-discipline levers still unwired — caps still 402-fail with no fallback chain.
+- Permission cache per-process invalidation — still no Pub/Sub or cross-instance fan-out.
+- Sync worker bare `catch (_)` at `tool/integration_sync_worker/integration_sync_worker.dart:303` — still in place; claim discipline deferred to `.1.*` lanes.
+- `ShiftDashboardNotifier._load` operator-switch TOCTTOU at `lib/state/shift_dashboard_notifier.dart:74` — still real.
+
+### Notable: monolith files have grown since the audit
+
+- `tool/advisor_proxy/advisor_proxy.dart`: **15,863 lines** — up from the audit's 14,500 (+1,363).
+- `lib/forge_flow_app.dart`: **2,482 lines** — up from the audit's 2,160 (+322).
+
+The "land in a follow-up lane" debt is reaccumulating in the same files. Worth raising in the next sprint planning.
+
