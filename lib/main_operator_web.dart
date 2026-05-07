@@ -36,6 +36,8 @@
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+// ignore: avoid_web_libraries_in_flutter, deprecated_member_use
+import 'dart:html' as html;
 
 import 'operator_web/auth/firebase_operator_web_auth_source.dart';
 import 'operator_web/auth/operator_web_auth_source.dart';
@@ -93,6 +95,15 @@ Future<void> main() async {
   try {
     final source = await _resolveAuthSource();
     final magicLinkToken = _parseMagicLinkToken();
+    // A7 — strip the token from the address bar and browser history on
+    // first paint so it never appears in any subsequent Referer header,
+    // screen-share recording, or shared-device handoff. The token is
+    // captured above and passed to the welcome screen via constructor;
+    // URL cleaning happens BEFORE runApp so the first rendered frame
+    // never sees the query string.
+    if (magicLinkToken != null) {
+      html.window.history.replaceState(null, '', '/onboarding/welcome');
+    }
     runApp(
       OperatorWebApp(authSource: source, initialMagicLinkToken: magicLinkToken),
     );

@@ -434,12 +434,88 @@ class FirebaseOperatorWebAuthSource
 
   @override
   Future<void> verifyMagicLinkToken(String token) async {
-    _emit(
-      const OperatorWebNeedsSignIn(
-        lastInfoMessage:
-            'Operator web now uses your Firebase email and password. Use the password you set from your invite email.',
-      ),
-    );
+    // A7 — POST the token in the request body, never as a URL query
+    // param. The idempotency_key is generated client-side so a network
+    // retry with the same token does not double-redeem.
+    final trimmed = token.trim();
+    if (trimmed.isEmpty) {
+      _emit(
+        const OperatorWebNeedsToken(
+          lastErrorMessage:
+              'Paste the code from your invite email and try again.',
+        ),
+      );
+      return;
+    }
+    final idempotencyKey = _proxyClient.generateIdempotencyKey();
+    try {
+      final response = await _proxyClient.postJsonUnauthenticated(
+        OperatorWebProxyClient.authMagicLinkRedeemPath,
+        body: <String, Object?>{
+          'token': trimmed,
+          'idempotency_key': idempotencyKey,
+        },
+      );
+      if (response.statusCode >= 400 && response.statusCode < 500) {
+        // Calm operator-facing message regardless of specific 4xx code.
+        _emit(
+          const OperatorWebNeedsToken(
+            lastErrorMessage:
+                'This link has expired or been used. Ask your '
+                'invite-sender for a new one.',
+          ),
+        );
+        return;
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        _emit(
+          const OperatorWebNeedsToken(
+            lastErrorMessage:
+                'Something went wrong. Try again or ask Forge & '
+                'Flow support to resend your invite.',
+          ),
+        );
+        return;
+      }
+      // Redemption succeeded — direct to sign-in. The proxy returns a
+      // Firebase custom token in response.body['firebase_custom_token']
+      // which the operator uses to sign in via signInWithCustomToken.
+      // For now the live path redirects to sign-in with an info message;
+      // the signInWithCustomToken wiring lands in a follow-up slice.
+      _emit(
+        const OperatorWebNeedsSignIn(
+          lastInfoMessage:
+              'Invite accepted. Sign in with the email and password '
+              'from your invite to continue.',
+        ),
+      );
+    } on OperatorWebProxyException catch (error) {
+      if ((error.statusCode ?? 0) >= 400 && (error.statusCode ?? 0) < 500) {
+        _emit(
+          const OperatorWebNeedsToken(
+            lastErrorMessage:
+                'This link has expired or been used. Ask your '
+                'invite-sender for a new one.',
+          ),
+        );
+      } else {
+        _emit(
+          const OperatorWebNeedsToken(
+            lastErrorMessage:
+                'Something went wrong. Try again or ask Forge & '
+                'Flow support to resend your invite.',
+          ),
+        );
+      }
+    } catch (_) {
+      _emit(
+        const OperatorWebNeedsToken(
+          lastErrorMessage:
+              'Something went wrong. Try again or ask Forge & '
+              'Flow support to resend your invite.',
+        ),
+      );
+    }
   }
 
   @override

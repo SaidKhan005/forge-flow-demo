@@ -6762,6 +6762,12 @@ const String advisorSmokePath = '/v1/advisor-smoke';
 // `_PostgresOperatorDiscoverer`) and packs them into the evaluator.
 const String realtimeTripwireStatusPath = '/v1/realtime/tripwire-status';
 
+// A7 — magic-link token redemption (POST body, not GET query param).
+// The GET form is kept for backwards compatibility but marked deprecated
+// below; new clients must use the POST form so the token never appears
+// in a URL or Referer header.
+const String authMagicLinkRedeemPath = '/v1/auth/magic-link/redeem';
+
 // Phase 9 live-closeout - auth operations / permission snapshot routes.
 const String authAccountInfoPath = '/v1/auth/account';
 const String authPermissionsSnapshotPath = '/v1/auth/permissions/snapshot';
@@ -8105,6 +8111,10 @@ Future<void> routeRequest(
   PasswordChangeGateway? passwordChangeGateway,
   PasswordResetConfirmGateway? passwordResetConfirmGateway,
   PasswordResetRequestGateway? passwordResetRequestGateway,
+  // A7 — magic-link POST redemption gateway. Optional: when null, the
+  // POST /v1/auth/magic-link/redeem route returns 503 so existing tests
+  // do not need to plumb this gateway through every call site.
+  MagicLinkRedeemGateway? magicLinkRedeemGateway,
   ProxyAuthIdempotencyCache? authIdempotencyCache,
   MfaOperationsGateway? mfaOperationsGateway,
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
@@ -9683,6 +9693,108 @@ Future<void> routeRequest(
             },
           );
           _writeJson(response, cached.statusCode, cached.body);
+          return;
+        }
+
+        // A7 — POST /v1/auth/magic-link/redeem
+        // Accepts { token, idempotency_key } in the JSON body and
+        // verifies the invite token server-side. The token must NEVER
+        // travel as a URL query parameter — this route exists so the
+        // Flutter welcome screen can POST the token after stripping it
+        // from the address bar with history.replaceState.
+        //
+        // Security headers set on every response from this route:
+        //   Referrer-Policy: no-referrer  — prevents accidental token
+        //     echo via Referer on any subsequent redirect.
+        //   Cache-Control: no-store, no-cache — prevents the response
+        //     (which may embed auth state) from being cached.
+        //
+        // Deprecated GET form: GET /v1/auth/magic-link/redeem?token=...
+        // is kept for backwards compatibility only. New clients MUST use
+        // the POST form. The GET form is intentionally NOT implemented
+        // here — it is superseded entirely by the POST route.
+        if (request.method == 'POST' && path == authMagicLinkRedeemPath) {
+          response.headers.add('Referrer-Policy', 'no-referrer');
+          response.headers.add(
+            'Cache-Control',
+            'no-store, no-cache',
+          );
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          final token = _nonBlankString(body['token']);
+          final idempotencyKey = _nonBlankString(body['idempotency_key']);
+
+          if (token == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_token',
+              'message': 'request body must include token',
+            });
+            return;
+          }
+          if (idempotencyKey == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_idempotency_key',
+              'message': 'request body must include idempotency_key',
+            });
+            return;
+          }
+
+          // The token is validated against the auth_invites store via the
+          // auth operations gateway. When the gateway is not wired
+          // (scaffold / test environments without a live Postgres pool)
+          // the route returns 503 so the client can surface a calm
+          // error without crashing.
+          //
+          // The `magicLinkRedeemGateway` parameter is intentionally
+          // separate from `authOperationsGateway` so the route can be
+          // exercised in tests without wiring the full team-management
+          // surface. Production binds it from proxy_bootstrap.dart once
+          // the invite-redeem repository implementation lands.
+          if (magicLinkRedeemGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'magic_link_redeem_not_configured',
+              'message':
+                  'POST /v1/auth/magic-link/redeem requires a '
+                  'MagicLinkRedeemGateway to be installed',
+            });
+            return;
+          }
+
+          try {
+            final result = await magicLinkRedeemGateway.redeem(
+              MagicLinkRedeemCommand(
+                token: token,
+                idempotencyKey: idempotencyKey,
+              ),
+            );
+            _writeJson(response, 200, <String, Object?>{
+              'ok': true,
+              'firebase_custom_token': result.firebaseCustomToken,
+            });
+          } on MagicLinkTokenInvalid catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message':
+                  'This link has expired or been used. Ask your '
+                  'invite-sender for a new one.',
+            });
+          } catch (error) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'magic_link_redeem_unavailable',
+              'message': 'Magic-link redemption is unavailable; please retry.',
+            });
+          }
           return;
         }
 
