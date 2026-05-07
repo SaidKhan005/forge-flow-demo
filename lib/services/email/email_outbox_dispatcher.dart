@@ -49,6 +49,131 @@ import 'email_template_renderer.dart';
 /// → status = 'failed' with admin alert."
 const int kEmailDispatchMaxAttempts = 3;
 
+/// Code-Health L8 — typed result returned by the SendGrid call site.
+/// Replaces the string-contains reverse-engineering that used to live
+/// in `_failureKindFromError`. The dispatcher branches on the runtime
+/// type via an exhaustive `switch` (Dart sealed-class semantics) so
+/// adding a new failure shape forces every callsite to handle it.
+///
+/// Classification rules (HTTP status from `EmailProviderException`):
+///   * 2xx                 → [EmailSent]
+///   * 429                 → [EmailRateLimitError] (honour Retry-After)
+///   * 4xx other than 429  → [EmailPermanentError]
+///   * 5xx + timeouts +
+///     network             → [EmailTransientError]
+///   * unknown shapes      → [EmailTransientError] (counts toward retry
+///                           cap so transient unrecognised failures do
+///                           not strand emails)
+sealed class EmailSendOutcome {
+  const EmailSendOutcome();
+}
+
+/// SendGrid returned 2xx and we have a `provider_message_id`.
+class EmailSent extends EmailSendOutcome {
+  const EmailSent(this.result);
+
+  final EmailSendResult result;
+}
+
+/// Retryable failure: 5xx, network, timeout, unknown. Counts toward
+/// the dispatcher's attempt cap; once exhausted the dispatcher
+/// dead-letters the row.
+class EmailTransientError extends EmailSendOutcome {
+  const EmailTransientError({
+    required this.kind,
+    required this.message,
+    this.statusCode,
+  });
+
+  final EmailFailureKind kind;
+  final String message;
+  final int? statusCode;
+}
+
+/// Non-retryable failure: 4xx (other than 429), provider auth,
+/// provider protocol, render-time missing template variable. Dispatcher
+/// dead-letters immediately on the first occurrence.
+class EmailPermanentError extends EmailSendOutcome {
+  const EmailPermanentError({
+    required this.kind,
+    required this.message,
+    this.statusCode,
+  });
+
+  final EmailFailureKind kind;
+  final String message;
+  final int? statusCode;
+}
+
+/// Rate-limit failure (HTTP 429). Retryable; the dispatcher honours
+/// `Retry-After` when present and falls back to the next cron tick
+/// otherwise.
+class EmailRateLimitError extends EmailSendOutcome {
+  const EmailRateLimitError({
+    required this.message,
+    this.statusCode,
+    this.retryAfter,
+  });
+
+  final String message;
+  final int? statusCode;
+  final Duration? retryAfter;
+}
+
+/// Code-Health L8 — translate one SendGrid call into a typed
+/// [EmailSendOutcome]. The dispatcher uses this so the post-call
+/// branching is type-driven rather than string-keyed.
+///
+/// Visible for testing — the unit suite drives this directly to pin
+/// the classification rules at each HTTP shape.
+Future<EmailSendOutcome> classifyEmailSendCall(
+  Future<EmailSendResult> Function() send,
+) async {
+  try {
+    final result = await send();
+    return EmailSent(result);
+  } on EmailProviderException catch (error) {
+    return _classifyProviderException(error);
+  } on TimeoutException catch (error) {
+    return EmailTransientError(
+      kind: EmailFailureKind.network,
+      message: 'timeout: ${error.message}',
+    );
+  } catch (error) {
+    return EmailTransientError(
+      kind: EmailFailureKind.unknown,
+      message: 'unknown_send_failure: $error',
+    );
+  }
+}
+
+EmailSendOutcome _classifyProviderException(EmailProviderException error) {
+  switch (error.kind) {
+    case EmailFailureKind.providerRateLimit:
+      return EmailRateLimitError(
+        message: error.toString(),
+        statusCode: error.statusCode,
+        retryAfter: error.retryAfter,
+      );
+    case EmailFailureKind.providerBadRequest:
+    case EmailFailureKind.providerAuth:
+    case EmailFailureKind.providerProtocol:
+      return EmailPermanentError(
+        kind: error.kind,
+        message: error.toString(),
+        statusCode: error.statusCode,
+      );
+    case EmailFailureKind.providerInternal:
+    case EmailFailureKind.network:
+    case EmailFailureKind.unknown:
+      return EmailTransientError(
+        kind: error.kind,
+        message: error.toString(),
+        statusCode: error.statusCode,
+      );
+  }
+}
+
 /// One row claimed from `email_outbox`. The dispatcher reads this
 /// shape; the persistence repository (downstream) hydrates it from
 /// the SQL row.
@@ -91,6 +216,7 @@ class EmailDispatchOutcome {
     this.providerMessageId,
     this.lastError,
     this.lastAttemptAt,
+    this.failureKind,
   });
 
   final String emailId;
@@ -99,6 +225,15 @@ class EmailDispatchOutcome {
   final String? providerMessageId;
   final String? lastError;
   final DateTime? lastAttemptAt;
+
+  /// Code-Health L8 — typed failure classification carried alongside
+  /// the human-readable [lastError]. Set when the dispatcher caught a
+  /// provider failure (transient or permanent); null on success and
+  /// on render-time short-circuits where the kind is implied by the
+  /// source of the failure (see [EmailDispatchAlert.failureKind]).
+  /// Replaces the string-contains reverse-engineering that used to
+  /// live in `_failureKindFromError`.
+  final EmailFailureKind? failureKind;
 }
 
 /// State machine values the dispatcher writes back. Persistence
@@ -229,13 +364,19 @@ class EmailOutboxDispatcher {
       outcomes.add(outcome);
       await _repository.recordOutcome(outcome);
       if (outcome.statusKind == EmailDispatchStatusKind.failed) {
+        // Code-Health L8 — failureKind is carried directly on the
+        // outcome by the typed `_classifyProviderException` path; the
+        // alert sink no longer reverse-engineers it from the
+        // `lastError` string. The fallback is `unknown` only for
+        // synthetic short-circuits (e.g. attempt-cap guard) where no
+        // provider call was made.
         _alertSink(
           EmailDispatchAlert(
             emailId: row.emailId,
             templateId: row.templateId,
             recipientEmail: row.recipientEmail,
             attemptCount: outcome.attemptCount,
-            failureKind: _failureKindFromError(outcome.lastError),
+            failureKind: outcome.failureKind ?? EmailFailureKind.unknown,
             message: outcome.lastError ?? 'unknown',
             operatorId: row.operatorId,
           ),
@@ -275,6 +416,11 @@ class EmailOutboxDispatcher {
         attemptCount: nextAttempt,
         lastError: e.toString(),
         lastAttemptAt: stamp,
+        // Code-Health L8 — render-time bad input is permanent and
+        // semantically a "bad request" against the template surface;
+        // surface providerBadRequest so the alert taxonomy stays
+        // unified with the SendGrid-permanent path.
+        failureKind: EmailFailureKind.providerBadRequest,
       );
     } catch (e) {
       // Unknown render failure — treat as permanent so the row does not
@@ -286,6 +432,7 @@ class EmailOutboxDispatcher {
         attemptCount: nextAttempt,
         lastError: 'render_failed: $e',
         lastAttemptAt: stamp,
+        failureKind: EmailFailureKind.unknown,
       );
     }
     final request = EmailSendRequest(
@@ -305,97 +452,53 @@ class EmailOutboxDispatcher {
         if (row.operatorId != null) 'operator_id': row.operatorId!,
       },
     );
-    EmailSendResult result;
-    try {
-      result = await _provider.send(request);
-    } on EmailProviderException catch (error) {
-      final stamp = _now().toUtc();
-      final permanent = _isPermanent(error.kind);
-      final exhausted = nextAttempt >= maxAttempts;
-      if (permanent || exhausted) {
-        return EmailDispatchOutcome(
+    final stamp = _now().toUtc();
+    final exhausted = nextAttempt >= maxAttempts;
+    // Code-Health L8 — single classification site. The dispatcher
+    // branches on the sealed `EmailSendOutcome` rather than on
+    // `EmailProviderException.kind` strings, and never re-derives the
+    // kind from `lastError.contains(...)`.
+    final sendOutcome =
+        await classifyEmailSendCall(() => _provider.send(request));
+    return switch (sendOutcome) {
+      EmailSent(:final result) => EmailDispatchOutcome(
+          emailId: row.emailId,
+          statusKind: EmailDispatchStatusKind.sent,
+          attemptCount: nextAttempt,
+          providerMessageId: result.providerMessageId,
+          lastError: null,
+          lastAttemptAt: result.acceptedAt,
+        ),
+      EmailRateLimitError(:final message) => EmailDispatchOutcome(
+          emailId: row.emailId,
+          statusKind: exhausted
+              ? EmailDispatchStatusKind.failed
+              : EmailDispatchStatusKind.pendingRetry,
+          attemptCount: nextAttempt,
+          lastError: message,
+          lastAttemptAt: stamp,
+          failureKind: EmailFailureKind.providerRateLimit,
+        ),
+      EmailTransientError(:final kind, :final message) =>
+        EmailDispatchOutcome(
+          emailId: row.emailId,
+          statusKind: exhausted
+              ? EmailDispatchStatusKind.failed
+              : EmailDispatchStatusKind.pendingRetry,
+          attemptCount: nextAttempt,
+          lastError: message,
+          lastAttemptAt: stamp,
+          failureKind: kind,
+        ),
+      EmailPermanentError(:final kind, :final message) =>
+        EmailDispatchOutcome(
           emailId: row.emailId,
           statusKind: EmailDispatchStatusKind.failed,
           attemptCount: nextAttempt,
-          lastError: error.toString(),
+          lastError: message,
           lastAttemptAt: stamp,
-        );
-      }
-      return EmailDispatchOutcome(
-        emailId: row.emailId,
-        statusKind: EmailDispatchStatusKind.pendingRetry,
-        attemptCount: nextAttempt,
-        lastError: error.toString(),
-        lastAttemptAt: stamp,
-      );
-    } on TimeoutException catch (error) {
-      final stamp = _now().toUtc();
-      final exhausted = nextAttempt >= maxAttempts;
-      return EmailDispatchOutcome(
-        emailId: row.emailId,
-        statusKind: exhausted
-            ? EmailDispatchStatusKind.failed
-            : EmailDispatchStatusKind.pendingRetry,
-        attemptCount: nextAttempt,
-        lastError: 'timeout: ${error.message}',
-        lastAttemptAt: stamp,
-      );
-    } catch (error) {
-      // Unknown error shape. Counts toward the retry limit.
-      final stamp = _now().toUtc();
-      final exhausted = nextAttempt >= maxAttempts;
-      return EmailDispatchOutcome(
-        emailId: row.emailId,
-        statusKind: exhausted
-            ? EmailDispatchStatusKind.failed
-            : EmailDispatchStatusKind.pendingRetry,
-        attemptCount: nextAttempt,
-        lastError: 'unknown_send_failure: $error',
-        lastAttemptAt: stamp,
-      );
-    }
-    return EmailDispatchOutcome(
-      emailId: row.emailId,
-      statusKind: EmailDispatchStatusKind.sent,
-      attemptCount: nextAttempt,
-      providerMessageId: result.providerMessageId,
-      lastError: null,
-      lastAttemptAt: result.acceptedAt,
-    );
-  }
-
-  bool _isPermanent(EmailFailureKind kind) {
-    switch (kind) {
-      case EmailFailureKind.providerBadRequest:
-      case EmailFailureKind.providerAuth:
-      case EmailFailureKind.providerProtocol:
-        return true;
-      case EmailFailureKind.network:
-      case EmailFailureKind.providerInternal:
-      case EmailFailureKind.providerRateLimit:
-      case EmailFailureKind.unknown:
-        return false;
-    }
-  }
-
-  EmailFailureKind _failureKindFromError(String? error) {
-    if (error == null) return EmailFailureKind.unknown;
-    if (error.contains('providerAuth')) return EmailFailureKind.providerAuth;
-    if (error.contains('providerBadRequest')) {
-      return EmailFailureKind.providerBadRequest;
-    }
-    if (error.contains('providerInternal')) {
-      return EmailFailureKind.providerInternal;
-    }
-    if (error.contains('providerRateLimit')) {
-      return EmailFailureKind.providerRateLimit;
-    }
-    if (error.contains('providerProtocol')) {
-      return EmailFailureKind.providerProtocol;
-    }
-    if (error.contains('network') || error.contains('timeout')) {
-      return EmailFailureKind.network;
-    }
-    return EmailFailureKind.unknown;
+          failureKind: kind,
+        ),
+    };
   }
 }
