@@ -443,13 +443,13 @@ class ForecastContextPayload {
 
   final String restaurantId;
   final String? anchorBusinessDate;
-  final int? baselineTotalCovers;
-  final int? baselineWeeklyAvgCovers;
+  final int baselineTotalCovers;
+  final int baselineWeeklyAvgCovers;
   final double baselineWeeksRepresented;
   final int? recentThreeWeekTotalCovers;
   final int? recentThreeWeekWeeklyAvgCovers;
   final int? recentTrendDeltaCovers;
-  final int? resolvedWeeklyForecastCovers;
+  final int resolvedWeeklyForecastCovers;
   final String coversSource;
   final DateTime builtAt;
 
@@ -682,12 +682,12 @@ WeeklyPlanLockRequest _lockRequestFromBody({
 
   final weekStartDate = _requiredDateString(body, 'week_start_date');
   final weekEndDate = _requiredDateString(body, 'week_end_date');
-  if (_dateFromYyyyMmDd(
+  if (!_dateFromYyyyMmDd(
     weekEndDate,
-  ).isBefore(_dateFromYyyyMmDd(weekStartDate))) {
+  ).isAfter(_dateFromYyyyMmDd(weekStartDate))) {
     throw const WeeklyPlanRouteRejected(
       code: 'invalid_week_date_range',
-      message: 'week_end_date must be on or after week_start_date',
+      message: 'week_end_date must be after week_start_date',
       statusCode: 400,
     );
   }
@@ -932,8 +932,8 @@ ForecastContextPayload? _forecastContextPayload(
   return ForecastContextPayload(
     restaurantId: contextRestaurantId,
     anchorBusinessDate: anchorBusinessDate,
-    baselineTotalCovers: _optionalInt(body, 'baseline_total_covers'),
-    baselineWeeklyAvgCovers: _optionalInt(body, 'baseline_weekly_avg_covers'),
+    baselineTotalCovers: _requiredInt(body, 'baseline_total_covers'),
+    baselineWeeklyAvgCovers: _requiredInt(body, 'baseline_weekly_avg_covers'),
     baselineWeeksRepresented: _requiredDouble(
       body,
       'baseline_weeks_represented',
@@ -947,7 +947,7 @@ ForecastContextPayload? _forecastContextPayload(
       'recent_three_week_weekly_avg_covers',
     ),
     recentTrendDeltaCovers: _optionalInt(body, 'recent_trend_delta_covers'),
-    resolvedWeeklyForecastCovers: _optionalInt(
+    resolvedWeeklyForecastCovers: _requiredInt(
       body,
       'resolved_weekly_forecast_covers',
     ),

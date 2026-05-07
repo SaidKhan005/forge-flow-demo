@@ -432,6 +432,28 @@ void main() {
       final auditParams = tx.parameters[tx.executedSql.indexOf(auditSql)];
       expect(auditParams['event_type'], equals('weekly_plan_unlocked'));
     });
+
+    test('listUpdatedSince exposes only active rows for mobile sync', () async {
+      final pool = _RecordingPool(
+        onQuery: (sql, parameters) {
+          if (sql.contains('from public.weekly_plan_snapshots s')) {
+            expect(sql, contains("s.snapshot_status = 'active'"));
+            return <PostgresRow>[_snapshotRow(snapshotId: _snapshotId)];
+          }
+          return const <PostgresRow>[];
+        },
+      );
+      final repo = WeeklyPlanSnapshotRepository(TenantTransactionWrapper(pool));
+
+      final rows = await repo.listUpdatedSince(
+        operatorId: _operatorId,
+        locationId: _locationId,
+        updatedAfter: DateTime.utc(2026, 5, 6),
+        userId: _userId,
+      );
+
+      expect(rows.single.snapshotId, equals(_snapshotId));
+    });
   });
 }
 

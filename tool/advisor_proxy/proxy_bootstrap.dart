@@ -22,6 +22,8 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_backfill_job_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/forecast_context_repository.dart'
+    as weekly_forecast;
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_account_repository.dart';
 import 'package:forge_and_flow/services/business_timing/production_operator_write_audit_sink.dart';
 import 'package:forge_and_flow/services/business_timing/repository_operator_write_gateways.dart';
@@ -41,6 +43,8 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/provider_credentials_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/selected_star_shift_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/target_cycle_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository.dart'
+    as weekly_snapshot;
 import 'package:forge_and_flow/infrastructure/cloud_run/cloud_run_admin_client.dart';
 import 'package:forge_and_flow/infrastructure/kms/gcp_secret_manager_kms_provider.dart';
 import 'package:forge_and_flow/infrastructure/kms/kms_lane_router.dart';
@@ -578,6 +582,18 @@ ProxyProductionBindings buildProxyProductionBindings(
         repository: SelectedStarShiftRepository(tenantWrapper),
         targetCycleRepository: TargetCycleRepository(tenantWrapper),
         activeTargetProfileRepository: ActiveTargetProfileRepository(
+          tenantWrapper,
+        ),
+      ),
+    ),
+  );
+  WeeklyPlanRouter.installGlobal(
+    WeeklyPlanRouter(
+      gateway: RepositoryWeeklyPlanGateway(
+        snapshotRepository: weekly_snapshot.WeeklyPlanSnapshotRepository(
+          tenantWrapper,
+        ),
+        forecastContextRepository: weekly_forecast.ForecastContextRepository(
           tenantWrapper,
         ),
       ),
@@ -1274,6 +1290,261 @@ Future<void> probeProxyStartupConnectivity(
       rethrow;
     }
   }
+}
+
+class RepositoryWeeklyPlanGateway implements WeeklyPlanGateway {
+  RepositoryWeeklyPlanGateway({
+    required weekly_snapshot.WeeklyPlanSnapshotRepository snapshotRepository,
+    required weekly_forecast.ForecastContextRepository
+    forecastContextRepository,
+  }) : _snapshotRepository = snapshotRepository,
+       _forecastContextRepository = forecastContextRepository;
+
+  final weekly_snapshot.WeeklyPlanSnapshotRepository _snapshotRepository;
+  final weekly_forecast.ForecastContextRepository _forecastContextRepository;
+
+  @override
+  Future<WeeklyPlanSnapshotRow> lockSnapshot({
+    required WeeklyPlanLockRequest request,
+  }) async {
+    var forecastContextId = request.forecastContextId;
+    final embeddedContext = request.embeddedForecastContext;
+    if (embeddedContext != null) {
+      final closedAt = DateTime.now().toUtc();
+      final contextRow = await _forecastContextRepository.upsertContext(
+        context: weekly_forecast.ForecastContextPostgresWrite(
+          operatorId: request.operatorId,
+          locationId: request.locationId,
+          restaurantId: request.restaurantId,
+          anchorBusinessDate:
+              embeddedContext.anchorBusinessDate ?? request.weekStartDate,
+          baselineTotalCovers: embeddedContext.baselineTotalCovers,
+          baselineWeeklyAvgCovers: embeddedContext.baselineWeeklyAvgCovers,
+          baselineWeeksRepresented: embeddedContext.baselineWeeksRepresented,
+          recentThreeWeekTotalCovers:
+              embeddedContext.recentThreeWeekTotalCovers,
+          recentThreeWeekWeeklyAvgCovers:
+              embeddedContext.recentThreeWeekWeeklyAvgCovers,
+          recentTrendDeltaCovers: embeddedContext.recentTrendDeltaCovers,
+          resolvedWeeklyForecastCovers:
+              embeddedContext.resolvedWeeklyForecastCovers,
+          targetPpa: request.forecastCovers == 0
+              ? 0
+              : request.forecastSales / request.forecastCovers,
+          forecastSales: request.forecastSales,
+          requiredFohHours: request.requiredFohHours.toDouble(),
+          requiredBohHours: request.requiredBohHours.toDouble(),
+          theoreticalLaborDollars:
+              request.theoreticalFohLaborDollars +
+              request.theoreticalBohLaborDollars,
+          coversSource: embeddedContext.coversSource,
+          salesSource: request.salesSource,
+          targetCycleId: request.targetCycleId,
+          targetProfileId: _optionalStringFromObject(
+            request.metadata['target_profile_id'],
+          ),
+          contextStatus: 'closed',
+          builtAt: embeddedContext.builtAt,
+          closedAt: closedAt,
+          idempotencyKey: request.idempotencyKey,
+          requestHash: request.requestHash,
+          metadata: <String, Object?>{
+            ...request.metadata,
+            'week_start_date': request.weekStartDate,
+            'week_end_date': request.weekEndDate,
+          },
+          createdBy: request.actorUserId,
+        ),
+        actorKind: request.actorKind,
+        reason: request.reason,
+      );
+      forecastContextId = contextRow.forecastContextId;
+    }
+
+    final lockedAt = DateTime.now().toUtc();
+    final row = await _snapshotRepository.lockOrReplaceSnapshot(
+      snapshot: weekly_snapshot.WeeklyPlanSnapshotPostgresWrite(
+        operatorId: request.operatorId,
+        locationId: request.locationId,
+        restaurantId: request.restaurantId,
+        weekStartDate: request.weekStartDate,
+        weekEndDate: request.weekEndDate,
+        weekKey: '${request.weekStartDate}_${request.weekEndDate}',
+        targetCycleId: request.targetCycleId,
+        forecastContextId: forecastContextId,
+        forecastCovers: request.forecastCovers,
+        forecastSales: request.forecastSales,
+        requiredFohHours: request.requiredFohHours.toDouble(),
+        requiredBohHours: request.requiredBohHours.toDouble(),
+        theoreticalFohLaborDollars: request.theoreticalFohLaborDollars,
+        theoreticalBohLaborDollars: request.theoreticalBohLaborDollars,
+        coversSource: request.coversSource,
+        salesSource: request.salesSource,
+        generatedAt: lockedAt,
+        lockedAt: lockedAt,
+        replacementReason: request.reason,
+        idempotencyKey: request.idempotencyKey,
+        requestHash: request.requestHash,
+        metadata: request.metadata,
+        createdBy: request.actorUserId,
+      ),
+      days: <weekly_snapshot.WeeklyPlanSnapshotDayPostgresWrite>[
+        for (var i = 0; i < request.dayRows.length; i++)
+          weekly_snapshot.WeeklyPlanSnapshotDayPostgresWrite(
+            operatorId: request.operatorId,
+            locationId: request.locationId,
+            restaurantId: request.restaurantId,
+            dayIndex: i,
+            dayLabel: request.dayRows[i].day,
+            businessDate: request.dayRows[i].businessDate,
+            forecastCovers: request.dayRows[i].forecastCovers,
+            forecastSales: request.dayRows[i].forecastSales,
+            requiredFohHours: request.dayRows[i].requiredFohHours.toDouble(),
+            requiredBohHours: request.dayRows[i].requiredBohHours.toDouble(),
+          ),
+      ],
+      actorKind: request.actorKind,
+      reason: request.reason,
+    );
+    return _weeklyPlanSnapshotRouteRow(row, dayRows: request.dayRows);
+  }
+
+  @override
+  Future<List<WeeklyPlanSnapshotRow>> listWeeklyPlanSnapshotsUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit = 250,
+  }) async {
+    final rows = await _snapshotRepository.listUpdatedSince(
+      operatorId: operatorId,
+      locationId: locationId,
+      updatedAfter: updatedAfter,
+      userId: userId,
+      limit: limit,
+    );
+    return <WeeklyPlanSnapshotRow>[
+      for (final row in rows)
+        _weeklyPlanSnapshotRouteRow(
+          row,
+          dayRows: <WeeklyPlanDayPayload>[
+            for (final day in await _snapshotRepository.listDaysForSnapshot(
+              operatorId: operatorId,
+              locationId: locationId,
+              snapshotId: row.snapshotId,
+              userId: userId,
+            ))
+              WeeklyPlanDayPayload(
+                day: day.dayLabel,
+                businessDate: day.businessDate,
+                forecastCovers: day.forecastCovers,
+                forecastSales: day.forecastSales,
+                requiredFohHours: day.requiredFohHours.round(),
+                requiredBohHours: day.requiredBohHours.round(),
+              ),
+          ],
+        ),
+    ];
+  }
+
+  @override
+  Future<List<ForecastContextRow>> listForecastContextsUpdatedSince({
+    required String operatorId,
+    required String locationId,
+    required DateTime updatedAfter,
+    String? userId,
+    int limit = 250,
+  }) async {
+    final rows = await _forecastContextRepository.listUpdatedSince(
+      operatorId: operatorId,
+      locationId: locationId,
+      updatedAfter: updatedAfter,
+      userId: userId,
+      limit: limit,
+    );
+    return <ForecastContextRow>[
+      for (final row in rows) _forecastContextRouteRow(row),
+    ];
+  }
+}
+
+WeeklyPlanSnapshotRow _weeklyPlanSnapshotRouteRow(
+  weekly_snapshot.WeeklyPlanSnapshotPostgresRow row, {
+  required List<WeeklyPlanDayPayload> dayRows,
+}) {
+  return WeeklyPlanSnapshotRow(
+    snapshotId: row.snapshotId,
+    operatorId: row.operatorId,
+    locationId: row.locationId,
+    restaurantId: row.restaurantId,
+    weekStartDate: row.weekStartDate,
+    weekEndDate: row.weekEndDate,
+    targetCycleId: row.targetCycleId,
+    forecastContextId: row.forecastContextId,
+    forecastCovers: row.forecastCovers,
+    forecastSales: row.forecastSales,
+    requiredFohHours: row.requiredFohHours.round(),
+    requiredBohHours: row.requiredBohHours.round(),
+    theoreticalFohLaborDollars: row.theoreticalFohLaborDollars,
+    theoreticalBohLaborDollars: row.theoreticalBohLaborDollars,
+    coversSource: row.coversSource,
+    salesSource: row.salesSource,
+    dayRows: dayRows,
+    lockedAt: row.lockedAt,
+    lockedByUserId: row.createdBy ?? '',
+    lockReason: row.replacementReason ?? row.source,
+    isActive: row.snapshotStatus == 'active',
+    supersedesSnapshotId: row.supersedesSnapshotId,
+    idempotencyKey: row.idempotencyKey,
+    requestHash: row.requestHash,
+    metadata: row.metadata,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    supersededAt: row.supersededAt,
+  );
+}
+
+ForecastContextRow _forecastContextRouteRow(
+  weekly_forecast.ForecastContextPostgresRow row,
+) {
+  final weekStartDate = row.anchorBusinessDate;
+  return ForecastContextRow(
+    forecastContextId: row.forecastContextId,
+    operatorId: row.operatorId,
+    locationId: row.locationId,
+    restaurantId: row.restaurantId,
+    anchorBusinessDate: row.anchorBusinessDate,
+    weekStartDate: weekStartDate,
+    weekEndDate: _datePlusDays(weekStartDate, 6),
+    baselineTotalCovers: row.baselineTotalCovers,
+    baselineWeeklyAvgCovers: row.baselineWeeklyAvgCovers,
+    baselineWeeksRepresented: row.baselineWeeksRepresented,
+    recentThreeWeekTotalCovers: row.recentThreeWeekTotalCovers,
+    recentThreeWeekWeeklyAvgCovers: row.recentThreeWeekWeeklyAvgCovers,
+    recentTrendDeltaCovers: row.recentTrendDeltaCovers,
+    resolvedWeeklyForecastCovers: row.resolvedWeeklyForecastCovers,
+    targetPpa: row.targetPpa,
+    forecastSales: row.forecastSales,
+    requiredFohHours: row.requiredFohHours.round(),
+    requiredBohHours: row.requiredBohHours.round(),
+    theoreticalLaborDollars: row.theoreticalLaborDollars,
+    coversSource: row.coversSource,
+    builtAt: row.builtAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  );
+}
+
+String _datePlusDays(String yyyyMmDd, int days) {
+  final parsed = DateTime.tryParse('${yyyyMmDd}T00:00:00Z');
+  if (parsed == null) return yyyyMmDd;
+  return parsed.add(Duration(days: days)).toIso8601String().substring(0, 10);
+}
+
+String? _optionalStringFromObject(Object? value) {
+  if (value is String && value.trim().isNotEmpty) return value.trim();
+  return null;
 }
 
 class RepositoryMobileOperationalSyncProxyGateway

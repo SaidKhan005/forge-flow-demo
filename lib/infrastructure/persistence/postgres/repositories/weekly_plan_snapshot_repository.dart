@@ -169,6 +169,9 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
       final row = await _insertSnapshotWithExecutor(
         exec,
         snapshot,
+        sourceOverride: before == null
+            ? snapshot.source
+            : _replacementSource(snapshot.source),
         supersedesSnapshotId:
             snapshot.supersedesSnapshotId ?? before?.snapshotId,
       );
@@ -342,6 +345,7 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
         'from public.weekly_plan_snapshots s '
         'where s.operator_id = @operator_id::uuid '
         '  and s.location_id = @location_id::uuid '
+        "  and s.snapshot_status = 'active' "
         '  and s.updated_at > @updated_after::timestamptz '
         'order by s.updated_at asc, s.snapshot_id asc '
         'limit @limit',
@@ -491,6 +495,7 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
   Future<WeeklyPlanSnapshotPostgresRow> _insertSnapshotWithExecutor(
     PostgresExecutor exec,
     WeeklyPlanSnapshotPostgresWrite snapshot, {
+    required String sourceOverride,
     String? supersedesSnapshotId,
   }) async {
     final rows = await exec.query(
@@ -518,6 +523,7 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
       '  @metadata::jsonb, @created_by::uuid'
       ') returning $_columns',
       parameters: snapshot.toSqlParameters(
+        sourceOverride: sourceOverride,
         supersedesSnapshotId: supersedesSnapshotId,
       ),
     );
@@ -672,6 +678,7 @@ class WeeklyPlanSnapshotPostgresWrite {
   }
 
   PostgresParameters toSqlParameters({
+    required String sourceOverride,
     String? supersedesSnapshotId,
   }) => <String, Object?>{
     'snapshot_id': snapshotId,
@@ -691,7 +698,7 @@ class WeeklyPlanSnapshotPostgresWrite {
     'theoretical_boh_labor_dollars': theoreticalBohLaborDollars,
     'covers_source': coversSource,
     'sales_source': salesSource,
-    'source': source,
+    'source': sourceOverride,
     'generated_at': generatedAt.toUtc().toIso8601String(),
     'locked_at': lockedAt.toUtc().toIso8601String(),
     'supersedes_snapshot_id': supersedesSnapshotId ?? this.supersedesSnapshotId,
@@ -987,6 +994,10 @@ void _validateNonBlank(String value, String name) {
   if (value.trim().isEmpty) {
     throw ArgumentError.value(value, name, 'must be non-blank');
   }
+}
+
+String _replacementSource(String source) {
+  return source == 'server_lock' ? 'server_replace' : source;
 }
 
 Map<String, Object?> _jsonObjectFromValue(Object? value) {
