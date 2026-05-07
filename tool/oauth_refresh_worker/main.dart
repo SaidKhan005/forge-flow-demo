@@ -121,7 +121,9 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_exec
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/integrations/_common/production_oauth_refresh_closures.dart';
 import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dart';
+import 'package:http/http.dart' as http;
 
 // The service principal id the audit row records. The audit_logs
 // CHECK constraint requires `actor_kind='service' AND
@@ -400,6 +402,234 @@ const Set<String> kVendorsWithoutRefreshClosure = <String>{
   'adp',
   'opentable',
 };
+
+// ─── Vendor app-credential env loader ───────────────────────────────
+//
+// The OAuth refresh worker is deployed alongside the advisor proxy and
+// reads the same vendor app-credential env names (mirrors
+// `tool/advisor_proxy/advisor_proxy.dart`'s `ProxySecretNames`). Each
+// vendor's app credential bundle is OPTIONAL at boot; absence does not
+// fail boot — the corresponding closure is simply not registered, and
+// any claimed row for that vendor is logged-and-skipped (the binder
+// uses the same warn-disable pattern in
+// `tool/advisor_proxy/phase_8_production_binder.dart`).
+//
+// We declare the env names locally rather than depending on
+// `ProxySecretNames` so the worker stays self-contained — it does not
+// need ProxySecretNames' required-secret list (Anthropic / Voyage /
+// Firebase / etc.) to boot.
+
+abstract class OAuthRefreshWorkerVendorEnvNames {
+  // ─ Aloha NCR Voyix ─
+  static const String alohaNcrVoyixClientId = 'ALOHA_NCR_VOYIX_CLIENT_ID';
+  static const String alohaNcrVoyixClientSecret =
+      'ALOHA_NCR_VOYIX_CLIENT_SECRET';
+  static const String alohaNcrVoyixApplicationKey =
+      'ALOHA_NCR_VOYIX_APPLICATION_KEY';
+  static const String alohaNcrVoyixOrganizationId =
+      'ALOHA_NCR_VOYIX_ORGANIZATION_ID';
+
+  // ─ Square ─
+  static const String squareClientId = 'SQUARE_CLIENT_ID';
+  static const String squareClientSecret = 'SQUARE_CLIENT_SECRET';
+
+  // ─ Clover ─
+  static const String cloverAppId = 'CLOVER_APP_ID';
+
+  // ─ Humanity ─
+  static const String humanityClientId = 'HUMANITY_CLIENT_ID';
+  static const String humanityClientSecret = 'HUMANITY_CLIENT_SECRET';
+
+  // ─ QuickBooks Time (Intuit) ─
+  static const String quickBooksTimeClientId = 'QUICKBOOKS_TIME_CLIENT_ID';
+  static const String quickBooksTimeClientSecret =
+      'QUICKBOOKS_TIME_CLIENT_SECRET';
+
+  // ─ 7shifts ─
+  static const String sevenShiftsClientId = 'SEVEN_SHIFTS_CLIENT_ID';
+  static const String sevenShiftsClientSecret = 'SEVEN_SHIFTS_CLIENT_SECRET';
+
+  // ─ Libro ─
+  static const String libroClientId = 'LIBRO_CLIENT_ID';
+  static const String libroClientSecret = 'LIBRO_CLIENT_SECRET';
+}
+
+bool _hasNonBlank(Map<String, String> env, String name) {
+  final value = env[name];
+  return value != null && value.trim().isNotEmpty;
+}
+
+/// Result of [buildProductionRefreshClosures]: the wired registry plus
+/// diagnostic info for the boot-time log.
+class ProductionRefreshClosureBuildResult {
+  ProductionRefreshClosureBuildResult({
+    required this.registry,
+    required this.wiredVendorIds,
+    required this.disabledVendorIds,
+  });
+
+  /// Vendor → closure map ready to hand to the worker.
+  final RefreshClosureRegistry registry;
+
+  /// Vendors with a closure registered (sorted ascending for stable
+  /// boot logs).
+  final List<String> wiredVendorIds;
+
+  /// Vendors whose closure was NOT registered because their optional
+  /// app-credential env vars are missing. Map key = vendor_id; value =
+  /// short reason string. Mirrors the binder's
+  /// `disabledVendors[vendorId] = reason` shape.
+  final Map<String, String> disabledVendorIds;
+}
+
+/// Wire the 11 production OAuth refresh closure factories in
+/// `lib/integrations/_common/production_oauth_refresh_closures.dart`
+/// into a [RefreshClosureRegistry] keyed by `vendor_credentials.vendor_id`.
+///
+/// Vendors gated on optional ProxyConfig-style app credentials (Aloha
+/// NCR Voyix / Square / Clover / Humanity / QuickBooks Time / 7shifts /
+/// Libro) are skipped when their env vars are missing — the worker
+/// then logs-and-skips any claimed row for those vendors at run time
+/// (same warn-disable pattern as the binder).
+///
+/// Vendors NOT in this builder (SevenRooms / Tock / Push Operations /
+/// Agendrix / ADP / OpenTable) deliberately have no closure — their
+/// bridges either use static API keys or have the transport handle
+/// refresh internally. They land in [kVendorsWithoutRefreshClosure].
+ProductionRefreshClosureBuildResult buildProductionRefreshClosures({
+  required Map<String, String> env,
+  required http.Client httpClient,
+}) {
+  final registry = <String, RefreshClosure>{};
+  final disabled = <String, String>{};
+
+  // ─── Toast ─ no app-wide secrets; per-tenant client_id / client_secret
+  // live on bundle metadata.
+  registry['toast'] = makeToastOauthRefreshClosure(httpClient: httpClient);
+
+  // ─── Aloha NCR Voyix ─ binder gates on hasAlohaNcrVoyixCredentials.
+  // The closure itself reads client_id / client_secret /
+  // application_key / organization_id from bundle metadata, but we
+  // mirror the binder's gate so the worker's "active vendor" list
+  // matches the proxy's connector activation list one-to-one.
+  if (_hasNonBlank(env,
+          OAuthRefreshWorkerVendorEnvNames.alohaNcrVoyixClientId) &&
+      _hasNonBlank(env,
+          OAuthRefreshWorkerVendorEnvNames.alohaNcrVoyixClientSecret) &&
+      _hasNonBlank(env,
+          OAuthRefreshWorkerVendorEnvNames.alohaNcrVoyixApplicationKey) &&
+      _hasNonBlank(env,
+          OAuthRefreshWorkerVendorEnvNames.alohaNcrVoyixOrganizationId)) {
+    registry['aloha_ncr_voyix'] =
+        makeAlohaNcrVoyixOauthRefreshClosure(httpClient: httpClient);
+  } else {
+    disabled['aloha_ncr_voyix'] = 'aloha_ncr_voyix_credentials_missing';
+  }
+
+  // ─── Square ─ app-wide client_id / client_secret.
+  if (_hasNonBlank(env, OAuthRefreshWorkerVendorEnvNames.squareClientId) &&
+      _hasNonBlank(env, OAuthRefreshWorkerVendorEnvNames.squareClientSecret)) {
+    registry['square'] = makeSquareOauthRefreshClosure(
+      httpClient: httpClient,
+      clientId: env[OAuthRefreshWorkerVendorEnvNames.squareClientId]!,
+      clientSecret: env[OAuthRefreshWorkerVendorEnvNames.squareClientSecret]!,
+    );
+  } else {
+    disabled['square'] = 'square_app_credentials_missing';
+  }
+
+  // ─── Clover ─ app-wide app_id (no app_secret used by refresh).
+  if (_hasNonBlank(env, OAuthRefreshWorkerVendorEnvNames.cloverAppId)) {
+    registry['clover'] = makeCloverOauthRefreshClosure(
+      httpClient: httpClient,
+      clientId: env[OAuthRefreshWorkerVendorEnvNames.cloverAppId]!,
+    );
+  } else {
+    disabled['clover'] = 'clover_app_credentials_missing';
+  }
+
+  // ─── Lightspeed LSK ─ no app-wide secrets; per-tenant client_id /
+  // client_secret on bundle metadata.
+  registry['lightspeed_lsk'] =
+      makeLightspeedLskOauthRefreshClosure(httpClient: httpClient);
+
+  // ─── Oracle MICROS Simphony ─ no app-wide secrets; per-tenant
+  // client_id / client_secret on bundle metadata.
+  registry['oracle_micros_simphony'] =
+      makeOracleMicrosSimphonyOauthExchangeClosure(httpClient: httpClient);
+
+  // ─── Revel ─ no app-wide secrets; per-tenant client_id /
+  // client_secret on bundle metadata. The closure factory requires an
+  // `audience` parameter; per Revel's documented OAuth contract the
+  // audience is the API base URL.
+  registry['revel'] = makeRevelOauthExchangeClosure(
+    httpClient: httpClient,
+    audience: 'https://api.revelsystems.com',
+  );
+
+  // ─── 7shifts ─ app-wide partner client_id / client_secret. Vendor
+  // id stored in vendor_credentials is `7shifts` (the credential
+  // bridge constant), NOT `seven_shifts` (which is the adapter id).
+  if (_hasNonBlank(env, OAuthRefreshWorkerVendorEnvNames.sevenShiftsClientId) &&
+      _hasNonBlank(
+          env, OAuthRefreshWorkerVendorEnvNames.sevenShiftsClientSecret)) {
+    registry['7shifts'] = makeSevenShiftsOauthRefreshClosure(
+      httpClient: httpClient,
+      clientId: env[OAuthRefreshWorkerVendorEnvNames.sevenShiftsClientId]!,
+      clientSecret:
+          env[OAuthRefreshWorkerVendorEnvNames.sevenShiftsClientSecret]!,
+    );
+  } else {
+    disabled['7shifts'] = 'seven_shifts_oauth_credentials_missing';
+  }
+
+  // ─── QuickBooks Time ─ app-wide Intuit client_id / client_secret.
+  if (_hasNonBlank(
+          env, OAuthRefreshWorkerVendorEnvNames.quickBooksTimeClientId) &&
+      _hasNonBlank(
+          env, OAuthRefreshWorkerVendorEnvNames.quickBooksTimeClientSecret)) {
+    registry['quickbooks_time'] = makeQuickBooksTimeOauthRefreshClosure(
+      httpClient: httpClient,
+      clientId: env[OAuthRefreshWorkerVendorEnvNames.quickBooksTimeClientId]!,
+      clientSecret:
+          env[OAuthRefreshWorkerVendorEnvNames.quickBooksTimeClientSecret]!,
+    );
+  } else {
+    disabled['quickbooks_time'] = 'intuit_oauth_credentials_missing';
+  }
+
+  // ─── Humanity ─ app-wide client_id / client_secret.
+  if (_hasNonBlank(env, OAuthRefreshWorkerVendorEnvNames.humanityClientId) &&
+      _hasNonBlank(
+          env, OAuthRefreshWorkerVendorEnvNames.humanityClientSecret)) {
+    registry['humanity'] = makeHumanityOauthRefreshClosure(
+      httpClient: httpClient,
+      clientId: env[OAuthRefreshWorkerVendorEnvNames.humanityClientId]!,
+      clientSecret: env[OAuthRefreshWorkerVendorEnvNames.humanityClientSecret]!,
+    );
+  } else {
+    disabled['humanity'] = 'humanity_oauth_credentials_missing';
+  }
+
+  // ─── Libro ─ app-wide client_id / client_secret.
+  if (_hasNonBlank(env, OAuthRefreshWorkerVendorEnvNames.libroClientId) &&
+      _hasNonBlank(env, OAuthRefreshWorkerVendorEnvNames.libroClientSecret)) {
+    registry['libro'] = makeLibroOauthRefreshClosure(
+      httpClient: httpClient,
+      clientId: env[OAuthRefreshWorkerVendorEnvNames.libroClientId]!,
+      clientSecret: env[OAuthRefreshWorkerVendorEnvNames.libroClientSecret]!,
+    );
+  } else {
+    disabled['libro'] = 'libro_oauth_credentials_missing';
+  }
+
+  final wired = registry.keys.toList()..sort();
+  return ProductionRefreshClosureBuildResult(
+    registry: Map<String, RefreshClosure>.unmodifiable(registry),
+    wiredVendorIds: List<String>.unmodifiable(wired),
+    disabledVendorIds: Map<String, String>.unmodifiable(disabled),
+  );
+}
 
 // ─── Claim row + Postgres seam ──────────────────────────────────────
 
@@ -1036,16 +1266,17 @@ WorkerRuntime buildWorkerRuntime({
   );
 }
 
-/// Scaffold registry that fails loud if the worker is deployed
-/// without a vendor refresh closure map wired in. Production must
-/// pass [adapterClosuresOverride] to wire the eleven `make<Vendor>...`
-/// factories from `production_oauth_refresh_closures.dart`. The
-/// deploy script comments out the follow-up.
+/// Empty registry retained for tests that exercise the
+/// "claimed-row-but-no-closure" path without any factories wired.
+/// Production code does NOT use this — [runCli] builds the wired
+/// registry from [buildProductionRefreshClosures] when no override is
+/// passed.
 RefreshClosureRegistry kEmptyRefreshClosures = const <String, RefreshClosure>{};
 
 /// CLI runner. Tests pass overrides; production calls with no
-/// overrides plus a closure registry the bootstrap composed from
-/// the vendor factories.
+/// overrides — `runCli` then builds the production refresh-closure
+/// registry from [buildProductionRefreshClosures] using the same env
+/// names the advisor proxy mounts.
 Future<int> runCli(
   List<String> rawArgs, {
   Map<String, String>? environment,
@@ -1053,6 +1284,7 @@ Future<int> runCli(
   OAuthRefreshWorkerGateway? gatewayOverride,
   VendorCredentialBroker? brokerOverride,
   RefreshClosureRegistry? refreshClosuresOverride,
+  http.Client? httpClientOverride,
   IOSink? out,
   IOSink? err,
   Future<void> Function(OAuthRefreshWorkerLoop loop)? installSignalHandlers,
@@ -1118,7 +1350,41 @@ Future<int> runCli(
     );
   }
 
-  final closures = refreshClosuresOverride ?? kEmptyRefreshClosures;
+  // Resolve the closure registry. Tests pass an override directly;
+  // production builds the wired registry from env (same vendor
+  // app-credential names the advisor proxy mounts) and emits a
+  // boot-time log of which vendors are wired vs. disabled-due-to-
+  // missing-secrets vs. unsupported (no closure factory at all).
+  final RefreshClosureRegistry closures;
+  if (refreshClosuresOverride != null) {
+    closures = refreshClosuresOverride;
+  } else if (hasOverrides) {
+    // Tests path with gateway / broker overrides but no closures
+    // override: keep the empty registry so claimed rows are
+    // logged-and-skipped, mirroring "all vendors unsupported" — tests
+    // that exercise refresh paths must pass `refreshClosuresOverride`.
+    closures = kEmptyRefreshClosures;
+  } else {
+    final httpClient = httpClientOverride ?? http.Client();
+    final closureBuild = buildProductionRefreshClosures(
+      env: env,
+      httpClient: httpClient,
+    );
+    closures = closureBuild.registry;
+    // Boot-time log: name three categories so a deploy review can
+    // verify the worker matches the proxy's connector activation list
+    // one-to-one. No secret values are echoed — only vendor ids and
+    // disable reasons.
+    stdoutSink.writeln(
+      'oauth_refresh_worker closure registry wired: '
+      '${jsonEncode(<String, Object?>{
+        'wired': closureBuild.wiredVendorIds,
+        'disabled_missing_secrets': closureBuild.disabledVendorIds,
+        'unsupported_no_closure': kVendorsWithoutRefreshClosure.toList()
+          ..sort(),
+      })}',
+    );
+  }
 
   switch (args.mode) {
     case WorkerMode.runOnce:

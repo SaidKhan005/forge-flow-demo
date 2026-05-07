@@ -15,11 +15,17 @@
 //     increment, no autoDisable, no broker call.
 //   * SIGTERM mid-tick — the loop's shouldStop hook fires between
 //     rows so the second row in the same tick is not processed.
+//   * production refresh-closure registry — vendors with optional
+//     ProxyConfig-style app credentials register only when their env
+//     vars are present; missing vendors land on the
+//     disabled-missing-secrets list; ALL claimed rows for unsupported
+//     or disabled vendors are logged-and-skipped at run time.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../tool/oauth_refresh_worker/main.dart';
 
@@ -283,6 +289,214 @@ void main() {
       );
     });
   });
+
+  group('buildProductionRefreshClosures', () {
+    test(
+      'registers all 11 closures when every optional credential set '
+      'is present',
+      () {
+        final env = <String, String>{
+          // Aloha NCR Voyix bundle (binder-style 4 secrets gate).
+          OAuthRefreshWorkerVendorEnvNames.alohaNcrVoyixClientId: 'aloha-id',
+          OAuthRefreshWorkerVendorEnvNames.alohaNcrVoyixClientSecret:
+              'aloha-secret',
+          OAuthRefreshWorkerVendorEnvNames.alohaNcrVoyixApplicationKey:
+              'aloha-app-key',
+          OAuthRefreshWorkerVendorEnvNames.alohaNcrVoyixOrganizationId:
+              'aloha-org-id',
+          // Square / Clover / Humanity / QBT / 7shifts / Libro pairs.
+          OAuthRefreshWorkerVendorEnvNames.squareClientId: 'sq-id',
+          OAuthRefreshWorkerVendorEnvNames.squareClientSecret: 'sq-secret',
+          OAuthRefreshWorkerVendorEnvNames.cloverAppId: 'clover-app-id',
+          OAuthRefreshWorkerVendorEnvNames.humanityClientId: 'hum-id',
+          OAuthRefreshWorkerVendorEnvNames.humanityClientSecret: 'hum-secret',
+          OAuthRefreshWorkerVendorEnvNames.quickBooksTimeClientId: 'qbt-id',
+          OAuthRefreshWorkerVendorEnvNames.quickBooksTimeClientSecret:
+              'qbt-secret',
+          OAuthRefreshWorkerVendorEnvNames.sevenShiftsClientId: '7s-id',
+          OAuthRefreshWorkerVendorEnvNames.sevenShiftsClientSecret: '7s-secret',
+          OAuthRefreshWorkerVendorEnvNames.libroClientId: 'libro-id',
+          OAuthRefreshWorkerVendorEnvNames.libroClientSecret: 'libro-secret',
+        };
+        final result = buildProductionRefreshClosures(
+          env: env,
+          httpClient: _StubHttpClient(),
+        );
+
+        expect(
+          result.wiredVendorIds,
+          equals(<String>[
+            '7shifts',
+            'aloha_ncr_voyix',
+            'clover',
+            'humanity',
+            'libro',
+            'lightspeed_lsk',
+            'oracle_micros_simphony',
+            'quickbooks_time',
+            'revel',
+            'square',
+            'toast',
+          ]),
+          reason:
+              'all 11 production OAuth refresh factories must register '
+              'when their app-credential env names are non-blank',
+        );
+        expect(result.disabledVendorIds, isEmpty);
+        // The six unsupported vendors stay outside the registry.
+        for (final id in kVendorsWithoutRefreshClosure) {
+          expect(
+            result.registry.containsKey(id),
+            isFalse,
+            reason: '$id is unsupported and must not be in the registry',
+          );
+        }
+      },
+    );
+
+    test(
+      'unconditionally-wired vendors register without any env',
+      () {
+        // Toast / Lightspeed LSK / Oracle MICROS Simphony / Revel pull
+        // credentials from bundle metadata at refresh time, so they
+        // wire without any boot-env app credentials.
+        final result = buildProductionRefreshClosures(
+          env: const <String, String>{},
+          httpClient: _StubHttpClient(),
+        );
+        expect(
+          result.wiredVendorIds,
+          containsAll(<String>[
+            'toast',
+            'lightspeed_lsk',
+            'oracle_micros_simphony',
+            'revel',
+          ]),
+        );
+        expect(
+          result.disabledVendorIds.keys,
+          containsAll(<String>[
+            'aloha_ncr_voyix',
+            'square',
+            'clover',
+            'humanity',
+            'quickbooks_time',
+            '7shifts',
+            'libro',
+          ]),
+          reason:
+              'every gated vendor must land on the disabled list when '
+              'its app-credential env names are absent — same warn-disable '
+              'shape as the binder',
+        );
+      },
+    );
+
+    test(
+      'partial Aloha credentials still mark Aloha disabled',
+      () {
+        // Only client_id + client_secret set; application_key and
+        // organization_id absent. Aloha must NOT register because all
+        // four pieces are required for a valid bundle.
+        final env = <String, String>{
+          OAuthRefreshWorkerVendorEnvNames.alohaNcrVoyixClientId: 'aloha-id',
+          OAuthRefreshWorkerVendorEnvNames.alohaNcrVoyixClientSecret:
+              'aloha-secret',
+        };
+        final result = buildProductionRefreshClosures(
+          env: env,
+          httpClient: _StubHttpClient(),
+        );
+        expect(result.registry.containsKey('aloha_ncr_voyix'), isFalse);
+        expect(
+          result.disabledVendorIds['aloha_ncr_voyix'],
+          equals('aloha_ncr_voyix_credentials_missing'),
+        );
+      },
+    );
+
+    test(
+      'a blank env value is treated the same as missing',
+      () {
+        // Cloud Run / Secret Manager sometimes mounts an empty string
+        // when a secret is undefined; the gate must reject blank
+        // values just like the binder's `hasSecretFor` check.
+        final env = <String, String>{
+          OAuthRefreshWorkerVendorEnvNames.squareClientId: '',
+          OAuthRefreshWorkerVendorEnvNames.squareClientSecret: '   ',
+        };
+        final result = buildProductionRefreshClosures(
+          env: env,
+          httpClient: _StubHttpClient(),
+        );
+        expect(result.registry.containsKey('square'), isFalse);
+        expect(
+          result.disabledVendorIds['square'],
+          equals('square_app_credentials_missing'),
+        );
+      },
+    );
+
+    test(
+      'tick: claimed row for a disabled vendor is logged-and-skipped — '
+      'no broker call, no failure-count increment',
+      () async {
+        // Build a registry from an env map that disables `square` and
+        // `humanity`. Then enqueue a Square claim and confirm the
+        // worker logs-and-skips it, identical to the
+        // unsupported-vendor path.
+        final closures = buildProductionRefreshClosures(
+          env: const <String, String>{},
+          httpClient: _StubHttpClient(),
+        ).registry;
+        expect(closures.containsKey('square'), isFalse);
+
+        final gateway = _FakeGateway()
+          ..addClaimable(
+            ClaimedCredentialRow(
+              credentialId: _credIdA,
+              operatorId: _opIdA,
+              locationId: _locIdA,
+              vendorId: 'square',
+              consecutiveFailuresBefore: 0,
+            ),
+          );
+        final broker = _RecordingBroker();
+
+        final result = await runWorkerTick(
+          gateway: gateway,
+          broker: broker,
+          refreshClosures: closures,
+          maxRowsPerTick: 50,
+          maxConsecutiveFailures: 3,
+          horizon: const Duration(minutes: 5),
+        );
+
+        expect(result.skippedNoCloser, 1);
+        expect(result.refreshSuccesses, 0);
+        expect(result.refreshFailures, 0);
+        expect(broker.refreshCalls, 0);
+        expect(gateway.recordedFailures, isEmpty);
+        expect(gateway.autoDisabledRows, isEmpty);
+      },
+    );
+  });
+}
+
+/// Minimal [http.Client] stub. The closure factories only construct
+/// closures (deferred network calls) at build time; the stubbed
+/// `Client` is never actually invoked in these unit tests.
+class _StubHttpClient implements http.Client {
+  @override
+  void close() {}
+
+  @override
+  noSuchMethod(Invocation invocation) {
+    throw StateError(
+      '_StubHttpClient.${invocation.memberName} called; closure builders '
+      'should not perform live HTTP requests during unit tests',
+    );
+  }
 }
 
 // ─── Fakes ──────────────────────────────────────────────────────────
