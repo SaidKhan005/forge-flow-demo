@@ -93,6 +93,107 @@ void main() {
     });
   });
 
+  group('FirebaseOperatorWebAuthSource performance posture', () {
+    test(
+      'loads account info and permissions snapshot in parallel after login',
+      () async {
+        final authClient = _StubFirebaseAuthClient();
+        authClient.scriptedSignIn = FirebaseAuthSignInSucceeded(
+          buildCredential(),
+        );
+        final accountStarted = Completer<void>();
+        final snapshotStarted = Completer<void>();
+        final proxyClient = OperatorWebProxyClient(
+          baseUri: kProxyBase,
+          httpClient: MockClient((request) async {
+            final path = request.url.path;
+            if (path == OperatorWebProxyClient.authSessionLoginPath) {
+              return http.Response(
+                jsonEncode(<String, Object?>{
+                  'session_id': 'session-uuid-perf',
+                  'user_id': 'user-1',
+                  'operator_id': 'op-1',
+                  'location_id': 'loc-1',
+                }),
+                200,
+                headers: <String, String>{'content-type': 'application/json'},
+              );
+            }
+            if (path == OperatorWebProxyClient.authAccountInfoPath) {
+              if (!accountStarted.isCompleted) accountStarted.complete();
+              await snapshotStarted.future.timeout(
+                const Duration(seconds: 1),
+                onTimeout: () {
+                  throw StateError('permission snapshot did not start');
+                },
+              );
+              return http.Response(
+                jsonEncode(<String, Object?>{
+                  'display_name': 'Demo Operator Owner',
+                  'email': 'owner@demo.forgeflow.test',
+                  'status_label': 'Active',
+                  'location_label': 'Demo Main Street',
+                  'role_labels': <String>['operator_owner'],
+                  'mfa_enabled': true,
+                }),
+                200,
+                headers: <String, String>{'content-type': 'application/json'},
+              );
+            }
+            if (path == OperatorWebProxyClient.authPermissionsSnapshotPath) {
+              if (!snapshotStarted.isCompleted) snapshotStarted.complete();
+              await accountStarted.future.timeout(
+                const Duration(seconds: 1),
+                onTimeout: () {
+                  throw StateError('account info did not start');
+                },
+              );
+              return http.Response(
+                jsonEncode(<String, Object?>{
+                  'user_id': 'user-1',
+                  'operator_id': 'op-1',
+                  'location_id': 'loc-1',
+                  'roles_version': 1,
+                  'evaluated_at': '2026-05-06T12:00:00Z',
+                  'permissions': <String, String>{
+                    'team.users.view': 'allow',
+                    'integrations.configure': 'allow',
+                  },
+                }),
+                200,
+                headers: <String, String>{'content-type': 'application/json'},
+              );
+            }
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'error': 'unscripted_route',
+                'message': 'no canned response for $path',
+              }),
+              500,
+              headers: <String, String>{'content-type': 'application/json'},
+            );
+          }),
+        );
+        final source = FirebaseOperatorWebAuthSource(
+          authClient: authClient,
+          proxyClient: proxyClient,
+        );
+        addTearDown(source.dispose);
+
+        await _waitFor(source, _isNeedsSignIn);
+        await source.signInWithEmailPassword(
+          email: 'owner@demo.forgeflow.test',
+          password: 'demo-password-1234',
+        );
+        await _waitFor(source, _isCompletedOrForbidden);
+
+        expect(accountStarted.isCompleted, isTrue);
+        expect(snapshotStarted.isCompleted, isTrue);
+        expect(source.current, isA<OperatorWebCompleted>());
+      },
+    );
+  });
+
   group('FirebaseOperatorWebAuthSource session id lifecycle '
       '(audit MEDIUM #3)', () {
     test('signOut clears _currentSessionId', () async {
@@ -115,76 +216,79 @@ void main() {
       expect(source.current, isA<OperatorWebNeedsSignIn>());
     });
 
-    test('token refresh failure on bootstrap clears _currentSessionId',
-        () async {
-      // Drive a clean bootstrap that hits the NeedsSignIn (token-null)
-      // path. `_currentSessionId` starts null, but the invariant is that
-      // any NeedsSignIn emit goes through `_emit` which resets it. We
-      // simulate stale state by re-signing in then forcing another
-      // bootstrap-style failure.
-      final authClient = _StubFirebaseAuthClient();
-      final handler = _ScriptedProxyHandler();
+    test(
+      'token refresh failure on bootstrap clears _currentSessionId',
+      () async {
+        // Drive a clean bootstrap that hits the NeedsSignIn (token-null)
+        // path. `_currentSessionId` starts null, but the invariant is that
+        // any NeedsSignIn emit goes through `_emit` which resets it. We
+        // simulate stale state by re-signing in then forcing another
+        // bootstrap-style failure.
+        final authClient = _StubFirebaseAuthClient();
+        final handler = _ScriptedProxyHandler();
 
-      // First land on Completed so _currentSessionId is set.
-      final source = await signInSuccessfully(
-        authClient: authClient,
-        handler: handler,
-      );
-      addTearDown(source.dispose);
-      expect(source.currentSessionId, isNotNull);
+        // First land on Completed so _currentSessionId is set.
+        final source = await signInSuccessfully(
+          authClient: authClient,
+          handler: handler,
+        );
+        addTearDown(source.dispose);
+        expect(source.currentSessionId, isNotNull);
 
-      // Now drive a token-refresh-failure path: refreshIdToken returns
-      // null. The auth source emits NeedsSignIn with the standard
-      // copy. We invoke this through the public surface by signing in
-      // again with bad outcome that forces NeedsSignIn.
-      authClient.scriptedSignIn = const FirebaseAuthSignInFailed(
-        code: 'wrong-password',
-        message: 'Email or password did not match.',
-      );
-      await source.signInWithEmailPassword(
-        email: 'owner@demo.forgeflow.test',
-        password: 'bad-password',
-      );
-      await _waitFor(source, _isNeedsSignIn);
+        // Now drive a token-refresh-failure path: refreshIdToken returns
+        // null. The auth source emits NeedsSignIn with the standard
+        // copy. We invoke this through the public surface by signing in
+        // again with bad outcome that forces NeedsSignIn.
+        authClient.scriptedSignIn = const FirebaseAuthSignInFailed(
+          code: 'wrong-password',
+          message: 'Email or password did not match.',
+        );
+        await source.signInWithEmailPassword(
+          email: 'owner@demo.forgeflow.test',
+          password: 'bad-password',
+        );
+        await _waitFor(source, _isNeedsSignIn);
 
-      expect(source.currentSessionId, isNull);
-      expect(source.current, isA<OperatorWebNeedsSignIn>());
-    });
+        expect(source.currentSessionId, isNull);
+        expect(source.current, isA<OperatorWebNeedsSignIn>());
+      },
+    );
 
-    test('scope mismatch in _completeCredential clears _currentSessionId',
-        () async {
-      final authClient = _StubFirebaseAuthClient();
-      final handler = _ScriptedProxyHandler();
+    test(
+      'scope mismatch in _completeCredential clears _currentSessionId',
+      () async {
+        final authClient = _StubFirebaseAuthClient();
+        final handler = _ScriptedProxyHandler();
 
-      // Land on Completed with a known session id.
-      final source = await signInSuccessfully(
-        authClient: authClient,
-        handler: handler,
-      );
-      addTearDown(source.dispose);
-      expect(source.currentSessionId, isNotNull);
+        // Land on Completed with a known session id.
+        final source = await signInSuccessfully(
+          authClient: authClient,
+          handler: handler,
+        );
+        addTearDown(source.dispose);
+        expect(source.currentSessionId, isNotNull);
 
-      // Re-sign-in but force the proxy permission snapshot to disagree
-      // with the session ledger, which raises the
-      // `permission_scope_mismatch` proxy exception inside
-      // `_completeCredential`. The catch arm emits NeedsSignIn.
-      handler.reset();
-      handler.scriptScopeMismatchLogin();
-      authClient.scriptedSignIn = FirebaseAuthSignInSucceeded(
-        buildCredential(),
-      );
-      await source.signInWithEmailPassword(
-        email: 'owner@demo.forgeflow.test',
-        password: 'demo-password-1234',
-      );
-      await _waitFor(source, _isNeedsSignIn);
+        // Re-sign-in but force the proxy permission snapshot to disagree
+        // with the session ledger, which raises the
+        // `permission_scope_mismatch` proxy exception inside
+        // `_completeCredential`. The catch arm emits NeedsSignIn.
+        handler.reset();
+        handler.scriptScopeMismatchLogin();
+        authClient.scriptedSignIn = FirebaseAuthSignInSucceeded(
+          buildCredential(),
+        );
+        await source.signInWithEmailPassword(
+          email: 'owner@demo.forgeflow.test',
+          password: 'demo-password-1234',
+        );
+        await _waitFor(source, _isNeedsSignIn);
 
-      expect(source.currentSessionId, isNull);
-      expect(source.current, isA<OperatorWebNeedsSignIn>());
-    });
+        expect(source.currentSessionId, isNull);
+        expect(source.current, isA<OperatorWebNeedsSignIn>());
+      },
+    );
 
-    test('proxy 5xx in _completeCredential clears _currentSessionId',
-        () async {
+    test('proxy 5xx in _completeCredential clears _currentSessionId', () async {
       final authClient = _StubFirebaseAuthClient();
       final handler = _ScriptedProxyHandler();
 
@@ -214,27 +318,29 @@ void main() {
       expect(source.current, isA<OperatorWebNeedsSignIn>());
     });
 
-    test('blank email path keeps _currentSessionId null without a prior login',
-        () async {
-      // The early-return validation arms (blank email, blank password,
-      // expired MFA challenge) emit NeedsSignIn through `_emit`. Even
-      // without a prior login, the session id stays null.
-      final authClient = _StubFirebaseAuthClient();
-      final source = FirebaseOperatorWebAuthSource(
-        authClient: authClient,
-        proxyClient: OperatorWebProxyClient(
-          baseUri: kProxyBase,
-          httpClient: MockClient((request) async => http.Response('{}', 200)),
-        ),
-      );
-      addTearDown(source.dispose);
-      await _waitFor(source, _isNeedsSignIn);
+    test(
+      'blank email path keeps _currentSessionId null without a prior login',
+      () async {
+        // The early-return validation arms (blank email, blank password,
+        // expired MFA challenge) emit NeedsSignIn through `_emit`. Even
+        // without a prior login, the session id stays null.
+        final authClient = _StubFirebaseAuthClient();
+        final source = FirebaseOperatorWebAuthSource(
+          authClient: authClient,
+          proxyClient: OperatorWebProxyClient(
+            baseUri: kProxyBase,
+            httpClient: MockClient((request) async => http.Response('{}', 200)),
+          ),
+        );
+        addTearDown(source.dispose);
+        await _waitFor(source, _isNeedsSignIn);
 
-      await source.signInWithEmailPassword(email: '', password: '');
+        await source.signInWithEmailPassword(email: '', password: '');
 
-      expect(source.currentSessionId, isNull);
-      expect(source.current, isA<OperatorWebNeedsSignIn>());
-    });
+        expect(source.currentSessionId, isNull);
+        expect(source.current, isA<OperatorWebNeedsSignIn>());
+      },
+    );
   });
 }
 
@@ -410,9 +516,7 @@ class _ScriptedProxyHandler {
           'location_id': 'different-loc',
           'roles_version': 1,
           'evaluated_at': '2026-05-06T12:00:00Z',
-          'permissions': <String, String>{
-            'team.users.view': 'allow',
-          },
+          'permissions': <String, String>{'team.users.view': 'allow'},
         },
       ),
     );

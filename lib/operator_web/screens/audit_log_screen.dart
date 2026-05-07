@@ -51,6 +51,7 @@ import 'package:flutter/services.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_audit_log_gateway.dart';
 import '../widgets/audit_log_row.dart';
+import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 
 /// Permission-key bound for the Audit Log read surface. Live source
@@ -141,6 +142,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
   List<WebAuditLogEntry> _entries = const <WebAuditLogEntry>[];
   String? _nextCursor;
   final Set<String> _expandedEntryIds = <String>{};
+  int _refreshGeneration = 0;
   int _idempotencySeq = 0;
 
   /// Optional client-side action filter the demo gateway applies on
@@ -173,8 +175,10 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
   }
 
   Future<void> _refresh() async {
+    final generation = ++_refreshGeneration;
     setState(() {
       _loading = true;
+      _loadingMore = false;
       _loadError = null;
     });
     try {
@@ -184,7 +188,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
         actorUserIds: _selectedActors.toList(),
       );
       final page = await widget.gateway.listEntries(query);
-      if (!mounted) return;
+      if (!mounted || generation != _refreshGeneration) return;
       setState(() {
         _entries = page.entries;
         _nextCursor = page.nextCursor;
@@ -193,7 +197,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
         _refreshActorCatalog(page.entries);
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _refreshGeneration) return;
       setState(() {
         _loading = false;
         _loadError = _friendlyLoadError(error);
@@ -203,6 +207,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
 
   Future<void> _loadMore() async {
     if (_loadingMore || _nextCursor == null) return;
+    final generation = _refreshGeneration;
     setState(() {
       _loadingMore = true;
     });
@@ -213,7 +218,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
         actorUserIds: _selectedActors.toList(),
       );
       final page = await widget.gateway.listEntries(query);
-      if (!mounted) return;
+      if (!mounted || generation != _refreshGeneration) return;
       setState(() {
         _entries = List<WebAuditLogEntry>.unmodifiable(<WebAuditLogEntry>[
           ..._entries,
@@ -224,7 +229,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
         _refreshActorCatalog(page.entries);
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _refreshGeneration) return;
       setState(() {
         _loadingMore = false;
         _loadError = _friendlyLoadError(error);
@@ -261,9 +266,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
             'spreadsheet to save the export.';
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Audit log CSV ready (${export.filename}).'),
-        ),
+        SnackBar(content: Text('Audit log CSV ready (${export.filename}).')),
       );
       // The export wrote its own audit.export.requested row server-side,
       // so refresh the page so it surfaces at the top of the ledger.
@@ -281,8 +284,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
     for (final row in entries) {
       final id = row.actorUserId;
       if (id == null) continue;
-      _actorPickerCatalog[id] =
-          row.actorDisplayName ?? row.actorEmail ?? id;
+      _actorPickerCatalog[id] = row.actorDisplayName ?? row.actorEmail ?? id;
     }
   }
 
@@ -294,6 +296,15 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
         _expandedEntryIds.add(entryId);
       }
     });
+  }
+
+  int _activeFilterCount() {
+    var count = 1; // Time window is always active.
+    if (_selectedActions.isNotEmpty) count += 1;
+    if (_selectedActors.isNotEmpty) count += 1;
+    if ((_query.targetKind ?? '').trim().isNotEmpty) count += 1;
+    if ((_query.targetId ?? '').trim().isNotEmpty) count += 1;
+    return count;
   }
 
   String _friendlyLoadError(Object error) {
@@ -437,6 +448,36 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
             },
           ),
           const SizedBox(height: 16),
+          OperatorWebSummaryStrip(
+            key: const Key('operator_web_audit_log_summary'),
+            items: [
+              OperatorWebSummaryItem(
+                icon: Icons.receipt_long_outlined,
+                label: 'Rows loaded',
+                value: _entries.length.toString(),
+                helper: _loading ? 'loading latest page' : 'current filter',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.filter_alt_outlined,
+                label: 'Active filters',
+                value: _activeFilterCount().toString(),
+                helper: 'time window included',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.more_horiz_outlined,
+                label: 'More results',
+                value: _nextCursor == null ? 'No' : 'Yes',
+                helper: 'load more when present',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.file_download_outlined,
+                label: 'Export',
+                value: widget._canExport ? 'Available' : 'View only',
+                helper: widget._canExport ? 'CSV uses filters' : 'role gated',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
           if (_exportMessage != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -528,8 +569,7 @@ class _AuditLogHeader extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.sunsetDark,
               side: const BorderSide(color: AppColors.sunsetDark, width: 1),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             ),
           ),
         ],
@@ -592,10 +632,7 @@ class _AuditLogFilters extends StatelessWidget {
             onPickCustom: onCustomRangePick,
           ),
           const SizedBox(height: 12),
-          _ActionPicker(
-            selected: selectedActions,
-            onChanged: onActionsChanged,
-          ),
+          _ActionPicker(selected: selectedActions, onChanged: onActionsChanged),
           const SizedBox(height: 12),
           if (actorCatalog.isNotEmpty) ...[
             _ActorPicker(
@@ -609,8 +646,9 @@ class _AuditLogFilters extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: _TextFilterField(
-                  fieldKey:
-                      const Key('operator_web_audit_log_filter_target_kind'),
+                  fieldKey: const Key(
+                    'operator_web_audit_log_filter_target_kind',
+                  ),
                   label: 'Target kind',
                   hint: 'team_user, role, session, org_unit',
                   value: query.targetKind,
@@ -620,8 +658,9 @@ class _AuditLogFilters extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: _TextFilterField(
-                  fieldKey:
-                      const Key('operator_web_audit_log_filter_target_id'),
+                  fieldKey: const Key(
+                    'operator_web_audit_log_filter_target_id',
+                  ),
                   label: 'Target id',
                   hint: 'paste a uuid or stable id',
                   value: query.targetId,
@@ -653,15 +692,16 @@ class _TimeWindowChips extends StatelessWidget {
 
   static const List<(WebAuditLogTimeWindow, String, String)> _options =
       <(WebAuditLogTimeWindow, String, String)>[
-    (WebAuditLogTimeWindow.last24h, 'Last 24 hours', '24h'),
-    (WebAuditLogTimeWindow.last7d, 'Last 7 days', '7d'),
-    (WebAuditLogTimeWindow.last30d, 'Last 30 days', '30d'),
-    (WebAuditLogTimeWindow.last90d, 'Last 90 days', '90d'),
-  ];
+        (WebAuditLogTimeWindow.last24h, 'Last 24 hours', '24h'),
+        (WebAuditLogTimeWindow.last7d, 'Last 7 days', '7d'),
+        (WebAuditLogTimeWindow.last30d, 'Last 30 days', '30d'),
+        (WebAuditLogTimeWindow.last90d, 'Last 90 days', '90d'),
+      ];
 
   @override
   Widget build(BuildContext context) {
-    final customLabel = (selected == WebAuditLogTimeWindow.custom &&
+    final customLabel =
+        (selected == WebAuditLogTimeWindow.custom &&
             customFrom != null &&
             customTo != null)
         ? '${_fmt(customFrom!)} to ${_fmt(customTo!)}'
@@ -772,8 +812,7 @@ class _ActorPicker extends StatelessWidget {
           children: <Widget>[
             for (final entry in actors)
               _ChoiceChip(
-                chipKey:
-                    Key('operator_web_audit_log_actor_${entry.key}'),
+                chipKey: Key('operator_web_audit_log_actor_${entry.key}'),
                 label: entry.value,
                 isActive: selected.contains(entry.key),
                 onTap: () {
@@ -1112,4 +1151,3 @@ class _AuditLogForbiddenSurface extends StatelessWidget {
     );
   }
 }
-

@@ -16,6 +16,7 @@ param(
   [string] $SecretPrefix = 'forge-flow-staging-',
   [string] $FirebaseGoogleServicesPath = '',
   [string] $AdminCorsAllowedOrigins = $env:ADMIN_CORS_ALLOWED_ORIGINS,
+  [string] $OperatorCorsAllowedOrigins = $env:OPERATOR_CORS_ALLOWED_ORIGINS,
   [string] $VpcConnector = 'ff-staging-proxy-egress',
   [string] $VpcEgress = 'all-traffic',
   [int] $MinInstances = 0,
@@ -56,6 +57,26 @@ function Get-ServiceUrl {
   if ([string]::IsNullOrWhiteSpace($url)) {
     Write-Host "BLOCKED: Cloud Run service '$Service' returned no URL."
     exit 1
+  }
+  return $url
+}
+
+function TryGet-ServiceUrl {
+  param([string] $Service)
+
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $url = & $gcloud run services describe $Service `
+      --project $Project `
+      --region $Region `
+      --format 'value(status.url)' 2>$null
+    $describeExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  if ($describeExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($url)) {
+    return ''
   }
   return $url
 }
@@ -133,7 +154,8 @@ function Assert-CloudRunReadyTraffic {
 function Assert-PreviewRuntimeChecks {
   param(
     [string] $ProxyUrl,
-    [string] $AdminUrl
+    [string] $AdminUrl,
+    [string] $OperatorUrl = ''
   )
 
   $readyz = Invoke-WebRequest -UseBasicParsing -Uri "$ProxyUrl/readyz"
@@ -167,20 +189,46 @@ function Assert-PreviewRuntimeChecks {
     exit 1
   }
 
+  $operatorAuthStatusCode = ''
+  if (-not [string]::IsNullOrWhiteSpace($OperatorUrl)) {
+    $operatorHeaders = @{
+      Origin = $OperatorUrl
+      'Access-Control-Request-Method' = 'GET'
+      'Access-Control-Request-Headers' = 'authorization,content-type'
+    }
+    $operatorAuthPreflight = Invoke-WebRequest `
+      -UseBasicParsing `
+      -Method OPTIONS `
+      -Uri "$ProxyUrl/v1/auth/account" `
+      -Headers $operatorHeaders
+    if ($operatorAuthPreflight.StatusCode -ne 204) {
+      Write-Host "BLOCKED: preview operator-web CORS preflight returned $($operatorAuthPreflight.StatusCode)"
+      exit 1
+    }
+    $operatorAuthStatusCode = $operatorAuthPreflight.StatusCode
+  }
+
   [pscustomobject] @{
     ReadyzStatusCode = $readyz.StatusCode
     CorsPreflightStatusCode = $operatorPreflight.StatusCode
     AdminAuthCorsPreflightStatusCode = $adminAuthPreflight.StatusCode
+    OperatorAuthCorsPreflightStatusCode = $operatorAuthStatusCode
   }
 }
 
 $safeName = Normalize-PreviewName -Name $PreviewName
 $proxyService = "forge-flow-preview-$safeName-proxy"
 $adminService = "forge-flow-preview-$safeName-admin"
-if ($proxyService.Length -gt 63 -or $adminService.Length -gt 63) {
+$operatorService = "forge-flow-preview-$safeName-operator-web"
+if (
+  $proxyService.Length -gt 63 -or
+  $adminService.Length -gt 63 -or
+  $operatorService.Length -gt 63
+) {
   Write-Host 'BLOCKED: preview service names must be 63 characters or fewer.'
   Write-Host " - $proxyService"
   Write-Host " - $adminService"
+  Write-Host " - $operatorService"
   exit 1
 }
 
@@ -189,6 +237,7 @@ $proxyEnvironment = "preview-$safeName"
 
 Write-Host "Preview proxy service: $proxyService"
 Write-Host "Preview admin service: $adminService"
+Write-Host "Preview operator service: $operatorService"
 Write-Host "Secret prefix: $SecretPrefix"
 Write-Host "Proxy base env var: $proxyEnvName"
 Write-Host "Min instances: $MinInstances"
@@ -237,14 +286,19 @@ function Invoke-PreviewProxyDeploy {
 }
 
 if ($PrintCommandOnly) {
-  Write-Host 'Would deploy preview proxy, preview admin, then redeploy proxy with admin CORS.'
+  Write-Host 'Would deploy preview proxy, preview admin, then redeploy proxy with admin/operator CORS.'
   Write-Host "Proxy script: $(Join-Path $PSScriptRoot 'deploy_staging_proxy.ps1')"
   Write-Host "Admin script: $(Join-Path $PSScriptRoot 'deploy_admin_console.ps1')"
   exit 0
 }
 
 Write-Host 'Deploying preview proxy.'
-Invoke-PreviewProxyDeploy -CorsOrigins (Join-OriginList -Origins @($AdminCorsAllowedOrigins))
+$existingOperatorUrl = TryGet-ServiceUrl -Service $operatorService
+Invoke-PreviewProxyDeploy -CorsOrigins (Join-OriginList -Origins @(
+  $AdminCorsAllowedOrigins,
+  $OperatorCorsAllowedOrigins,
+  $existingOperatorUrl
+))
 
 $proxyUrl = Get-ServiceUrl -Service $proxyService
 $proxyTuple = Get-CloudRunServiceTuple -Service $proxyService
@@ -273,10 +327,13 @@ $adminTuple = Get-CloudRunServiceTuple -Service $adminService
 Assert-CloudRunReadyTraffic -Service $adminService -Tuple $adminTuple
 Write-Host "Preview admin URL: $adminUrl"
 
-Write-Host 'Updating preview proxy CORS with the preview admin origin.'
+Write-Host 'Updating preview proxy CORS with the preview admin/operator origins.'
+$existingOperatorUrl = TryGet-ServiceUrl -Service $operatorService
 Invoke-PreviewProxyDeploy -CorsOrigins (Join-OriginList -Origins @(
   $AdminCorsAllowedOrigins,
-  $adminUrl
+  $OperatorCorsAllowedOrigins,
+  $adminUrl,
+  $existingOperatorUrl
 ))
 
 $finalProxyUrl = Get-ServiceUrl -Service $proxyService
@@ -286,7 +343,8 @@ $proxyTuple = Get-CloudRunServiceTuple -Service $proxyService
 Assert-CloudRunReadyTraffic -Service $proxyService -Tuple $proxyTuple
 $runtimeChecks = Assert-PreviewRuntimeChecks `
   -ProxyUrl $finalProxyUrl `
-  -AdminUrl $adminUrl
+  -AdminUrl $adminUrl `
+  -OperatorUrl $existingOperatorUrl
 
 Write-Host 'Preview deployment complete.'
 Write-Host " - proxy service: $proxyService"
@@ -300,5 +358,8 @@ Write-Host " - admin URL: $adminUrl"
 Write-Host " - proxy /readyz: $($runtimeChecks.ReadyzStatusCode)"
 Write-Host " - admin CORS preflight: $($runtimeChecks.CorsPreflightStatusCode)"
 Write-Host " - admin-auth CORS preflight: $($runtimeChecks.AdminAuthCorsPreflightStatusCode)"
+if (-not [string]::IsNullOrWhiteSpace($runtimeChecks.OperatorAuthCorsPreflightStatusCode)) {
+  Write-Host " - operator-web auth CORS preflight: $($runtimeChecks.OperatorAuthCorsPreflightStatusCode)"
+}
 Write-Host " - proxy base env var: $proxyEnvName"
 Write-Host " - share/test URL: ${adminUrl}?cache_bust=preview-$safeName-$(Get-Date -Format yyyyMMddHHmmss)"

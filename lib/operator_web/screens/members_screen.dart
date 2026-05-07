@@ -51,6 +51,7 @@ import '../../services/team/team_users_list_controller.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/demo_team_fixtures.dart';
 import '../services/web_team_users_gateway.dart';
+import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 import 'invite_member_dialog.dart';
 
@@ -184,6 +185,7 @@ class _MembersScreenState extends State<MembersScreen> {
   bool _loading = true;
   String? _loadError;
   final Set<String> _busyUserIds = <String>{};
+  int _loadGeneration = 0;
   int _idempotencySeq = 0;
 
   @override
@@ -217,6 +219,7 @@ class _MembersScreenState extends State<MembersScreen> {
   }
 
   Future<void> _loadAll() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
@@ -232,14 +235,14 @@ class _MembersScreenState extends State<MembersScreen> {
         ),
       );
       final results = await Future.wait<Object>([usersFuture, invitesFuture]);
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _users = (results[0] as TeamUsersListed).users;
         _invites = (results[1] as TeamInvitesListed).invites;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _loadError = _friendlyLoadError(error);
@@ -570,6 +573,11 @@ class _MembersScreenState extends State<MembersScreen> {
       );
     }
     final filteredCount = _filteredUsers.length;
+    final activeCount = _users.where((user) => user.status == 'active').length;
+    final suspendedCount = _users
+        .where((user) => user.status == 'suspended')
+        .length;
+    final mfaCount = _users.where((user) => user.mfaEnrolled).length;
     return SingleChildScrollView(
       key: const Key('operator_web_members_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -579,6 +587,36 @@ class _MembersScreenState extends State<MembersScreen> {
           _MembersHeader(
             canInvite: widget._canWrite,
             onInvite: _openInviteDialog,
+          ),
+          const SizedBox(height: 18),
+          OperatorWebSummaryStrip(
+            key: const Key('operator_web_members_summary'),
+            items: [
+              OperatorWebSummaryItem(
+                icon: Icons.people_outline,
+                label: 'Visible members',
+                value: filteredCount.toString(),
+                helper: '${_users.length} total loaded',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.check_circle_outline,
+                label: 'Active',
+                value: activeCount.toString(),
+                helper: 'can sign in',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.pause_circle_outline,
+                label: 'Suspended',
+                value: suspendedCount.toString(),
+                helper: 'blocked until restored',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.verified_user_outlined,
+                label: 'MFA enrolled',
+                value: mfaCount.toString(),
+                helper: '${_invites.length} pending invites',
+              ),
+            ],
           ),
           const SizedBox(height: 18),
           _MembersFilterRail(
@@ -915,37 +953,54 @@ class _MembersTable extends StatelessWidget {
         ),
       );
     }
-    return Container(
-      key: const Key('operator_web_members_table'),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          const _MembersTableHeader(),
-          for (var i = 0; i < users.length; i++) ...[
-            if (i > 0)
-              const Divider(
-                height: 1,
-                thickness: 1,
-                color: AppColors.borderSubtle,
-              ),
-            _MembersTableRow(
-              user: users[i],
-              canWrite: canWrite,
-              busy: busyUserIds.contains(users[i].userId),
-              onSuspend: onSuspend,
-              onReactivate: onReactivate,
-              onSoftDelete: onSoftDelete,
-              onResetPassword: onResetPassword,
-              onResetMfa: onResetMfa,
-            ),
-          ],
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 720;
+        return Container(
+          key: const Key('operator_web_members_table'),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              if (!compact) const _MembersTableHeader(),
+              for (var i = 0; i < users.length; i++) ...[
+                if (i > 0 || !compact)
+                  const Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: AppColors.borderSubtle,
+                  ),
+                if (compact)
+                  _MembersCompactCard(
+                    user: users[i],
+                    canWrite: canWrite,
+                    busy: busyUserIds.contains(users[i].userId),
+                    onSuspend: onSuspend,
+                    onReactivate: onReactivate,
+                    onSoftDelete: onSoftDelete,
+                    onResetPassword: onResetPassword,
+                    onResetMfa: onResetMfa,
+                  )
+                else
+                  _MembersTableRow(
+                    user: users[i],
+                    canWrite: canWrite,
+                    busy: busyUserIds.contains(users[i].userId),
+                    onSuspend: onSuspend,
+                    onReactivate: onReactivate,
+                    onSoftDelete: onSoftDelete,
+                    onResetPassword: onResetPassword,
+                    onResetMfa: onResetMfa,
+                  ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -1081,75 +1136,244 @@ class _MembersTableRow extends StatelessWidget {
           ),
           SizedBox(
             width: 40,
-            child: canWrite && !busy && user.status != 'soft_deleted'
-                ? PopupMenuButton<_MembersRowAction>(
-                    key: Key('operator_web_members_row_actions_${user.userId}'),
-                    icon: const Icon(Icons.more_vert, size: 18),
-                    onSelected: (action) {
-                      switch (action) {
-                        case _MembersRowAction.suspend:
-                          onSuspend(user);
-                        case _MembersRowAction.reactivate:
-                          onReactivate(user);
-                        case _MembersRowAction.softDelete:
-                          onSoftDelete(user);
-                        case _MembersRowAction.resetPassword:
-                          onResetPassword(user);
-                        case _MembersRowAction.resetMfa:
-                          onResetMfa(user);
-                      }
-                    },
-                    itemBuilder: (context) {
-                      final isSuspended = user.status == 'suspended';
-                      final isSoftDeleted = user.status == 'soft_deleted';
-                      return <PopupMenuEntry<_MembersRowAction>>[
-                        if (!isSuspended && !isSoftDeleted)
-                          const PopupMenuItem<_MembersRowAction>(
-                            key: Key('members_row_action_suspend'),
-                            value: _MembersRowAction.suspend,
-                            child: Text('Suspend'),
-                          ),
-                        if (isSuspended)
-                          const PopupMenuItem<_MembersRowAction>(
-                            key: Key('members_row_action_reactivate'),
-                            value: _MembersRowAction.reactivate,
-                            child: Text('Reactivate'),
-                          ),
-                        if (!isSoftDeleted) ...<
-                          PopupMenuEntry<_MembersRowAction>
-                        >[
-                          const PopupMenuItem<_MembersRowAction>(
-                            key: Key('members_row_action_reset_password'),
-                            value: _MembersRowAction.resetPassword,
-                            child: Text('Reset password'),
-                          ),
-                          const PopupMenuItem<_MembersRowAction>(
-                            key: Key('members_row_action_reset_mfa'),
-                            value: _MembersRowAction.resetMfa,
-                            child: Text('Reset two-factor sign-in'),
-                          ),
-                          const PopupMenuItem<_MembersRowAction>(
-                            key: Key('members_row_action_soft_delete'),
-                            value: _MembersRowAction.softDelete,
-                            child: Text('Remove from team'),
-                          ),
-                        ],
-                      ];
-                    },
-                  )
-                : busy
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.sunsetDark,
-                    ),
-                  )
-                : const SizedBox.shrink(),
+            child: _MembersRowActionsButton(
+              user: user,
+              canWrite: canWrite,
+              busy: busy,
+              onSuspend: onSuspend,
+              onReactivate: onReactivate,
+              onSoftDelete: onSoftDelete,
+              onResetPassword: onResetPassword,
+              onResetMfa: onResetMfa,
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MembersCompactCard extends StatelessWidget {
+  const _MembersCompactCard({
+    required this.user,
+    required this.canWrite,
+    required this.busy,
+    required this.onSuspend,
+    required this.onReactivate,
+    required this.onSoftDelete,
+    required this.onResetPassword,
+    required this.onResetMfa,
+  });
+
+  final TeamUserListEntry user;
+  final bool canWrite;
+  final bool busy;
+  final Future<void> Function(TeamUserListEntry user) onSuspend;
+  final Future<void> Function(TeamUserListEntry user) onReactivate;
+  final Future<void> Function(TeamUserListEntry user) onSoftDelete;
+  final Future<void> Function(TeamUserListEntry user) onResetPassword;
+  final Future<void> Function(TeamUserListEntry user) onResetMfa;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayName = user.displayName.isEmpty
+        ? user.email
+        : user.displayName;
+    return Container(
+      key: Key('operator_web_members_row_${user.userId}'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        displayName,
+                        style: AppTextStyles.body13(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _StatusChip(status: user.status),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  user.email,
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: <Widget>[
+                    _MemberMetaChip(
+                      icon: Icons.badge_outlined,
+                      label: user.roleLabel,
+                    ),
+                    _MemberMetaChip(
+                      icon: Icons.storefront_outlined,
+                      label: user.locationLabel ?? 'All locations',
+                    ),
+                    _MemberMetaChip(
+                      icon: Icons.verified_user_outlined,
+                      label: user.mfaEnrolled ? 'MFA on' : 'MFA off',
+                      color: user.mfaEnrolled
+                          ? AppColors.positive
+                          : AppColors.textSecondary,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          SizedBox(
+            width: 40,
+            child: _MembersRowActionsButton(
+              user: user,
+              canWrite: canWrite,
+              busy: busy,
+              onSuspend: onSuspend,
+              onReactivate: onReactivate,
+              onSoftDelete: onSoftDelete,
+              onResetPassword: onResetPassword,
+              onResetMfa: onResetMfa,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MemberMetaChip extends StatelessWidget {
+  const _MemberMetaChip({
+    required this.icon,
+    required this.label,
+    this.color = AppColors.textSecondary,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text(label, style: AppTextStyles.mono10(color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+class _MembersRowActionsButton extends StatelessWidget {
+  const _MembersRowActionsButton({
+    required this.user,
+    required this.canWrite,
+    required this.busy,
+    required this.onSuspend,
+    required this.onReactivate,
+    required this.onSoftDelete,
+    required this.onResetPassword,
+    required this.onResetMfa,
+  });
+
+  final TeamUserListEntry user;
+  final bool canWrite;
+  final bool busy;
+  final Future<void> Function(TeamUserListEntry user) onSuspend;
+  final Future<void> Function(TeamUserListEntry user) onReactivate;
+  final Future<void> Function(TeamUserListEntry user) onSoftDelete;
+  final Future<void> Function(TeamUserListEntry user) onResetPassword;
+  final Future<void> Function(TeamUserListEntry user) onResetMfa;
+
+  @override
+  Widget build(BuildContext context) {
+    if (busy) {
+      return const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: AppColors.sunsetDark,
+        ),
+      );
+    }
+    if (!canWrite || user.status == 'soft_deleted') {
+      return const SizedBox.shrink();
+    }
+    return PopupMenuButton<_MembersRowAction>(
+      key: Key('operator_web_members_row_actions_${user.userId}'),
+      icon: const Icon(Icons.more_vert, size: 18),
+      onSelected: (action) {
+        switch (action) {
+          case _MembersRowAction.suspend:
+            onSuspend(user);
+          case _MembersRowAction.reactivate:
+            onReactivate(user);
+          case _MembersRowAction.softDelete:
+            onSoftDelete(user);
+          case _MembersRowAction.resetPassword:
+            onResetPassword(user);
+          case _MembersRowAction.resetMfa:
+            onResetMfa(user);
+        }
+      },
+      itemBuilder: (context) {
+        final isSuspended = user.status == 'suspended';
+        final isSoftDeleted = user.status == 'soft_deleted';
+        return <PopupMenuEntry<_MembersRowAction>>[
+          if (!isSuspended && !isSoftDeleted)
+            const PopupMenuItem<_MembersRowAction>(
+              key: Key('members_row_action_suspend'),
+              value: _MembersRowAction.suspend,
+              child: Text('Suspend'),
+            ),
+          if (isSuspended)
+            const PopupMenuItem<_MembersRowAction>(
+              key: Key('members_row_action_reactivate'),
+              value: _MembersRowAction.reactivate,
+              child: Text('Reactivate'),
+            ),
+          if (!isSoftDeleted) ...<PopupMenuEntry<_MembersRowAction>>[
+            const PopupMenuItem<_MembersRowAction>(
+              key: Key('members_row_action_reset_password'),
+              value: _MembersRowAction.resetPassword,
+              child: Text('Reset password'),
+            ),
+            const PopupMenuItem<_MembersRowAction>(
+              key: Key('members_row_action_reset_mfa'),
+              value: _MembersRowAction.resetMfa,
+              child: Text('Reset two-factor sign-in'),
+            ),
+            const PopupMenuItem<_MembersRowAction>(
+              key: Key('members_row_action_soft_delete'),
+              value: _MembersRowAction.softDelete,
+              child: Text('Remove from team'),
+            ),
+          ],
+        ];
+      },
     );
   }
 }

@@ -34,6 +34,7 @@ import 'package:flutter/material.dart';
 
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_security_gateway.dart';
+import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 import 'change_password_dialog.dart';
 import 'mfa_factor_dialog.dart';
@@ -112,6 +113,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   final Set<String> _busyFactorIds = <String>{};
   final Set<String> _busyRemovalIds = <String>{};
   bool _passwordChangedToast = false;
+  int _loadGeneration = 0;
   int _idempotencySeq = 0;
   SecurityHistoryWindow _historyWindow = SecurityHistoryWindow.last90Days;
 
@@ -132,6 +134,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   DateTime _now() => widget.now?.call() ?? DateTime.now().toUtc();
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
@@ -139,11 +142,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
     try {
       final factorsFuture = widget.gateway.listFactors();
       final historyFuture = widget.gateway.listLoginHistory();
-      final results = await Future.wait<Object>([
-        factorsFuture,
-        historyFuture,
-      ]);
-      if (!mounted) return;
+      final results = await Future.wait<Object>([factorsFuture, historyFuture]);
+      if (!mounted || generation != _loadGeneration) return;
       final factorsResult = results[0] as WebSecurityFactorsListed;
       final historyResult = results[1] as WebSecurityLoginHistoryListed;
       setState(() {
@@ -153,7 +153,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _loadError = _friendlyLoadError(error);
@@ -183,9 +183,9 @@ class _SecurityScreenState extends State<SecurityScreen> {
     if (result == true) {
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Authenticator app added.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Authenticator app added.')));
     }
   }
 
@@ -228,9 +228,9 @@ class _SecurityScreenState extends State<SecurityScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyMutationError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyMutationError(error))));
     }
   }
 
@@ -266,9 +266,9 @@ class _SecurityScreenState extends State<SecurityScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _busyFactorIds.remove(factor.factorId));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyMutationError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyMutationError(error))));
     }
   }
 
@@ -290,9 +290,9 @@ class _SecurityScreenState extends State<SecurityScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _busyRemovalIds.remove(removal.requestId));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyMutationError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyMutationError(error))));
     }
   }
 
@@ -392,9 +392,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
               children: [
                 Text(
                   'Security could not load',
-                  style: AppTextStyles.display20(
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -423,6 +421,10 @@ class _SecurityScreenState extends State<SecurityScreen> {
         ),
       );
     }
+    final pendingRemovalCount = _removals
+        .where((removal) => removal.status == 'pending')
+        .length;
+    final visibleHistory = _filteredHistory();
     return SingleChildScrollView(
       key: const Key('operator_web_security_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -430,6 +432,36 @@ class _SecurityScreenState extends State<SecurityScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _SecurityHeader(),
+          const SizedBox(height: 18),
+          OperatorWebSummaryStrip(
+            key: const Key('operator_web_security_summary'),
+            items: [
+              OperatorWebSummaryItem(
+                icon: Icons.verified_user_outlined,
+                label: 'Authenticators',
+                value: _factors.length.toString(),
+                helper: 'enrolled for sign-in',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.schedule_outlined,
+                label: 'Pending removals',
+                value: pendingRemovalCount.toString(),
+                helper: '24-hour safety window',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.password_outlined,
+                label: 'Password',
+                value: _passwordChangedToast ? 'Updated' : 'Ready',
+                helper: 'change with current password',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.history_outlined,
+                label: 'Activity shown',
+                value: visibleHistory.length.toString(),
+                helper: _historyWindow.label.toLowerCase(),
+              ),
+            ],
+          ),
           const SizedBox(height: 18),
           _MfaSection(
             factors: _factors,
@@ -448,7 +480,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
           ),
           const SizedBox(height: 18),
           _LoginHistorySection(
-            entries: _filteredHistory(),
+            entries: visibleHistory,
             window: _historyWindow,
             onWindowChanged: (next) => setState(() {
               _historyWindow = next;
@@ -572,9 +604,7 @@ class _MfaSection extends StatelessWidget {
                   'every sign-in, in addition to your password. Removing an '
                   'authenticator takes 24 hours to complete; you can cancel '
                   'anytime during that window.',
-                  style: AppTextStyles.body13(
-                    color: AppColors.textSecondary,
-                  ),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -609,11 +639,7 @@ class _MfaSection extends StatelessWidget {
                 onCancelRemoval: onCancelRemoval,
               ),
             ],
-          const Divider(
-            height: 1,
-            thickness: 1,
-            color: AppColors.borderSubtle,
-          ),
+          const Divider(height: 1, thickness: 1, color: AppColors.borderSubtle),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
             child: Align(
@@ -633,9 +659,7 @@ class _MfaSection extends StatelessWidget {
                     horizontal: 8,
                     vertical: 4,
                   ),
-                  textStyle: AppTextStyles.mono11(
-                    color: AppColors.sunsetDark,
-                  ),
+                  textStyle: AppTextStyles.mono11(color: AppColors.sunsetDark),
                 ),
               ),
             ),
@@ -721,9 +745,7 @@ class _MfaFactorRow extends StatelessWidget {
                         ),
                         child: Text(
                           'Removal pending',
-                          style: AppTextStyles.mono7(
-                            color: AppColors.warning,
-                          ),
+                          style: AppTextStyles.mono7(color: AppColors.warning),
                         ),
                       ),
                     ],
@@ -827,10 +849,7 @@ class _PasswordSection extends StatelessWidget {
                 label: const Text('Change password'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.sunsetDark,
-                  side: const BorderSide(
-                    color: AppColors.sunsetDark,
-                    width: 1,
-                  ),
+                  side: const BorderSide(color: AppColors.sunsetDark, width: 1),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(6),
                   ),
@@ -849,10 +868,7 @@ class _PasswordSection extends StatelessWidget {
             const SizedBox(height: 10),
             Container(
               key: const Key('operator_web_security_password_toast'),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 8,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.positive.withValues(alpha: 0.10),
                 border: Border.all(
@@ -924,9 +940,7 @@ class _LoginHistorySection extends StatelessWidget {
                   'your account, capped at the last 90 days. If you see an '
                   'event you do not recognise, change your password and '
                   'remove the authenticator right away.',
-                  style: AppTextStyles.body13(
-                    color: AppColors.textSecondary,
-                  ),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 10),
                 Wrap(
@@ -990,9 +1004,7 @@ class _LoginHistoryRow extends StatelessWidget {
               children: [
                 Text(
                   entry.friendlyLabel,
-                  style: AppTextStyles.body13(
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -1007,10 +1019,7 @@ class _LoginHistoryRow extends StatelessWidget {
     );
   }
 
-  static String _metaLine(
-    WebSecurityLoginHistoryEntry entry,
-    String? geo,
-  ) {
+  static String _metaLine(WebSecurityLoginHistoryEntry entry, String? geo) {
     final parts = <String>[
       _formatDateTime(entry.occurredAt),
       if (entry.deviceLabel != null && entry.deviceLabel!.isNotEmpty)
