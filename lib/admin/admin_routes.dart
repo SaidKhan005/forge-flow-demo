@@ -37,6 +37,7 @@ import 'screens/per_location_data_accuracy_screen.dart';
 import 'screens/polling_and_pricing_admin_screen.dart';
 import 'screens/pricing_tier_admin_screen.dart';
 import 'screens/roles_hierarchy_sessions_admin_screen.dart';
+import 'screens/support_operator_view_admin_screen.dart';
 import 'services/audited_support_actions_admin_gateway.dart';
 import 'services/corpus_admin_gateway.dart';
 import 'services/data_accuracy_admin_gateway.dart';
@@ -110,6 +111,12 @@ enum AdminRouteSection { ai, operations, serviceSetup, systemMonitoring }
 /// Canonical Operators route ID (11A.1).
 const String kAdminOperatorsRouteId = 'operators';
 
+/// Cross-operator support workspace. F&F staff chooses a business +
+/// location scope in Business accounts, then lands here to work across
+/// People, Access, Security/Audit, and Vendors without re-picking the
+/// business for each tab.
+const String kAdminSupportOperatorViewRouteId = 'support-operator-view';
+
 /// Canonical Pricing route ID (11A.2).
 const String kAdminPricingRouteId = 'pricing';
 
@@ -181,6 +188,16 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     subtitle:
         'Find a business, review setup, and drill into locations, team, access, audit, and data controls.',
     builder: _buildOperators,
+  ),
+  AdminRoute(
+    id: kAdminSupportOperatorViewRouteId,
+    title: 'Support workspace',
+    path: '/admin/support-operator-view',
+    icon: Icons.support_agent_outlined,
+    section: AdminRouteSection.operations,
+    subtitle:
+        'Work one scoped business across people, access, security, audit, and vendors.',
+    builder: _buildSupportOperatorView,
   ),
   AdminRoute(
     id: kAdminPricingRouteId,
@@ -270,17 +287,16 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminMembersRouteId,
-    title: 'Team & roles',
+    title: 'People',
     path: '/admin/members',
     icon: Icons.people_alt_outlined,
     section: AdminRouteSection.operations,
-    subtitle:
-        'Review members, invites, roles, and roster actions for one business.',
+    subtitle: 'Review members, invites, and roster actions for one business.',
     builder: _buildMembers,
   ),
   AdminRoute(
     id: kAdminRolesHierarchySessionsRouteId,
-    title: 'Access & hierarchy',
+    title: 'Access',
     path: '/admin/roles-hierarchy-sessions',
     icon: Icons.account_tree_outlined,
     section: AdminRouteSection.operations,
@@ -289,9 +305,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminAuditedSupportActionsRouteId,
-    title: 'Audit & support',
+    title: 'Security & audit',
     path: '/admin/audited-support-actions',
-    icon: Icons.history_outlined,
+    icon: Icons.security_outlined,
     section: AdminRouteSection.operations,
     subtitle:
         'Review audit history and gated support actions for one operator.',
@@ -335,6 +351,16 @@ Widget _buildOperators(BuildContext context) {
               handoff.onSelectRoute(
                 AdminRouteIntent(
                   routeId: kAdminPollingPricingRouteId,
+                  operatorLocationScope: scope,
+                ),
+              );
+            },
+      onOpenSupportOperatorView: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminSupportOperatorViewRouteId,
                   operatorLocationScope: scope,
                 ),
               );
@@ -396,6 +422,231 @@ Widget _buildOperators(BuildContext context) {
       return buildScreen(editingEnabled: canEdit);
     },
   );
+}
+
+Widget _buildSupportOperatorView(BuildContext context) {
+  final membersGateway = AdminConsoleServicesScope.membersAdminGatewayOf(
+    context,
+  );
+  final rolesGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  final supportGateway =
+      AdminConsoleServicesScope.auditedSupportActionsAdminGatewayOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final initialPicked = _pickerResultFromScope(handoff?.operatorLocationScope);
+
+  void rememberPickedOperator(OperatorPickerResult result) {
+    handoff?.onSelectRoute(
+      AdminRouteIntent(
+        routeId: kAdminSupportOperatorViewRouteId,
+        operatorLocationScope: _scopeFromPickerResult(result),
+      ),
+    );
+  }
+
+  Future<OperatorPickerResult?> openPicker(
+    BuildContext routeContext,
+    String? adminUid,
+  ) {
+    return Navigator.of(routeContext).push<OperatorPickerResult?>(
+      MaterialPageRoute<OperatorPickerResult?>(
+        settings: const RouteSettings(
+          name: '/admin/support-operator-view/operator-picker',
+        ),
+        builder: (_) =>
+            OperatorPickerScreen(gateway: operatorGateway, adminUid: adminUid),
+      ),
+    );
+  }
+
+  if (source == null) {
+    return _SupportOperatorViewRouteShell(
+      membersGateway: membersGateway,
+      rolesGateway: rolesGateway,
+      supportGateway: supportGateway,
+      actorUserId: 'demo-super-admin',
+      editingEnabled: true,
+      canEditSeededRoles: false,
+      canResetMfaFactors: false,
+      canIssuePairedErasure: false,
+      canExportAuditLog: false,
+      adminUid: null,
+      initialPicked: initialPicked,
+      openPicker: openPicker,
+      onOperatorPicked: rememberPickedOperator,
+    );
+  }
+
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
+      return _SupportOperatorViewRouteShell(
+        membersGateway: membersGateway,
+        rolesGateway: rolesGateway,
+        supportGateway: supportGateway,
+        actorUserId: session?.uid ?? 'unknown',
+        editingEnabled: canEdit,
+        // These remain false until AdminAuthSession carries the
+        // MFA-fresh permission claims required by the parity contract.
+        canEditSeededRoles: false,
+        canResetMfaFactors: false,
+        canIssuePairedErasure: false,
+        canExportAuditLog: false,
+        adminUid: session?.uid,
+        initialPicked: initialPicked,
+        openPicker: openPicker,
+        onOperatorPicked: rememberPickedOperator,
+      );
+    },
+  );
+}
+
+class _SupportOperatorViewRouteShell extends StatefulWidget {
+  const _SupportOperatorViewRouteShell({
+    required this.membersGateway,
+    required this.rolesGateway,
+    required this.supportGateway,
+    required this.actorUserId,
+    required this.editingEnabled,
+    required this.canEditSeededRoles,
+    required this.canResetMfaFactors,
+    required this.canIssuePairedErasure,
+    required this.canExportAuditLog,
+    required this.adminUid,
+    required this.initialPicked,
+    required this.openPicker,
+    required this.onOperatorPicked,
+  });
+
+  final MembersAdminGateway membersGateway;
+  final RolesHierarchySessionsAdminGateway rolesGateway;
+  final AuditedSupportActionsAdminGateway supportGateway;
+  final String actorUserId;
+  final bool editingEnabled;
+  final bool canEditSeededRoles;
+  final bool canResetMfaFactors;
+  final bool canIssuePairedErasure;
+  final bool canExportAuditLog;
+  final String? adminUid;
+  final OperatorPickerResult? initialPicked;
+  final Future<OperatorPickerResult?> Function(
+    BuildContext context,
+    String? adminUid,
+  )
+  openPicker;
+  final ValueChanged<OperatorPickerResult> onOperatorPicked;
+
+  @override
+  State<_SupportOperatorViewRouteShell> createState() =>
+      _SupportOperatorViewRouteShellState();
+}
+
+class _SupportOperatorViewRouteShellState
+    extends State<_SupportOperatorViewRouteShell> {
+  OperatorPickerResult? _picked;
+  bool _pickerInflight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _picked = widget.initialPicked;
+  }
+
+  @override
+  void didUpdateWidget(covariant _SupportOperatorViewRouteShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_samePickerResult(widget.initialPicked, oldWidget.initialPicked) &&
+        !_samePickerResult(widget.initialPicked, _picked)) {
+      setState(() => _picked = widget.initialPicked);
+    }
+  }
+
+  Future<void> _openPicker() async {
+    if (_pickerInflight) return;
+    _pickerInflight = true;
+    try {
+      final result = await widget.openPicker(context, widget.adminUid);
+      if (!mounted) return;
+      if (result != null) {
+        setState(() => _picked = result);
+        widget.onOperatorPicked(result);
+      } else {
+        setState(() {});
+      }
+    } finally {
+      _pickerInflight = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final picked = _picked;
+    if (picked == null) {
+      return Container(
+        key: const Key('admin_support_operator_view_no_scope_state'),
+        color: AppColors.backgroundDeep,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Choose a business',
+                    style: AppTextStyles.display20(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Support work starts with one business and one location '
+                    'scope. After that, People, Access, Security, Audit, and '
+                    'Vendors stay in the same workspace.',
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    key: const Key('admin_support_operator_view_open_picker'),
+                    onPressed: _openPicker,
+                    icon: const Icon(Icons.business_outlined, size: 16),
+                    label: const Text('Choose business'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SupportOperatorViewAdminScreen(
+      key: ValueKey<String>(
+        'support-operator-${picked.operatorId}-${picked.locationId}',
+      ),
+      membersGateway: widget.membersGateway,
+      rolesGateway: widget.rolesGateway,
+      supportGateway: widget.supportGateway,
+      actorUserId: widget.actorUserId,
+      pickedOperator: picked,
+      editingEnabled: widget.editingEnabled,
+      canEditSeededRoles: widget.canEditSeededRoles,
+      canResetMfaFactors: widget.canResetMfaFactors,
+      canIssuePairedErasure: widget.canIssuePairedErasure,
+      canExportAuditLog: widget.canExportAuditLog,
+      onChangeOperator: _openPicker,
+    );
+  }
 }
 
 Widget _buildPricing(BuildContext context) {
