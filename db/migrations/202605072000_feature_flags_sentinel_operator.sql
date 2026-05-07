@@ -203,6 +203,9 @@ grant execute on function public.feature_flag_system_wide_operator_id()
 grant execute on function public.feature_flag_system_wide_operator_id()
   to forge_admin;
 
+grant select on public.feature_flag_scope_sentinels
+  to service_role, forge_admin;
+
 -- ─── 7. Replace the OR-IS-NULL RLS policy ──────────────────────────
 --
 -- Drop the 9.0Σ.l policy and recreate without `operator_id IS NULL`.

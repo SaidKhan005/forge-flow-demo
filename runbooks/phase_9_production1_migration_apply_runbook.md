@@ -7,7 +7,7 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605080600_phase_8_idempotency_location_id_rekey.sql`. This
+`202605081000_outbox_notify_channel_split.sql`. This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -49,7 +49,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (20 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (28 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -71,7 +71,14 @@ Pending follow-up scope (20 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605080200_phase_8_wage_role_rows_server_truth.sql`
 - `db/migrations/202605080300_phase_8_data_accuracy_walk_in_settings.sql`
 - `db/migrations/202605080400_phase_8_connector_oauth_state.sql`
+- `db/migrations/202605080500_permission_cache_invalidation_channel.sql`
+- `db/migrations/202605080600_ops_debt_vendor_credentials_webhook_signing_secret.sql`
+- `db/migrations/202605080600_phase_8_demo_pending_counter_persisted.sql`
 - `db/migrations/202605080600_phase_8_idempotency_location_id_rekey.sql`
+- `db/migrations/202605080700_audit_anchor_cron_unpause.sql`
+- `db/migrations/202605080800_auth_permission_version.sql`
+- `db/migrations/202605080900_oauth_refresh_advisory_lock.sql`
+- `db/migrations/202605081000_outbox_notify_channel_split.sql`
 
 Out of scope:
 
@@ -81,7 +88,7 @@ Out of scope:
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
-  anything later than `202605080600_phase_8_idempotency_location_id_rekey.sql`
+  anything later than `202605081000_outbox_notify_channel_split.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
