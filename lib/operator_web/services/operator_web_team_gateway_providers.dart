@@ -67,6 +67,22 @@ export 'operator_web_audit_chain_anchors_gateway_provider.dart'
         OperatorWebAuditChainAnchorSnapshot,
         OperatorWebAuditChainAnchorStatus;
 
+/// Phase 11W.8 follow-up - re-export the recently-available vendors
+/// gateway provider so router/auth-source wiring sees one canonical
+/// sentinel surface. The Vendor Connections screen mounts the panel
+/// when this provider is mixed into the active auth source; demo
+/// sources omit the mixin and the screen renders an honest empty
+/// state instead of faking promotions.
+export 'operator_web_vendor_lifecycle_recently_available_gateway.dart'
+    show
+        OperatorWebRecentlyAvailableVendor,
+        OperatorWebRecentlyAvailableVendorsBundle,
+        OperatorWebVendorLifecycleRecentlyAvailableError,
+        OperatorWebVendorLifecycleRecentlyAvailableGateway,
+        OperatorWebVendorLifecycleRecentlyAvailableGatewayInMemory,
+        OperatorWebVendorLifecycleRecentlyAvailableGatewayLive,
+        OperatorWebVendorLifecycleRecentlyAvailableGatewayProvider;
+
 /// Sentinel the operator-web shell stamps on the auth source when it
 /// can supply a [WebTeamUsersGateway] for the Members surface. Demo
 /// auth source mixes this in with `DemoWebTeamUsersGateway`;

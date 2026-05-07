@@ -1001,6 +1001,11 @@ Future<void> main(List<String> args) async {
             // route returns 503 connector_backfill_jobs_router_not_configured.
             connectorBackfillJobsRouter:
                 productionBindings.connectorBackfillJobsRouter,
+            // Phase 11W.8 follow-up - operator-scoped read of recently-
+            // available vendors. Without this binding the route returns
+            // 503 vendor_lifecycle_recently_available_router_not_configured.
+            vendorLifecycleRecentlyAvailableRouter:
+                productionBindings.vendorLifecycleRecentlyAvailableRouter,
             // Phase 8 W2.B - per-actor notification preferences
             // router for the three `/v1/operator/notification-
             // preferences` routes. Without this binding the routes
