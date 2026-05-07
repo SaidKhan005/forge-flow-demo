@@ -327,6 +327,7 @@ Future<void> _createAllTables(Database db) async {
       week_start_date                TEXT NOT NULL,
       week_end_date                  TEXT NOT NULL,
       target_cycle_id                TEXT NOT NULL,
+      forecast_context_id            TEXT,
       forecast_covers                INTEGER NOT NULL,
       forecast_sales                 REAL NOT NULL,
       required_foh_hours             INTEGER NOT NULL,
@@ -339,6 +340,7 @@ Future<void> _createAllTables(Database db) async {
       sales_source                   TEXT NOT NULL,
       generated_at                   TEXT NOT NULL,
       locked_at                      TEXT NOT NULL,
+      forecast_context_json          TEXT,
       day_rows_json                  TEXT NOT NULL,
       UNIQUE(restaurant_id, week_key)
     )

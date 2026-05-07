@@ -17,10 +17,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/services/demand_forecast_context_service.dart';
 import 'package:forge_and_flow/domain/models/demand_forecast_context.dart';
 import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
+import 'package:forge_and_flow/domain/models/weekly_plan_snapshot.dart';
 import 'package:forge_and_flow/domain/services/schedule_forecast_demand_resolver.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
 
 void main() {
   setUp(() async {
@@ -48,6 +50,52 @@ void main() {
         expect(ctx.anchorBusinessDate, equals(latestClosed));
       }
       expect(ctx.restaurantId, equals(restaurantId));
+    });
+
+    test('prefers embedded server context from locked weekly cache', () async {
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
+      const serverContext = DemandForecastContext(
+        restaurantId: DemoScope.restaurantId,
+        anchorBusinessDate: '2026-03-27',
+        baselineTotalCovers: 9900,
+        baselineWeeklyAvgCovers: 1155,
+        baselineWeeksRepresented: 8.571,
+        recentThreeWeekTotalCovers: 3300,
+        recentThreeWeekWeeklyAvgCovers: 1100,
+        recentTrendDeltaCovers: -55,
+        resolvedWeeklyForecastCovers: 1128,
+        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+        builtAt: '2026-05-06T12:00:00.000Z',
+      );
+      await SqliteWeeklyPlanSnapshotRepository.instance.upsertSnapshot(
+        WeeklyPlanSnapshot(
+          snapshotId: 'server-context-snapshot',
+          restaurantId: restaurantId,
+          weekStartDate: '2026-03-23',
+          weekEndDate: '2026-03-29',
+          targetCycleId: 'cycle-server-context',
+          forecastContextId: 'fc-server-context',
+          forecastCovers: 1128,
+          forecastSales: 49632,
+          requiredFohHours: 120,
+          requiredBohHours: 96,
+          theoreticalFohLaborDollars: 2160,
+          theoreticalBohLaborDollars: 2208,
+          coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+          salesSource: ForecastDemandSource.appDerivedFromCoversAndPpa,
+          generatedAt: '2026-05-06T12:00:00.000Z',
+          lockedAt: '2026-05-06T12:01:00.000Z',
+          forecastContext: serverContext,
+        ),
+      );
+
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
+
+      expect(ctx.baselineTotalCovers, 9900);
+      expect(ctx.resolvedWeeklyForecastCovers, 1128);
+      expect(ctx.builtAt, '2026-05-06T12:00:00.000Z');
     });
   });
 

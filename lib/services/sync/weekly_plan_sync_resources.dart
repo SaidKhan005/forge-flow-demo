@@ -186,16 +186,22 @@ class WeeklyPlanSnapshotSyncRow {
 class ForecastContextSyncRow {
   const ForecastContextSyncRow({
     required this.context,
+    this.forecastContextId,
     this.operatorId,
     this.locationId,
     this.businessDate,
+    this.weekStartDate,
+    this.weekEndDate,
     this.updatedAt,
   });
 
   final DemandForecastContext context;
+  final String? forecastContextId;
   final String? operatorId;
   final String? locationId;
   final String? businessDate;
+  final String? weekStartDate;
+  final String? weekEndDate;
   final DateTime? updatedAt;
 
   factory ForecastContextSyncRow.fromJson(Map<String, dynamic> json) {
@@ -206,55 +212,21 @@ class ForecastContextSyncRow {
           contextJson['week_start_date'],
     );
     return ForecastContextSyncRow(
+      forecastContextId:
+          _readString(json['forecast_context_id']) ??
+          _readString(contextJson['forecast_context_id']),
       operatorId: _readString(json['operator_id']),
       locationId: _readString(json['location_id']),
       businessDate:
           _readDateString(json['business_date']) ?? anchorBusinessDate,
+      weekStartDate:
+          _readDateString(json['week_start_date']) ??
+          _readDateString(contextJson['week_start_date']),
+      weekEndDate:
+          _readDateString(json['week_end_date']) ??
+          _readDateString(contextJson['week_end_date']),
       updatedAt: _readDateTime(json['updated_at']),
-      context: DemandForecastContext(
-        restaurantId: _requiredString(contextJson, const <String>[
-          'restaurant_id',
-          'location_id',
-        ]),
-        anchorBusinessDate: anchorBusinessDate,
-        baselineTotalCovers: _readInt(
-          contextJson['baseline_total_covers'] ??
-              contextJson['sixty_day_total_covers'] ??
-              contextJson['historical_total_covers'],
-        ),
-        baselineWeeklyAvgCovers: _readInt(
-          contextJson['baseline_weekly_avg_covers'] ??
-              contextJson['baseline_weekly_average_covers'] ??
-              contextJson['sixty_day_weekly_average_covers'],
-        ),
-        baselineWeeksRepresented:
-            _readDouble(contextJson['baseline_weeks_represented']) ?? 0,
-        recentThreeWeekTotalCovers: _readInt(
-          contextJson['recent_three_week_total_covers'] ??
-              contextJson['recent_21_day_total_covers'],
-        ),
-        recentThreeWeekWeeklyAvgCovers: _readInt(
-          contextJson['recent_three_week_weekly_avg_covers'] ??
-              contextJson['recent_21_day_weekly_average_covers'],
-        ),
-        recentTrendDeltaCovers: _readInt(
-          contextJson['recent_trend_delta_covers'],
-        ),
-        resolvedWeeklyForecastCovers: _readInt(
-          contextJson['resolved_weekly_forecast_covers'] ??
-              contextJson['weekly_forecast_covers'] ??
-              contextJson['forecast_covers'],
-        ),
-        coversSource: _readForecastDemandSource(
-          contextJson['covers_source'],
-          fallback: ForecastDemandSource.appDerivedFromHistoricalAverage,
-        ),
-        builtAt:
-            _readIsoString(contextJson['built_at']) ??
-            _readIsoString(contextJson['generated_at']) ??
-            _readIsoString(contextJson['updated_at']) ??
-            DateTime.now().toUtc().toIso8601String(),
-      ),
+      context: DemandForecastContext.fromMap(contextJson),
     );
   }
 }
@@ -329,6 +301,7 @@ Map<String, dynamic> _snapshotPayload(Map<String, dynamic> json) {
       'target_cycle_id',
       'cycle_id',
     ]),
+    'forecast_context_id': _readString(base['forecast_context_id']),
     'forecast_covers': forecastCovers,
     'forecast_sales': forecastSales,
     'required_foh_hours': requiredFohHours,
@@ -359,6 +332,7 @@ Map<String, dynamic> _snapshotPayload(Map<String, dynamic> json) {
         _readIsoString(base['active_at']) ??
         _readIsoString(base['created_at']) ??
         DateTime.now().toUtc().toIso8601String(),
+    'forecast_context': _optionalContextPayload(base),
     'day_rows': dayRows,
   };
 }
@@ -369,6 +343,17 @@ Map<String, dynamic> _contextPayload(Map<String, dynamic> json) {
       json['context'] ??
       json['forecast_context_json'];
   return raw == null ? json : _stringKeyMap(_decodeIfJson(raw));
+}
+
+Map<String, dynamic>? _optionalContextPayload(Map<String, dynamic> json) {
+  final raw =
+      json['forecast_context'] ??
+      json['context'] ??
+      json['forecast_context_json'];
+  if (raw == null) return null;
+  return DemandForecastContext.fromMap(
+    _stringKeyMap(_decodeIfJson(raw)),
+  ).toMap();
 }
 
 List<Map<String, dynamic>> _readDayRows(Object? raw) {

@@ -22,11 +22,31 @@ Primary contract:
   lock the weekly snapshot that references it.
 - Mobile sync pulls weekly snapshots through the proxy and stores them in the
   existing SQLite weekly plan cache.
-- Forecast context is pulled as server-owned read data without creating a
-  duplicate mobile SQLite table.
+- Forecast context is pulled as server-owned read data and embedded into the
+  existing SQLite weekly plan cache without creating a duplicate mobile SQLite
+  table.
 - Schedule locked-authority mode shows an explicit unavailable/loading state
   and does not silently generate local plan numbers when the locked server
   snapshot is missing.
+
+## Follow-Up Proof: Embedded Forecast Context Cache
+
+Date: 2026-05-07
+Branch: `codex/mobile-forecast-context-cache`
+
+This follow-up closes the mobile memory-only forecast context gap from the
+initial weekly-plan server-truth proof:
+
+- SQLite schema v29 adds nullable `forecast_context_id` and
+  `forecast_context_json` columns to `weekly_plan_snapshots`.
+- Forecast context sync writes server-owned context JSON onto the matching
+  weekly snapshot row by `forecast_context_id`, week span, or in-force business
+  date.
+- `DemandForecastContextService` prefers the embedded server context for the
+  in-force locked week before falling back to local closed-shift derivation.
+- `WeeklyPlanMirrorSyncResult.forecastContexts` now reports a synced durable
+  cache when proxy pulls succeed.
+- No standalone mobile `forecast_contexts` SQLite table was created.
 
 ## Verification Run
 
@@ -37,6 +57,16 @@ flutter test test\schedule_builder_widget_test.dart test\schedule_plan_read_serv
 dart analyze
 dart run tool\migration_cutoff_lint.dart
 dart run tool\migration_drift_scanner.dart --fix --strict-docs
+```
+
+Follow-up verification:
+
+```powershell
+flutter test test\services\sync\weekly_plan_sync_mirror_test.dart
+flutter test test\services\sync\http_sync_proxy_client_test.dart
+flutter test test\demand_forecast_context_service_test.dart
+dart analyze lib\domain\models\demand_forecast_context.dart lib\domain\models\weekly_plan_snapshot.dart lib\domain\repositories\weekly_plan_snapshot_repository.dart lib\infrastructure\persistence\sqlite\dao\weekly_plan_snapshot_dao.dart lib\infrastructure\persistence\sqlite\repositories\sqlite_weekly_plan_snapshot_repository.dart lib\infrastructure\persistence\sqlite\sqlite_database.dart lib\services\demand_forecast_context_service.dart lib\services\sync\postgres_shift_record_to_mobile_sync.dart lib\services\sync\weekly_plan_sync_resources.dart test\demand_forecast_context_service_test.dart test\services\sync\http_sync_proxy_client_test.dart test\services\sync\weekly_plan_sync_mirror_test.dart
+flutter test test\services\sync\postgres_shift_record_to_mobile_sync_test.dart test\services\sync\mobile_operational_sync_runtime_test.dart test\schedule_plan_read_service_test.dart test\weekly_plan_snapshot_service_test.dart
 ```
 
 Results:

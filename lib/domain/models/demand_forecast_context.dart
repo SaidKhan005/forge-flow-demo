@@ -80,6 +80,63 @@ class DemandForecastContext {
     required this.builtAt,
   });
 
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'restaurant_id': restaurantId,
+    'anchor_business_date': anchorBusinessDate,
+    'baseline_total_covers': baselineTotalCovers,
+    'baseline_weekly_avg_covers': baselineWeeklyAvgCovers,
+    'baseline_weeks_represented': baselineWeeksRepresented,
+    'recent_three_week_total_covers': recentThreeWeekTotalCovers,
+    'recent_three_week_weekly_avg_covers': recentThreeWeekWeeklyAvgCovers,
+    'recent_trend_delta_covers': recentTrendDeltaCovers,
+    'resolved_weekly_forecast_covers': resolvedWeeklyForecastCovers,
+    'covers_source': coversSource.name,
+    'built_at': builtAt,
+  };
+
+  factory DemandForecastContext.fromMap(Map<String, dynamic> map) {
+    return DemandForecastContext(
+      restaurantId:
+          _readString(map['restaurant_id']) ??
+          _readString(map['location_id']) ??
+          '',
+      anchorBusinessDate:
+          _readDateString(map['anchor_business_date']) ??
+          _readDateString(map['business_date']) ??
+          _readDateString(map['week_start_date']),
+      baselineTotalCovers:
+          _readInt(map['baseline_total_covers']) ??
+          _readInt(map['sixty_day_total_covers']) ??
+          _readInt(map['historical_total_covers']),
+      baselineWeeklyAvgCovers:
+          _readInt(map['baseline_weekly_avg_covers']) ??
+          _readInt(map['baseline_weekly_average_covers']) ??
+          _readInt(map['sixty_day_weekly_average_covers']),
+      baselineWeeksRepresented:
+          _readDouble(map['baseline_weeks_represented']) ?? 0,
+      recentThreeWeekTotalCovers:
+          _readInt(map['recent_three_week_total_covers']) ??
+          _readInt(map['recent_21_day_total_covers']),
+      recentThreeWeekWeeklyAvgCovers:
+          _readInt(map['recent_three_week_weekly_avg_covers']) ??
+          _readInt(map['recent_21_day_weekly_average_covers']),
+      recentTrendDeltaCovers: _readInt(map['recent_trend_delta_covers']),
+      resolvedWeeklyForecastCovers:
+          _readInt(map['resolved_weekly_forecast_covers']) ??
+          _readInt(map['weekly_forecast_covers']) ??
+          _readInt(map['forecast_covers']),
+      coversSource: _readForecastDemandSource(
+        map['covers_source'],
+        fallback: ForecastDemandSource.appDerivedFromHistoricalAverage,
+      ),
+      builtAt:
+          _readIsoString(map['built_at']) ??
+          _readIsoString(map['generated_at']) ??
+          _readIsoString(map['updated_at']) ??
+          '',
+    );
+  }
+
   // ── Compatibility accessors (transitional — 7.55l.5a) ────────────────
   //
   // These let existing callers continue to compile without broad migration.
@@ -115,4 +172,65 @@ class DemandForecastContext {
     coversSource: ForecastDemandSource.unavailable,
     builtAt: '',
   );
+}
+
+ForecastDemandSource _readForecastDemandSource(
+  Object? value, {
+  required ForecastDemandSource fallback,
+}) {
+  final raw = _readString(value);
+  if (raw == null) return fallback;
+  for (final source in ForecastDemandSource.values) {
+    if (source.name == raw) return source;
+  }
+  return switch (raw.toLowerCase()) {
+    'historical_average' ||
+    'app_derived_from_historical_average' ||
+    'sixty_day_average' => ForecastDemandSource.appDerivedFromHistoricalAverage,
+    'covers_and_ppa' || 'app_derived_from_covers_and_ppa' =>
+      ForecastDemandSource.appDerivedFromCoversAndPpa,
+    'reservation_walk_in' || 'reservation_and_walk_in' =>
+      ForecastDemandSource.appDerivedFromReservationAndWalkInModel,
+    'demo' || 'demo_fallback' => ForecastDemandSource.demoFallback,
+    'unavailable' => ForecastDemandSource.unavailable,
+    _ => fallback,
+  };
+}
+
+String? _readString(Object? value) {
+  if (value == null) return null;
+  if (value is String) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+  return value.toString();
+}
+
+String? _readDateString(Object? value) {
+  if (value == null) return null;
+  if (value is DateTime) {
+    return value.toUtc().toIso8601String().substring(0, 10);
+  }
+  final raw = _readString(value);
+  if (raw == null) return null;
+  return raw.length >= 10 ? raw.substring(0, 10) : raw;
+}
+
+String? _readIsoString(Object? value) {
+  if (value == null) return null;
+  if (value is DateTime) return value.toUtc().toIso8601String();
+  return _readString(value);
+}
+
+int? _readInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  return null;
+}
+
+double? _readDouble(Object? value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value);
+  return null;
 }
