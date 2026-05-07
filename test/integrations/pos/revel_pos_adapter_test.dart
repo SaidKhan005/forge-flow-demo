@@ -459,7 +459,7 @@ void main() {
         gateway: fakeWebhookGateway,
         posAdapterFactories: <String, PosAdapterFactory>{
           adapter.vendorId:
-              ({required operatorId, required locationId}) => adapter,
+              ({required operatorId, required locationId}) async => adapter,
         },
         laborAdapterFactories: const <String, LaborAdapterFactory>{},
         reservationAdapterFactories:

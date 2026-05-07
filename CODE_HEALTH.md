@@ -176,3 +176,75 @@ But underneath that, there are a lot of TODOs that are silently wired into produ
 8. **Stop importing `lib/dev/` from production code paths** — small refactor, restores the "demo is a switch" claim.
 
 The code was built with good instincts. The next sprint of work isn't more architecture — it's finishing the wiring on what's already there.
+
+---
+
+# Resolution (CODE_HEALTH closeout — 2026-05-07)
+
+This audit was remediated via 16 parallel-lane PRs across two waves of worktrees. Two Wave 1 lanes were intentionally skipped because their files belong to a parallel onboarding effort. Two findings closed only partially with a documented residual; several structural risks fall outside the scope of this remediation and remain open for follow-up phase docs.
+
+## Closed
+
+| Finding | PR(s) | Lane |
+|---|---|---|
+| C1 — operator_owner role escalation | [#249](https://github.com/SaidKhan005/forge-flow-demo/pull/249) | L1 |
+| C2 — Random.secure() idempotency in proxy_refresh_token_revoker | [#250](https://github.com/SaidKhan005/forge-flow-demo/pull/250) | L2 |
+| C3 — proxy SIGTERM (and worker SIGTERMs across the fleet) | [#255](https://github.com/SaidKhan005/forge-flow-demo/pull/255), [#270](https://github.com/SaidKhan005/forge-flow-demo/pull/270), [#254](https://github.com/SaidKhan005/forge-flow-demo/pull/254), [#256](https://github.com/SaidKhan005/forge-flow-demo/pull/256) | L4 + L7 + L9 + L8 |
+| C4 — admin idempotency `expires_at` + reclaim + sweep | [#207](https://github.com/SaidKhan005/forge-flow-demo/pull/207) (schema) + [#255](https://github.com/SaidKhan005/forge-flow-demo/pull/255) (code) | M1 + L4 |
+| C5 — UsersRepository operator_id predicates + cross-tenant scan flag | [#251](https://github.com/SaidKhan005/forge-flow-demo/pull/251) | L3 |
+| Secondary LLM circuit breaker + 8 s timeout + typed errors | [#255](https://github.com/SaidKhan005/forge-flow-demo/pull/255) | L4 |
+| Body-size cap per route (16 MB graph batch, 1 MB everywhere else) | [#255](https://github.com/SaidKhan005/forge-flow-demo/pull/255) | L4 |
+| Composite JWT verifier enumeration leak collapsed | [#255](https://github.com/SaidKhan005/forge-flow-demo/pull/255) | L4 |
+| AlwaysMissAdvisorResponseCache → Postgres-backed cache + 24 h TTL | [#258](https://github.com/SaidKhan005/forge-flow-demo/pull/258) | L14 |
+| Recovery code TOCTOU collapsed into atomic check+record | [#261](https://github.com/SaidKhan005/forge-flow-demo/pull/261) | L10 |
+| Recovery-code consumer constant-time scan (no early break) | [#261](https://github.com/SaidKhan005/forge-flow-demo/pull/261) | L10 |
+| reCAPTCHA `challengeTs` 60 s freshness gate | [#261](https://github.com/SaidKhan005/forge-flow-demo/pull/261) | L10 |
+| HIBP roundtrip moved after shape validation | [#261](https://github.com/SaidKhan005/forge-flow-demo/pull/261) | L10 |
+| Salt-less SHA-256 password-history hash → per-row salt + global pepper | [#206](https://github.com/SaidKhan005/forge-flow-demo/pull/206) (schema) + [#257](https://github.com/SaidKhan005/forge-flow-demo/pull/257) (code) + [#267](https://github.com/SaidKhan005/forge-flow-demo/pull/267) (gateway threading) | M2 + L12 + gateway-pepper |
+| MFA enrollment finalize race (read factor from response, not lookup) | [#252](https://github.com/SaidKhan005/forge-flow-demo/pull/252) | L11 |
+| GDPR pending-erasure approvals 14-day expiry | [#252](https://github.com/SaidKhan005/forge-flow-demo/pull/252) | L11 |
+| Realtime bridge DLQ counter increments + row moves to dead-letter | [#256](https://github.com/SaidKhan005/forge-flow-demo/pull/256) | L8 |
+| Email outbox dispatcher typed error union (no string `.contains`) | [#256](https://github.com/SaidKhan005/forge-flow-demo/pull/256) | L8 |
+| MFA removal worker retry cap (10) + DLQ + `dead_lettered_at` | [#265](https://github.com/SaidKhan005/forge-flow-demo/pull/265) (schema) + [#270](https://github.com/SaidKhan005/forge-flow-demo/pull/270) (code) | M4 + L7 |
+| Audit anchor crash-recovery roll-forward | [#210](https://github.com/SaidKhan005/forge-flow-demo/pull/210) (schema) + [#254](https://github.com/SaidKhan005/forge-flow-demo/pull/254) (code) | M3 + L9 |
+| Audit anchor `pg_advisory_lock` sweep guard | [#210](https://github.com/SaidKhan005/forge-flow-demo/pull/210) (schema) + [#254](https://github.com/SaidKhan005/forge-flow-demo/pull/254) (code) | M3 + L9 |
+| Audit anchor daily Azure Blob manifest write | [#210](https://github.com/SaidKhan005/forge-flow-demo/pull/210) (schema) + [#254](https://github.com/SaidKhan005/forge-flow-demo/pull/254) (code) | M3 + L9 |
+| Anthropic prompt cache control on the wire (structured `system`) | [#253](https://github.com/SaidKhan005/forge-flow-demo/pull/253) | L13 |
+| `defaultAnthropicOnlineCheck` dart-define API key removed (Hard Promise #7) | [#253](https://github.com/SaidKhan005/forge-flow-demo/pull/253) | L13 |
+| `BaselineData` promoted out of `lib/dev/` to a Layer 3 service | [#276](https://github.com/SaidKhan005/forge-flow-demo/pull/276) | L15 |
+| `schedule_plan_resolver` Layer 7 import of `labor_model` removed | [#276](https://github.com/SaidKhan005/forge-flow-demo/pull/276) | L15 |
+| `target_cycle_service` `cycleId` is 128-bit hex (not `millisecondsSinceEpoch`) | [#276](https://github.com/SaidKhan005/forge-flow-demo/pull/276) | L15 |
+| `weekly_plan_snapshot_service` Mon-first throw guard | [#276](https://github.com/SaidKhan005/forge-flow-demo/pull/276) | L15 |
+| `daypart_table.dart` no longer imports `lib/dev/` | [#276](https://github.com/SaidKhan005/forge-flow-demo/pull/276) | L15 |
+| Dependent test fixups (collateral from L10 + L12) | [#264](https://github.com/SaidKhan005/forge-flow-demo/pull/264) | follow-up |
+
+## Deferred (partial closure, residual logged)
+
+| Finding | What landed | What remains | Why deferred |
+|---|---|---|---|
+| MFA removal: audit + outbox enqueue post-`markCompleted` not transactional | Deterministic ordering + `markCompleted` row-count guard so re-attempts are idempotent ([#270](https://github.com/SaidKhan005/forge-flow-demo/pull/270)) | True single-tx atomicity needs `EventOutboxRepository.enqueue` to gain an on-executor variant | Outbox API change is its own surface contract — out of L7's three-file scope |
+| `labor_model.dart:266` decomposition rounding | (none) | Single-atomic-computation derivation of axis dollars; re-pin ~10 exact-equals assertions in `test/labor_model_dollar_attribution_test.dart` | Naive rewrite would have flipped Primary Driver assignments in pinned tests; needs a phase doc that re-pins together |
+
+## Skipped (other Claude account owns these surfaces)
+
+The following Wave 1 lanes were intentionally skipped because the files belong to the parallel plug-and-play onboarding lanes (sync worker / OAuth refresh / first-connection backfill / canonical-fact projector / dispatch / sync proxy / app data status / proxy admin integration routes / adapter registries / proxy `main.dart` route logic):
+
+- **L5** — sync worker SIGTERM + `FOR UPDATE SKIP LOCKED` + claim discipline + bare-catch fix (`lib/services/integration/integration_sync_worker.dart`, `tool/integration_sync_worker/**`).
+- **L6** — OAuth refresh claim discipline (`lib/services/auth/oauth_refresh_cron.dart`).
+
+Their CODE_HEALTH findings remain open and should be revisited once the onboarding lane lands.
+
+## Out of scope for this remediation
+
+CODE_HEALTH lists these but no Wave 0/1/2 lane covered them — they need their own phase docs:
+
+- Monolithic `tool/advisor_proxy/advisor_proxy.dart` (~14.5k lines).
+- Two parallel LLM hierarchies (`LLMProvider` vs `ProxyLlmProvider`) — Phase 12 collapse.
+- Permission cache invalidation per-process (no Pub/Sub fan-out).
+- Migrations: 6 duplicate basename prefixes; conflicting `actor_kind` definitions; 8 fact-table indexes lacking `operator_id` leading column; `feature_flags` policy folding; `phase_8_set_business_date()` `SECURITY DEFINER` blast radius.
+- Persistence: SQLite repos as process-global singletons keyed only by `restaurant_id`; `DatabaseHelper.instance` hardcoded to `DemoScope.restaurantId`; pool size pinned at 4.
+- AI: Voyage embeddings have no chunking / retry / concurrency cap; no re-embed path on model change; pre-flight token estimate is client-supplied via query string; two-slot key vs counter-store granularity mismatch; cost-discipline levers unwired (caps fail at 402).
+- UI/Flutter: 5 widgets importing frozen `lib/data/`; `settings_wage_authority_section` calling `SqliteWageRoleRowRepository.instance` from a widget; `shift_dashboard` owning timezone init; `ShiftDashboardNotifier._load` active-restaurant race; permission keys hand-typed across `operator_web/`; `forge_flow_app.dart` (~2.1k lines) and `admin_routes.dart` (~1.9k lines).
+- Webhook synthetic event-id growth (`inbound_webhook_handler.dart:565`); `CanonicalSink.appendSyncLog` schema-less map intake.
+- Audit anchor cron unpause — operational change in Cloud Scheduler, not code.
+

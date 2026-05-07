@@ -30,7 +30,7 @@ import 'dart:math' as math;
 
 import '../models/baseline_selection_analytics.dart';
 import 'baseline_manager_service.dart';
-import '../dev/demo_fixture_data.dart';
+import 'baseline_authority_service.dart';
 
 class BaselineSelectionAnalyticsService {
   BaselineSelectionAnalyticsService._();

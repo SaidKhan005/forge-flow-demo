@@ -22,6 +22,8 @@
 // Day rows are rotated to match the configured week start so labels
 // and dates stay aligned.
 
+import 'package:flutter/foundation.dart';
+
 import '../domain/models/schedule_plan.dart';
 import '../domain/models/weekly_plan_snapshot.dart';
 import '../domain/repositories/weekly_plan_snapshot_repository.dart';
@@ -202,12 +204,49 @@ class WeeklyPlanSnapshotService {
   /// [weekStartDay] is not Monday, the list is rotated so the first
   /// entry matches the configured week-start day and business dates
   /// stay aligned with day labels.
+  ///
+  /// CODE_HEALTH L15 fix: the Mon-first contract on `plan.dayPlans` is
+  /// now asserted explicitly at the rotation boundary. Drift in
+  /// `SchedulePlanResolver._defaultDayWeights` would otherwise
+  /// silently desync business dates from day labels.
+  static const List<String> _expectedMonFirstLabels = [
+    'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
+  ];
+
+  @visibleForTesting
+  static List<WeeklyPlanSnapshotDay> debugBuildDayRows(
+    SchedulePlan plan,
+    String weekStart, {
+    int weekStartDay = DateTime.monday,
+  }) =>
+      _buildDayRows(plan, weekStart, weekStartDay: weekStartDay);
+
   static List<WeeklyPlanSnapshotDay> _buildDayRows(
     SchedulePlan plan,
     String weekStart, {
     int weekStartDay = DateTime.monday,
   }) {
     final startDate = _parseDate(weekStart);
+
+    // Mon-first contract pin (CODE_HEALTH L15). The resolver upstream is
+    // documented Mon-first; if upstream order ever drifts, day-row
+    // business dates would silently desync from day labels — fail loud
+    // here so the regression surfaces at the boundary instead of
+    // shipping wrong dates to consumers. `throw` (not `assert`) so the
+    // contract holds in release builds too, where `assert` is stripped.
+    final dayLabels = plan.dayPlans.map((d) => d.day).toList();
+    final monFirstOk = dayLabels.length == _expectedMonFirstLabels.length &&
+        List.generate(
+          dayLabels.length,
+          (i) => dayLabels[i] == _expectedMonFirstLabels[i],
+        ).every((ok) => ok);
+    if (!monFirstOk) {
+      throw StateError(
+        'WeeklyPlanSnapshotService: SchedulePlan.dayPlans must be Mon-first '
+        'to keep day-row rotation aligned with business dates; got '
+        '$dayLabels',
+      );
+    }
 
     // Rotate day plans to match configured week start.
     // dayPlans is Mon–Sun (indices 0–6 = weekdays 1–7).

@@ -20,6 +20,8 @@ import 'package:forge_and_flow/services/schedule_plan_read_service.dart';
 import 'package:forge_and_flow/services/shift_service.dart';
 import 'package:forge_and_flow/services/target_cycle_service.dart';
 import 'package:forge_and_flow/services/weekly_plan_snapshot_service.dart';
+import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
+import 'package:forge_and_flow/domain/models/schedule_plan.dart';
 import 'package:forge_and_flow/domain/services/weekly_plan_snapshot_policy.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
@@ -605,6 +607,75 @@ void main() {
         expect(rereadW13.dayRows[i].forecastSales,
             originalDayRows[i].forecastSales);
       }
+    });
+  });
+
+  // ── CODE_HEALTH L15 — Mon-first contract assertion ────────────────────────
+  // Regression pin for the audit finding: `weekly_plan_snapshot_service.dart`
+  // day-row rotation assumed `SchedulePlan.dayPlans` is Mon-first with no
+  // explicit assertion. Drift in `SchedulePlanResolver._defaultDayWeights`
+  // would silently desync business dates from day labels. The fix asserts
+  // Mon-first explicitly at the rotation boundary and throws StateError on
+  // any deviation.
+
+  group('CODE_HEALTH L15 — Mon-first day-plans contract', () {
+    SchedulePlan planFromOrder(List<String> dayLabels) {
+      final dayPlans = dayLabels
+          .map((d) => ScheduleDayPlan(
+                day: d,
+                forecastCovers: 100,
+                forecastSales: 4200.0,
+                requiredFohHours: 22,
+                requiredBohHours: 23,
+              ))
+          .toList();
+      return SchedulePlan(
+        forecastCovers: 700,
+        forecastSales: 29400.0,
+        requiredFohHours: 154,
+        requiredBohHours: 161,
+        theoreticalFohLaborDollars: 2541.0,
+        theoreticalBohLaborDollars: 3438.35,
+        theoreticalLaborPct: 20.34,
+        targetBlendedWage: 18.95,
+        coversSource: ForecastDemandSource.demoFallback,
+        salesSource: ForecastDemandSource.appDerivedFromCoversAndPpa,
+        dayPlans: dayPlans,
+      );
+    }
+
+    test('Mon-first plan passes the assertion and produces 7 rows', () {
+      final plan = planFromOrder(
+          ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+      final rows = WeeklyPlanSnapshotService.debugBuildDayRows(
+          plan, '2026-03-23');
+      expect(rows.length, 7);
+      expect(rows.first.day, 'Mon');
+      expect(rows.last.day, 'Sun');
+    });
+
+    test('non-Mon-first plan throws StateError at the rotation boundary',
+        () {
+      // Sunday-first ordering would silently desync business dates from
+      // day labels in the rotation step. The fix throws StateError loudly.
+      final plan = planFromOrder(
+          ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+      expect(
+        () =>
+            WeeklyPlanSnapshotService.debugBuildDayRows(plan, '2026-03-23'),
+        throwsA(isA<StateError>()
+            .having((e) => e.message, 'message',
+                contains('Mon-first'))),
+      );
+    });
+
+    test('short day-plans list throws StateError', () {
+      final plan = planFromOrder(['Mon', 'Tue', 'Wed']);
+      expect(
+        () =>
+            WeeklyPlanSnapshotService.debugBuildDayRows(plan, '2026-03-23'),
+        throwsA(isA<StateError>()),
+      );
     });
   });
 }
