@@ -122,6 +122,52 @@ void main() {
     },
   );
 
+  test(
+    'submitSelectedStarTargetProjection posts scoped projection body',
+    () async {
+      late http.Request seen;
+      final client = HttpSyncProxyClient(
+        proxyBaseUri: Uri.parse('https://proxy.example/base/'),
+        idTokenProvider: () async => 'token-1',
+        httpClient: http_testing.MockClient((request) async {
+          seen = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'target_cycle': <String, Object?>{'cycle_id': 'cycle-1'},
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      await client.submitSelectedStarTargetProjection(
+        operatorId: 'op',
+        locationId: 'loc',
+        idempotencyKey: 'projection-idem-1',
+        body: const <String, Object?>{
+          'restaurant_id': 'restaurant-1',
+          'effective_start': '2026-05-06',
+          'effective_end': '2026-07-04',
+          'calibration_window_start': '2026-03-08',
+          'calibration_window_end': '2026-05-06',
+          'standards': <String, Object?>{'target_cplh': 12.4},
+        },
+      );
+
+      expect(seen.method, 'POST');
+      expect(
+        seen.url.path,
+        '/base/v1/operators/op/locations/loc/'
+        'target_cycles/project_manager_override',
+      );
+      expect(seen.headers['authorization'], 'Bearer token-1');
+      expect(seen.headers['idempotency-key'], 'projection-idem-1');
+      final body = jsonDecode(seen.body) as Map<String, Object?>;
+      expect(body['restaurant_id'], 'restaurant-1');
+    },
+  );
+
   test('parses open snapshots, timing config, and aux snapshots', () async {
     final requests = <String>[];
     final fullUrls = <String>[];

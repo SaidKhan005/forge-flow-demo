@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import 'data/app_defaults.dart';
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import 'services/auth_login_service.dart';
 import 'services/auth/auth_session_ledger_writer.dart';
+import 'services/business_date_authority_service.dart';
 import 'services/mobile_push/mobile_push_notification_service.dart';
+import 'models/baseline_candidate_shift.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/secure_session_storage.dart';
 import 'services/scope/business_scope_repository.dart';
@@ -75,6 +78,7 @@ Future<void> bootstrapAndRunApp(
       : AuthSessionStarTargetSelectionWriter(
           client: starTargetSelectionWriteClient,
           authSessionProvider: () => authNotifier.session,
+          projectionContextProvider: _buildStarTargetProjectionContext,
         );
   final mobilePush =
       mobilePushNotifications ?? const NoopMobilePushNotificationService();
@@ -148,6 +152,67 @@ void _bindMobilePushRegistrationToAuth(
 
   authNotifier.addListener(sync);
   sync();
+}
+
+Future<StarTargetProjectionContext?> _buildStarTargetProjectionContext({
+  required String restaurantId,
+  required Iterable<BaselineCandidateShift> selectedCandidates,
+}) async {
+  final selected = selectedCandidates.toList(growable: false);
+  if (selected.isEmpty) return null;
+  final anchorDate = await BusinessDateAuthorityService.instance
+      .resolvePlanningAnchorDate(restaurantId);
+  if (anchorDate == null) {
+    throw const StarTargetSelectionWriteException(
+      code: 'planning_anchor_unavailable',
+      message:
+          'Sync closed history before projecting the selected star target.',
+    );
+  }
+  final wageContext = await WageStandardContextService.instance.resolve(
+    restaurantId,
+  );
+  double cplh = 0;
+  double splh = 0;
+  double ppa = 0;
+  var floor = selected.first.cplh;
+  var ceiling = selected.first.cplh;
+  for (final candidate in selected) {
+    cplh += candidate.cplh;
+    splh += candidate.splh;
+    ppa += candidate.ppa;
+    if (candidate.cplh < floor) floor = candidate.cplh;
+    if (candidate.cplh > ceiling) ceiling = candidate.cplh;
+  }
+  final count = selected.length.toDouble();
+  return StarTargetProjectionContext(
+    effectiveStart: anchorDate,
+    effectiveEnd: _addIsoDays(anchorDate, 59),
+    calibrationWindowStart: BusinessDateAuthorityService.subtractDays(
+      anchorDate,
+      59,
+    ),
+    calibrationWindowEnd: anchorDate,
+    targetCplh: cplh / count,
+    targetSplh: splh / count,
+    targetPpa: ppa / count,
+    fohWage: wageContext.fohWage ?? MeridianConfig.fohWage,
+    bohWage: wageContext.bohWage ?? MeridianConfig.bohWage,
+    opzFloorCplh: floor,
+    opzCeilingCplh: ceiling,
+    reason: 'manager selected star target on mobile',
+  );
+}
+
+String _addIsoDays(String isoDate, int days) {
+  final parts = isoDate.split('-');
+  final date = DateTime.utc(
+    int.parse(parts[0]),
+    int.parse(parts[1]),
+    int.parse(parts[2]),
+  ).add(Duration(days: days));
+  return '${date.year}-${date.month.toString().padLeft(2, '0')}'
+      '-${date.day.toString().padLeft(2, '0')}';
 }
 
 Future<void> _warmUpPersistedState() async {

@@ -250,6 +250,14 @@ class _HarnessStarTargetServer
   }
 
   @override
+  Future<void> submitSelectedStarTargetProjection({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required Map<String, Object?> body,
+  }) async {}
+
+  @override
   Future<List<ServerSelectedStarDecisionInput>> listCurrentSelections({
     required String operatorId,
     required String locationId,
