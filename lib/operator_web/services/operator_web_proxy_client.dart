@@ -35,6 +35,9 @@ class OperatorWebProxyClient {
   static const String authPasswordChangePath = '/v1/auth/password/change';
   static const String authMfaTotpBeginPath = '/v1/auth/mfa/totp/begin';
   static const String authMfaTotpConfirmPath = '/v1/auth/mfa/totp/confirm';
+  // A7 — POST-body redemption path. Token never appears as a URL query
+  // parameter on this side of the seam.
+  static const String authMagicLinkRedeemPath = '/v1/auth/magic-link/redeem';
 
   Future<OperatorWebSessionLedgerRecord> recordSessionLogin({
     required String idToken,
@@ -150,6 +153,28 @@ class OperatorWebProxyClient {
     );
   }
 
+  /// POST to [path] with a JSON [body] but WITHOUT an Authorization
+  /// header. Used for unauthenticated routes where the request body
+  /// itself carries the credential (e.g. magic-link token redemption).
+  ///
+  /// A7: the caller is responsible for supplying an idempotency_key in
+  /// the body; this method does NOT attach the proxy-client-generated
+  /// Idempotency-Key header so the key stays under the caller's control
+  /// and is sent inside the POST body (not as a URL-leaking header).
+  Future<OperatorWebJsonResponse> postJsonUnauthenticated(
+    String path, {
+    Map<String, Object?> body = const <String, Object?>{},
+  }) async {
+    final request = http.Request('POST', _resolve(path));
+    request.headers.addAll(<String, String>{
+      'accept': 'application/json',
+      'content-type': 'application/json',
+    });
+    request.body = jsonEncode(body);
+    final response = await _send(request);
+    return response;
+  }
+
   Future<OperatorWebJsonResponse> getJson(
     String path, {
     required String idToken,
@@ -252,6 +277,11 @@ class OperatorWebProxyClient {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
   }
+
+  /// Generates a cryptographically random idempotency key. Exposed so
+  /// callers can embed the key in a POST body (A7: not as a header, to
+  /// avoid accidental URL leakage via the Referer header).
+  String generateIdempotencyKey() => _idempotencyKeyFactory();
 
   static String _defaultIdempotencyKey() {
     final random = math.Random.secure();
