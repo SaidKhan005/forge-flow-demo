@@ -634,7 +634,14 @@ until the post-tuning monitor window is clean.
 - `202605060000_mobile_push_notifications.sql` is code-ready for mobile push
   token storage and durable push sidecar delivery state. Apply it to staging
   first, complete connected-device proof, then include it in Production1 only
-  after explicit approval.
+  after explicit approval. After applying, set
+  `MOBILE_PUSH_NOTIFICATIONS_ENABLED=true` on the proxy + ForgeFlow Cloud Run
+  revisions and redeploy (mobile builds re-cut with
+  `--dart-define=MOBILE_PUSH_NOTIFICATIONS_ENABLED=true`); until then
+  `lib/services/auth/firebase_auth_runtime_bindings.dart` wires the
+  `NoopMobilePushTokenGateway` so production phones never POST to
+  `/v1/auth/mobile/push-token/register` against a missing
+  `mobile_push_tokens` table.
 - `202605060000_phase_business_timing_live_schema.sql` is queued by the
   Business Timing Live slice. Apply and verify it on staging before review
   runtime proof; then include it in the next Production1 apply batch before
