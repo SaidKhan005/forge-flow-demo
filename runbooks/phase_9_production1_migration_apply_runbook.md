@@ -1,13 +1,13 @@
 # Phase 9 Production1 Migration Apply Runbook
 
-Updated: 2026-05-06.
+Updated: 2026-05-07.
 
 Purpose: govern and record Production1 migration applies. The second
 migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605080000_phase_8_timing_provenance_fk_posture.sql`. This
+`202605080100_phase_8_weekly_plan_server_truth.sql`. This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -49,7 +49,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (13 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (17 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -63,7 +63,11 @@ Pending follow-up scope (13 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605061701_phase_8_data_accuracy_service_period_settings.sql`
 - `db/migrations/202605061800_phase_8_first_connection_backfill_jobs.sql`
 - `db/migrations/202605070000_phase_11W_7_operator_account_fields.sql`
+- `db/migrations/202605070100_password_history_salt_pepper.sql`
+- `db/migrations/202605070200_audit_anchor_advisory_lock_infra.sql`
 - `db/migrations/202605080000_phase_8_timing_provenance_fk_posture.sql`
+- `db/migrations/202605080100_admin_idempotency_expires_at.sql`
+- `db/migrations/202605080100_phase_8_weekly_plan_server_truth.sql`
 
 Out of scope:
 
@@ -73,7 +77,7 @@ Out of scope:
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
-  anything later than `202605080000_phase_8_timing_provenance_fk_posture.sql`
+  anything later than `202605080100_phase_8_weekly_plan_server_truth.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
@@ -134,6 +138,17 @@ Current known post-cutoff staging additions:
   identity, already protected by per-operator policies). Code-ready and
   remains staging/Production1 apply gated with the rest of the follow-up
   batch.
+- `db/migrations/202605070100_password_history_salt_pepper.sql`
+  adds the schema seam for salted/peppered password-history hashes:
+  nullable salt/pepper metadata, an algorithm discriminator, and the
+  legacy-vs-salted invariant. It is code-ready and remains
+  staging/Production1 apply gated with the rest of the follow-up batch.
+- `db/migrations/202605070200_audit_anchor_advisory_lock_infra.sql`
+  adds the global audit-anchor advisory-lock registry plus Blob breadcrumb
+  columns on `public.audit_chain_anchors` so the daily anchor sweep can be
+  serialized and crash-recovered by the follow-up code lane. It is
+  code-ready and remains staging/Production1 apply gated with the rest of the
+  follow-up batch.
 - `db/migrations/202605080000_phase_8_timing_provenance_fk_posture.sql`
   flips the three Phase 8 timing-provenance foreign keys
   (`shift_records_business_timing_profile_fk`,
@@ -146,6 +161,18 @@ Current known post-cutoff staging additions:
   guards in a single transaction; no index, check, or column changes. Stays
   `NOT VALID` (validation deferred to a future maintenance window). Apply
   on staging first; carry into the next Production1 batch.
+- `db/migrations/202605080100_admin_idempotency_expires_at.sql`
+  adds `expires_at` to `public.admin_request_idempotency`, a partial
+  in-flight expiry index, and the `admin_idempotency_sweep` pg_cron job so
+  orphaned admin idempotency reservations are bounded. It is code-ready and
+  remains staging/Production1 apply gated with the rest of the follow-up
+  batch.
+- `db/migrations/202605080100_phase_8_weekly_plan_server_truth.sql`
+  adds server-owned forecast contexts, weekly plan snapshots, snapshot day
+  rows, and the weekly-plan audit ledger for the Doc 1 mobile core contract.
+  Mobile remains a cache/read model: no mobile table becomes the source of
+  truth. Code-ready and remains staging/Production1 apply gated with the rest
+  of the follow-up batch.
 
 Migration drift automation:
 
@@ -219,7 +246,11 @@ Current pending follow-up order:
 10. `202605061701_phase_8_data_accuracy_service_period_settings.sql`
 11. `202605061800_phase_8_first_connection_backfill_jobs.sql`
 12. `202605070000_phase_11W_7_operator_account_fields.sql`
-13. `202605080000_phase_8_timing_provenance_fk_posture.sql`
+13. `202605070100_password_history_salt_pepper.sql`
+14. `202605070200_audit_anchor_advisory_lock_infra.sql`
+15. `202605080000_phase_8_timing_provenance_fk_posture.sql`
+16. `202605080100_admin_idempotency_expires_at.sql`
+17. `202605080100_phase_8_weekly_plan_server_truth.sql`
 
 Dependency notes:
 
@@ -572,7 +603,7 @@ until the post-tuning monitor window is clean.
   `build/phase_9_production1_apply/2026-05-03_second_batch/` and intentionally
   stay uncommitted.
 
-### Next follow-up - pending (cutoff `202605080000_phase_8_timing_provenance_fk_posture.sql`)
+### Next follow-up - pending (cutoff `202605080100_phase_8_weekly_plan_server_truth.sql`)
 
 - `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` is
   applied and Browser Use verified on staging. Apply it to Production1 under
@@ -641,6 +672,15 @@ until the post-tuning monitor window is clean.
   /v1/operator/account` route writes against. Additive + default-backed.
   RLS unchanged (operators is identity-keyed and already protected). Apply
   on staging first; carry into the next Production1 batch.
+- `202605070100_password_history_salt_pepper.sql` adds the schema seam for
+  salted/peppered password-history hashes: salt and pepper metadata columns,
+  an algorithm discriminator, and the legacy-vs-salted CHECK invariant.
+  Apply on staging first; carry into the next Production1 batch.
+- `202605070200_audit_anchor_advisory_lock_infra.sql` adds the
+  `audit_anchor_advisory_locks` constants table and Blob breadcrumb columns
+  on `audit_chain_anchors` for serialized daily sweeps and crash
+  roll-forward. Apply on staging first; carry into the next Production1
+  batch.
 - `202605080000_phase_8_timing_provenance_fk_posture.sql` is the V1.B
   Phase 8 timing-provenance FK posture flip. It drops + re-adds
   `shift_records_business_timing_profile_fk`,
@@ -654,6 +694,17 @@ until the post-tuning monitor window is clean.
   and is deferred to a future maintenance window. Apply on staging first;
   carry into the next Production1 batch with the rest of the follow-up
   migrations.
+- `202605080100_admin_idempotency_expires_at.sql` adds the admin
+  idempotency reservation TTL: `expires_at`, a partial in-flight expiry
+  index, and the every-5-minute `admin_idempotency_sweep` pg_cron job.
+  Apply on staging first; carry into the next Production1 batch.
+- `202605080100_phase_8_weekly_plan_server_truth.sql` is the Phase 8
+  weekly-plan server truth migration from the Doc 1 mobile core contract. It
+  adds server-owned `forecast_contexts`, `weekly_plan_snapshots`,
+  `weekly_plan_snapshot_days`, and `weekly_plan_audit_events` with RLS,
+  operator-leading indexes, a one-active-week uniqueness guard, and
+  target-cycle FK posture. Apply on staging first; carry into the next
+  Production1 batch with the rest of the follow-up migrations.
 - One-shot apply plan once approved: confirm staging parity for the same files,
   confirm fresh backup/restore point, run analyzer/lints/focused tests, apply
   the approved files to Production1, verify the `forge_admin`
@@ -670,7 +721,13 @@ until the post-tuning monitor window is clean.
   Phase 8 timing-provenance FKs (`shift_records_business_timing_profile_fk`,
   `shift_records_business_timing_profile_version_fk`,
   `open_shift_snapshots_profile_version_fk`) report
-  `confdeltype = 'n'` (`SET NULL`) in `pg_constraint`. Then run
+  `confdeltype = 'n'` (`SET NULL`) in `pg_constraint`, and verify the weekly
+  plan tables, RLS policies, one-active-week uniqueness guard, target-cycle FK,
+  and operator-leading indexes exist. Also verify the password-history
+  salt/pepper/algo columns + CHECK constraint, the
+  `audit_anchor_advisory_locks` registry + Blob breadcrumb columns, and the
+  admin idempotency `expires_at` column, partial expiry index, and cron sweep
+  registration. Then run
   RLS lint, update this history and the production cutoff docs. Do not perform
   production runtime setup as part of this database apply.
 
