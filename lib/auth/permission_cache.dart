@@ -13,6 +13,21 @@
 //
 // Memorystore / shared cache is deferred until ~50k MAU per the
 // plan. For a single proxy instance the in-process LRU is plenty.
+//
+// Cross-instance fan-out (code-health PCACHE-FANOUT):
+//   On horizontal scale-out, each Cloud Run instance owns its own
+//   `PermissionCache`. To drop a user's snapshot on every instance
+//   when a permission write commits, the proxy listens to the
+//   Postgres NOTIFY channel `permission_cache_invalidate`. The
+//   per-instance subscriber lives in
+//   `lib/auth/permission_cache_invalidation_listener.dart` and calls
+//   `cache.invalidateUser(userId)` on each event — the cache's
+//   external API does not change. Producers emit
+//   `pg_notify('permission_cache_invalidate',
+//   json_build_object('user_id', :user_id)::text)` after the role/
+//   grant change commits. NOTIFY is best-effort (Postgres drops
+//   notifications under connection failure), so the per-entry TTL
+//   above is the catch-all.
 
 import 'permission_effect.dart';
 
