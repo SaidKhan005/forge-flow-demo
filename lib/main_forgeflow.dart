@@ -58,6 +58,16 @@ Future<void> main() async {
         defaultValue: 'staging',
       ),
     );
+    // Hard Rule #1 (mobile_core_star_target_truth_contract.md) — the
+    // server owns which star shifts the manager picked. The
+    // `HttpSyncProxyClient` we just constructed already implements
+    // `StarTargetSelectionWriteClient`, so we pass the same reference
+    // through `starTargetSelectionWriteClient` to make
+    // `BaselineManagerService.serverSelectionWriter` non-null in the
+    // production ForgeFlow flavor. Without this wiring, the manager-
+    // override path silently writes to local SQLite via
+    // `TargetCycleService.applyManagerOverrideCycle` instead of
+    // round-tripping through the proxy.
     await bootstrapAndRunApp(
       ForgeFlowApp(
         requireAuth: true,
@@ -75,6 +85,7 @@ Future<void> main() async {
       authSessionLedgerWriter: bindings.authSessionLedgerWriter,
       realtimeSubscription: realtimeSubscription,
       syncProxyClient: syncProxyClient,
+      starTargetSelectionWriteClient: syncProxyClient,
       mobilePushNotifications: mobilePushNotifications,
     );
     return;
