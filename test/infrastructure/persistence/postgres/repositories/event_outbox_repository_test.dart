@@ -43,6 +43,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 
 const String _opA = '11111111-1111-1111-1111-111111111111';
@@ -309,6 +310,146 @@ void main() {
       },
     );
   });
+
+  group(
+    'EventOutboxRepository.enqueueInTransaction (L7 atomic-completion '
+    'on-executor variant)',
+    () {
+      test(
+        'runs the same INSERT against the caller-supplied executor: '
+        'no SET LOCAL block, no commit/rollback, just the INSERT — the '
+        'caller owns the surrounding transaction',
+        () async {
+          final pool = _RecordingPool(returningId: '42');
+          final wrapper = TenantTransactionWrapper(pool);
+          final repo = EventOutboxRepository(wrapper);
+          // Open an outer tenant transaction the way a real caller
+          // would, then invoke `enqueueInTransaction` against the
+          // same executor. The on-executor variant must NOT open its
+          // own transaction.
+          final id = await wrapper.runInTenantContext<String>(
+            TenantContext(
+              operatorId: _opA,
+              locationId: _locA,
+              userId: _userA,
+            ),
+            (exec) => repo.enqueueInTransaction(
+              exec,
+              operatorId: _opA,
+              topic: 'auth.user.mfa_factor_removed',
+              payload: const <String, Object?>{
+                'event_id': 'req-1',
+              },
+            ),
+          );
+          expect(id, equals('42'));
+
+          // Exactly one transaction was opened (the outer caller's),
+          // and it carries the SET LOCAL block + INSERT + commit on
+          // the same executor.
+          expect(pool.transactions, hasLength(1));
+          final tx = pool.transactions.single;
+          // SET LOCAL ran once at the start (caller's wrapper), not
+          // twice (which would prove the helper opened a nested
+          // transaction).
+          final setConfigCalls = tx.executedSql
+              .where((sql) => sql.contains("set_config('app.operator_id'"))
+              .length;
+          expect(
+            setConfigCalls,
+            equals(1),
+            reason: 'enqueueInTransaction must NOT open its own '
+                'transaction; the caller already issued SET LOCAL once',
+          );
+          // The INSERT shape matches the legacy enqueue.
+          final insertSql = tx.executedSql.firstWhere(
+            (sql) => sql.contains('insert into event_outbox'),
+          );
+          expect(
+            insertSql,
+            contains('returning id::text as id'),
+          );
+          expect(tx.commitCount, equals(1));
+        },
+      );
+
+      test(
+        'an exception inside the outer transaction body rolls the '
+        'enqueueInTransaction INSERT back: no commit, executor rolled '
+        'back exactly once',
+        () async {
+          final pool = _RecordingPool(returningId: '101');
+          final wrapper = TenantTransactionWrapper(pool);
+          final repo = EventOutboxRepository(wrapper);
+
+          Object? thrown;
+          try {
+            await wrapper.runInTenantContext<void>(
+              TenantContext(
+                operatorId: _opA,
+                locationId: _locA,
+                userId: _userA,
+              ),
+              (exec) async {
+                await repo.enqueueInTransaction(
+                  exec,
+                  operatorId: _opA,
+                  topic: 'auth.user.mfa_factor_removed',
+                  payload: const <String, Object?>{},
+                );
+                throw StateError('simulated downstream failure');
+              },
+            );
+          } catch (error) {
+            thrown = error;
+          }
+          expect(thrown, isNotNull);
+
+          // The outer transaction rolled back. The INSERT was issued
+          // (recorded in executedSql) but the transaction never
+          // committed — proof that a failure anywhere in the
+          // composed body discards the outbox row alongside the rest.
+          final tx = pool.transactions.single;
+          expect(tx.commitCount, equals(0));
+          expect(tx.rollbackCount, equals(1));
+          expect(
+            tx.executedSql.any((sql) => sql.contains('insert into event_outbox')),
+            isTrue,
+          );
+        },
+      );
+
+      test(
+        'malformed RETURNING id (non-string) raises StateError on the '
+        'on-executor path too — defensive contract is identical',
+        () async {
+          final pool = _RecordingPool(returningId: 99);
+          final wrapper = TenantTransactionWrapper(pool);
+          final repo = EventOutboxRepository(wrapper);
+
+          Object? thrown;
+          try {
+            await wrapper.runInTenantContext<void>(
+              TenantContext(
+                operatorId: _opA,
+                locationId: _locA,
+                userId: _userA,
+              ),
+              (exec) => repo.enqueueInTransaction(
+                exec,
+                operatorId: _opA,
+                topic: 'auth.session.login',
+                payload: const <String, Object?>{},
+              ),
+            );
+          } catch (error) {
+            thrown = error;
+          }
+          expect(thrown, isStateError);
+        },
+      );
+    },
+  );
 
   group('EventOutboxRepository.enqueue — defensive RETURNING id guards', () {
     test(

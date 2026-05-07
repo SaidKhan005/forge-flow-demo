@@ -43,6 +43,7 @@
 import 'dart:convert';
 
 import '../operator_scoped_repository.dart';
+import '../postgres_executor.dart';
 import '../tenant_context.dart';
 
 /// One claimed `event_outbox` row, projected for the Phase 10a
@@ -127,6 +128,56 @@ class EventOutboxRepository extends OperatorScopedRepository {
       }
       return id;
     });
+  }
+
+  /// On-executor variant of [enqueue]. Runs the same INSERT against a
+  /// caller-supplied [PostgresExecutor] instead of opening its own
+  /// `withTenant` boundary. The caller is responsible for the
+  /// surrounding tenant context (`SET LOCAL app.operator_id` /
+  /// `app.location_id` / `app.user_id`); typically the caller is
+  /// already inside a `runInTenantContext` body that issued those
+  /// SET LOCALs against the same executor.
+  ///
+  /// Closes the L7 deferred residual: the MFA removal worker (and
+  /// future audit/outbox-paired writes) can now commit
+  /// `markCompleted + audit + outbox` as one PostgreSQL transaction
+  /// rather than three independent commits. If any step in the body
+  /// throws, the surrounding `runInTenantContext` rolls back the
+  /// whole transaction and the row stays claimable for the next tick.
+  ///
+  /// The shape mirrors [enqueue] exactly — same parameters, same
+  /// INSERT, same `RETURNING id::text as id`, same defensive guards.
+  /// Only the transactional context changes. Callers that don't hold
+  /// an outer transaction should keep using [enqueue].
+  Future<String> enqueueInTransaction(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String topic,
+    required Map<String, Object?> payload,
+  }) async {
+    final rows = await exec.query(
+      'insert into event_outbox (operator_id, topic, payload) '
+      'values (@operator_id::uuid, @topic, @payload::jsonb) '
+      'returning id::text as id',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'topic': topic,
+        'payload': jsonEncode(payload),
+      },
+    );
+    if (rows.isEmpty) {
+      throw StateError(
+        'event_outbox insert returned no rows — RLS may have '
+        'blocked the row even though SET LOCAL ran',
+      );
+    }
+    final id = rows.single['id'];
+    if (id is! String || id.isEmpty) {
+      throw StateError(
+        'event_outbox insert returned a malformed id',
+      );
+    }
+    return id;
   }
 
   /// Default reclaim window for stale claims. Phase 10a tunes this

@@ -21,17 +21,21 @@
 //     transaction but the next row is left for the replacement
 //     instance.
 //   * Atomic completion ordering — the three terminal writes
-//     (markCompleted → audit insert → outbox enqueue) are reordered so
-//     a parallel-writer race (markCompleted UPDATE returns 0) skips
-//     the audit + outbox without bumping `completed`, and any failure
-//     in the audit + outbox path runs through the same failure arm
-//     (incrementAttemptCount + markFailed) as a Firebase / repository
-//     failure earlier in the pipeline. True single-transaction
-//     atomicity (markCompleted + audit + outbox committing as one
-//     PostgreSQL transaction) is a follow-up tracked in
-//     `docs/POST_HARDENING_FOLLOWUPS.md` — wiring it requires an
-//     on-executor variant of `EventOutboxRepository.enqueue`, which
-//     the L7 prompt explicitly excludes from this lane's surface.
+//     (markCompleted → audit insert → outbox enqueue) run inside a
+//     single tenant transaction via
+//     `MfaFactorRemovalRequestsRepository.withTenant`. The body issues
+//     `markCompletedInTransaction` (parallel-writer race returns 0,
+//     short-circuits without bumping `completed`),
+//     `AuthEventsAuditRepository.insertSystemEventOn`, and
+//     `EventOutboxRepository.enqueueInTransaction` against the same
+//     `PostgresExecutor`. If any of the three throws, the surrounding
+//     `runInTenantContext` rolls the whole transaction back — the row
+//     stays in its pre-attempt state and the failure arm
+//     (incrementAttemptCount + markFailed) opens its own transaction
+//     to release the claim for the next tick. The ordering pin
+//     (audit before outbox) is still enforced inside the body so a
+//     partial-commit hazard from a future split would default to the
+//     recoverable shape (audit row written, outbox row missing).
 
 import 'dart:convert';
 import 'dart:io';
@@ -41,6 +45,7 @@ import '../../infrastructure/persistence/postgres/repositories/event_outbox_repo
 import '../../infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/users_repository.dart';
+import '../../infrastructure/persistence/postgres/tenant_context.dart';
 import '../auth/firebase_admin_auth_client.dart';
 
 class MfaRemovalWorkerResult {
@@ -146,25 +151,34 @@ class MfaRemovalWorker {
   ///   1. Resolve the Firebase UID for the tenant user (admin pool).
   ///   2. Clear MFA enrollments at Firebase.
   ///   3. Revoke the local TOTP factor + recovery code factors.
-  ///   4. `markCompleted` (returns 0 if a parallel writer beat us).
-  ///   5. Audit row append + outbox enqueue.
+  ///   4. Atomic-completion transaction:
+  ///        a. `markCompletedInTransaction` (returns 0 if a parallel
+  ///           writer beat us — short-circuits without committing
+  ///           audit / outbox writes).
+  ///        b. `insertSystemEventOn` — audit row append.
+  ///        c. `enqueueInTransaction` — outbox row append.
+  ///      All three writes commit (or roll back) as one PostgreSQL
+  ///      transaction.
   ///
   /// Steps 1-3 are external side-effects (Firebase, then per-table
   /// repository writes). They are idempotent on retry: Firebase
   /// `clearMfaEnrollments` is idempotent per UID, and the local
   /// revoke* methods are guarded by the row's pending state.
   ///
-  /// Step 4's UPDATE-with-WHERE-`completed_at is null` returns 0 when
-  /// a parallel worker has already finalised the row, in which case
-  /// step 5 is intentionally skipped (`_RowOutcome.raceLost`).
-  ///
-  /// Step 5's failure path is the L7 hardening hook: any error after
-  /// `markCompleted` runs through [_onFailure] which increments
-  /// `attempt_count`, calls `markFailed` (releasing the claim for a
-  /// later tick), and dead-letters when the cap is reached. The
-  /// `markCompleted` WHERE-clause guard means a re-attempt sees
-  /// `completed_at IS NOT NULL` and returns 0, so the audit + outbox
-  /// writes do not run twice on retry.
+  /// Step 4 runs inside `MfaFactorRemovalRequestsRepository.withTenant`
+  /// so a single `runInTenantContext` boundary covers all three
+  /// writes. The race-loss branch (markCompleted UPDATE returns 0)
+  /// returns `_RowOutcome.raceLost` from inside the body so audit +
+  /// outbox are not written; the surrounding transaction still
+  /// commits cleanly because no error propagates. Any error from
+  /// audit or outbox propagates out of the body, the wrapper rolls
+  /// the whole transaction back, the row is left in its pre-attempt
+  /// state, and the catch arm below routes through [_onFailure] which
+  /// increments `attempt_count` and calls `markFailed` to release
+  /// the claim for a later tick. The original ordering pin
+  /// (audit before outbox) is preserved inside the body for the
+  /// recoverable-failure shape — though with single-tx atomicity, a
+  /// partial commit is no longer possible.
   Future<_RowOutcome> _processRequest(
     MfaFactorRemovalRequestRecord request, {
     required DateTime now,
@@ -187,59 +201,77 @@ class MfaRemovalWorker {
         locationId: request.locationId,
         userId: request.userId,
       );
-      final changed = await _removalRequestsRepository.markCompleted(
+      final ctx = TenantContext(
         operatorId: request.operatorId,
         locationId: request.locationId,
         userId: request.userId,
-        requestId: request.requestId,
-        completedAt: now,
       );
-      if (changed == 0) {
-        // Race: another worker already marked the row completed.
-        // Skip audit + outbox so we don't double-emit lifecycle
-        // events.
-        return _RowOutcome.raceLost;
-      }
-      // Audit-row first, then outbox enqueue. Order matters: the
-      // audit row is the SOC-2 chain anchor (hash-chained per
-      // operator/day in `audit_logs`), so a partial commit that
-      // chains audit but skips outbox is recoverable from the
-      // audit log + a backfill, while the inverse (outbox event
-      // for a row that has no audit anchor) leaves a published
-      // event with no internal record. Re-attempts after a step-5
-      // failure will see markCompleted return 0 and short-circuit
-      // via [_RowOutcome.raceLost].
-      await _auditRepository.insertSystemEvent(
-        operatorId: request.operatorId,
-        locationId: request.locationId,
-        actorKind: 'system',
-        targetUserId: request.userId,
-        eventType: 'mfa_factor_revocation_completed',
-        payload: <String, Object?>{
-          'factor_id': request.factorId,
-          'request_id': request.requestId,
-          'requested_by_user_id': request.requestedByUserId,
-          'completed_at': now.toUtc().toIso8601String(),
-          'worker_owner': workerOwner,
+      // Single tenant transaction wraps markCompleted + audit + outbox.
+      // The body returns `_RowOutcome.raceLost` for the parallel-writer
+      // shortcut (markCompleted UPDATE returned 0); any error
+      // propagating out of the body rolls the whole transaction back
+      // so a half-completed row is impossible.
+      return await _removalRequestsRepository.withTenant<_RowOutcome>(
+        ctx,
+        (exec) async {
+          final changed =
+              await _removalRequestsRepository.markCompletedInTransaction(
+            exec,
+            operatorId: request.operatorId,
+            locationId: request.locationId,
+            userId: request.userId,
+            requestId: request.requestId,
+            completedAt: now,
+          );
+          if (changed == 0) {
+            // Race: another worker already marked the row completed.
+            // Skip audit + outbox so we don't double-emit lifecycle
+            // events. The transaction commits with no writes (the
+            // markCompleted UPDATE matched zero rows, audit + outbox
+            // never ran), which is fine — the row's terminal state was
+            // already established by the winning worker.
+            return _RowOutcome.raceLost;
+          }
+          // Audit-row first, then outbox enqueue. Order matters as a
+          // defense-in-depth even with single-tx atomicity: the audit
+          // row is the SOC-2 chain anchor (hash-chained per
+          // operator/day in `audit_logs`), so any future split that
+          // turns this body into two transactions would default to
+          // the recoverable shape (audit row written, outbox row
+          // missing) rather than the unrecoverable inverse (outbox
+          // event with no audit anchor).
+          await _auditRepository.insertSystemEventOn(
+            exec,
+            operatorId: request.operatorId,
+            locationId: request.locationId,
+            actorKind: 'system',
+            targetUserId: request.userId,
+            eventType: 'mfa_factor_revocation_completed',
+            payload: <String, Object?>{
+              'factor_id': request.factorId,
+              'request_id': request.requestId,
+              'requested_by_user_id': request.requestedByUserId,
+              'completed_at': now.toUtc().toIso8601String(),
+              'worker_owner': workerOwner,
+            },
+          );
+          await _eventOutboxRepository?.enqueueInTransaction(
+            exec,
+            operatorId: request.operatorId,
+            topic: 'auth.user.mfa_factor_removed',
+            payload: <String, Object?>{
+              'event_id': request.requestId,
+              'event_type': 'auth.user.mfa_factor_removed',
+              'occurred_at': now.toUtc().toIso8601String(),
+              'operator_id': request.operatorId,
+              'location_id': request.locationId,
+              'user_id': request.userId,
+              'factor_id': request.factorId,
+            },
+          );
+          return _RowOutcome.completed;
         },
-        adminReason: 'system.mfa_factor_removal_worker_complete',
       );
-      await _eventOutboxRepository?.enqueue(
-        operatorId: request.operatorId,
-        locationId: request.locationId,
-        userId: request.userId,
-        topic: 'auth.user.mfa_factor_removed',
-        payload: <String, Object?>{
-          'event_id': request.requestId,
-          'event_type': 'auth.user.mfa_factor_removed',
-          'occurred_at': now.toUtc().toIso8601String(),
-          'operator_id': request.operatorId,
-          'location_id': request.locationId,
-          'user_id': request.userId,
-          'factor_id': request.factorId,
-        },
-      );
-      return _RowOutcome.completed;
     } catch (error) {
       return _onFailure(request, error: error, now: now);
     }
