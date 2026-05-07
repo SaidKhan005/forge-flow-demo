@@ -6819,13 +6819,16 @@ abstract class PricingTierAdminProxyGateway {
   });
 }
 
-/// Read-only mobile operational sync gateway.
+/// Mobile operational sync gateway.
 ///
 /// Native operator apps call `/v1/operators/:operatorId/locations/:locationId/*`
 /// with a Firebase bearer token. The route layer verifies that the URL scope
 /// exactly matches the token scope before delegating here; implementations must
 /// still run through tenant-scoped Postgres transactions so RLS remains the
 /// backup defense.
+///
+/// Mobile reads from this surface only. The scoped data accuracy write is used
+/// by operator-owned web flows so server truth remains authoritative.
 abstract class MobileOperationalSyncProxyGateway {
   Future<Map<String, Object?>> fetchShiftRecords({
     required OperatorContext scope,
@@ -6860,6 +6863,13 @@ abstract class MobileOperationalSyncProxyGateway {
     required OperatorContext scope,
     required String operatorId,
     required String locationId,
+  });
+
+  Future<Map<String, Object?>> upsertDataAccuracySettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
   });
 
   Future<Map<String, Object?>> fetchDataAccuracyServicePeriodSettings({
@@ -8363,6 +8373,19 @@ Future<void> routeRequest(
         }
 
         final mobileOperationalPath = _mobileOperationalPath(path);
+        if (request.method == 'PATCH' &&
+            mobileOperationalPath != null &&
+            mobileOperationalPath.resource == 'data_accuracy_settings') {
+          await _routeOperatorDataAccuracySettingsWrite(
+            request: request,
+            response: response,
+            authGuard: authGuard,
+            gateway: mobileOperationalSyncGateway,
+            businessScopeGateway: businessScopeGateway,
+            target: mobileOperationalPath,
+          );
+          return;
+        }
         if (request.method == 'GET' && mobileOperationalPath != null) {
           await _routeMobileOperationalSync(
             request: request,
@@ -14699,6 +14722,112 @@ Future<void> _routeMobileOperationalSync({
     _writeJson(response, 503, <String, Object?>{
       'error': 'mobile_operational_sync_unavailable',
       'message': 'mobile operational sync is unavailable; please retry',
+    });
+  }
+}
+
+const Set<String> _operatorDataAccuracyWriteRoles = <String>{
+  'operator_owner',
+  'operator_admin',
+};
+
+Future<void> _routeOperatorDataAccuracySettingsWrite({
+  required HttpRequest request,
+  required HttpResponse response,
+  required ProxyRequestGuard authGuard,
+  required MobileOperationalSyncProxyGateway? gateway,
+  required BusinessScopeProxyGateway? businessScopeGateway,
+  required _MobileOperationalPath target,
+}) async {
+  if (gateway == null) {
+    _writeJson(response, 503, <String, Object?>{
+      'error': 'mobile_operational_sync_not_configured',
+      'message':
+          'route requires a MobileOperationalSyncProxyGateway to be installed',
+    });
+    return;
+  }
+
+  final claims = await _resolveVerifiedClaimsOrWrite(
+    request,
+    response,
+    authGuard,
+  );
+  if (claims == null) return;
+  if (!_rolesIntersect(claims.roles, _operatorDataAccuracyWriteRoles)) {
+    _writeJson(response, 403, <String, Object?>{
+      'error': 'permission_denied',
+      'message': 'operator data accuracy writes require owner or admin role',
+    });
+    return;
+  }
+
+  final actorOperatorId = _nonBlankString(claims.operatorId);
+  final actorLocationId = _nonBlankString(claims.locationId);
+  if (actorOperatorId == null ||
+      actorLocationId == null ||
+      actorOperatorId != target.operatorId) {
+    _writeJson(response, 403, <String, Object?>{
+      'error': 'permission_denied',
+      'message': 'verified token scope does not match requested operator',
+    });
+    return;
+  }
+
+  final actorScope = _operatorContextFromClaims(
+    claims,
+    operatorId: actorOperatorId,
+    locationId: actorLocationId,
+  );
+  if (!await _operatorLocationScopeAllowed(
+    scope: actorScope,
+    operatorId: target.operatorId,
+    locationId: target.locationId,
+    businessScopeGateway: businessScopeGateway,
+  )) {
+    _writeJson(response, 403, <String, Object?>{
+      'error': 'permission_denied',
+      'message':
+          'requested data accuracy scope does not match caller access',
+    });
+    return;
+  }
+
+  final bodyResult = await readOperatorJsonBody(request);
+  if (bodyResult.errorStatus != null) {
+    _writeJson(response, bodyResult.errorStatus!, bodyResult.errorBody!);
+    return;
+  }
+
+  try {
+    final result = await gateway.upsertDataAccuracySettings(
+      scope: _operatorContextFromClaims(
+        claims,
+        operatorId: target.operatorId,
+        locationId: target.locationId,
+      ),
+      operatorId: target.operatorId,
+      locationId: target.locationId,
+      body: bodyResult.body!,
+    );
+    _writeJson(response, 200, result);
+  } on MobileOperationalSyncProxyGatewayException catch (error) {
+    _writeJson(response, error.statusCode, <String, Object?>{
+      'error': error.code,
+      'message': error.message,
+    });
+  } catch (error, stackTrace) {
+    if (_maybeWriteDependencyTimeout(response, error)) return;
+    _logProxyUnhandled(
+      surface: 'operator_data_accuracy',
+      method: request.method,
+      path: request.uri.path,
+      error: error,
+      stackTrace: stackTrace,
+    );
+    _writeJson(response, 503, <String, Object?>{
+      'error': 'operator_data_accuracy_unavailable',
+      'message': 'data accuracy settings are unavailable; please retry',
     });
   }
 }

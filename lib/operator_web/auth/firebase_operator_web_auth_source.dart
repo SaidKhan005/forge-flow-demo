@@ -28,6 +28,7 @@ class FirebaseOperatorWebAuthSource
         OperatorWebVendorConnectionsGatewayProvider,
         OperatorWebAccountGatewayProvider,
         OperatorWebBusinessTimingWriteGatewayProvider,
+        OperatorWebDataAccuracyGatewayProvider,
         OperatorWebTeamUsersGatewayProvider,
         OperatorWebTeamRolesGatewayProvider,
         OperatorWebTeamHierarchyGatewayProvider,
@@ -48,6 +49,10 @@ class FirebaseOperatorWebAuthSource
          idTokenProvider: authClient.currentIdToken,
        ),
        businessTimingWriteGateway = HttpWebBusinessTimingGateway(
+         client: proxyClient,
+         idTokenProvider: authClient.currentIdToken,
+       ),
+       dataAccuracyGateway = OperatorWebHttpDataAccuracyGateway(
          client: proxyClient,
          idTokenProvider: authClient.currentIdToken,
        ),
@@ -96,6 +101,9 @@ class FirebaseOperatorWebAuthSource
 
   @override
   final WebBusinessTimingGateway businessTimingWriteGateway;
+
+  @override
+  final OperatorWebDataAccuracyGateway dataAccuracyGateway;
 
   @override
   final WebTeamUsersGateway teamUsersGateway;

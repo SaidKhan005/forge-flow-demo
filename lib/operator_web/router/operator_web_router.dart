@@ -843,6 +843,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 session: session,
                 locationId: locationScope.id,
                 locationName: locationScope.label,
+                dataAccuracyGateway: _dataAccuracyGateway,
               );
         break;
       default:
@@ -909,6 +910,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       widget.source is OperatorWebBusinessTimingWriteGatewayProvider
       ? (widget.source as OperatorWebBusinessTimingWriteGatewayProvider)
             .businessTimingWriteGateway
+      : null;
+
+  OperatorWebDataAccuracyGateway? get _dataAccuracyGateway =>
+      widget.source is OperatorWebDataAccuracyGatewayProvider
+      ? (widget.source as OperatorWebDataAccuracyGatewayProvider)
+            .dataAccuracyGateway
       : null;
 
   /// Resolver for the Vendor connections screen gateway. Lifts

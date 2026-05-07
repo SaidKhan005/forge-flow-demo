@@ -226,6 +226,71 @@ void main() {
       });
     });
 
+    test('PATCH data accuracy settings writes through owner/admin scope', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
+            ),
+            body: const <String, Object?>{
+              'covers_source_lunch': 'manual',
+              'covers_source_dinner': 'vendor',
+              'covers_source_late_night': 'forecast',
+              'covers_manual_entries': <String, Object?>{
+                '2026-05-06': <String, Object?>{'lunch': 42},
+              },
+              'wage_source': 'manual_mix',
+              'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+              'walk_in_manual_entries': <String, Object?>{'2026-05-06': 8},
+            },
+          );
+          expect(response.statusCode, 200);
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final data = body['data'] as Map<String, Object?>;
+          expect(data['covers_source_lunch'], 'manual');
+          expect(data['wage_source'], 'manual_mix');
+          expect(ctx.gateway.calls, <String>[
+            'data_accuracy_settings_write:op-1:loc-1:manual:manual_mix',
+          ]);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('PATCH data accuracy settings rejects location manager', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(
+          claims: const ProxyJwtClaims(
+            userId: 'user-1',
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            roles: <String>['location_manager'],
+          ),
+        );
+        try {
+          final response = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
+            ),
+            body: const <String, Object?>{'wage_source': 'manual_mix'},
+          );
+          expect(response.statusCode, 403);
+          expect(ctx.gateway.calls, isEmpty);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test('does not accept writes for wage role rows', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
@@ -505,6 +570,40 @@ class _FakeMobileOperationalSyncGateway
   }
 
   @override
+  Future<Map<String, Object?>> upsertDataAccuracySettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) async {
+    calls.add(
+      'data_accuracy_settings_write:$operatorId:$locationId:'
+      '${body['covers_source_lunch']}:${body['wage_source']}',
+    );
+    return <String, Object?>{
+      'data': <String, Object?>{
+        'setting_id': 'setting-1',
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'covers_source_lunch': body['covers_source_lunch'] ?? 'vendor',
+        'covers_source_dinner': body['covers_source_dinner'] ?? 'vendor',
+        'covers_source_late_night':
+            body['covers_source_late_night'] ?? 'vendor',
+        'covers_manual_entries':
+            body['covers_manual_entries'] ?? const <String, Object?>{},
+        'wage_source': body['wage_source'] ?? 'vendor',
+        'walk_in_handling_mode':
+            body['walk_in_handling_mode'] ?? 'reservations_only',
+        'walk_in_manual_entries':
+            body['walk_in_manual_entries'] ?? const <String, Object?>{},
+        'created_at': '2026-05-06T12:00:00Z',
+        'updated_at': '2026-05-06T12:01:00Z',
+        'updated_by': scope.userId,
+      },
+    };
+  }
+
+  @override
   Future<Map<String, Object?>> fetchDataAccuracyServicePeriodSettings({
     required OperatorContext scope,
     required String operatorId,
@@ -619,8 +718,8 @@ Future<_HttpResult> _httpGet(
   final request = await client.getUrl(uri);
   request.headers.set(HttpHeaders.authorizationHeader, authorization);
   final response = await request.close();
-  final body = await utf8.decodeStream(response);
-  return _HttpResult(response.statusCode, body);
+  final responseBody = await utf8.decodeStream(response);
+  return _HttpResult(response.statusCode, responseBody);
 }
 
 Future<_HttpResult> _httpRequest(
@@ -628,12 +727,19 @@ Future<_HttpResult> _httpRequest(
   String method,
   Uri uri, {
   String authorization = 'Bearer token',
+  Map<String, Object?> body = const <String, Object?>{},
 }) async {
   final request = await client.openUrl(method, uri);
   request.headers.set(HttpHeaders.authorizationHeader, authorization);
+  if (body.isNotEmpty) {
+    final encoded = utf8.encode(jsonEncode(body));
+    request.headers.contentType = ContentType.json;
+    request.contentLength = encoded.length;
+    request.add(encoded);
+  }
   final response = await request.close();
-  final body = await utf8.decodeStream(response);
-  return _HttpResult(response.statusCode, body);
+  final responseBody = await utf8.decodeStream(response);
+  return _HttpResult(response.statusCode, responseBody);
 }
 
 class _HttpResult {

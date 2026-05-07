@@ -78,6 +78,7 @@ void main() {
         'lib/main_forgeflow.dart',
         'lib/main_operator_web.dart',
         'lib/screens',
+        'lib/services/mobile_push',
         'lib/widgets',
       ];
       final banned = <RegExp>[

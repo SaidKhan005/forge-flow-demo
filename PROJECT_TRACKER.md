@@ -65,9 +65,8 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 | `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |
 | `9.8` inbound vendor T&Cs (code lane) | code-ready, awaiting counsel | `phase_9_8/*` |
 | `business-timing-live` full hierarchy + settings lanes | future | `phase_business_timing_live/*` |
-| Doc 1 item 6 — admin/web setting sync inventory | not started | new sprint `audit.admin-web-setting-sync` |
-| Doc 1 item 7 — connected-device E2E | not started | new sprint `8.connected-device-e2e-smoke`; needs physical device |
-| Doc 1 item 9 — push proof | code-ready, needs staging apply + device | `8.push-notification-connected-device-proof` |
+| Doc 1 item 7 — physical connected-device E2E | simulated proof documented; physical/emulator proof pending | new sprint `8.connected-device-e2e-smoke`; needs physical device |
+| Doc 1 item 9 — push delivery proof | preflight documented; needs staging apply + device | `8.push-notification-connected-device-proof` |
 | Group / region / company rollup truth | future | follows server rollup snapshots |
 
 ## Vendor live rollout (rolling, parallel — does NOT block V1 launch)
@@ -116,7 +115,7 @@ run in parallel. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 "Parallel Worktrees".
 
 **Currently running**: nothing engineering-blocked. The remaining engineering
-slices (11A.8/.9/.10, business-timing-live extensions, Doc 1 items 6/7/9)
+slices (11A.8/.9/.10, business-timing-live extensions, Doc 1 items 7/9)
 are queued behind operator-blocked items above and have no active worktree.
 
 **Wave D — rolling `*.live.*` slices** fire individually as credentials

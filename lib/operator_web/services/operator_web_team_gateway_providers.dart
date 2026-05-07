@@ -14,6 +14,7 @@
 // Keep this file dependency-light: only the gateway interfaces these
 // providers expose. Concrete demo/live impls import from elsewhere.
 import 'business_timing_gateway.dart';
+import 'operator_web_data_accuracy_gateway.dart';
 import 'web_account_gateway.dart';
 import 'web_business_timing_gateway.dart';
 import 'web_security_gateway.dart';
@@ -35,6 +36,11 @@ export 'operator_web_vendor_connections_gateway.dart'
     show OperatorWebVendorConnectionsGatewayProvider;
 export 'operator_web_vendor_connections_resolver.dart'
     show OperatorWebVendorConnectionsResolver;
+
+export 'operator_web_data_accuracy_gateway.dart'
+    show
+        OperatorWebDataAccuracyGateway,
+        OperatorWebHttpDataAccuracyGateway;
 
 /// Sentinel the operator-web shell stamps on the auth source when it
 /// can supply a [WebTeamUsersGateway] for the Members surface. Demo
@@ -68,6 +74,13 @@ abstract class OperatorWebAccountGatewayProvider {
 /// renders the validation surface without a save target.
 abstract class OperatorWebBusinessTimingWriteGatewayProvider {
   WebBusinessTimingGateway get businessTimingWriteGateway;
+}
+
+/// Sentinel the operator-web shell stamps on the auth source when it
+/// can supply a live data accuracy gateway. Demo sources omit it and
+/// the screen keeps its fixture/in-memory behavior.
+abstract class OperatorWebDataAccuracyGatewayProvider {
+  OperatorWebDataAccuracyGateway get dataAccuracyGateway;
 }
 
 /// Sentinel the operator-web shell stamps on the auth source when it
