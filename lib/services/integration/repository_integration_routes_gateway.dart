@@ -782,12 +782,16 @@ class RepositoryIntegrationRoutesGateway extends OperatorScopedRepository {
       );
       // Wipe the credential ciphertext so an attacker who pops a
       // disconnected row cannot resume the vendor session. The row
-      // itself stays for the audit trail; only the secret leaves.
+      // itself stays for the audit trail; only the secrets leave.
+      // Includes the webhook signing secret (added by
+      // `db/migrations/202605080600_ops_debt_vendor_credentials_webhook_signing_secret.sql`)
+      // so a disconnected row can never validate a signed webhook.
       if (credentialId is String && credentialId.isNotEmpty) {
         await exec.execute(
           'update public.vendor_credentials '
           '   set access_token_ciphertext = null, '
           '       refresh_token_ciphertext = null, '
+          '       webhook_signing_secret_ciphertext = null, '
           '       is_active = false, '
           '       updated_at = now(), '
           '       updated_by = @updated_by '
@@ -836,6 +840,120 @@ class RepositoryIntegrationRoutesGateway extends OperatorScopedRepository {
         'status': 'disconnected',
         'disconnect_reason': disconnectReason,
         'already_disconnected': false,
+      };
+    });
+  }
+
+  // ─── Rotate webhook signing secret ────────────────────────────────
+  //
+  // CODE_OPS_DEBT Theme G #2: webhook signing secrets are a separate
+  // provisioning artifact distinct from the OAuth bearer. This write
+  // path stores the operator-supplied plaintext into
+  // `vendor_credentials.webhook_signing_secret_ciphertext` (added by
+  // `db/migrations/202605080600_ops_debt_vendor_credentials_webhook_signing_secret.sql`),
+  // pgcrypto-enveloped with the same key the bearer uses. Permission +
+  // tenant context match every other connect-class write on this
+  // gateway. The audit row carries `integration.webhook_secret_rotated`.
+  //
+  // The route handler / admin UI surface that calls this method is the
+  // operator-facing follow-up to land alongside Phase 8 ops-debt; until
+  // it lands, the matching slice is tracked as
+  // **TODO(slice 8.ops-debt.webhook-signing-secret-ui)** — operators
+  // should provision via the runbook ("Provision A Vendor Webhook
+  // Signing Secret" in
+  // `runbooks/admin_provider_credentials_kms_rollout_runbook.md`)
+  // until the UI ships.
+  Future<Map<String, Object?>> rotateWebhookSigningSecret({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String vendorId,
+    required String webhookSigningSecretPlaintext,
+    String? module,
+  }) async {
+    await _requirePermission(
+      operatorId: operatorId,
+      userId: actorUserId,
+    );
+    if (webhookSigningSecretPlaintext.trim().isEmpty) {
+      throw const IntegrationGatewayConflict(
+        'webhook_signing_secret_empty',
+      );
+    }
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<Map<String, Object?>>(ctx, (exec) async {
+      // Resolve the active credential row. Webhook signing secrets are
+      // staged onto an existing connect row — operators must connect
+      // (OAuth or key-paste) first, then provision the webhook secret.
+      // If no row exists we surface 404 so the route can return a
+      // clear "connect first" message rather than silently creating an
+      // orphan credential row.
+      final lookup = await exec.query(
+        'select credential_id::text as credential_id '
+        'from public.vendor_credentials '
+        'where operator_id = @operator_id::uuid '
+        '  and vendor_id = @vendor_id '
+        '  and is_active = true '
+        '  and (location_id = @location_id::uuid or location_id is null) '
+        "  and coalesce(module, '') = coalesce(@module, '') "
+        'order by '
+        '  case when location_id is null then 1 else 0 end, '
+        '  updated_at desc '
+        'limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'vendor_id': vendorId,
+          'module': module,
+        },
+      );
+      if (lookup.isEmpty) {
+        throw IntegrationGatewayNotFound(
+          'vendor_credentials_missing(vendor=$vendorId,module=${module ?? ""})',
+        );
+      }
+      final credentialId = lookup.single['credential_id']! as String;
+      // Update only the webhook signing secret column; leave the
+      // OAuth bearer / refresh ciphertext untouched. `updated_at`
+      // ticks so triage can see when the rotation landed.
+      await exec.execute(
+        'update public.vendor_credentials '
+        '   set webhook_signing_secret_ciphertext = '
+        '         pgp_sym_encrypt(@plaintext, @envelope_key), '
+        '       updated_at = now(), '
+        '       updated_by = @updated_by '
+        ' where credential_id = @credential_id::uuid',
+        parameters: <String, Object?>{
+          'credential_id': credentialId,
+          'plaintext': webhookSigningSecretPlaintext,
+          'envelope_key': _envelopeKey,
+          'updated_by': actorUserId,
+        },
+      );
+      await _auditLogs.writeRow(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        occurredAt: _now(),
+        actorKind: 'user',
+        actorUserId: actorUserId,
+        targetKind: 'vendor_credentials',
+        targetId: credentialId,
+        action: 'integration.webhook_secret_rotated',
+        payload: <String, Object?>{
+          'vendor_id': vendorId,
+          if (module != null) 'module': module,
+        },
+      );
+      return <String, Object?>{
+        'credential_id': credentialId,
+        'vendor_id': vendorId,
+        if (module != null) 'module': module,
+        'webhook_signing_secret_provisioned': true,
       };
     });
   }

@@ -3,16 +3,32 @@
 // Implements the [InboundWebhookGateway] surface declared in
 // `lib/services/integration/inbound_webhook_handler.dart` against the
 // Postgres tables landed by
-// `db/migrations/202605040000_phase_8_0_integration_framework.sql`:
+// `db/migrations/202605040000_phase_8_0_integration_framework.sql` plus
+// the webhook-signing-secret column added in
+// `db/migrations/202605080600_ops_debt_vendor_credentials_webhook_signing_secret.sql`:
 //
 //   * `connector_connection`              — binding cross-check + sync log FK.
-//   * `vendor_credentials`                — pgcrypto-decrypted signing secret.
+//   * `vendor_credentials`                — pgcrypto-decrypted webhook
+//                                            signing secret (separate
+//                                            column from the OAuth
+//                                            bearer ciphertext).
 //   * `inbound_webhook_idempotency`       — first-time / duplicate +
 //                                            attempt counter.
 //   * `inbound_webhook_dead_letter`       — terminal failure ledger.
 //   * `connector_sync_log`                — per-event log surfaced in
 //                                            the "View logs" modal.
 //   * `sanity_log`                        — adapter-boundary sanity-drop ledger.
+//
+// Webhook signing secret vs OAuth bearer (CODE_OPS_DEBT.md Theme G #2):
+//   The OAuth bearer (`access_token_ciphertext`) is for outbound API
+//   polling. The webhook signing secret
+//   (`webhook_signing_secret_ciphertext`) is the HMAC key the vendor
+//   signs inbound webhooks with — every vendor's docs treat it as a
+//   separate provisioning artifact. Conflating them broke signature
+//   verification for every real vendor. [lookupSigningSecret] reads
+//   ONLY `webhook_signing_secret_ciphertext`; when it is NULL the
+//   gateway returns null and the handler fails closed (403, "no
+//   signing secret on file").
 //
 // CLAUDE.md alignment:
 //   * HP #4 (per-operator isolation): every write rides
@@ -176,7 +192,8 @@ class RepositoryInboundWebhookGateway extends OperatorScopedRepository
   }
 
   /// pgcrypto symmetric envelope key used to decrypt
-  /// `vendor_credentials.access_token_ciphertext`. Server-side only;
+  /// `vendor_credentials.webhook_signing_secret_ciphertext` (and other
+  /// pgcrypto-enveloped columns on the same row). Server-side only;
   /// never exposed to clients.
   final String _pgcryptoEnvelopeKey;
 
@@ -235,19 +252,30 @@ class RepositoryInboundWebhookGateway extends OperatorScopedRepository
   }) {
     final ctx = _tenantContext(operatorId, locationId);
     return withTenant<String?>(ctx, (exec) async {
+      // CODE_OPS_DEBT Theme G #2: read `webhook_signing_secret_ciphertext`,
+      // NOT `access_token_ciphertext`. The OAuth bearer is not the
+      // HMAC key — every vendor with `webhookSupport != pollOnly` mints
+      // a separate signing secret in their portal. See
+      // `db/migrations/202605080600_ops_debt_vendor_credentials_webhook_signing_secret.sql`
+      // for the column header listing each affected vendor + secret
+      // shape.
+      //
       // Vendor credentials may be operator-wide (location_id NULL) for
       // grants like Square / 7shifts / QuickBooks Time / ADP. Resolve
       // the location-specific row first; fall back to the operator-wide
-      // grant.
+      // grant. Rows where the webhook signing secret has not yet been
+      // provisioned (column is NULL) are skipped — the SELECT
+      // short-circuits via `webhook_signing_secret_ciphertext is not
+      // null` so we never decrypt an unrelated row's column.
       final rows = await exec.query(
         'select '
-        '  pgp_sym_decrypt(access_token_ciphertext, @envelope_key) '
-        '    as signing_secret '
+        '  pgp_sym_decrypt(webhook_signing_secret_ciphertext, '
+        '    @envelope_key) as signing_secret '
         'from public.vendor_credentials '
         'where operator_id = @operator_id::uuid '
         '  and vendor_id = @vendor_id '
         '  and is_active = true '
-        '  and access_token_ciphertext is not null '
+        '  and webhook_signing_secret_ciphertext is not null '
         '  and (location_id = @location_id::uuid or location_id is null) '
         'order by '
         '  case when location_id is null then 1 else 0 end, '
@@ -260,7 +288,23 @@ class RepositoryInboundWebhookGateway extends OperatorScopedRepository
           'envelope_key': _pgcryptoEnvelopeKey,
         },
       );
-      if (rows.isEmpty) return null;
+      if (rows.isEmpty) {
+        // No row has a non-null `webhook_signing_secret_ciphertext` for
+        // this (operator, location, vendor). Surface a clear warning
+        // for triage — the handler will fail closed (reject 403) on
+        // null. Operators must provision the secret via the credential
+        // rotation runbook before signed webhooks for this vendor will
+        // validate.
+        // ignore: avoid_print
+        print(
+          'WARN repository_inbound_webhook_gateway: webhook signing '
+          'secret not provisioned for vendor=$vendorId '
+          'operator=$operatorId location=$locationId — fail-closed '
+          '(see runbooks/admin_provider_credentials_kms_rollout_runbook.md '
+          'section "Provision A Vendor Webhook Signing Secret").',
+        );
+        return null;
+      }
       final secret = rows.single['signing_secret'];
       if (secret == null) return null;
       if (secret is String) return secret.isEmpty ? null : secret;

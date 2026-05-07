@@ -50,6 +50,51 @@ PRs, chat logs, or screenshots.
 7. Refresh Health and Integrations. The affected provider path must be
    green or explicitly degraded with a known vendor-side reason.
 
+## Provision A Vendor Webhook Signing Secret
+
+The OAuth bearer (`access_token_ciphertext`) authorizes our outbound
+polling. The webhook signing secret
+(`webhook_signing_secret_ciphertext`, added by
+`db/migrations/202605080600_ops_debt_vendor_credentials_webhook_signing_secret.sql`)
+is a **separate** provisioning artifact the vendor mints on their
+side. Until it is staged, the inbound webhook handler fails closed
+with `403 no signing secret on file`.
+
+Run this flow for each `(operator, location, vendor)` triple where
+the vendor's `webhookSupport != pollOnly`:
+
+1. Connect (OAuth or key-paste) so an active `vendor_credentials` row
+   exists. The webhook signing secret rotation route updates the
+   existing row rather than creating one.
+2. Open the vendor's portal and copy the freshly-minted webhook
+   signing secret. Each vendor's spec doc lives under
+   `docs/integrations/<vendor>/webhook_signature.md`. Affected vendors:
+   - POS: `toast`, `square`, `clover`, `revel`, `lightspeed_lsk`,
+     `aloha_ncr_voyix` (each is HMAC-SHA256; secret minted in the
+     vendor's developer / partner portal — keys differ from the
+     OAuth client secret).
+   - Labor: `adp`, `seven_shifts` (each is HMAC-SHA256 with a
+     per-app or per-account secret).
+   - Reservation: `libro`, `opentable`, `sevenrooms`, `tock`
+     (HMAC-SHA256; for SevenRooms and Tock the operator pastes the F&F
+     webhook URL into the vendor admin and the vendor mints the
+     matching signing key — `webhookSupport = manualPaste`).
+3. Open Admin Console -> Integrations -> the matching vendor row, then
+   Rotate Webhook Signing Secret. Paste once and submit.
+4. Confirm the row shows a recent rotation timestamp on the webhook
+   secret column. The audit log records
+   `integration.webhook_secret_rotated`.
+5. Trigger a vendor-side test webhook (vendor portal "Send test"
+   button if available) and watch `connector_sync_log` for a
+   `webhook_received` row with `outcome = success`. A `403 no signing
+   secret on file` outcome means the rotation did not land — retry.
+
+Until the operator-facing "Rotate Webhook Signing Secret" UI ships
+(slice `8.ops-debt.webhook-signing-secret-ui`), service the request
+from the gateway's `rotateWebhookSigningSecret` method via an admin
+shell script run by the on-call operator-self-service engineer.
+The plaintext must never appear in chat logs, PRs, or screenshots.
+
 ## Rollback
 
 - Disable the same `kms_real_provider_<kind>_enabled` flag to fall back

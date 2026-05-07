@@ -317,6 +317,124 @@ void main() {
     });
   });
 
+  group(
+      'RepositoryIntegrationRoutesGateway rotateWebhookSigningSecret '
+      '(CODE_OPS_DEBT G#2)', () {
+    test(
+        'persists ciphertext to webhook_signing_secret_ciphertext column, '
+        'leaves access_token_ciphertext untouched, audits the rotation',
+        () async {
+      final guard = _allowGuardForUsers([_userA]);
+      final pool = _FakePool();
+      final gateway = _newGateway(pool: pool, guard: guard);
+
+      // Connect first so a vendor_credentials row exists. Webhook
+      // signing secret rotation never creates an orphan row.
+      await gateway.connectViaKeyPaste(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        actorUserId: _userA,
+        vendorId: 'toast',
+        apiKey: 'oauth-bearer-keep-me',
+      );
+      // Sanity: the bearer landed in the in-memory credential.
+      final credBefore = pool.credentials[_operatorA]!.single;
+      expect(credBefore.lastAccessTokenPlaintext, equals('oauth-bearer-keep-me'));
+      expect(credBefore.lastWebhookSigningSecretPlaintext, isNull);
+
+      final auditCountBefore = pool.auditLogRows.length;
+
+      final result = await gateway.rotateWebhookSigningSecret(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        actorUserId: _userA,
+        vendorId: 'toast',
+        webhookSigningSecretPlaintext: 'whsec_toast_per_op_secret',
+      );
+
+      expect(result['vendor_id'], equals('toast'));
+      expect(result['webhook_signing_secret_provisioned'], isTrue);
+
+      final credAfter = pool.credentials[_operatorA]!.single;
+      // Webhook signing secret landed.
+      expect(
+        credAfter.lastWebhookSigningSecretPlaintext,
+        equals('whsec_toast_per_op_secret'),
+      );
+      // Critical: the OAuth bearer (used for outbound polling) is
+      // NOT overwritten by the webhook secret rotation.
+      expect(
+        credAfter.lastAccessTokenPlaintext,
+        equals('oauth-bearer-keep-me'),
+        reason:
+            'rotateWebhookSigningSecret must NOT touch '
+            'access_token_ciphertext (HP #1: additive read-path fix)',
+      );
+      expect(credAfter.accessTokenCiphertextNulled, isFalse);
+      expect(credAfter.isActive, isTrue);
+
+      // Audit row carries the rotation action.
+      expect(pool.auditLogRows.length, greaterThan(auditCountBefore));
+      final audit = pool.auditLogRows.last;
+      expect(audit['action'], equals('integration.webhook_secret_rotated'));
+      expect(audit['operator_id'], equals(_operatorA));
+      expect(audit['target_kind'], equals('vendor_credentials'));
+    });
+
+    test('empty plaintext rejected with Conflict', () async {
+      final guard = _allowGuardForUsers([_userA]);
+      final pool = _FakePool();
+      final gateway = _newGateway(pool: pool, guard: guard);
+
+      await expectLater(
+        gateway.rotateWebhookSigningSecret(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          actorUserId: _userA,
+          vendorId: 'toast',
+          webhookSigningSecretPlaintext: '   ',
+        ),
+        throwsA(isA<IntegrationGatewayConflict>()),
+      );
+    });
+
+    test('no active credential row → NotFound (operator must connect first)',
+        () async {
+      final guard = _allowGuardForUsers([_userA]);
+      final pool = _FakePool();
+      final gateway = _newGateway(pool: pool, guard: guard);
+
+      await expectLater(
+        gateway.rotateWebhookSigningSecret(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          actorUserId: _userA,
+          vendorId: 'toast',
+          webhookSigningSecretPlaintext: 'whsec_xyz',
+        ),
+        throwsA(isA<IntegrationGatewayNotFound>()),
+      );
+    });
+
+    test('actor without integrations.configure denied', () async {
+      // Empty allow list — actor is not entitled.
+      final guard = _allowGuardForUsers(<String>[]);
+      final pool = _FakePool();
+      final gateway = _newGateway(pool: pool, guard: guard);
+
+      await expectLater(
+        gateway.rotateWebhookSigningSecret(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          actorUserId: _userA,
+          vendorId: 'toast',
+          webhookSigningSecretPlaintext: 'whsec_xyz',
+        ),
+        throwsA(isA<IntegrationGatewayPermissionDenied>()),
+      );
+    });
+  });
+
   group('RepositoryIntegrationRoutesGateway test-connection decrypt', () {
     test('KMS / pgcrypto decrypt failure surfaces as typed error', () async {
       final guard = _allowGuardForUsers([_userA]);
@@ -484,6 +602,10 @@ class _FakeTransaction implements PostgresTransaction {
     if (sql.contains('insert into public.vendor_credentials')) {
       return _upsertCredential(parameters);
     }
+    if (sql.contains('select credential_id::text as credential_id') &&
+        sql.contains('from public.vendor_credentials')) {
+      return _selectCredentialIdForRotation(parameters);
+    }
     if (sql.contains('insert into public.connector_connection')) {
       return _upsertConnection(parameters);
     }
@@ -561,6 +683,12 @@ class _FakeTransaction implements PostgresTransaction {
     if (sql.contains('update public.vendor_credentials') &&
         sql.contains('access_token_ciphertext = null')) {
       _wipeCredential(parameters);
+      return 1;
+    }
+    if (sql.contains('update public.vendor_credentials') &&
+        sql.contains('webhook_signing_secret_ciphertext = ') &&
+        sql.contains('pgp_sym_encrypt')) {
+      _rotateWebhookSigningSecret(sql, parameters);
       return 1;
     }
     if (sql.contains('insert into public.connector_sync_log')) {
@@ -802,7 +930,56 @@ class _FakeTransaction implements PostgresTransaction {
         if (cred.credentialId == credentialId) {
           cred
             ..accessTokenCiphertextNulled = true
+            ..webhookSigningSecretCiphertextNulled = true
             ..isActive = false;
+        }
+      }
+    }
+  }
+
+  /// Returns the active credential row for a (operator, location,
+  /// vendor, module) tuple — the lookup `rotateWebhookSigningSecret`
+  /// runs before issuing the UPDATE.
+  List<PostgresRow> _selectCredentialIdForRotation(
+    PostgresParameters parameters,
+  ) {
+    _assertTenantBoundsMatch(parameters);
+    final op = parameters['operator_id']! as String;
+    final loc = parameters['location_id'] as String?;
+    final vendor = parameters['vendor_id']! as String;
+    final module = parameters['module'] as String?;
+    final list = pool.credentials[op] ?? const <_FakeCredential>[];
+    final cred = list.firstWhere(
+      (c) =>
+          c.operatorId == op &&
+          (c.locationId == null || c.locationId == loc) &&
+          c.vendorId == vendor &&
+          (c.module ?? '') == (module ?? '') &&
+          c.isActive,
+      orElse: () => _FakeCredential.empty(),
+    );
+    if (cred.credentialId.isEmpty) return const <PostgresRow>[];
+    return <PostgresRow>[
+      <String, Object?>{'credential_id': cred.credentialId},
+    ];
+  }
+
+  void _rotateWebhookSigningSecret(
+    String sql,
+    PostgresParameters parameters,
+  ) {
+    final credentialId = parameters['credential_id']! as String;
+    final plaintext = parameters['plaintext']! as String;
+    // The UPDATE must touch ONLY the webhook signing secret column —
+    // not the access_token_ciphertext (HP #1: read-path fix is
+    // additive). Defense-in-depth assertion lives in the test, but
+    // we record what landed for the test to inspect.
+    for (final list in pool.credentials.values) {
+      for (final cred in list) {
+        if (cred.credentialId == credentialId) {
+          cred
+            ..lastWebhookSigningSecretPlaintext = plaintext
+            ..webhookSigningSecretCiphertextNulled = false;
         }
       }
     }
@@ -872,8 +1049,10 @@ class _FakeCredential {
     required this.vendorId,
     this.module,
     this.lastAccessTokenPlaintext,
+    this.lastWebhookSigningSecretPlaintext,
     this.isActive = true,
-  }) : accessTokenCiphertextNulled = false;
+  })  : accessTokenCiphertextNulled = false,
+        webhookSigningSecretCiphertextNulled = true;
 
   factory _FakeCredential.empty() => _FakeCredential(
         credentialId: '',
@@ -888,8 +1067,10 @@ class _FakeCredential {
   final String vendorId;
   final String? module;
   String? lastAccessTokenPlaintext;
+  String? lastWebhookSigningSecretPlaintext;
   bool isActive;
   bool accessTokenCiphertextNulled;
+  bool webhookSigningSecretCiphertextNulled;
 }
 
 class _FakeDecryptError implements Exception {

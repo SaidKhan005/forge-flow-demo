@@ -565,6 +565,158 @@ void main() {
     });
   });
 
+  group('lookupSigningSecret (CODE_OPS_DEBT Theme G #2)', () {
+    test('reads webhook_signing_secret_ciphertext, NOT access_token_ciphertext',
+        () async {
+      // Critical fail-closed posture: the gateway must read the
+      // dedicated webhook signing secret column added by
+      // db/migrations/202605080600_ops_debt_vendor_credentials_webhook_signing_secret.sql.
+      // Reading the OAuth bearer column (the previous bug) is what
+      // broke signature verification for every real vendor.
+      final pool = _GatewayPool(
+        signingSecretRow: <String, Object?>{
+          'signing_secret': 'whsec_toast_per_op_secret',
+        },
+      );
+      final gw = RepositoryInboundWebhookGateway(
+        TenantTransactionWrapper(pool),
+        pgcryptoEnvelopeKey: _envelopeKey,
+      );
+
+      final secret = await gw.lookupSigningSecret(
+        operatorId: _opId,
+        locationId: _locId,
+        vendorId: 'toast',
+      );
+      expect(secret, equals('whsec_toast_per_op_secret'));
+
+      final tx = pool.transactions.single;
+      final selectSql = tx.executedSql.firstWhere(
+        (s) => s.contains('from public.vendor_credentials'),
+        orElse: () => '',
+      );
+      expect(selectSql, isNotEmpty,
+          reason: 'gateway must read from vendor_credentials');
+      // The new column appears in both the SELECT projection (decrypt
+      // target) AND the WHERE clause (skip un-provisioned rows).
+      expect(
+        selectSql,
+        contains('pgp_sym_decrypt(webhook_signing_secret_ciphertext'),
+        reason: 'must decrypt the dedicated webhook signing secret column',
+      );
+      expect(
+        selectSql,
+        contains('webhook_signing_secret_ciphertext is not null'),
+        reason:
+            'must skip rows where the webhook signing secret has not been '
+            'provisioned (fail-closed at the read path)',
+      );
+      // Read path MUST NOT touch the OAuth bearer column — that is
+      // the bug being fixed. The bearer is still used for outbound
+      // polling elsewhere; this read must NOT confuse the two.
+      expect(
+        selectSql,
+        isNot(contains('access_token_ciphertext')),
+        reason:
+            'CODE_OPS_DEBT G#2: webhook signing secret read must not '
+            'reach for the OAuth bearer column',
+      );
+    });
+
+    test('returns null when the column is null (vendor not provisioned yet)',
+        () async {
+      // No row matches the `webhook_signing_secret_ciphertext is not
+      // null` filter — the SELECT returns zero rows. The gateway
+      // returns null and the handler fails closed (403).
+      final pool = _GatewayPool(signingSecretRow: null);
+      final gw = RepositoryInboundWebhookGateway(
+        TenantTransactionWrapper(pool),
+        pgcryptoEnvelopeKey: _envelopeKey,
+      );
+
+      final secret = await gw.lookupSigningSecret(
+        operatorId: _opId,
+        locationId: _locId,
+        vendorId: 'toast',
+      );
+      expect(secret, isNull,
+          reason:
+              'null column → null secret → handler fail-closes with 403 '
+              '"no signing secret on file"');
+    });
+
+    test(
+        'empty-string secret coerces to null (fail-closed if pgcrypto '
+        'returns empty bytea)', () async {
+      final pool = _GatewayPool(
+        signingSecretRow: <String, Object?>{'signing_secret': ''},
+      );
+      final gw = RepositoryInboundWebhookGateway(
+        TenantTransactionWrapper(pool),
+        pgcryptoEnvelopeKey: _envelopeKey,
+      );
+
+      final secret = await gw.lookupSigningSecret(
+        operatorId: _opId,
+        locationId: _locId,
+        vendorId: 'toast',
+      );
+      expect(secret, isNull);
+    });
+
+    test('binds the pgcrypto envelope key as a parameter (not concatenated)',
+        () async {
+      final pool = _GatewayPool(
+        signingSecretRow: <String, Object?>{'signing_secret': 'whsec_abc'},
+      );
+      final gw = RepositoryInboundWebhookGateway(
+        TenantTransactionWrapper(pool),
+        pgcryptoEnvelopeKey: _envelopeKey,
+      );
+      await gw.lookupSigningSecret(
+        operatorId: _opId,
+        locationId: _locId,
+        vendorId: 'toast',
+      );
+
+      final tx = pool.transactions.single;
+      final idx = tx.executedSql.indexWhere(
+        (s) => s.contains('from public.vendor_credentials'),
+      );
+      expect(idx, greaterThanOrEqualTo(0));
+      final params = tx.parameters[idx];
+      expect(params['envelope_key'], equals(_envelopeKey));
+      expect(params['operator_id'], equals(_opId));
+      expect(params['vendor_id'], equals('toast'));
+    });
+
+    test('runs inside withTenant — SET LOCAL precedes the SELECT', () async {
+      final pool = _GatewayPool(
+        signingSecretRow: <String, Object?>{'signing_secret': 'whsec_abc'},
+      );
+      final gw = RepositoryInboundWebhookGateway(
+        TenantTransactionWrapper(pool),
+        pgcryptoEnvelopeKey: _envelopeKey,
+      );
+      await gw.lookupSigningSecret(
+        operatorId: _opId,
+        locationId: _locId,
+        vendorId: 'toast',
+      );
+      final tx = pool.transactions.single;
+      // First statement is the operator SET LOCAL.
+      expect(tx.executedSql.first, contains("'app.operator_id'"));
+      // SELECT happens AFTER the tenant context is bound.
+      final selectIdx = tx.executedSql.indexWhere(
+        (s) => s.contains('from public.vendor_credentials'),
+      );
+      final operatorSetIdx = tx.executedSql.indexWhere(
+        (s) => s.contains("'app.operator_id'"),
+      );
+      expect(selectIdx, greaterThan(operatorSetIdx));
+    });
+  });
+
   group('recordSanityDrop', () {
     test('writes to sanity_log with a redacted summary', () async {
       final pool = _GatewayPool();
@@ -618,6 +770,7 @@ class _GatewayPool implements PostgresPool {
     this.failedAttemptReturning,
     this.unprocessedSyntheticCount = 0,
     this.bindingRow,
+    this.signingSecretRow,
   });
 
   /// When non-null the INSERT into `inbound_webhook_idempotency`
@@ -638,6 +791,12 @@ class _GatewayPool implements PostgresPool {
   /// LIMIT 1`.
   final Map<String, Object?>? bindingRow;
 
+  /// Row returned by `SELECT pgp_sym_decrypt(...) FROM vendor_credentials …`.
+  /// Map carries the projected `signing_secret` value (post-decrypt).
+  /// When null, the SELECT returns zero rows (column was NULL or row
+  /// not yet provisioned) — gateway returns null, handler fails closed.
+  final Map<String, Object?>? signingSecretRow;
+
   final List<_GatewayTransaction> transactions = <_GatewayTransaction>[];
 
   @override
@@ -647,6 +806,7 @@ class _GatewayPool implements PostgresPool {
       failedAttemptReturning: failedAttemptReturning,
       unprocessedSyntheticCount: unprocessedSyntheticCount,
       bindingRow: bindingRow,
+      signingSecretRow: signingSecretRow,
     );
     transactions.add(tx);
     return tx;
@@ -659,12 +819,14 @@ class _GatewayTransaction extends PostgresTransaction {
     required this.failedAttemptReturning,
     required this.unprocessedSyntheticCount,
     required this.bindingRow,
+    required this.signingSecretRow,
   });
 
   final String? idempotencyInsertReturning;
   final int? failedAttemptReturning;
   final int unprocessedSyntheticCount;
   final Map<String, Object?>? bindingRow;
+  final Map<String, Object?>? signingSecretRow;
 
   final List<String> executedSql = <String>[];
   final List<PostgresParameters> parameters = <PostgresParameters>[];
@@ -710,6 +872,12 @@ class _GatewayTransaction extends PostgresTransaction {
     }
     if (sql.contains('from public.connector_connection')) {
       final row = bindingRow;
+      if (row == null) return <PostgresRow>[];
+      return <PostgresRow>[row];
+    }
+    if (sql.contains('from public.vendor_credentials') &&
+        sql.contains('webhook_signing_secret_ciphertext')) {
+      final row = signingSecretRow;
       if (row == null) return <PostgresRow>[];
       return <PostgresRow>[row];
     }
