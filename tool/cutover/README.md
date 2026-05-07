@@ -7,9 +7,11 @@ codify the manual checklists in
 ## `preflight_smoke.dart` — `cutover.0` pre-flight
 
 Pre-flight smoke harness for the moment Production1 setup completes.
-Runs read-only schema, RLS-isolation, firewall, secret-manager, and
-DNS checks against a target Postgres + the surrounding Cloud Run /
-Secret Manager / DNS setup, then emits a JSON go/no-go report.
+Runs read-only schema, RLS-isolation, firewall, secret-manager,
+DNS, AGE Cypher MATCH, pgvector cosine, proxy `/health`, and
+`pg_partman` + `pg_cron` checks against a target Postgres + the
+surrounding Cloud Run / Secret Manager / DNS setup, then emits a
+JSON go/no-go report.
 
 The harness pairs with
 `runbooks/cutover_0_preflight_runbook.md`, which explains *when* to
@@ -69,11 +71,37 @@ dart run tool/cutover/preflight_smoke.dart `
 | `--include-firewall-probe` | Run the TCP `select 1` probe. |
 | `--skip-firewall` | Skip the probe; report yellow. |
 | `--skip-secrets` | Skip the GCP Secret Manager probe; report yellow. |
+| `--skip-health-endpoint` | Omit the `/health` probe (workstation runs without Cloud Run egress). |
 | `--expect-table=<name>` | Add a name to the expected-table set. May repeat. |
 | `--required-secret=<name>` | Override the default required-secret list. May repeat. |
 | `--dns-hostname=<host>` | Add a hostname to the DNS resolution check. May repeat. |
 | `--allowlisted-subnet-cidr=<cidr>` | Echo the operator-stated allowlist CIDR into the report. |
+| `--age-graph-name=<name>` | Override the AGE graph name probed by `age_cypher_match`. Default: `forge_graph`. |
+| `--proxy-base-uri=<uri>` | Base URI for the production proxy. `/health` is appended. Falls back to `PROXY_BASE_URI`. |
+| `--gcp-project-id=<id>` | GCP project for the live Secret Manager read. Falls back to `GOOGLE_CLOUD_PROJECT` / `GCP_PROJECT`. |
 | `--help`, `-h` | Print usage and exit 0. |
+
+### Required env vars
+
+| Env Var | Used By | Notes |
+|---|---|---|
+| `PROXY_BASE_URI` | `health_endpoint` smoke | Falls back to this when `--proxy-base-uri` is omitted. |
+| `GOOGLE_CLOUD_PROJECT` (or `GCP_PROJECT`) | `secret_manager_reachability` smoke | Falls back to this when `--gcp-project-id` is omitted. |
+| `GOOGLE_APPLICATION_CREDENTIALS` (workstation only) | `secret_manager_reachability` smoke | Path to a service-account key file when not running on Cloud Run / GCE metadata. |
+
+### Smoke list
+
+| Smoke | What it proves | Red token |
+|---|---|---|
+| `schema_presence` | Required tables, RLS posture, tenant-leading indexes are in place. | `cutover_preflight_red_schema_presence` |
+| `rls_isolation` | Cross-tenant SELECT under tenant B sees zero of tenant A's rows. | `cutover_preflight_red_rls_isolation` |
+| `age_cypher_match` | `age` extension installed; named graph reachable; trivial `MATCH` returns without error. | `cutover_preflight_red_age_cypher_match` |
+| `pgvector_cosine` | `vector` extension installed; `<=>` operator resolves to a numeric in `[0, 2]`. | `cutover_preflight_red_pgvector_cosine` |
+| `partman_cron_active` | `pg_partman` + `pg_cron` installed; `cron.job` has at least one scheduled job. | `cutover_preflight_red_partman_cron_active` |
+| `firewall_reachability` | TCP `select 1` to the Postgres host succeeds. | `cutover_preflight_red_firewall_reachability` |
+| `health_endpoint` | Cloud Run proxy `/health` returns HTTP 200 + the expected body marker. | `cutover_preflight_red_health_endpoint` |
+| `secret_manager_reachability` | Every required production secret is readable via Secret Manager + ADC. | `cutover_preflight_red_secret_manager_reachability` |
+| `dns_resolution` | Every named hostname resolves to at least one A/AAAA. | `cutover_preflight_red_dns_resolution` |
 
 ### Exit codes
 

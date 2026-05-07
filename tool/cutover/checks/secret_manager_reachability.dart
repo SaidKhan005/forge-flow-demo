@@ -19,13 +19,20 @@ import 'dart:async';
 
 import 'check_result.dart';
 
-/// Default required secret names. Mirrors the production env vars
-/// the proxy wiring binds via `secretFor(...)`.
+/// Default required secret names. Mirrors the production secrets the
+/// `cutover.0` checklist names: Anthropic prod key, Voyage prod key,
+/// Postgres prod URL, KMS access (verified via the
+/// `forge-flow-azure-db-superuser` secret — the secret the production
+/// KMS rotator writes to and the runtime proxy reads from). Also
+/// includes the Firebase web API key because the production proxy
+/// binds it during bootstrap and the operator-facing client app
+/// breaks if it is unset.
 const List<String> kDefaultRequiredProductionSecrets = <String>[
   'forge-flow-production-postgres-url',
   'forge-flow-production-anthropic-api-key',
   'forge-flow-production-voyage-api-key',
   'forge-flow-production-firebase-web-api-key',
+  'forge-flow-azure-db-superuser',
 ];
 
 /// Signature for the secret-read probe. Returns true if the
