@@ -1,8 +1,12 @@
 # Post-Hardening Follow-ups
 
-Updated: 2026-05-07 (trim — closed items moved to
-`docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md` and the
-2026-05-07 closeout addendum at the bottom of this file).
+Updated: 2026-05-07 (Phase 8 plug-and-play V1 closeout — resolved
+operator-self-service / backfill-factory / OAuth-refresh-closures /
+location-integrations-list / test-connection / api-key paste / route
+alignment / binder split / analyzer sweep gaps archived to
+`docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-07_phase_8_plug_and_play.md`).
+Earlier closeouts: `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`
+and the 2026-05-07 closeout addendum at the bottom of this file.
 Origin: 2026-05-02 deep audit.
 
 ## P0 — Production1 Migration Apply Gap
@@ -131,3 +135,21 @@ Highlights:
 Test parcels for MFA, postgres repo batch 1/batch 2, and the Phase 11b
 retrieval assumption are archived to
 `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`.
+
+## Closeout — Phase 8 plug-and-play V1 onboarding (2026-05-07)
+
+End-to-end V1 plug-and-play onboarding for all 17 vendors landed via
+9 PRs this session. Detail + per-PR resolution notes archived to
+`docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-07_phase_8_plug_and_play.md`.
+
+PRs (chronological): #280 MFA test signature drift; #281 OAuth refresh
+worker closure registry wire-in; #282 backfill worker adapter factory
+wire-in (binder split); #283 per-vendor OAuth descriptors + api-key
+validators; #286 operator-web route alignment + test-connection +
+disconnect endpoints; #288 master analyzer sweep; #297 test-connection
+executor wire-in; #298 api-key paste UX; #301 location integrations
+list real projection.
+
+Operations work remaining (P0 above, plus Cloud Run env + partner
+portal redirect URI registration) gates each vendor's `*.live.sandbox`
+slice firing; engineering closure is unblocked.

@@ -186,5 +186,6 @@ of the active board:
 - `9.8.email` ACCEPT (PR #88)
 - CODE_HEALTH remediation closed 2026-05-07 (16 PRs across 5 critical + ~22 high findings; residuals in `CODE_HEALTH.md` addendum)
 - Production1 runtime live 2026-05-06 (Cloud Run + Firebase + Postgres-CMK + production DNS for `app.forgeflow.app` + `mail.forgeflow.app`)
+- Phase 8 plug-and-play V1 onboarding engineering-complete 2026-05-07 (PRs #280-#301 across operator-self-service descriptors / validators / route alignment / test-connection / disconnect / api-key paste / location integrations list / OAuth refresh closures / backfill adapter factory / analyzer sweep). Detail: `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-07_phase_8_plug_and_play.md`. Operations work (Production1 migration apply + Cloud Run vendor app creds + partner-portal redirect URIs) gates each Wave D `*.live.*` slice firing.
 
 Detail in `PROJECT_TRACKER_ARCHIVE.md`.
