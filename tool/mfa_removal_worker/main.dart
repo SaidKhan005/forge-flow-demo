@@ -61,7 +61,7 @@ Future<void> main(List<String> args) async {
       // count this as a failed job.
       stderr.writeln(
         'mfa removal worker drained on shutdown: '
-        'signal=${shutdown.signal} '
+        'signal=${shutdown.signalName} '
         'tick_completed=${outcome.tickResult != null}',
       );
       exitCode = 0;
@@ -127,7 +127,7 @@ Future<_TickOutcome> _awaitTickWithDrain(
     tickError = error;
   });
 
-  await Future<void>.any(<Future<void>>[tickDone, shutdown.future]);
+  await Future.any(<Future<void>>[tickDone, shutdown.future]);
 
   if (!shutdown.isShuttingDown) {
     // Tick finished first.
@@ -135,7 +135,7 @@ Future<_TickOutcome> _awaitTickWithDrain(
     return _TickOutcome.completed(tickResult!);
   }
   // Shutdown landed first. Give the tick up to 25s to finish.
-  await Future<void>.any(<Future<void>>[
+  await Future.any(<Future<void>>[
     tickDone,
     Future<void>.delayed(const Duration(seconds: 25)),
   ]);
@@ -159,7 +159,7 @@ class _ShutdownFlag {
   String? _signal;
 
   bool get isShuttingDown => _shuttingDown;
-  String? get signal => _signal;
+  String? get signalName => _signal;
   Future<void> get future => _completer.future;
 
   void signal(String name) {

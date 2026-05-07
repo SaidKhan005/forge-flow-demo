@@ -15,7 +15,6 @@
 // probe and fails if the literal string `x-api-key` (or any value
 // matching the Anthropic key prefix) appears.
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 

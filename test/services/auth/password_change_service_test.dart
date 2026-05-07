@@ -212,10 +212,9 @@ class _CountingHibpFetcher implements HibpRangeFetcher {
 }
 
 class _CountingHistoryCheck implements PasswordHistoryCheck {
-  _CountingHistoryCheck({this.reused = false, this.error});
+  _CountingHistoryCheck({this.reused = false});
 
   final bool reused;
-  final Object? error;
   int calls = 0;
 
   @override
@@ -224,8 +223,6 @@ class _CountingHistoryCheck implements PasswordHistoryCheck {
     required String candidate,
   }) async {
     calls += 1;
-    final err = error;
-    if (err != null) throw err;
     return reused;
   }
 }

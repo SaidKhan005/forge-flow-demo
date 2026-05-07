@@ -14,7 +14,7 @@ import 'package:forge_and_flow/services/auth/recaptcha_v3_verifier.dart';
 void main() {
   group('RecaptchaV3Policy.decide freshness gate (CODE_HEALTH L10)', () {
     final fixedNow = DateTime.utc(2026, 4, 28, 12, 0, 30);
-    final policyAt = (DateTime now) => RecaptchaV3Policy.withClock(
+    RecaptchaV3Policy policyAt(DateTime now) => RecaptchaV3Policy.withClock(
           now: () => now,
         );
 

@@ -24,7 +24,7 @@ void main() {
   group('RecoveryCodeAttemptLimiter.checkAndRecord (CODE_HEALTH L10)', () {
     test('records exactly one attempt on Allowed', () async {
       final store = _DeterministicAttemptStore();
-      var now = DateTime.utc(2026, 4, 28, 12);
+      final now = DateTime.utc(2026, 4, 28, 12);
       final limiter = RecoveryCodeAttemptLimiter(
         store: store,
         now: () => now,
@@ -49,7 +49,7 @@ void main() {
         // Pre-fill 4 of the 5 daily slots so the next call sits at
         // the boundary.
         final store = _DeterministicAttemptStore();
-        var now = DateTime.utc(2026, 4, 28, 12);
+        final now = DateTime.utc(2026, 4, 28, 12);
         for (var i = 0; i < 4; i++) {
           store.attempts(_userId).add(now.subtract(Duration(hours: 2 + i)));
         }
@@ -70,12 +70,10 @@ void main() {
 
         // Exactly one Allowed, exactly one DailyExhausted — the
         // budget held under contention.
-        final allowedCount = results
-            .where((d) => d is RecoveryCodeAttemptAllowed)
-            .length;
-        final exhaustedCount = results
-            .where((d) => d is RecoveryCodeAttemptDailyExhausted)
-            .length;
+        final allowedCount =
+            results.whereType<RecoveryCodeAttemptAllowed>().length;
+        final exhaustedCount =
+            results.whereType<RecoveryCodeAttemptDailyExhausted>().length;
         expect(allowedCount, equals(1));
         expect(exhaustedCount, equals(1));
         // Only the winner appended to the durable store.
@@ -95,7 +93,7 @@ void main() {
       // deterministic store interleaves their reads (otherwise the
       // first user would finish entirely before the second started).
       final store = _DeterministicAttemptStore();
-      var now = DateTime.utc(2026, 4, 28, 12);
+      final now = DateTime.utc(2026, 4, 28, 12);
       for (var i = 0; i < 4; i++) {
         store.attempts(_userId).add(now.subtract(Duration(hours: 2 + i)));
         store.attempts(_otherUserId).add(now.subtract(Duration(hours: 2 + i)));
@@ -136,7 +134,7 @@ void main() {
       'fresh attempt (would let an attacker flood the table)',
       () async {
         final store = _DeterministicAttemptStore();
-        var now = DateTime.utc(2026, 4, 28, 12);
+        final now = DateTime.utc(2026, 4, 28, 12);
         // Last attempt 30s ago — inside the 1-minute window.
         store.attempts(_userId).add(now.subtract(const Duration(seconds: 30)));
         final limiter = RecoveryCodeAttemptLimiter(
@@ -160,7 +158,7 @@ void main() {
       'daily-exhausted does NOT record a fresh attempt',
       () async {
         final store = _DeterministicAttemptStore();
-        var now = DateTime.utc(2026, 4, 28, 12);
+        final now = DateTime.utc(2026, 4, 28, 12);
         // Already at the budget.
         for (var i = 0; i < 5; i++) {
           store.attempts(_userId).add(now.subtract(Duration(hours: 2 + i)));
@@ -201,7 +199,7 @@ void main() {
 
     test('legacy check + recordAttempt still work for backward compat', () async {
       final store = _DeterministicAttemptStore();
-      var now = DateTime.utc(2026, 4, 28, 12);
+      final now = DateTime.utc(2026, 4, 28, 12);
       final limiter = RecoveryCodeAttemptLimiter(
         store: store,
         now: () => now,
