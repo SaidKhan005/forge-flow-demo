@@ -216,24 +216,37 @@ class HttpSyncProxyClient
     required String operatorId,
     required String locationId,
   }) async {
-    final body = await _getJson(
-      _locationPath(operatorId, locationId, const <String>['wage_role_rows']),
-    );
-    final rows = _readList(body, const <String>[
+    final path = _locationPath(operatorId, locationId, const <String>[
       'wage_role_rows',
-      'wage_roles',
-      'rows',
-      'items',
-      'data',
     ]);
-    return rows
-        .map(
+    final rows = <WageRoleRow>[];
+    String? cursor;
+    while (true) {
+      final body = await _getJson(
+        path,
+        queryParameters: _pageQuery(cursor: cursor, pageSize: 500),
+      );
+      final pageRows = _readList(body, const <String>[
+        'wage_role_rows',
+        'wage_roles',
+        'rows',
+        'items',
+        'data',
+      ]);
+      rows.addAll(
+        pageRows.map(
           (row) => _wageRoleRowFromJson(
             _stringKeyMap(row),
             fallbackRestaurantId: locationId,
           ),
-        )
-        .toList(growable: false);
+        ),
+      );
+      final next =
+          _readString(body['next_cursor']) ?? _readString(body['nextCursor']);
+      if (next == null || next.isEmpty) break;
+      cursor = next;
+    }
+    return rows;
   }
 
   @override

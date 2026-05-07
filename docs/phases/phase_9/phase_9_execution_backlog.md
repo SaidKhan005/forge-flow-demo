@@ -131,10 +131,13 @@ Do not re-open stale findings unless the repo regresses:
   `202605080100_admin_idempotency_expires_at.sql` for admin idempotency TTL
   cleanup. Phase 8 weekly-plan server truth then queues
   `202605080100_phase_8_weekly_plan_server_truth.sql` for server-owned
-  forecast contexts and weekly plan snapshots. Apply on staging first, then
-  carry into the next Production1 batch. The current Production1 follow-up
-  cutoff is therefore
-  `202605080100_phase_8_weekly_plan_server_truth.sql`.
+  forecast contexts and weekly plan snapshots. Phase 8 wage-role row server
+  truth then queues
+  `202605080200_phase_8_wage_role_rows_server_truth.sql` for the
+  server-owned wage mix / role-job-code mapping table that mobile mirrors as
+  cache. Apply on staging first, then carry into the next Production1 batch.
+  The current Production1 follow-up cutoff is therefore
+  `202605080200_phase_8_wage_role_rows_server_truth.sql`.
 
 ## Remaining Live-Closeout Gates
 

@@ -2004,6 +2004,7 @@ class RepositoryMobileOperationalSyncProxyGateway
         'from public.wage_role_rows '
         'where operator_id = @operator_id::uuid '
         'and location_id = @location_id::uuid '
+        'and is_active is true '
         '$cursorSql'
         'order by updated_at asc, labor_bucket asc, role_name asc, '
         'wage_role_row_id asc '

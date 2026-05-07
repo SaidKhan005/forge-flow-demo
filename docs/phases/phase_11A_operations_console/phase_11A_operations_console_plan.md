@@ -139,7 +139,10 @@ moves the shared cutoff. Code Health M1 then queues
 cleanup. Phase 8 weekly-plan server truth then queues
 `202605080100_phase_8_weekly_plan_server_truth.sql`; it is not an 11A
 surface, but it adds server-owned forecast contexts and weekly plan snapshots
-and is now the shared cutoff watched by this plan.
+and moves the shared cutoff. Phase 8 wage-role row server truth then queues
+`202605080200_phase_8_wage_role_rows_server_truth.sql`; it is not an 11A
+surface, but it adds the server-owned wage mix / role-job-code mapping table
+that mobile mirrors as cache and is now the shared cutoff watched by this plan.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin

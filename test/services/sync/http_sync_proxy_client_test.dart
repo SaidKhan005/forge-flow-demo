@@ -249,22 +249,29 @@ void main() {
               ],
             },
           '/base/v1/operators/op/locations/loc/wage_role_rows' =>
-            <String, Object?>{
-              'wage_role_rows': <Object?>[
-                <String, Object?>{
-                  'role_name': 'Line Cook',
-                  'labor_bucket': 'boh',
-                  'hourly_rate': '18.25',
-                  'weighted_hours': 40,
-                },
-                <String, Object?>{
-                  'roleName': 'Server',
-                  'laborBucket': 'foh',
-                  'hourlyRate': 16.5,
-                  'weightedHours': '32',
-                },
-              ],
-            },
+            request.url.queryParameters['modified_since'] == null
+                ? <String, Object?>{
+                    'wage_role_rows': <Object?>[
+                      <String, Object?>{
+                        'role_name': 'Line Cook',
+                        'labor_bucket': 'boh',
+                        'hourly_rate': '18.25',
+                        'weighted_hours': 40,
+                      },
+                    ],
+                    'next_cursor': '2026-05-06T12:00:00.000Z',
+                  }
+                : <String, Object?>{
+                    'wage_role_rows': <Object?>[
+                      <String, Object?>{
+                        'roleName': 'Server',
+                        'laborBucket': 'foh',
+                        'hourlyRate': 16.5,
+                        'weightedHours': '32',
+                      },
+                    ],
+                    'next_cursor': null,
+                  },
           '/base/v1/operators/op/locations/loc/polling_tier_assignment' =>
             <String, Object?>{
               'assignment': <String, Object?>{
@@ -365,7 +372,23 @@ void main() {
     expect(backfill!.status, 'running');
     expect(backfill.vendorId, 'toast');
     expect(backfill.isRunning, isTrue);
-    expect(requests, hasLength(8));
+    expect(requests, hasLength(9));
+    final wageRoleUrl = Uri.parse(
+      'https://proxy.example/base/v1/operators/op/locations/loc/'
+      'wage_role_rows',
+    );
+    expect(
+      fullUrls.where((url) => url.contains('/wage_role_rows')).toList(),
+      <String>[
+        wageRoleUrl.replace(queryParameters: <String, String>{
+          'page_size': '500',
+        }).toString(),
+        wageRoleUrl.replace(queryParameters: <String, String>{
+          'page_size': '500',
+          'modified_since': '2026-05-06T12:00:00.000Z',
+        }).toString(),
+      ],
+    );
 
     // BUG 3 (MEDIUM): non-root proxyBaseUri prefix MUST be preserved.
     // The previous implementation called `proxyBaseUri.resolve` against
