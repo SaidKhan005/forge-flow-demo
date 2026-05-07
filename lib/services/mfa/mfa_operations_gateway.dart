@@ -559,9 +559,12 @@ class RepositoryMfaOperationsGateway implements MfaOperationsGateway {
         statusCode: 404,
       );
     }
+    // User-initiated: MFA removal cancellation runs on the HTTP
+    // path with the actor's JWT. Tag the audit row as 'user'.
     await _auditRepository.insertEvent(
       operatorId: command.operatorId,
       locationId: command.locationId,
+      actorKind: 'user',
       actorUserId: command.actorUserId,
       targetUserId: targetUserId,
       eventType: 'mfa_factor_revocation_cancelled',
@@ -662,9 +665,13 @@ class RepositoryMfaOperationsGateway implements MfaOperationsGateway {
             completedAt: persisted.completedAt,
             cancelledAt: persisted.cancelledAt,
           );
+    // User-initiated: revocation is requested via the HTTP path with
+    // the actor's JWT. The 24-hour worker-driven *completion* row is
+    // emitted separately by MfaRemovalWorker with actorKind: 'system'.
     await _auditRepository.insertEvent(
       operatorId: operatorId,
       locationId: locationId,
+      actorKind: 'user',
       actorUserId: actorUserId,
       targetUserId: targetUserId,
       eventType: 'mfa_factor_revocation_initiated',
@@ -767,9 +774,12 @@ class RepositoryMfaOperationsGateway implements MfaOperationsGateway {
     required String eventType,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
+    // User-initiated: TOTP enrollment confirm runs on the HTTP path
+    // with the actor's JWT — actor and target are the same user.
     return _auditRepository.insertEvent(
       operatorId: command.operatorId,
       locationId: command.locationId,
+      actorKind: 'user',
       actorUserId: command.actorUserId,
       targetUserId: command.actorUserId,
       eventType: eventType,

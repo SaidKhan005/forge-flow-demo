@@ -957,10 +957,10 @@ class _ThrowingAuthEventsAuditRepository
   @override
   Future<String> insertSystemEvent({
     required String eventType,
+    required String actorKind,
     String? operatorId,
     String? locationId,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
@@ -996,10 +996,10 @@ class _NoopAuthEventsAuditRepository implements AuthEventsAuditRepository {
   @override
   Future<String> insertSystemEvent({
     required String eventType,
+    required String actorKind,
     String? operatorId,
     String? locationId,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},

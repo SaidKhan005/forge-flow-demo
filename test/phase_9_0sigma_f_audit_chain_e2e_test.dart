@@ -294,6 +294,7 @@ void main() {
         operatorId: _opA,
         locationId: _locA,
         eventType: 'auth.user.signed_in',
+        actorKind: 'user',
         actorUserId: _userA,
         payload: const <String, Object?>{'method': 'password'},
       );
@@ -339,12 +340,14 @@ void main() {
         operatorId: _opA,
         locationId: _locA,
         eventType: 'auth.user.signed_in',
+        actorKind: 'user',
         actorUserId: _userA,
       );
       await repo.insertEvent(
         operatorId: _opA,
         locationId: _locA,
         eventType: 'auth.mfa_totp_enrolled',
+        actorKind: 'user',
         actorUserId: _userA,
         targetUserId: _userA,
         payload: const <String, Object?>{'factor_type': 'totp'},
@@ -403,6 +406,7 @@ void main() {
         operatorId: _opA,
         locationId: _locA,
         eventType: 'auth.password_changed',
+        actorKind: 'user',
         actorUserId: _userA,
         targetUserId: _userA,
       );

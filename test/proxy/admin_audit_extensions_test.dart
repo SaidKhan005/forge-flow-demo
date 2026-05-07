@@ -321,10 +321,10 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
   Future<String> insertSystemEventOn(
     PostgresExecutor exec, {
     required String eventType,
+    required String actorKind,
     String? operatorId,
     String? locationId,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},

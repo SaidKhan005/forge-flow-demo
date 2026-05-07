@@ -651,8 +651,8 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     required String operatorId,
     required String locationId,
     required String eventType,
+    required String actorKind,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
@@ -661,17 +661,21 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     String? geoCountry,
     String? requestId,
   }) async {
-    events.add(_AuditEvent(eventType: eventType, payload: payload));
+    events.add(_AuditEvent(
+      eventType: eventType,
+      actorKind: actorKind,
+      payload: payload,
+    ));
     return 'event-1';
   }
 
   @override
   Future<String> insertSystemEvent({
     required String eventType,
+    required String actorKind,
     String? operatorId,
     String? locationId,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
@@ -681,7 +685,11 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     String? requestId,
     required String adminReason,
   }) async {
-    events.add(_AuditEvent(eventType: eventType, payload: payload));
+    events.add(_AuditEvent(
+      eventType: eventType,
+      actorKind: actorKind,
+      payload: payload,
+    ));
     return 'event-1';
   }
 
@@ -691,10 +699,10 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
   Future<String> insertSystemEventOn(
     PostgresExecutor exec, {
     required String eventType,
+    required String actorKind,
     String? operatorId,
     String? locationId,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
@@ -703,15 +711,24 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     String? geoCountry,
     String? requestId,
   }) async {
-    events.add(_AuditEvent(eventType: eventType, payload: payload));
+    events.add(_AuditEvent(
+      eventType: eventType,
+      actorKind: actorKind,
+      payload: payload,
+    ));
     return 'event-1';
   }
 }
 
 class _AuditEvent {
-  const _AuditEvent({required this.eventType, required this.payload});
+  const _AuditEvent({
+    required this.eventType,
+    required this.actorKind,
+    required this.payload,
+  });
 
   final String eventType;
+  final String actorKind;
   final Map<String, Object?> payload;
 }
 
