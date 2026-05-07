@@ -28,10 +28,104 @@
 //   * `kPostgresDefaultMaxConnectionsPerPool` - production
 //     `PackagePostgresPool.fromUrl` keeps a small per-process pool so
 //     Cloud Run does not open a new Postgres session for every request.
+//     CODE_HEALTH L11: per-deployment override via the
+//     `POSTGRES_POOL_MAX_CONNECTIONS` env var, resolved through
+//     [resolvePostgresMaxConnectionsPerPool]. Falls back to 4 when the
+//     env var is unset, empty, unparsable, non-positive, or above the
+//     [kPostgresMaxConnectionsPerPoolUpperBound] sanity ceiling.
+
+import 'dart:io' show Platform;
+
+import '../../../services/observability/log.dart';
 
 const Duration kPostgresPerStatementTimeout = Duration(seconds: 5);
 const Duration kPostgresAcquireConnectionTimeout = Duration(seconds: 10);
 const int kPostgresDefaultMaxConnectionsPerPool = 4;
+
+/// Env var name for the per-deployment pool size override. When set
+/// to a positive integer at or below
+/// [kPostgresMaxConnectionsPerPoolUpperBound],
+/// [resolvePostgresMaxConnectionsPerPool] returns that value; in every
+/// other case it falls back to [kPostgresDefaultMaxConnectionsPerPool].
+const String kPostgresPoolMaxConnectionsEnvVar =
+    'POSTGRES_POOL_MAX_CONNECTIONS';
+
+/// Sanity ceiling for the env-driven override. A misconfigured env
+/// value (e.g. `999999`) would otherwise let a single Cloud Run
+/// instance saturate the upstream Postgres connection slots.
+const int kPostgresMaxConnectionsPerPoolUpperBound = 200;
+
+/// Returns the effective per-pool max connection count for production
+/// Postgres pools.
+///
+/// Resolution order:
+///   1. Read [kPostgresPoolMaxConnectionsEnvVar] from [environment]
+///      (defaults to [Platform.environment]).
+///   2. Trim and parse as `int`. Reject parse failures, non-positive
+///      values, and values above [kPostgresMaxConnectionsPerPoolUpperBound]
+///      with a warning log; fall back to
+///      [kPostgresDefaultMaxConnectionsPerPool].
+///   3. Otherwise return the parsed value.
+///
+/// [environment] exists purely for unit tests — production callers
+/// pass nothing and read the real process env.
+int resolvePostgresMaxConnectionsPerPool({
+  Map<String, String>? environment,
+}) {
+  String? raw;
+  try {
+    raw = (environment ?? Platform.environment)[kPostgresPoolMaxConnectionsEnvVar];
+  } catch (_) {
+    // `Platform.environment` can throw on stripped runtimes (browser
+    // builds via dart-to-js); fall back to the default in that case.
+    return kPostgresDefaultMaxConnectionsPerPool;
+  }
+  if (raw == null) return kPostgresDefaultMaxConnectionsPerPool;
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return kPostgresDefaultMaxConnectionsPerPool;
+  final parsed = int.tryParse(trimmed);
+  if (parsed == null) {
+    log(
+      LogSeverity.warning,
+      'postgres.pool.max_connections.invalid',
+      fields: <String, Object?>{
+        'env_var': kPostgresPoolMaxConnectionsEnvVar,
+        'raw': trimmed,
+        'reason': 'unparsable',
+        'fallback': kPostgresDefaultMaxConnectionsPerPool,
+      },
+    );
+    return kPostgresDefaultMaxConnectionsPerPool;
+  }
+  if (parsed <= 0) {
+    log(
+      LogSeverity.warning,
+      'postgres.pool.max_connections.invalid',
+      fields: <String, Object?>{
+        'env_var': kPostgresPoolMaxConnectionsEnvVar,
+        'raw': trimmed,
+        'reason': 'non_positive',
+        'fallback': kPostgresDefaultMaxConnectionsPerPool,
+      },
+    );
+    return kPostgresDefaultMaxConnectionsPerPool;
+  }
+  if (parsed > kPostgresMaxConnectionsPerPoolUpperBound) {
+    log(
+      LogSeverity.warning,
+      'postgres.pool.max_connections.invalid',
+      fields: <String, Object?>{
+        'env_var': kPostgresPoolMaxConnectionsEnvVar,
+        'raw': trimmed,
+        'reason': 'above_upper_bound',
+        'upper_bound': kPostgresMaxConnectionsPerPoolUpperBound,
+        'fallback': kPostgresDefaultMaxConnectionsPerPool,
+      },
+    );
+    return kPostgresDefaultMaxConnectionsPerPool;
+  }
+  return parsed;
+}
 
 /// Result row shape. Column names map to dynamic values produced by
 /// the underlying driver (UUIDs as strings, timestamptz as
