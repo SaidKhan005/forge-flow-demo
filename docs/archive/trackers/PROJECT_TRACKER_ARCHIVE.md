@@ -911,3 +911,55 @@ Record only decisions that affect future implementation.
 | 2026-04-09 | Treat 7.55 stabilization and 7.56 reservation work as separate commit scopes even when they coexist in the working tree | Prevents future reviewers from mistaking dashboard/hours-lever stabilization, reservation signal plumbing, tracker docs, and test-contract cleanup as one undifferentiated phase |
 | 2026-04-09 | Treat BOH Schedule demand as forecast-sales-first, with forecast sales derived from forecast covers * target PPA | Keeps the UI and code aligned with the labor model while preserving the current rule that POS history supplies covers and the app derives sales |
 | 2026-04-09 | Treat forecast covers as POS-history-derived and forecast sales as app-derived | Aligns Schedule with the decision that Phase 8 supplies raw closed-shift history, not vendor-provided forecast values |
+
+---
+
+## 2026-05-07 closeout pass — phases retired from active board
+
+The active `PROJECT_TRACKER.md` was trimmed to "open-only" on 2026-05-07.
+The following accepted/closed rows were moved here from the active board:
+
+- **Phase 9 framework + `9.0Σ.b-l` + `9.UX.*`** — ACCEPT.
+- **Phase 9.5.0** — ACCEPT (`9.5.UX.*` paused under Barrio freeze).
+- **Phase 11A foundation `0`–`7` / `UX.health`** — ACCEPT.
+- **Phase 11A cross-operator parity `.12` / `.13` / `.14`** — ACCEPT 2026-05-06.
+- **Phase 11W.0–.8** — ACCEPT 2026-05-06 (web shell A1, Account/Business
+  Timing A2, Vendor Connections A3, parity `.1`–`.6`, live-wiring fix
+  `11W.7.live-wire`).
+- **Phase 8 / 8R / 8.S** — engineering-complete (PASS 2026-05-05 via
+  `8.integration-mobile-proof.v2`). Wave B `documented` for all 17
+  adapters; lifecycle promotion via `phase_8_live_rollout`.
+- **`8.spine-bridge-sink-fanout`** — 14 of 14 sink lanes (AL, TC, HM,
+  SQ, TS, PU, AG, CL, ADP, RV, SR, LSK, OT, SP) ACCEPT 2026-05-06/-07
+  plus `.7S.upgrade` adapter capability extension.
+- **`8.business_date_denorm`** — ACCEPT 2026-05-06 (`c61c2ea7`).
+- **`8.first-connect-backfill-wire-in`** — ACCEPT 2026-05-06 (PR #195,
+  `aa7a58d2`). Six lanes closed.
+- **`business-timing-live` foundation + UI shell + closed timing label
+  stability proof** — merged 2026-05-06.
+- **`8.star-target-server-truth`** — ACCEPT 2026-05-06.
+- **`8.weekly-plan-server-truth`** — MERGED 2026-05-07 (PR #226).
+- **`8.business-scope-selector`** — mobile foundation MERGED 2026-05-07
+  (PR #236).
+- **Claude V1 closure dispatch — 7 of 7 lanes** — V1.A (PR #200), V1.B
+  (PR #198), V1.C (folded into PR #226), V1.D (PR #236), V1.E (PR #202),
+  V1.F (PR #201), V1.G (PR #199). Detail in
+  `docs/archive/_execution/2026-05-06_v1_closure_dispatch_plan_CLOSED_2026-05-07.md`.
+- **Phase 10a `.0`–`.5` + `UX.0`/`UX.1`** — ACCEPT 2026-05-06 (real-time
+  webhook → NOTIFY → Pub/Sub bridge complete; `last_event_id` replay;
+  Q22 tripwires + retention sweep). Phase 10b deferred post-launch.
+- **Phase 7.58 depth wave** — closed 2026-05-05 on master `699a45f`. All
+  five slices ACCEPT (`7.58.UX.6`, `.UX.8`, `.cross-axis.0`, `10.5.6`,
+  `.UX.7+9`).
+- **`9.8.email`** — ACCEPT (PR #88). Inbound-vendor T&Cs remain in
+  scope; advisor + outbound paused.
+- **CODE_HEALTH remediation** — closed 2026-05-07. 16 PRs across 5
+  critical + ~22 high findings. Resolution log + addendum in
+  `CODE_HEALTH.md`.
+- **Production1 runtime** — live 2026-05-06. Cloud Run + Firebase +
+  Postgres-CMK + production DNS for `app.forgeflow.app` and
+  `mail.forgeflow.app` provisioned.
+- **Phase 8 timing-provenance carry-forward closures (P1)** —
+  closed-row proxy gap (V1.A), FK posture flip (V1.B), same-second
+  prefix collision resolved.
+- **Phase 7.61.2 / 7.61.3** — closed (`cd0b32d`, `f21baf4`).

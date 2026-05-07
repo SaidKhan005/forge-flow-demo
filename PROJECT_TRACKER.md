@@ -3,7 +3,8 @@
 Updated: 2026-05-07
 Owner: You · Execution: We think, Claude codes
 
-Routing map only. Slice scopes live in their phase docs.
+Routing map only. This file shows **only what is left**. Completed phases /
+slices live in `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 
 ## Authority Order (Active Read Order)
 
@@ -16,116 +17,175 @@ Routing map only. Slice scopes live in their phase docs.
    `docs/phases/phase_9/phase_9_scalability_decisions_2026-04-27.md`,
    `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md`.
 6. `docs/CODEX_PROMPT_GENERATION_STANDARD.md` — prompt shape, parallel-lane rules.
-7. `docs/PERFORMANCE_FRAMEWORK.md` — performance / scale / mobile / web-console / load / health / bundle.
-8. `docs/UX_ADJUSTMENT_FRAMEWORK.md` — UX polish, copy, admin-console clarity, navigation grouping, button/modal styling, filters, keys, tooltips, browser-tab polish, no-regression UX adjustment.
-9. `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — Browser Use, web/admin acceptance, device QA, branch-to-runtime proof.
+7. `docs/PERFORMANCE_FRAMEWORK.md` · `docs/UX_ADJUSTMENT_FRAMEWORK.md` ·
+   `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — applied per slice when relevant.
 
-`docs/archive/**` is history; ignore unless explicitly named. Authority is normative in `CLAUDE.md`.
+`docs/archive/**` is history; ignore unless explicitly named. Authority is
+normative in `CLAUDE.md`.
 
-Prefer `.mcp.json` servers for orientation: `forgeflow_docs`, `forgeflow_sqlite_schema`, `graphify`.
+Prefer `.mcp.json` servers for orientation: `forgeflow_docs`,
+`forgeflow_sqlite_schema`, `graphify`.
 
-## Now
+## Open Work — V1 launch path
 
-- **V1 push direction (locked 2026-05-03)**: inbound-integration framework + two-console web management plane. See `memory/project_v1_launch_decisions_2026_05_03.md`, `project_v1_lean_scope_cut.md`, `project_phase_8_architecture.md`, `project_two_console_framing.md`, `project_ux_writing_standard.md`.
-- **AI paused** — `11b/.1/.2`, `12.*`, `11A.3/.3.x`, `11A.11`, `9.8` AI portion, `10b`. See `memory/project_phase_pause_2026_05_03.md`.
-- **Outward-vendor paused** — `8.5`, `11W.9`. See `memory/project_phase_pause_2026_05_03.md`.
-- **Barrio paused** — `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart`. See `memory/project_barrio_paused.md`.
-- **In scope** — `8.spine-bridge-sink-fanout` (2 of 14 sink lanes remain — Oracle Simphony + OpenTable — plus `.7S.upgrade` adapter capability extension), Doc 1 follow-through (`audit.admin-web-setting-sync`, group/region/company rollup truth, and operator-blocked connected-device/live-provider/push proof), Claude V1 closure dispatch (`docs/_execution/2026-05-06_v1_closure_dispatch_plan.md`) with V1.C weekly-plan server truth and V1.D mobile-scope foundation now merged, V1.E/F/G tracked in the dispatch plan, `11A.10` (impersonation), `9.8` inbound T&Cs + email, Cutover.
-- **CODE_HEALTH remediation closed** (2026-05-07): 16 parallel-lane PRs across two waves of worktrees closed C1–C5 plus ~22 high-severity findings (proxy SIGTERM/breaker/body-cap/JWT/idempotency, MFA removal retry+DLQ+SIGTERM, audit anchor crash recovery + advisory lock + Azure blob daily wire, salt+pepper password history, Anthropic prompt cache on the wire, AlwaysMissAdvisorResponseCache → real cache, BaselineData out of `lib/dev/`, daypart_table fixture import). Resolution log in `CODE_HEALTH.md`. Two lanes deferred (L7 outbox-tx atomicity, L15 labor_model rounding) and two skipped (L5 sync worker, L6 OAuth refresh — both owned by the parallel plug-and-play onboarding lanes).
-- **Production1 runtime live** (2026-05-06). Cloud Run + Firebase + Postgres-CMK + production DNS for `app.forgeflow.app` and `mail.forgeflow.app` all provisioned and verified. The follow-up migration queue is tracked in `docs/POST_HARDENING_FOLLOWUPS.md` and now runs through `202605080400_phase_8_connector_oauth_state.sql`; staging/Production1 applies still require the runbook gate and explicit operator approval. The single remaining production-domain switch is the Firebase Auth action surface (`auth.feflow.org` from `forge-flow-staging.web.app` to `forge-flow-production1.web.app` + `callbackUri = https://auth.feflow.org/auth/action` + 4 validation checks). Resume guide: `docs/_execution/2026-05-06_v1_operator_punchlist_execution.md`. Apply queue + decision details tracked in `docs/POST_HARDENING_FOLLOWUPS.md` "P0 - Production1 Migration Apply Gap" + runbook `runbooks/phase_9_production1_migration_apply_runbook.md`.
-- **Mobile push end-to-end** (PR #149, code-ready as of `db7ce131`): staging-proof checklist owned by the Production1 apply runbook. Production proof gated on staging-green + explicit approval. Flutter clients never carry Firebase Admin credentials / FCM server keys (lint-enforced via `test/services/mobile_push_sender_test.dart`).
-- **Staging runtime/perf carry-forward** (2026-05-03): `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`; durable rules in `docs/contracts/slice_runtime_acceptance_contract.md`.
-- **Notify before** any live Firebase mutation, key/account request, billing setup, provider call, or product decision.
+Three workstreams remain before V1 declaration. Two are operator-blocked,
+one is engineering-blocked.
+
+### 1. Operator-blocked (no engineering)
+
+Detail + resume guide: `docs/_execution/2026-05-06_v1_operator_punchlist_execution.md`.
+
+| Item | Owner | Blocks |
+|---|---|---|
+| Firebase Auth action-domain switch (`auth.feflow.org` → `forge-flow-production1.web.app`, set `callbackUri`, run 4 validation checks) | You / Cloud | `cutover.0` preflight |
+| Decide + apply 2 remaining Production1 migrations (first-connect-backfill jobs + 11W.7 operator account fields). 18 of 20 already staging-verified; full queue in `docs/POST_HARDENING_FOLLOWUPS.md` P0 | You + runbook | First-connect on prod, operator-web Account writes on prod |
+| Inbound-vendor T&Cs to counsel | You / Legal | `cutover.2` |
+| Sandbox creds for trio: Lightspeed K-Series · Libro · QuickBooks Time | You / Vendors | `*.live.sandbox` slices for trio |
+
+### 2. Cutover sequence (gate-driven, not date-driven)
+
+Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
+
+| Gate | Status | Notes |
+|---|---|---|
+| `cutover.0` preflight | not started | Read-only smoke on Production1; harness ready (V1.G). Needs Firebase Auth switch + 2 pending migrations applied |
+| `cutover.1` corpus load | not started | Voyage embeddings + Anthropic Contextual Retrieval; cost approval gate |
+| `cutover.0b` Tier-M perf gate | not started | Launch-blocking; needs `cutover.1` corpus first |
+| `cutover.2` first operator onboarding | not started | Vanessa on production1; needs lawyer-signed T&Cs |
+| `cutover.3` traffic switch | not started | DNS / env-var flip |
+| `cutover.4` 7-day stability watch | not started | Non-negotiable before V1 declaration |
+| `cutover.5` post-launch hardening | not started | After V1 declaration |
+
+### 3. Engineering still in scope
+
+| Slice | Status | Plan |
+|---|---|---|
+| `11A.8` Support audit | not started | `phase_11A_operations_console/*` |
+| `11A.9` Cross-operator reads | not started | `phase_11A_operations_console/*` |
+| `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |
+| `9.8` inbound vendor T&Cs (code lane) | code-ready, awaiting counsel | `phase_9_8/*` |
+| `business-timing-live` full hierarchy + settings lanes | future | `phase_business_timing_live/*` |
+| Doc 1 item 6 — admin/web setting sync inventory | not started | new sprint `audit.admin-web-setting-sync` |
+| Doc 1 item 7 — connected-device E2E | not started | new sprint `8.connected-device-e2e-smoke`; needs physical device |
+| Doc 1 item 9 — push proof | code-ready, needs staging apply + device | `8.push-notification-connected-device-proof` |
+| Group / region / company rollup truth | future | follows server rollup snapshots |
+
+## Vendor live rollout (rolling, parallel — does NOT block V1 launch)
+
+All 17 INTEGRATE adapters are at lifecycle = `documented`. Each `*.live.sandbox`
+and `*.live.prod` slice fires only when vendor credentials arrive. Tracker:
+`phase_8_live_rollout/phase_8_live_rollout_plan.md`. Soft-blocked on V1.E
+`vendor-now-available` email fan-out being already merged (it is).
+
+| Wave | Vendors | Lane id |
+|---|---|---|
+| Wave 1 — needed for launch UX | Lightspeed K-Series · Libro · QuickBooks Time | `8.LSK.live.{sandbox,prod}` · `8R.LB.live.{sandbox,prod}` · `8.S.QBT.live.{sandbox,prod}` |
+| Wave D — partnership-paced | Toast · Clover · Oracle Simphony · ADP · Aloha · NCR · Square · 7shifts · Revel · Tock · OpenTable · SevenRooms · Humanity · Agendrix · Push Operations | matching `8*.<vendor>.live.{sandbox,prod}` |
+
+## Paused
+
+Resume notes: `memory/project_phase_pause_2026_05_03.md`,
+`memory/project_barrio_paused.md`.
+
+| Phase | Reason |
+|---|---|
+| `11b` / `.1` / `.2`, `12.0`–`12.5`, `11A.3` + `11A.3.x`, `11A.11`, `9.8` advisor portion, `10b` | AI freeze |
+| `8.5`, `11W.9` | Outward-vendor freeze |
+| `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart` | Barrio freeze |
 
 ## Prompt Fetch Map
 
 | Slice prefix | Read |
 | --- | --- |
-| `11a.*` | archived: `docs/archive/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md`; live: `phase_11a/phase_11a_decision_register.md` |
 | `11A.*` | `phase_11A_operations_console/phase_11A_operations_console_plan.md` |
 | `cutover.*` | `phase_production_cutover/phase_production_cutover_plan.md` |
-| `9.0Σ.*`, `9.live-closeout`, `9.0-9.10` | `phase_9/phase_9_auth_plan.md` + `phase_9_execution_backlog.md` |
-| `7.58` / `7.61` / `10.5` (closed) | `docs/archive/phases/phase_7_58/`, `docs/archive/phases/phase_7_61/`, `docs/archive/phases/phase_10_5/` |
-| `8` / `8R` / `8.S` / `8.spine-bridge*` / `8.live` | `phase_8/*`, `phase_8R/*`, `phase_8S/*`, `phase_8/phase_8_spine_bridge_plan.md`, `phase_business_timing_live/*`, `phase_8_live_rollout/*` |
-| `8.5`, `9.8`, `10a`/`10b`, `9.5`/`9.75`, `11b*`, `11W*`, `12.*` | matching `docs/phases/**` doc |
+| `9.8` | `phase_9_8/*` |
+| `*.live.*` | `phase_8_live_rollout/phase_8_live_rollout_plan.md` |
+| `8.5`, `9.5`/`9.75`, `11b*`, `11W.9`, `12.*` | matching `docs/phases/**` doc |
 
 ## North Star
 
-POS + Labor + Reservation → Canonical Operational Facts → 60-Day Benchmark Snapshot → TargetCycle + DemandForecastContext → SchedulePlan → WeeklyPlanSnapshot → Shift → Variance → History → Learn.
-
-## Phase Board
-
-Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
-
-### Active
-
-| Phase | Status | Plan |
-| --- | --- | --- |
-| `9` framework + `9.0Σ.b-l` + `9.UX.*` | accepted; phase stays open until `9.8` inbound T&Cs land | `phase_9/*` |
-| `9.5` | `.0` accepted; `.UX.*` paused (Barrio) | `phase_9_5/*` |
-| `11A` | foundation `0`–`7`/`UX.health` ACCEPT + cross-op parity `.12`/`.13`/`.14` ACCEPT 2026-05-06; `.8`/`.9`/`.10` not started | `phase_11A_operations_console/*` |
-| `11W` Operator Web Console | `.0`–`.8` ACCEPT 2026-05-06 (A1 web shell `f5a94c08`, A2 Account + Business Timing `9a56cabf`, A3 Vendor Connections `075fde54`, parity `.1`–`.6`, live wiring fix `11W.7.live-wire`); `11W.9` paused (depends on 8.5) | `phase_11W/*` |
-| `8` (POS) | engineering-complete (PASS 2026-05-05 via `mobile-proof.v2`); Wave B `documented` for 7 adapters; lifecycle promotion via `phase_8_live_rollout` | `phase_8/*` + `vendor_master_list.md` |
-| `8R` (Reservations) | engineering-complete (PASS 2026-05-05 via `mobile-proof.v2`); Wave B `documented` for 4 adapters; lifecycle promotion via `phase_8_live_rollout` | `phase_8R/*` |
-| `8.S` (Scheduling) | engineering-complete (PASS 2026-05-05 via `mobile-proof.v2`); Wave B `documented` for 6 adapters; lifecycle promotion via `phase_8_live_rollout` | `phase_8S/*` |
-| `8.spine-bridge-sink-fanout` | RUNNING — 12 of 14 ACCEPT (`.1.AL`/`.TC`/`.HM`/`.SQ`/`.TS`/`.PU`/`.AG`/`.CL`/`.ADP`/`.RV`/`.SR`/`.LSK` 2026-05-06); 2 lanes remain (Oracle Simphony, OpenTable) plus the `.7S.upgrade` adapter capability extension. Plus `8.business_date_denorm` ACCEPT 2026-05-06 (`c61c2ea7`) | `phase_8/phase_8_spine_bridge_plan.md` |
-| `business-timing-live` | foundation + UI shell + closed timing label stability proof merged 2026-05-06; canonical timing source is same-DB `business_timing_profiles`/service periods; first-connect wire-in now invokes the closed aggregator/open projector seams under fixture proof; future full hierarchy/settings lanes remain separate | `phase_business_timing_live/business_timing_live_plan.md` |
-| `8.star-target-server-truth` | ACCEPT 2026-05-06 — Doc 1 selected-star/target items now have server-owned selected-star decisions, manager override permission/idempotency/audit, server target cycles, active target profile projection, proxy routes, mobile sync cache mirrors, Baseline write-path wiring, and fixture proof. Mobile remains cache/read model, not source of truth. | `docs/contracts/mobile_core_star_target_truth_contract.md`, `docs/_execution/2026-05-06_mobile_core_star_target_truth_sprint_plan.md`, `docs/_execution/2026-05-06_8_star_target_truth_proof.md` |
-| `8.weekly-plan-server-truth` | MERGED 2026-05-07 via PR #226 — Doc 1 item 4 now has server-owned forecast contexts + weekly plan snapshots (`202605080100_phase_8_weekly_plan_server_truth.sql`), proxy routes, mobile sync cache wiring, and Schedule honesty proof. Mobile remains cache/read model, not source of truth. | `docs/contracts/mobile_core_weekly_plan_server_truth_contract.md`, `docs/_execution/2026-05-07_weekly_plan_server_truth_mobile_proof.md` |
-| `8.business-scope-selector` | FOLLOW-UP PROOF PASS 2026-05-07 — Doc 1 Phase 1 location-level mobile scope foundation is merged; clarified multi-level role behavior now expands higher-level grants into selectable location rows, adds drawer search, and gives F&F global read roles all registered locations without mobile rollups. | `docs/contracts/mobile_core_business_scope_contract.md`, `docs/_execution/2026-05-07_mobile_business_scope_selector_proof.md`, `docs/_execution/2026-05-07_mobile_scope_flat_location_search_proof.md` |
-| Claude V1 closure dispatch | RUNNING 2026-05-06 — seven file-disjoint lanes (V1.A/B/C/D/E/F/G) closing punchlist items + Doc 1 Lane 0s + cutover preflight harness; V1.C weekly-plan server truth and V1.D mobile-scope foundation have now merged. Remaining dispatch work is V1.E/F/G plus operator-blocked proof gates called out in the dispatch plan. | `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md` |
-| `8.live` (lifecycle rollout) | open — 17 `*.live.sandbox` + 17 `*.live.prod` slices; closes when last vendor reaches `production_credentialed`; `*.live.prod` slices soft-blocked on V1.E `vendor-now-available` email fan-out | `phase_8_live_rollout/phase_8_live_rollout_plan.md` |
-| `9.8` | `.email` accepted (PR #88); inbound-vendor T&Cs in scope; advisor + outbound paused | `phase_9_8/*` |
-
-### Paused
-
-| Phase | Status | Plan |
-| --- | --- | --- |
-| `9.75` | paused (Barrio) | `phase_9_75/*` |
-| `8.5` (Outbound finance) | paused (outward-vendor) | `phase_8_5_external_integrations/*` |
-| `11b`/`.1`/`.2` | paused (AI) | `phase_11b/*` |
-| `12.0`–`12.5` | paused (AI) | `phase_12_workflow_platform/*` |
-| `11A.3` + `11A.3.x` | paused (AI) | `phase_11A_operations_console/*` |
-| `11A.11` | paused (AI) | `phase_11A_operations_console/*` |
-| `11W.9` | paused (depends on 8.5) | `phase_11W/*` |
-| `10b` | paused (AI) | n/a |
-
-### Queued
-
-| Phase | Status | Plan |
-| --- | --- | --- |
-| `cutover.0b` | queued — Tier-M perf gate; needs `cutover.1` corpus seed | `phase_production_cutover/*` |
-| `cutover.1` | queued — production corpus load | same plan |
-| `cutover.2`–`5` | queued (post-`0b`) | same plan |
+POS + Labor + Reservation → Canonical Operational Facts → 60-Day Benchmark
+Snapshot → TargetCycle + DemandForecastContext → SchedulePlan →
+WeeklyPlanSnapshot → Shift → Variance → History → Learn.
 
 ## Active Lanes
 
-Codex on master; Claude in `.claude/worktrees/<lane>`. Multiple phases may run in parallel. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Worktrees".
+Codex on master; Claude in `.claude/worktrees/<lane>`. Multiple phases may
+run in parallel. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
+"Parallel Worktrees".
 
-**Master state 2026-05-06 post-audit**: 5-agent audit at HEAD `fad3c031` confirmed Lane 0 + 1 + 2 (closed-truth) + 3 + 4 + 5 (live-truth) + A1 + B1–B4 all landed with code/lints/tests green (1982/1983 PASS, single fail = quarantined). All 5 hardening lints clean. Live provider/device proof remains future lifecycle/E2E work. Audit reports under `docs/_execution/2026-05-06*`.
+**Currently running**: nothing engineering-blocked. The remaining engineering
+slices (11A.8/.9/.10, business-timing-live extensions, Doc 1 items 6/7/9)
+are queued behind operator-blocked items above and have no active worktree.
 
-**Currently running**: User's worktrees on `8.spine-bridge-sink-fanout` (2 of 14 sink lanes outstanding — Oracle Simphony · OpenTable — plus `.7S.upgrade` adapter capability extension; AL · TC · HM · SQ · TS · PU · AG · CL · ADP · RV · SR · LSK all ACCEPT 2026-05-06); Doc 1 mobile follow-through after accepted first-connect, star-target, weekly-plan, and location-scope proofs; Claude V1 closure dispatch (`docs/_execution/2026-05-06_v1_closure_dispatch_plan.md`) — V1.C weekly-plan server truth and V1.D mobile-scope foundation merged, plus V1.E vendor-now-available email fan-out + V1.F connector backfill jobs test coverage + V1.G cutover.0 preflight harness.
+**Wave D — rolling `*.live.*` slices** fire individually as credentials
+arrive.
 
-**Wave D — rolling `*.live.*` slices** fire individually as credentials arrive. Tracker: `phase_8_live_rollout/phase_8_live_rollout_plan.md`.
-
-**Operator parallel critical path (no engineering)**: see `docs/_execution/2026-05-05_v1_launch_punchlist.md` Section 0.
-
-**Skip until unfreeze**: see Now block paused lists.
+**Skip until unfreeze**: see Paused list above.
 
 ## Hard Gates
 
-- All `7.58.*` accept before `11b.0`. (Driver-key Phase-8 gate satisfied.)
-- `cutover.0b` Tier-M perf gate is launch-blocking; needs `cutover.1` corpus seed first.
-- Production migrations use online-migration patterns once real operator data exists; transition at `cutover.4`.
-- Migration changes: `dart run tool/migration_drift_scanner.dart --fix --strict-docs`, then `dart run tool/migration_cutoff_lint.dart`.
-- Runtime-exposed slices satisfy `docs/contracts/slice_runtime_acceptance_contract.md`. Browser-exposed slices use Browser Use evidence per `runbooks/browser_use_acceptance_harness_runbook.md` and full E2E uses `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`.
-- Before staging console perf claims: `dart run tool/perf_gate/staging_console_probe.dart --run --admin-url=<url> --proxy-url=<url>` and attach JSON. `--enforce-budgets` for PR/release gates; `--include-health` only for bounded health probes.
-- 35 scalability locks (`phase_9_scalability_decisions_2026-04-27.md`) authoritative; 10 Hard Promises in `CLAUDE.md` durable.
+- `cutover.0b` Tier-M perf gate is launch-blocking; needs `cutover.1`
+  corpus seed first.
+- Production migrations use online-migration patterns once real operator
+  data exists; transition at `cutover.4`.
+- Migration changes: `dart run tool/migration_drift_scanner.dart --fix
+  --strict-docs`, then `dart run tool/migration_cutoff_lint.dart`.
+- Runtime-exposed slices satisfy
+  `docs/contracts/slice_runtime_acceptance_contract.md`. Browser-exposed
+  slices use Browser Use evidence per
+  `runbooks/browser_use_acceptance_harness_runbook.md` and full E2E uses
+  `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`.
+- Before staging console perf claims:
+  `dart run tool/perf_gate/staging_console_probe.dart --run
+  --admin-url=<url> --proxy-url=<url>` and attach JSON.
+  `--enforce-budgets` for PR/release gates; `--include-health` only for
+  bounded health probes.
+- 35 scalability locks
+  (`phase_9_scalability_decisions_2026-04-27.md`) authoritative; 10 Hard
+  Promises in `CLAUDE.md` durable.
 
 ## Notes
 
-- Mobile architecture (canonical-fact dicts → operator-scoped Postgres `shift_records` → mobile SQLite via proxy sync) bound by `integration_spine_architecture_contract.md`.
-- 2026-05-05 vendor-research falsehoods captured in `integration_spine_architecture_contract.md` "2026-05-05 falsehood corrections" section.
-- `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1` is the canonical private env loader (outside repo).
-- Closed-phase audits/closeouts live in `docs/_execution/`; follow CLAUDE.md "Phase Doc Hygiene" and retire to `docs/archive/phases/` within a week.
-- If a prompt requires a key, account, cloud project, billing setup, or infrastructure choice, surface it in Block 1.
+- Mobile architecture (canonical-fact dicts → operator-scoped Postgres
+  `shift_records` → mobile SQLite via proxy sync) bound by
+  `integration_spine_architecture_contract.md`.
+- 2026-05-05 vendor-research falsehoods captured in
+  `integration_spine_architecture_contract.md` "2026-05-05 falsehood
+  corrections" section.
+- `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1` is the
+  canonical private env loader (outside repo).
+- Closed-phase audits/closeouts live in `docs/_execution/`; follow
+  CLAUDE.md "Phase Doc Hygiene" and retire to `docs/archive/phases/`
+  within a week.
+- If a prompt requires a key, account, cloud project, billing setup, or
+  infrastructure choice, surface it in Block 1.
+- **Notify before** any live Firebase mutation, key/account request,
+  billing setup, provider call, or product decision.
+
+## Recently archived (see `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`)
+
+2026-05-07 closeout pass moved the following accepted/closed phase rows out
+of the active board:
+
+- Phase `9` framework + `9.0Σ.b-l` + `9.UX.*` ACCEPT
+- Phase `9.5.0` ACCEPT
+- Phase `11A` foundation `0`–`7`/`UX.health` + cross-op parity `.12`/`.13`/`.14` ACCEPT 2026-05-06
+- Phase `11W.0`–`.8` ACCEPT 2026-05-06 + 11W.7 live-wire fix
+- Phase `8` / `8R` / `8.S` engineering-complete (PASS 2026-05-05 via `mobile-proof.v2`)
+- `8.spine-bridge-sink-fanout` 14/14 lanes + `.7S.upgrade` ACCEPT
+- `8.business_date_denorm` ACCEPT 2026-05-06
+- `8.first-connect-backfill-wire-in` ACCEPT 2026-05-06 (PR #195)
+- `business-timing-live` foundation + UI shell ACCEPT 2026-05-06
+- `8.star-target-server-truth` ACCEPT 2026-05-06
+- `8.weekly-plan-server-truth` MERGED 2026-05-07 (PR #226)
+- `8.business-scope-selector` mobile foundation MERGED 2026-05-07 (PR #236)
+- Claude V1 closure dispatch — all 7 lanes (V1.A–G) MERGED via PRs #198–202, #226, #236
+- Phase `10a` real-time infra `.0`–`.5` + `UX.0`/`UX.1` ACCEPT 2026-05-06
+- Phase `7.58` depth wave ACCEPT 2026-05-05
+- `9.8.email` ACCEPT (PR #88)
+- CODE_HEALTH remediation closed 2026-05-07 (16 PRs across 5 critical + ~22 high findings; residuals in `CODE_HEALTH.md` addendum)
+- Production1 runtime live 2026-05-06 (Cloud Run + Firebase + Postgres-CMK + production DNS for `app.forgeflow.app` + `mail.forgeflow.app`)
+
+Detail in `PROJECT_TRACKER_ARCHIVE.md`.

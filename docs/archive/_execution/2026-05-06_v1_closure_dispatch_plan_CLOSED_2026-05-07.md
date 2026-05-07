@@ -1,4 +1,19 @@
-# V1 Closure Dispatch Plan
+# V1 Closure Dispatch Plan — ARCHIVED 2026-05-07 (all 7 lanes merged)
+
+**Status: CLOSED.** All seven dispatch lanes (V1.A–V1.G) merged into
+master:
+
+- V1.A `8.closed-row-proxy-timing-provenance` — PR #200
+- V1.B `8.timing-provenance-fk-posture` — PR #198
+- V1.C `8.weekly-plan-server-truth.lane0` — folded into PR #226 (full mobile sprint)
+- V1.D `8.mobile-scope-foundation` — PR #236
+- V1.E `8.live.vendor-now-available-fanout` — PR #202
+- V1.F `8.connector-backfill-jobs.test-coverage` — PR #201
+- V1.G `cutover.0.preflight-runbook-codification` — PR #199
+
+Original dispatch packet retained below for history.
+
+---
 
 Date: 2026-05-06
 Baseline: master `f347cab1` (post-PR #195 + post-`11W.7` audit)
