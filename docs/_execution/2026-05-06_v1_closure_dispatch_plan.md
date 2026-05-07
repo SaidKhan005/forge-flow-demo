@@ -248,13 +248,18 @@ Codex/Claude in the loop.
 
 ## Doc 1 remaining items (post-V1, future sprints)
 
+Update 2026-05-07: `8.weekly-plan-server-truth` and the location-level
+`8.business-scope-selector` mobile foundation have both merged after this
+dispatch packet was authored. The table below is retained as dispatch history;
+the live status is now called out in the Notes column.
+
 Items 4–15 from the user's Doc 1 list that are NOT in this seven-lane
 plan and require their own future sprints:
 
 | Item | Sprint plan needed | Notes |
 |---|---|---|
-| 4. Server weekly plan snapshots + forecast context | `8.weekly-plan-server-truth` (V1.C is Lane 0 only) | Full sprint = 5 lanes |
-| 5. Mobile business scope selector + rollup truth | `8.business-scope-selector` (V1.D is Lane 0 only) | Full sprint = 4 lanes |
+| 4. Server weekly plan snapshots + forecast context | `8.weekly-plan-server-truth` | Merged 2026-05-07 via PR #226; proof: `docs/_execution/2026-05-07_weekly_plan_server_truth_mobile_proof.md`. |
+| 5. Mobile business scope selector + rollup truth | `8.business-scope-selector` | Location-level mobile foundation merged 2026-05-07 via PR #236; group/region/company rollup truth remains future until server rollup snapshots exist. |
 | 6. Admin/web setting sync inventory | `audit.admin-web-setting-sync` | Audit-only at first; remediation lanes follow |
 | 7. Connected-device E2E | `8.connected-device-e2e-smoke` | Needs physical device; operator-blocked |
 | 8. Live provider proof | `8.<vendor>.live.sandbox` per vendor | Operator-blocked on creds |
