@@ -36,7 +36,8 @@ class FirebaseOperatorWebAuthSource
         OperatorWebTeamSessionsGatewayProvider,
         OperatorWebTeamAuditLogGatewayProvider,
         OperatorWebSecurityGatewayProvider,
-        OperatorWebNotificationPreferencesGatewayProvider {
+        OperatorWebNotificationPreferencesGatewayProvider,
+        OperatorWebWageAuthorityGatewayProvider {
   FirebaseOperatorWebAuthSource({
     required FirebaseAuthClient authClient,
     required OperatorWebProxyClient proxyClient,
@@ -87,6 +88,10 @@ class FirebaseOperatorWebAuthSource
        notificationPreferencesGateway = HttpWebNotificationPreferencesGateway(
          proxyBaseUri: proxyClient.baseUri,
          idTokenProvider: authClient.currentIdToken,
+       ),
+       wageAuthorityGateway = OperatorWebHttpWageAuthorityGateway(
+         proxyBaseUri: proxyClient.baseUri,
+         idTokenProvider: authClient.currentIdToken,
        ) {
     _controller.add(_state);
     unawaited(_bootstrap());
@@ -131,6 +136,9 @@ class FirebaseOperatorWebAuthSource
 
   @override
   final WebNotificationPreferencesGateway notificationPreferencesGateway;
+
+  @override
+  final OperatorWebWageAuthorityGateway wageAuthorityGateway;
 
   String? _currentSessionId;
 
