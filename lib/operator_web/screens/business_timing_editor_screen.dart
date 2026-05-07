@@ -36,12 +36,16 @@ class BusinessTimingEditorScreen extends StatefulWidget {
   const BusinessTimingEditorScreen({
     super.key,
     required this.session,
+    this.locationId,
+    this.locationName,
     this.gateway,
     this.existingProfile,
     this.onClose,
   });
 
   final OperatorWebSession session;
+  final String? locationId;
+  final String? locationName;
   final WebBusinessTimingGateway? gateway;
   final BusinessTimingProfileWriteResult? existingProfile;
   final VoidCallback? onClose;
@@ -96,20 +100,21 @@ class _BusinessTimingEditorScreenState
               ),
             ]
           : existing.servicePeriods
-              .map(
-                (p) => ServicePeriodDraft(
-                  key: p.key,
-                  label: p.label,
-                  startLocal: p.startLocal,
-                  endLocal: p.endLocal,
-                ),
-              )
-              .toList(),
+                .map(
+                  (p) => ServicePeriodDraft(
+                    key: p.key,
+                    label: p.label,
+                    startLocal: p.startLocal,
+                    endLocal: p.endLocal,
+                  ),
+                )
+                .toList(),
     );
     _ianaTimezone = TextEditingController(
       text: existing?.ianaTimezone ?? 'America/Toronto',
     );
-    final initialDayStart = existing?.businessDayStartLocal ??
+    final initialDayStart =
+        existing?.businessDayStartLocal ??
         (widget.session.rolloverHour != null
             ? '${widget.session.rolloverHour!.toString().padLeft(2, '0')}:00'
             : '04:00');
@@ -159,8 +164,16 @@ class _BusinessTimingEditorScreenState
         return widget.session.operatorId;
       case 'location':
       default:
-        return widget.session.primaryLocationId;
+        return widget.locationId?.trim().isNotEmpty == true
+            ? widget.locationId!.trim()
+            : widget.session.primaryLocationId;
     }
+  }
+
+  String get _locationLabel {
+    final label = widget.locationName?.trim();
+    if (label != null && label.isNotEmpty) return label;
+    return widget.session.primaryLocationName;
   }
 
   Future<void> _save() async {
@@ -240,7 +253,8 @@ class _BusinessTimingEditorScreenState
     _successTimer?.cancel();
     setState(() {
       _submitting = false;
-      _success = 'Saved. New timing takes effect '
+      _success =
+          'Saved. New timing takes effect '
           '${_formatBusinessDate(_effectiveAt)}.';
     });
     _successTimer = Timer(const Duration(seconds: 4), () {
@@ -278,9 +292,7 @@ class _BusinessTimingEditorScreenState
             children: [
               if (widget.onClose != null)
                 IconButton(
-                  key: const Key(
-                    'operator_web_business_timing_editor_close',
-                  ),
+                  key: const Key('operator_web_business_timing_editor_close'),
                   onPressed: widget.onClose,
                   tooltip: 'Back to business setup',
                   icon: const Icon(
@@ -300,9 +312,7 @@ class _BusinessTimingEditorScreenState
                   widget.existingProfile == null
                       ? 'New business timing profile'
                       : 'Edit business timing profile',
-                  style: AppTextStyles.display20(
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
               ),
             ],
@@ -323,6 +333,7 @@ class _BusinessTimingEditorScreenState
           if (!widget.canEdit) const SizedBox(height: 14),
           _ScopeAndEffectiveSection(
             scopeKind: _scopeKind,
+            locationLabel: _locationLabel,
             effectiveAt: _effectiveAt,
             ianaTimezoneController: _ianaTimezone,
             businessDayStartController: _businessDayStartLocal,
@@ -419,7 +430,8 @@ class _BusinessTimingEditorScreenState
               height: 42,
               child: FilledButton(
                 key: const Key('operator_web_business_timing_editor_save'),
-                onPressed: widget.canEdit &&
+                onPressed:
+                    widget.canEdit &&
                         _hasGateway &&
                         !_submitting &&
                         _periods.validation.isValid
@@ -459,6 +471,7 @@ class _BusinessTimingEditorScreenState
 class _ScopeAndEffectiveSection extends StatelessWidget {
   const _ScopeAndEffectiveSection({
     required this.scopeKind,
+    required this.locationLabel,
     required this.effectiveAt,
     required this.ianaTimezoneController,
     required this.businessDayStartController,
@@ -472,6 +485,7 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
   });
 
   final String scopeKind;
+  final String locationLabel;
   final DateTime effectiveAt;
   final TextEditingController ianaTimezoneController;
   final TextEditingController businessDayStartController;
@@ -508,15 +522,19 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
                     labelText: 'Where does this profile apply?',
                     border: OutlineInputBorder(),
                   ),
-                  items: const <DropdownMenuItem<String>>[
-                    DropdownMenuItem<String>(
+                  items: <DropdownMenuItem<String>>[
+                    const DropdownMenuItem<String>(
                       value: 'operator',
-                      child: Text('Across the whole operator (default)'),
+                      child: Text('Across all locations (default)'),
                     ),
                     DropdownMenuItem<String>(
                       value: 'location',
-                      child: Text('Just this location (override)'),
+                      child: Text('Just $locationLabel (override)'),
                     ),
+                  ],
+                  selectedItemBuilder: (context) => [
+                    const Text('Across all locations (default)'),
+                    Text('Just $locationLabel (override)'),
                   ],
                   onChanged: enabled ? onScopeChanged : null,
                 ),
@@ -537,9 +555,7 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
                     ),
                     child: Text(
                       formatter(effectiveAt),
-                      style: AppTextStyles.body13(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),
                   ),
                 ),
@@ -551,9 +567,7 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
             children: [
               Expanded(
                 child: TextField(
-                  key: const Key(
-                    'operator_web_business_timing_editor_iana',
-                  ),
+                  key: const Key('operator_web_business_timing_editor_iana'),
                   controller: ianaTimezoneController,
                   enabled: enabled,
                   decoration: const InputDecoration(
@@ -584,19 +598,14 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            key: const Key(
-              'operator_web_business_timing_editor_week_start',
-            ),
+            key: const Key('operator_web_business_timing_editor_week_start'),
             initialValue: weekStartDay,
             decoration: const InputDecoration(
               labelText: 'First day of the business week',
               border: OutlineInputBorder(),
             ),
             items: const <DropdownMenuItem<String>>[
-              DropdownMenuItem<String>(
-                value: 'monday',
-                child: Text('Monday'),
-              ),
+              DropdownMenuItem<String>(value: 'monday', child: Text('Monday')),
               DropdownMenuItem<String>(
                 value: 'tuesday',
                 child: Text('Tuesday'),
@@ -609,18 +618,12 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
                 value: 'thursday',
                 child: Text('Thursday'),
               ),
-              DropdownMenuItem<String>(
-                value: 'friday',
-                child: Text('Friday'),
-              ),
+              DropdownMenuItem<String>(value: 'friday', child: Text('Friday')),
               DropdownMenuItem<String>(
                 value: 'saturday',
                 child: Text('Saturday'),
               ),
-              DropdownMenuItem<String>(
-                value: 'sunday',
-                child: Text('Sunday'),
-              ),
+              DropdownMenuItem<String>(value: 'sunday', child: Text('Sunday')),
             ],
             onChanged: enabled ? onWeekStartChanged : null,
           ),
@@ -644,11 +647,7 @@ class _UnavailableBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.info_outline,
-            size: 18,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.info_outline, size: 18, color: AppColors.textMuted),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -678,11 +677,7 @@ class _ReadOnlyBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.lock_outline,
-            size: 18,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.lock_outline, size: 18, color: AppColors.textMuted),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

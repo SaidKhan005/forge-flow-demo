@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
+import '../models/email_conflict_details.dart';
 import '../services/members_admin_gateway.dart';
 
 /// Lightweight ref pair the dialog renders in its location dropdown.
@@ -49,6 +50,8 @@ class InviteMemberAdminDialog extends StatefulWidget {
     required this.operatorBusinessName,
     required this.locations,
     this.existingEmails = const <String>{},
+    this.existingEmailUsages = const <String, AdminEmailConflictUsage>{},
+    this.onReviewExistingEmail,
   });
 
   final String operatorBusinessName;
@@ -58,6 +61,8 @@ class InviteMemberAdminDialog extends StatefulWidget {
   /// surface the locked "email already on the team" copy without
   /// round-tripping the proxy.
   final Set<String> existingEmails;
+  final Map<String, AdminEmailConflictUsage> existingEmailUsages;
+  final ValueChanged<AdminEmailConflictUsage>? onReviewExistingEmail;
 
   @override
   State<InviteMemberAdminDialog> createState() =>
@@ -72,6 +77,7 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
   String? _roleKey;
   String? _locationId;
   String? _violation;
+  AdminEmailConflictUsage? _violationUsage;
 
   @override
   void dispose() {
@@ -82,23 +88,33 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
     super.dispose();
   }
 
-  String? _validate() {
+  _InviteValidationIssue? _validate() {
     final email = _emailController.text.trim();
-    if (email.isEmpty) return MembersValidationCopy.emailEmpty;
-    if (!_looksLikeEmail(email)) return MembersValidationCopy.emailMalformed;
-    if (widget.existingEmails.contains(email.toLowerCase())) {
-      return MembersValidationCopy.emailDuplicate;
+    if (email.isEmpty) {
+      return const _InviteValidationIssue(MembersValidationCopy.emailEmpty);
+    }
+    if (!_looksLikeEmail(email)) {
+      return const _InviteValidationIssue(MembersValidationCopy.emailMalformed);
+    }
+    final duplicate = _duplicateUsageFor(email);
+    if (duplicate != null) {
+      return _InviteValidationIssue(
+        MembersValidationCopy.emailDuplicate,
+        usage: duplicate,
+      );
     }
     final role = _roleKey;
     if (role == null || role.isEmpty) {
-      return MembersValidationCopy.roleMissing;
+      return const _InviteValidationIssue(MembersValidationCopy.roleMissing);
     }
     final loc = _locationId;
     if (loc == null || loc.isEmpty) {
-      return MembersValidationCopy.locationMissing;
+      return const _InviteValidationIssue(
+        MembersValidationCopy.locationMissing,
+      );
     }
     if (_displayNameController.text.trim().isEmpty) {
-      return 'Display name is required.';
+      return const _InviteValidationIssue('Display name is required.');
     }
     if (_adminReasonController.text.trim().isEmpty) {
       // Admin-path-only validation; the operator self-service
@@ -106,9 +122,19 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
       // self-service writes don't carry `admin_reason`. Plain-
       // English copy mirrors the in-screen reason dialog so the
       // operator-facing audit log reads consistently.
-      return 'Add a reason before sending the invite.';
+      return const _InviteValidationIssue(
+        'Add a reason before sending the invite.',
+      );
     }
     return null;
+  }
+
+  AdminEmailConflictUsage? _duplicateUsageFor(String email) {
+    final key = email.toLowerCase();
+    final usage = widget.existingEmailUsages[key];
+    if (usage != null) return usage;
+    if (!widget.existingEmails.contains(key)) return null;
+    return AdminEmailConflictUsage(email: email, source: 'team_member');
   }
 
   static bool _looksLikeEmail(String value) {
@@ -122,7 +148,10 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
   void _onSubmit() {
     final violation = _validate();
     if (violation != null) {
-      setState(() => _violation = violation);
+      setState(() {
+        _violation = violation.message;
+        _violationUsage = violation.usage;
+      });
       return;
     }
     final welcome = _welcomeNoteController.text.trim();
@@ -155,7 +184,18 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               if (_violation != null) ...[
-                _ValidationBanner(message: _violation!),
+                _ValidationBanner(
+                  message: _violation!,
+                  usage: _violationUsage,
+                  onReview:
+                      _violationUsage == null ||
+                          widget.onReviewExistingEmail == null
+                      ? null
+                      : () {
+                          widget.onReviewExistingEmail?.call(_violationUsage!);
+                          Navigator.of(context).pop();
+                        },
+                ),
                 const SizedBox(height: 12),
               ],
               TextField(
@@ -264,10 +304,19 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
   }
 }
 
-class _ValidationBanner extends StatelessWidget {
-  const _ValidationBanner({required this.message});
+class _InviteValidationIssue {
+  const _InviteValidationIssue(this.message, {this.usage});
 
   final String message;
+  final AdminEmailConflictUsage? usage;
+}
+
+class _ValidationBanner extends StatelessWidget {
+  const _ValidationBanner({required this.message, this.usage, this.onReview});
+
+  final String message;
+  final AdminEmailConflictUsage? usage;
+  final VoidCallback? onReview;
 
   @override
   Widget build(BuildContext context) {
@@ -282,9 +331,65 @@ class _ValidationBanner extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(
-        message,
-        style: AppTextStyles.body13(color: AppColors.negative),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(message, style: AppTextStyles.body13(color: AppColors.negative)),
+          if (usage != null) ...[
+            const SizedBox(height: 8),
+            _EmailConflictSummary(usage: usage!),
+            if (onReview != null) ...[
+              const SizedBox(height: 6),
+              TextButton.icon(
+                key: const Key('admin_members_invite_show_existing_email'),
+                onPressed: onReview,
+                icon: const Icon(Icons.manage_search, size: 16),
+                label: const Text('Show where it is used'),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EmailConflictSummary extends StatelessWidget {
+  const _EmailConflictSummary({required this.usage});
+
+  final AdminEmailConflictUsage usage;
+
+  @override
+  Widget build(BuildContext context) {
+    final details = <String>[
+      usage.sourceLabel,
+      if (usage.roleLabel != null) usage.roleLabel!,
+      if (usage.status != null) usage.status!,
+    ].join(' | ');
+    return Container(
+      key: const Key('admin_members_invite_existing_email_details'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            usage.scopeLabel,
+            style: AppTextStyles.body13(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            details,
+            style: AppTextStyles.mono11(color: AppColors.textMuted),
+          ),
+        ],
       ),
     );
   }

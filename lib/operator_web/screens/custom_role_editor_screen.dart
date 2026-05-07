@@ -286,7 +286,7 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
           key: const Key('operator_web_custom_role_editor_back'),
           icon: const Icon(Icons.arrow_back, size: 18),
           onPressed: widget.onClose ?? () => Navigator.of(context).maybePop(),
-          tooltip: 'Back to Roles',
+          tooltip: 'Back to Roles & permissions',
         ),
         title: Text(
           _isCreate ? 'New custom role' : 'Edit role',
@@ -419,7 +419,7 @@ class _MetaCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             'Pick a name and short description so your team knows what '
-            'this role is for. Names show on the Members list.',
+            'this role is for. Names show on Team members.',
             style: AppTextStyles.body12(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 14),

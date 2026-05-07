@@ -1,4 +1,4 @@
-﻿// Phase 11A.1 - Operator + location admin gateway.
+// Phase 11A.1 - Operator + location admin gateway.
 //
 // Translates UI-side commands into proxy `/v1/admin/operators` and
 // `/v1/admin/locations` HTTP calls. The admin Flutter client never
@@ -41,11 +41,13 @@ class OperatorLocationAdminGatewayError implements Exception {
     required this.statusCode,
     required this.errorCode,
     required this.message,
+    this.details = const <String, Object?>{},
   });
 
   final int statusCode;
   final String errorCode;
   final String message;
+  final Map<String, Object?> details;
 
   @override
   String toString() =>
@@ -261,6 +263,7 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
       errorCode: (parsed['error'] as String?) ?? 'unknown_error',
       message:
           (parsed['message'] as String?) ?? 'admin proxy returned an error',
+      details: parsed,
     );
   }
 }

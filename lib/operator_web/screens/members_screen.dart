@@ -705,7 +705,7 @@ class _MembersHeader extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    'Members',
+                    'Team members',
                     style: AppTextStyles.display20(
                       color: AppColors.textPrimary,
                     ),
@@ -714,9 +714,9 @@ class _MembersHeader extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'Add, suspend, and manage the people who can sign in to '
-                'Forge & Flow for your business. Changes here apply to '
-                'every device the teammate uses.',
+                'Invite teammates, review status, and manage each person who '
+                'can sign in to Forge & Flow. Changes here apply to every '
+                'device the teammate uses.',
                 key: const Key('operator_web_members_subtitle'),
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),

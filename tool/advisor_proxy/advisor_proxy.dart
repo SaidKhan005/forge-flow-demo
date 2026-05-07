@@ -779,27 +779,23 @@ class ProxyConfig {
         clientId: secretFor(ProxySecretNames.alohaNcrVoyixClientId),
         clientSecret: secretFor(ProxySecretNames.alohaNcrVoyixClientSecret),
         applicationKey: secretFor(ProxySecretNames.alohaNcrVoyixApplicationKey),
-        organizationId: secretFor(
-          ProxySecretNames.alohaNcrVoyixOrganizationId,
-        ),
+        organizationId: secretFor(ProxySecretNames.alohaNcrVoyixOrganizationId),
       );
 
   /// Phase 8 framework — Square static app credentials. Throws
   /// [StateError] when any of the three secret names is unloaded.
   SquareAppCredentials get squareAppCredentials => SquareAppCredentials(
-        clientId: secretFor(ProxySecretNames.squareClientId),
-        clientSecret: secretFor(ProxySecretNames.squareClientSecret),
-        notificationUrlHost: secretFor(
-          ProxySecretNames.squareNotificationUrlHost,
-        ),
-      );
+    clientId: secretFor(ProxySecretNames.squareClientId),
+    clientSecret: secretFor(ProxySecretNames.squareClientSecret),
+    notificationUrlHost: secretFor(ProxySecretNames.squareNotificationUrlHost),
+  );
 
   /// Phase 8 framework — Clover static app credentials. Throws
   /// [StateError] when either secret name is unloaded.
   CloverAppCredentials get cloverAppCredentials => CloverAppCredentials(
-        appToken: secretFor(ProxySecretNames.cloverAppToken),
-        appId: secretFor(ProxySecretNames.cloverAppId),
-      );
+    appToken: secretFor(ProxySecretNames.cloverAppToken),
+    appId: secretFor(ProxySecretNames.cloverAppId),
+  );
 
   /// True when every Aloha NCR Voyix app credential secret is loaded.
   bool get hasAlohaNcrVoyixCredentials =>
@@ -10515,6 +10511,7 @@ Future<void> routeRequest(
             _writeJson(response, error.statusCode, <String, Object?>{
               'error': error.code,
               'message': error.message,
+              if (error.details.isNotEmpty) ...error.details,
             });
             return;
           } catch (error, stackTrace) {
@@ -12231,6 +12228,7 @@ Future<void> routeRequest(
               _writeJson(response, error.statusCode, <String, Object?>{
                 'error': error.code,
                 'message': error.message,
+                if (error.details.isNotEmpty) ...error.details,
               });
               return;
             }

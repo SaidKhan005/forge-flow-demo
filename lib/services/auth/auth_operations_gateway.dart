@@ -1085,11 +1085,13 @@ class AuthOperationRejected implements Exception {
     required this.code,
     required this.message,
     required this.statusCode,
+    this.details = const <String, Object?>{},
   });
 
   final String code;
   final String message;
   final int statusCode;
+  final Map<String, Object?> details;
 
   @override
   String toString() => 'AuthOperationRejected(code: $code)';

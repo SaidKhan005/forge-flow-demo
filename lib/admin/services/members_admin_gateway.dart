@@ -229,11 +229,13 @@ class MembersAdminGatewayError implements Exception {
     required this.statusCode,
     required this.errorCode,
     required this.message,
+    this.details = const <String, Object?>{},
   });
 
   final int statusCode;
   final String errorCode;
   final String message;
+  final Map<String, Object?> details;
 
   @override
   String toString() =>
@@ -803,6 +805,7 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
       statusCode: response.statusCode,
       errorCode: (parsed['error'] as String?) ?? 'unknown_error',
       message: message,
+      details: parsed,
     );
   }
 }
