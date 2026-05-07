@@ -20,7 +20,6 @@
 //      compute callback, response is the fresh body.
 //   2. An in-flight row whose expires_at > now() still 409s.
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -186,6 +185,7 @@ class _Harness {
     server.listen((request) async {
       try {
         await _handler(request);
+        await request.response.close();
       } catch (e) {
         request.response.statusCode = 500;
         request.response.write(jsonEncode({'error': e.toString()}));
@@ -221,11 +221,21 @@ class _Harness {
 }
 
 void main() {
+  Future<T> withRealHttp<T>(Future<T> Function() body) async {
+    final saved = HttpOverrides.current;
+    HttpOverrides.global = null;
+    try {
+      return await body();
+    } finally {
+      HttpOverrides.global = saved;
+    }
+  }
+
   group('runAdminIdempotent — orphan reclaim', () {
     test(
         'in-flight row whose expires_at < now() is reclaimed; '
         'fresh request proceeds',
-        () async {
+        () => withRealHttp(() async {
       final store = _FakeIdempotencyStore();
       const key = 'orphan-1';
       const requestType = 'unit_test_action';
@@ -278,11 +288,11 @@ void main() {
       } finally {
         await harness.stop();
       }
-    });
+    }));
 
     test(
         'in-flight row whose expires_at > now() still 409s',
-        () async {
+        () => withRealHttp(() async {
       final store = _FakeIdempotencyStore();
       const key = 'in-flight-1';
       const requestType = 'unit_test_action';
@@ -331,7 +341,7 @@ void main() {
       } finally {
         await harness.stop();
       }
-    });
+    }));
 
     test(
         'sweepExpiredOrphans removes only rows that match the '

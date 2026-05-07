@@ -6343,7 +6343,7 @@ class PostgresAdminRequestIdempotencyStore
     try {
       final rows = await tx.query(
         'select idempotency_key, request_type, request_body_hash, '
-        '       response_status, response_payload, completed_at '
+        '       response_status, response_payload, completed_at, expires_at '
         '  from public.admin_request_idempotency '
         ' where idempotency_key = @key '
         ' limit 1',
@@ -6389,6 +6389,7 @@ class PostgresAdminRequestIdempotencyStore
         responseStatus: status is int ? status : null,
         responsePayload: payload,
         completedAt: row['completed_at'] as DateTime?,
+        expiresAt: row['expires_at'] as DateTime?,
       );
     } catch (_) {
       await tx.rollback();
@@ -6447,6 +6448,46 @@ class PostgresAdminRequestIdempotencyStore
         },
       );
       await tx.commit();
+    } catch (_) {
+      await tx.rollback();
+      rethrow;
+    }
+  }
+
+  @override
+  Future<bool> tryReclaimOrphan({required String idempotencyKey}) async {
+    final tx = await _pool.beginTransaction();
+    try {
+      final rows = await tx.query(
+        'delete from public.admin_request_idempotency '
+        'where idempotency_key = @key '
+        'and response_status is null '
+        'and completed_at is null '
+        'and expires_at < now() '
+        'returning idempotency_key',
+        parameters: <String, Object?>{'key': idempotencyKey},
+      );
+      await tx.commit();
+      return rows.isNotEmpty;
+    } catch (_) {
+      await tx.rollback();
+      rethrow;
+    }
+  }
+
+  @override
+  Future<int> sweepExpiredOrphans() async {
+    final tx = await _pool.beginTransaction();
+    try {
+      final rows = await tx.query(
+        'delete from public.admin_request_idempotency '
+        'where response_status is null '
+        'and completed_at is null '
+        'and expires_at < now() '
+        'returning idempotency_key',
+      );
+      await tx.commit();
+      return rows.length;
     } catch (_) {
       await tx.rollback();
       rethrow;
