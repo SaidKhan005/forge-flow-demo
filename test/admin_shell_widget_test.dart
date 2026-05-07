@@ -153,6 +153,49 @@ void main() {
     }
   });
 
+  testWidgets('compact nav keeps narrow admin pages readable', (tester) async {
+    tester.view.physicalSize = const Size(390, 820);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(
+        AdminShell(
+          session: superAdmin,
+          authSource: source,
+          initialRouteId: kAdminSupportOperatorViewRouteId,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_side_nav')), findsNothing);
+    expect(find.byKey(const Key('admin_compact_nav')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_nav_item_support-operator-view')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_support_operator_view_no_scope_state')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .getSize(
+            find.byKey(const Key('admin_support_operator_view_no_scope_state')),
+          )
+          .width,
+      greaterThan(320),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('default route renders the live operator surface', (
     tester,
   ) async {
