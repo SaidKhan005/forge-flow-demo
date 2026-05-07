@@ -619,6 +619,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   bool _hasBeenBackgrounded = false;
   String? _businessScopesLoadedFor;
   String? _businessScopesLoadingFor;
+  String? _businessScopesPendingReloadFor;
+  RealtimeEventBus? _businessScopeRealtimeBus;
+  StreamSubscription<RealtimeEvent>? _businessScopeRealtimeSubscription;
 
   /// Foreground-only business-date boundary supervisor. Spawns one
   /// `CurrentStateBoundaryMonitor` per accessible `RestaurantLocation`
@@ -636,6 +639,27 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initBoundarySupervisor();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _bindBusinessScopeRealtimeBus();
+  }
+
+  void _bindBusinessScopeRealtimeBus() {
+    RealtimeEventBus? next;
+    try {
+      next = Provider.of<RealtimeEventBus>(context, listen: false);
+    } on ProviderNotFoundException {
+      next = null;
+    }
+    if (identical(next, _businessScopeRealtimeBus)) return;
+    _businessScopeRealtimeSubscription?.cancel();
+    _businessScopeRealtimeBus = next;
+    _businessScopeRealtimeSubscription = next?.events.listen(
+      _handleBusinessScopeRealtimeEvent,
+    );
   }
 
   /// Creates and starts the boundary supervisor, then subscribes to
@@ -719,14 +743,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
-  void _loadBusinessScopesIfNeeded(AuthSession? session) {
+  void _loadBusinessScopesIfNeeded(AuthSession? session, {bool force = false}) {
     if (session == null) return;
     final client = _resolveBusinessScopeClient();
     if (client == null) return;
     final key = session.userId;
-    if (_businessScopesLoadedFor == key || _businessScopesLoadingFor == key) {
+    if (_businessScopesLoadingFor == key) {
+      if (force) _businessScopesPendingReloadFor = key;
       return;
     }
+    if (!force && _businessScopesLoadedFor == key) {
+      return;
+    }
+    if (force) _businessScopesLoadedFor = null;
     _businessScopesLoadingFor = key;
     final scope = context.read<RestaurantScopeNotifier>();
     unawaited(
@@ -744,8 +773,29 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             if (_businessScopesLoadingFor == key) {
               _businessScopesLoadingFor = null;
             }
+            if (!mounted || _businessScopesPendingReloadFor != key) return;
+            _businessScopesPendingReloadFor = null;
+            final liveSession = _resolveAuthSession();
+            if (liveSession?.userId == key) {
+              _loadBusinessScopesIfNeeded(liveSession, force: true);
+            }
           }),
     );
+  }
+
+  void _handleBusinessScopeRealtimeEvent(RealtimeEvent event) {
+    if (!isBusinessScopeInvalidationEvent(event)) return;
+    final session = _resolveAuthSession();
+    if (session == null || event.operatorId != session.operatorId) return;
+    _loadBusinessScopesIfNeeded(session, force: true);
+  }
+
+  AuthSession? _resolveAuthSession() {
+    try {
+      return Provider.of<AuthSessionNotifier>(context, listen: false).session;
+    } on ProviderNotFoundException {
+      return null;
+    }
   }
 
   Future<void> _selectBusinessScope(BusinessScope scope) async {
@@ -883,6 +933,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _businessScopeRealtimeSubscription?.cancel();
+    _businessScopeRealtimeSubscription = null;
+    _businessScopeRealtimeBus = null;
+    _businessScopesPendingReloadFor = null;
     _scopeListenedFor?.removeListener(_syncSupervisorToScope);
     _scopeListenedFor = null;
     _boundarySupervisor?.dispose();

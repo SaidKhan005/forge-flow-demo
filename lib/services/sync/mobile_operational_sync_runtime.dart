@@ -450,6 +450,7 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
   }
 
   bool _isOperationalInvalidation(RealtimeEvent event) {
+    if (isBusinessScopeInvalidationEvent(event)) return true;
     final topic = event.topic.toLowerCase();
     if (topic.contains('shift_record') ||
         topic.contains('open_shift_snapshot') ||
