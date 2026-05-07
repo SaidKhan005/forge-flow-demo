@@ -43,6 +43,30 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="forgeflow" android:host="reset-password"/>
             </intent-filter>
+            <!-- MP5 — Android App Links (Universal Links equivalent).
+                 android:autoVerify="true" triggers the Digital Asset Links
+                 verification at launch time. The assetlinks.json must be
+                 served at:
+                   https://app.forgeflow.app/.well-known/assetlinks.json
+                 TODO(deploy-team): Serve assetlinks.json at the path above.
+                 The file must list the SHA-256 fingerprint of the release
+                 signing certificate. Example:
+                 [
+                   {
+                     "relation": ["delegate_permission/common.handle_all_urls"],
+                     "target": {
+                       "namespace": "android_app",
+                       "package_name": "com.forgeflow.app",
+                       "sha256_cert_fingerprints": ["AA:BB:..."]
+                     }
+                   }
+                 ] -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="app.forgeflow.app"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

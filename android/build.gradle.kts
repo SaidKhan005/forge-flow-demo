@@ -1,3 +1,17 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // MP1 — Firebase Crashlytics Gradle plugin.
+        // google-services is already applied via the Flutter Firebase plugin;
+        // we declare Crashlytics here so the app-level build.gradle.kts can
+        // apply it with id("com.google.firebase.crashlytics").
+        classpath("com.google.firebase:firebase-crashlytics-gradle:3.0.4")
+    }
+}
+
 allprojects {
     repositories {
         google()

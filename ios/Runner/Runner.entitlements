@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- MP5 — Universal Links: iOS will call the AASA server at
+	     https://app.forgeflow.app/.well-known/apple-app-site-association
+	     to verify the association before following a universal link.
+	     TODO(deploy-team): Serve the apple-app-site-association file at
+	     https://app.forgeflow.app/.well-known/apple-app-site-association
+	     with Content-Type: application/json (no file extension).
+	     Example minimal AASA content:
+	     {
+	       "applinks": {
+	         "apps": [],
+	         "details": [
+	           {
+	             "appID": "TEAMID.com.forgeflow.app",
+	             "paths": ["*"]
+	           }
+	         ]
+	       }
+	     } -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:app.forgeflow.app</string>
+	</array>
+</dict>
+</plist>

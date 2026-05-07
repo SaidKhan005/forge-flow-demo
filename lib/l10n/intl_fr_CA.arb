@@ -1,0 +1,47 @@
+{
+  "@@locale": "fr_CA",
+
+  "appTitle": "Forge & Flow",
+
+  "navShift": "Quart",
+  "navVariance": "Écarts",
+  "navPlan": "Planifier",
+  "navBenchmark": "Référence",
+
+  "settingsTitle": "Paramètres",
+  "notificationsTitle": "Notifications",
+
+  "locationsTitle": "Emplacements",
+  "searchLocations": "Rechercher des emplacements",
+  "noLocationsAvailable": "Vos emplacements disponibles apparaîtront ici.",
+  "noMatchingLocations": "Aucun emplacement correspondant.",
+  "allLocations": "Tous les emplacements",
+
+  "buttonSave": "Enregistrer",
+  "buttonCancel": "Annuler",
+  "buttonRetry": "Réessayer",
+  "buttonUpdate": "Mettre à jour",
+  "buttonOpenSettings": "Ouvrir les réglages",
+
+  "errorGeneric": "Une erreur est survenue. Veuillez réessayer.",
+  "errorNetwork": "Erreur réseau. Vérifiez votre connexion et réessayez.",
+  "errorUnauthorized": "Votre session a expiré. Veuillez vous reconnecter.",
+
+  "pushPermissionDeniedTitle": "Notifications désactivées",
+  "pushPermissionDeniedBody": "Ouvrez les réglages pour activer les notifications pour Forge & Flow.",
+
+  "forceUpdateTitle": "Mise à jour requise",
+  "forceUpdateBody": "Une version plus récente de Forge & Flow est requise pour continuer. Veuillez mettre à jour l'application.",
+  "forceUpdateButton": "Mettre à jour maintenant",
+
+  "softUpdateBannerText": "Une nouvelle version est disponible.",
+  "softUpdateBannerAction": "Mettre à jour",
+
+  "pushNotificationNewShiftAlert": "Alerte de quart",
+  "pushNotificationLaborThreshold": "Seuil de main-d'œuvre atteint",
+  "pushNotificationSyncComplete": "Synchronisation terminée",
+
+  "businessTooltip": "Affaires",
+  "notificationsTooltip": "Notifications",
+  "settingsTooltip": "Paramètres"
+}

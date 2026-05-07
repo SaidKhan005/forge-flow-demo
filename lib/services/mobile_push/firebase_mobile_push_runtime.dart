@@ -7,6 +7,7 @@ import '../../domain/services/utc_metadata_timestamp.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../app_notification_service.dart';
 import 'mobile_push_notification_service.dart';
+import 'push_permission_state.dart';
 
 const String kForgeFlowNotificationChannelId = 'forge_flow_app_notifications';
 const String kForgeFlowNotificationChannelName = 'Forge & Flow notifications';
@@ -156,6 +157,12 @@ class FirebaseMobilePushMessagingClient implements MobilePushMessagingClient {
   @override
   Future<String?> getToken() => _messaging.getToken();
 
+  /// Global notifier for push permission state. The app can pass this into
+  /// widgets such as [PushPermissionDeniedCard] so the "denied" recovery
+  /// surface appears automatically.
+  static final PushPermissionStateNotifier permissionStateNotifier =
+      PushPermissionStateNotifier();
+
   @override
   Future<bool> requestPermission() async {
     final settings = await _messaging.requestPermission(
@@ -167,8 +174,18 @@ class FirebaseMobilePushMessagingClient implements MobilePushMessagingClient {
       provisional: false,
       sound: true,
     );
-    return settings.authorizationStatus == AuthorizationStatus.authorized ||
+    final granted =
+        settings.authorizationStatus == AuthorizationStatus.authorized ||
         settings.authorizationStatus == AuthorizationStatus.provisional;
+
+    // MP4 — expose denied state so the UI can surface a "Open Settings" card.
+    if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      permissionStateNotifier.setDenied();
+    } else if (granted) {
+      permissionStateNotifier.setGranted();
+    }
+
+    return granted;
   }
 
   static MobilePushRemoteMessage _fromRemoteMessage(RemoteMessage message) {

@@ -1,0 +1,102 @@
+{
+  "@@locale": "en",
+
+  "appTitle": "Forge & Flow",
+  "@appTitle": { "description": "Application name shown in the top bar" },
+
+  "navShift": "Shift",
+  "@navShift": { "description": "Bottom navigation label — shift dashboard" },
+
+  "navVariance": "Variance",
+  "@navVariance": { "description": "Bottom navigation label — variance report" },
+
+  "navPlan": "Plan",
+  "@navPlan": { "description": "Bottom navigation label — schedule builder" },
+
+  "navBenchmark": "Benchmark",
+  "@navBenchmark": { "description": "Bottom navigation label — baseline tracker" },
+
+  "settingsTitle": "Settings",
+  "@settingsTitle": { "description": "Settings screen title" },
+
+  "notificationsTitle": "Notifications",
+  "@notificationsTitle": { "description": "Notifications screen title" },
+
+  "locationsTitle": "Locations",
+  "@locationsTitle": { "description": "Drawer heading for location list" },
+
+  "searchLocations": "Search locations",
+  "@searchLocations": { "description": "Hint text in the location search field" },
+
+  "noLocationsAvailable": "Your available locations will appear here.",
+  "@noLocationsAvailable": { "description": "Placeholder when no locations are loaded" },
+
+  "noMatchingLocations": "No matching locations.",
+  "@noMatchingLocations": { "description": "Placeholder when location search yields no results" },
+
+  "allLocations": "All locations",
+  "@allLocations": { "description": "Subtitle for operator-wide scope" },
+
+  "buttonSave": "Save",
+  "@buttonSave": { "description": "Generic save button label" },
+
+  "buttonCancel": "Cancel",
+  "@buttonCancel": { "description": "Generic cancel button label" },
+
+  "buttonRetry": "Retry",
+  "@buttonRetry": { "description": "Generic retry button label" },
+
+  "buttonUpdate": "Update",
+  "@buttonUpdate": { "description": "Generic update / confirm button label" },
+
+  "buttonOpenSettings": "Open Settings",
+  "@buttonOpenSettings": { "description": "Button that deep-links to device Settings" },
+
+  "errorGeneric": "Something went wrong. Please try again.",
+  "@errorGeneric": { "description": "Generic error message" },
+
+  "errorNetwork": "Network error. Check your connection and try again.",
+  "@errorNetwork": { "description": "Network connectivity error" },
+
+  "errorUnauthorized": "Your session has expired. Please sign in again.",
+  "@errorUnauthorized": { "description": "Auth 401 error message" },
+
+  "pushPermissionDeniedTitle": "Notifications are off",
+  "@pushPermissionDeniedTitle": { "description": "Card title when push permission is denied" },
+
+  "pushPermissionDeniedBody": "Open Settings to turn on notifications for Forge & Flow.",
+  "@pushPermissionDeniedBody": { "description": "Card body when push permission is denied" },
+
+  "forceUpdateTitle": "Update Required",
+  "@forceUpdateTitle": { "description": "Force-update modal title" },
+
+  "forceUpdateBody": "A newer version of Forge & Flow is required to continue. Please update the app.",
+  "@forceUpdateBody": { "description": "Force-update modal body" },
+
+  "forceUpdateButton": "Update Now",
+  "@forceUpdateButton": { "description": "Force-update modal primary button" },
+
+  "softUpdateBannerText": "A new version is available.",
+  "@softUpdateBannerText": { "description": "Soft-update banner message" },
+
+  "softUpdateBannerAction": "Update",
+  "@softUpdateBannerAction": { "description": "Soft-update banner action label" },
+
+  "pushNotificationNewShiftAlert": "Shift alert",
+  "@pushNotificationNewShiftAlert": { "description": "Push notification title for shift alerts" },
+
+  "pushNotificationLaborThreshold": "Labor threshold reached",
+  "@pushNotificationLaborThreshold": { "description": "Push notification title for labor cost threshold" },
+
+  "pushNotificationSyncComplete": "Sync complete",
+  "@pushNotificationSyncComplete": { "description": "Push notification title for completed sync" },
+
+  "businessTooltip": "Business",
+  "@businessTooltip": { "description": "Tooltip for the drawer/menu icon button" },
+
+  "notificationsTooltip": "Notifications",
+  "@notificationsTooltip": { "description": "Tooltip for the notifications icon button" },
+
+  "settingsTooltip": "Settings",
+  "@settingsTooltip": { "description": "Tooltip for the settings icon button" }
+}
