@@ -1,21 +1,16 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
 import '../auth/auth_session.dart';
 import '../models/app_data_status.dart';
-import '../services/advisor_corpus_admin_service.dart';
-import '../services/advisor_model_config_service.dart';
 import '../services/app_data_status_service.dart';
 import '../services/auth/account_info_gateway.dart';
 import '../services/auth/auth_operations_gateway.dart';
 import '../services/auth/password_change_gateway.dart';
 import '../services/mfa/mfa_operations_gateway.dart';
 import '../services/shift_service.dart';
-import '../services/team/team_invite_form_controller.dart';
-import '../services/team/team_users_list_controller.dart';
 import '../state/app_refresh_coordinator.dart';
 import '../state/auth_session_notifier.dart';
 import '../state/restaurant_scope_notifier.dart';
@@ -23,15 +18,11 @@ import '../services/team/team_scope_visibility_policy.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sticky_section_delegate.dart';
 import 'settings/settings_active_sessions_section.dart';
-import 'settings/settings_audit_log_section.dart';
-import 'settings/settings_custom_roles_section.dart';
 import 'settings/settings_data_sections.dart';
 import 'settings/settings_mfa_section.dart';
-import 'settings/settings_org_hierarchy_section.dart';
 import 'settings/settings_pointer_row.dart';
 import 'settings/settings_timing_authority_section.dart';
 import 'settings/settings_wage_authority_section.dart';
-import 'team/team_settings_section.dart';
 
 /// W3.A — mobile Settings is a 3-tab read-only mirror of the operator
 /// web console. `kDemoMode` toggles demo-only rows (Data reset + Demo
@@ -46,72 +37,14 @@ class SettingsScreen extends StatefulWidget {
   /// Optional injected mock replay date for testability.
   final String? initialMockDate;
 
-  /// Optional injected advisor model config service for testability.
-  /// When null, the dev-only `ADVISOR MODELS` section constructs its
-  /// own service with default loaders. Tests pass a fake-backed service
-  /// + force the section to render via [forceShowAdvisorModelSection].
-  final AdvisorModelConfigService? advisorModelConfigService;
-
-  /// Test-only override: when true, the `ADVISOR MODELS` section
-  /// renders even outside `kDebugMode`. Production code never sets
-  /// this; in release builds the section is gated by
-  /// `advisorModelSectionEnabled`.
-  final bool forceShowAdvisorModelSection;
-
-  /// Optional injected advisor corpus admin service for testability.
-  /// When null, the dev-only `ADVISOR CORPUS` section is hidden unless
-  /// the test-only force flag below is set. Tests pass a service
-  /// directly; debug builds wire one in their app shell to opt in.
-  final AdvisorCorpusAdminService? advisorCorpusAdminService;
-
-  /// Test-only override: when true, the `ADVISOR CORPUS` section
-  /// renders even outside `kDebugMode`. Production code never sets
-  /// this; in release builds the section is gated by
-  /// `advisorCorpusSectionEnabled`.
-  final bool forceShowAdvisorCorpusSection;
-
   /// Team Settings actor snapshot. Production passes this once the
   /// Phase 9 permission snapshot bridge carries role + location scope.
-  /// Null means the Team tab stays hidden.
+  /// Null means the admin tabs stay visible to everyone (legacy /
+  /// demo / unauth flows).
   final TeamScopeActor? teamActor;
 
-  /// Test/dev hooks for the Team settings surface. Production leaves
-  /// these null until the proxy endpoints bind to the controllers.
-  final TeamUsersListController? teamUsersListController;
-  final TeamInviteFormController? teamInviteFormController;
-  final List<TeamUserListItem> teamUsers;
-  final List<TeamRoleOption> teamRoleOptions;
-  final List<TeamLocationOption> teamLocationOptions;
-  final List<TeamOrgUnitOption> teamOrgUnitOptions;
-  final List<TeamOrgUnitEntry> teamOrgUnits;
-  final List<TeamOrgLocationEntry> teamOrgLocations;
-  final TeamOrgHierarchyLoadState teamOrgHierarchyLoadState;
-
-  /// Phase 9.UX.4 — when the live gateway resolves after navigation
-  /// or a create/move callback updates state, the open Settings route
-  /// has no rebuild trigger from the plain list snapshots above. The
-  /// listenables bridge that gap. Plain lists stay as the seed value
-  /// so widget tests without a listenable can still render.
-  final ValueListenable<List<TeamOrgUnitEntry>>? teamOrgUnitsListenable;
-  final ValueListenable<List<TeamOrgLocationEntry>>? teamOrgLocationsListenable;
-  final ValueListenable<List<TeamOrgUnitOption>>? teamOrgUnitOptionsListenable;
-  final ValueListenable<TeamOrgHierarchyLoadState>?
-  teamOrgHierarchyLoadStateListenable;
-  final TeamOrgUnitCreateRequester? onTeamOrgUnitCreate;
-  final TeamLocationOrgUnitMoveRequester? onTeamLocationMove;
-  final List<TeamPendingInviteListItem> teamPendingInvites;
-  final TeamInviteSubmitter? onTeamInviteSubmitted;
-  final TeamInviteRevoker? onTeamInviteRevoked;
-  final TeamUserActionHandler? onTeamUserAction;
-  final TeamDataRetryRequester? onTeamDataRetry;
   final AccountInfoGateway? accountInfoGateway;
   final PasswordChangeGateway? passwordChangeGateway;
-  final TeamSettingsDataLoadState teamDataLoadState;
-  final ValueListenable<List<TeamRoleOption>>? teamRoleOptionsListenable;
-  final ValueListenable<List<TeamUserListItem>>? teamUsersListenable;
-  final ValueListenable<List<TeamPendingInviteListItem>>?
-  teamPendingInvitesListenable;
-  final ValueListenable<TeamSettingsDataLoadState>? teamDataLoadStateListenable;
   final MfaOperationsGateway? mfaOperationsGateway;
   final MfaActorContext? mfaActor;
 
@@ -123,80 +56,18 @@ class SettingsScreen extends StatefulWidget {
   final ActiveSessionsActor? activeSessionsActor;
   final bool allowDemoActiveSessionsFallback;
 
-  /// Phase 9.UX.6 — self-service Audit Log surface in the Account
-  /// tab. Reuses [authOperationsGateway] when null. The actor falls
-  /// back to the auth session notifier in scope.
-  final AuditLogActor? auditLogActor;
-  final bool allowDemoAuditLogFallback;
-
-  /// Phase 9.UX.2 — operator role catalog (seeded + custom). Seed
-  /// snapshot used for first paint; the listenable bridge updates the
-  /// open Settings route when the live gateway resolves or a save
-  /// callback mutates the catalog.
-  final List<TeamRoleCatalogEntry> teamRoleCatalog;
-  final ValueListenable<List<TeamRoleCatalogEntry>>? teamRoleCatalogListenable;
-  final TeamRoleCatalogLoadState teamRoleCatalogLoadState;
-  final ValueListenable<TeamRoleCatalogLoadState>?
-  teamRoleCatalogLoadStateListenable;
-  final SettingsRoleCreateRequester? onTeamRoleCreate;
-  final SettingsRolePatchRequester? onTeamRolePatch;
-  final SettingsRoleDeleteRequester? onTeamRoleDelete;
-
-  /// Test-only override: when true, renders Team with an owner-shaped
-  /// actor even when no runtime actor snapshot is installed.
-  final bool forceShowTeamSection;
-
   const SettingsScreen({
     super.key,
     this.initialStatus,
     this.initialMockDate,
-    this.advisorModelConfigService,
-    this.forceShowAdvisorModelSection = false,
-    this.advisorCorpusAdminService,
-    this.forceShowAdvisorCorpusSection = false,
     this.teamActor,
-    this.teamUsersListController,
-    this.teamInviteFormController,
-    this.teamUsers = const <TeamUserListItem>[],
-    this.teamRoleOptions = TeamSettingsSection.defaultRoleOptions,
-    this.teamLocationOptions = const <TeamLocationOption>[],
-    this.teamOrgUnitOptions = const <TeamOrgUnitOption>[],
-    this.teamOrgUnits = const <TeamOrgUnitEntry>[],
-    this.teamOrgLocations = const <TeamOrgLocationEntry>[],
-    this.teamOrgHierarchyLoadState = TeamOrgHierarchyLoadState.ready,
-    this.teamOrgUnitsListenable,
-    this.teamOrgLocationsListenable,
-    this.teamOrgUnitOptionsListenable,
-    this.teamOrgHierarchyLoadStateListenable,
-    this.onTeamOrgUnitCreate,
-    this.onTeamLocationMove,
-    this.teamPendingInvites = const <TeamPendingInviteListItem>[],
-    this.onTeamInviteSubmitted,
-    this.onTeamInviteRevoked,
-    this.onTeamUserAction,
-    this.onTeamDataRetry,
     this.accountInfoGateway,
     this.passwordChangeGateway,
-    this.teamDataLoadState = TeamSettingsDataLoadState.ready,
-    this.teamRoleOptionsListenable,
-    this.teamUsersListenable,
-    this.teamPendingInvitesListenable,
-    this.teamDataLoadStateListenable,
     this.mfaOperationsGateway,
     this.mfaActor,
     this.authOperationsGateway,
     this.activeSessionsActor,
     this.allowDemoActiveSessionsFallback = false,
-    this.auditLogActor,
-    this.allowDemoAuditLogFallback = false,
-    this.teamRoleCatalog = const <TeamRoleCatalogEntry>[],
-    this.teamRoleCatalogListenable,
-    this.teamRoleCatalogLoadState = TeamRoleCatalogLoadState.ready,
-    this.teamRoleCatalogLoadStateListenable,
-    this.onTeamRoleCreate,
-    this.onTeamRolePatch,
-    this.onTeamRoleDelete,
-    this.forceShowTeamSection = false,
   });
 
   @override
@@ -257,7 +128,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
     try {
       await _refreshAppState();
-      await widget.onTeamDataRetry?.call();
     } finally {
       if (mounted) setState(() => _manualRefreshing = false);
     }
@@ -286,10 +156,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     final session = authNotifier?.session;
     final showAccount = session != null;
-    // W3.A — Team / Diagnostics / Advisor params remain on the
-    // constructor for backward compatibility with existing widget tests
-    // and call sites, but mobile no longer mounts those tabs. The
-    // Operator Web console owns Team management + advisor admin.
+    // W3.A — Team / Diagnostics / Advisor tabs are gone. The Operator
+    // Web console owns Team management + advisor admin. Mobile mirrors
+    // the read-only essentials in 3 tabs.
     final effectiveTeamActor = widget.teamActor;
     // Non-admin signed-in users see only the Account tab. Admin tier
     // (operator_owner / operator_manager / super_admin / ff_support)
