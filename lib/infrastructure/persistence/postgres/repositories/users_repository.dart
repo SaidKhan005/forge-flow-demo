@@ -23,7 +23,7 @@
 // the lifecycle action so audit trails can attribute the bypass
 // correctly.
 
-import 'dart:convert' show jsonDecode;
+import 'dart:convert' show jsonDecode, jsonEncode;
 
 import '../operator_scoped_repository.dart';
 import '../tenant_context.dart';
@@ -1041,13 +1041,22 @@ class UsersRepository extends OperatorScopedRepository {
   ///
   /// Code-health L3 (C5): operator scope is required so a
   /// `withSystem` (BYPASSRLS) bump cannot leak across tenants.
+  ///
+  /// Code-health PCACHE-FANOUT-PRODUCERS: when the bump lands (affected
+  /// > 0), queue an in-transaction
+  /// `pg_notify('permission_cache_invalidate', ...)` so peer Cloud Run
+  /// proxy instances drop the user's cached permission snapshot the
+  /// moment this transaction commits. Payload shape mirrors
+  /// `PermissionCacheInvalidation.fromPayload` byte-for-byte and the
+  /// JSON is parameter-bound (never concatenated). Skipped on affected
+  /// == 0 — a no-op write must not burn cache-invalidation budget.
   Future<int> bumpRolesVersion({
     required String userId,
     required String operatorId,
     required String adminReason,
   }) {
     return withSystem<int>((exec) async {
-      return exec.execute(
+      final affected = await exec.execute(
         'update users '
         'set roles_version = roles_version + 1, updated_at = now() '
         'where user_id = @user_id::uuid '
@@ -1057,6 +1066,19 @@ class UsersRepository extends OperatorScopedRepository {
           'operator_id': operatorId,
         },
       );
+      if (affected > 0) {
+        await exec.execute(
+          "select pg_notify('permission_cache_invalidate', @payload)",
+          parameters: <String, Object?>{
+            'payload': jsonEncode(<String, Object?>{
+              'user_id': userId,
+              'operator_id': operatorId,
+              'location_id': null,
+            }),
+          },
+        );
+      }
+      return affected;
     }, reason: adminReason);
   }
 
