@@ -17,6 +17,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/auth/auth_session.dart';
+import 'package:forge_and_flow/domain/models/business_scope.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/domain/repositories/open_shift_snapshot_repository.dart';
@@ -33,6 +34,52 @@ import 'package:forge_and_flow/state/auth_session_notifier.dart';
 import 'package:provider/provider.dart';
 
 void main() {
+  group('MobileOperationalSyncRunner business scope rebase', () {
+    test('uses persisted active location scope for proxy pulls', () async {
+      final client = _CountingProxyClient();
+      final runner = MobileOperationalSyncRunner(
+        client: client,
+        restaurantIdResolver: (session) async => session.locationId,
+        activeScopeResolver: (_) async => const BusinessScope(
+          scopeId: 'loc-2',
+          scopeType: 'location',
+          operatorId: 'op-1',
+          locationId: 'loc-2',
+          label: 'Mercado',
+        ),
+        syncFactory: _noopSyncFactory,
+      );
+
+      await runner.syncSession(
+        _liveSession(operatorId: 'op-1', locationId: 'loc-1', userId: 'u-1'),
+      );
+
+      expect(client.lastShiftOperatorId, 'op-1');
+      expect(client.lastShiftLocationId, 'loc-2');
+    });
+
+    test('cancelInFlightSync aborts aux pulls from the active sweep', () async {
+      final client = _CountingProxyClient();
+      late MobileOperationalSyncRunner runner;
+      client.onShiftFetch = () => runner.cancelInFlightSync();
+      runner = MobileOperationalSyncRunner(
+        client: client,
+        restaurantIdResolver: (session) async => session.locationId,
+        syncFactory: _noopSyncFactory,
+      );
+
+      await runner.syncSession(
+        _liveSession(operatorId: 'op-1', locationId: 'loc-1', userId: 'u-1'),
+      );
+
+      expect(client.shiftCallCount, 1);
+      expect(client.demoCallCount, 0);
+      expect(client.accuracyCallCount, 0);
+      expect(client.tierCallCount, 0);
+      expect(client.backfillStatusCallCount, 0);
+    });
+  });
+
   group('MobileOperationalSyncHost cross-tenant + abort wiring', () {
     testWidgets(
       'BUG 1: scope flip purges the prior tenant before the next sweep',
@@ -216,6 +263,18 @@ void main() {
 }
 
 // ────────────────────────── shared test helpers ─────────────────────────
+
+Future<PostgresShiftRecordToMobileSync> _noopSyncFactory(
+  SyncProxyClient client,
+) async {
+  return PostgresShiftRecordToMobileSync(
+    client: client,
+    shiftRepository: _NoopShiftRepository(),
+    watermarkDao: _InMemoryWatermarkDao(),
+    openShiftSnapshotRepository: _NoopOpenSnapshotRepo(),
+    timingConfigRepository: _NoopTimingConfigRepo(),
+  );
+}
 
 AuthSession _liveSession({
   required String operatorId,
@@ -410,7 +469,7 @@ class _InMemoryWatermarkDao implements ImportTrackingDao {
 
 class _CountingProxyClient implements SyncProxyClient {
   _CountingProxyClient({this.onShiftFetch});
-  final void Function()? onShiftFetch;
+  void Function()? onShiftFetch;
   int shiftCallCount = 0;
   int openCallCount = 0;
   int demoCallCount = 0;
@@ -418,6 +477,8 @@ class _CountingProxyClient implements SyncProxyClient {
   int tierCallCount = 0;
   int timingCallCount = 0;
   int backfillStatusCallCount = 0;
+  String? lastShiftOperatorId;
+  String? lastShiftLocationId;
 
   @override
   Future<ShiftRecordPage> fetchShiftRecords({
@@ -427,6 +488,8 @@ class _CountingProxyClient implements SyncProxyClient {
     required int pageSize,
   }) async {
     shiftCallCount++;
+    lastShiftOperatorId = operatorId;
+    lastShiftLocationId = locationId;
     onShiftFetch?.call();
     return const ShiftRecordPage(records: <ShiftRecord>[], nextCursor: null);
   }

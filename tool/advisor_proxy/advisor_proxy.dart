@@ -74,6 +74,7 @@ import '../advisor_corpus/advisor_corpus.dart'
     show CorpusManifest, defaultManifestPath;
 import 'health_operation_budget.dart';
 import 'log.dart';
+import 'business_scope_routes.dart';
 import 'mobile_push_notifications.dart';
 import 'operator_routes.dart';
 import 'proxy_idempotency_cache.dart';
@@ -111,6 +112,16 @@ export 'operator_routes.dart'
         operatorBusinessTimingProfilePrefix,
         hashOperatorRequestBody,
         readOperatorJsonBody;
+export 'business_scope_routes.dart'
+    show
+        BusinessScopeProxyGateway,
+        BusinessScopeProxyRow,
+        BusinessScopeRouteMatch,
+        BusinessScopeRouteResult,
+        BusinessScopeRouter,
+        businessScopesOperatorsPrefix,
+        businessScopesResource,
+        businessScopesUsersPrefix;
 export 'star_target_routes.dart'
     show
         RepositorySelectedStarTargetGateway,
@@ -7084,6 +7095,7 @@ Future<void> routeRequest(
   MobilePushTokenGateway? mobilePushTokenGateway,
   MobilePushSelfTestGateway? mobilePushSelfTestGateway,
   MobileOperationalSyncProxyGateway? mobileOperationalSyncGateway,
+  BusinessScopeProxyGateway? businessScopeGateway,
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
   PricingTierAdminProxyGateway? pricingTierAdminGateway,
   DataAccuracyAdminProxyGateway? dataAccuracyAdminGateway,
@@ -7134,6 +7146,10 @@ Future<void> routeRequest(
   // Phase 8 weekly-plan truth - snapshot/context read/write router. Optional
   // until Lane 0 repository bindings are available in production bootstrap.
   WeeklyPlanRouter? weeklyPlanRouter,
+  // Mobile core business-scope truth. Optional for tests and scaffold
+  // environments; when null the route returns a typed 503 and existing
+  // token-exact sync behavior is preserved.
+  BusinessScopeRouter? businessScopeRouter,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -7369,8 +7385,17 @@ Future<void> routeRequest(
             authGuard,
           );
           if (scope == null) return;
-          if (scope.operatorId != weeklyPlanMatch.operatorId ||
-              scope.locationId != weeklyPlanMatch.locationId) {
+          final weeklyScopeAllowed =
+              weeklyPlanMatch.action == WeeklyPlanRouteAction.read
+              ? await _operatorLocationScopeAllowed(
+                  scope: scope,
+                  operatorId: weeklyPlanMatch.operatorId,
+                  locationId: weeklyPlanMatch.locationId,
+                  businessScopeGateway: businessScopeGateway,
+                )
+              : scope.operatorId == weeklyPlanMatch.operatorId &&
+                    scope.locationId == weeklyPlanMatch.locationId;
+          if (!weeklyScopeAllowed) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'permission_denied',
               'message':
@@ -7451,8 +7476,17 @@ Future<void> routeRequest(
             authGuard,
           );
           if (scope == null) return;
-          if (scope.operatorId != selectedStarMatch.operatorId ||
-              scope.locationId != selectedStarMatch.locationId) {
+          final selectedStarScopeAllowed =
+              selectedStarMatch.action == SelectedStarTargetRouteAction.read
+              ? await _operatorLocationScopeAllowed(
+                  scope: scope,
+                  operatorId: selectedStarMatch.operatorId,
+                  locationId: selectedStarMatch.locationId,
+                  businessScopeGateway: businessScopeGateway,
+                )
+              : scope.operatorId == selectedStarMatch.operatorId &&
+                    scope.locationId == selectedStarMatch.locationId;
+          if (!selectedStarScopeAllowed) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'permission_denied',
               'message':
@@ -7512,6 +7546,66 @@ Future<void> routeRequest(
           return;
         }
 
+        final businessScopeMatch = BusinessScopeRouter.match(
+          path,
+          request.method,
+        );
+        if (businessScopeMatch != null) {
+          final gateway = businessScopeGateway;
+          final router =
+              businessScopeRouter ??
+              (gateway == null ? null : BusinessScopeRouter(gateway: gateway));
+          if (router == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'business_scope_router_not_configured',
+              'message': 'route requires a BusinessScopeRouter to be installed',
+            });
+            return;
+          }
+          final claims = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (claims == null) return;
+          final operatorId = claims.operatorId;
+          final locationId = claims.locationId;
+          if (operatorId == null ||
+              operatorId.isEmpty ||
+              locationId == null ||
+              locationId.isEmpty) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'verified token is missing operator or location scope',
+            });
+            return;
+          }
+          bindOperatorIdToLogContext(operatorId);
+          try {
+            final result = await router.handle(
+              match: businessScopeMatch,
+              actorUserId: claims.userId,
+              actorOperatorId: operatorId,
+              actorLocationId: locationId,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'business_scopes',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'business_scopes_unavailable',
+              'message': 'business scopes are unavailable; please retry',
+            });
+          }
+          return;
+        }
+
         final mobileOperationalPath = _mobileOperationalPath(path);
         if (request.method == 'GET' && mobileOperationalPath != null) {
           await _routeMobileOperationalSync(
@@ -7519,6 +7613,7 @@ Future<void> routeRequest(
             response: response,
             authGuard: authGuard,
             gateway: mobileOperationalSyncGateway,
+            businessScopeGateway: businessScopeGateway,
             target: mobileOperationalPath,
           );
           return;
@@ -11983,7 +12078,9 @@ bool _isAdminIntegrationsPath(String path) {
 }
 
 bool _isAuthCorsPath(String path) {
-  return path.startsWith('/v1/auth/') || path.startsWith('/v1/admin/auth/');
+  return path.startsWith('/v1/auth/') ||
+      path.startsWith('/v1/admin/auth/') ||
+      BusinessScopeRouter.match(path, 'GET') != null;
 }
 
 bool _isAdminIntegrationsOperation(String path, String method) {
@@ -13546,6 +13643,7 @@ Future<void> _routeMobileOperationalSync({
   required HttpResponse response,
   required ProxyRequestGuard authGuard,
   required MobileOperationalSyncProxyGateway? gateway,
+  required BusinessScopeProxyGateway? businessScopeGateway,
   required _MobileOperationalPath target,
 }) async {
   if (gateway == null) {
@@ -13564,8 +13662,12 @@ Future<void> _routeMobileOperationalSync({
   );
   if (scope == null) return;
 
-  if (scope.operatorId != target.operatorId ||
-      scope.locationId != target.locationId) {
+  if (!await _operatorLocationScopeAllowed(
+    scope: scope,
+    operatorId: target.operatorId,
+    locationId: target.locationId,
+    businessScopeGateway: businessScopeGateway,
+  )) {
     _writeJson(response, 403, <String, Object?>{
       'error': 'permission_denied',
       'message': 'requested mobile sync scope does not match caller scope',
@@ -13649,6 +13751,25 @@ Future<void> _routeMobileOperationalSync({
       'message': 'mobile operational sync is unavailable; please retry',
     });
   }
+}
+
+Future<bool> _operatorLocationScopeAllowed({
+  required OperatorContext scope,
+  required String operatorId,
+  required String locationId,
+  required BusinessScopeProxyGateway? businessScopeGateway,
+}) async {
+  if (scope.operatorId == operatorId && scope.locationId == locationId) {
+    return true;
+  }
+  if (scope.operatorId != operatorId || businessScopeGateway == null) {
+    return false;
+  }
+  return businessScopeGateway.canAccessLocation(
+    userId: scope.userId,
+    operatorId: operatorId,
+    locationId: locationId,
+  );
 }
 
 int? _mobileSyncPageSizeOrWrite(HttpResponse response, String? raw) {

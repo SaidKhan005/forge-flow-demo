@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'auth/auth_session.dart';
 import 'auth/permission_effect.dart';
 import 'domain/models/restaurant_location.dart';
+import 'domain/models/business_scope.dart';
 import 'services/advisor_corpus_admin_service.dart';
 import 'services/advisor_model_config_service.dart';
 import 'services/auth/auth_operations_gateway.dart';
@@ -21,6 +22,7 @@ import 'services/mfa/mfa_operations_gateway.dart';
 import 'services/mfa/mfa_recovery_request_gateway.dart';
 import 'services/mobile_push/mobile_push_notification_service.dart';
 import 'services/shift_data_source.dart';
+import 'services/scope/business_scope_repository.dart';
 import 'services/team/team_scope_visibility_policy.dart';
 import 'state/active_target_profile_notifier.dart';
 import 'state/app_refresh_coordinator.dart';
@@ -615,6 +617,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// Prevents the cold-start `resumed` callback from triggering a
   /// duplicate refresh — notifiers already load in their constructors.
   bool _hasBeenBackgrounded = false;
+  String? _businessScopesLoadedFor;
+  String? _businessScopesLoadingFor;
 
   /// Foreground-only business-date boundary supervisor. Spawns one
   /// `CurrentStateBoundaryMonitor` per accessible `RestaurantLocation`
@@ -705,6 +709,162 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     } on ProviderNotFoundException {
       return null;
     }
+  }
+
+  BusinessScopeClient? _resolveBusinessScopeClient() {
+    try {
+      return Provider.of<BusinessScopeClient?>(context, listen: false);
+    } on ProviderNotFoundException {
+      return null;
+    }
+  }
+
+  void _loadBusinessScopesIfNeeded(AuthSession? session) {
+    if (session == null) return;
+    final client = _resolveBusinessScopeClient();
+    if (client == null) return;
+    final key = session.userId;
+    if (_businessScopesLoadedFor == key || _businessScopesLoadingFor == key) {
+      return;
+    }
+    _businessScopesLoadingFor = key;
+    final scope = context.read<RestaurantScopeNotifier>();
+    unawaited(
+      scope
+          .loadBusinessScopes(userId: session.userId, client: client)
+          .then((_) {
+            if (!mounted) return;
+            _businessScopesLoadedFor = key;
+          })
+          .catchError((Object error, StackTrace stack) {
+            debugPrint('Business scope load failed: $error');
+            debugPrintStack(stackTrace: stack);
+          })
+          .whenComplete(() {
+            if (_businessScopesLoadingFor == key) {
+              _businessScopesLoadingFor = null;
+            }
+          }),
+    );
+  }
+
+  Future<void> _selectBusinessScope(BusinessScope scope) async {
+    if (!scope.isLocationScope) return;
+    final session = context.read<AuthSessionNotifier>().session;
+    if (session == null) return;
+    await context.read<RestaurantScopeNotifier>().activateBusinessScope(
+      scope,
+      userId: session.userId,
+    );
+  }
+
+  Widget _buildBusinessScopeDrawer(BuildContext context) {
+    final notifier = context.watch<RestaurantScopeNotifier>();
+    final scopes = notifier.availableScopes;
+    final activeKey = notifier.activeScope?.stableKey;
+    return Drawer(
+      backgroundColor: AppColors.backgroundDeep,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              child: Text(
+                'Business',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Expanded(
+              child: scopes.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          'Your available locations will appear here.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.textMuted),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
+                      itemCount: scopes.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 2),
+                      itemBuilder: (context, index) {
+                        final scope = scopes[index];
+                        final enabled = scope.isLocationScope;
+                        final selected = scope.stableKey == activeKey;
+                        return ListTile(
+                          enabled: enabled,
+                          selected: selected,
+                          selectedTileColor: AppColors.backgroundMid.withValues(
+                            alpha: 0.7,
+                          ),
+                          leading: Icon(
+                            _businessScopeIcon(scope),
+                            color: selected
+                                ? AppColors.sunsetDark
+                                : AppColors.textMuted,
+                          ),
+                          title: Text(
+                            scope.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: enabled
+                                  ? AppColors.textPrimary
+                                  : AppColors.textMuted,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                          subtitle: Text(
+                            _businessScopeSubtitle(scope),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                          trailing: selected
+                              ? const Icon(
+                                  Icons.check_circle,
+                                  color: AppColors.sunsetDark,
+                                )
+                              : null,
+                          onTap: enabled
+                              ? () {
+                                  Navigator.of(context).maybePop();
+                                  unawaited(_selectBusinessScope(scope));
+                                }
+                              : null,
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _businessScopeIcon(BusinessScope scope) => switch (scope.scopeType) {
+    'operator' => Icons.business_outlined,
+    'org_unit' => Icons.account_tree_outlined,
+    'location' => Icons.storefront_outlined,
+    _ => Icons.work_outline,
+  };
+
+  String _businessScopeSubtitle(BusinessScope scope) {
+    if (scope.isLocationScope) return 'Location';
+    if (scope.scopeType == 'operator') return 'All locations';
+    return 'Location views only';
   }
 
   /// Mirrors the active locations from [RestaurantScopeNotifier] into
@@ -1731,6 +1891,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // App-shell rebuild now driven by persisted active-target authority,
     // not BaselineData.revision.
     final revision = context.watch<ActiveTargetProfileNotifier>().revision;
+    AuthSession? session;
+    try {
+      session = Provider.of<AuthSessionNotifier>(context).session;
+    } on ProviderNotFoundException {
+      session = null;
+    }
+    final businessScopeSession = session;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadBusinessScopesIfNeeded(businessScopeSession);
+    });
 
     final embeddedAppBar = AppBar(
       backgroundColor: AppColors.backgroundDeep,
@@ -1793,6 +1964,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             padding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
             child: Row(
               children: [
+                Builder(
+                  builder: (context) => _AppShellIconButton(
+                    icon: Icons.menu,
+                    tooltip: 'Business',
+                    onTap: () => Scaffold.of(context).openDrawer(),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 const SyncStateBadge(),
                 const Spacer(),
                 _AppShellIconButton(
@@ -1833,6 +2012,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       child: Scaffold(
         backgroundColor: AppColors.backgroundDeep,
         appBar: widget.embeddedInBarrio ? embeddedAppBar : standaloneAppBar,
+        drawer: _buildBusinessScopeDrawer(context),
         body: SafeArea(
           top: !widget.embeddedInBarrio,
           child: IndexedStack(

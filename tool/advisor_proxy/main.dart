@@ -697,6 +697,7 @@ Future<void> main(List<String> args) async {
                 productionBindings.mobilePushSelfTestGateway,
             mobileOperationalSyncGateway:
                 productionBindings.mobileOperationalSyncGateway,
+            businessScopeGateway: productionBindings.businessScopeGateway,
             operatorLocationAdminGateway:
                 productionBindings.operatorLocationAdminGateway,
             pricingTierAdminGateway: productionBindings.pricingTierAdminGateway,

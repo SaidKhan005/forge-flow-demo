@@ -10,6 +10,7 @@ import 'services/auth/auth_session_ledger_writer.dart';
 import 'services/mobile_push/mobile_push_notification_service.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/secure_session_storage.dart';
+import 'services/scope/business_scope_repository.dart';
 import 'services/star_target_selection_write_service.dart';
 import 'services/sync/mobile_operational_sync_runtime.dart';
 import 'services/sync/sync_proxy_client.dart';
@@ -97,14 +98,19 @@ Future<void> bootstrapAndRunApp(
   runApp(
     Provider<MobilePushRouteIntentSource>.value(
       value: mobilePush.routeIntents,
-      child: Provider<RealtimeSubscription?>.value(
-        value: realtimeSubscription,
+      child: Provider<BusinessScopeClient?>.value(
+        value: syncProxyClient is BusinessScopeClient
+            ? syncProxyClient as BusinessScopeClient
+            : null,
         child: ChangeNotifierProvider<AuthSessionNotifier>.value(
           value: authNotifier,
-          child: RealtimeAuthBridge(
-            child: MobileOperationalSyncHost(
-              syncClient: syncProxyClient,
-              child: app,
+          child: Provider<RealtimeSubscription?>.value(
+            value: realtimeSubscription,
+            child: RealtimeAuthBridge(
+              child: MobileOperationalSyncHost(
+                syncClient: syncProxyClient,
+                child: app,
+              ),
             ),
           ),
         ),

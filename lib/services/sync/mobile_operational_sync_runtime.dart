@@ -4,10 +4,12 @@ import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
 import '../../auth/auth_session.dart';
+import '../../domain/models/business_scope.dart';
 import '../../domain/models/restaurant_location.dart';
 import '../../domain/services/utc_metadata_timestamp.dart';
 import '../../infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_baseline_selection_repository.dart';
+import '../../infrastructure/persistence/sqlite/repositories/sqlite_active_scope_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_timing_config_repository.dart';
@@ -19,6 +21,7 @@ import '../../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../../state/auth_session_notifier.dart';
 import '../realtime/realtime_event.dart';
 import '../realtime/realtime_subscription.dart';
+import '../scope/business_scope_repository.dart';
 import 'postgres_shift_record_to_mobile_sync.dart';
 import 'sync_proxy_client.dart';
 
@@ -38,16 +41,22 @@ class MobileOperationalSyncRunner {
     required this.client,
     MobileSyncFactory? syncFactory,
     Future<String> Function(AuthSession session)? restaurantIdResolver,
+    Future<BusinessScope?> Function(AuthSession session)? activeScopeResolver,
   }) : _syncFactory = syncFactory ?? _defaultSyncFactory,
        _restaurantIdResolver =
-           restaurantIdResolver ?? _activateSessionRestaurant;
+           restaurantIdResolver ?? _activateSessionRestaurant,
+       _activeScopeResolver =
+           activeScopeResolver ?? _resolvePersistedActiveScope;
 
   final SyncProxyClient client;
   final MobileSyncFactory _syncFactory;
   final Future<String> Function(AuthSession session) _restaurantIdResolver;
+  final Future<BusinessScope?> Function(AuthSession session)
+  _activeScopeResolver;
 
   bool _running = false;
   AuthSession? _pendingSession;
+  int _generation = 0;
 
   /// Optional probe that returns true when the in-flight sweep should
   /// abort (e.g. the user signed out mid-pull). Wired by
@@ -62,6 +71,10 @@ class MobileOperationalSyncRunner {
   // ignore: use_setters_to_change_properties
   void setAbortProbe(bool Function()? probe) {
     _abortProbe = probe;
+  }
+
+  void cancelInFlightSync() {
+    _generation++;
   }
 
   Future<SyncResult?> syncSession(
@@ -81,15 +94,18 @@ class MobileOperationalSyncRunner {
     try {
       while (true) {
         _pendingSession = null;
-        final restaurantId = await _restaurantIdResolver(current);
+        final runGeneration = _generation;
+        bool isAborted() =>
+            runGeneration != _generation || (_abortProbe?.call() ?? false);
+        final scope = await _resolveSyncScope(current);
         final sync = await _syncFactory(client);
         result = await sync.sync(
-          operatorId: current.operatorId,
-          locationId: current.locationId,
-          restaurantId: restaurantId,
-          isAborted: _abortProbe,
+          operatorId: scope.session.operatorId,
+          locationId: scope.session.locationId,
+          restaurantId: scope.restaurantId,
+          isAborted: isAborted,
         );
-        if (_abortProbe?.call() == true) {
+        if (isAborted()) {
           // BUG 2 (HIGH): the auth context flipped mid-sweep; bail out
           // before promoting any pending session so the next caller
           // re-evaluates against the fresh session.
@@ -130,6 +146,40 @@ class MobileOperationalSyncRunner {
     );
     return location.restaurantId;
   }
+
+  Future<_MobileSyncScope> _resolveSyncScope(AuthSession session) async {
+    final activeScope = await _activeScopeResolver(session);
+    if (activeScope != null && activeScope.isLocationScope) {
+      final locationId = activeScope.locationId!;
+      final effectiveSession = session.copyWith(
+        operatorId: activeScope.operatorId,
+        locationId: locationId,
+      );
+      final now = nowIsoUtc();
+      await SqliteRestaurantScopeRepository.instance.activateRuntimeRestaurant(
+        activeScope.toRestaurantLocation(createdAt: now, updatedAt: now),
+      );
+      return _MobileSyncScope(
+        session: effectiveSession,
+        restaurantId: locationId,
+      );
+    }
+    final restaurantId = await _restaurantIdResolver(session);
+    return _MobileSyncScope(session: session, restaurantId: restaurantId);
+  }
+
+  static Future<BusinessScope?> _resolvePersistedActiveScope(
+    AuthSession session,
+  ) {
+    return SqliteActiveScopeRepository.instance.getActiveScope(session.userId);
+  }
+}
+
+class _MobileSyncScope {
+  const _MobileSyncScope({required this.session, required this.restaurantId});
+
+  final AuthSession session;
+  final String restaurantId;
 }
 
 /// Default cross-tenant wipe used by [MobileOperationalSyncHost]. Calls
@@ -189,9 +239,12 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
   RealtimeSubscription? _realtimeSubscription;
   StreamSubscription<RealtimeEvent>? _eventsSubscription;
   StreamSubscription<void>? _replayTruncatedSubscription;
+  StreamSubscription<BusinessScope>? _scopeChangeSubscription;
   MobileOperationalSyncRunner? _runner;
   String? _lastAuthScope;
+  String? _lastBusinessScopeKey;
   String? _activeSweepUserId;
+  String? _activeSweepScopeKey;
 
   @override
   void initState() {
@@ -204,6 +257,8 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
     // `_handleAuthChanged` re-activates the right one.
     SqliteRestaurantScopeRepository.instance.clearRuntimeRestaurantOverride();
     WidgetsBinding.instance.addObserver(this);
+    _scopeChangeSubscription = ActiveBusinessScopeChangeBus.instance.changes
+        .listen(_handleBusinessScopeChanged);
   }
 
   @override
@@ -222,6 +277,7 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
         oldWidget.runner != widget.runner) {
       _runner = null;
       _lastAuthScope = null;
+      _lastBusinessScopeKey = null;
       _ensureRunner();
       _syncForCurrentSession('sync_client_changed');
     }
@@ -239,6 +295,8 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
     WidgetsBinding.instance.removeObserver(this);
     _authNotifier?.removeListener(_handleAuthChanged);
     _authNotifier = null;
+    _scopeChangeSubscription?.cancel();
+    _scopeChangeSubscription = null;
     _eventsSubscription?.cancel();
     _replayTruncatedSubscription?.cancel();
     super.dispose();
@@ -323,6 +381,23 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
     }());
   }
 
+  void _handleBusinessScopeChanged(BusinessScope scope) {
+    if (!scope.isLocationScope) return;
+    final session = _authNotifier?.session;
+    if (session == null) return;
+    final key = scope.stableKey;
+    if (key == _lastBusinessScopeKey) return;
+    _runner?.cancelInFlightSync();
+    _lastBusinessScopeKey = key;
+    _wipeOtherTenantsThenSync(
+      session.copyWith(
+        operatorId: scope.operatorId,
+        locationId: scope.locationId,
+      ),
+      'business_scope_changed',
+    );
+  }
+
   void _handleRealtimeEvent(RealtimeEvent event) {
     final session = _authNotifier?.session;
     if (session == null || event.operatorId != session.operatorId) return;
@@ -346,10 +421,14 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
     // skips writes for the remaining pages instead of continuing
     // against the stale token + scope.
     final initialUserId = session.userId;
+    final initialBusinessScopeKey = _lastBusinessScopeKey;
     _activeSweepUserId = initialUserId;
+    _activeSweepScopeKey = initialBusinessScopeKey;
     runner.setAbortProbe(() {
       final live = _authNotifier?.session;
-      return live == null || live.userId != initialUserId;
+      return live == null ||
+          live.userId != initialUserId ||
+          _lastBusinessScopeKey != initialBusinessScopeKey;
     });
     unawaited(
       runner
@@ -360,8 +439,10 @@ class _MobileOperationalSyncHostState extends State<MobileOperationalSyncHost>
             return null;
           })
           .whenComplete(() {
-            if (_activeSweepUserId == initialUserId) {
+            if (_activeSweepUserId == initialUserId &&
+                _activeSweepScopeKey == initialBusinessScopeKey) {
               _activeSweepUserId = null;
+              _activeSweepScopeKey = null;
               runner.setAbortProbe(null);
             }
           }),

@@ -166,6 +166,7 @@ class ProxyProductionBindings {
     required this.mobilePushTokenGateway,
     required this.mobilePushSelfTestGateway,
     required this.mobileOperationalSyncGateway,
+    required this.businessScopeGateway,
     required this.operatorLocationAdminGateway,
     required this.pricingTierAdminGateway,
     required this.dataAccuracyAdminGateway,
@@ -221,6 +222,7 @@ class ProxyProductionBindings {
   final MobilePushTokenGateway? mobilePushTokenGateway;
   final MobilePushSelfTestGateway? mobilePushSelfTestGateway;
   final MobileOperationalSyncProxyGateway mobileOperationalSyncGateway;
+  final BusinessScopeProxyGateway businessScopeGateway;
   final OperatorLocationAdminProxyGateway operatorLocationAdminGateway;
   final PricingTierAdminProxyGateway pricingTierAdminGateway;
   final DataAccuracyAdminProxyGateway dataAccuracyAdminGateway;
@@ -599,6 +601,10 @@ ProxyProductionBindings buildProxyProductionBindings(
       ),
     ),
   );
+  final businessScopeGateway = RepositoryBusinessScopeProxyGateway(
+    userRolesRepository: tenantUserRoles,
+    orgUnitsRepository: OrgUnitsRepository(tenantWrapper),
+  );
 
   return ProxyProductionBindings(
     accountingStore: PostgresProxyAccountingStore(wrapper: tenantWrapper),
@@ -684,6 +690,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     mobileOperationalSyncGateway: RepositoryMobileOperationalSyncProxyGateway(
       tenantWrapper: tenantWrapper,
     ),
+    businessScopeGateway: businessScopeGateway,
     // Phase 11A.1 — operator/location admin gateway. The repos run
     // through the admin pool (POSTGRES_ADMIN_URL) because the F&F
     // admin console scans / writes across operators; per-tenant RLS
@@ -1545,6 +1552,190 @@ String _datePlusDays(String yyyyMmDd, int days) {
 String? _optionalStringFromObject(Object? value) {
   if (value is String && value.trim().isNotEmpty) return value.trim();
   return null;
+}
+
+class RepositoryBusinessScopeProxyGateway implements BusinessScopeProxyGateway {
+  RepositoryBusinessScopeProxyGateway({
+    required UserRolesRepository userRolesRepository,
+    required OrgUnitsRepository orgUnitsRepository,
+  }) : _userRolesRepository = userRolesRepository,
+       _orgUnitsRepository = orgUnitsRepository;
+
+  final UserRolesRepository _userRolesRepository;
+  final OrgUnitsRepository _orgUnitsRepository;
+
+  @override
+  Future<List<BusinessScopeProxyRow>> listAccessibleScopes({
+    required String userId,
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final grants = await _userRolesRepository.activeGrantsForUser(
+      operatorId: operatorId,
+      locationId: locationId,
+      targetUserId: userId,
+      actorUserId: userId,
+    );
+    if (grants.isEmpty) return const <BusinessScopeProxyRow>[];
+
+    final orgUnits = await _orgUnitsRepository.listForTenant(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    final locations = await _orgUnitsRepository.listLocationsForTenant(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+
+    final orgById = <String, OrgUnitRow>{
+      for (final row in orgUnits) row.id: row,
+    };
+    final locationById = <String, OrgLocationRow>{
+      for (final row in locations) row.locationId: row,
+    };
+    final rowsByKey = <String, BusinessScopeProxyRow>{};
+
+    void add(BusinessScopeProxyRow row) {
+      rowsByKey['${row.scopeType}:${row.scopeId}'] = row;
+    }
+
+    final hasOperatorWideGrant = grants.any(
+      (grant) => grant.scopeType == UserRoleScope.operatorWide.sqlKey,
+    );
+    if (hasOperatorWideGrant) {
+      final root = _firstRoot(orgUnits);
+      add(
+        BusinessScopeProxyRow(
+          scopeId: operatorId,
+          scopeType: 'operator',
+          operatorId: operatorId,
+          label: root?.name ?? 'Current business',
+          sortPath: root?.path ?? '0',
+        ),
+      );
+      for (final org in orgUnits) {
+        add(_orgUnitScope(org));
+      }
+      for (final location in locations) {
+        add(_locationScope(location));
+      }
+    }
+
+    for (final grant in grants) {
+      final orgUnitId = _nonBlank(grant.orgUnitId);
+      if (grant.scopeType == UserRoleScope.orgUnit.sqlKey &&
+          orgUnitId != null) {
+        final org = orgById[orgUnitId];
+        if (org != null) {
+          add(_orgUnitScope(org));
+        }
+      }
+      final effectiveLocationIds = grant.effectiveLocationIds.isNotEmpty
+          ? grant.effectiveLocationIds
+          : <String>[
+              if (_nonBlank(grant.locationId) != null)
+                _nonBlank(grant.locationId)!,
+            ];
+      for (final effectiveLocationId in effectiveLocationIds) {
+        final location = locationById[effectiveLocationId];
+        if (location != null) {
+          add(_locationScope(location));
+        } else {
+          add(
+            BusinessScopeProxyRow(
+              scopeId: effectiveLocationId,
+              scopeType: 'location',
+              operatorId: operatorId,
+              locationId: effectiveLocationId,
+              label: 'Location',
+              sortPath: 'z:$effectiveLocationId',
+            ),
+          );
+        }
+      }
+    }
+
+    final rows = rowsByKey.values.toList(growable: false);
+    rows.sort(_compareBusinessScopes);
+    return rows;
+  }
+
+  @override
+  Future<bool> canAccessLocation({
+    required String userId,
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final scopes = await listAccessibleScopes(
+      userId: userId,
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+    return scopes.any(
+      (scope) =>
+          scope.scopeType == 'location' && scope.locationId == locationId,
+    );
+  }
+
+  static BusinessScopeProxyRow _orgUnitScope(OrgUnitRow row) {
+    return BusinessScopeProxyRow(
+      scopeId: row.id,
+      scopeType: 'org_unit',
+      operatorId: row.operatorId,
+      parentScopeId: row.parentId,
+      label: row.name,
+      sortPath: row.path,
+    );
+  }
+
+  static BusinessScopeProxyRow _locationScope(OrgLocationRow row) {
+    return BusinessScopeProxyRow(
+      scopeId: row.locationId,
+      scopeType: 'location',
+      operatorId: row.operatorId,
+      locationId: row.locationId,
+      parentScopeId: row.parentOrgUnitId,
+      label: row.name,
+      sortPath: '${row.orgUnitPath}.${row.name}',
+    );
+  }
+
+  static int _compareBusinessScopes(
+    BusinessScopeProxyRow left,
+    BusinessScopeProxyRow right,
+  ) {
+    final orderCompare = _scopeOrder(
+      left.scopeType,
+    ).compareTo(_scopeOrder(right.scopeType));
+    if (orderCompare != 0) return orderCompare;
+    final pathCompare = (left.sortPath ?? left.label).compareTo(
+      right.sortPath ?? right.label,
+    );
+    if (pathCompare != 0) return pathCompare;
+    return left.scopeId.compareTo(right.scopeId);
+  }
+
+  static int _scopeOrder(String scopeType) => switch (scopeType) {
+    'operator' => 0,
+    'org_unit' => 1,
+    'location' => 2,
+    _ => 3,
+  };
+
+  static String? _nonBlank(String? value) {
+    if (value == null) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static OrgUnitRow? _firstRoot(List<OrgUnitRow> rows) {
+    for (final row in rows) {
+      if (row.parentId == null) return row;
+    }
+    return null;
+  }
 }
 
 class RepositoryMobileOperationalSyncProxyGateway
