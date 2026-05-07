@@ -469,6 +469,32 @@ class UsersRepository extends OperatorScopedRepository {
     }, reason: adminReason);
   }
 
+  /// UPDATE the human-readable Team display name for one user inside an
+  /// operator account. This is a scoped admin-console path; Firebase identity
+  /// remains unchanged and the repository-level audit writer records who did it.
+  Future<int> updateDisplayName({
+    required String operatorId,
+    required String userId,
+    required String displayName,
+    required String adminReason,
+  }) {
+    return withSystem<int>((exec) async {
+      return exec.execute(
+        'update users '
+        'set display_name = @display_name, updated_at = now() '
+        'where user_id = @user_id::uuid '
+        'and operator_id = @operator_id::uuid '
+        'and deleted_at is null '
+        "and status != 'deleted'",
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'user_id': userId,
+          'display_name': displayName,
+        },
+      );
+    }, reason: adminReason);
+  }
+
   /// SET `last_login_at = now()` + bump `last_active_at`. Called from
   /// the post-login orchestrator after a successful sign-in.
   Future<int> markLoggedIn({

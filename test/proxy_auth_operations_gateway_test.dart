@@ -170,6 +170,54 @@ void main() {
       expect(fake.gets.last.url.path, equals(proxy.adminAuthInvitesPath));
     });
 
+    test('patchUserProfile PATCHes display name with idempotency', () async {
+      final fake = _FakeAuthOpsHttpClient(
+        patchResponse: const ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{
+            'user': <String, Object?>{
+              'user_id': 'target-user',
+              'email': 'target@example.test',
+              'display_name': 'Target Person',
+              'role_id': 'role-1',
+              'role_label': 'Owner',
+              'status': 'active',
+              'mfa_enrolled': false,
+            },
+          },
+        ),
+      );
+      final gateway = ProxyAuthOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+        idempotencyKeyFactory: () => 'idem-profile-1',
+      );
+
+      final patched = await gateway.patchUserProfile(
+        const TeamUserProfilePatchCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          targetUserId: 'target-user',
+          displayName: 'Target Person',
+          reason: 'operator requested correction',
+        ),
+      );
+
+      expect(patched.user.displayName, equals('Target Person'));
+      final call = fake.patches.single;
+      expect(call.url.path, equals('${proxy.adminAuthUsersPrefix}target-user'));
+      expect(call.headers['Idempotency-Key'], equals('idem-profile-1'));
+      expect(
+        call.body,
+        equals(<String, Object?>{
+          'display_name': 'Target Person',
+          'reason': 'operator requested correction',
+        }),
+      );
+    });
+
     test('createInvite maps proxy rejection to narrow error code', () async {
       final fake = _FakeAuthOpsHttpClient(
         postResponse: const ProxyAuthOperationsResponse(
@@ -789,32 +837,17 @@ void main() {
         expect(listed.hasMore, isTrue);
         expect(listed.entries.first.eventId, equals('audit-1'));
         expect(listed.entries.first.friendlyLabel, equals('Sign-in'));
-        expect(
-          listed.entries.first.eventKind,
-          equals(AuthEventKind.signIn),
-        );
+        expect(listed.entries.first.eventKind, equals(AuthEventKind.signIn));
         // Falls back to derived label/kind when the wire payload omits them.
-        expect(
-          listed.entries[1].eventKind,
-          equals(AuthEventKind.password),
-        );
-        expect(
-          listed.entries[1].friendlyLabel,
-          equals('Password changed'),
-        );
+        expect(listed.entries[1].eventKind, equals(AuthEventKind.password));
+        expect(listed.entries[1].friendlyLabel, equals('Password changed'));
         expect(fake.gets.single.url.path, equals('/v1/auth/audit-log'));
         expect(
           fake.gets.single.url.queryParameters['event_kind'],
           equals('sign_in'),
         );
-        expect(
-          fake.gets.single.url.queryParameters['limit'],
-          equals('50'),
-        );
-        expect(
-          fake.gets.single.url.queryParameters['offset'],
-          equals('0'),
-        );
+        expect(fake.gets.single.url.queryParameters['limit'], equals('50'));
+        expect(fake.gets.single.url.queryParameters['offset'], equals('0'));
         expect(
           fake.gets.single.url.queryParameters['from'],
           equals(from.toIso8601String()),
