@@ -98,8 +98,8 @@ const String alohaWatermarkResource = 'pos.guest_checks';
 
 /// Postgres-backed canonical sink for Aloha POS.
 ///
-/// Implements both the bespoke [AlohaFactSink] (consumed by
-/// the adapter at `lib/integrations/pos/aloha_pos_adapter.dart`)
+/// Implements both the bespoke [AlohaNcrVoyixFactSink] (consumed by
+/// the adapter at `lib/integrations/pos/aloha_ncr_voyix_pos_adapter.dart`)
 /// AND the unified [CanonicalSink] (consumed by the spine-bridge sync
 /// worker dispatcher). The bespoke surface uses a `persistWatermark`
 /// method without `connectionId`; the unified surface uses
@@ -107,7 +107,7 @@ const String alohaWatermarkResource = 'pos.guest_checks';
 /// `advanceWatermark` / `appendSyncLog` `connectionId` to an optional
 /// named parameter so one concrete body satisfies both.
 class AlohaPostgresSink extends OperatorScopedRepository
-    implements AlohaFactSink, CanonicalSink {
+    implements AlohaNcrVoyixFactSink, CanonicalSink {
   AlohaPostgresSink(
     super.tenantWrapper, {
     IanaTimezoneConverter? timezoneConverter,
