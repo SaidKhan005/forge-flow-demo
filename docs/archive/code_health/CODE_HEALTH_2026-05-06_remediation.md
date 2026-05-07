@@ -365,3 +365,40 @@ A fifth remediation wave landed four parallel lanes. Three closed cleanly; one c
 ## Wave 5 closeout PR
 
 - This archive PR — records Wave 5 closures and trims `/CODE_HEALTH.md` to remove the now-closed items.
+
+---
+
+# Final closeout (2026-05-08)
+
+The CODE_HEALTH chapter is closed. Total: **52 findings closed across 41 PRs** in Waves 0/1/2/3/4/5 (audit dated 2026-05-06; closeout 2026-05-08).
+
+## Trajectory
+
+- **Wave 0** — three Postgres schema migrations (admin idempotency TTL, password history salt+pepper, audit anchor advisory lock).
+- **Waves 1+2** — 12 code lanes closing C1-C5 + ~22 high-severity findings, plus L15 domain cleanup.
+- **Wave 3** — 9 lanes closing the lingering residuals (LB1 mobile isolation, LB2 redaction across 17 vendor sinks, OUTBOX-TX atomic completion, ACTOR-KIND, BIZ-DATE-SEC, RELOCATE, TOKEN-CAP misdiagnosis correction, plus partial closures POOL-ENV + PCACHE-FANOUT).
+- **Wave 4** — 4 lanes closing the Wave 3 partial closures plus two structural items (POOL-ENV-ADOPT, PCACHE-FANOUT-PRODUCERS, TOKEN-CAP-REAL, FF-POLICY-FOLD).
+- **Wave 5** — 4 lanes closing the launch-readiness item LB3 plus three smaller residuals (W5-LB3, W5-DISPATCH cadence half, W5-PKEYS, W5-CSTORE-RELOCATE).
+
+## What carried forward
+
+A handful of items did not close during the remediation. They were consolidated into the project's normal tracking surfaces on 2026-05-08 by the closeout PR:
+
+- **`docs/POST_HARDENING_FOLLOWUPS.md`** — operational, small-bug, architectural-cleanup, latent-risk items.
+- **`docs/phases/phase_11a/phase_11a_decision_register.md`** — AI-paused follow-ups (cost levers, Voyage hardening, `labor_model` rounding).
+- **`docs/phases/phase_8/phase_8_spine_bridge_plan.md`** — watermark transactional discipline (deferred 17-adapter refactor).
+- **`docs/contracts/auth_permission_key_catalog.md`** — pending namespace additions.
+
+The active `/CODE_HEALTH.md` is now a small pointer to those destinations + this archive.
+
+## What this closure means
+
+The remediation effort hit its natural floor:
+- Every original critical bug closed.
+- Every cleanly-fixable contract violation closed.
+- All three launch blockers on master.
+- Remaining items are either paused (AI un-pause), refactor (need their own phase docs), or operational (button-presses outside the codebase).
+
+Closeout PRs:
+- Lane A — consolidate residuals into destination docs (PR opened in parallel).
+- Lane B — replace `/CODE_HEALTH.md` with the closeout pointer + this final closeout entry (this PR).
