@@ -36,7 +36,7 @@ Read this framework with:
 
 - `docs/contracts/slice_runtime_acceptance_contract.md`
 - `docs/PERFORMANCE_FRAMEWORK.md`
-- `runbooks/browser_use_acceptance_harness_runbook.md`
+- `runbooks/browser_use_codex_acceptance_workflow.md` (Codex-driven, out-of-repo)
 - `runbooks/admin_console_browser_qa_runbook.md`
 - the active phase doc for the slice
 
@@ -436,7 +436,7 @@ Authority:
 - docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md
 - docs/PERFORMANCE_FRAMEWORK.md
 - docs/contracts/slice_runtime_acceptance_contract.md
-- runbooks/browser_use_acceptance_harness_runbook.md
+- runbooks/browser_use_codex_acceptance_workflow.md
 - runbooks/admin_console_browser_qa_runbook.md
 - <active phase doc>
 

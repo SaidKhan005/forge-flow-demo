@@ -133,8 +133,9 @@ arrive.
   --strict-docs`, then `dart run tool/migration_cutoff_lint.dart`.
 - Runtime-exposed slices satisfy
   `docs/contracts/slice_runtime_acceptance_contract.md`. Browser-exposed
-  slices use Browser Use evidence per
-  `runbooks/browser_use_acceptance_harness_runbook.md` and full E2E uses
+  slices use Codex-driven Browser Use evidence per
+  `runbooks/browser_use_codex_acceptance_workflow.md` (out-of-repo automation,
+  not a binary in this tree) and full E2E uses
   `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`.
 - Before staging console perf claims:
   `dart run tool/perf_gate/staging_console_probe.dart --run

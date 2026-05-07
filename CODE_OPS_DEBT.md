@@ -107,7 +107,7 @@ operator-staged content.
 
 | Sev | Finding | Ref | Blocker |
 |---|---|---|---|
-| P3 | Browser Use runbook describes manual click-path workflow with table templates and screenshot conventions. **No `tool/browser_use/`, no `test/e2e/`, no harness binary.** | `runbooks/browser_use_acceptance_harness_runbook.md` | needs operator decision: build a real Playwright/Chromium harness (multi-day) or delete the runbook (it promises something we don't have) |
+| ~~P3~~ RESOLVED | Browser Use runbook described manual click-path workflow as if Forge & Flow owned a harness binary. Operator decision: Browser Use is invoked via Codex (out-of-repo), not by anything in this tree. Runbook renamed + rewritten to reflect that. | `runbooks/browser_use_codex_acceptance_workflow.md` (was `browser_use_acceptance_harness_runbook.md`) | resolved — no harness to build; Codex runs the flow |
 | P3 | `slice_runtime_acceptance_contract.md` claims acceptance gate for every runtime slice; **no CI lint, no commit hook, no enforcement.** Operator-honor-system. | `docs/contracts/slice_runtime_acceptance_contract.md` | needs decision: build a CI lint that parses walkthrough docs against a schema (useful if shipping lots of slices), or relax the contract |
 | P3 | 11A.3.x graphify routes return `graph_candidates_not_configured` 503 when bundle isn't on disk. `tool/advisor_proxy/graphify_candidates/candidates/` is empty. **Any deploy without hand-staged bundle is a 503 wall.** | `tool/advisor_proxy/advisor_proxy.dart:11944,12021` | operator-staged content, not a code task. Either ship bundles via deploy automation or accept the 503 wall during dev |
 

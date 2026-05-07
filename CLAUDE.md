@@ -34,7 +34,7 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 - Parallel lanes: Codex on master; Claude in `.claude/worktrees/<lane>`. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 - Between batches: master runs `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md` to audit, lean docs, archive, emit next prompts.
 - After `db/migrations/*.sql` changes: `tool/migration_drift_scanner.dart --fix --strict-docs` then `tool/migration_cutoff_lint.dart`.
-- Runtime acceptance: `docs/contracts/slice_runtime_acceptance_contract.md`; browser slices use `runbooks/browser_use_acceptance_harness_runbook.md`.
+- Runtime acceptance: `docs/contracts/slice_runtime_acceptance_contract.md`; browser slices use `runbooks/browser_use_codex_acceptance_workflow.md` (Codex-driven, out-of-repo — no harness binary lives here).
 - Main chat is read-only across worktrees when worktrees are running. Tracker/memory/coordination edits on master OK.
 - Don't broaden scope. Don't update trackers during implementation unless asked. Report `Links updated: yes/no` if docs move.
 
