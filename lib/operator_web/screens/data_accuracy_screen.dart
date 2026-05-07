@@ -37,6 +37,7 @@ import '../widgets/covers_historical_seed_card.dart';
 import '../widgets/covers_manual_entry_card.dart';
 import '../widgets/covers_source_toggle.dart';
 import '../widgets/data_accuracy_explainer_card.dart';
+import '../widgets/operator_web_summary_strip.dart';
 import '../widgets/polling_tier_status_card.dart';
 import '../widgets/vendor_relativity_label.dart';
 import '../widgets/wage_source_toggle.dart';
@@ -149,6 +150,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   late VendorConnectionsGateway _gateway;
   VendorConnectionsBundle? _bundle;
   bool _loading = true;
+  String? _loadError;
   int _loadGeneration = 0;
 
   // In-memory editable working copy of the settings. Materialized
@@ -181,15 +183,24 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
 
   Future<void> _loadBundle() async {
     final generation = ++_loadGeneration;
-    final bundle = await _gateway.loadBundle(
-      operatorId: widget.session.operatorId,
-      locationId: widget.locationId,
-    );
-    if (!mounted || generation != _loadGeneration) return;
-    setState(() {
-      _bundle = bundle;
-      _loading = false;
-    });
+    try {
+      final bundle = await _gateway.loadBundle(
+        operatorId: widget.session.operatorId,
+        locationId: widget.locationId,
+      );
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _bundle = bundle;
+        _loadError = null;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _loadError = 'Could not load vendor connection context: $error';
+        _loading = false;
+      });
+    }
   }
 
   @override
@@ -199,7 +210,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         oldWidget.locationId != widget.locationId ||
         oldWidget.session.operatorId != widget.session.operatorId) {
       _gateway = widget.gateway ?? InMemoryVendorConnectionsGateway();
-      setState(() => _loading = true);
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
       _loadBundle();
     }
   }
@@ -325,6 +339,9 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       _coversSourceDinner == CoversSource.manual ||
       _coversSourceLateNight == CoversSource.manual;
 
+  bool get _showAnyFallbackCard =>
+      _anyDaypartManual || _showWalkInCard || _showHistoricalSeedCard;
+
   // ── Build ───────────────────────────────────────────────────────
 
   @override
@@ -343,6 +360,44 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           child: CircularProgressIndicator(
             strokeWidth: 2,
             color: AppColors.sunsetDark,
+          ),
+        ),
+      );
+    }
+    if (_loadError != null) {
+      return Center(
+        key: const Key('operator_web_data_accuracy_load_error'),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Data accuracy could not load',
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _loadError!,
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 14),
+                OutlinedButton(
+                  key: const Key('operator_web_data_accuracy_load_retry'),
+                  onPressed: () {
+                    setState(() {
+                      _loading = true;
+                      _loadError = null;
+                    });
+                    _loadBundle();
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -383,6 +438,41 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 20),
+          OperatorWebSummaryStrip(
+            key: const Key('operator_web_data_accuracy_summary'),
+            items: [
+              OperatorWebSummaryItem(
+                icon: Icons.attach_money_outlined,
+                label: 'Labor dollars',
+                value: _wageSourceLabel(_wageSource),
+                helper: 'source for wage cost',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.people_alt_outlined,
+                label: 'Guest counts',
+                value: _coversSummaryLabel(settings),
+                helper: 'lunch, dinner, late night',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.edit_note_outlined,
+                label: 'Fallback cards',
+                value: _showAnyFallbackCard ? 'Shown' : 'Hidden',
+                helper: 'only when needed',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.sync_outlined,
+                label: 'Polling tier',
+                value: tier.tierDisplayLabel,
+                helper: 'managed by F&F',
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          const _DataAccuracyGroupLabel(
+            title: 'Sources',
+            subtitle: 'Pick the preferred system for labor and covers.',
+          ),
+          const SizedBox(height: 10),
           WageSourceToggle(
             value: _wageSource,
             onChanged: _handleWageSourceChanged,
@@ -394,8 +484,15 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             onChanged: _handleCoversSourceChanged,
             bundle: _bundle,
           ),
-          if (_anyDaypartManual) ...[
+          if (_showAnyFallbackCard) ...[
             const SizedBox(height: 14),
+            const _DataAccuracyGroupLabel(
+              title: 'Fallback entries',
+              subtitle: 'Shown only for sources that need manual numbers.',
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (_anyDaypartManual) ...[
             CoversManualEntryCard(
               businessDateIso: widget.businessDateIso,
               yesterdayBusinessDateIso: _yesterdayIso(widget.businessDateIso),
@@ -424,6 +521,11 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             ),
           ],
           const SizedBox(height: 14),
+          const _DataAccuracyGroupLabel(
+            title: 'Monitoring',
+            subtitle: 'Check polling cadence and why each fallback exists.',
+          ),
+          const SizedBox(height: 10),
           PollingTierStatusCard(
             status: tier,
             bundle: _bundle,
@@ -448,6 +550,64 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       out[date] = inner;
     });
     return out;
+  }
+
+  static String _wageSourceLabel(WageSource source) {
+    switch (source) {
+      case WageSource.vendor:
+        return 'Vendor';
+      case WageSource.manualMix:
+        return 'Manual mix';
+    }
+  }
+
+  static String _coversSummaryLabel(DataAccuracySettings settings) {
+    final sources = <CoversSource>{
+      settings.coversSourceLunch,
+      settings.coversSourceDinner,
+      settings.coversSourceLateNight,
+    };
+    if (sources.length == 1) return _coversSourceLabel(sources.first);
+    return '${sources.length} sources';
+  }
+
+  static String _coversSourceLabel(CoversSource source) {
+    switch (source) {
+      case CoversSource.vendor:
+        return 'Vendor';
+      case CoversSource.forecast:
+        return 'Forecast';
+      case CoversSource.manual:
+        return 'Manual';
+    }
+  }
+}
+
+class _DataAccuracyGroupLabel extends StatelessWidget {
+  const _DataAccuracyGroupLabel({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: AppTextStyles.mono12(
+            color: AppColors.textPrimary,
+            weight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          subtitle,
+          style: AppTextStyles.body12(color: AppColors.textSecondary),
+        ),
+      ],
+    );
   }
 }
 

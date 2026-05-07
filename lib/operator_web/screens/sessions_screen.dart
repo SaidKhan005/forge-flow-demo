@@ -47,6 +47,7 @@ import 'package:flutter/material.dart';
 
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_sessions_gateway.dart';
+import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 
 /// Permission-key bound for the Team sessions section.
@@ -133,6 +134,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
   List<WebTeamSessionEntry> _ownSessions = const <WebTeamSessionEntry>[];
   List<WebTeamSessionEntry> _teamSessions = const <WebTeamSessionEntry>[];
   final Set<String> _busySessionIds = <String>{};
+  int _loadGeneration = 0;
   int _idempotencySeq = 0;
 
   @override
@@ -150,23 +152,30 @@ class _SessionsScreenState extends State<SessionsScreen> {
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
       _teamLoadError = null;
     });
     try {
-      final own = await widget.gateway.listOwnSessions();
-      var team = const WebTeamSessionsListed(sessions: <WebTeamSessionEntry>[]);
-      String? teamLoadError;
-      if (widget._canViewTeamSessions) {
-        try {
-          team = await widget.gateway.listTeamSessions();
-        } catch (error) {
-          teamLoadError = _friendlyTeamLoadError(error);
-        }
-      }
-      if (!mounted) return;
+      final results = await Future.wait<Object?>([
+        widget.gateway.listOwnSessions(),
+        widget._canViewTeamSessions
+            ? Future<WebTeamSessionsListed>.sync(
+                    () => widget.gateway.listTeamSessions(),
+                  )
+                  .then<Object?>((value) => value)
+                  .catchError((Object error) => _friendlyTeamLoadError(error))
+            : Future<Object?>.value(null),
+      ]);
+      if (!mounted || generation != _loadGeneration) return;
+      final own = results[0] as WebTeamSessionsListed;
+      final teamResult = results[1];
+      final team = teamResult is WebTeamSessionsListed
+          ? teamResult
+          : const WebTeamSessionsListed(sessions: <WebTeamSessionEntry>[]);
+      final teamLoadError = teamResult is String ? teamResult : null;
       setState(() {
         _ownSessions = own.sessions;
         _teamSessions = team.sessions;
@@ -174,7 +183,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _loadError = _friendlyLoadError(error);
@@ -381,6 +390,40 @@ class _SessionsScreenState extends State<SessionsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _SessionsHeader(),
+          const SizedBox(height: 18),
+          OperatorWebSummaryStrip(
+            key: const Key('operator_web_sessions_summary'),
+            items: [
+              OperatorWebSummaryItem(
+                icon: Icons.person_outline,
+                label: 'Your access',
+                value: _ownSessions.length.toString(),
+                helper: 'active sessions',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.groups_outlined,
+                label: 'Team access',
+                value: widget._canViewTeamSessions
+                    ? _teamSessionsExcludingOwn.length.toString()
+                    : 'Not shown',
+                helper: widget._canViewTeamSessions
+                    ? 'other active sessions'
+                    : 'requires owner/admin access',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.devices_outlined,
+                label: 'This browser',
+                value: widget.currentSessionId == null ? 'Unknown' : 'Marked',
+                helper: 'current session chip',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.refresh_outlined,
+                label: 'Refresh',
+                value: 'On open',
+                helper: 'no background polling',
+              ),
+            ],
+          ),
           const SizedBox(height: 18),
           _SessionsSection(
             sectionKey: const Key('operator_web_sessions_own_section'),

@@ -38,6 +38,7 @@ import '../../services/auth/auth_operations_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_hierarchy_gateway.dart';
 import '../widgets/org_unit_tree_view.dart';
+import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 
 /// Roles admitted to the Hierarchy surface when the proxy permission
@@ -137,6 +138,7 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
   String? _loadError;
   final Set<String> _busyOrgUnitIds = <String>{};
   final Set<String> _busyLocationIds = <String>{};
+  int _loadGeneration = 0;
   int _idempotencySeq = 0;
 
   @override
@@ -146,20 +148,21 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
   }
 
   Future<void> _loadAll() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
       final result = await widget.gateway.listOrgHierarchy(_listCommand());
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _orgUnits = result.orgUnits;
         _locations = result.locations;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _loadError = _friendlyLoadError(error);
@@ -218,14 +221,14 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
       );
       await _loadAll();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Org unit added.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Org unit added.')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyMutationError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyMutationError(error))));
     } finally {
       if (mounted) {
         setState(() => _busyOrgUnitIds.remove(parent.orgUnitId));
@@ -248,10 +251,8 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
     }
     final selected = await showDialog<TeamOrgUnitEntry>(
       context: context,
-      builder: (context) => _MoveLocationDialog(
-        location: location,
-        targets: targets,
-      ),
+      builder: (context) =>
+          _MoveLocationDialog(location: location, targets: targets),
     );
     if (selected == null || !mounted) return;
     setState(() => _busyLocationIds.add(location.locationId));
@@ -268,14 +269,14 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
       );
       await _loadAll();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Location moved.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Location moved.')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyMutationError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyMutationError(error))));
     } finally {
       if (mounted) {
         setState(() => _busyLocationIds.remove(location.locationId));
@@ -384,6 +385,38 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
                 style: AppTextStyles.body12(color: AppColors.textMuted),
               ),
             ),
+          OperatorWebSummaryStrip(
+            key: const Key('operator_web_hierarchy_summary'),
+            items: [
+              OperatorWebSummaryItem(
+                icon: Icons.account_tree_outlined,
+                label: 'Groups',
+                value: _orgUnits.length.toString(),
+                helper: 'regions and districts',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.storefront_outlined,
+                label: 'Locations',
+                value: _locations.length.toString(),
+                helper: 'attached to the tree',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.lock_outline,
+                label: 'Edit mode',
+                value: widget._canMutate ? 'Enabled' : 'Read-only',
+                helper: widget._canMutate
+                    ? 'owner/admin actions visible'
+                    : 'view-only role',
+              ),
+              OperatorWebSummaryItem(
+                icon: Icons.sort_by_alpha_outlined,
+                label: 'Order',
+                value: 'A to Z',
+                helper: 'groups and locations',
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
           OrgUnitTreeView(
             orgUnits: _orgUnits,
             locations: _locations,
@@ -544,9 +577,9 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
     }
     final rawLabel = _label.text.trim();
     final label = rawLabel.isEmpty ? _sanitiseLabel(name) : rawLabel;
-    Navigator.of(context).pop(
-      _AddOrgUnitDraft(unitType: _unitType, label: label, name: name),
-    );
+    Navigator.of(
+      context,
+    ).pop(_AddOrgUnitDraft(unitType: _unitType, label: label, name: name));
   }
 
   /// Squashes a free-text display name into the `a-z, 0-9, underscore`
@@ -589,10 +622,7 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
               ),
               items: const <DropdownMenuItem<String>>[
                 DropdownMenuItem(value: 'region', child: Text('Region')),
-                DropdownMenuItem(
-                  value: 'district',
-                  child: Text('District'),
-                ),
+                DropdownMenuItem(value: 'district', child: Text('District')),
                 DropdownMenuItem(
                   value: 'location_group',
                   child: Text('Location group'),
@@ -650,10 +680,7 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
 }
 
 class _MoveLocationDialog extends StatefulWidget {
-  const _MoveLocationDialog({
-    required this.location,
-    required this.targets,
-  });
+  const _MoveLocationDialog({required this.location, required this.targets});
 
   final TeamOrgLocationEntry location;
   final List<TeamOrgUnitEntry> targets;
@@ -667,9 +694,8 @@ class _MoveLocationDialogState extends State<_MoveLocationDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final sortedTargets = <TeamOrgUnitEntry>[...widget.targets]..sort(
-        (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
-      );
+    final sortedTargets = <TeamOrgUnitEntry>[...widget.targets]
+      ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
     return AlertDialog(
       key: const Key('operator_web_location_move_dialog'),
       title: const Text('Move location'),
@@ -700,8 +726,7 @@ class _MoveLocationDialogState extends State<_MoveLocationDialog> {
                     child: Text('${target.label} (${target.path})'),
                   ),
               ],
-              onChanged: (value) =>
-                  setState(() => _selectedOrgUnitId = value),
+              onChanged: (value) => setState(() => _selectedOrgUnitId = value),
             ),
           ],
         ),

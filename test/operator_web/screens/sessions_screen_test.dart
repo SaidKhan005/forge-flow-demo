@@ -19,6 +19,7 @@
 // Tests rely on the in-memory `DemoWebTeamSessionsGateway` and the
 // shared fixture set so the assertions stay deterministic.
 
+import 'dart:async';
 import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
@@ -191,6 +192,27 @@ void main() {
       expect(
         find.byKey(const Key('operator_web_sessions_load_error')),
         findsNothing,
+      );
+    });
+
+    testWidgets('own and team session lists load in parallel', (tester) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      final gateway = _ConcurrentSessionsGateway();
+      await pumpScreen(
+        tester,
+        session: sessionWithRole('operator_owner'),
+        gateway: gateway,
+      );
+
+      expect(gateway.ownStarted.isCompleted, isTrue);
+      expect(gateway.teamStarted.isCompleted, isTrue);
+      expect(
+        find.byKey(const Key('operator_web_sessions_own_section')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_sessions_team_section')),
+        findsOneWidget,
       );
     });
   });
@@ -451,6 +473,47 @@ class _TeamSessionsUnavailableGateway implements WebTeamSessionsGateway {
       message: 'Team sessions are not routed in this preview.',
       statusCode: 501,
     );
+  }
+
+  @override
+  Future<WebTeamSessionRevoked> revokeSession(
+    WebTeamSessionRevokeCommand command, {
+    required String idempotencyKey,
+  }) {
+    return _delegate.revokeSession(command, idempotencyKey: idempotencyKey);
+  }
+}
+
+class _ConcurrentSessionsGateway implements WebTeamSessionsGateway {
+  _ConcurrentSessionsGateway()
+    : _delegate = DemoWebTeamSessionsGateway(actorUserId: 'demo-user-owner');
+
+  final DemoWebTeamSessionsGateway _delegate;
+  final Completer<void> ownStarted = Completer<void>();
+  final Completer<void> teamStarted = Completer<void>();
+
+  @override
+  Future<WebTeamSessionsListed> listOwnSessions() async {
+    if (!ownStarted.isCompleted) ownStarted.complete();
+    await teamStarted.future.timeout(
+      const Duration(seconds: 1),
+      onTimeout: () {
+        throw StateError('team sessions did not start');
+      },
+    );
+    return _delegate.listOwnSessions();
+  }
+
+  @override
+  Future<WebTeamSessionsListed> listTeamSessions() async {
+    if (!teamStarted.isCompleted) teamStarted.complete();
+    await ownStarted.future.timeout(
+      const Duration(seconds: 1),
+      onTimeout: () {
+        throw StateError('own sessions did not start');
+      },
+    );
+    return _delegate.listTeamSessions();
   }
 
   @override

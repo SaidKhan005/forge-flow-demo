@@ -242,13 +242,11 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
             children: [
               _SectionHeader(
                 icon: Icons.person_outline,
-                title: 'Account and business setup',
+                title: 'My account',
                 subtitle:
-                    'Manage your sign-in details, two-factor security, '
-                    'password, and the terms you accepted when you joined '
-                    'Forge & Flow. These settings cover your operator '
-                    'account; per-location settings live on each location\'s '
-                    'detail page (coming in a later slice).',
+                    'Your profile, sign-in security, password, and accepted '
+                    'terms live here. Business-wide defaults stay on the '
+                    'Business account tab.',
               ),
               const SizedBox(height: 18),
               _ProfileSection(
@@ -395,7 +393,9 @@ class _ProfileSection extends StatelessWidget {
     final fields = <Widget>[
       _ProfileField(
         label: 'Display name',
-        value: session.displayName.isEmpty ? 'Not on file' : session.displayName,
+        value: session.displayName.isEmpty
+            ? 'Not on file'
+            : session.displayName,
       ),
       _ProfileField(
         label: 'Email',
@@ -410,7 +410,9 @@ class _ProfileSection extends StatelessWidget {
       ),
       _ProfileField(
         label: 'Business',
-        value: session.businessName.isEmpty ? 'Not on file' : session.businessName,
+        value: session.businessName.isEmpty
+            ? 'Not on file'
+            : session.businessName,
       ),
     ];
     return _SectionCard(

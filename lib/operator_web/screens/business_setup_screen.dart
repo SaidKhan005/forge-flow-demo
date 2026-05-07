@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/business_timing_gateway.dart';
+import '../widgets/operator_web_summary_strip.dart';
 
 const Set<String> kOperatorWebBusinessTimingEditRoles = <String>{
   'operator_owner',
@@ -204,7 +205,8 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
           if (widget._canEditTiming)
             _TimingEditControls(
               bundle: bundle,
-              onEdit: widget.onEditTiming ??
+              onEdit:
+                  widget.onEditTiming ??
                   () => _showSafeTimingDialog('Edit timing'),
               onSchedule: () => _showSafeTimingDialog('Schedule timing'),
               onReset: bundle.hasLocationOverride
@@ -214,6 +216,8 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
           else
             const _ReadOnlyTimingBanner(),
           const SizedBox(height: 14),
+          _BusinessTimingSummary(bundle: bundle),
+          const SizedBox(height: 14),
           _InheritanceCard(bundle: bundle),
           const SizedBox(height: 14),
           _EffectiveTimingCard(bundle: bundle),
@@ -222,6 +226,54 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         ],
       ),
     );
+  }
+}
+
+class _BusinessTimingSummary extends StatelessWidget {
+  const _BusinessTimingSummary({required this.bundle});
+
+  final BusinessTimingBundle bundle;
+
+  @override
+  Widget build(BuildContext context) {
+    return OperatorWebSummaryStrip(
+      key: const Key('operator_web_business_timing_summary'),
+      items: [
+        OperatorWebSummaryItem(
+          icon: Icons.place_outlined,
+          label: 'Scope',
+          value: bundle.locationName,
+          helper: bundle.hasLocationOverride
+              ? 'location override'
+              : 'inherited',
+        ),
+        OperatorWebSummaryItem(
+          icon: Icons.today_outlined,
+          label: 'Effective',
+          value: bundle.effectiveDateLabel,
+          helper: _fieldValue('Week starts'),
+        ),
+        OperatorWebSummaryItem(
+          icon: Icons.schedule_outlined,
+          label: 'Business day',
+          value: _fieldValue('Business day starts'),
+          helper: 'local time rollover',
+        ),
+        OperatorWebSummaryItem(
+          icon: Icons.timelapse_outlined,
+          label: 'Service periods',
+          value: bundle.servicePeriods.length.toString(),
+          helper: 'used by Shift views',
+        ),
+      ],
+    );
+  }
+
+  String _fieldValue(String label) {
+    for (final field in bundle.effectiveFields) {
+      if (field.label == label) return field.value;
+    }
+    return 'Not set';
   }
 }
 
