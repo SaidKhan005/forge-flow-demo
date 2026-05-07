@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'auth/auth_session.dart';
@@ -104,6 +105,17 @@ class ForgeFlowApp extends StatelessWidget {
         title: 'Forge & Flow',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.themeData,
+        // MP6 — French (Quebec) localization support.
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('en'),
+          Locale('fr'),
+          Locale('fr', 'CA'),
+        ],
         // Phase 10a.UX.1 — wrap the home content in (a) the realtime
         // producer wiring that pipes 10a.UX.0's shared
         // [RealtimeSubscription.events] into the

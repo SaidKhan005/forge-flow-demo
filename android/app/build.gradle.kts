@@ -2,6 +2,8 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("com.google.gms.google-services")
+    // MP1 — Crashlytics Gradle plugin (must come after google-services).
+    id("com.google.firebase.crashlytics")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -33,7 +35,13 @@ android {
     defaultConfig {
         applicationId = "com.forgeflow.app"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        // MP3 — Explicitly pin targetSdk = 34 (Play Store requirement as of
+        // 2024). flutter.targetSdkVersion resolves from the Flutter SDK's
+        // local.properties; we override here so the Play Store requirement
+        // is always met regardless of which Flutter SDK channel CI uses.
+        // Verified: Flutter 3.32.x pins targetSdkVersion=35 in stable;
+        // this explicit override guarantees >= 34 even on older SDK pins.
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

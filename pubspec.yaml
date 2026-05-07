@@ -71,6 +71,19 @@ dependencies:
   web_socket_channel: ^3.0.1
   firebase_messaging: ^16.2.0
   flutter_local_notifications: ^20.1.0
+  # MP1 — Crashlytics crash reporting (V1 launch blocker).
+  firebase_crashlytics: ^5.2.0
+  # MP2 — in-app update / version-compatibility check.
+  url_launcher: ^6.3.0
+  package_info_plus: ^8.1.0
+  # MP4 — iOS push denied recovery: open app settings.
+  app_settings: ^5.1.1
+  # MP5 — Universal Links / App Links deep link handling.
+  app_links: ^6.3.4
+  # MP6 — French (Quebec) localizations.
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.0
 
 dev_dependencies:
   flutter_test:
@@ -113,6 +126,7 @@ flutter_native_splash:
 
 # The following section is specific to Flutter packages.
 flutter:
+  generate: true
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

@@ -1,13 +1,26 @@
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart';
+
 import 'forge_flow_app.dart';
 import 'forge_flow_bootstrap.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_realtime_subscription_watermark_store.dart';
 import 'services/auth/firebase_auth_runtime_bindings.dart';
 import 'services/mobile_push/firebase_mobile_push_runtime.dart';
+import 'services/observability/crash_reporter.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/realtime/web_socket_channel_realtime_transport.dart';
 import 'services/sync/http_sync_proxy_client.dart';
 
 Future<void> main() async {
+  // MP1 — Crashlytics: initialize PII-scrubbing crash reporter once
+  // WidgetsFlutterBinding is ready (Firebase.initializeApp is called
+  // inside createFirebaseAuthRuntimeBindings / bootstrapAndRunApp).
+  // The recorder is a no-op on web and in environments where Firebase
+  // is not initialised.
+  if (!kIsWeb) {
+    CrashReporter.instance.initialize();
+  }
+
   if (const bool.fromEnvironment('FORGE_FLOW_USE_FIREBASE_AUTH')) {
     // Optional dart-define `FORGE_FLOW_PROXY_BASE_URI` (e.g.
     // `https://forge-flow-proxy.run.app`) wires the production
