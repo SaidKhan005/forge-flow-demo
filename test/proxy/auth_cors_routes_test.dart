@@ -98,6 +98,52 @@ void main() {
     });
   });
 
+  test('operator self-service preflight admits operator web origin', () async {
+    await _withRealHttp(() async {
+      final ctx = await _spinUp();
+      try {
+        final cases = <({String path, String method})>[
+          (path: '/v1/operator/account', method: 'PATCH'),
+          (path: '/v1/operator/business-timing-profiles', method: 'POST'),
+          (path: '/v1/operator/notification-preferences', method: 'PUT'),
+          (path: '/v1/auth/mobile/push-token/register', method: 'POST'),
+        ];
+        for (final entry in cases) {
+          final request = await ctx.client.openUrl(
+            'OPTIONS',
+            ctx.baseUri.resolve(entry.path),
+          );
+          request.headers.set('Origin', _operatorWebOrigin);
+          request.headers.set('Access-Control-Request-Method', entry.method);
+          request.headers.set(
+            'Access-Control-Request-Headers',
+            'authorization,content-type,idempotency-key',
+          );
+          request.contentLength = 0;
+          final response = await request.close();
+          expect(
+            response.statusCode,
+            equals(HttpStatus.noContent),
+            reason: entry.path,
+          );
+          expect(
+            response.headers.value('access-control-allow-origin'),
+            equals(_operatorWebOrigin),
+            reason: entry.path,
+          );
+          expect(
+            response.headers.value('access-control-allow-methods') ?? '',
+            contains(entry.method),
+            reason: entry.path,
+          );
+        }
+      } finally {
+        ctx.client.close(force: true);
+        await ctx.server.close(force: true);
+      }
+    });
+  });
+
   test('auth rejection still echoes allowed operator web origin', () async {
     await _withRealHttp(() async {
       final ctx = await _spinUp();
