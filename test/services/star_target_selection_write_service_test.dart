@@ -77,6 +77,61 @@ void main() {
   });
 
   test(
+    'AuthSessionStarTargetSelectionWriter projects server target after select',
+    () async {
+      final client = _RecordingStarTargetSelectionWriteClient();
+      final writer = AuthSessionStarTargetSelectionWriter(
+        client: client,
+        authSessionProvider: () => _session(),
+        clock: () => DateTime.utc(2026, 5, 6, 12),
+        projectionContextProvider:
+            ({required restaurantId, required selectedCandidates}) async {
+              expect(restaurantId, 'restaurant-1');
+              expect(
+                selectedCandidates.map((c) => c.recordKey),
+                contains('new-key'),
+              );
+              return const StarTargetProjectionContext(
+                effectiveStart: '2026-05-06',
+                effectiveEnd: '2026-07-04',
+                calibrationWindowStart: '2026-03-08',
+                calibrationWindowEnd: '2026-05-06',
+                targetCplh: 12.4,
+                targetSplh: 152.0,
+                targetPpa: 42.5,
+                fohWage: 18.0,
+                bohWage: 20.0,
+                opzFloorCplh: 12.0,
+                opzCeilingCplh: 14.0,
+                reason: 'manager selected star target on mobile',
+              );
+            },
+      );
+
+      await writer.replaceSelection(
+        restaurantId: 'restaurant-1',
+        selectedCandidates: <BaselineCandidateShift>[
+          _candidate('new-key', selected: false),
+        ],
+        previouslySelectedCandidates: const <BaselineCandidateShift>[],
+      );
+
+      expect(client.calls, hasLength(1));
+      expect(client.projections, hasLength(1));
+      final projection = client.projections.single;
+      expect(projection.operatorId, 'op-1');
+      expect(projection.locationId, 'loc-1');
+      expect(projection.idempotencyKey, startsWith('mobile-star-project-'));
+      expect(projection.body['restaurant_id'], 'restaurant-1');
+      expect(projection.body['effective_start'], '2026-05-06');
+      expect(
+        (projection.body['standards'] as Map<String, Object?>)['target_cplh'],
+        12.4,
+      );
+    },
+  );
+
+  test(
     'AuthSessionStarTargetSelectionWriter rejects candidate without date',
     () async {
       final writer = AuthSessionStarTargetSelectionWriter(
@@ -153,6 +208,15 @@ class _RecordingStarTargetSelectionWriteClient
           Map<String, Object?> body,
         })
       >[];
+  final projections =
+      <
+        ({
+          String operatorId,
+          String locationId,
+          String idempotencyKey,
+          Map<String, Object?> body,
+        })
+      >[];
 
   @override
   Future<void> submitSelectedStarDecision({
@@ -166,6 +230,21 @@ class _RecordingStarTargetSelectionWriteClient
       operatorId: operatorId,
       locationId: locationId,
       action: action,
+      idempotencyKey: idempotencyKey,
+      body: jsonDecode(jsonEncode(body)) as Map<String, Object?>,
+    ));
+  }
+
+  @override
+  Future<void> submitSelectedStarTargetProjection({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required Map<String, Object?> body,
+  }) async {
+    projections.add((
+      operatorId: operatorId,
+      locationId: locationId,
       idempotencyKey: idempotencyKey,
       body: jsonDecode(jsonEncode(body)) as Map<String, Object?>,
     ));

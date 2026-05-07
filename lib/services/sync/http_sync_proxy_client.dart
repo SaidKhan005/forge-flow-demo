@@ -293,6 +293,31 @@ class HttpSyncProxyClient
   }
 
   @override
+  Future<void> submitSelectedStarTargetProjection({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required Map<String, Object?> body,
+  }) async {
+    try {
+      await _postJson(
+        _locationPath(operatorId, locationId, const <String>[
+          'target_cycles',
+          'project_manager_override',
+        ]),
+        body: body,
+        idempotencyKey: idempotencyKey,
+      );
+    } on SyncProxyClientException catch (error) {
+      throw StarTargetSelectionWriteException(
+        code: error.code,
+        message: error.message,
+        statusCode: error.statusCode,
+      );
+    }
+  }
+
+  @override
   Future<TargetCycleSyncPage> fetchTargetCycles({
     required String operatorId,
     required String locationId,

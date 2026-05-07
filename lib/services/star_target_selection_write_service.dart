@@ -13,6 +13,13 @@ abstract class StarTargetSelectionWriteClient {
     required String idempotencyKey,
     required Map<String, Object?> body,
   });
+
+  Future<void> submitSelectedStarTargetProjection({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required Map<String, Object?> body,
+  });
 }
 
 abstract class BaselineServerSelectionWriter {
@@ -21,6 +28,62 @@ abstract class BaselineServerSelectionWriter {
     required Iterable<BaselineCandidateShift> selectedCandidates,
     required Iterable<BaselineCandidateShift> previouslySelectedCandidates,
   });
+}
+
+typedef StarTargetProjectionContextProvider =
+    Future<StarTargetProjectionContext?> Function({
+      required String restaurantId,
+      required Iterable<BaselineCandidateShift> selectedCandidates,
+    });
+
+class StarTargetProjectionContext {
+  const StarTargetProjectionContext({
+    required this.effectiveStart,
+    required this.effectiveEnd,
+    required this.calibrationWindowStart,
+    required this.calibrationWindowEnd,
+    required this.targetCplh,
+    required this.targetSplh,
+    required this.targetPpa,
+    required this.fohWage,
+    required this.bohWage,
+    required this.opzFloorCplh,
+    required this.opzCeilingCplh,
+    required this.reason,
+  });
+
+  final String effectiveStart;
+  final String effectiveEnd;
+  final String calibrationWindowStart;
+  final String calibrationWindowEnd;
+  final double targetCplh;
+  final double targetSplh;
+  final double targetPpa;
+  final double fohWage;
+  final double bohWage;
+  final double opzFloorCplh;
+  final double opzCeilingCplh;
+  final String reason;
+
+  Map<String, Object?> toBody({required String restaurantId}) {
+    return <String, Object?>{
+      'restaurant_id': restaurantId,
+      'effective_start': effectiveStart,
+      'effective_end': effectiveEnd,
+      'calibration_window_start': calibrationWindowStart,
+      'calibration_window_end': calibrationWindowEnd,
+      'standards': <String, Object?>{
+        'target_cplh': targetCplh,
+        'target_splh': targetSplh,
+        'target_ppa': targetPpa,
+        'foh_wage': fohWage,
+        'boh_wage': bohWage,
+        'opz_floor_cplh': opzFloorCplh,
+        'opz_ceiling_cplh': opzCeilingCplh,
+      },
+      'reason': reason,
+    };
+  }
 }
 
 class StarTargetSelectionWriteException implements Exception {
@@ -46,13 +109,16 @@ class AuthSessionStarTargetSelectionWriter
   AuthSessionStarTargetSelectionWriter({
     required StarTargetSelectionWriteClient client,
     required AuthSession? Function() authSessionProvider,
+    StarTargetProjectionContextProvider? projectionContextProvider,
     DateTime Function()? clock,
   }) : _client = client,
        _authSessionProvider = authSessionProvider,
+       _projectionContextProvider = projectionContextProvider,
        _clock = clock ?? DateTime.now;
 
   final StarTargetSelectionWriteClient _client;
   final AuthSession? Function() _authSessionProvider;
+  final StarTargetProjectionContextProvider? _projectionContextProvider;
   final DateTime Function() _clock;
 
   @override
@@ -103,6 +169,14 @@ class AuthSessionStarTargetSelectionWriter
         action: StarTargetSelectionWriteAction.select,
       );
     }
+    if (selectedByKey.isNotEmpty &&
+        (toSelect.isNotEmpty || toClear.isNotEmpty)) {
+      await _submitProjection(
+        session: session,
+        restaurantId: restaurantId,
+        selectedCandidates: selectedByKey.values,
+      );
+    }
   }
 
   Future<void> _submit({
@@ -135,6 +209,31 @@ class AuthSessionStarTargetSelectionWriter
         businessDate: businessDate,
         action: action,
       ),
+    );
+  }
+
+  Future<void> _submitProjection({
+    required AuthSession session,
+    required String restaurantId,
+    required Iterable<BaselineCandidateShift> selectedCandidates,
+  }) async {
+    final provider = _projectionContextProvider;
+    if (provider == null) return;
+    final selected = selectedCandidates.toList(growable: false);
+    if (selected.isEmpty) return;
+    final context = await provider(
+      restaurantId: restaurantId,
+      selectedCandidates: selected,
+    );
+    if (context == null) return;
+    await _client.submitSelectedStarTargetProjection(
+      operatorId: session.operatorId,
+      locationId: session.locationId,
+      idempotencyKey: _projectionIdempotencyKey(
+        restaurantId: restaurantId,
+        selectedRecordKeys: selected.map((candidate) => candidate.recordKey),
+      ),
+      body: context.toBody(restaurantId: restaurantId),
     );
   }
 
@@ -192,5 +291,17 @@ class AuthSessionStarTargetSelectionWriter
     final digest = crypto.sha1.convert('$restaurantId|$recordKey'.codeUnits);
     final timestamp = _clock().toUtc().microsecondsSinceEpoch;
     return 'mobile-star-${action.name}-${digest.toString().substring(0, 20)}-$timestamp';
+  }
+
+  String _projectionIdempotencyKey({
+    required String restaurantId,
+    required Iterable<String> selectedRecordKeys,
+  }) {
+    final keys = selectedRecordKeys.toList(growable: false)..sort();
+    final digest = crypto.sha1.convert(
+      '$restaurantId|${keys.join('|')}'.codeUnits,
+    );
+    final timestamp = _clock().toUtc().microsecondsSinceEpoch;
+    return 'mobile-star-project-${digest.toString().substring(0, 20)}-$timestamp';
   }
 }

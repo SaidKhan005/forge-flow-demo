@@ -9,6 +9,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/selected_star_shift_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/target_cycle_repository.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
+import 'package:forge_and_flow/services/server_target_cycle_projection_service.dart';
 
 import '../../tool/advisor_proxy/advisor_proxy.dart';
 
@@ -62,6 +63,26 @@ Map<String, Object?> _clearBody() {
     'business_date': '2026-05-06',
     'service_period_key': 'dinner',
     'reason': 'manager cleared star',
+  };
+}
+
+Map<String, Object?> _projectionBody() {
+  return const <String, Object?>{
+    'restaurant_id': _restaurantId,
+    'effective_start': '2026-05-06',
+    'effective_end': '2026-07-04',
+    'calibration_window_start': '2026-03-08',
+    'calibration_window_end': '2026-05-06',
+    'standards': <String, Object?>{
+      'target_cplh': 12.4,
+      'target_splh': 152.0,
+      'target_ppa': 42.5,
+      'foh_wage': 18.0,
+      'boh_wage': 20.0,
+      'opz_floor_cplh': 12.0,
+      'opz_ceiling_cplh': 14.0,
+    },
+    'reason': 'manager selected star target on mobile',
   };
 }
 
@@ -344,6 +365,85 @@ void main() {
       });
     });
 
+    test(
+      'POST manager projection writes target cycle and active profile',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            ctx.gateway.currentRows = <SelectedStarShiftDecisionRow>[
+              _row(
+                decisionType: 'manager_selected',
+                requestHash: 'hash-existing',
+                idempotencyKey: 'idem-existing',
+              ),
+            ];
+            final response = await _httpJson(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '$_baseOperatorLocationPath/$targetCyclesResource/'
+                'project_manager_override',
+              ),
+              method: 'POST',
+              idempotencyKey: 'projection-idem',
+              body: _projectionBody(),
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(ctx.permissionGuard.contexts, hasLength(1));
+            expect(ctx.gateway.projectionCommands, hasLength(1));
+            final command = ctx.gateway.projectionCommands.single;
+            expect(command.restaurantId, _restaurantId);
+            expect(command.effectiveStart, '2026-05-06');
+            expect(command.effectiveEnd, '2026-07-04');
+            expect(command.standards.targetCplh, 12.4);
+            expect(command.actorUserId, _userId);
+            expect(command.idempotencyKey, 'projection-idem');
+
+            final json = jsonDecode(response.body) as Map<String, Object?>;
+            final cycle = json['target_cycle'] as Map<String, Object?>;
+            final profile =
+                json['active_target_profile'] as Map<String, Object?>;
+            final summary =
+                json['selected_star_summary'] as Map<String, Object?>;
+            expect(cycle['source'], 'manager_override');
+            expect(profile['source_type'], 'cycle_manager_override');
+            expect(summary['selected_shift_count'], 1);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('manager projection maps once-per-cycle denial to 409', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          ctx.gateway.denyProjection = true;
+          final response = await _httpJson(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '$_baseOperatorLocationPath/$targetCyclesResource/'
+              'project_manager_override',
+            ),
+            method: 'POST',
+            idempotencyKey: 'projection-denied',
+            body: _projectionBody(),
+          );
+
+          expect(response.statusCode, equals(409));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], 'manager_override_already_used');
+          expect(body['active_cycle_id'], _cycleId);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test('read returns selected-star decisions for sync', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
@@ -559,6 +659,9 @@ class _RecordingSelectedStarGateway implements SelectedStarTargetGateway {
       <ActiveTargetProfilePostgresRow>[];
   List<TargetProfileVersionPostgresRow> targetProfileVersionRows =
       <TargetProfileVersionPostgresRow>[];
+  final List<ServerTargetCycleProjectionCommand> projectionCommands =
+      <ServerTargetCycleProjectionCommand>[];
+  bool denyProjection = false;
   final List<({DateTime updatedAfter, int limit})> updatedSinceCalls =
       <({DateTime updatedAfter, int limit})>[];
   final List<({String restaurantId, int limit})> currentSelectionCalls =
@@ -585,6 +688,32 @@ class _RecordingSelectedStarGateway implements SelectedStarTargetGateway {
       candidateSnapshot: decision.candidateSnapshot,
       recordKey: decision.recordKey,
       reason: decision.reason,
+    );
+  }
+
+  @override
+  Future<ServerTargetCycleProjectionResult>
+  projectManagerOverrideFromCurrentServerSelections({
+    required ServerTargetCycleProjectionCommand command,
+  }) async {
+    projectionCommands.add(command);
+    if (denyProjection) {
+      throw const TargetCycleManagerOverrideAlreadyUsed(
+        _cycleId,
+        _restaurantId,
+      );
+    }
+    return ServerTargetCycleProjectionResult(
+      cycle: _targetCycleRow(
+        source: 'manager_override',
+        managerOverrideUsed: true,
+      ),
+      activeProfile: _activeProfileRow(sourceType: 'cycle_manager_override'),
+      selectedStarSummary: const ServerSelectedStarSummary(
+        selectedShiftCount: 1,
+        recordKeys: <String>['2026-W19|Wednesday|dinner'],
+        decisionIds: <String>['44444444-4444-4444-4444-444444444444'],
+      ),
     );
   }
 
@@ -706,13 +835,17 @@ const String _cycleId = '55555555-5555-5555-5555-555555555555';
 const String _targetProfileId = '66666666-6666-6666-6666-666666666666';
 const String _targetProfileVersionId = '77777777-7777-7777-7777-777777777777';
 
-TargetCyclePostgresRow _targetCycleRow({DateTime? updatedAt}) {
+TargetCyclePostgresRow _targetCycleRow({
+  DateTime? updatedAt,
+  String source = 'recommended',
+  bool managerOverrideUsed = false,
+}) {
   return TargetCyclePostgresRow(
     cycleId: _cycleId,
     operatorId: _operatorId,
     locationId: _locationId,
     restaurantId: _restaurantId,
-    source: 'recommended',
+    source: source,
     effectiveStart: '2026-05-04',
     effectiveEnd: '2026-05-10',
     calibrationWindowStart: '2026-04-20',
@@ -724,9 +857,11 @@ TargetCyclePostgresRow _targetCycleRow({DateTime? updatedAt}) {
     bohWage: 20.0,
     opzFloorCplh: 10.0,
     opzCeilingCplh: 14.0,
-    managerOverrideUsed: false,
-    managerOverrideAt: null,
-    managerOverrideByUserId: null,
+    managerOverrideUsed: managerOverrideUsed,
+    managerOverrideAt: managerOverrideUsed
+        ? DateTime.utc(2026, 5, 6, 18)
+        : null,
+    managerOverrideByUserId: managerOverrideUsed ? _userId : null,
     adminReplacedAt: null,
     adminReplacedByUserId: null,
     supersedesCycleId: null,
@@ -745,7 +880,10 @@ TargetCyclePostgresRow _targetCycleRow({DateTime? updatedAt}) {
   );
 }
 
-ActiveTargetProfilePostgresRow _activeProfileRow({DateTime? updatedAt}) {
+ActiveTargetProfilePostgresRow _activeProfileRow({
+  DateTime? updatedAt,
+  String sourceType = 'cycle_recommended',
+}) {
   return ActiveTargetProfilePostgresRow(
     targetProfileId: _targetProfileId,
     operatorId: _operatorId,
@@ -753,7 +891,7 @@ ActiveTargetProfilePostgresRow _activeProfileRow({DateTime? updatedAt}) {
     restaurantId: _restaurantId,
     targetCycleId: _cycleId,
     targetProfileVersionId: _targetProfileVersionId,
-    sourceType: 'cycle_recommended',
+    sourceType: sourceType,
     targetCplh: 12.0,
     targetSplh: 152.0,
     targetPpa: 42.5,

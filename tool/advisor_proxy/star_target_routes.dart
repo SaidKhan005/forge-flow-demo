@@ -7,6 +7,7 @@
 //   GET  /v1/operators/:operator_id/locations/:location_id/target_profile_versions
 //   POST /v1/operators/:operator_id/locations/:location_id/selected_star_shift_decisions/select
 //   POST /v1/operators/:operator_id/locations/:location_id/selected_star_shift_decisions/clear
+//   POST /v1/operators/:operator_id/locations/:location_id/target_cycles/project_manager_override
 //
 // The route layer owns HTTP validation, request hashing, and idempotency
 // replay. The repository owns the selected-star decision row and audit row.
@@ -14,6 +15,7 @@
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/active_target_profile_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/selected_star_shift_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/target_cycle_repository.dart';
+import 'package:forge_and_flow/services/server_target_cycle_projection_service.dart';
 
 import 'operator_routes.dart'
     show
@@ -96,6 +98,15 @@ class SelectedStarTargetRouter {
         resource: SelectedStarTargetRouteResource.selectedStarShiftDecisions,
       );
     }
+    if (method == 'POST' &&
+        resource == '$targetCyclesResource/project_manager_override') {
+      return SelectedStarTargetRouteMatch(
+        operatorId: operatorId,
+        locationId: locationId,
+        action: SelectedStarTargetRouteAction.projectManagerOverride,
+        resource: SelectedStarTargetRouteResource.targetCycles,
+      );
+    }
     return null;
   }
 
@@ -122,6 +133,7 @@ class SelectedStarTargetRouter {
           );
         case SelectedStarTargetRouteAction.select:
         case SelectedStarTargetRouteAction.clear:
+        case SelectedStarTargetRouteAction.projectManagerOverride:
           return _handleWrite(
             match: match,
             method: method,
@@ -183,6 +195,36 @@ class SelectedStarTargetRouter {
         idempotencyKey: key,
         requestBodyHash: requestHash,
         compute: () async {
+          if (match.action ==
+              SelectedStarTargetRouteAction.projectManagerOverride) {
+            final command = _projectionCommandFromBody(
+              match: match,
+              actorUserId: actorUserId,
+              actorKind: actorKind,
+              idempotencyKey: key,
+              requestHash: requestHash,
+              body: body,
+            );
+            final projection = await _gateway
+                .projectManagerOverrideFromCurrentServerSelections(
+                  command: command,
+                );
+            return (
+              statusCode: 200,
+              body: <String, Object?>{
+                'target_cycle': projection.cycle.toJson(),
+                'active_target_profile': projection.activeProfile.toJson(),
+                'selected_star_summary': <String, Object?>{
+                  'selected_shift_count':
+                      projection.selectedStarSummary.selectedShiftCount,
+                  'selected_record_keys':
+                      projection.selectedStarSummary.recordKeys,
+                  'selection_decision_ids':
+                      projection.selectedStarSummary.decisionIds,
+                },
+              },
+            );
+          }
           final decision = _decisionWriteFromBody(
             match: match,
             actorUserId: actorUserId,
@@ -230,6 +272,17 @@ class SelectedStarTargetRouter {
           'error': rejected.code,
           'message': rejected.message,
           ...rejected.extras,
+        },
+      );
+    } on TargetCycleManagerOverrideAlreadyUsed catch (error) {
+      return SelectedStarTargetRouteResult(
+        statusCode: 409,
+        body: <String, Object?>{
+          'error': 'manager_override_already_used',
+          'message':
+              'Manager override has already been used for this target cycle',
+          'active_cycle_id': error.activeCycleId,
+          'restaurant_id': error.restaurantId,
         },
       );
     } on ArgumentError catch (error) {
@@ -394,7 +447,12 @@ class SelectedStarTargetRouter {
   }
 }
 
-enum SelectedStarTargetRouteAction { read, select, clear }
+enum SelectedStarTargetRouteAction {
+  read,
+  select,
+  clear,
+  projectManagerOverride,
+}
 
 enum SelectedStarTargetRouteResource {
   selectedStarShiftDecisions,
@@ -431,6 +489,11 @@ abstract class SelectedStarTargetGateway {
   Future<SelectedStarShiftDecisionRow> recordDecision({
     required SelectedStarShiftDecisionWrite decision,
     required String actorKind,
+  });
+
+  Future<ServerTargetCycleProjectionResult>
+  projectManagerOverrideFromCurrentServerSelections({
+    required ServerTargetCycleProjectionCommand command,
   });
 
   Future<List<SelectedStarShiftDecisionRow>> listUpdatedSince({
@@ -493,6 +556,25 @@ class RepositorySelectedStarTargetGateway implements SelectedStarTargetGateway {
     required String actorKind,
   }) {
     return repository.recordDecision(decision: decision, actorKind: actorKind);
+  }
+
+  @override
+  Future<ServerTargetCycleProjectionResult>
+  projectManagerOverrideFromCurrentServerSelections({
+    required ServerTargetCycleProjectionCommand command,
+  }) {
+    final targetCycles = targetCycleRepository;
+    final activeProfiles = activeTargetProfileRepository;
+    if (targetCycles == null || activeProfiles == null) {
+      throw StateError(
+        'Target-cycle projection repositories are not configured',
+      );
+    }
+    return ServerTargetCycleProjectionService.postgres(
+      selectedStars: repository,
+      targetCycles: targetCycles,
+      activeProfiles: activeProfiles,
+    ).projectManagerOverrideFromCurrentServerSelections(command: command);
   }
 
   @override
@@ -686,6 +768,53 @@ SelectedStarShiftDecisionWrite _decisionWriteFromBody({
   );
 }
 
+ServerTargetCycleProjectionCommand _projectionCommandFromBody({
+  required SelectedStarTargetRouteMatch match,
+  required String actorUserId,
+  required String actorKind,
+  required String idempotencyKey,
+  required String requestHash,
+  required Map<String, Object?> body,
+}) {
+  final standards =
+      _optionalObject(body, 'standards') ?? const <String, Object?>{};
+  return ServerTargetCycleProjectionCommand(
+    operatorId: match.operatorId,
+    locationId: match.locationId,
+    restaurantId: _requiredString(body, 'restaurant_id'),
+    cycleId: _optionalString(body, 'cycle_id'),
+    effectiveStart: _requiredDateString(body, 'effective_start'),
+    effectiveEnd: _requiredDateString(body, 'effective_end'),
+    calibrationWindowStart: _requiredDateString(
+      body,
+      'calibration_window_start',
+    ),
+    calibrationWindowEnd: _requiredDateString(body, 'calibration_window_end'),
+    standards: ServerTargetStandards(
+      targetCplh: _requiredDouble(standards, body, 'target_cplh'),
+      targetSplh: _requiredDouble(standards, body, 'target_splh'),
+      targetPpa: _requiredDouble(standards, body, 'target_ppa'),
+      fohWage: _requiredDouble(standards, body, 'foh_wage'),
+      bohWage: _requiredDouble(standards, body, 'boh_wage'),
+      opzFloorCplh: _requiredDouble(standards, body, 'opz_floor_cplh'),
+      opzCeilingCplh: _requiredDouble(standards, body, 'opz_ceiling_cplh'),
+    ),
+    actorUserId: actorUserId,
+    managerOverrideAt: _optionalDateTime(body, 'manager_override_at'),
+    managerOverrideByUserId: _optionalString(
+      body,
+      'manager_override_by_user_id',
+    ),
+    adminReplacedAt: _optionalDateTime(body, 'admin_replaced_at'),
+    adminReplacedByUserId: _optionalString(body, 'admin_replaced_by_user_id'),
+    supersedesCycleId: _optionalString(body, 'supersedes_cycle_id'),
+    reason: _optionalString(body, 'reason') ?? 'manager selected star override',
+    idempotencyKey: idempotencyKey,
+    requestHash: requestHash,
+    actorKind: _repositoryActorKind(actorKind),
+  );
+}
+
 int _limitFromQuery(Map<String, String> queryParameters) {
   final raw =
       _trimmed(queryParameters['page_size']) ??
@@ -782,6 +911,22 @@ double? _optionalDouble(Map<String, Object?> body, String key) {
     message: '$key must be a number',
     statusCode: 400,
   );
+}
+
+double _requiredDouble(
+  Map<String, Object?> primary,
+  Map<String, Object?> fallback,
+  String key,
+) {
+  final value = _optionalDouble(primary, key) ?? _optionalDouble(fallback, key);
+  if (value == null) {
+    throw SelectedStarRouteRejected(
+      code: 'missing_$key',
+      message: '$key is required',
+      statusCode: 400,
+    );
+  }
+  return value;
 }
 
 bool? _optionalBool(Map<String, Object?> body, String key) {
