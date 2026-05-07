@@ -34,6 +34,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/realtime/pubsub_realtime_publisher.dart';
+import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/repository_integration_routes_gateway.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
@@ -47,6 +48,7 @@ import 'integration_oauth_routes.dart';
 import 'integration_oauth_state_store.dart';
 import 'log.dart';
 import 'phase_8_production_binder.dart';
+import 'phase_8_test_connection_executor.dart';
 import 'proxy_bootstrap.dart';
 import 'realtime_bridge.dart';
 import 'realtime_route.dart' show RealtimeReplayResult;
@@ -609,23 +611,67 @@ Future<void> main(List<String> args) async {
   // `productionBindings.firstConnectionBackfillEnqueueGateway`. Demo
   // mode skips this — the per-vendor adapter map is empty so the
   // dispatcher always returns 503 oauth_exchange_unconfigured.
-  final operatorOAuthGateway = RepositoryIntegrationRoutesGateway(
-    tenantWrapper: productionBindings.tenantTransactionWrapper,
-    permissionGuard: productionBindings.adminPermissionGuard,
-    credentialEnvelopeKey: productionBindings.pgcryptoEnvelopeKey,
-  );
+  //
+  // Boot order note (8.test-connection-executor-wire-in): the
+  // production [VendorTestConnectionExecutor] needs the validator
+  // map produced by [buildPhase8OperatorOAuthWiring], but the wiring
+  // builder itself takes a `connectionWriter` that delegates to
+  // `RepositoryIntegrationRoutesGateway.connect`. We break the cycle
+  // by:
+  //   1. Building the wiring against a writer that closes over a
+  //      `late` gateway reference (resolved at call time, not at
+  //      build time).
+  //   2. Constructing the executor from the resulting validator map.
+  //   3. Assigning the late `operatorOAuthGateway` with the executor
+  //      threaded in. Subsequent calls to the writer closure resolve
+  //      the now-final gateway instance.
+  late final RepositoryIntegrationRoutesGateway operatorOAuthGateway;
   final operatorOAuthStateStore = PostgresIntegrationOAuthStateStore(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
     adminWrapper: TenantTransactionWrapper(productionBindings.adminPool),
   );
-  final operatorOAuthConnectionWriter = makeIntegrationOAuthConnectionWriter(
-    gateway: operatorOAuthGateway,
-    firstBackfillEnqueueGateway:
-        productionBindings.firstConnectionBackfillEnqueueGateway,
-  );
+  Future<Map<String, Object?>> operatorOAuthConnectionWriter({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String vendorId,
+    required IntegrationCategory category,
+    required String accessTokenPlaintext,
+    String? refreshTokenPlaintext,
+    DateTime? tokenExpiresAt,
+    Map<String, Object?> metadata = const <String, Object?>{},
+    String? webhookUrl,
+    String? module,
+    bool firstBackfillStarted = true,
+  }) {
+    return operatorOAuthGateway.connect(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      vendorId: vendorId,
+      category: category,
+      accessTokenPlaintext: accessTokenPlaintext,
+      refreshTokenPlaintext: refreshTokenPlaintext,
+      tokenExpiresAt: tokenExpiresAt,
+      metadata: metadata,
+      webhookUrl: webhookUrl,
+      module: module,
+      firstBackfillStarted: firstBackfillStarted,
+    );
+  }
   final operatorOAuthWiring = buildPhase8OperatorOAuthWiring(
     proxyConfig: config,
     connectionWriter: operatorOAuthConnectionWriter,
+  );
+  final operatorOAuthTestConnectionExecutor =
+      Phase8IntegrationTestConnectionExecutor(
+    apiKeyValidators: operatorOAuthWiring.apiKeyValidators,
+  );
+  operatorOAuthGateway = RepositoryIntegrationRoutesGateway(
+    tenantWrapper: productionBindings.tenantTransactionWrapper,
+    permissionGuard: productionBindings.adminPermissionGuard,
+    credentialEnvelopeKey: productionBindings.pgcryptoEnvelopeKey,
+    testConnectionExecutor: operatorOAuthTestConnectionExecutor,
   );
   IntegrationOAuthRoutes.globalBindings = _OperatorOAuthRoutesBindingsHolder(
     requestGuard: authGuard,
