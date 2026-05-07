@@ -314,6 +314,18 @@ Specifically:
 
 ### `11A.3.x` Graphify-Assisted Corpus Graph Review
 
+**Status (2026-05-07):** scaffolding shipped (proxy routes + admin UI +
+importer plumbing + typed 503s); the operator-side **candidate bundle
+staging** step is paused under the AI freeze per `PROJECT_TRACKER.md`
+"Paused". Without a hand-staged bundle in
+`tool/advisor_proxy/graphify_candidates/candidates/`, the proxy
+deliberately returns `graph_candidates_not_configured` /
+`graph_candidates_unavailable` 503s with a paused-by-design message.
+First task on AI unpause: stand up the candidate-bundle staging path
+(deploy automation + initial Graphify run) so the routes exit the 503
+wall and the admin review surface lights up. See
+`CODE_OPS_DEBT.md` Theme J#5 for the closeout note.
+
 This is the phase slice where the open-source Graphify repo can feed the
 Forge & Flow advisor graph. It is an admin/review feature, not runtime
 AI behavior.

@@ -92,6 +92,15 @@ Resume notes: `memory/project_phase_pause_2026_05_03.md`,
 | `8.5`, `11W.9` | Outward-vendor freeze |
 | `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart` | Barrio freeze |
 
+**`11A.3.x` graphify-candidates — paused-by-design note (2026-05-07):** the
+graphify candidate review proxy routes (`tool/advisor_proxy/advisor_proxy.dart`
+`graph_candidates_not_configured` / `graph_candidates_unavailable` 503s)
+ship as scaffolding and intentionally 503 without a hand-staged
+`tool/advisor_proxy/graphify_candidates/candidates/` bundle. Confirmed
+operator decision to keep this in the AI-paused set; do **not** build the
+bundle staging automation during the freeze. Resume when `11b` / `11A.3.x`
+unpause; first task on resume is graphify-candidates bundle staging.
+
 ## Prompt Fetch Map
 
 | Slice prefix | Read |
