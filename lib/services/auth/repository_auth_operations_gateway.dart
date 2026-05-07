@@ -798,7 +798,12 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         visibleLocations.map(
           (row) => TeamOrgLocationEntry(
             locationId: row.locationId,
-            parentOrgUnitId: row.parentOrgUnitId,
+            // Schema guarantees `locations.parent_org_unit_id` is NOT NULL
+            // post Phase 9 hierarchy wiring; the row class keeps it
+            // optional defensively, but every persisted row carries a
+            // value at this seam. Fall back to empty string only if the
+            // field is somehow null to avoid throwing in the read path.
+            parentOrgUnitId: row.parentOrgUnitId ?? '',
             orgUnitPath: row.orgUnitPath,
             label: row.name,
           ),

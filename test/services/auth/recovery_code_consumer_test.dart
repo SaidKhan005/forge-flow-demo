@@ -235,7 +235,7 @@ void main() {
         const candidateCount = 10;
         final matchingCode = 'AAAABBBBCCCC';
 
-        Future<int> _timeOne(int matchIndex) async {
+        Future<int> timeOne(int matchIndex) async {
           final pool = _FactorPool(
             rows: _candidateRows(
               count: candidateCount,
@@ -259,14 +259,14 @@ void main() {
         final tailTimes = <int>[];
         // Warm up first to push past JIT noise.
         for (var i = 0; i < 5; i++) {
-          await _timeOne(0);
-          await _timeOne(candidateCount - 1);
+          await timeOne(0);
+          await timeOne(candidateCount - 1);
         }
         for (var i = 0; i < trialsPerScenario; i++) {
           // Interleave so background noise affects both samples
           // similarly.
-          headTimes.add(await _timeOne(0));
-          tailTimes.add(await _timeOne(candidateCount - 1));
+          headTimes.add(await timeOne(0));
+          tailTimes.add(await timeOne(candidateCount - 1));
         }
         headTimes.sort();
         tailTimes.sort();

@@ -117,14 +117,13 @@ void main() {
 }
 
 class _FakeProxyHttpJsonClient implements ProxyHttpJsonClient {
-  _FakeProxyHttpJsonClient({
-    this.response = const ProxyHttpJsonResponse(
-      statusCode: 200,
-      body: <String, Object?>{'ok': true},
-    ),
-  });
+  _FakeProxyHttpJsonClient();
 
-  final ProxyHttpJsonResponse response;
+  static const ProxyHttpJsonResponse _defaultResponse = ProxyHttpJsonResponse(
+    statusCode: 200,
+    body: <String, Object?>{'ok': true},
+  );
+
   final posts = <_CapturedRevokeCall>[];
 
   @override
@@ -134,7 +133,7 @@ class _FakeProxyHttpJsonClient implements ProxyHttpJsonClient {
     required Map<String, Object?> body,
   }) async {
     posts.add(_CapturedRevokeCall(url, headers, body));
-    return response;
+    return _defaultResponse;
   }
 }
 
