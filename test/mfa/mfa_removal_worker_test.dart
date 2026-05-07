@@ -164,6 +164,19 @@ void main() {
         auditRepo.events.first.eventType,
         equals('mfa_factor_revocation_completed'),
       );
+      // ops-debt.actor-kind-audit: the 24-hour MFA removal worker runs
+      // outside any HTTP / SP context and must tag the completion row
+      // 'system' so audit_logs.actor_kind reflects the absence of a
+      // human / SP actor.
+      for (final event in auditRepo.events) {
+        expect(
+          event.actorKind,
+          equals('system'),
+          reason:
+              'MfaRemovalWorker is a legacy worker boundary with no '
+              "actor — every completion row must tag actor_kind='system'",
+        );
+      }
       expect(outbox.enqueued, hasLength(2));
       expect(
         outbox.enqueued.first.topic,
@@ -851,9 +864,14 @@ class _UsersFake extends UsersRepository {
 }
 
 class _AuditEvent {
-  const _AuditEvent({required this.eventType, required this.payload});
+  const _AuditEvent({
+    required this.eventType,
+    required this.actorKind,
+    required this.payload,
+  });
 
   final String eventType;
+  final String actorKind;
   final Map<String, Object?> payload;
 }
 
@@ -867,8 +885,8 @@ class _AuditFake extends AuthEventsAuditRepository {
     required String operatorId,
     required String locationId,
     required String eventType,
+    required String actorKind,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
@@ -877,17 +895,21 @@ class _AuditFake extends AuthEventsAuditRepository {
     String? geoCountry,
     String? requestId,
   }) async {
-    events.add(_AuditEvent(eventType: eventType, payload: payload));
+    events.add(_AuditEvent(
+      eventType: eventType,
+      actorKind: actorKind,
+      payload: payload,
+    ));
     return 'event-${events.length}';
   }
 
   @override
   Future<String> insertSystemEvent({
     required String eventType,
+    required String actorKind,
     String? operatorId,
     String? locationId,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
@@ -897,7 +919,11 @@ class _AuditFake extends AuthEventsAuditRepository {
     String? requestId,
     required String adminReason,
   }) async {
-    events.add(_AuditEvent(eventType: eventType, payload: payload));
+    events.add(_AuditEvent(
+      eventType: eventType,
+      actorKind: actorKind,
+      payload: payload,
+    ));
     return 'event-${events.length}';
   }
 
@@ -908,10 +934,10 @@ class _AuditFake extends AuthEventsAuditRepository {
   Future<String> insertSystemEventOn(
     PostgresExecutor exec, {
     required String eventType,
+    required String actorKind,
     String? operatorId,
     String? locationId,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
@@ -920,7 +946,11 @@ class _AuditFake extends AuthEventsAuditRepository {
     String? geoCountry,
     String? requestId,
   }) async {
-    events.add(_AuditEvent(eventType: eventType, payload: payload));
+    events.add(_AuditEvent(
+      eventType: eventType,
+      actorKind: actorKind,
+      payload: payload,
+    ));
     return 'event-${events.length}';
   }
 }
@@ -934,10 +964,10 @@ class _ThrowingAuditFake extends _AuditFake {
   @override
   Future<String> insertSystemEvent({
     required String eventType,
+    required String actorKind,
     String? operatorId,
     String? locationId,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
@@ -954,10 +984,10 @@ class _ThrowingAuditFake extends _AuditFake {
   Future<String> insertSystemEventOn(
     PostgresExecutor exec, {
     required String eventType,
+    required String actorKind,
     String? operatorId,
     String? locationId,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},

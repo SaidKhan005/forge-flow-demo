@@ -137,9 +137,14 @@ class RepositoryPasswordChangeGateway implements PasswordChangeGateway {
     required String eventType,
     Map<String, Object?> payload = const <String, Object?>{},
   }) async {
+    // User-initiated: password change runs on the HTTP path with the
+    // actor's JWT. The forgot-password / reset-link path uses the
+    // separate `password_reset_*_gateway.dart` boundaries which tag
+    // their own audit rows as 'system'.
     await auditRepository.insertEvent(
       operatorId: command.operatorId,
       locationId: command.locationId,
+      actorKind: 'user',
       actorUserId: command.actorUserId,
       targetUserId: command.actorUserId,
       eventType: eventType,

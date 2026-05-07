@@ -548,8 +548,8 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     required String operatorId,
     required String locationId,
     required String eventType,
+    required String actorKind,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
@@ -565,10 +565,10 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
   @override
   Future<String> insertSystemEvent({
     required String eventType,
+    required String actorKind,
     String? operatorId,
     String? locationId,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},

@@ -1266,10 +1266,18 @@ class AuthEventsAuditAuthLockoutAuditSink implements AuthLockoutAuditSink {
     String? locationId,
     String? actorUserId,
   }) async {
+    // Pre-authentication telemetry: when the bearer token verified the
+    // user (success-path failure modes carry actorUserId), tag the row
+    // as 'user'; the anonymous-failure path lands actorUserId=null and
+    // still gets 'user' attribution per the legacy default — the
+    // fan-out into audit_logs short-circuits when actorUserId is null
+    // because audit_logs_actor_shape_check requires a non-null
+    // actor_user_id when actor_kind='user'.
     await _auditRepository.insertSystemEvent(
       eventType: 'auth.login_failed',
       operatorId: operatorId,
       locationId: locationId,
+      actorKind: 'user',
       actorUserId: actorUserId,
       payload: <String, Object?>{
         'email_hash': emailHashHex,
@@ -1304,6 +1312,7 @@ class AuthEventsAuditAuthLockoutAuditSink implements AuthLockoutAuditSink {
       eventType: 'auth.account_locked',
       operatorId: operatorId,
       locationId: locationId,
+      actorKind: 'user',
       actorUserId: actorUserId,
       payload: <String, Object?>{
         'email_hash': emailHashHex,
@@ -1327,6 +1336,7 @@ class AuthEventsAuditAuthLockoutAuditSink implements AuthLockoutAuditSink {
       eventType: 'auth.mfa_retry_exceeded',
       operatorId: operatorId,
       locationId: locationId,
+      actorKind: 'user',
       actorUserId: actorUserId,
       payload: <String, Object?>{
         'challenge_id_hash': challengeIdHash,
@@ -1344,6 +1354,11 @@ class AuthEventsAuditAuthLockoutAuditSink implements AuthLockoutAuditSink {
   }) async {
     await _auditRepository.insertSystemEvent(
       eventType: 'auth.password_reset_throttled',
+      // Anonymous pre-auth telemetry: no operator scope, no actor.
+      // 'system' is the safe default — fan-out skips because operator
+      // scope is null anyway, and the legacy auth_events_audit row is
+      // preserved.
+      actorKind: 'system',
       payload: <String, Object?>{
         'email_hash': emailHashHex,
         'attempt_count_24h': attemptCountIn24h,
@@ -3409,7 +3424,9 @@ class RepositoryOperatorLocationAdminProxyGateway
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
+    // Admin operator-mgmt path: actor is a verified F&F admin JWT.
     return _auditRepository.insertSystemEvent(
+      actorKind: 'user',
       actorUserId: actorUserId,
       operatorId: operatorId,
       locationId: locationId,
@@ -3780,7 +3797,9 @@ class RepositoryPricingTierAdminProxyGateway
     String? locationId,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
+    // Admin operator-mgmt path: actor is a verified F&F admin JWT.
     return _auditRepository.insertSystemEvent(
+      actorKind: 'user',
       actorUserId: actorUserId,
       operatorId: operatorId,
       locationId: locationId,
@@ -4368,8 +4387,10 @@ class RepositoryDataAccuracyAdminProxyGateway
     String? locationId,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
+    // Admin corpus-mgmt path: actor is a verified F&F admin JWT.
     return _auditRepository.insertSystemEventOn(
       exec,
+      actorKind: 'user',
       actorUserId: actorUserId,
       operatorId: operatorId,
       locationId: locationId,
@@ -4897,7 +4918,9 @@ class RepositoryCorpusAdminProxyGateway implements CorpusAdminProxyGateway {
     required String adminReason,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
+    // Admin path: actor is a verified F&F admin JWT.
     return _auditRepository.insertSystemEvent(
+      actorKind: 'user',
       actorUserId: actorUserId,
       eventType: eventType,
       adminReason: adminReason,
@@ -5544,7 +5567,9 @@ class RepositoryGraphCandidatesProxyGateway
     String? locationId,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
+    // Admin graph-mgmt path: actor is a verified F&F admin JWT.
     return _auditRepository.insertSystemEvent(
+      actorKind: 'user',
       actorUserId: actorUserId,
       operatorId: operatorId,
       locationId: locationId,
@@ -5927,7 +5952,9 @@ class RepositoryIntegrationAdminProxyGateway
     required String adminReason,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
+    // Admin path: actor is a verified F&F admin JWT.
     return _auditRepository.insertSystemEvent(
+      actorKind: 'user',
       actorUserId: actorUserId,
       eventType: eventType,
       adminReason: adminReason,
@@ -6079,6 +6106,7 @@ class RepositoryFeatureFlagsAdminProxyGateway
         // `operator_id NOT NULL`.
         await _auditRepository.insertSystemEventOn(
           exec,
+          actorKind: 'user',
           actorUserId: actorUserId,
           operatorId: row.operatorId,
           locationId: row.locationId,

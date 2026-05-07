@@ -34,6 +34,7 @@ void main() {
           operatorId: _opA,
           locationId: _locA,
           eventType: 'auth.user.signed_in',
+          actorKind: 'user',
           actorUserId: _userA,
         );
         expect(eventId, equals('event-id-1'));
@@ -67,6 +68,7 @@ void main() {
           operatorId: _opA,
           locationId: _locA,
           eventType: 'auth.user.signed_in',
+          actorKind: 'user',
           actorUserId: _userA,
         );
         expect(
@@ -128,6 +130,7 @@ void main() {
         final repo = AuthEventsAuditRepository(TenantTransactionWrapper(pool));
         final eventId = await repo.insertSystemEvent(
           eventType: 'admin.cross_operator_event',
+          actorKind: 'system',
           adminReason: 'cross-tenant admin path',
         );
         expect(eventId, equals('event-id-1'));
@@ -194,6 +197,7 @@ void main() {
           eventType: 'auth.password_reset_requested',
           operatorId: _opA,
           locationId: _locA,
+          actorKind: 'user',
           targetUserId: _userA,
           // actorUserId omitted intentionally — caller has no actor
           // attribution but still wants the legacy row recorded.
@@ -228,6 +232,7 @@ void main() {
           operatorId: _opA,
           locationId: _locA,
           eventType: 'auth.user.signed_in',
+          actorKind: 'user',
           actorUserId: _userA,
         );
         expect(eventId, equals('event-id-1'));
@@ -270,6 +275,7 @@ void main() {
           operatorId: _opA,
           locationId: _locA,
           eventType: 'auth.user.signed_in',
+          actorKind: 'user',
           actorUserId: _userA,
         );
         expect(eventId, equals('event-id-1'));
@@ -296,6 +302,7 @@ void main() {
           operatorId: _opA,
           locationId: _locA,
           eventType: 'auth.user.signed_in',
+          actorKind: 'user',
           actorUserId: _userA,
         );
         final tx = pool.transactions.single;

@@ -1444,9 +1444,15 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
   }) async {
+    // User-initiated: every Team / user-management write on this
+    // gateway runs behind a `/v1/auth/*` HTTP route bound to the
+    // operator-admin / team-admin JWT. Tag the audit row as 'user'
+    // so the actor's identity (JWT subject) carries through to the
+    // hash-chained audit_logs row.
     await auditRepository.insertEvent(
       operatorId: operatorId,
       locationId: locationId,
+      actorKind: 'user',
       actorUserId: actorUserId,
       targetUserId: targetUserId,
       eventType: eventType,

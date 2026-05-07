@@ -437,6 +437,7 @@ void main() {
         operatorId: _validOpId,
         locationId: _validLocId,
         eventType: 'auth.login_succeeded',
+        actorKind: 'user',
         actorUserId: _validUserId,
         targetUserId: _validUserId,
         payload: const <String, Object?>{'method': 'email_password'},

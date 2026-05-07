@@ -106,12 +106,25 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
   /// `event_id`. Caller passes whichever combination of actor /
   /// target / operator / location it has — the schema permits any of
   /// them to be null (e.g. system-issued events have no actor).
+  ///
+  /// [actorKind] is required. Per the CLAUDE.md hard promise
+  /// "audit_logs.actor_kind never NULL", every caller must classify
+  /// the actor explicitly so worker / service-principal driven rows
+  /// cannot silently inherit a `'user'` default and mis-tag the
+  /// audit row. Use `'user'` for HTTP request paths backed by a JWT
+  /// user actor, `'service_principal'` (paired with
+  /// [actorServicePrincipalId] from the SP JWT context) for worker /
+  /// service-principal driven rows, and `'system'` for legacy worker
+  /// / reset boundaries that have no human / SP attribution. The
+  /// shape assertion below pins the SP invariant: a non-null
+  /// [actorServicePrincipalId] requires
+  /// `actorKind == 'service_principal'`.
   Future<String> insertEvent({
     required String operatorId,
     required String locationId,
     required String eventType,
+    required String actorKind,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
@@ -120,6 +133,10 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     String? geoCountry,
     String? requestId,
   }) {
+    _assertActorKindShape(
+      actorKind: actorKind,
+      actorServicePrincipalId: actorServicePrincipalId,
+    );
     final ctx = TenantContext(
       operatorId: operatorId,
       locationId: locationId,
@@ -180,6 +197,61 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     });
   }
 
+  /// Enforces the CLAUDE.md hard promise that
+  /// `audit_logs.actor_kind` is never NULL and never silently
+  /// mis-tagged. The valid kinds are `'user'`, `'service_principal'`,
+  /// and `'system'` — a non-null [actorServicePrincipalId] requires
+  /// `actorKind == 'service_principal'` so worker / SP-driven rows
+  /// cannot land under the legacy `'user'` default.
+  ///
+  /// `'service'` is also accepted for backward compatibility with
+  /// the `audit_logs` CHECK constraint shape (the hash-chained
+  /// `public.audit_logs` enumerates `('user','service')`); the
+  /// fan-out path maps `'service_principal'` to `'service'` when it
+  /// writes the chain row.
+  static void _assertActorKindShape({
+    required String actorKind,
+    required String? actorServicePrincipalId,
+  }) {
+    const allowed = <String>{
+      'user',
+      'service_principal',
+      'service',
+      'system',
+    };
+    if (!allowed.contains(actorKind)) {
+      throw ArgumentError.value(
+        actorKind,
+        'actorKind',
+        "actor_kind must be one of "
+        "'user' / 'service_principal' / 'service' / 'system' — "
+        'audit_logs.actor_kind is non-NULL by contract.',
+      );
+    }
+    final hasSp =
+        actorServicePrincipalId != null && actorServicePrincipalId.isNotEmpty;
+    if (hasSp &&
+        actorKind != 'service_principal' &&
+        actorKind != 'service') {
+      throw ArgumentError.value(
+        actorKind,
+        'actorKind',
+        "actorServicePrincipalId is set but actorKind is "
+        "'$actorKind' — service-principal-driven audit rows must "
+        "pass actorKind: 'service_principal'.",
+      );
+    }
+    if (!hasSp &&
+        (actorKind == 'service_principal' || actorKind == 'service')) {
+      throw ArgumentError.value(
+        actorKind,
+        'actorKind',
+        "actorKind '$actorKind' requires actorServicePrincipalId "
+        "from the SP JWT context.",
+      );
+    }
+  }
+
   /// Phase 9.0Σ.f B.2 — fan-out into `public.audit_logs` (hash-chained
   /// SOC 2 / forensic audit log). No-op in any of these cases:
   ///
@@ -212,24 +284,34 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     required Map<String, Object?> payload,
   }) async {
     if (operatorId == null) return;
-    if (actorKind != 'user' && actorKind != 'service') return;
-    final mappedActorUserId = actorKind == 'user' ? actorUserId : null;
-    final mappedActorPrincipalId = actorKind == 'service' &&
+    // The hash-chained audit_logs CHECK enumerates ('user','service').
+    // Map the gateway-side `service_principal` label (CLAUDE.md hard
+    // promise) onto the chain's `service` label here so the gateway
+    // surface stays explicit ("this row is service-principal driven")
+    // without leaking the chain's wire-format detail upward.
+    final chainActorKind = switch (actorKind) {
+      'user' => 'user',
+      'service_principal' || 'service' => 'service',
+      _ => null,
+    };
+    if (chainActorKind == null) return;
+    final mappedActorUserId = chainActorKind == 'user' ? actorUserId : null;
+    final mappedActorPrincipalId = chainActorKind == 'service' &&
             actorServicePrincipalId != null &&
             actorServicePrincipalId.isNotEmpty
         ? 'sp:$actorServicePrincipalId'
         : null;
-    if (actorKind == 'user' &&
+    if (chainActorKind == 'user' &&
         (mappedActorUserId == null || mappedActorUserId.isEmpty)) {
       return;
     }
-    if (actorKind == 'service' && mappedActorPrincipalId == null) return;
+    if (chainActorKind == 'service' && mappedActorPrincipalId == null) return;
     if (!await _cutoverFlag.isEnabled(exec)) return;
     await _auditLogsRepository.writeRow(
       exec,
       operatorId: operatorId,
       locationId: locationId,
-      actorKind: actorKind,
+      actorKind: chainActorKind,
       actorUserId: mappedActorUserId,
       actorPrincipalId: mappedActorPrincipalId,
       targetKind: targetUserId != null ? 'user' : null,
@@ -248,10 +330,10 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
   /// fake [TenantContext].
   Future<String> insertSystemEvent({
     required String eventType,
+    required String actorKind,
     String? operatorId,
     String? locationId,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
@@ -261,6 +343,10 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     String? requestId,
     required String adminReason,
   }) {
+    _assertActorKindShape(
+      actorKind: actorKind,
+      actorServicePrincipalId: actorServicePrincipalId,
+    );
     return withSystem<String>((exec) async {
       return insertSystemEventOn(
         exec,
@@ -290,10 +376,10 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
   Future<String> insertSystemEventOn(
     PostgresExecutor exec, {
     required String eventType,
+    required String actorKind,
     String? operatorId,
     String? locationId,
     String? actorUserId,
-    String actorKind = 'user',
     String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
@@ -302,6 +388,10 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     String? geoCountry,
     String? requestId,
   }) async {
+    _assertActorKindShape(
+      actorKind: actorKind,
+      actorServicePrincipalId: actorServicePrincipalId,
+    );
     final rows = await exec.query(
       'insert into auth_events_audit ('
       'actor_user_id, actor_kind, actor_service_principal_id, '
