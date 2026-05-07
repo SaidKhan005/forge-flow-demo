@@ -11,9 +11,9 @@ Origin: 2026-05-02 deep audit.
 
 ## P0 — Production1 Migration Apply Gap
 
-**20 migrations pending Production1 apply** (chronological). 18 are
-already staging-verified; the last 2 need an explicit operator decision
-before staging-apply + Production1-apply runs.
+**28 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605081000_outbox_notify_channel_split.sql`; staging/preview
+apply evidence must stay attached to the runbook before any Production1 apply.
 
 | Migration | Origin | Staging |
 |---|---|---|
@@ -38,9 +38,16 @@ before staging-apply + Production1-apply runs.
 | `202605080200_phase_8_wage_role_rows_server_truth.sql` | Phase 8 wage-role row server truth | code-ready |
 | `202605080300_phase_8_data_accuracy_walk_in_settings.sql` | Phase 8 walk-in handling additive fields | code-ready |
 | `202605080400_phase_8_connector_oauth_state.sql` | Phase 8 connector OAuth CSRF/PKCE state table | code-ready |
+| `202605080500_permission_cache_invalidation_channel.sql` | Auth permission cache invalidation NOTIFY channel | code-ready |
+| `202605080600_ops_debt_vendor_credentials_webhook_signing_secret.sql` | Webhook signing secret column separate from OAuth bearer ciphertext | code-ready |
+| `202605080600_phase_8_demo_pending_counter_persisted.sql` | Persist demo-mode pending insert counters across pods | code-ready |
 | `202605080600_phase_8_idempotency_location_id_rekey.sql` | A1 idempotency rekey: add location_id, switch to vendor_modified_at >= guard | code-ready |
+| `202605080700_audit_anchor_cron_unpause.sql` | Audit-anchor cron unpause / scheduling follow-up | code-ready |
+| `202605080800_auth_permission_version.sql` | Auth permission-version invalidation column/index | code-ready |
+| `202605080900_oauth_refresh_advisory_lock.sql` | OAuth refresh advisory-lock registry row | code-ready |
+| `202605081000_outbox_notify_channel_split.sql` | Split outbox NOTIFY channels for bounded consumers | code-ready |
 
-**Action:** apply all 22 in next Production1 event per
+**Action:** apply all 28 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

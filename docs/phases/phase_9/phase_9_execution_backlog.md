@@ -144,10 +144,14 @@ Do not re-open stale findings unless the repo regresses:
   A1 idempotency rekey then queues
   `202605080600_phase_8_idempotency_location_id_rekey.sql` to add
   `location_id` to the fact/webhook idempotency keys and switch all 17
-  vendor sinks to a DO UPDATE WHERE `vendor_modified_at >=` guard.
+  vendor sinks to a DO UPDATE WHERE `vendor_modified_at >=` guard. The
+  follow-up queue now continues through
+  `202605081000_outbox_notify_channel_split.sql` for permission-cache,
+  webhook-secret, demo-counter, audit-anchor, auth-version,
+  OAuth-refresh-lock, and outbox NOTIFY split hardening.
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605080600_phase_8_idempotency_location_id_rekey.sql`.
+  `202605081000_outbox_notify_channel_split.sql`.
 
 ## Remaining Live-Closeout Gates
 
