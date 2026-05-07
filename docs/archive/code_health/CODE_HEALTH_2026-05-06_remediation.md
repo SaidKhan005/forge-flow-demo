@@ -279,4 +279,29 @@ A second remediation wave landed nine parallel lanes against the residuals from 
 
 ## Wave 3 closeout PR
 
-- [#286](https://github.com/SaidKhan005/forge-flow-demo/pull/286) — placeholder; this archive PR records the Wave 3 closures and trims `/CODE_HEALTH.md` to remove the now-closed items.
+- [#345](https://github.com/SaidKhan005/forge-flow-demo/pull/345) — archive PR that recorded the Wave 3 closures and trimmed `/CODE_HEALTH.md` to remove the now-closed items.
+
+---
+
+# Wave 4 closures (2026-05-07)
+
+A fourth remediation wave landed four parallel lanes against the residuals from Wave 3 (the two partial-closures + two of the still-open structural concerns). All four closed cleanly.
+
+## Closed via Wave 4
+
+| Finding | PR | Lane |
+|---|---|---|
+| Postgres pool size env override **adoption gap** — `resolvePostgresMaxConnectionsPerPool()` resolver landed in [#290](https://github.com/SaidKhan005/forge-flow-demo/pull/290) but pool-factory call sites still hardcoded the const. Wave 4 wired the resolver into 5 production pool-factory call sites: `oauth_refresh_worker/main.dart`, `audit_anchor/main.dart`, `first_connect_backfill_worker/main.dart`, `proxy_bootstrap.dart` (two sites), `cutover/preflight_smoke.dart`. `POSTGRES_POOL_MAX_CONNECTIONS` env override now actually takes effect. | [#347](https://github.com/SaidKhan005/forge-flow-demo/pull/347) | POOL-ENV-ADOPT |
+| Permission cache cross-instance invalidation **producer gap** — listener wired in [#292](https://github.com/SaidKhan005/forge-flow-demo/pull/292) but no production code published to the channel. Wave 4 emits `pg_notify('permission_cache_invalidate', @payload)` at all 4 permission-mutating write sites (`user_roles_repository.dart`: `insertGrant`, `revokeGrant`, `bumpActiveGrantHoldersForRole` — fans out one NOTIFY per affected user via `RETURNING user_id`; `users_repository.dart`: `bumpRolesVersion`). All emits inside the `withTenant`/`withSystem` transaction so NOTIFY is atomic with the write. Parameter-bound JSON, never concatenated. Cross-instance cache invalidation is now end-to-end. | [#349](https://github.com/SaidKhan005/forge-flow-demo/pull/349) | PCACHE-FANOUT-PRODUCERS |
+| **No per-request token cap on outbound LLM calls** — recorded as a residual after Wave 3's TOKEN-CAP misdiagnosis correction. Wave 4 added a hard cap of 100k tokens (env-overridable via `MAX_TOKENS_PER_REQUEST`, upper bound 1M) on outbound LLM dispatch in `advisor_proxy.dart`. HTTP 413 + `request_too_large` error returns both the estimate and the cap so clients can shrink. Single insertion point covers both wired-pipeline and unwired-fallback paths; cap is independent of `PolicyTier.maxRequestTokens` so misconfigured deploys can't bypass. | [#348](https://github.com/SaidKhan005/forge-flow-demo/pull/348) | TOKEN-CAP-REAL |
+| `feature_flags` policy `OR (operator_id IS NULL …)` can't fold into the tenant-leading index — Wave 4 introduced sentinel UUID `00000000-...` via `feature_flag_scope_sentinels` constants table + a `STABLE LEAKPROOF PARALLEL SAFE` reader function. RLS policy rewritten without `IS NULL` so the tenant-leading index folds. Existing system-wide rows backfilled; `operator_id NOT NULL` set via `NOT VALID` + `VALIDATE`. Four call-site swaps (one over the soft cap; agent flagged each was a mechanical one-line predicate change that couldn't be skipped). | [#350](https://github.com/SaidKhan005/forge-flow-demo/pull/350) | FF-POLICY-FOLD |
+
+## Wave 4 lane discoveries worth noting
+
+- **POOL-ENV adoption found a stragger.** The forbidden file `tool/integration_sync_worker/main.dart:1109` (owned by the parallel onboarding lane) still hardcodes `kPostgresDefaultMaxConnectionsPerPool`. Flagged in the lane's PR body for the parallel lane to pick up.
+- **TOKEN-CAP-REAL found a second `UsageEstimate` site that doesn't dispatch.** Line 8773 (`/v1/usage/smoke`) is a usage-counter smoke test that doesn't dispatch LLM, so no cap needed. The cap insertion at line 8964 covers both real dispatch paths (wired pipeline + unwired fallback).
+- **FF-POLICY-FOLD needed a synthetic operators row.** The existing `feature_flags.operator_id -> operators(operator_id)` FK forced the migration to seed an operators row at the sentinel UUID before the backfill, so the FK accepts the new value. Documented in the migration header.
+
+## Wave 4 closeout PR
+
+- This archive PR — records Wave 4 closures and trims `/CODE_HEALTH.md` to remove the now-closed items.
