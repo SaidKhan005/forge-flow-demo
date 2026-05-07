@@ -27,7 +27,7 @@ LB1 (mobile per-operator isolation) and LB2 (vendor sync log redaction) closed i
 These remained open after Waves 0/1/2/3/4:
 
 - **Cost-discipline levers unwired** — caps still 402-fail with no model-downgrade / compression / context-trim / batching / semantic-cache fallback chain.
-- **Two-slot key vs counter-store granularity mismatch** — `usage_logs` keys broader than the in-memory counter store's (operator, location, tier, minute_bucket). NOTE: `ProxyUsageCounterStore` was renamed or relocated on master between Wave 4 and 2026-05-08; the residual concern is real but the new file:line cite needs a re-locate before being re-pinned.
+- **Two-slot key vs counter-store granularity mismatch** — `usage_logs` keys broader than the counter store, which keys only on (operator, location, tier, minute_bucket). The runtime interface `ProxyUsageCounterStore` still lives at `tool/advisor_proxy/advisor_proxy.dart:2418`; the concrete Postgres-backed seam was extracted to `AdvisorProxyUsageCounterStore` at `lib/infrastructure/persistence/postgres/advisor_proxy_usage_counter_store.dart:57` (with `proxy_bootstrap.dart:1396` adapting it to the runtime interface). The unique constraint is `(operator_id, location_id, tier_id, minute_bucket)` — same shape, finer billing rows in `usage_logs` aggregate beyond it, so two restaurants on the same operator can still fight over the same rate-limit bucket.
 - **Audit anchor cron unpause** — operational change (Cloud Scheduler), not code. Worker code is ready.
 - **Worker watermark not transactional with adapter writes** (`dispatch.dart:236`). Hot file (parallel onboarding lane).
 - **Cadence resolver's resolved value discarded** (`dispatch.dart:373`) — tier assignments observability-only. Hot file (parallel onboarding lane).
