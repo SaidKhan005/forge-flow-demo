@@ -15,12 +15,14 @@ class BusinessSetupScreen extends StatefulWidget {
     super.key,
     required this.session,
     required this.locationId,
+    this.locationName,
     this.gateway,
     this.onEditTiming,
   });
 
   final OperatorWebSession session;
   final String locationId;
+  final String? locationName;
   final BusinessTimingGateway? gateway;
 
   /// When non-null, the read view exposes an "Edit timing" button
@@ -91,6 +93,8 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
   }
 
   String _locationName() {
+    final provided = widget.locationName?.trim();
+    if (provided != null && provided.isNotEmpty) return provided;
     if (widget.locationId == widget.session.primaryLocationId) {
       return widget.session.primaryLocationName;
     }

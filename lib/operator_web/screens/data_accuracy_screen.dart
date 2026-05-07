@@ -100,6 +100,7 @@ class DataAccuracyScreen extends StatefulWidget {
     super.key,
     required this.session,
     required this.locationId,
+    this.locationName,
     this.gateway,
     this.initialSettings,
     this.businessDateIso = '2026-05-05',
@@ -111,6 +112,7 @@ class DataAccuracyScreen extends StatefulWidget {
 
   final OperatorWebSession session;
   final String locationId;
+  final String? locationName;
 
   /// Optional gateway — falls back to an in-memory gateway when
   /// omitted (demo / widget tests).
@@ -425,9 +427,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     }
     final tier = widget.tierStatus ?? _kDefaultStandardTier(_bundle);
     final settings = _materialize();
-    final locationLabel = widget.locationId == widget.session.primaryLocationId
-        ? widget.session.primaryLocationName
-        : 'this location';
+    final locationLabel = _locationLabel();
     return SingleChildScrollView(
       key: const Key('operator_web_data_accuracy_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -557,6 +557,15 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         ],
       ),
     );
+  }
+
+  String _locationLabel() {
+    final provided = widget.locationName?.trim();
+    if (provided != null && provided.isNotEmpty) return provided;
+    if (widget.locationId == widget.session.primaryLocationId) {
+      return widget.session.primaryLocationName;
+    }
+    return 'this location';
   }
 
   static Map<String, Map<Daypart, int>> _seedToDaypartMap(

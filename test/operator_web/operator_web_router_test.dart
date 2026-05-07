@@ -149,6 +149,7 @@ void main() {
         addTearDown(source.dispose);
 
         await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
+        await tester.pumpAndSettle();
 
         expect(
           find.byKey(const Key('operator_web_shell_scaffold')),
@@ -156,6 +157,10 @@ void main() {
         );
         expect(
           find.byKey(const Key('operator_web_header_bar')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_management_scope_picker')),
           findsOneWidget,
         );
         expect(find.byKey(const Key('operator_web_side_nav')), findsOneWidget);
@@ -256,6 +261,51 @@ void main() {
         find.byKey(const Key('operator_web_account_screen')),
         findsNothing,
       );
+    });
+
+    testWidgets('management picker drives location-scoped vendor route', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final source = DemoOperatorWebAuthSource.completed();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialNavId: kOperatorWebNavVendorConnections,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_management_scope_picker')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Downtown').last);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Manage the services connected to Downtown.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_management_scope_picker')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('All locations').last);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('operator_web_vendor_connections_requires_location'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Currently managing: All locations'), findsOneWidget);
     });
 
     testWidgets('side nav switches body to business setup screen', (

@@ -751,7 +751,7 @@ class _OperatorDetail extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 AdminDetailRow(
-                  label: 'Owner email',
+                  label: 'Contact email',
                   value: operator.ownerEmail,
                 ),
                 AdminDetailRow(
@@ -1560,7 +1560,9 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
                 _DialogField(
                   fieldKey: const Key('admin_onboard_owner_email'),
                   controller: _ownerEmail,
-                  label: 'Owner email',
+                  label: 'Contact email',
+                  helperText:
+                      'Business contact for records. This does not create console access.',
                   keyboardType: TextInputType.emailAddress,
                   validator: _requiredValidator,
                 ),
@@ -1568,7 +1570,9 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
                 _DialogField(
                   fieldKey: const Key('admin_onboard_admin_email'),
                   controller: _adminEmail,
-                  label: 'Admin user email',
+                  label: 'Owner login email',
+                  helperText:
+                      'Invite is sent here. This is the person who signs in.',
                   keyboardType: TextInputType.emailAddress,
                   validator: _requiredValidator,
                 ),
@@ -1711,7 +1715,9 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
                 _DialogField(
                   fieldKey: const Key('admin_edit_owner_email'),
                   controller: _ownerEmail,
-                  label: 'Owner email',
+                  label: 'Contact email',
+                  helperText:
+                      'Updates business contact only. Team access is managed from Members.',
                   keyboardType: TextInputType.emailAddress,
                   validator: _requiredValidator,
                 ),
@@ -1919,6 +1925,7 @@ class _DialogField extends StatelessWidget {
     required this.fieldKey,
     required this.controller,
     required this.label,
+    this.helperText,
     this.keyboardType,
     this.validator,
   });
@@ -1926,6 +1933,7 @@ class _DialogField extends StatelessWidget {
   final Key fieldKey;
   final TextEditingController controller;
   final String label;
+  final String? helperText;
   final TextInputType? keyboardType;
   final FormFieldValidator<String>? validator;
 
@@ -1943,7 +1951,9 @@ class _DialogField extends StatelessWidget {
       style: AppTextStyles.body14(color: AppColors.textPrimary),
       decoration: InputDecoration(
         labelText: label,
+        helperText: helperText,
         labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
+        helperMaxLines: 2,
         floatingLabelStyle: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
         filled: true,
         fillColor: AppColors.backgroundSurface,
