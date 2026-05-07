@@ -1,7 +1,7 @@
 # Admin/Web Setting Sync Closeout
 
 Date: 2026-05-07
-Baseline: `origin/master` at `56afe4d11a1144596ae14d0288c17af0a1d04749`
+Baseline: `origin/master` at `537d5319`
 Scope: Doc 1 admin/web setting sync inventory and truth closeout only.
 Change type: documentation/tracker truth; no code changes.
 
@@ -22,7 +22,10 @@ Evidence read:
 - `docs/_execution/2026-05-07_mobile_business_scope_invalidation_proof.md`
 - `docs/_execution/2026-05-07_mobile_reservation_demand_settings_sync_proof.md`
 - `docs/_execution/2026-05-07_mobile_data_accuracy_service_period_sync_proof.md`
+- `docs/_execution/2026-05-07_operator_web_data_accuracy_live_sync_proof.md`
 - `docs/_execution/2026-05-07_mobile_wage_role_rows_sync_proof.md`
+- `docs/_execution/2026-05-07_mobile_core_connected_device_simulated_e2e_proof.md`
+- `docs/_execution/2026-05-07_mobile_push_preflight_proof.md`
 - `docs/_execution/2026-05-07_operator_web_contact_context_picker.md`
 - `docs/_execution/2026-05-07_admin_console_business_team_access_polish.md`
 
@@ -40,7 +43,7 @@ rollup acceptance.
 | --- | --- | --- | --- |
 | Demo mode state | Implemented | Mobile pulls server-owned demo mode state through the operational sync surface. | `docs/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md`; `test/proxy/mobile_operational_sync_routes_test.dart`; `test/services/sync/postgres_shift_record_to_mobile_sync_test.dart` |
 | Polling tier assignment | Implemented | Mobile pulls `forge_flow_polling_tier_assignment` as a server-owned read model; mobile remains read-only. | `docs/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md`; `test/services/sync/postgres_shift_record_to_mobile_sync_test.dart` |
-| Base data accuracy settings | Implemented | Operator/admin data accuracy settings, including walk-in reservation handling, persist as server truth and flow to mobile. | `docs/_execution/2026-05-07_mobile_reservation_demand_settings_sync_proof.md`; `test/proxy/data_accuracy_admin_routes_test.dart`; `test/operator_web/screens/data_accuracy_screen_test.dart`; `test/services/sync/postgres_shift_record_to_mobile_sync_test.dart` |
+| Base data accuracy settings | Implemented | Operator/admin data accuracy settings, including walk-in reservation handling, persist as server truth and flow to mobile. Operator Web now reads and writes the base settings through scoped live proxy routes instead of demo/injected settings. | `docs/_execution/2026-05-07_mobile_reservation_demand_settings_sync_proof.md`; `docs/_execution/2026-05-07_operator_web_data_accuracy_live_sync_proof.md`; `test/proxy/data_accuracy_admin_routes_test.dart`; `test/operator_web/screens/data_accuracy_screen_test.dart`; `test/operator_web/services/operator_web_data_accuracy_gateway_test.dart`; `test/services/sync/postgres_shift_record_to_mobile_sync_test.dart` |
 | Keyed data accuracy service-period settings | Partially implemented | Mobile read sync and invalidation are proven for `data_accuracy_service_period_settings`; admin/operator-web keyed write implementation was explicitly not run. | `docs/_execution/2026-05-07_mobile_data_accuracy_service_period_sync_proof.md`; `test/proxy/mobile_operational_sync_routes_test.dart`; `test/services/sync/http_sync_proxy_client_test.dart` |
 | Wage source, wage mix, and role/job-code rows | Partially implemented | Server-owned `wage_role_rows` and mobile read/cache replacement are proven; admin/operator-web edit surfaces and successful write proof are not claimed. | `docs/_execution/2026-05-07_mobile_wage_role_rows_sync_proof.md`; `db/migrations/202605080200_phase_8_wage_role_rows_server_truth.sql`; `test/services/sync/postgres_shift_record_to_mobile_sync_test.dart` |
 | Selected star shifts, target cycles, and active target profiles | Implemented | Server-owned selected-star decisions, target cycle projection, active target profile projection, proxy routes, idempotency, permission handling, and mobile mirror sync are accepted. | `docs/_execution/2026-05-06_8_star_target_truth_proof.md`; `docs/_execution/2026-05-07_mobile_star_target_projection_route_proof.md`; `test/proxy/selected_star_target_routes_test.dart`; `test/services/star_target_selection_write_service_test.dart` |
@@ -49,9 +52,9 @@ rollup acceptance.
 | Business scope access and admin org/location changes | Partially implemented | Location-level scope selection, flat location projection, drawer search, and stale-access invalidation are proven; group/region/company rollup truth remains future server work. | `docs/_execution/2026-05-07_mobile_business_scope_selector_proof.md`; `docs/_execution/2026-05-07_mobile_scope_flat_location_search_proof.md`; `docs/_execution/2026-05-07_mobile_business_scope_invalidation_proof.md`; `test/proxy/business_scope_routes_test.dart`; `test/services/sync/mobile_operational_sync_runtime_test.dart` |
 | Operator Web management context | Partially implemented | Operator Web can choose business/group/location management context and routes location-scoped tabs through the selected location; business/group scopes intentionally show stops on location-only surfaces. | `docs/_execution/2026-05-07_operator_web_contact_context_picker.md`; `test/operator_web/operator_web_router_test.dart`; `test/operator_web` |
 | Admin business/team/access polish | Implemented for the admin UX slice | Admin console business/team/access surfaces have verified polish and Team display-name audited write coverage; this is not a substitute for missing timing or wage-role setting editors. | `docs/_execution/2026-05-07_admin_console_business_team_access_polish.md`; `test/admin`; `test/proxy_auth_operations_route_test.dart` |
-| Connected-device E2E proof | Still future/operator-blocked | Not run in the 2026-05-07 proof docs; requires a physical or emulator device bound to the real proxy/mobile SQLite flow. | `docs/_execution/2026-05-07_mobile_core_doc1_closeout_status.md` |
+| Connected-device E2E proof | Still future/operator-blocked | Simulated first-connect/device proof is documented; final acceptance requires a physical or emulator device bound to the real proxy/mobile SQLite flow. | `docs/_execution/2026-05-07_mobile_core_connected_device_simulated_e2e_proof.md`; `docs/_execution/2026-05-07_mobile_core_doc1_closeout_status.md` |
 | Live provider proof | Still future/operator-blocked | Per-vendor live proof remains gated on sandbox/live credentials and explicit operator approval. | `PROJECT_TRACKER.md`; `docs/_execution/2026-05-07_mobile_core_doc1_closeout_status.md` |
-| Push notification proof | Still future/operator-blocked | Code-ready push work exists, but staging/production proof remains gated and out of this Doc 1 settings closeout. | `PROJECT_TRACKER.md`; `docs/_execution/2026-05-07_mobile_core_doc1_closeout_status.md` |
+| Push notification proof | Still future/operator-blocked | Code/config preflight is documented, but staging Firebase apply, controlled send, device foreground/background proof, and production proof remain gated. | `PROJECT_TRACKER.md`; `docs/_execution/2026-05-07_mobile_push_preflight_proof.md`; `docs/_execution/2026-05-07_mobile_core_doc1_closeout_status.md` |
 | Tier-M pressure suite | Still future/cutover-owned | Larger pressure proof belongs to `cutover.0b.tier-m-perf-gate`, not this admin/web setting sync closeout. | `PROJECT_TRACKER.md`; `docs/_execution/2026-05-07_mobile_core_doc1_closeout_status.md` |
 
 ## Remaining Narrow Remediation Slices
