@@ -59,8 +59,73 @@ void main() {
     );
 
     test(
-      'confirm TOTP finalizes then looks up the enrolled factor id',
+      'confirm TOTP reads factor id from finalize response — no accounts:lookup',
       () async {
+        // CODE_HEALTH L11 race fix: the finalize response itself carries
+        // the freshly-enrolled factor. Reading from the response avoids the
+        // parallel-enrollment race in `accounts:lookup` (which could return
+        // a sibling factor's id when two enrollments race).
+        final httpClient = _RecordingHttpClient(<_FakeResponse>[
+          const _FakeResponse(<String, Object?>{
+            'idToken': 'updated-user-id-token',
+            'refreshToken': 'updated-refresh-token',
+            'mfaInfo': <Object?>[
+              <String, Object?>{
+                'mfaEnrollmentId': 'new-totp-factor',
+                'displayName': 'Forge & Flow',
+                'enrolledAt': '2026-04-28T12:01:00Z',
+                'totpInfo': <String, Object?>{},
+              },
+            ],
+          }),
+        ]);
+        final client = IdentityToolkitFirebaseMfaClient(
+          apiKey: 'public-api-key',
+          httpClient: httpClient,
+        );
+
+        final outcome = await client.confirmTotpEnrollment(
+          authorizationIdToken: 'user-id-token',
+          factorId: 'enrollment-session-1',
+          oneTimeCode: '123456',
+          issuerName: 'Forge & Flow',
+        );
+
+        expect(outcome, isA<FirebaseMfaConfirmSucceeded>());
+        final success = outcome as FirebaseMfaConfirmSucceeded;
+        expect(
+          success.factorMetadata['firebase_factor_uid'],
+          equals('new-totp-factor'),
+        );
+        expect(
+          success.factorMetadata['provider'],
+          equals('identity_toolkit_rest'),
+        );
+
+        // Critical assertion for the race fix: NO accounts:lookup call.
+        expect(
+          httpClient.requests.map((request) => request.url.path),
+          equals(<String>['/v2/accounts/mfaEnrollment:finalize']),
+        );
+        expect(
+          httpClient.requests[0].jsonBody['totpVerificationInfo'],
+          equals(<String, Object?>{
+            'sessionInfo': 'enrollment-session-1',
+            'verificationCode': '123456',
+          }),
+        );
+        expect(
+          httpClient.requests[0].url.queryParameters['key'],
+          equals('public-api-key'),
+        );
+      },
+    );
+
+    test(
+      'confirm TOTP falls back to accounts:lookup when finalize body omits factor',
+      () async {
+        // Defensive fallback path: REST shape drift / partial response that
+        // does not carry the enrolled factor. Exactly ONE lookup call.
         final httpClient = _RecordingHttpClient(<_FakeResponse>[
           const _FakeResponse(<String, Object?>{
             'idToken': 'updated-user-id-token',
@@ -107,11 +172,8 @@ void main() {
           success.factorMetadata['firebase_factor_uid'],
           equals('new-totp-factor'),
         );
-        expect(
-          success.factorMetadata['provider'],
-          equals('identity_toolkit_rest'),
-        );
 
+        // Exactly one fallback lookup.
         expect(
           httpClient.requests.map((request) => request.url.path),
           equals(<String>[
@@ -120,24 +182,43 @@ void main() {
           ]),
         );
         expect(
-          httpClient.requests[0].jsonBody['totpVerificationInfo'],
-          equals(<String, Object?>{
-            'sessionInfo': 'enrollment-session-1',
-            'verificationCode': '123456',
-          }),
-        );
-        expect(
-          httpClient.requests[0].url.queryParameters['key'],
-          equals('public-api-key'),
-        );
-        expect(
-          httpClient.requests[1].url.queryParameters['key'],
-          equals('public-api-key'),
-        );
-        expect(
           httpClient.requests[1].jsonBody['idToken'],
           equals('updated-user-id-token'),
         );
+      },
+    );
+
+    test(
+      'confirm TOTP reads top-level mfaEnrollmentId when present',
+      () async {
+        // Some Identity Toolkit response variants surface the new factor id
+        // at the top level rather than inside `mfaInfo`.
+        final httpClient = _RecordingHttpClient(<_FakeResponse>[
+          const _FakeResponse(<String, Object?>{
+            'idToken': 'updated-user-id-token',
+            'refreshToken': 'updated-refresh-token',
+            'mfaEnrollmentId': 'top-level-factor',
+          }),
+        ]);
+        final client = IdentityToolkitFirebaseMfaClient(
+          apiKey: 'public-api-key',
+          httpClient: httpClient,
+        );
+
+        final outcome = await client.confirmTotpEnrollment(
+          authorizationIdToken: 'user-id-token',
+          factorId: 'enrollment-session-1',
+          oneTimeCode: '123456',
+        );
+
+        expect(outcome, isA<FirebaseMfaConfirmSucceeded>());
+        expect(
+          (outcome as FirebaseMfaConfirmSucceeded)
+              .factorMetadata['firebase_factor_uid'],
+          equals('top-level-factor'),
+        );
+        // No fallback lookup.
+        expect(httpClient.requests, hasLength(1));
       },
     );
 

@@ -10,12 +10,18 @@
 //   * Hard-delete (legal-hold release scenarios) is NOT exposed
 //     through this service; requires manual SQL with explicit
 //     legal-team sign-off.
+//   * Pending-erasure approvals expire after [defaultApprovalMaxAge]
+//     (CODE_HEALTH L11). An approval older than the window cannot be
+//     used to execute the erasure; the pair must re-approve. Per
+//     deployment override via env var `GDPR_APPROVAL_MAX_AGE_DAYS`.
 //
 // The service is pure logic + a redaction template the proxy
 // applies inside an `OperatorScopedRepository.withSystem` block
 // (admin BYPASSRLS path with audit). Database writes themselves
 // happen server-side once the proxy has the `package:postgres`
 // binding from 9.2.
+
+import 'dart:io' show Platform;
 
 import '../../auth/user_lifecycle.dart';
 
@@ -83,10 +89,41 @@ class ErasureExecutionResult {
 }
 
 class GdprErasureService {
-  GdprErasureService({DateTime Function()? now})
-    : _now = now ?? DateTime.now;
+  GdprErasureService({
+    DateTime Function()? now,
+    Duration? approvalMaxAge,
+  })  : _now = now ?? DateTime.now,
+        _approvalMaxAge = approvalMaxAge ?? _resolveApprovalMaxAge();
+
+  /// Default per-approval expiry window. Operators with stricter privacy
+  /// posture override via `GDPR_APPROVAL_MAX_AGE_DAYS`.
+  static const Duration defaultApprovalMaxAge = Duration(days: 14);
+
+  /// Env var override for the approval expiry window (in days).
+  static const String approvalMaxAgeEnvVar = 'GDPR_APPROVAL_MAX_AGE_DAYS';
 
   final DateTime Function() _now;
+  final Duration _approvalMaxAge;
+
+  /// Effective approval expiry window for this service instance.
+  Duration get approvalMaxAge => _approvalMaxAge;
+
+  static Duration _resolveApprovalMaxAge() {
+    // CODE_HEALTH L11: configurable per-deployment. Falls back to the
+    // 14-day default when the env var is unset / non-positive / unparsable.
+    String? raw;
+    try {
+      raw = Platform.environment[approvalMaxAgeEnvVar];
+    } catch (_) {
+      // Platform.environment can throw on stripped runtimes (e.g. browser);
+      // that's expected — use the default.
+      return defaultApprovalMaxAge;
+    }
+    if (raw == null) return defaultApprovalMaxAge;
+    final parsed = int.tryParse(raw.trim());
+    if (parsed == null || parsed <= 0) return defaultApprovalMaxAge;
+    return Duration(days: parsed);
+  }
 
   /// Records that [approverUserId] (with [approverRoles]) approved
   /// the request. Throws when:
@@ -156,13 +193,33 @@ class GdprErasureService {
     if (!request.isApprovedByPair) {
       throw ErasureError('paired approval is not complete');
     }
+    // CODE_HEALTH L11: reject stale approvals. Either approval older than
+    // the configured window forces the pair to re-approve. Bound to
+    // `executeErasure` so a stalled request can still be cancelled, but
+    // can never be executed on stale consent.
+    final now = _now();
+    final cutoff = now.subtract(_approvalMaxAge);
+    final firstAt = request.firstApprovalAt;
+    final secondAt = request.secondApprovalAt;
+    if (firstAt != null && firstAt.isBefore(cutoff)) {
+      throw ErasureError(
+        'first approval is stale (older than ${_approvalMaxAge.inDays} '
+        'days); approver must re-approve before erasure can execute',
+      );
+    }
+    if (secondAt != null && secondAt.isBefore(cutoff)) {
+      throw ErasureError(
+        'second approval is stale (older than ${_approvalMaxAge.inDays} '
+        'days); approver must re-approve before erasure can execute',
+      );
+    }
     if (currentTargetStatus != UserStatus.deleted) {
       throw ErasureError(
         'target user must be soft-deleted (status=deleted) before erasure; '
         'current status: $currentTargetStatus',
       );
     }
-    request.executedAt = _now();
+    request.executedAt = now;
     return ErasureExecutionResult(
       targetUserId: request.targetUserId,
       priorStatus: currentTargetStatus,

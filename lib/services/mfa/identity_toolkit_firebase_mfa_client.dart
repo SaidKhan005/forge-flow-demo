@@ -102,7 +102,28 @@ class IdentityToolkitFirebaseMfaClient implements FirebaseMfaClient {
       );
     }
 
+    // Race fix (CODE_HEALTH L11): when a user enrolls two factors in
+    // parallel, re-querying `accounts:lookup` for the "newest" TOTP factor
+    // races with the sibling enrollment and may return the wrong factor id.
+    // Identity Toolkit's `mfaEnrollment:finalize` already returns the
+    // freshly-enrolled factor in its response body; prefer that. Only
+    // fall back to `accounts:lookup` if the response is genuinely absent
+    // (defensive — covers REST shape drift / partial responses).
+    final factorIdFromFinalize = _factorIdFromFinalizeBody(body);
+    if (factorIdFromFinalize != null) {
+      return FirebaseMfaConfirmSucceeded(
+        factorMetadata: <String, Object?>{
+          'firebase_factor_uid': factorIdFromFinalize,
+          'issuer': issuerName,
+          'provider': 'identity_toolkit_rest',
+        },
+      );
+    }
+
     try {
+      // Defensive fallback path: only reached if the finalize response did
+      // not carry the enrolled factor (REST shape drift / unexpected partial
+      // payload). Subject to the parallel-enrollment race; logged for ops.
       final firebaseFactorUid = await _latestTotpEnrollmentId(updatedIdToken);
       return FirebaseMfaConfirmSucceeded(
         factorMetadata: <String, Object?>{
@@ -117,6 +138,46 @@ class IdentityToolkitFirebaseMfaClient implements FirebaseMfaClient {
         message: _messageForCode(error.code),
       );
     }
+  }
+
+  /// Reads the freshly-enrolled TOTP factor id from a
+  /// `mfaEnrollment:finalize` response body. Returns `null` if the
+  /// response does not carry the factor and the caller must fall back
+  /// to `accounts:lookup`.
+  ///
+  /// Identity Toolkit's TOTP finalize response shape (observed):
+  ///   * `mfaInfo`: list with the newly-enrolled factor (preferred), OR
+  ///   * top-level `mfaEnrollmentId` (some older response variants), OR
+  ///   * `totpAuthInfo` / `phoneAuthInfo` with `mfaEnrollmentId` nested.
+  ///
+  /// Only entries with a `totpInfo` discriminator are accepted (so an SMS
+  /// factor that happens to be present cannot satisfy a TOTP enrollment).
+  static String? _factorIdFromFinalizeBody(Map<String, Object?> body) {
+    final directId = _optionalString(body['mfaEnrollmentId']);
+    if (directId != null) return directId;
+
+    final mfaInfo = body['mfaInfo'];
+    if (mfaInfo is List) {
+      for (final entry in mfaInfo) {
+        if (entry is! Map) continue;
+        final item = Map<String, Object?>.from(entry);
+        if (!item.containsKey('totpInfo')) continue;
+        final id = _optionalString(item['mfaEnrollmentId']);
+        if (id != null) return id;
+      }
+    }
+
+    for (final key in const <String>['totpAuthInfo', 'phoneAuthInfo']) {
+      final nested = body[key];
+      if (nested is Map) {
+        final id = _optionalString(
+          Map<String, Object?>.from(nested)['mfaEnrollmentId'],
+        );
+        if (id != null) return id;
+      }
+    }
+
+    return null;
   }
 
   @override
