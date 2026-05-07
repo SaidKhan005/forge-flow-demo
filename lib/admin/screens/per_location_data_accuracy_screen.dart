@@ -128,6 +128,7 @@ class _PerLocationDataAccuracyScreenState
         coversSourceDinner: result.coversSourceDinner,
         coversSourceLateNight: result.coversSourceLateNight,
         wageSource: result.wageSource,
+        walkInHandlingMode: result.walkInHandlingMode,
         actorUserId: widget.actorUserId,
         actorIsForgeAdmin: widget.editingEnabled,
         reasonNote: result.reasonNote,
@@ -287,6 +288,7 @@ class _DataAccuracyOverrideDraft {
     required this.coversSourceDinner,
     required this.coversSourceLateNight,
     required this.wageSource,
+    required this.walkInHandlingMode,
     required this.reasonNote,
   });
 
@@ -294,6 +296,7 @@ class _DataAccuracyOverrideDraft {
   final CoversSource? coversSourceDinner;
   final CoversSource? coversSourceLateNight;
   final WageSource? wageSource;
+  final DataAccuracyWalkInHandlingMode? walkInHandlingMode;
   final String reasonNote;
 }
 
@@ -313,6 +316,8 @@ class _DataAccuracyOverrideDialogState
   late CoversSource _dinner = widget.initial.settings.coversSourceDinner;
   late CoversSource _lateNight = widget.initial.settings.coversSourceLateNight;
   late WageSource _wage = widget.initial.settings.wageSource;
+  late DataAccuracyWalkInHandlingMode _walkInMode =
+      widget.initial.settings.walkInHandlingMode;
   final TextEditingController _reason = TextEditingController();
 
   @override
@@ -361,6 +366,11 @@ class _DataAccuracyOverrideDialogState
                 value: _wage,
                 onChanged: (v) => setState(() => _wage = v),
               ),
+              const SizedBox(height: 8),
+              _WalkInHandlingField(
+                value: _walkInMode,
+                onChanged: (v) => setState(() => _walkInMode = v),
+              ),
               const SizedBox(height: 12),
               TextField(
                 key: const Key('admin_data_accuracy_reason_note'),
@@ -395,6 +405,7 @@ class _DataAccuracyOverrideDialogState
                 coversSourceDinner: _dinner,
                 coversSourceLateNight: _lateNight,
                 wageSource: _wage,
+                walkInHandlingMode: _walkInMode,
                 reasonNote: note,
               ),
             );
@@ -497,6 +508,48 @@ class _WageSourceField extends StatelessWidget {
   }
 }
 
+class _WalkInHandlingField extends StatelessWidget {
+  const _WalkInHandlingField({required this.value, required this.onChanged});
+
+  final DataAccuracyWalkInHandlingMode value;
+  final ValueChanged<DataAccuracyWalkInHandlingMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 200,
+            child: Text(
+              'Walk-in handling',
+              style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+            ),
+          ),
+          Expanded(
+            child: DropdownButtonFormField<DataAccuracyWalkInHandlingMode>(
+              key: const Key('admin_data_accuracy_walk_in_mode'),
+              initialValue: value,
+              items: DataAccuracyWalkInHandlingMode.values
+                  .map(
+                    (s) => DropdownMenuItem<DataAccuracyWalkInHandlingMode>(
+                      value: s,
+                      child: Text(_walkInHandlingLabel(s)),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (v) {
+                if (v != null) onChanged(v);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 String _coversSourceLabel(CoversSource source) {
   switch (source) {
     case CoversSource.vendor:
@@ -514,6 +567,17 @@ String _wageSourceLabel(WageSource source) {
       return 'Vendor wage data';
     case WageSource.manualMix:
       return 'Manual mix';
+  }
+}
+
+String _walkInHandlingLabel(DataAccuracyWalkInHandlingMode mode) {
+  switch (mode) {
+    case DataAccuracyWalkInHandlingMode.reservationsOnly:
+      return 'Reservations only';
+    case DataAccuracyWalkInHandlingMode.walkInsAddedToReservations:
+      return 'Add walk-ins';
+    case DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately:
+      return 'Track separately';
   }
 }
 

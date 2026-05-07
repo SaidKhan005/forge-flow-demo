@@ -922,6 +922,9 @@ class HttpSyncProxyClient
           _readString(json['covers_source_late_night']) ?? 'vendor',
       coversManualEntries: _readManualEntries(json['covers_manual_entries']),
       wageSource: _readString(json['wage_source']) ?? 'vendor',
+      walkInHandlingMode:
+          _readString(json['walk_in_handling_mode']) ?? 'reservations_only',
+      walkInManualEntries: _readIntMap(json['walk_in_manual_entries']),
       updatedAt: _readDateTime(json['updated_at']) ?? DateTime.now().toUtc(),
     );
   }

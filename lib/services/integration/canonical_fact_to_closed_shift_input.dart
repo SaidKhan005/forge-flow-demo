@@ -40,9 +40,9 @@
 //   3. Resolves covers via the 5-way decision per
 //      `data_accuracy_settings_contract.md` (manual / vendor /
 //      reservation+walk-in / forecast / unavailable) — stage 3
-//      (reservation+walk-in Pattern A/B/C) is implemented for the
-//      operator-walk-in-count path; the seated-only path is the
-//      sanctioned operator wiring follow-up.
+//      (reservation+walk-in Pattern A/B/C) is implemented from the
+//      durable walk-in fields on `data_accuracy_settings`; explicit
+//      [ReservationWalkInOverride] remains a test/backfill seam.
 //   4. Resolves labor wage via the 4-way decision keyed by
 //      `LaborWageSourceClass` (manual_mix override / per-employee
 //      dollars / per-position rates / per-employee rates / hours-only
@@ -382,7 +382,10 @@ class CanonicalFactToClosedShiftInputAggregator
     // Stage 3 — reservation+walk-in (Pattern A: seated_at sum +
     // operator walk-in count). Skips Tock when seated_at absent;
     // bucketing already filtered to slot via reservation_at.
-    if (reservationFacts.isNotEmpty && walkInOverride != null) {
+    final resolvedWalkInOverride =
+        walkInOverride ??
+        _walkInOverrideFromSettings(settings, isoBusinessDate);
+    if (reservationFacts.isNotEmpty && resolvedWalkInOverride != null) {
       final seatedSum = reservationFacts.fold<int>(0, (acc, row) {
         final raw = row['party_size'];
         if (raw is int) return acc + raw;
@@ -393,7 +396,7 @@ class CanonicalFactToClosedShiftInputAggregator
           reservationFacts.first['vendor_id'] as String? ?? '';
       if (seatedSum > 0 && reservationVendorId.isNotEmpty) {
         return _CoversResolution(
-          covers: seatedSum + walkInOverride.operatorWalkInCount,
+          covers: seatedSum + resolvedWalkInOverride.operatorWalkInCount,
           provenance:
               'vendor_${reservationVendorId}_seated_plus_operator_walk_in_count',
           sourceSystem: reservationVendorId,
@@ -425,6 +428,21 @@ class CanonicalFactToClosedShiftInputAggregator
 
     // Stage 5 — unavailable.
     return null;
+  }
+
+  static ReservationWalkInOverride? _walkInOverrideFromSettings(
+    DataAccuracySettings settings,
+    String businessDateIso,
+  ) {
+    switch (settings.walkInHandlingMode) {
+      case DataAccuracyWalkInHandlingMode.reservationsOnly:
+      case DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately:
+        return const ReservationWalkInOverride(operatorWalkInCount: 0);
+      case DataAccuracyWalkInHandlingMode.walkInsAddedToReservations:
+        final count = settings.walkInCountFor(businessDateIso);
+        if (count == null) return null;
+        return ReservationWalkInOverride(operatorWalkInCount: count);
+    }
   }
 
   // ─── 4-way wage resolution ─────────────────────────────────────────
@@ -584,6 +602,7 @@ class CanonicalFactToClosedShiftInputAggregator
       'location_id::text as location_id, '
       'covers_source_lunch, covers_source_dinner, covers_source_late_night, '
       'covers_manual_entries, wage_source, '
+      'walk_in_handling_mode, walk_in_manual_entries, '
       'created_at, updated_at, updated_by '
       'from data_accuracy_settings '
       'where operator_id = @operator_id::uuid '

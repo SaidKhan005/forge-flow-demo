@@ -19,11 +19,7 @@
 library;
 
 /// Allowed values for the per-daypart covers source toggle.
-enum CoversSource {
-  vendor,
-  forecast,
-  manual,
-}
+enum CoversSource { vendor, forecast, manual }
 
 extension CoversSourceWire on CoversSource {
   /// Wire encoding matches the SQL CHECK constraint values.
@@ -59,10 +55,7 @@ extension CoversSourceWire on CoversSource {
 /// Wage source toggle — operator-facing binary on top of the 4-way
 /// internal vendor wage class (resolved by LaborWageSourceClass; out
 /// of scope for this slice).
-enum WageSource {
-  vendor,
-  manualMix,
-}
+enum WageSource { vendor, manualMix }
 
 extension WageSourceWire on WageSource {
   String get wire {
@@ -90,14 +83,51 @@ extension WageSourceWire on WageSource {
   }
 }
 
+/// Reservation demand / walk-in handling toggle. The operator chooses
+/// how reservation covers should be treated when the POS does not
+/// expose covers directly.
+enum DataAccuracyWalkInHandlingMode {
+  reservationsOnly,
+  walkInsAddedToReservations,
+  walkInsTrackedSeparately,
+}
+
+extension DataAccuracyWalkInHandlingModeWire on DataAccuracyWalkInHandlingMode {
+  String get wire {
+    switch (this) {
+      case DataAccuracyWalkInHandlingMode.reservationsOnly:
+        return 'reservations_only';
+      case DataAccuracyWalkInHandlingMode.walkInsAddedToReservations:
+        return 'walk_ins_added_to_reservations';
+      case DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately:
+        return 'walk_ins_tracked_separately';
+    }
+  }
+
+  static DataAccuracyWalkInHandlingMode fromWire(String value) {
+    switch (value) {
+      case 'reservations_only':
+        return DataAccuracyWalkInHandlingMode.reservationsOnly;
+      case 'walk_ins_added_to_reservations':
+        return DataAccuracyWalkInHandlingMode.walkInsAddedToReservations;
+      case 'walk_ins_tracked_separately':
+        return DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately;
+      default:
+        throw ArgumentError.value(
+          value,
+          'walk_in_handling_mode',
+          'must be one of reservations_only / '
+              'walk_ins_added_to_reservations / '
+              'walk_ins_tracked_separately',
+        );
+    }
+  }
+}
+
 /// Daypart key. Matches the per-daypart column suffix on the SQL row
 /// (`covers_source_lunch` / `covers_source_dinner` /
 /// `covers_source_late_night`) and the manual-entry jsonb shape.
-enum Daypart {
-  lunch,
-  dinner,
-  lateNight,
-}
+enum Daypart { lunch, dinner, lateNight }
 
 extension DaypartWire on Daypart {
   String get wire {
@@ -141,6 +171,8 @@ class DataAccuracySettings {
     required this.wageSource,
     required this.createdAt,
     required this.updatedAt,
+    this.walkInHandlingMode = DataAccuracyWalkInHandlingMode.reservationsOnly,
+    this.walkInManualEntries = const <String, int>{},
     this.updatedBy,
   });
 
@@ -158,6 +190,16 @@ class DataAccuracySettings {
   final Map<String, Map<String, int>> coversManualEntries;
 
   final WageSource wageSource;
+
+  /// How server-side reservation demand should treat operator-entered
+  /// walk-in counts when POS covers are unavailable.
+  final DataAccuracyWalkInHandlingMode walkInHandlingMode;
+
+  /// Sparse map keyed by ISO `YYYY-MM-DD` business_date string ->
+  /// walk-in count for that day. Used when [walkInHandlingMode] is
+  /// `walkInsAddedToReservations`.
+  final Map<String, int> walkInManualEntries;
+
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? updatedBy;
@@ -184,6 +226,10 @@ class DataAccuracySettings {
     return dayMap[daypart.wire];
   }
 
+  int? walkInCountFor(String businessDateIso) {
+    return walkInManualEntries[businessDateIso];
+  }
+
   /// Project from a `data_accuracy_settings` row produced by the
   /// PostgresExecutor (UUIDs cast to text in SELECT, jsonb returned
   /// as a map).
@@ -196,6 +242,8 @@ class DataAccuracySettings {
     final coversLateNight = row['covers_source_late_night'];
     final manualEntriesRaw = row['covers_manual_entries'];
     final wageSourceRaw = row['wage_source'];
+    final walkInModeRaw = row['walk_in_handling_mode'];
+    final walkInEntriesRaw = row['walk_in_manual_entries'];
     final createdAt = row['created_at'];
     final updatedAt = row['updated_at'];
 
@@ -214,6 +262,10 @@ class DataAccuracySettings {
     }
 
     final manualEntries = _parseManualEntries(manualEntriesRaw);
+    final walkInMode = walkInModeRaw is String
+        ? DataAccuracyWalkInHandlingModeWire.fromWire(walkInModeRaw)
+        : DataAccuracyWalkInHandlingMode.reservationsOnly;
+    final walkInManualEntries = _parseWalkInEntries(walkInEntriesRaw);
     final updatedBy = row['updated_by'];
 
     return DataAccuracySettings(
@@ -225,6 +277,8 @@ class DataAccuracySettings {
       coversSourceLateNight: CoversSourceWire.fromWire(coversLateNight),
       coversManualEntries: manualEntries,
       wageSource: WageSourceWire.fromWire(wageSourceRaw),
+      walkInHandlingMode: walkInMode,
+      walkInManualEntries: walkInManualEntries,
       createdAt: createdAt,
       updatedAt: updatedAt,
       updatedBy: updatedBy is String && updatedBy.isNotEmpty ? updatedBy : null,
@@ -253,6 +307,26 @@ class DataAccuracySettings {
         }
       });
       out[key] = inner;
+    });
+    return out;
+  }
+
+  static Map<String, int> _parseWalkInEntries(Object? raw) {
+    if (raw == null) return <String, int>{};
+    if (raw is! Map) {
+      throw StateError(
+        'walk_in_manual_entries jsonb projected as ${raw.runtimeType}, '
+        'expected Map',
+      );
+    }
+    final out = <String, int>{};
+    raw.forEach((key, value) {
+      if (key is! String) return;
+      if (value is int) {
+        out[key] = value;
+      } else if (value is num) {
+        out[key] = value.toInt();
+      }
     });
     return out;
   }

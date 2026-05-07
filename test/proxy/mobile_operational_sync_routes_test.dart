@@ -125,6 +125,7 @@ void main() {
           );
           expect(accuracy.statusCode, 200);
           expect(accuracy.body, contains('covers_source_lunch'));
+          expect(accuracy.body, contains('walk_in_handling_mode'));
 
           final periodAccuracy = await _httpGet(
             ctx.client,
@@ -496,6 +497,8 @@ class _FakeMobileOperationalSyncGateway
         'covers_source_late_night': 'vendor',
         'covers_manual_entries': <String, Object?>{},
         'wage_source': 'manual_mix',
+        'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+        'walk_in_manual_entries': <String, Object?>{'2026-05-06': 8},
         'updated_at': '2026-05-06T12:00:00Z',
       },
     };

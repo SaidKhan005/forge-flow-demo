@@ -335,6 +335,8 @@ void main() {
               '2026-05-04': {'lunch': 87, 'dinner': 187, 'late_night': 12},
             },
             wageSource: 'manual_mix',
+            walkInHandlingMode: 'walk_ins_added_to_reservations',
+            walkInManualEntries: const {'2026-05-04': 9},
             updatedAt: DateTime.utc(2026, 5, 4, 12, 0),
           ),
         );
@@ -358,6 +360,8 @@ void main() {
       expect(settings.coversSourceLateNight, 'forecast');
       expect(settings.coversManualEntries['2026-05-04']!['dinner'], 187);
       expect(settings.wageSource, 'manual_mix');
+      expect(settings.walkInHandlingMode, 'walk_ins_added_to_reservations');
+      expect(settings.walkInManualEntries['2026-05-04'], 9);
       expect(sync.latestDataAccuracySettings?.wageSource, 'manual_mix');
     },
   );

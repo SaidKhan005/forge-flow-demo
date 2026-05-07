@@ -7,7 +7,7 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605080200_phase_8_wage_role_rows_server_truth.sql`. This
+`202605080300_phase_8_data_accuracy_walk_in_settings.sql`. This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -49,7 +49,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (18 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (19 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -69,6 +69,7 @@ Pending follow-up scope (18 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605080100_admin_idempotency_expires_at.sql`
 - `db/migrations/202605080100_phase_8_weekly_plan_server_truth.sql`
 - `db/migrations/202605080200_phase_8_wage_role_rows_server_truth.sql`
+- `db/migrations/202605080300_phase_8_data_accuracy_walk_in_settings.sql`
 
 Out of scope:
 
@@ -78,7 +79,7 @@ Out of scope:
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
-  anything later than `202605080200_phase_8_wage_role_rows_server_truth.sql`
+  anything later than `202605080300_phase_8_data_accuracy_walk_in_settings.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
@@ -180,6 +181,12 @@ Current known post-cutoff staging additions:
   for wage-source calculations; the server remains the write authority.
   Code-ready and remains staging/Production1 apply gated with the rest of
   the follow-up batch.
+- `db/migrations/202605080300_phase_8_data_accuracy_walk_in_settings.sql`
+  adds durable walk-in handling mode and sparse walk-in count entries to
+  `public.data_accuracy_settings`. Mobile reads these reservation-demand
+  settings from the proxy as cache/read model input; server/admin/operator
+  paths remain the write authority. Code-ready and remains
+  staging/Production1 apply gated with the rest of the follow-up batch.
 
 Migration drift automation:
 
@@ -259,6 +266,7 @@ Current pending follow-up order:
 16. `202605080100_admin_idempotency_expires_at.sql`
 17. `202605080100_phase_8_weekly_plan_server_truth.sql`
 18. `202605080200_phase_8_wage_role_rows_server_truth.sql`
+19. `202605080300_phase_8_data_accuracy_walk_in_settings.sql`
 
 Dependency notes:
 
@@ -611,7 +619,7 @@ until the post-tuning monitor window is clean.
   `build/phase_9_production1_apply/2026-05-03_second_batch/` and intentionally
   stay uncommitted.
 
-### Next follow-up - pending (cutoff `202605080200_phase_8_wage_role_rows_server_truth.sql`)
+### Next follow-up - pending (cutoff `202605080300_phase_8_data_accuracy_walk_in_settings.sql`)
 
 - `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` is
   applied and Browser Use verified on staging. Apply it to Production1 under
@@ -719,6 +727,13 @@ until the post-tuning monitor window is clean.
   role/rate/job-code mapping. Mobile mirrors active rows as SQLite cache
   only. Apply on staging first; carry into the next Production1 batch with
   the rest of the follow-up migrations.
+- `202605080300_phase_8_data_accuracy_walk_in_settings.sql` is the Phase 8
+  data-accuracy walk-in settings migration from the Doc 1 mobile core
+  contract. It adds additive `walk_in_handling_mode` and
+  `walk_in_manual_entries` fields on `data_accuracy_settings` so reservation
+  demand settings are server-owned and mobile-readable. Apply on staging
+  first; carry into the next Production1 batch with the rest of the follow-up
+  migrations.
 - One-shot apply plan once approved: confirm staging parity for the same files,
   confirm fresh backup/restore point, run analyzer/lints/focused tests, apply
   the approved files to Production1, verify the `forge_admin`

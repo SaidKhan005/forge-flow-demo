@@ -135,9 +135,12 @@ Do not re-open stale findings unless the repo regresses:
   truth then queues
   `202605080200_phase_8_wage_role_rows_server_truth.sql` for the
   server-owned wage mix / role-job-code mapping table that mobile mirrors as
-  cache. Apply on staging first, then carry into the next Production1 batch.
+  cache. Phase 8 data-accuracy walk-in settings then queues
+  `202605080300_phase_8_data_accuracy_walk_in_settings.sql` for server-owned
+  reservation-demand walk-in handling fields that mobile mirrors as cache.
+  Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605080200_phase_8_wage_role_rows_server_truth.sql`.
+  `202605080300_phase_8_data_accuracy_walk_in_settings.sql`.
 
 ## Remaining Live-Closeout Gates
 

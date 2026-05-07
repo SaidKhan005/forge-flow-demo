@@ -234,6 +234,7 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
     String? coversSourceDinner,
     String? coversSourceLateNight,
     String? wageSource,
+    String? walkInHandlingMode,
     String? reasonNote,
     required String adminReason,
   }) async {
