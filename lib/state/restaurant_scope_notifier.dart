@@ -46,15 +46,25 @@ class RestaurantScopeNotifier extends ChangeNotifier {
     final repo = activeScopeRepository ?? SqliteActiveScopeRepository.instance;
     final scopes = await client.fetchAccessibleBusinessScopes(userId: userId);
     final persisted = await repo.getActiveScope(userId);
+    final previous = _activeScope ?? persisted;
+    final persistedSelection = _findMatchingScope(scopes, persisted);
     final selected =
-        _findMatchingScope(scopes, persisted) ??
-        scopes.where((scope) => scope.isLocationScope).firstOrNull ??
-        (scopes.isEmpty ? null : scopes.first);
+        (persistedSelection != null && persistedSelection.isLocationScope
+            ? persistedSelection
+            : null) ??
+        scopes.where((scope) => scope.isLocationScope).firstOrNull;
     _availableScopes = scopes;
     _activeScope = selected;
     if (selected != null) {
       await repo.saveActiveScope(userId: userId, scope: selected);
       await _activateRestaurantForScope(selected);
+      if (previous != null && previous.stableKey != selected.stableKey) {
+        ActiveBusinessScopeChangeBus.instance.publish(selected);
+      }
+    } else {
+      await repo.clearActiveScope(userId);
+      SqliteRestaurantScopeRepository.instance.clearRuntimeRestaurantOverride();
+      _restaurant = null;
     }
     _isLoading = false;
     notifyListeners();
