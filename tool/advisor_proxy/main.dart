@@ -996,6 +996,11 @@ Future<void> main(List<String> args) async {
             // audit_chain_anchors_not_configured.
             auditChainAnchorsGateway:
                 productionBindings.auditChainAnchorsGateway,
+            // Wave W2.D - operator-scoped read of
+            // `connector_backfill_jobs`. Without this binding the
+            // route returns 503 connector_backfill_jobs_router_not_configured.
+            connectorBackfillJobsRouter:
+                productionBindings.connectorBackfillJobsRouter,
           );
         } catch (error, stack) {
           log(

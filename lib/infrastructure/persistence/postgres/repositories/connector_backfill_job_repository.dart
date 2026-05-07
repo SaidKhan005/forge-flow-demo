@@ -109,6 +109,61 @@ class ConnectorBackfillJobRepository extends OperatorScopedRepository {
     });
   }
 
+  /// Returns the latest backfill job per connection for
+  /// (operatorId, locationId). When [connectionId] is non-null the
+  /// result is at most one row for that connection. Used by the
+  /// operator-web `connector-backfill-jobs` read route to render
+  /// per-connection progress on the Vendor Connections screen.
+  Future<List<FirstConnectionBackfillJob>> listLatestPerConnection({
+    required String operatorId,
+    required String locationId,
+    String? connectionId,
+    String? actorUserId,
+  }) {
+    if (connectionId != null) _requireNonBlank('connectionId', connectionId);
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<List<FirstConnectionBackfillJob>>(ctx, (exec) async {
+      final params = <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      };
+      final connectionFilter = connectionId == null
+          ? ''
+          : 'and connection_id = @connection_id::uuid ';
+      if (connectionId != null) {
+        params['connection_id'] = connectionId;
+      }
+      final rows = await exec.query(
+        'with ranked as ('
+        '  select $_selectColumns, '
+        '    row_number() over ('
+        '      partition by connection_id '
+        '      order by '
+        "        case when status in ('pending', 'running') then 0 "
+        "             when status = 'failed' then 1 "
+        '             else 2 end, '
+        '        updated_at desc '
+        '    ) as rn '
+        '  from public.connector_backfill_jobs '
+        '  where operator_id = @operator_id::uuid '
+        '    and location_id = @location_id::uuid '
+        "    and mode = 'first_backfill' "
+        '$connectionFilter'
+        ') '
+        'select * from ranked where rn = 1 '
+        'order by updated_at desc',
+        parameters: params,
+      );
+      return <FirstConnectionBackfillJob>[
+        for (final row in rows) FirstConnectionBackfillJob.fromRow(row),
+      ];
+    });
+  }
+
   Future<FirstConnectionBackfillJob?> claimNext({
     required String operatorId,
     required String locationId,

@@ -81,6 +81,7 @@ import 'audit_chain_anchors_routes.dart';
 import 'health_operation_budget.dart';
 import 'log.dart';
 import 'business_scope_routes.dart';
+import 'connector_backfill_jobs_routes.dart';
 import 'mobile_push_notifications.dart';
 import 'operator_routes.dart';
 import 'proxy_idempotency_cache.dart';
@@ -7998,6 +7999,10 @@ Future<void> routeRequest(
   // so existing tests do not need to plumb the router through every
   // call site.
   OperatorWriteRouter? operatorWriteRouter,
+  // Wave W2.D - operator-scoped read of connector_backfill_jobs.
+  // Optional: when null the read route returns 503 so existing tests
+  // do not need to plumb the router through every call site.
+  ConnectorBackfillJobsRouter? connectorBackfillJobsRouter,
   // Phase 8 star/target truth - selected-star read/write router. Optional
   // for existing tests; production installs a global router from bootstrap.
   SelectedStarTargetRouter? selectedStarTargetRouter,
@@ -12760,6 +12765,63 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'operator_write_unavailable',
               'message': 'operator write is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
+        // Mirrors the operator-web Vendor Connections progress widget.
+        // Open to any operator-web role; per-tenant RLS is enforced by
+        // the gateway via SET LOCAL.
+        if (ConnectorBackfillJobsRouter.matches(path, request.method)) {
+          if (connectorBackfillJobsRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'connector_backfill_jobs_router_not_configured',
+              'message':
+                  'route requires a ConnectorBackfillJobsRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          if (!scope.roles.any(
+            kOperatorConnectorBackfillJobsReadRoles.contains,
+          )) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'forbidden',
+              'message':
+                  'an operator role with vendor-connections access is required',
+              'required_roles':
+                  kOperatorConnectorBackfillJobsReadRoles.toList(),
+            });
+            return;
+          }
+          try {
+            final result = await connectorBackfillJobsRouter.handle(
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              actorUserId: scope.userId,
+              queryParameters: request.uri.queryParameters,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'connector_backfill_jobs',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'connector_backfill_jobs_unavailable',
+              'message':
+                  'connector backfill progress is unavailable; please retry',
             });
           }
           return;

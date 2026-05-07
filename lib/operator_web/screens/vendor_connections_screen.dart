@@ -60,8 +60,10 @@
 import 'package:flutter/material.dart';
 
 import '../auth/operator_web_auth_source.dart';
+import '../services/operator_web_connector_backfill_jobs_gateway.dart';
 import '../services/operator_web_url_launcher.dart';
 import '../widgets/operator_web_summary_strip.dart';
+import '../widgets/vendor_connections_backfill_progress_panel.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
 import '../../theme/app_theme.dart';
@@ -86,6 +88,7 @@ class VendorConnectionsScreen extends StatelessWidget {
     required this.locationId,
     this.locationName,
     this.gateway,
+    this.backfillJobsGateway,
   });
 
   /// Authenticated operator-web session — drives operator_id, the
@@ -102,6 +105,13 @@ class VendorConnectionsScreen extends StatelessWidget {
   /// at the Cloud Run entry point; demo + widget tests pass an
   /// in-memory gateway with seeded vendors.
   final VendorConnectionsGateway? gateway;
+
+  /// Wave W2.D — optional gateway for the per-connection backfill
+  /// progress panel that sits inside the existing vendor card area.
+  /// Null in demo mode (no fixture lying about progress) and when the
+  /// host shell has not wired the live HTTP gateway yet; the panel
+  /// renders an honest "progress not available" state in that case.
+  final OperatorWebConnectorBackfillJobsGateway? backfillJobsGateway;
 
   /// True iff the session has `integrations.configure` (i.e. role
   /// is `operator_admin` or `operator_owner`).
@@ -183,6 +193,13 @@ class VendorConnectionsScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
+          VendorConnectionsBackfillProgressPanel(
+            key: const Key(
+              'operator_web_vendor_connections_backfill_progress',
+            ),
+            gateway: backfillJobsGateway,
+          ),
+          const SizedBox(height: 12),
           Container(
             key: const Key('operator_web_vendor_connections_widget_host'),
             decoration: BoxDecoration(

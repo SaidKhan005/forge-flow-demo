@@ -101,6 +101,7 @@ import '../advisor_corpus/advisor_corpus.dart'
         graphifyNodeCandidatesFileName;
 import 'advisor_proxy.dart';
 import 'admin_integrations_routes.dart';
+import 'connector_backfill_jobs_routes.dart';
 import 'anthropic_http_complete_fn.dart';
 import 'health_producers/producer_registry.dart';
 import 'log.dart';
@@ -196,6 +197,7 @@ class ProxyProductionBindings {
     required this.passwordResetThrottleCounter,
     required this.operatorWriteRouter,
     required this.auditChainAnchorsGateway,
+    required this.connectorBackfillJobsRouter,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -345,6 +347,12 @@ class ProxyProductionBindings {
   /// so the operator-web Audit Log screen can render an integrity
   /// badge.
   final AuditChainAnchorsGateway auditChainAnchorsGateway;
+
+  /// Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
+  /// Backed by [ConnectorBackfillJobRepository]; per-tenant RLS rides
+  /// `SET LOCAL` in the gateway so the route returns only rows the
+  /// signed-in (operator_id, location_id) is permitted to see.
+  final ConnectorBackfillJobsRouter connectorBackfillJobsRouter;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -602,6 +610,15 @@ ProxyProductionBindings buildProxyProductionBindings(
           },
         );
       },
+    ),
+  );
+  // Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
+  // Reuses the existing [ConnectorBackfillJobRepository] so the read
+  // path rides the same tenant pool + RLS posture as the write path
+  // shipped by `8.first-connect-backfill-wire-in`.
+  final connectorBackfillJobsRouter = ConnectorBackfillJobsRouter(
+    gateway: _RepositoryConnectorBackfillJobsReadGateway(
+      repository: ConnectorBackfillJobRepository(tenantWrapper),
     ),
   );
   SelectedStarTargetRouter.installGlobal(
@@ -919,7 +936,34 @@ ProxyProductionBindings buildProxyProductionBindings(
     auditChainAnchorsGateway: PostgresAuditChainAnchorsGateway(
       tenantWrapper: tenantWrapper,
     ),
+    connectorBackfillJobsRouter: connectorBackfillJobsRouter,
   );
+}
+
+/// Wave W2.D - bridges the [ConnectorBackfillJobRepository] (in
+/// `lib/`, the only tenant-pool seam) to the proxy-level
+/// [ConnectorBackfillJobsReadGateway] surface so the route file does
+/// not pull `package:postgres` into the proxy import graph directly.
+class _RepositoryConnectorBackfillJobsReadGateway
+    implements ConnectorBackfillJobsReadGateway {
+  _RepositoryConnectorBackfillJobsReadGateway({required this.repository});
+
+  final ConnectorBackfillJobRepository repository;
+
+  @override
+  Future<List<FirstConnectionBackfillJob>> listLatestPerConnection({
+    required String operatorId,
+    required String locationId,
+    String? connectionId,
+    String? actorUserId,
+  }) {
+    return repository.listLatestPerConnection(
+      operatorId: operatorId,
+      locationId: locationId,
+      connectionId: connectionId,
+      actorUserId: actorUserId,
+    );
+  }
 }
 
 /// HARD-B - production [AuthLockoutEnforcer] backed by the
