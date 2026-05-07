@@ -1,7 +1,7 @@
 # Mobile Core Doc 1 Closeout Status
 
 Date: 2026-05-07
-Baseline: `origin/master` at `537d5319`
+Baseline: `origin/master` at `932d46f5`
 Primary contract:
 `docs/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md`
 

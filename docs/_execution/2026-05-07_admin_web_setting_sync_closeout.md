@@ -1,7 +1,7 @@
 # Admin/Web Setting Sync Closeout
 
 Date: 2026-05-07
-Baseline: `origin/master` at `537d5319`
+Baseline: `origin/master` at `932d46f5`
 Scope: Doc 1 admin/web setting sync inventory and truth closeout only.
 Change type: documentation/tracker truth; no code changes.
 
