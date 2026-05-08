@@ -165,9 +165,11 @@ bucketing`). No runtime failure today; contract decay if left.
   bootstrap (`_ensureTzInitialized`) plus service-period bucketing
   (`_servicePeriodSlivers`). Action: move timezone init into a
   service-layer initializer.
-- `lib/screens/settings/settings_wage_authority_section.dart:48,64,67`
-  — widget calls `SqliteWageRoleRowRepository.instance` directly.
-  Action: route through a service that owns the SQLite call.
+- `lib/screens/settings/settings_wage_authority_section.dart:52,57,73,76`
+  — widget calls `SqliteRestaurantScopeRepository.instance` and
+  `SqliteWageRoleRowRepository.instance` directly (`getActiveRestaurantId`
+  at `:52`, `getRows` at `:57`, `upsertRow` at `:73`, `deleteRow` at
+  `:76`). Action: route through a service that owns the SQLite calls.
 
 ### P2 — No common worker base
 
@@ -413,6 +415,16 @@ typed `on TimeoutException` / `on Exception` / `on Object` arms with
 structured-log reporter. Concentrate on the auth-lifecycle and
 tenant-transaction sites first — those swallow errors that should
 surface as security/data-integrity signals.
+
+### P3 — `docs/_execution/` retirement window opens 2026-05-12
+
+**`docs/_execution/` retirement window opens 2026-05-12.** The bulk of
+the 2026-05-03/-04/-05/-06 closeouts cross the 7-day-since-phase-close
+threshold (per CLAUDE.md "Phase Doc Hygiene") on 2026-05-12. Sweep
+candidates: ~25-30 files including the Phase 8 / 8R / 8.S / 10a / 11A
+foundation / 11W proofs. Action: review each file, confirm the
+underlying phase is closed, retire to `docs/archive/_execution/` or
+`docs/archive/phases/` as appropriate.
 
 ### P3 — `lib/admin/admin_routes.dart` placeholder route flags
 
