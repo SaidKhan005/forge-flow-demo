@@ -9,18 +9,43 @@ This doc is the operational-debt sibling to the CODE_HEALTH audit:
 - CODE_HEALTH = original 2026-05-06 audit + 5-wave remediation, closed 2026-05-08. Archived at `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`; residuals consolidated into `docs/POST_HARDENING_FOLLOWUPS.md` + phase docs + contracts.
 - `CODE_OPS_DEBT.md` = doc-vs-code drift findings.
 
-## Closeout summary (2026-05-07 fix sweep)
+## Closeout summary (2026-05-07 — two sweeps)
 
-13-lane parallel fix sweep dispatched 2026-05-07. **12 PRs merged + 1
-closed-redundant; ~40 of 50 audit findings closed; all 7 P0
-launch-blockers resolved.** Detail: `docs/archive/CODE_OPS_DEBT_RESOLVED_2026-05-07.md`.
+**Original audit sweep (2026-05-07 morning).** 13-lane parallel fix
+sweep dispatched. 12 PRs merged + 1 closed-redundant; ~40 of 50 audit
+findings closed; all 7 P0 launch-blockers resolved. Detail:
+`docs/archive/CODE_OPS_DEBT_RESOLVED_2026-05-07.md`.
 
-What remains is **7 outstanding findings** across 5 themes — all of
-which need an operator decision (contract / cloud-infra / UX /
-meta-slice) before a fix lane can be authored. (Theme J#4
-slice-runtime-acceptance enforcement closed 2026-05-07 — operator chose
-to relax the contract to advisory pattern instead of building a CI
-lint. Theme J#5 graphify candidates closed 2026-05-07: backlog under AI freeze.)
+**Operator-decision sweep (2026-05-07 evening).** Operator gave
+decisions on the 6 remaining deferred items. 8 lanes dispatched in
+parallel:
+- ✅ **J#3 — Browser Use** (PR #368): rewrote runbook to clarify it's a Codex automation; no in-repo harness binary.
+- ✅ **J#4 — slice-runtime-acceptance** (PR #381): contract relaxed to advisory pattern (no CI build); cross-references softened.
+- ✅ **J#5 — graphify candidates** (PR #369): marked backlog under AI freeze; 503 message rewritten to surface paused-by-design.
+- 🟡 **A (item 1) — session-claim resolver** (no PR yet): WIP rate-limited at 22:30Z; nothing committed; full re-dispatch needed.
+- 🟡 **B#1 (item 2) — single-admin PII erasure with grace** (PR #377 draft): WIP committed migration + fresh_mfa_resolver scaffold; needs route + worker + test finish.
+- 🟡 **B#5 (item 3) — server-side audit-log CSV** (PR #378 draft): 1 file +182 partial; needs filter alignment + frontend rewrite.
+- 🟡 **I#1-2 + audit (item 4) — kDemoMode end-to-end** (PR #379 draft): 4 files +316 with new `demo_mode_contract.md`; needs flow-diagram completion.
+- 🟡 **D (item 5) — Pub/Sub realtime** (PR #380 draft): 2 new pubsub files committed; needs main.dart wire-in + Azure cron + tests + runbook.
+- ⚪ **H#8 (item 9) — first-backfill status null**: self-closes via Phase 8 framework push; no action needed.
+
+5 lanes (N1, N2, N3, N4, N5) hit the rate-limit reset at 23:30 NDT
+(2026-05-08T02:00 UTC). They're parked as draft PRs and re-dispatch
+when the window opens.
+
+**Operator decisions recorded** (durable history; the lanes act on these):
+
+| Item | Decision |
+|---|---|
+| 1 (Theme A — session-claim resolver) | 1-hour MFA freshness; when stale, redirect to login + redo authenticator |
+| 2 (Theme B#1 — paired-approval erasure) | Single-admin (uses item 1's resolver); reversible during grace period; PII-only scope |
+| 3 (Theme B#5 — audit-log CSV) | Server-side, streamed, respects same UX filters; verify time filter is end-to-end (frontend + proxy + backend) |
+| 4 (Theme I#1-2 — kDemoMode reader-side branches) | Keep the demo switch; verify it's literally a writer-side switch end-to-end on mobile; document carve-outs in CLAUDE.md |
+| 5 (Theme D — Pub/Sub realtime) | Approved; constraints: simplicity + functionality first, no over-engineering, watch cost/perf |
+| 6 (Theme J#3 — Browser Use) | ✅ Codex automation, not in-repo binary |
+| 7 (Theme J#4 — slice-acceptance) | ✅ Relax contract; CI is expensive |
+| 8 (Theme J#5 — graphify) | ✅ Backlog under AI freeze |
+| 9 (Theme H#8 — first-backfill status) | Self-closes via Phase 8 push |
 
 ---
 
