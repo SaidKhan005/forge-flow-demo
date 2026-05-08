@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_auth_gate.dart';
+import 'package:forge_and_flow/auth/mfa_freshness_redirect_listener.dart';
 import 'package:forge_and_flow/main_admin.dart' as admin_entrypoint;
 import 'package:forge_and_flow/services/auth/firebase_auth_client.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -524,6 +525,15 @@ class _RecordingAdminAuthSource implements AdminAuthSource {
   @override
   Future<void> signOut() async {
     _state = const AdminAuthUnauthenticated();
+    _controller.add(_state);
+  }
+
+  @override
+  void onMfaFreshnessRedirect(MfaFreshnessRedirectPayload payload) {
+    _state = AdminAuthUnauthenticated(
+      lastInfoMessage: payload.message,
+      redirectUri: payload.redirectUri,
+    );
     _controller.add(_state);
   }
 

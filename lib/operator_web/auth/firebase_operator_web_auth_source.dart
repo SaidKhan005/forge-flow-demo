@@ -5,6 +5,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import '../../auth/mfa_freshness_redirect_listener.dart';
 import '../../services/auth/account_info_gateway.dart';
 import '../../services/auth/firebase_auth_client.dart';
 import '../account/operator_web_account_actions.dart';
@@ -39,7 +40,8 @@ class FirebaseOperatorWebAuthSource
         OperatorWebSecurityGatewayProvider,
         OperatorWebNotificationPreferencesGatewayProvider,
         OperatorWebWageAuthorityGatewayProvider,
-        OperatorWebScheduleGatewayProvider {
+        OperatorWebScheduleGatewayProvider,
+        MfaFreshnessRedirectListener {
   FirebaseOperatorWebAuthSource({
     required FirebaseAuthClient authClient,
     required OperatorWebProxyClient proxyClient,
@@ -104,6 +106,16 @@ class FirebaseOperatorWebAuthSource
          proxyBaseUri: proxyClient.baseUri,
          idTokenProvider: authClient.currentIdToken,
        ) {
+    // CODE_OPS_DEBT carry-over #1 — register this auth source as the
+    // proxy client's listener for the `mfa_freshness_required` 403
+    // redirect. The proxy client surfaces the `redirect_uri` payload
+    // by calling `onMfaFreshnessRedirect` (below) just before it
+    // throws the `OperatorWebProxyException`. Doing the listener
+    // wire-up here (rather than at the proxy-client construction
+    // site) keeps the `OperatorWebProxyClient` constructor optional-
+    // listener-friendly and lets the auth source take ownership of
+    // the sign-out + state-emit handshake.
+    proxyClient.mfaFreshnessRedirectListener = this;
     _controller.add(_state);
     unawaited(_bootstrap());
   }
@@ -556,6 +568,45 @@ class FirebaseOperatorWebAuthSource
     _currentSessionId = null;
     await _authClient.signOut();
     _emit(const OperatorWebNeedsSignIn());
+  }
+
+  /// CODE_OPS_DEBT carry-over #1 — the proxy client invokes this when
+  /// any HTTP call returns the `mfa_freshness_required` 403 payload.
+  /// Contract: sign out the current Firebase session (no special
+  /// flow — the existing [signOut] path) and emit a
+  /// [OperatorWebNeedsSignIn] that carries the proxy-supplied
+  /// `redirect_uri` so the router can navigate back to the original
+  /// surface after re-auth completes.
+  ///
+  /// This method must NOT throw — it runs inside an HTTP error path
+  /// where any throw would mask the original 403.
+  @override
+  void onMfaFreshnessRedirect(MfaFreshnessRedirectPayload payload) {
+    // Capture the redirect intent and clear the cached session id
+    // before we drive the async sign-out so a re-render between the
+    // two does not see a stale session id paired with the
+    // needs-sign-in state.
+    _currentSessionId = null;
+    final intent = payload.redirectUri;
+    // Drive sign-out asynchronously — listener contract is sync.
+    // Failures fall through to the unauthenticated state with a
+    // safe info message; we deliberately never re-throw.
+    unawaited(() async {
+      try {
+        await _authClient.signOut();
+      } catch (_) {
+        // Best-effort — fall through to emit so the user lands on
+        // the sign-in surface even if the sign-out RPC failed.
+      }
+      _emit(
+        OperatorWebNeedsSignIn(
+          lastInfoMessage:
+              payload.message ??
+              'Please sign in again to continue. This protects your account.',
+          redirectUri: intent,
+        ),
+      );
+    }());
   }
 
   @override

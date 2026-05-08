@@ -34,6 +34,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../auth/mfa_freshness_redirect_listener.dart';
 import '../screens/auth/totp_challenge_view.dart';
 import '../services/auth/firebase_auth_client.dart';
 import '../services/auth/firebase_auth_client_sdk.dart';
@@ -100,9 +101,26 @@ class AdminAuthLoading extends AdminAuthState {
 }
 
 class AdminAuthUnauthenticated extends AdminAuthState {
-  const AdminAuthUnauthenticated({this.lastErrorMessage});
+  const AdminAuthUnauthenticated({
+    this.lastErrorMessage,
+    this.lastInfoMessage,
+    this.redirectUri,
+  });
 
   final String? lastErrorMessage;
+
+  /// CODE_OPS_DEBT carry-over #1 — non-error explanation rendered on
+  /// the sign-in surface when the user landed here because the proxy
+  /// returned the `mfa_freshness_required` 403. Falls back to a
+  /// generic "please sign in again" copy if the proxy did not supply
+  /// a message.
+  final String? lastInfoMessage;
+
+  /// CODE_OPS_DEBT carry-over #1 — populated when the user was sent
+  /// here by the freshness redirect. The shell uses this hint to
+  /// navigate back to the originating surface after a successful
+  /// re-auth + MFA completion.
+  final String? redirectUri;
 }
 
 class AdminAuthForbidden extends AdminAuthState {
@@ -142,7 +160,15 @@ class AdminAuthAuthenticated extends AdminAuthState {
 
 /// Source of admin auth state. Both live Firebase wiring and demo
 /// fixtures implement this so the gate stays implementation-blind.
-abstract class AdminAuthSource {
+///
+/// Implementations also act as the [MfaFreshnessRedirectListener] for
+/// the admin shell's gateways — when any admin gateway intercepts a
+/// `mfa_freshness_required` 403 it dispatches to
+/// [onMfaFreshnessRedirect] (CODE_OPS_DEBT carry-over #1), which signs
+/// out the current admin session and emits an
+/// [AdminAuthUnauthenticated] state carrying the proxy-supplied
+/// `redirect_uri` hint.
+abstract class AdminAuthSource implements MfaFreshnessRedirectListener {
   Stream<AdminAuthState> get stream;
   AdminAuthState get current;
 
@@ -310,6 +336,23 @@ class DemoAdminAuthSource implements AdminAuthSource {
     _emit(const AdminAuthUnauthenticated());
   }
 
+  /// CODE_OPS_DEBT carry-over #1 — proxy 403 redirect listener. The
+  /// demo source has no real Firebase session; we emit an
+  /// unauthenticated state carrying the redirect hint so widget tests
+  /// can assert the contract.
+  @override
+  void onMfaFreshnessRedirect(MfaFreshnessRedirectPayload payload) {
+    _emit(
+      AdminAuthUnauthenticated(
+        lastInfoMessage:
+            payload.message ??
+            'Please sign in again to continue. This protects your '
+                'account.',
+        redirectUri: payload.redirectUri,
+      ),
+    );
+  }
+
   /// Test helper: swap the state directly without going through
   /// sign-in. Lets widget tests pin a fixture without async timing.
   @visibleForTesting
@@ -385,6 +428,35 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
   Future<void> signOut() async {
     await _client.signOut();
     _emit(const AdminAuthUnauthenticated());
+  }
+
+  /// CODE_OPS_DEBT carry-over #1 — proxy 403 redirect listener. Drive
+  /// the existing Firebase Auth sign-out flow then emit an
+  /// unauthenticated state carrying the proxy-supplied
+  /// `redirect_uri`. This method is called from inside an HTTP
+  /// error path (gateway about to throw) so it MUST NOT throw —
+  /// failures fall through to a generic info message and the user
+  /// still lands on the sign-in card.
+  @override
+  void onMfaFreshnessRedirect(MfaFreshnessRedirectPayload payload) {
+    final intent = payload.redirectUri;
+    final infoMessage =
+        payload.message ??
+        'Please sign in again to continue. This protects your account.';
+    unawaited(() async {
+      try {
+        await _client.signOut();
+      } catch (_) {
+        // Best-effort — fall through to emit so the user still lands
+        // on the sign-in card even if the sign-out RPC failed.
+      }
+      _emit(
+        AdminAuthUnauthenticated(
+          lastInfoMessage: infoMessage,
+          redirectUri: intent,
+        ),
+      );
+    }());
   }
 
   Future<void> _bootstrapCurrentUser() async {
@@ -566,6 +638,8 @@ class _AdminAuthGateState extends State<AdminAuthGate> {
       AdminAuthUnauthenticated() => _AdminSignInScreen(
         source: widget.source,
         errorMessage: state.lastErrorMessage,
+        infoMessage: state.lastInfoMessage,
+        redirectUri: state.redirectUri,
       ),
       AdminAuthForbidden() => _AdminForbiddenScreen(
         source: widget.source,
@@ -654,10 +728,29 @@ class _AdminMfaChallengeScreenState extends State<_AdminMfaChallengeScreen> {
 }
 
 class _AdminSignInScreen extends StatefulWidget {
-  const _AdminSignInScreen({required this.source, this.errorMessage});
+  const _AdminSignInScreen({
+    required this.source,
+    this.errorMessage,
+    this.infoMessage,
+    this.redirectUri,
+  });
 
   final AdminAuthSource source;
   final String? errorMessage;
+
+  /// CODE_OPS_DEBT carry-over #1 — surfaces the post-freshness-403
+  /// info banner ("Please sign in again to continue. This protects
+  /// your account.") on the sign-in card. Distinct from
+  /// [errorMessage] so we render it in a calm tone, not the red
+  /// error band.
+  final String? infoMessage;
+
+  /// CODE_OPS_DEBT carry-over #1 — opaque return-to hint emitted by
+  /// the proxy. Stored on the screen as a hidden field so
+  /// post-sign-in flows can resume the originally-requested admin
+  /// action. Not currently rendered, but threaded through so future
+  /// slices can wire it without re-touching this gate.
+  final String? redirectUri;
 
   @override
   State<_AdminSignInScreen> createState() => _AdminSignInScreenState();
@@ -736,6 +829,13 @@ class _AdminSignInScreenState extends State<_AdminSignInScreen> {
                   children: [
                     const _AdminBrandMark(subtitle: 'Admin Console'),
                     const SizedBox(height: 28),
+                    if (widget.infoMessage != null) ...[
+                      _AdminInfoBanner(
+                        key: const Key('admin_signin_info_banner'),
+                        message: widget.infoMessage!,
+                      ),
+                      const SizedBox(height: 14),
+                    ],
                     _AdminSignInCard(
                       key: const Key('admin_signin_card'),
                       emailController: _emailController,
@@ -1025,6 +1125,44 @@ class _ErrorBanner extends StatelessWidget {
             child: Text(
               message,
               style: AppTextStyles.body13(color: AppColors.negative),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// CODE_OPS_DEBT carry-over #1 — calm-tone info banner rendered on
+/// the admin sign-in card after a `mfa_freshness_required` 403
+/// triggered a forced sign-out. Distinct from [_ErrorBanner] so the
+/// user does not read this as a failure they caused.
+class _AdminInfoBanner extends StatelessWidget {
+  const _AdminInfoBanner({super.key, required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.sunset.withValues(alpha: 0.08),
+        border: Border.all(
+          color: AppColors.sunset.withValues(alpha: 0.45),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline, size: 16, color: AppColors.sunsetDark),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
           ),
         ],
