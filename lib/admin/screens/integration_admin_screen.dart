@@ -286,10 +286,15 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Vendor integrations',
+                  'Vendor connector catalog',
                   style: AppTextStyles.sectionTitle(
                     color: AppColors.textPrimary,
                   ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Status only. Connect, test, and disconnect controls stay on the selected location Integrations tile.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 10),
                 if (bundle.vendorConnectors.isEmpty)
@@ -352,7 +357,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Check integration status and manage service keys. New keys show once, then stay hidden.',
+          'Manage platform service keys and global provider health. Business vendor setup stays per location in Business Accounts.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
