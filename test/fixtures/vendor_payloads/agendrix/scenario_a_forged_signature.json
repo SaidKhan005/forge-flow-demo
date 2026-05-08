@@ -1,0 +1,26 @@
+{
+  "_transport": {
+    "delivery_mode": "webhook_defense_in_depth",
+    "method": "POST",
+    "path": "/inbound/agendrix/webhook",
+    "headers": {
+      "content-type": "application/json",
+      "x-agendrix-signature": "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+      "x-agendrix-timestamp": "1778155200"
+    },
+    "raw_body_utf8": "{\"event\":\"time_entry.updated\",\"time_entry\":{\"id\":\"te_999777\",\"user_id\":\"usr_98231\",\"position\":{\"id\":\"pos_foh_server\",\"name\":\"Server\"},\"start_time\":\"2026-05-02T15:00:00.000Z\",\"end_time\":\"2026-05-02T22:30:00.000Z\",\"updated_at\":\"2026-05-02T22:32:14.000Z\"}}",
+    "expected_signing_secret": "agendrix-signing-secret-001"
+  },
+  "event": "time_entry.updated",
+  "time_entry": {
+    "id": "te_999777",
+    "user_id": "usr_98231",
+    "position": {
+      "id": "pos_foh_server",
+      "name": "Server"
+    },
+    "start_time": "2026-05-02T15:00:00.000Z",
+    "end_time": "2026-05-02T22:30:00.000Z",
+    "updated_at": "2026-05-02T22:32:14.000Z"
+  }
+}

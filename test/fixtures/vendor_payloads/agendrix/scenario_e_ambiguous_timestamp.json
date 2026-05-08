@@ -1,0 +1,16 @@
+{
+  "time_entries": [
+    {
+      "id": "te_412907",
+      "user_id": "usr_98231",
+      "position": {
+        "id": "pos_foh_server",
+        "name": "Server"
+      },
+      "start_time": "2026-05-02T15:00:00",
+      "end_time": "2026-05-02T22:30:00",
+      "updated_at": "2026-05-02T22:32:14"
+    }
+  ],
+  "next_cursor": ""
+}

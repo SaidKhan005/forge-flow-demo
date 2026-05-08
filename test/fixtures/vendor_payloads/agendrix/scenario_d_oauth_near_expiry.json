@@ -1,0 +1,41 @@
+{
+  "_credential_state": {
+    "auth_mode": "oauth",
+    "grant_type": "authorization_code",
+    "token_endpoint": "https://api.agendrix.com/v2/oauth/token",
+    "token_type": "Bearer",
+    "access_token": "ag_at_redacted_near_expiry",
+    "refresh_token": "ag_rt_redacted_sliding_001",
+    "expires_at_utc": "2026-05-08T13:14:00.000Z",
+    "now_utc": "2026-05-08T12:30:00.000Z",
+    "expires_in_seconds_remaining": 2640,
+    "agendrix_company_id": "co_alpha_001",
+    "scopes": [
+      "time_entries.read",
+      "time_entries.read.single",
+      "positions.read",
+      "users.read",
+      "companies.read"
+    ]
+  },
+  "_refresh_request_documented_shape": {
+    "method": "POST",
+    "path": "/v2/oauth/token",
+    "headers": {
+      "content-type": "application/x-www-form-urlencoded"
+    },
+    "form_body": {
+      "grant_type": "refresh_token",
+      "refresh_token": "ag_rt_redacted_sliding_001",
+      "client_id": "redacted-client-id",
+      "client_secret": "redacted-client-secret"
+    }
+  },
+  "_refresh_response_documented_shape": {
+    "access_token": "ag_at_redacted_post_refresh",
+    "refresh_token": "ag_rt_redacted_sliding_002",
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "scope": "time_entries.read time_entries.read.single positions.read users.read companies.read"
+  }
+}
