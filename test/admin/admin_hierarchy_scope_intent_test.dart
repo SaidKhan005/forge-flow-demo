@@ -74,5 +74,20 @@ void main() {
       );
       expect(routeIntent.effectiveHierarchyScope?.locationId, 'loc-1');
     });
+
+    test('support-log filter preserves hierarchy scope intent', () {
+      const scope = AdminHierarchyScopeIntent.orgUnit(
+        operatorId: 'op-1',
+        orgUnitId: 'ou-north',
+        orgUnitName: 'North Region',
+      );
+
+      final filter = AdminSupportLogFilterIntent.fromHierarchyScope(scope);
+
+      expect(filter.effectiveOperatorId, 'op-1');
+      expect(filter.effectiveLocationId, isNull);
+      expect(filter.effectiveHierarchyScope, scope);
+      expect(filter.cacheKey, 'op-1|org_unit|ou-north|');
+    });
   });
 }

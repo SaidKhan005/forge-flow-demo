@@ -372,13 +372,17 @@ Widget _buildOperators(BuildContext context) {
       onOpenSupportLogs: handoff == null
           ? null
           : (operatorId, locationId) {
+              final scope = locationId == null
+                  ? AdminHierarchyScopeIntent.business(operatorId: operatorId)
+                  : AdminHierarchyScopeIntent.location(
+                      operatorId: operatorId,
+                      locationId: locationId,
+                    );
               handoff.onSelectRoute(
                 AdminRouteIntent(
                   routeId: kAdminDebugConsoleRouteId,
-                  supportLogFilter: AdminSupportLogFilterIntent(
-                    operatorId: operatorId,
-                    locationId: locationId,
-                  ),
+                  supportLogFilter:
+                      AdminSupportLogFilterIntent.fromHierarchyScope(scope),
                 ),
               );
             },
@@ -1564,15 +1568,20 @@ Widget _buildDebugConsole(BuildContext context) {
   // affordance); the diff still renders so support can audit recent
   // request meta.
   final gateway = AdminConsoleServicesScope.debugConsoleGatewayOf(context);
+  final hierarchyGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final supportLogFilter = AdminRouteHandoff.maybeOf(context)?.supportLogFilter;
+  final supportLogScope = supportLogFilter?.effectiveHierarchyScope;
   final initialFilter = RequestLogFilter(
-    operatorId: supportLogFilter?.operatorId,
-    locationId: supportLogFilter?.locationId,
+    operatorId: supportLogFilter?.effectiveOperatorId,
+    locationId: supportLogFilter?.effectiveLocationId,
   );
   if (source == null) {
     return DebugConsoleAdminScreen(
       gateway: gateway,
+      hierarchyGateway: hierarchyGateway,
+      hierarchyScope: supportLogScope,
       initialFilter: initialFilter,
     );
   }
@@ -1585,6 +1594,8 @@ Widget _buildDebugConsole(BuildContext context) {
       final canEdit = session != null && session.roles.contains('super_admin');
       return DebugConsoleAdminScreen(
         gateway: gateway,
+        hierarchyGateway: hierarchyGateway,
+        hierarchyScope: supportLogScope,
         editingEnabled: canEdit,
         initialFilter: initialFilter,
       );

@@ -119,6 +119,8 @@ class HttpDebugConsoleAdminGateway implements DebugConsoleAdminGateway {
     }
     if (filter.locationId != null && filter.locationId!.isNotEmpty) {
       query['location_id'] = filter.locationId!;
+    } else if (filter.locationIds != null && filter.locationIds!.length == 1) {
+      query['location_id'] = filter.locationIds!.single;
     }
     if (filter.usageClass != null && filter.usageClass!.isNotEmpty) {
       query['usage_class'] = filter.usageClass!;
