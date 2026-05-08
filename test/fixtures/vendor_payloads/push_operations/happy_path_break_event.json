@@ -1,0 +1,39 @@
+{
+  "labour": [
+    {
+      "id": 700402,
+      "employee_id": 5519,
+      "position_id": 327,
+      "position_name": "Line Cook",
+      "clocked_in_at": "2026-05-02T17:30:00.000Z",
+      "clocked_out_at": null,
+      "breaks": [
+        {
+          "id": 8810,
+          "start_at": "2026-05-02T20:30:00.000Z",
+          "end_at": "2026-05-02T20:55:00.000Z",
+          "paid": false,
+          "type": "meal"
+        },
+        {
+          "id": 8811,
+          "start_at": "2026-05-02T22:45:00.000Z",
+          "end_at": null,
+          "paid": false,
+          "type": "rest"
+        }
+      ],
+      "scheduled_start_at": "2026-05-02T17:30:00.000Z",
+      "scheduled_end_at": "2026-05-03T01:15:00.000Z",
+      "actual_start_at": "2026-05-02T17:28:04.000Z",
+      "actual_end_at": null,
+      "hours": null,
+      "wage": 22.00,
+      "tip_amount": 0.00,
+      "updated_at": "2026-05-02T22:45:08.000Z"
+    }
+  ],
+  "page": 1,
+  "limit": 100,
+  "total": 1
+}

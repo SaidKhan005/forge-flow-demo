@@ -1,0 +1,22 @@
+{
+  "shifts": [
+    {
+      "id": "not-an-int-but-stringified-uuid-like-d3a4b1",
+      "employee_id": 5512,
+      "position_name": "Server",
+      "start_at": "2026-05-02T16:00:00.000Z",
+      "end_at": "this-is-not-a-timestamp",
+      "updated_at": null
+    },
+    {
+      "id": 800404,
+      "employee_id": null,
+      "position_name": 17,
+      "start_at": "2026-05-02T16:00:00.000Z",
+      "end_at": "2026-05-02T23:30:00.000Z"
+    }
+  ],
+  "page": "one",
+  "limit": -1,
+  "total": "?"
+}

@@ -1,0 +1,19 @@
+{
+  "shifts": [
+    {
+      "id": 800201,
+      "employee_id": 5530,
+      "position_id": null,
+      "position_name": null,
+      "start_at": "2026-05-03T17:00:00.000Z",
+      "end_at": "2026-05-04T00:00:00.000Z",
+      "published": true,
+      "published_at": "2026-04-29T11:18:55.000Z",
+      "notes": null,
+      "updated_at": "2026-04-29T11:18:55.000Z"
+    }
+  ],
+  "page": 1,
+  "limit": 100,
+  "total": 1
+}

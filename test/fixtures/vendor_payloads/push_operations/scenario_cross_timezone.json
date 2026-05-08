@@ -1,0 +1,31 @@
+{
+  "shifts": [
+    {
+      "id": 800701,
+      "employee_id": 5560,
+      "position_id": 311,
+      "position_name": "Server",
+      "start_at": "2026-05-02T22:00:00.000Z",
+      "end_at": "2026-05-03T06:00:00.000Z",
+      "published": true,
+      "published_at": "2026-04-29T11:00:00.000Z",
+      "_pressure_test_location_hint": "vancouver_location_id (America/Vancouver)",
+      "updated_at": "2026-04-29T11:00:00.000Z"
+    },
+    {
+      "id": 800702,
+      "employee_id": 5512,
+      "position_id": 311,
+      "position_name": "Server",
+      "start_at": "2026-05-02T22:00:00.000Z",
+      "end_at": "2026-05-03T06:00:00.000Z",
+      "published": true,
+      "published_at": "2026-04-29T11:00:00.000Z",
+      "_pressure_test_location_hint": "toronto_location_id (America/Toronto)",
+      "updated_at": "2026-04-29T11:00:00.000Z"
+    }
+  ],
+  "page": 1,
+  "limit": 100,
+  "total": 2
+}
