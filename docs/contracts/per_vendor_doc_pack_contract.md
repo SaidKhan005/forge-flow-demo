@@ -197,7 +197,7 @@ Required sections:
 - **Owner.** Person on ops side driving the application.
 - **Estimated lead time remaining.** Realistic estimate; updated
   monthly.
-- **Blockers.** Any commercial blocker (legal review pending,
+- **Blockers.** Any commercial blocker (vendor-side review pending,
   pricing-tier negotiation, etc.).
 
 Lifecycle promotion to `production_credentialed` requires this file

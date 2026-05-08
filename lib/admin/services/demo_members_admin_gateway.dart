@@ -148,6 +148,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
       updatedAt: _clock(),
       updatedBy: actorUserId,
       orgUnitId: prev.orgUnitId,
+      grants: prev.grants,
     );
     members[index] = updated;
     return updated;
@@ -475,6 +476,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
       updatedAt: _clock(),
       updatedBy: actorUserId,
       orgUnitId: prev.orgUnitId,
+      grants: prev.grants,
     );
     members[index] = updated;
     _record(
@@ -504,6 +506,9 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
     required String actorUserId,
     required bool actorIsForgeAdmin,
     required String adminReason,
+    String scopeType = 'operator_wide',
+    String? primaryLocationId,
+    String? orgUnitId,
   }) async {
     _ensureForgeAdmin(actorIsForgeAdmin, 'overrideRoleGrant');
     _ensureAdminReason(adminReason, 'overrideRoleGrant');
@@ -522,11 +527,28 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
       status: prev.status,
       mfaEnrolled: prev.mfaEnrolled,
       lastActiveAt: prev.lastActiveAt,
-      orgUnitId: prev.orgUnitId,
+      orgUnitId: orgUnitId ?? prev.orgUnitId,
       createdBy: prev.createdBy,
       createdAt: prev.createdAt,
       updatedBy: actorUserId,
       updatedAt: _clock(),
+      grants: <MemberRoleGrantRow>[
+        MemberRoleGrantRow(
+          userRoleId: 'grant-$userId-${_clock().microsecondsSinceEpoch}',
+          roleKey: roleKey,
+          roleLabel: memberRoleLabel(roleKey),
+          scopeType: scopeType,
+          locationId: scopeType == 'location' ? primaryLocationId : null,
+          locationName: scopeType == 'location'
+              ? _findLocationName(
+                  members: members,
+                  invites: _invitesFor(operatorId),
+                  locationId: primaryLocationId ?? prev.primaryLocationId,
+                )
+              : null,
+          orgUnitId: scopeType == 'org_unit' ? orgUnitId : null,
+        ),
+      ],
     );
     members[index] = updated;
     _record(
@@ -542,6 +564,9 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
       targetId: userId,
       payload: <String, Object?>{
         'role_key': <String, String>{'from': prev.roleKey, 'to': roleKey},
+        'scope_type': scopeType,
+        if (primaryLocationId != null) 'location_id': primaryLocationId,
+        if (orgUnitId != null) 'org_unit_id': orgUnitId,
         'override': true,
       },
       adminReason: adminReason,
@@ -561,6 +586,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
     required String actorUserId,
     required bool actorIsForgeAdmin,
     required String adminReason,
+    String scopeType = 'location',
     String? orgUnitId,
     String? welcomeNote,
   }) async {
@@ -596,6 +622,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
       primaryLocationName: primaryLocationName ?? primaryLocationId,
       invitedAt: _clock(),
       invitedBy: actorUserId,
+      scopeType: scopeType,
       orgUnitId: orgUnitId,
       welcomeNote: welcomeNote,
     );
@@ -611,8 +638,10 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
       payload: <String, Object?>{
         'email': invite.email,
         'role_key': roleKey,
-        'primary_location_id': primaryLocationId,
-        if (orgUnitId != null) 'org_unit_id': orgUnitId,
+        'scope_type': scopeType,
+        if (scopeType == 'location') 'primary_location_id': primaryLocationId,
+        if (scopeType == 'org_unit' && orgUnitId != null)
+          'org_unit_id': orgUnitId,
       },
       adminReason: adminReason,
     );

@@ -19,6 +19,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/models/debug_console_admin_models.dart';
 import 'package:forge_and_flow/admin/services/debug_console_admin_gateway.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart' as http_testing;
 
 void main() {
   RequestLogEntry entry({
@@ -73,6 +75,19 @@ void main() {
     test('location filter rejects mismatched rows', () {
       const filter = RequestLogFilter(locationId: 'loc-other');
       expect(filter.matches(base), isFalse);
+    });
+
+    test('covered location filter keeps rows inside the expanded scope', () {
+      const filter = RequestLogFilter(
+        operatorId: 'op-A',
+        locationIds: <String>['loc-1', 'loc-2'],
+      );
+      expect(filter.matches(base), isTrue);
+      const outside = RequestLogFilter(
+        operatorId: 'op-A',
+        locationIds: <String>['loc-2', 'loc-3'],
+      );
+      expect(outside.matches(base), isFalse);
     });
 
     test('usage_class filter rejects mismatched rows', () {
@@ -185,10 +200,39 @@ void main() {
       final scoped = await gateway.listRequests(
         const RequestLogFilter(operatorId: 'op-B'),
       );
-      expect(
-        scoped.map((e) => e.requestId).toList(),
-        <String>['req-foreign'],
+      expect(scoped.map((e) => e.requestId).toList(), <String>['req-foreign']);
+    });
+
+    test('listRequests narrows by covered location IDs', () async {
+      final locA = entry(
+        id: 'req-loc-a',
+        operatorId: 'op-A',
+        locationId: 'loc-a',
       );
+      final locB = entry(
+        id: 'req-loc-b',
+        operatorId: 'op-A',
+        locationId: 'loc-b',
+      );
+      final locC = entry(
+        id: 'req-loc-c',
+        operatorId: 'op-A',
+        locationId: 'loc-c',
+      );
+      final gateway = InMemoryDebugConsoleAdminGateway(
+        seed: <RequestLogEntry>[locA, locB, locC],
+        now: () => DateTime.utc(2026, 5, 3, 12, 30),
+      );
+      final scoped = await gateway.listRequests(
+        const RequestLogFilter(
+          operatorId: 'op-A',
+          locationIds: <String>['loc-a', 'loc-b'],
+        ),
+      );
+      expect(scoped.map((e) => e.requestId).toSet(), <String>{
+        'req-loc-a',
+        'req-loc-b',
+      });
     });
 
     test('listRequests narrows by status + time-window', () async {
@@ -206,28 +250,32 @@ void main() {
       expect(scoped.map((e) => e.requestId).toList(), <String>['req-foreign']);
     });
 
-    test('listRequests narrows by free-form search across id and key',
-        () async {
-      final gateway = InMemoryDebugConsoleAdminGateway(
-        seed: <RequestLogEntry>[older, foreign, newer],
-        now: () => DateTime.utc(2026, 5, 3, 12, 30),
-      );
-      final byId = await gateway.listRequests(
-        const RequestLogFilter(searchText: 'newer'),
-      );
-      expect(byId.map((e) => e.requestId).toList(), <String>['req-newer']);
-      final byKey = await gateway.listRequests(
-        const RequestLogFilter(searchText: 'foreign'),
-      );
-      expect(byKey.map((e) => e.requestId).toList(), <String>['req-foreign']);
-    });
+    test(
+      'listRequests narrows by free-form search across id and key',
+      () async {
+        final gateway = InMemoryDebugConsoleAdminGateway(
+          seed: <RequestLogEntry>[older, foreign, newer],
+          now: () => DateTime.utc(2026, 5, 3, 12, 30),
+        );
+        final byId = await gateway.listRequests(
+          const RequestLogFilter(searchText: 'newer'),
+        );
+        expect(byId.map((e) => e.requestId).toList(), <String>['req-newer']);
+        final byKey = await gateway.listRequests(
+          const RequestLogFilter(searchText: 'foreign'),
+        );
+        expect(byKey.map((e) => e.requestId).toList(), <String>['req-foreign']);
+      },
+    );
 
     test('getByRequestId returns the row or null', () async {
       final gateway = InMemoryDebugConsoleAdminGateway(
         seed: <RequestLogEntry>[older, newer],
       );
-      expect((await gateway.getByRequestId('req-newer'))?.requestId,
-          equals('req-newer'));
+      expect(
+        (await gateway.getByRequestId('req-newer'))?.requestId,
+        equals('req-newer'),
+      );
       expect(await gateway.getByRequestId('req-missing'), isNull);
     });
 
@@ -235,8 +283,10 @@ void main() {
       final gateway = InMemoryDebugConsoleAdminGateway(
         seed: <RequestLogEntry>[older, newer],
       );
-      expect((await gateway.getByIdempotencyKey('idem-new'))?.requestId,
-          equals('req-newer'));
+      expect(
+        (await gateway.getByIdempotencyKey('idem-new'))?.requestId,
+        equals('req-newer'),
+      );
       expect(await gateway.getByIdempotencyKey('idem-missing'), isNull);
     });
 
@@ -270,10 +320,10 @@ void main() {
         ],
       );
       final optIns = await gateway.listFullContentOptIns();
-      expect(
-        optIns.map((o) => o.operatorId).toList(),
-        <String>['op-A', 'op-Z'],
-      );
+      expect(optIns.map((o) => o.operatorId).toList(), <String>[
+        'op-A',
+        'op-Z',
+      ]);
       expect(optIns.first.enabled, isFalse);
       expect(optIns.last.enabled, isTrue);
     });
@@ -288,27 +338,65 @@ void main() {
     });
   });
 
+  group('HttpDebugConsoleAdminGateway', () {
+    test(
+      'sends multi-location org-unit support log scope to the proxy',
+      () async {
+        http.Request? captured;
+        final gateway = HttpDebugConsoleAdminGateway(
+          baseUri: Uri.parse('https://admin-proxy.test'),
+          bearerTokenProvider: () async => 'token',
+          httpClient: http_testing.MockClient((http.Request request) async {
+            captured = request;
+            return http.Response('{"requests":[]}', 200);
+          }),
+        );
+
+        await gateway.listRequests(
+          const RequestLogFilter(
+            operatorId: 'op-1',
+            locationIds: <String>['loc-a', 'loc-b'],
+          ),
+        );
+
+        expect(captured, isNotNull);
+        expect(captured!.url.path, equals('/v1/admin/debug/requests'));
+        expect(captured!.url.queryParameters['operator_id'], equals('op-1'));
+        expect(
+          captured!.url.queryParameters['location_ids'],
+          equals('loc-a,loc-b'),
+        );
+        expect(
+          captured!.url.queryParameters.containsKey('location_id'),
+          isFalse,
+        );
+      },
+    );
+  });
+
   group('Demo seed', () {
     test('kDebugConsoleDemoEntries has at least one error/timeout/success', () {
-      final statuses = kDebugConsoleDemoEntries
-          .map((e) => e.status)
-          .toSet();
+      final statuses = kDebugConsoleDemoEntries.map((e) => e.status).toSet();
       expect(statuses, contains(RequestLogStatus.success));
       expect(statuses, contains(RequestLogStatus.error));
       expect(statuses, contains(RequestLogStatus.timeout));
     });
 
-    test('kDebugConsoleDemoOptIns covers both operator IDs in the entries seed',
-        () {
-      final operatorIds =
-          kDebugConsoleDemoEntries.map((e) => e.operatorId).toSet();
-      final optInOperators =
-          kDebugConsoleDemoOptIns.map((o) => o.operatorId).toSet();
-      // Every operator that appears in entries should also have a
-      // corresponding opt-in projection — the screen reads opt-in by
-      // operator_id and a missing entry would silently default to off.
-      expect(optInOperators.containsAll(operatorIds), isTrue);
-    });
+    test(
+      'kDebugConsoleDemoOptIns covers both operator IDs in the entries seed',
+      () {
+        final operatorIds = kDebugConsoleDemoEntries
+            .map((e) => e.operatorId)
+            .toSet();
+        final optInOperators = kDebugConsoleDemoOptIns
+            .map((o) => o.operatorId)
+            .toSet();
+        // Every operator that appears in entries should also have a
+        // corresponding opt-in projection — the screen reads opt-in by
+        // operator_id and a missing entry would silently default to off.
+        expect(optInOperators.containsAll(operatorIds), isTrue);
+      },
+    );
 
     test('exactly one demo opt-in is enabled (Demo Diner)', () {
       final enabled = kDebugConsoleDemoOptIns.where((o) => o.enabled).toList();

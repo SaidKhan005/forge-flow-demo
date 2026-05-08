@@ -56,7 +56,7 @@ Realistic estimate; updated monthly as ops learns more.
 
 ## Blockers
 
-Any commercial blocker (legal review pending, pricing-tier
+Any commercial blocker (vendor-side review pending, pricing-tier
 negotiation, vendor's response time slow, etc.). One bullet per
 blocker; resolve as they clear.
 

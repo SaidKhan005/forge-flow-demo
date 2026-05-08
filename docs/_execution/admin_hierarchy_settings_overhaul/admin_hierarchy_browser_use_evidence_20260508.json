@@ -1,0 +1,74 @@
+{
+  "feature": "Admin Hierarchy Settings Overhaul",
+  "date": "2026-05-08",
+  "workspace": "C:/Git Local Repos/forge_flow_demo/.codex_worktrees/admin-hierarchy-security-scope-audit",
+  "branch": "codex/admin-hierarchy-security-scope-audit",
+  "preview": {
+    "kind": "local_static_admin_demo",
+    "url": "http://127.0.0.1:8235/?cache_bust=admin-hierarchy-final-evidence-1778221109214",
+    "deployment": "not_run_by_operator_request",
+    "build_command": "flutter build web -t lib/main_admin.dart --dart-define=ADMIN_DEMO_AUTH=true --pwa-strategy=none",
+    "build_result": "pass"
+  },
+  "browser_use": {
+    "backend": "iab",
+    "current_screen": "Support logs",
+    "console_errors_or_warnings": 0,
+    "fresh_cache_bust_login": "pass",
+    "screens_smoked": [
+      "Business accounts hierarchy-first IA",
+      "Hierarchy scope prompt",
+      "Support logs org-unit scope"
+    ],
+    "observations": [
+      "Business accounts loads with hierarchy panel before setup tiles.",
+      "Support logs scope prompt exposes business, org-unit, and location choices without duplicate root paths.",
+      "Org-unit support logs route shows covered-location count and the corrected proxy-filter copy.",
+      "No browser console errors or warnings were captured during the final smoke."
+    ]
+  },
+  "safe_mutation_evidence_from_browser_sweep": [
+    "created child org unit Audit district under East region",
+    "created child location Audit Market under Audit district",
+    "created scoped People/access invite with admin reason",
+    "forced a demo session logout with admin reason"
+  ],
+  "verification": {
+    "focused_analyze": {
+      "command": "flutter analyze lib/admin/services/debug_console_admin_gateway.dart lib/admin/screens/debug_console_admin_screen.dart tool/advisor_proxy/advisor_proxy.dart tool/advisor_proxy/proxy_bootstrap.dart test/admin/debug_console_admin_gateway_test.dart test/admin/debug_console_admin_screen_test.dart test/proxy/admin_debug_console_routes_test.dart",
+      "result": "pass"
+    },
+    "focused_support_log_tests": {
+      "command": "flutter test test/admin/debug_console_admin_gateway_test.dart test/admin/debug_console_admin_screen_test.dart test/proxy/admin_debug_console_routes_test.dart",
+      "result": "pass",
+      "count": "46 passing"
+    },
+    "broad_hierarchy_suite": {
+      "command": "flutter test test/admin_operator_location_screen_test.dart test/admin_shell_widget_test.dart test/admin/screens/members_admin_screen_test.dart test/admin/screens/audited_support_actions_admin_screen_test.dart test/admin/screens/roles_hierarchy_sessions_admin_screen_test.dart test/admin/services/roles_hierarchy_sessions_admin_gateway_test.dart test/admin/operator_location_admin_gateway_test.dart test/admin/services/members_admin_gateway_test.dart test/admin/services/audited_support_actions_admin_gateway_test.dart test/admin/admin_hierarchy_scope_intent_test.dart test/admin/vendor_connections_admin_mount_test.dart test/admin/data_accuracy_polling_hierarchy_scope_screen_test.dart test/admin/debug_console_admin_gateway_test.dart test/admin/debug_console_admin_screen_test.dart test/proxy/admin_debug_console_routes_test.dart test/proxy_auth_operations_route_test.dart test/proxy_auth_operations_route_grants_test.dart test/proxy_auth_operations_gateway_test.dart test/proxy_auth_operations_gateway_grants_test.dart test/org_units_repository_live_binding_test.dart test/infrastructure/persistence/postgres/repositories/locations_repository_test.dart test/phase_9_hierarchy_access_wiring_test.dart",
+      "result": "pass",
+      "count": "422 passing, 1 skipped",
+      "skip_note": "phase_9_hierarchy_access_wiring_test remains passive unless staging Postgres env vars are provided"
+    }
+  },
+  "doc_audit": {
+    "source_docs": [
+      "docs/_execution/admin_hierarchy_settings_overhaul/README.md",
+      "docs/_execution/admin_hierarchy_settings_overhaul/01_product_rule_and_ia.md",
+      "docs/_execution/admin_hierarchy_settings_overhaul/02_plumbing_audit_matrix.md",
+      "docs/_execution/admin_hierarchy_settings_overhaul/03_execution_slices.md",
+      "docs/_execution/admin_hierarchy_settings_overhaul/04_verification_deploy_and_e2e.md",
+      "docs/_execution/admin_hierarchy_settings_overhaul/05_new_codex_execution_prompt.md"
+    ],
+    "closed_gaps": [
+      "support logs now pass multi-location org-unit filters through the admin HTTP gateway, proxy route, and repository SQL",
+      "support-log visible copy no longer claims org-unit scope is client-side only",
+      "org-unit create and location create require hierarchy parent, idempotency key, actor, and admin reason",
+      "org-unit move and lifecycle controls remain gated where schema/routes are unavailable",
+      "People/access/roles, Security/audit/sessions, Integrations, Timing, Data Accuracy, and Polling/Pricing retain documented scope/gated behavior"
+    ],
+    "residual_notes": [
+      "No preview deploy was run because the operator said deployment is not needed yet.",
+      "Timing is intentionally read-only in this hierarchy surface while still showing effective values, inheritance/source labels, timezone, and service periods; existing backend admin timing routes remain covered by route tests."
+    ]
+  }
+}

@@ -27,7 +27,8 @@ Do NOT use this runbook for:
 
 - Data-retention purges driven by retention policy (separate
   operational runbook; preserves much less).
-- Legal-hold release scenarios (manual SQL with legal sign-off).
+- Legal-hold release scenarios (manual SQL run by an authorized
+  operator/founder; out of scope for this runbook).
 - Operator-driven user removal that is not erasure (use the standard
   `UserLifecycleAction.softDelete` path).
 

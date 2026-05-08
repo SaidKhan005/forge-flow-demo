@@ -374,7 +374,7 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(1400, 1000));
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final scopes = <AdminOperatorLocationScopeIntent>[];
+        final scopes = <AdminHierarchyScopeIntent>[];
         final gateway = InMemoryOperatorLocationAdminGateway(
           seed: <OperatorAdminBundle>[
             OperatorAdminBundle(
@@ -412,23 +412,30 @@ void main() {
             home: Scaffold(
               body: OperatorLocationAdminScreen(
                 gateway: gateway,
-                onOpenDataAccuracy: scopes.add,
-                onOpenPollingPricing: scopes.add,
+                onOpenDataAccuracyScope: scopes.add,
+                onOpenPollingPricingScope: scopes.add,
               ),
             ),
           ),
         );
         await tester.pumpAndSettle();
 
+        final locationScope = find.byKey(
+          const Key('admin_hierarchy_location_loc-1'),
+        );
+        await tester.ensureVisible(locationScope);
+        await tester.tap(locationScope);
+        await tester.pumpAndSettle();
+
         final dataAccuracyAction = find.byKey(
-          const Key('admin_location_data_accuracy_loc-1'),
+          const Key('admin_business_setup_tile_data_accuracy'),
         );
         await tester.ensureVisible(dataAccuracyAction);
         await tester.tap(dataAccuracyAction);
         await tester.pumpAndSettle();
 
         final pollingPricingAction = find.byKey(
-          const Key('admin_location_polling_pricing_loc-1'),
+          const Key('admin_business_setup_tile_polling_pricing'),
         );
         await tester.ensureVisible(pollingPricingAction);
         await tester.tap(pollingPricingAction);
@@ -439,6 +446,7 @@ void main() {
         expect(scopes.first.locationId, 'loc-1');
         expect(scopes.first.displayLabel, 'Barrio Legado / 95 Water Street');
         expect(scopes.last.locationId, 'loc-1');
+        expect(scopes.last.inheritanceLabel, 'Location only');
       },
     );
   });

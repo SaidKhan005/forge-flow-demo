@@ -33,6 +33,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import 'admin_http_timeout.dart';
@@ -362,6 +363,39 @@ abstract class DataAccuracyAdminGateway {
     String? reasonNote,
   });
 
+  /// Doc 1 keyed-data-accuracy-write — service-period override.
+  ///
+  /// Mirrors the operator-web keyed write surface but routes through
+  /// the admin proxy with `actor_kind = 'forge_admin'` and a required
+  /// reason note. Returns the upserted row so the screen can refresh
+  /// its keyed-row table without an additional read.
+  ///
+  /// Throws [DataAccuracyAdminForbiddenException] when the caller is
+  /// not a forge_admin (defence-in-depth alongside the screen-level
+  /// `editingEnabled` gate).
+  Future<DataAccuracyServicePeriodSetting>
+  overrideDataAccuracyServicePeriod({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required ServicePeriodCoversSource coversSource,
+    required ServicePeriodWageSource wageSource,
+    required String effectiveAtBusinessDateIso,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String reasonNote,
+  });
+
+  /// List the keyed service-period rows F&F support sees alongside the
+  /// per-location override table. Mirrors the operator-web read shape
+  /// but is admin-scoped (admin proxy gateway handles cross-operator
+  /// visibility).
+  Future<List<DataAccuracyServicePeriodSetting>>
+  listDataAccuracyServicePeriodRows({
+    required String operatorId,
+    required String locationId,
+  });
+
   // ── Tab 2 reads ──────────────────────────────────────────────────────
   Future<List<TierDefinition>> listTierDefinitions();
   Future<List<TierAssignmentAdminRow>> listTierAssignments();
@@ -426,6 +460,8 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
 
   static const String dataRowsPath = '/v1/admin/data-accuracy/rows';
   static const String dataSettingsPrefix = '/v1/admin/data-accuracy/settings/';
+  static const String dataServicePeriodSettingsPrefix =
+      '/v1/admin/data-accuracy/service-period-settings/';
   static const String auditHistoryPath =
       '/v1/admin/data-accuracy/audit-history';
   static const String tierDefinitionsPath =
@@ -511,6 +547,68 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       },
     );
     return _dataAccuracyRowFromJson(_asMap(body['row']));
+  }
+
+  @override
+  Future<DataAccuracyServicePeriodSetting>
+  overrideDataAccuracyServicePeriod({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required ServicePeriodCoversSource coversSource,
+    required ServicePeriodWageSource wageSource,
+    required String effectiveAtBusinessDateIso,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String reasonNote,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'overrideDataAccuracyServicePeriod');
+    if (reasonNote.trim().isEmpty) {
+      throw const DataAccuracyAdminGatewayError(
+        statusCode: 400,
+        errorCode: 'reason_note_required',
+        message:
+            'overrideDataAccuracyServicePeriod requires a reason note for '
+            'the audit log',
+      );
+    }
+    final body = await _send(
+      method: 'PATCH',
+      path:
+          '$dataServicePeriodSettingsPrefix${Uri.encodeComponent(operatorId)}/'
+          '${Uri.encodeComponent(locationId)}',
+      idempotencyKey: _newIdempotencyKey('data-accuracy-service-period'),
+      jsonBody: <String, Object?>{
+        'service_period_key': servicePeriodKey,
+        'covers_source': coversSource.wire,
+        'wage_source': wageSource.wire,
+        'effective_at_business_date': effectiveAtBusinessDateIso,
+        'reason_note': reasonNote.trim(),
+      },
+    );
+    return _servicePeriodSettingFromJson(_asMap(body['data'] ?? body['row']));
+  }
+
+  @override
+  Future<List<DataAccuracyServicePeriodSetting>>
+  listDataAccuracyServicePeriodRows({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final body = await _send(
+      method: 'GET',
+      path:
+          '$dataServicePeriodSettingsPrefix${Uri.encodeComponent(operatorId)}/'
+          '${Uri.encodeComponent(locationId)}',
+    );
+    final rows =
+        (body['data_accuracy_service_period_settings'] as List?) ??
+        (body['rows'] as List?) ??
+        const [];
+    return <DataAccuracyServicePeriodSetting>[
+      for (final row in rows)
+        _servicePeriodSettingFromJson((row as Map).cast<String, Object?>()),
+    ];
   }
 
   @override
@@ -756,6 +854,16 @@ DataAccuracySettings _settingsFromJson(Map<String, Object?> json) {
   });
 }
 
+DataAccuracyServicePeriodSetting _servicePeriodSettingFromJson(
+  Map<String, Object?> json,
+) {
+  return DataAccuracyServicePeriodSetting.fromRow(<String, Object?>{
+    ...json,
+    'created_at': _dateTimeField(json, 'created_at'),
+    'updated_at': _dateTimeField(json, 'updated_at'),
+  });
+}
+
 DataAccuracyAdminAuditEvent _auditEventFromJson(Map<String, Object?> json) {
   return DataAccuracyAdminAuditEvent(
     eventId: _stringField(json, 'event_id'),
@@ -951,6 +1059,14 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   final DateTime Function() _clock;
   final List<OperatorLocationRef> _operatorLocations;
   final Map<String, DataAccuracySettings> _settings;
+  // Keyed (operator/location/service_period_key/effective_at_business_date)
+  // service-period rows. Mirrors the operator-web load shape and the
+  // schema of `public.data_accuracy_service_period_settings`. Demo +
+  // widget tests get the same diff/audit-event mechanics as the legacy
+  // override path.
+  final Map<String, List<DataAccuracyServicePeriodSetting>>
+  _servicePeriodSettings = <String, List<DataAccuracyServicePeriodSetting>>{};
+  int _servicePeriodIdCounter = 0;
   final Map<PollingTierKey, TierDefinition> _tierDefinitions;
   final Map<String, ForgeFlowPollingTierAssignment> _assignments;
   final List<ForgeFlowPollingTierAssignment> _assignmentHistory =
@@ -1156,6 +1272,127 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       );
     }
     return DataAccuracyAdminRow(operatorRef: ref, settings: next);
+  }
+
+  @override
+  Future<DataAccuracyServicePeriodSetting>
+  overrideDataAccuracyServicePeriod({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required ServicePeriodCoversSource coversSource,
+    required ServicePeriodWageSource wageSource,
+    required String effectiveAtBusinessDateIso,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String reasonNote,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'overrideDataAccuracyServicePeriod');
+    if (reasonNote.trim().isEmpty) {
+      // Defence-in-depth: live HTTP path also requires a reason note.
+      // Audit rows without a reason note dilute the trail; reject them
+      // here so widget tests + demo walkthroughs match the production
+      // shape.
+      throw const DataAccuracyAdminGatewayError(
+        statusCode: 400,
+        errorCode: 'reason_note_required',
+        message:
+            'overrideDataAccuracyServicePeriod requires a reason note for '
+            'the audit log',
+      );
+    }
+    final keyPattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
+    if (!keyPattern.hasMatch(servicePeriodKey)) {
+      throw const DataAccuracyAdminGatewayError(
+        statusCode: 400,
+        errorCode: 'invalid_service_period_key',
+        message:
+            'service_period_key must start with a lowercase letter and '
+            'contain only lowercase letters, numbers, or underscores',
+      );
+    }
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(effectiveAtBusinessDateIso)) {
+      throw const DataAccuracyAdminGatewayError(
+        statusCode: 400,
+        errorCode: 'invalid_effective_at_business_date',
+        message:
+            'effective_at_business_date must be a YYYY-MM-DD business date',
+      );
+    }
+    final key = _key(operatorId, locationId);
+    final list = _servicePeriodSettings.putIfAbsent(
+      key,
+      () => <DataAccuracyServicePeriodSetting>[],
+    );
+    DataAccuracyServicePeriodSetting? prev;
+    final priorIdx = list.indexWhere(
+      (r) =>
+          r.servicePeriodKey == servicePeriodKey &&
+          r.effectiveAtBusinessDate == effectiveAtBusinessDateIso,
+    );
+    if (priorIdx >= 0) {
+      prev = list[priorIdx];
+    }
+    _servicePeriodIdCounter += 1;
+    final next = DataAccuracyServicePeriodSetting(
+      id: prev?.id ?? 'period-setting-$_servicePeriodIdCounter',
+      operatorId: operatorId,
+      locationId: locationId,
+      servicePeriodKey: servicePeriodKey,
+      coversSource: coversSource,
+      wageSource: wageSource,
+      effectiveAtBusinessDate: effectiveAtBusinessDateIso,
+      createdAt: prev?.createdAt ?? _clock(),
+      updatedAt: _clock(),
+      updatedBy: actorUserId,
+    );
+    if (priorIdx >= 0) {
+      list[priorIdx] = next;
+    } else {
+      list.add(next);
+      list.sort((a, b) {
+        final byKey = a.servicePeriodKey.compareTo(b.servicePeriodKey);
+        if (byKey != 0) return byKey;
+        // Effective date desc — most recent first.
+        return b.effectiveAtBusinessDate.compareTo(a.effectiveAtBusinessDate);
+      });
+    }
+    final diff = <String, Object?>{
+      'service_period_key': servicePeriodKey,
+      'effective_at_business_date': effectiveAtBusinessDateIso,
+    };
+    if (prev == null || prev.coversSource != coversSource) {
+      diff['covers_source'] = <String, String>{
+        if (prev != null) 'from': prev.coversSource.wire,
+        'to': coversSource.wire,
+      };
+    }
+    if (prev == null || prev.wageSource != wageSource) {
+      diff['wage_source'] = <String, String>{
+        if (prev != null) 'from': prev.wageSource.wire,
+        'to': wageSource.wire,
+      };
+    }
+    _record(
+      eventType: 'admin.data_accuracy.service_period_override',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      diff: diff,
+      reasonNote: reasonNote.trim(),
+    );
+    return next;
+  }
+
+  @override
+  Future<List<DataAccuracyServicePeriodSetting>>
+  listDataAccuracyServicePeriodRows({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final list = _servicePeriodSettings[_key(operatorId, locationId)];
+    if (list == null) return const <DataAccuracyServicePeriodSetting>[];
+    return List<DataAccuracyServicePeriodSetting>.unmodifiable(list);
   }
 
   @override

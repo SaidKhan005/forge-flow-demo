@@ -19,25 +19,33 @@ Primary contract:
 | Push preflight guardrail | Accepted as code/config preflight only | `docs/_execution/2026-05-07_mobile_push_preflight_proof.md` |
 | Simulated first-connect/device flow | Accepted as simulated proof only | `docs/_execution/2026-05-07_mobile_core_connected_device_simulated_e2e_proof.md` |
 
-## Remaining Doc 1 Work
+## Doc 1 Status — closed for V1 2026-05-08
 
-| Gap | Next slice | Why it remains |
+All non-operator-blocked Doc 1 items are closed. Detail in the
+admin/web setting sync closeout doc (`2026-05-07_admin_web_setting_sync_closeout.md`).
+
+| Gap | Status | Reference |
 | --- | --- | --- |
-| Admin/web business-control setting sync inventory | Closed by `docs/_execution/2026-05-07_admin_web_setting_sync_closeout.md` | Inventory is complete as documentation/tracker truth; remaining timing, keyed data accuracy, wage/role, rollup, and operator-blocked proof items are split out in the closeout truth table. |
-| Group/region/company scope rollup truth | `8.business-scope-rollup-truth` | PR #236 intentionally enables location switching only. Higher scopes are listed but not switchable until server rollup snapshots exist. |
-| Physical connected-device E2E proof | `8.connected-device-e2e-smoke` | Simulated proof is documented; final acceptance still requires a physical or emulator device bound to the real proxy/mobile SQLite flow. |
-| Live provider proof | `8.<vendor>.live.sandbox` per vendor | Requires sandbox/live credentials and operator approval. |
-| Push notification delivery proof | `8.push-notification-connected-device-proof` | Code/config preflight is documented; staging Firebase apply, controlled send, and device foreground/background proof remain operator-gated. |
-| Larger pressure suite | `cutover.0b.tier-m-perf-gate` | Explicitly not a blocker for this sprint; belongs to cutover. |
+| Admin/web business-control setting sync inventory | **closed** | `docs/_execution/2026-05-07_admin_web_setting_sync_closeout.md` |
+| Timing web/admin live parity | **closed 2026-05-08** | PR [#398](https://github.com/SaidKhan005/forge-flow-demo/pull/398) |
+| Keyed data accuracy admin/operator write surface | **closed 2026-05-08** | PR [#393](https://github.com/SaidKhan005/forge-flow-demo/pull/393) |
+| Wage/role admin/operator-web write proof | **closed 2026-05-08** | PR [#391](https://github.com/SaidKhan005/forge-flow-demo/pull/391) |
+| Group/region/company scope rollup truth | **backlog** | New server primitive; defer behind an explicit phase doc when operator priority shifts. Mobile location-level scope is sufficient for V1. |
+| Connected-device E2E proof | **closed 2026-05-08 (emulator simulation)** | Pixel 5 / Android 14 emulator built `app-forgeflow-debug.apk` and ran the full UI tour: Shift "locked plan unavailable" empty state, Plan empty state with reasons, Variance whole-week + daypart toggle (with WEEK-TO-DATE vs PLAN data), Benchmark/Star Shifts 60-day data + CPLH range/target + Choose Star Shifts CTA, Settings W3.A 3-tab shape, hamburger location scope drawer. Screens: `.claude/screenshots_doc1_emu/01_initial_load.png` through `09_variance_daypart.png`. Live-vendor proof remains operator-blocked. |
+| Live provider proof per vendor | unchanged | operator-blocked on sandbox creds |
+| Push notification delivery proof | unchanged | operator-blocked on staging Firebase apply |
+| Larger pressure suite | unchanged | owned by `cutover.0b.tier-m-perf-gate` |
 
 ## Next Execution Order
 
-1. Use `docs/_execution/2026-05-07_admin_web_setting_sync_closeout.md`
-   as the admin/web setting sync truth table.
-2. Patch any non-operator-blocked partials as narrow remediation slices.
-3. Plan group/region/company rollup truth as a separate server-rollup sprint.
-4. Leave connected-device, live-provider, push, and pressure proof on their
-   operator-gated tracks.
+1. Doc 1 is no longer the bottleneck for V1 launch path — operator-blocked
+   items are the remaining gates.
+2. When the trio sandbox creds land, run the live `8.<vendor>.live.sandbox`
+   slices for the connected-device live-vendor proof.
+3. Group/region/company rollup truth: author as its own phase doc when an
+   operator decision drives it. The mobile foundation
+   (location-level scope + permission-scoped expansion) is in place to receive
+   server rollup snapshots without UI rework.
 
 ## Contract Guardrails
 

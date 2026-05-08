@@ -29,6 +29,7 @@ import '../../services/auth/auth_operations_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../account/operator_web_account_actions.dart';
 import '../services/business_timing_gateway.dart';
+import '../services/http_business_timing_read_gateway.dart';
 import '../services/demo_security_gateway.dart';
 import '../services/demo_team_audit_log_gateway.dart';
 import '../services/demo_team_fixtures.dart';
@@ -787,6 +788,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             locationId: locationScope.id,
             locationName: locationScope.label,
             gateway: _webBusinessTimingGateway,
+            existingProfile:
+                _resolvedExistingTimingProfile(locationScope.id),
             onClose: () => setState(() => _editingBusinessTiming = false),
           );
         } else {
@@ -1027,6 +1030,22 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           .businessTimingGateway;
     }
     return _routerOwnedTimingGateway ??= const DemoBusinessTimingGateway();
+  }
+
+  /// Doc 1 timing web/admin live parity (2026-05-08): when the live
+  /// read gateway has already loaded the operator's profile list, hand
+  /// the resolved profile (location override if present, otherwise the
+  /// operator default) to the editor so it edits in place instead of
+  /// defaulting to a brand-new profile. Returns `null` when no profiles
+  /// exist yet so the editor can still mount in create mode.
+  BusinessTimingProfileWriteResult? _resolvedExistingTimingProfile(
+    String locationId,
+  ) {
+    final gateway = _businessTimingGateway;
+    if (gateway is HttpBusinessTimingReadGateway) {
+      return gateway.selectProfileForLocation(locationId);
+    }
+    return null;
   }
 
   WebTeamRolesGateway get _teamRolesGateway {

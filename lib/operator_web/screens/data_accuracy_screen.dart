@@ -40,11 +40,13 @@ import '../widgets/covers_historical_seed_card.dart';
 import '../widgets/covers_manual_entry_card.dart';
 import '../widgets/covers_source_toggle.dart';
 import '../widgets/data_accuracy_explainer_card.dart';
+import '../widgets/keyed_service_period_accuracy_card.dart';
 import '../widgets/operator_web_summary_strip.dart';
 import '../widgets/polling_tier_status_card.dart';
 import '../widgets/vendor_relativity_label.dart';
 import '../widgets/wage_source_toggle.dart';
 import '../widgets/walk_in_handling_card.dart';
+import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
@@ -171,6 +173,21 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   int _settingsSaveGeneration = 0;
   DataAccuracySettings? _lastSettings;
 
+  // Keyed `data_accuracy_service_period_settings` rows (server-owned;
+  // mobile mirrors them through operational sync). The screen reads
+  // them at hydrate time and writes through
+  // [OperatorWebDataAccuracyGateway.saveServicePeriodSetting], which
+  // hits the same scoped PATCH route the mobile-operational write
+  // surface exposes.
+  List<DataAccuracyServicePeriodSetting> _servicePeriodRows =
+      const <DataAccuracyServicePeriodSetting>[];
+  bool _servicePeriodsLoading = false;
+  bool _savingServicePeriod = false;
+  String? _servicePeriodLoadError;
+  String? _servicePeriodSaveError;
+  int _servicePeriodLoadGeneration = 0;
+  int _servicePeriodSaveGeneration = 0;
+
   // In-memory editable working copy of the settings. Materialized
   // back into `DataAccuracySettings` on save.
   late CoversSource _coversSourceLunch;
@@ -188,8 +205,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     _gateway = widget.gateway ?? InMemoryVendorConnectionsGateway();
     _applySettingsSeed(widget.initialSettings);
     _settingsLoading = widget.dataAccuracyGateway != null;
+    _servicePeriodsLoading = widget.dataAccuracyGateway != null;
     _loadBundle();
     _loadSettings();
+    _loadServicePeriodSettings();
   }
 
   Future<void> _loadBundle() async {
@@ -228,9 +247,14 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _settingsLoading = widget.dataAccuracyGateway != null;
         _settingsLoadError = null;
         _settingsSaveError = null;
+        _servicePeriodsLoading = widget.dataAccuracyGateway != null;
+        _servicePeriodLoadError = null;
+        _servicePeriodSaveError = null;
+        _servicePeriodRows = const <DataAccuracyServicePeriodSetting>[];
       });
       _loadBundle();
       _loadSettings();
+      _loadServicePeriodSettings();
     }
   }
 
@@ -314,6 +338,73 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     widget.onSaveSettings?.call(settings);
     final gateway = widget.dataAccuracyGateway;
     if (gateway != null) unawaited(_saveSettings(gateway, settings));
+  }
+
+  Future<void> _loadServicePeriodSettings() async {
+    final gateway = widget.dataAccuracyGateway;
+    if (gateway == null) {
+      _servicePeriodsLoading = false;
+      return;
+    }
+    final generation = ++_servicePeriodLoadGeneration;
+    try {
+      final rows = await gateway.loadServicePeriodSettings(
+        operatorId: widget.session.operatorId,
+        locationId: widget.locationId,
+      );
+      if (!mounted || generation != _servicePeriodLoadGeneration) return;
+      setState(() {
+        _servicePeriodRows = rows;
+        _servicePeriodsLoading = false;
+        _servicePeriodLoadError = null;
+      });
+    } catch (error) {
+      if (!mounted || generation != _servicePeriodLoadGeneration) return;
+      setState(() {
+        _servicePeriodsLoading = false;
+        _servicePeriodLoadError =
+            'Could not load service-period overrides: $error';
+      });
+    }
+  }
+
+  Future<void> _saveKeyedServicePeriod(
+    KeyedServicePeriodAccuracyDraft draft,
+  ) async {
+    final gateway = widget.dataAccuracyGateway;
+    if (gateway == null) return;
+    final generation = ++_servicePeriodSaveGeneration;
+    setState(() {
+      _savingServicePeriod = true;
+      _servicePeriodSaveError = null;
+    });
+    try {
+      await gateway.saveServicePeriodSetting(
+        operatorId: widget.session.operatorId,
+        locationId: widget.locationId,
+        servicePeriodKey: draft.servicePeriodKey,
+        coversSource: draft.coversSource,
+        wageSource: draft.wageSource,
+        effectiveAtBusinessDateIso: draft.effectiveAtBusinessDateIso,
+      );
+      if (!mounted || generation != _servicePeriodSaveGeneration) return;
+      setState(() {
+        _savingServicePeriod = false;
+        _servicePeriodSaveError = null;
+      });
+      // Refresh the keyed list so the new row (or superseded row) is
+      // visible immediately. The mobile cache is invalidated through
+      // the realtime sync surface; the operator-web view reads
+      // straight from the proxy.
+      await _loadServicePeriodSettings();
+    } catch (error) {
+      if (!mounted || generation != _servicePeriodSaveGeneration) return;
+      setState(() {
+        _savingServicePeriod = false;
+        _servicePeriodSaveError =
+            'Could not save service-period override: $error';
+      });
+    }
   }
 
   Future<void> _saveSettings(
@@ -633,6 +724,25 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
               dayCount: 60,
               initialEntries: _seedToDaypartMap(_manualEntries),
               onApplySeed: _handleApplySeed,
+            ),
+          ],
+          if (widget.dataAccuracyGateway != null) ...[
+            const SizedBox(height: 14),
+            const _DataAccuracyGroupLabel(
+              title: 'Service-period overrides',
+              subtitle:
+                  'Add a covers/wage override for a specific service period.',
+            ),
+            const SizedBox(height: 10),
+            KeyedServicePeriodAccuracyCard(
+              rows: _servicePeriodRows,
+              busy: _servicePeriodsLoading || _savingServicePeriod,
+              loadError: _servicePeriodLoadError,
+              saveError: _servicePeriodSaveError,
+              editingEnabled: widget._canEditDataAccuracy,
+              defaultEffectiveAtBusinessDateIso: widget.businessDateIso,
+              onAddOrEdit: _saveKeyedServicePeriod,
+              onRetry: _loadServicePeriodSettings,
             ),
           ],
           const SizedBox(height: 14),

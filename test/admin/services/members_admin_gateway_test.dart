@@ -868,6 +868,97 @@ void main() {
       },
     );
 
+    test('createInvite can target business-wide and org-unit scopes', () async {
+      final bodies = <Map<String, Object?>>[];
+      final mock = http_testing.MockClient((http.Request request) async {
+        bodies.add(jsonDecode(request.body) as Map<String, Object?>);
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'invite_id': 'inv-${bodies.length}',
+            'created_at': '2026-05-06T12:00:00Z',
+          }),
+          201,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpMembersAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      await gateway.createInvite(
+        operatorId: 'op-1',
+        email: 'owner@op.test',
+        displayName: 'Owner',
+        roleKey: 'operator_owner',
+        primaryLocationId: '',
+        scopeType: 'operator_wide',
+        idempotencyKey: 'idem-invite-business',
+        actorUserId: 'admin-1',
+        actorIsForgeAdmin: true,
+        adminReason: 'support-onboarding',
+      );
+      await gateway.createInvite(
+        operatorId: 'op-1',
+        email: 'regional@op.test',
+        displayName: 'Regional',
+        roleKey: 'operator_manager',
+        primaryLocationId: '',
+        scopeType: 'org_unit',
+        orgUnitId: 'unit-1',
+        idempotencyKey: 'idem-invite-org-unit',
+        actorUserId: 'admin-1',
+        actorIsForgeAdmin: true,
+        adminReason: 'support-onboarding',
+      );
+
+      expect(bodies[0]['scope_type'], equals('operator_wide'));
+      expect(bodies[0].containsKey('location_id'), isFalse);
+      expect(bodies[0].containsKey('org_unit_id'), isFalse);
+      expect(bodies[1]['scope_type'], equals('org_unit'));
+      expect(bodies[1]['org_unit_id'], equals('unit-1'));
+      expect(bodies[1].containsKey('location_id'), isFalse);
+    });
+
+    test('overrideRoleGrant sends scoped role-grant payload', () async {
+      late http.Request captured;
+      final mock = http_testing.MockClient((http.Request request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{'user_role_id': 'grant-1'}),
+          201,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpMembersAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      final updated = await gateway.overrideRoleGrant(
+        operatorId: 'op-1',
+        userId: 'user-1',
+        roleKey: 'operator_manager',
+        scopeType: 'org_unit',
+        orgUnitId: 'unit-1',
+        idempotencyKey: 'idem-grant-org-unit',
+        actorUserId: 'admin-1',
+        actorIsForgeAdmin: true,
+        adminReason: 'support-onboarding',
+      );
+
+      expect(captured.url.path, equals('/v1/admin/auth/role-grants'));
+      final body = jsonDecode(captured.body) as Map<String, Object?>;
+      expect(body['role_id'], equals('operator_manager'));
+      expect(body['role_key'], equals('operator_manager'));
+      expect(body['scope_type'], equals('org_unit'));
+      expect(body['org_unit_id'], equals('unit-1'));
+      expect(body['admin_reason'], equals('support-onboarding'));
+      expect(updated.grants.single.scopeType, equals('org_unit'));
+    });
+
     test('createInvite accepts the proxy auth create response shape', () async {
       final mock = http_testing.MockClient((http.Request request) async {
         return http.Response(

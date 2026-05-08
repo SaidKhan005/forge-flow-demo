@@ -22,11 +22,32 @@ slices live in `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
    `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md` ·
    `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — applied per slice when relevant.
 
+Feature implementation work also uses
+`docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` whenever a
+slice edits or adds product functionality, route/schema behavior, runtime
+behavior, settings, permissions, or any feature with hidden plumbing risk.
+
 `docs/archive/**` is history; ignore unless explicitly named. Authority is
 normative in `CLAUDE.md`.
 
 Prefer `.mcp.json` servers for orientation: `forgeflow_docs`,
 `forgeflow_sqlite_schema`, `graphify`.
+
+## Hard Product Rule - Hierarchy-Scoped Settings
+
+Every setting that can affect a business account resolves through the operator
+hierarchy. A value may be set at the business/operator level and inherited by
+all descendants. The same setting may also be set at any org-unit or location
+level. The lowest configured scope wins; missing lower scopes inherit from the
+nearest ancestor.
+
+All admin, operator web, proxy, migration, and mobile surfaces that expose
+settings must support that rule or explicitly document why a capability is
+backend-only, gated, incomplete, or intentionally unsurfaced. The UI must show
+the selected scope, the inherited source, and the effective value before any
+mutation. Integrations are the known exception: they still prompt for hierarchy
+context, but edits are location-level because vendor connections are bound to a
+specific location.
 
 ## Open Work — V1 launch path
 
@@ -41,7 +62,7 @@ Detail + resume guide: `docs/_execution/2026-05-06_v1_operator_punchlist_executi
 |---|---|---|
 | Firebase Auth action-domain switch (`auth.feflow.org` → `forge-flow-production1.web.app`, set `callbackUri`, run 4 validation checks) | You / Cloud | `cutover.0` preflight |
 | Decide + apply 2 remaining Production1 migrations (first-connect-backfill jobs + 11W.7 operator account fields). 18 of 20 already staging-verified; full queue in `docs/POST_HARDENING_FOLLOWUPS.md` P0 | You + runbook | First-connect on prod, operator-web Account writes on prod |
-| Inbound-vendor T&Cs to counsel | You / Legal | `cutover.2` |
+| Seed operator-authored T&C content into `tos_versions` (universal + per-vendor scopes) at deploy time. Operator self-authors per `docs/contracts/operator_self_served_tos_contract.md`; no external legal-review gate. | You / Eng | `cutover.2` |
 | Sandbox creds for trio: Lightspeed K-Series · Libro · QuickBooks Time | You / Vendors | `*.live.sandbox` slices for trio |
 
 ### 2. Cutover sequence (gate-driven, not date-driven)
@@ -53,7 +74,7 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 | `cutover.0` preflight | not started | Read-only smoke on Production1; harness ready (V1.G). Needs Firebase Auth switch + 2 pending migrations applied |
 | `cutover.1` corpus load | not started | Voyage embeddings + Anthropic Contextual Retrieval; cost approval gate |
 | `cutover.0b` Tier-M perf gate | not started | Launch-blocking; needs `cutover.1` corpus first |
-| `cutover.2` first operator onboarding | not started | Vanessa on production1; needs lawyer-signed T&Cs |
+| `cutover.2` first operator onboarding | not started | Vanessa on production1; needs operator-authored T&C content seeded in `tos_versions` |
 | `cutover.3` traffic switch | not started | DNS / env-var flip |
 | `cutover.4` 7-day stability watch | not started | Non-negotiable before V1 declaration |
 | `cutover.5` post-launch hardening | not started | After V1 declaration |
@@ -65,8 +86,9 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 | `11A.8` Support audit | not started | `phase_11A_operations_console/*` |
 | `11A.9` Cross-operator reads | not started | `phase_11A_operations_console/*` |
 | `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |
-| `9.8` inbound vendor T&Cs (code lane) | code-ready, awaiting counsel | `phase_9_8/*` |
+| `9.8` inbound vendor T&Cs (code lane) | code-ready; operator-self-served content seeding pending | `phase_9_8/*` |
 | `business-timing-live` full hierarchy + settings lanes | future | `phase_business_timing_live/*` |
+| `admin-hierarchy-settings-overhaul` | planned | `docs/_execution/admin_hierarchy_settings_overhaul_plan_2026-05-08.md` |
 | Doc 1 item 7 — physical connected-device E2E | simulated proof documented; physical/emulator proof pending | new sprint `8.connected-device-e2e-smoke`; needs physical device |
 | Doc 1 item 9 — push delivery proof | preflight documented; needs staging apply + device | `8.push-notification-connected-device-proof` |
 | Group / region / company rollup truth | future | follows server rollup snapshots |
@@ -142,8 +164,9 @@ arrive.
   data exists; transition at `cutover.4`.
 - Migration changes: `dart run tool/migration_drift_scanner.dart --fix
   --strict-docs`, then `dart run tool/migration_cutoff_lint.dart`.
-- Runtime-exposed slices satisfy
-  `docs/contracts/slice_runtime_acceptance_contract.md`. Browser-exposed
+- Runtime-exposed slices should follow
+  `docs/contracts/slice_runtime_acceptance_contract.md` (advisory pattern,
+  not CI-enforced — reviewer judgment, not auto-blocking). Browser-exposed
   slices use Codex-driven Browser Use evidence per
   `runbooks/browser_use_codex_acceptance_workflow.md` (out-of-repo automation,
   not a binary in this tree) and full E2E uses
@@ -196,7 +219,7 @@ of the active board:
 - Phase `10a` real-time infra `.0`–`.5` + `UX.0`/`UX.1` ACCEPT 2026-05-06
 - Phase `7.58` depth wave ACCEPT 2026-05-05
 - `9.8.email` ACCEPT (PR #88)
-- CODE_HEALTH remediation closed 2026-05-07 (16 PRs across 5 critical + ~22 high findings; residuals in `CODE_HEALTH.md` addendum)
+- CODE_HEALTH remediation closed 2026-05-08 across 5 waves (52 findings closed across 41 PRs; archived at `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`; residuals consolidated into `docs/POST_HARDENING_FOLLOWUPS.md`, phase 11a decision register, phase 8 spine bridge plan, and the auth permission key catalog)
 - Production1 runtime live 2026-05-06 (Cloud Run + Firebase + Postgres-CMK + production DNS for `app.forgeflow.app` + `mail.forgeflow.app`)
 - Phase 8 plug-and-play V1 onboarding engineering-complete 2026-05-07 (PRs #280-#301 across operator-self-service descriptors / validators / route alignment / test-connection / disconnect / api-key paste / location integrations list / OAuth refresh closures / backfill adapter factory / analyzer sweep). Detail: `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-07_phase_8_plug_and_play.md`. Operations work (Production1 migration apply + Cloud Run vendor app creds + partner-portal redirect URIs) gates each Wave D `*.live.*` slice firing.
 

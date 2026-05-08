@@ -1,9 +1,11 @@
-// Phase 11A.13 - F&F Operations Console "Roles + Hierarchy +
-// Sessions" inspect surface.
+// Phase 11A.13 - F&F Operations Console "Roles + Hierarchy"
+// inspect surface.
 //
-// Cross-operator inspect with three tabs (Roles / Hierarchy /
-// Sessions) for the F&F admin to inspect and audit-edit role catalog,
-// org-unit hierarchy, and active sessions for the picked operator.
+// Cross-operator inspect with two tabs (Roles / Hierarchy) for the
+// F&F admin to inspect and audit-edit role catalog and org-unit
+// hierarchy for the picked operator. Active sessions now live under
+// Security/audit/sessions; the reusable panel remains in this file
+// because it shares the roles/hierarchy/sessions gateway contract.
 //
 // Mounts in the admin shell at `/admin/roles-hierarchy-sessions`.
 // The shell passes the shared Operations operator context when one
@@ -24,6 +26,7 @@ import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
 import '../services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'operator_picker_screen.dart';
 
@@ -37,6 +40,7 @@ class RolesHierarchySessionsAdminScreen extends StatefulWidget {
     this.canEditSeededRoles = false,
     this.idempotencyKeyFactory,
     this.onChangeOperator,
+    this.onBackToBusinessAccounts,
   });
 
   final RolesHierarchySessionsAdminGateway gateway;
@@ -61,6 +65,7 @@ class RolesHierarchySessionsAdminScreen extends StatefulWidget {
   /// Re-opens the operator picker. Wired by the route shell so the
   /// admin can switch operators without leaving the surface.
   final VoidCallback? onChangeOperator;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   State<RolesHierarchySessionsAdminScreen> createState() =>
@@ -71,28 +76,23 @@ class _RolesHierarchySessionsAdminScreenState
     extends State<RolesHierarchySessionsAdminScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController = TabController(
-    length: 3,
+    length: 2,
     vsync: this,
   );
 
   bool _rolesLoading = true;
   bool _hierarchyLoading = false;
-  bool _sessionsLoading = false;
   bool _rolesLoaded = false;
   bool _hierarchyLoaded = false;
-  bool _sessionsLoaded = false;
   String? _rolesLoadError;
   String? _hierarchyLoadError;
-  String? _sessionsLoadError;
   String? _actionError;
 
   List<RoleAdminRow> _roles = const <RoleAdminRow>[];
   List<OrgUnitAdminNode> _orgUnits = const <OrgUnitAdminNode>[];
   List<HierarchyLocationLeaf> _locations = const <HierarchyLocationLeaf>[];
-  List<SessionAdminRow> _sessions = const <SessionAdminRow>[];
   int _rolesGeneration = 0;
   int _hierarchyGeneration = 0;
-  int _sessionsGeneration = 0;
 
   int _idempotencyCounter = 0;
 
@@ -127,10 +127,6 @@ class _RolesHierarchySessionsAdminScreenState
       case 1:
         if (!_hierarchyLoaded && !_hierarchyLoading) {
           _refreshHierarchy();
-        }
-      case 2:
-        if (!_sessionsLoaded && !_sessionsLoading) {
-          _refreshSessions();
         }
     }
   }
@@ -215,44 +211,6 @@ class _RolesHierarchySessionsAdminScreenState
     }
   }
 
-  Future<void> _refreshSessions() async {
-    final generation = ++_sessionsGeneration;
-    setState(() {
-      _sessionsLoading = true;
-      _sessionsLoadError = null;
-    });
-    try {
-      final sessions = await widget.gateway.listSessions(
-        operatorId: widget.pickedOperator.operatorId,
-      );
-      if (generation != _sessionsGeneration) return;
-      if (!mounted) return;
-      setState(() {
-        _sessions = sessions;
-        _sessionsLoaded = true;
-        _sessionsLoading = false;
-      });
-    } on RolesHierarchySessionsGatewayError catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _sessionsLoadError = error.message;
-        _sessionsLoading = false;
-      });
-    } on RolesHierarchySessionsForbiddenException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _sessionsLoadError = error.message;
-        _sessionsLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _sessionsLoadError = 'Could not load sessions: $error';
-        _sessionsLoading = false;
-      });
-    }
-  }
-
   Future<void> _runAndRefresh(
     Future<void> Function() action, {
     required Future<void> Function() refresh,
@@ -290,9 +248,9 @@ class _RolesHierarchySessionsAdminScreenState
 
   Future<void> _onEditSeededRole(RoleAdminRow row) async {
     if (!widget.canEditSeededRoles) return;
-    final result = await showDialog<_EditSeededRoleResult>(
+    final result = await showDialog<EditSeededRoleResult>(
       context: context,
-      builder: (_) => _EditSeededRoleDialog(initial: row),
+      builder: (_) => EditSeededRoleDialog(initial: row),
     );
     if (result == null) return;
     await _runAndRefresh(
@@ -311,9 +269,9 @@ class _RolesHierarchySessionsAdminScreenState
   }
 
   Future<void> _onCreateCustomRole() async {
-    final result = await showDialog<_CustomRoleDraft>(
+    final result = await showDialog<CustomRoleDraft>(
       context: context,
-      builder: (_) => _CreateCustomRoleDialog(
+      builder: (_) => CreateCustomRoleDialog(
         existingRoleKeys: <String>{for (final r in _roles) r.roleKey},
       ),
     );
@@ -356,31 +314,6 @@ class _RolesHierarchySessionsAdminScreenState
 
   // --- Hierarchy tab actions --------------------------------------------
 
-  Future<void> _onMoveOrgUnit(OrgUnitAdminNode node) async {
-    final candidates = <OrgUnitAdminNode?>[
-      null,
-      ..._orgUnits.where((u) => u.orgUnitId != node.orgUnitId),
-    ];
-    final result = await showDialog<_MoveOrgUnitResult>(
-      context: context,
-      builder: (_) => _MoveOrgUnitDialog(node: node, candidates: candidates),
-    );
-    if (result == null) return;
-    await _runAndRefresh(
-      () => widget.gateway.moveOrgUnit(
-        operatorId: widget.pickedOperator.operatorId,
-        orgUnitId: node.orgUnitId,
-        newParentOrgUnitId: result.newParentOrgUnitId,
-        idempotencyKey: _nextIdempotencyKey('hierarchy-move-org-unit'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: result.adminReason,
-      ),
-      refresh: _refreshHierarchy,
-      successHint: 'Moved ${node.name}',
-    );
-  }
-
   Future<void> _onMoveLocation(HierarchyLocationLeaf leaf) async {
     final candidates = _orgUnits.toList(growable: false);
     if (candidates.isEmpty) return;
@@ -404,33 +337,31 @@ class _RolesHierarchySessionsAdminScreenState
     );
   }
 
-  // --- Sessions tab actions ---------------------------------------------
-
-  Future<void> _onForceLogoutSession(SessionAdminRow row) async {
-    if (row.userId == widget.actorUserId) {
-      // Defence in depth alongside the gateway throw + the disabled
-      // button; render the validation copy verbatim.
-      setState(() {
-        _actionError = SessionsValidationCopy.cannotRevokeSelf;
-      });
-      return;
-    }
-    final reason = await _promptAdminReason(
-      'Force logout ${row.userDisplayName}',
+  Future<void> _onAddChildOrgUnit(OrgUnitAdminNode parent) async {
+    final existingNames = <String>{
+      for (final unit in _orgUnits)
+        if (unit.parentOrgUnitId == parent.orgUnitId) unit.name.toLowerCase(),
+    };
+    final result = await showDialog<_AddOrgUnitResult>(
+      context: context,
+      builder: (_) =>
+          _AddChildOrgUnitDialog(parent: parent, existingNames: existingNames),
     );
-    if (reason == null) return;
+    if (result == null) return;
     await _runAndRefresh(
-      () => widget.gateway.forceLogoutSession(
+      () => widget.gateway.createOrgUnit(
         operatorId: widget.pickedOperator.operatorId,
-        sessionId: row.sessionId,
-        userId: row.userId,
-        idempotencyKey: _nextIdempotencyKey('sessions-force-logout'),
+        parentOrgUnitId: parent.orgUnitId,
+        unitType: result.unitType,
+        label: result.label,
+        name: result.name,
+        idempotencyKey: _nextIdempotencyKey('hierarchy-create-org-unit'),
         actorUserId: widget.actorUserId,
         actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: reason,
+        adminReason: result.adminReason,
       ),
-      refresh: _refreshSessions,
-      successHint: 'Signed out ${row.userDisplayName}',
+      refresh: _refreshHierarchy,
+      successHint: 'Added ${result.name}',
     );
   }
 
@@ -450,7 +381,12 @@ class _RolesHierarchySessionsAdminScreenState
               title: 'Team access',
               subtitle:
                   '${widget.pickedOperator.operatorBusinessName}: role policy, '
-                  'location hierarchy, and active sessions. Changes require a reason.',
+                  'and location hierarchy. Active sessions moved to Security/audit/sessions.',
+              leading: widget.onBackToBusinessAccounts == null
+                  ? null
+                  : AdminBusinessAccountsBackButton(
+                      onPressed: widget.onBackToBusinessAccounts,
+                    ),
               trailing: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),
@@ -474,10 +410,6 @@ class _RolesHierarchySessionsAdminScreenState
                 Tab(
                   key: Key('admin_rhs_tab_hierarchy'),
                   text: 'Location hierarchy',
-                ),
-                Tab(
-                  key: Key('admin_rhs_tab_sessions'),
-                  text: 'Active sessions',
                 ),
               ],
             ),
@@ -515,7 +447,7 @@ class _RolesHierarchySessionsAdminScreenState
           error: _rolesLoadError,
           loadingKey: const Key('admin_rhs_loading'),
           errorKey: const Key('admin_rhs_load_error'),
-          child: _RolesTab(
+          child: RolePolicyAdminPanel(
             roles: _roles,
             editingEnabled: widget.editingEnabled,
             canEditSeededRoles: widget.canEditSeededRoles,
@@ -533,20 +465,8 @@ class _RolesHierarchySessionsAdminScreenState
             orgUnits: _orgUnits,
             locations: _locations,
             editingEnabled: widget.editingEnabled,
-            onMoveOrgUnit: _onMoveOrgUnit,
+            onAddChildOrgUnit: _onAddChildOrgUnit,
             onMoveLocation: _onMoveLocation,
-          ),
-        ),
-        _TabLoadBody(
-          loading: _sessionsLoading,
-          error: _sessionsLoadError,
-          loadingKey: const Key('admin_rhs_sessions_loading'),
-          errorKey: const Key('admin_rhs_sessions_load_error'),
-          child: _SessionsTab(
-            sessions: _sessions,
-            editingEnabled: widget.editingEnabled,
-            actorUserId: widget.actorUserId,
-            onForceLogout: _onForceLogoutSession,
           ),
         ),
       ],
@@ -663,8 +583,9 @@ class _ScopeChip extends StatelessWidget {
 // Roles tab
 // ---------------------------------------------------------------------
 
-class _RolesTab extends StatelessWidget {
-  const _RolesTab({
+class RolePolicyAdminPanel extends StatelessWidget {
+  const RolePolicyAdminPanel({
+    super.key,
     required this.roles,
     required this.editingEnabled,
     required this.canEditSeededRoles,
@@ -1094,19 +1015,22 @@ class _PermissionExplainerCard extends StatelessWidget {
 // Hierarchy tab
 // ---------------------------------------------------------------------
 
+const String _orgUnitMoveGatedCopy =
+    'Org-unit moves are gated until schema, proxy, and audit support ships.';
+
 class _HierarchyTab extends StatelessWidget {
   const _HierarchyTab({
     required this.orgUnits,
     required this.locations,
     required this.editingEnabled,
-    required this.onMoveOrgUnit,
+    required this.onAddChildOrgUnit,
     required this.onMoveLocation,
   });
 
   final List<OrgUnitAdminNode> orgUnits;
   final List<HierarchyLocationLeaf> locations;
   final bool editingEnabled;
-  final ValueChanged<OrgUnitAdminNode> onMoveOrgUnit;
+  final ValueChanged<OrgUnitAdminNode> onAddChildOrgUnit;
   final ValueChanged<HierarchyLocationLeaf> onMoveLocation;
 
   @override
@@ -1177,7 +1101,11 @@ class _HierarchyTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Move actions are audit-logged with your name and reason.',
+                  'Location moves are audit-logged with your name and reason. '
+                  'Use Add child to create a new region, district, or '
+                  'location group under an existing unit. '
+                  'Org-unit moves are gated until schema, proxy, and audit '
+                  'support ships.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 8),
@@ -1194,7 +1122,7 @@ class _HierarchyTab extends StatelessWidget {
                       locationsByOrgUnit: locationsByOrgUnit,
                       depth: 0,
                       editingEnabled: editingEnabled,
-                      onMoveOrgUnit: onMoveOrgUnit,
+                      onAddChildOrgUnit: onAddChildOrgUnit,
                       onMoveLocation: onMoveLocation,
                     ),
               ],
@@ -1213,7 +1141,7 @@ class _OrgUnitNodeRow extends StatelessWidget {
     required this.locationsByOrgUnit,
     required this.depth,
     required this.editingEnabled,
-    required this.onMoveOrgUnit,
+    required this.onAddChildOrgUnit,
     required this.onMoveLocation,
   });
 
@@ -1222,7 +1150,7 @@ class _OrgUnitNodeRow extends StatelessWidget {
   final Map<String, List<HierarchyLocationLeaf>> locationsByOrgUnit;
   final int depth;
   final bool editingEnabled;
-  final ValueChanged<OrgUnitAdminNode> onMoveOrgUnit;
+  final ValueChanged<OrgUnitAdminNode> onAddChildOrgUnit;
   final ValueChanged<HierarchyLocationLeaf> onMoveLocation;
 
   @override
@@ -1259,13 +1187,29 @@ class _OrgUnitNodeRow extends StatelessWidget {
                     ).copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
-                if (editingEnabled && !isRoot)
-                  OutlinedButton(
-                    key: Key('admin_rhs_org_unit_move_${node.orgUnitId}'),
-                    onPressed: () => onMoveOrgUnit(node),
-                    style: AdminButtonStyles.secondary(),
-                    child: const Text('Move'),
+                if (editingEnabled && !isRoot) ...<Widget>[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      _orgUnitMoveGatedCopy,
+                      key: Key(
+                        'admin_rhs_org_unit_move_gated_${node.orgUnitId}',
+                      ),
+                      textAlign: TextAlign.right,
+                      style: AppTextStyles.mono11(color: AppColors.textMuted),
+                    ),
                   ),
+                ],
+                if (editingEnabled) ...<Widget>[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    key: Key('admin_rhs_org_unit_add_child_${node.orgUnitId}'),
+                    onPressed: () => onAddChildOrgUnit(node),
+                    style: AdminButtonStyles.secondary(),
+                    icon: const Icon(Icons.add, size: 14),
+                    label: const Text('Add child'),
+                  ),
+                ],
               ],
             ),
             for (final loc in ownLocations)
@@ -1305,7 +1249,7 @@ class _OrgUnitNodeRow extends StatelessWidget {
                 locationsByOrgUnit: locationsByOrgUnit,
                 depth: depth + 1,
                 editingEnabled: editingEnabled,
-                onMoveOrgUnit: onMoveOrgUnit,
+                onAddChildOrgUnit: onAddChildOrgUnit,
                 onMoveLocation: onMoveLocation,
               ),
           ],
@@ -1318,6 +1262,182 @@ class _OrgUnitNodeRow extends StatelessWidget {
 // ---------------------------------------------------------------------
 // Sessions tab
 // ---------------------------------------------------------------------
+
+class ActiveSessionsAdminPanel extends StatefulWidget {
+  const ActiveSessionsAdminPanel({
+    super.key,
+    required this.gateway,
+    required this.operatorId,
+    required this.operatorName,
+    required this.actorUserId,
+    this.editingEnabled = true,
+    this.idempotencyKeyFactory,
+  });
+
+  final RolesHierarchySessionsAdminGateway gateway;
+  final String operatorId;
+  final String operatorName;
+  final String actorUserId;
+  final bool editingEnabled;
+  final String Function()? idempotencyKeyFactory;
+
+  @override
+  State<ActiveSessionsAdminPanel> createState() =>
+      _ActiveSessionsAdminPanelState();
+}
+
+class _ActiveSessionsAdminPanelState extends State<ActiveSessionsAdminPanel> {
+  bool _loading = true;
+  String? _loadError;
+  String? _actionError;
+  List<SessionAdminRow> _sessions = const <SessionAdminRow>[];
+  int _refreshGeneration = 0;
+  int _idempotencyCounter = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  @override
+  void didUpdateWidget(covariant ActiveSessionsAdminPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.operatorId != widget.operatorId ||
+        oldWidget.gateway != widget.gateway) {
+      _refresh();
+    }
+  }
+
+  String _nextIdempotencyKey(String operation) {
+    final factory = widget.idempotencyKeyFactory;
+    if (factory != null) return factory();
+    _idempotencyCounter += 1;
+    return '$operation-${DateTime.now().toUtc().microsecondsSinceEpoch}-'
+        '$_idempotencyCounter';
+  }
+
+  Future<void> _refresh() async {
+    final generation = ++_refreshGeneration;
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      final sessions = await widget.gateway.listSessions(
+        operatorId: widget.operatorId,
+      );
+      if (generation != _refreshGeneration) return;
+      if (!mounted) return;
+      setState(() {
+        _sessions = sessions;
+        _loading = false;
+      });
+    } on RolesHierarchySessionsGatewayError catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = error.message;
+        _loading = false;
+      });
+    } on RolesHierarchySessionsForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = error.message;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = 'Could not load sessions: $error';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<String?> _promptAdminReason(String title) async {
+    return showDialog<String>(
+      context: context,
+      builder: (_) => _AdminReasonDialog(title: title),
+    );
+  }
+
+  Future<void> _runAndRefresh(
+    Future<void> Function() action, {
+    String? successHint,
+  }) async {
+    setState(() => _actionError = null);
+    try {
+      await action();
+      await _refresh();
+      if (successHint != null && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(successHint)));
+      }
+    } on RolesHierarchySessionsForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } on RolesHierarchySessionsGatewayError catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.toString());
+    }
+  }
+
+  Future<void> _onForceLogoutSession(SessionAdminRow row) async {
+    if (row.userId == widget.actorUserId) {
+      setState(() {
+        _actionError = SessionsValidationCopy.cannotRevokeSelf;
+      });
+      return;
+    }
+    final reason = await _promptAdminReason(
+      'Force logout ${row.userDisplayName}',
+    );
+    if (reason == null) return;
+    await _runAndRefresh(
+      () => widget.gateway.forceLogoutSession(
+        operatorId: widget.operatorId,
+        sessionId: row.sessionId,
+        userId: row.userId,
+        idempotencyKey: _nextIdempotencyKey('sessions-force-logout'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: reason,
+      ),
+      successHint: 'Signed out ${row.userDisplayName}',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      key: const Key('admin_security_sessions_panel'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (_actionError != null)
+          _ErrorBanner(
+            key: const Key('admin_security_sessions_action_error'),
+            message: _actionError!,
+          ),
+        _TabLoadBody(
+          loading: _loading,
+          error: _loadError,
+          loadingKey: const Key('admin_security_sessions_loading'),
+          errorKey: const Key('admin_security_sessions_load_error'),
+          child: _SessionsTab(
+            sessions: _sessions,
+            editingEnabled: widget.editingEnabled,
+            actorUserId: widget.actorUserId,
+            onForceLogout: _onForceLogoutSession,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _SessionsTab extends StatelessWidget {
   const _SessionsTab({
@@ -1677,8 +1797,8 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
 // Roles tab dialogs
 // ---------------------------------------------------------------------
 
-class _EditSeededRoleResult {
-  const _EditSeededRoleResult({
+class EditSeededRoleResult {
+  const EditSeededRoleResult({
     required this.permissionKeys,
     required this.adminReason,
   });
@@ -1687,16 +1807,16 @@ class _EditSeededRoleResult {
   final String adminReason;
 }
 
-class _EditSeededRoleDialog extends StatefulWidget {
-  const _EditSeededRoleDialog({required this.initial});
+class EditSeededRoleDialog extends StatefulWidget {
+  const EditSeededRoleDialog({super.key, required this.initial});
 
   final RoleAdminRow initial;
 
   @override
-  State<_EditSeededRoleDialog> createState() => _EditSeededRoleDialogState();
+  State<EditSeededRoleDialog> createState() => _EditSeededRoleDialogState();
 }
 
-class _EditSeededRoleDialogState extends State<_EditSeededRoleDialog> {
+class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
   late final _permissionsController = TextEditingController(
     text: widget.initial.permissionKeys.join('\n'),
   );
@@ -1723,7 +1843,7 @@ class _EditSeededRoleDialogState extends State<_EditSeededRoleDialog> {
         .toList(growable: false);
     Navigator.of(
       context,
-    ).pop(_EditSeededRoleResult(permissionKeys: keys, adminReason: reason));
+    ).pop(EditSeededRoleResult(permissionKeys: keys, adminReason: reason));
   }
 
   @override
@@ -1788,8 +1908,8 @@ class _EditSeededRoleDialogState extends State<_EditSeededRoleDialog> {
   }
 }
 
-class _CustomRoleDraft {
-  const _CustomRoleDraft({
+class CustomRoleDraft {
+  const CustomRoleDraft({
     required this.roleKey,
     required this.displayName,
     required this.description,
@@ -1804,17 +1924,16 @@ class _CustomRoleDraft {
   final String adminReason;
 }
 
-class _CreateCustomRoleDialog extends StatefulWidget {
-  const _CreateCustomRoleDialog({required this.existingRoleKeys});
+class CreateCustomRoleDialog extends StatefulWidget {
+  const CreateCustomRoleDialog({super.key, required this.existingRoleKeys});
 
   final Set<String> existingRoleKeys;
 
   @override
-  State<_CreateCustomRoleDialog> createState() =>
-      _CreateCustomRoleDialogState();
+  State<CreateCustomRoleDialog> createState() => _CreateCustomRoleDialogState();
 }
 
-class _CreateCustomRoleDialogState extends State<_CreateCustomRoleDialog> {
+class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
   final _displayNameController = TextEditingController();
   final _roleKeyController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -1860,7 +1979,7 @@ class _CreateCustomRoleDialogState extends State<_CreateCustomRoleDialog> {
         .where((s) => s.isNotEmpty)
         .toList(growable: false);
     Navigator.of(context).pop(
-      _CustomRoleDraft(
+      CustomRoleDraft(
         roleKey: roleKey,
         displayName: displayName,
         description: _descriptionController.text.trim(),
@@ -1958,93 +2077,153 @@ class _CreateCustomRoleDialogState extends State<_CreateCustomRoleDialog> {
 // Hierarchy tab dialogs
 // ---------------------------------------------------------------------
 
-class _MoveOrgUnitResult {
-  const _MoveOrgUnitResult({
-    required this.newParentOrgUnitId,
+class _AddOrgUnitResult {
+  const _AddOrgUnitResult({
+    required this.unitType,
+    required this.label,
+    required this.name,
     required this.adminReason,
   });
 
-  final String? newParentOrgUnitId;
+  final String unitType;
+  final String label;
+  final String name;
   final String adminReason;
 }
 
-class _MoveOrgUnitDialog extends StatefulWidget {
-  const _MoveOrgUnitDialog({required this.node, required this.candidates});
+class _AddChildOrgUnitDialog extends StatefulWidget {
+  const _AddChildOrgUnitDialog({
+    required this.parent,
+    required this.existingNames,
+  });
 
-  final OrgUnitAdminNode node;
-  final List<OrgUnitAdminNode?> candidates;
+  final OrgUnitAdminNode parent;
+  final Set<String> existingNames;
 
   @override
-  State<_MoveOrgUnitDialog> createState() => _MoveOrgUnitDialogState();
+  State<_AddChildOrgUnitDialog> createState() => _AddChildOrgUnitDialogState();
 }
 
-class _MoveOrgUnitDialogState extends State<_MoveOrgUnitDialog> {
-  late String? _selectedParentId = widget.node.parentOrgUnitId;
+class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
+  String _unitType = 'region';
+  final _nameController = TextEditingController();
+  final _labelController = TextEditingController();
   final _reasonController = TextEditingController();
-  bool _violated = false;
+  String? _nameError;
+  String? _reasonError;
 
   @override
   void dispose() {
+    _nameController.dispose();
+    _labelController.dispose();
     _reasonController.dispose();
     super.dispose();
   }
 
   void _onSubmit() {
+    final name = _nameController.text.trim();
     final reason = _reasonController.text.trim();
-    if (reason.isEmpty) {
-      setState(() => _violated = true);
-      return;
-    }
+    setState(() {
+      _nameError = name.isEmpty
+          ? HierarchyValidationCopy.orgUnitNameEmpty
+          : widget.existingNames.contains(name.toLowerCase())
+          ? HierarchyValidationCopy.orgUnitNameDuplicate
+          : null;
+      _reasonError = reason.isEmpty ? 'Add a reason before continuing.' : null;
+    });
+    if (_nameError != null || _reasonError != null) return;
+    final rawLabel = _labelController.text.trim();
+    final label = rawLabel.isEmpty ? _sanitiseLabel(name) : rawLabel;
     Navigator.of(context).pop(
-      _MoveOrgUnitResult(
-        newParentOrgUnitId: _selectedParentId,
+      _AddOrgUnitResult(
+        unitType: _unitType,
+        label: label,
+        name: name,
         adminReason: reason,
       ),
     );
   }
 
+  static String _sanitiseLabel(String name) {
+    final collapsed = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+    return collapsed.replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      key: const Key('admin_rhs_move_org_unit_dialog'),
+      key: const Key('admin_rhs_add_child_org_unit_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Move ${widget.node.name}',
+        'Add child org unit',
         style: AdminButtonStyles.dialogTitleStyle,
       ),
       content: SizedBox(
-        width: 480,
+        width: 500,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            DropdownButtonFormField<String?>(
-              key: const Key('admin_rhs_move_org_unit_parent'),
-              initialValue: _selectedParentId,
+            Text(
+              'Under ${widget.parent.name}',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: const Key('admin_rhs_add_org_unit_type'),
+              initialValue: _unitType,
               isExpanded: true,
               decoration: const InputDecoration(
-                labelText: 'New parent',
+                labelText: 'Unit type',
                 border: OutlineInputBorder(),
               ),
-              items: <DropdownMenuItem<String?>>[
-                for (final candidate in widget.candidates)
-                  DropdownMenuItem<String?>(
-                    value: candidate?.orgUnitId,
-                    child: Text(candidate?.name ?? 'Top level'),
-                  ),
+              items: const <DropdownMenuItem<String>>[
+                DropdownMenuItem<String>(
+                  value: 'region',
+                  child: Text('Region'),
+                ),
+                DropdownMenuItem<String>(
+                  value: 'district',
+                  child: Text('District'),
+                ),
+                DropdownMenuItem<String>(
+                  value: 'location_group',
+                  child: Text('Location group'),
+                ),
               ],
-              onChanged: (v) => setState(() => _selectedParentId = v),
+              onChanged: (value) {
+                if (value != null) setState(() => _unitType = value);
+              },
             ),
             const SizedBox(height: 12),
             TextField(
-              key: const Key('admin_rhs_move_org_unit_reason'),
+              key: const Key('admin_rhs_add_org_unit_name'),
+              controller: _nameController,
+              decoration: InputDecoration(
+                labelText: 'Display name',
+                border: const OutlineInputBorder(),
+                errorText: _nameError,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_rhs_add_org_unit_label'),
+              controller: _labelController,
+              decoration: const InputDecoration(
+                labelText: 'Label (a-z, 0-9, underscore)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_rhs_add_org_unit_reason'),
               controller: _reasonController,
               minLines: 1,
               maxLines: 3,
               decoration: InputDecoration(
                 labelText: 'Reason',
                 border: const OutlineInputBorder(),
-                errorText: _violated ? 'Add a reason before continuing.' : null,
+                errorText: _reasonError,
               ),
             ),
           ],
@@ -2052,14 +2231,15 @@ class _MoveOrgUnitDialogState extends State<_MoveOrgUnitDialog> {
       ),
       actions: <Widget>[
         TextButton(
+          key: const Key('admin_rhs_add_org_unit_cancel'),
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
         FilledButton(
-          key: const Key('admin_rhs_move_org_unit_submit'),
+          key: const Key('admin_rhs_add_org_unit_submit'),
           style: AdminButtonStyles.primary,
           onPressed: _onSubmit,
-          child: const Text('Move'),
+          child: const Text('Add'),
         ),
       ],
     );

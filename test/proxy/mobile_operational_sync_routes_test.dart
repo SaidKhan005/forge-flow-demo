@@ -249,6 +249,137 @@ void main() {
       },
     );
 
+    test('PATCH service-period settings rejects location manager', () async {
+      // Doc 1 keyed-data-accuracy-write — defence in depth on the
+      // operator-web keyed write path. The role gate already covers the
+      // legacy data_accuracy_settings PATCH; pin it for the keyed path
+      // too so a future role refactor cannot quietly let a location
+      // manager edit per-period covers/wage source.
+      await withRealHttp(() async {
+        final ctx = await spinUp(
+          claims: const ProxyJwtClaims(
+            userId: 'user-1',
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            roles: <String>['location_manager'],
+          ),
+        );
+        try {
+          final response = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/'
+              'data_accuracy_service_period_settings',
+            ),
+            body: const <String, Object?>{
+              'service_period_key': 'breakfast',
+              'covers_source': 'manual',
+              'wage_source': 'manual_mix',
+              'effective_at_business_date': '2026-05-07',
+            },
+          );
+          expect(response.statusCode, 403);
+          expect(ctx.gateway.calls, isEmpty);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('PATCH service-period settings rejects invalid key', () async {
+      // Doc 1 keyed-data-accuracy-write — invalid `service_period_key`
+      // (not lowercase / not [a-z][a-z0-9_]+) must round-trip a 400 from
+      // the proxy validator before any gateway call so a typo in the
+      // operator-web client cannot create a malformed row.
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/'
+              'data_accuracy_service_period_settings',
+            ),
+            body: const <String, Object?>{
+              'service_period_key': 'Breakfast Brunch',
+              'covers_source': 'vendor',
+              'wage_source': 'vendor_per_employee',
+              'effective_at_business_date': '2026-05-07',
+            },
+          );
+          expect(response.statusCode, 400);
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], 'invalid_service_period_key');
+          expect(ctx.gateway.calls, isEmpty);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('PATCH service-period settings rejects malformed business date', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/'
+              'data_accuracy_service_period_settings',
+            ),
+            body: const <String, Object?>{
+              'service_period_key': 'breakfast',
+              'covers_source': 'vendor',
+              'wage_source': 'vendor_per_employee',
+              'effective_at_business_date': 'May 7 2026',
+            },
+          );
+          expect(response.statusCode, 400);
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], 'invalid_effective_at_business_date');
+          expect(ctx.gateway.calls, isEmpty);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      'PATCH service-period settings rejects URL scope different from bearer',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '/v1/operators/op-2/locations/loc-1/'
+                'data_accuracy_service_period_settings',
+              ),
+              body: const <String, Object?>{
+                'service_period_key': 'breakfast',
+                'covers_source': 'vendor',
+                'wage_source': 'vendor_per_employee',
+                'effective_at_business_date': '2026-05-07',
+              },
+            );
+            expect(response.statusCode, 403);
+            expect(ctx.gateway.calls, isEmpty);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
     test(
       'PATCH data accuracy settings writes through owner/admin scope',
       () async {

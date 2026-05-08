@@ -66,6 +66,7 @@ import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_reset_confirm_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_reset_request_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
+import 'package:forge_and_flow/services/auth/user_pii_erasure_service.dart';
 import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
@@ -84,6 +85,7 @@ import 'business_scope_routes.dart';
 import 'connector_backfill_jobs_routes.dart';
 import 'mobile_push_notifications.dart';
 import 'notification_preferences_routes.dart';
+import 'admin_business_timing_routes.dart';
 import 'operator_routes.dart';
 import 'wage_role_rows_routes.dart';
 import 'proxy_idempotency_cache.dart';
@@ -108,6 +110,7 @@ export 'proxy_idempotency_cache.dart' show ProxyAuthIdempotencyCache;
 export 'operator_routes.dart'
     show
         OperatorWriteRouter,
+        OperatorBusinessTimingMutationListener,
         OperatorAccountWriteGateway,
         OperatorBusinessTimingWriteGateway,
         OperatorWriteAuditSink,
@@ -122,6 +125,11 @@ export 'operator_routes.dart'
         operatorBusinessTimingProfilePrefix,
         hashOperatorRequestBody,
         readOperatorJsonBody;
+export 'admin_business_timing_routes.dart'
+    show
+        AdminBusinessTimingRouter,
+        adminBusinessTimingProfilesPathPrefix,
+        kAdminBusinessTimingRoles;
 export 'notification_preferences_routes.dart'
     show
         NotificationPreferencesRouter,
@@ -139,6 +147,8 @@ export 'wage_role_rows_routes.dart'
         RepositoryWageRoleRowsGateway,
         WageRoleRowsIdempotencyCache,
         WageRoleRowsRouteRejected,
+        WageRoleRowsAuditSink,
+        NoopWageRoleRowsAuditSink,
         wageRoleRowsPath,
         wageRoleRowsPrefix,
         hashWageRoleRowsRequest;
@@ -977,9 +987,9 @@ class ProxyConfig {
   /// Phase 8 framework — Humanity static app credentials. Throws
   /// [StateError] when either secret name is unloaded.
   HumanityAppCredentials get humanityAppCredentials => HumanityAppCredentials(
-        clientId: secretFor(ProxySecretNames.humanityClientId),
-        clientSecret: secretFor(ProxySecretNames.humanityClientSecret),
-      );
+    clientId: secretFor(ProxySecretNames.humanityClientId),
+    clientSecret: secretFor(ProxySecretNames.humanityClientSecret),
+  );
 
   /// Phase 8 framework — QuickBooks Time (Intuit) static app
   /// credentials. Throws [StateError] when either secret name is
@@ -1001,9 +1011,9 @@ class ProxyConfig {
   /// Phase 8 framework — Libro static app credentials. Throws
   /// [StateError] when either secret name is unloaded.
   LibroAppCredentials get libroAppCredentials => LibroAppCredentials(
-        clientId: secretFor(ProxySecretNames.libroClientId),
-        clientSecret: secretFor(ProxySecretNames.libroClientSecret),
-      );
+    clientId: secretFor(ProxySecretNames.libroClientId),
+    clientSecret: secretFor(ProxySecretNames.libroClientSecret),
+  );
 
   /// Phase 8 framework — public base URI the binder presents to
   /// vendors when constructing the per-tenant location config
@@ -2247,7 +2257,8 @@ class UsageEstimate {
 // CODE_HEALTH residual: "No per-request token cap on outbound LLM calls. Repo-
 // wide search for `MAX_TOKENS_PER_REQUEST`, `requestTokenCap`, etc. returns
 // zero matches. The proxy's outbound LLM call sites (`tool/advisor_proxy/
-// advisor_proxy.dart:8485-8700`) have no enforced cap." (CODE_HEALTH.md L31).
+// advisor_proxy.dart:8485-8700`) have no enforced cap." (archived at
+// `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`).
 //
 // This is a hard, dispatch-site cap independent of [PolicyTier.maxRequestTokens]:
 //   - The tier cap (8000) only applies when [ProxyUsageGuard] is wired AND the
@@ -5705,14 +5716,19 @@ class GeminiProxyLlmProvider implements ProxyLlmProvider {
 enum SecondaryLlmFailureKind {
   /// Secondary call did not complete inside the per-call deadline.
   timeout,
+
   /// HTTP 429.
   rateLimit,
+
   /// HTTP 401 / 403 — credentials or scope problem; never retry.
   auth,
+
   /// HTTP 5xx — transient server-side failure; safe to retry.
   transient,
+
   /// HTTP 4xx other than 429/401/403 — permanent client error; never retry.
   permanent,
+
   /// Anything we cannot classify (DNS, socket, parse). Treated as transient
   /// for breaker accounting (false positives are safer than false
   /// negatives for breakers).
@@ -5867,14 +5883,15 @@ class AdvisorRequestPipeline {
     int secondaryBreakerMaxFailures = 5,
     Duration secondaryBreakerWindow = const Duration(seconds: 60),
     Duration secondaryBreakerOpenDuration = const Duration(seconds: 30),
-    DateTime Function() secondaryBreakerClock = SecondaryLlmBreaker._defaultClock,
-  })  : _secondaryTimeout = secondaryTimeout,
-        secondaryBreaker = SecondaryLlmBreaker(
-          maxFailures: secondaryBreakerMaxFailures,
-          windowDuration: secondaryBreakerWindow,
-          openDuration: secondaryBreakerOpenDuration,
-          clock: secondaryBreakerClock,
-        );
+    DateTime Function() secondaryBreakerClock =
+        SecondaryLlmBreaker._defaultClock,
+  }) : _secondaryTimeout = secondaryTimeout,
+       secondaryBreaker = SecondaryLlmBreaker(
+         maxFailures: secondaryBreakerMaxFailures,
+         windowDuration: secondaryBreakerWindow,
+         openDuration: secondaryBreakerOpenDuration,
+         clock: secondaryBreakerClock,
+       );
 
   final CircuitBreaker breaker;
   final AdvisorResponseCache cache;
@@ -7605,6 +7622,7 @@ abstract class DebugConsoleAdminProxyGateway {
     required String adminReason,
     String? operatorId,
     String? locationId,
+    List<String>? locationIds,
     String? usageClass,
     String? status,
     int? timeWindowSeconds,
@@ -7745,9 +7763,7 @@ abstract class AdminRequestIdempotencyStore {
   /// of scope for L4) and pg_cron is the live backstop. Tests that
   /// drive the reclaim flow override this to flip the in-flight row
   /// in their fake.
-  Future<bool> tryReclaimOrphan({
-    required String idempotencyKey,
-  }) async {
+  Future<bool> tryReclaimOrphan({required String idempotencyKey}) async {
     return false;
   }
 
@@ -7860,6 +7876,7 @@ abstract class OperatorLocationAdminProxyGateway {
   Future<Map<String, Object?>> addLocation({
     required String actorUserId,
     required String operatorId,
+    required String parentOrgUnitId,
     required String name,
     required String address,
     required String timezone,
@@ -7979,8 +7996,9 @@ Map<String, Object?> buildOperatorLocationIntegrationsBundleJson(
     'demo_flags': <String, Object?>{
       'pos': bundle.noConnectedRowForCategory(IntegrationCategory.pos),
       'labor': bundle.noConnectedRowForCategory(IntegrationCategory.labor),
-      'reservation':
-          bundle.noConnectedRowForCategory(IntegrationCategory.reservation),
+      'reservation': bundle.noConnectedRowForCategory(
+        IntegrationCategory.reservation,
+      ),
     },
   };
 }
@@ -8001,8 +8019,7 @@ Map<String, Object?> _connectorConnectionRowToWireJson(
       'last_error_at': row.lastErrorAt!.toIso8601String(),
     if (row.lastErrorMessage != null)
       'last_error_message': row.lastErrorMessage,
-    if (row.disconnectReason != null)
-      'disconnect_reason': row.disconnectReason,
+    if (row.disconnectReason != null) 'disconnect_reason': row.disconnectReason,
     'webhook_url_provisioned': row.webhookUrlProvisioned,
     if (row.createdAt != null) 'created_at': row.createdAt!.toIso8601String(),
     if (row.updatedAt != null) 'updated_at': row.updatedAt!.toIso8601String(),
@@ -8039,6 +8056,26 @@ String _integrationCategoryWireKey(IntegrationCategory category) {
 // user_id (actor or target) so RLS plus the WHERE form a defense in
 // depth.
 const String authAuditLogPath = '/v1/auth/audit-log';
+
+// Audit-log server-side CSV export. Reuses the read route's filter
+// shape (from / to / event_kind / action / actor_user_id / target_kind
+// / target_id / actor_kind) and streams RFC 4180 rows back as a chunked
+// `text/csv` attachment. Gated on `team.audit_log.export` via the
+// permission snapshot resolver — the read route is open to any verified
+// caller, but pulling the full ledger to a CSV is a senior-role action
+// per the parity contract.
+const String authAuditLogExportPath = '/v1/auth/audit-log/export.csv';
+
+/// Per-page size used by the streamed CSV exporter when paging the
+/// underlying repo. Bounded so the proxy memory footprint stays
+/// constant regardless of the operator's audit-log row count.
+const int kAuthAuditLogExportPageSize = 500;
+
+/// Hard cap on the total rows the streamed exporter will emit before
+/// it stops and finishes the response. Defends against a runaway
+/// filter that selects tens of millions of rows. Operators that need
+/// more rows must narrow their filter window.
+const int kAuthAuditLogExportRowCap = 1000000;
 
 class ProxyPermissionSnapshot {
   const ProxyPermissionSnapshot({
@@ -8157,7 +8194,7 @@ Future<void> routeRequest(
   // production binds the [ConnectorConnectionListRepository]-backed
   // projection in the proxy bootstrap.
   OperatorLocationIntegrationsProjection?
-      operatorLocationIntegrationsProjection,
+  operatorLocationIntegrationsProjection,
   AuthOperationsGateway? authOperationsGateway,
   ProxyAdminPermissionGuard? adminPermissionGuard,
   ServicePrincipalJwtIssuanceGateway? servicePrincipalJwtIssuanceGateway,
@@ -8170,6 +8207,11 @@ Future<void> routeRequest(
   MagicLinkRedeemGateway? magicLinkRedeemGateway,
   ProxyAuthIdempotencyCache? authIdempotencyCache,
   MfaOperationsGateway? mfaOperationsGateway,
+  // CODE_OPS_DEBT Theme B#1 — single-admin PII erasure with 24h
+  // grace-window reverse. Optional: when null, the new `/erase-pii*`
+  // routes return 503 so existing tests do not need to plumb the
+  // service through every routeRequest call site.
+  UserPiiErasureService? userPiiErasureService,
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
   MobilePushTokenGateway? mobilePushTokenGateway,
   MobilePushSelfTestGateway? mobilePushSelfTestGateway,
@@ -8226,6 +8268,7 @@ Future<void> routeRequest(
   // so existing tests do not need to plumb the router through every
   // call site.
   OperatorWriteRouter? operatorWriteRouter,
+  AdminBusinessTimingRouter? adminBusinessTimingRouter,
   // Wave W2.D - operator-scoped read of connector_backfill_jobs.
   // Optional: when null the read route returns 503 so existing tests
   // do not need to plumb the router through every call site.
@@ -8235,7 +8278,7 @@ Future<void> routeRequest(
   // when null the read route returns 503 so existing tests do not need
   // to plumb the router through every call site.
   OperatorVendorLifecycleRecentlyAvailableRouter?
-      vendorLifecycleRecentlyAvailableRouter,
+  vendorLifecycleRecentlyAvailableRouter,
   // Phase 8 W2.B - operator-scoped notification preferences router.
   // Optional: when null the three routes return 503 so existing tests
   // do not need to plumb the router through every call site.
@@ -8295,7 +8338,9 @@ Future<void> routeRequest(
         authorizationHeader: authorizationHeader,
       );
     } on ProxyAuthError catch (error) {
-      _writeJson(resp, error.statusCode, <String, Object?>{'error': error.message});
+      _writeJson(resp, error.statusCode, <String, Object?>{
+        'error': error.message,
+      });
       return null;
     }
     if (permissionVersionChecker != null && scope.permissionVersion != null) {
@@ -8779,8 +8824,10 @@ Future<void> routeRequest(
         // Operator-scoped: operatorId resolved from the JWT, never
         // from the URL or body. RLS clamps the read inside the
         // gateway via the tenant transaction wrapper.
-        final auditChainAnchorMatch =
-            AuditChainAnchorsRouter.match(path, request.method);
+        final auditChainAnchorMatch = AuditChainAnchorsRouter.match(
+          path,
+          request.method,
+        );
         if (auditChainAnchorMatch != null) {
           if (auditChainAnchorsGateway == null) {
             _writeJson(response, 503, <String, Object?>{
@@ -9080,8 +9127,7 @@ Future<void> routeRequest(
           if (estimate.tokenCount > maxTokensPerRequest) {
             _writeJson(response, 413, <String, Object?>{
               'error': 'request_too_large',
-              'message':
-                  'estimated request tokens exceed the per-request cap',
+              'message': 'estimated request tokens exceed the per-request cap',
               'estimate_request_tokens': estimate.tokenCount,
               'cap_request_tokens': maxTokensPerRequest,
             });
@@ -9644,10 +9690,12 @@ Future<void> routeRequest(
 
           // B1.S8 — per-IP 24h cap (50 requests).
           // Prevents a single IP from flooding arbitrary victim inboxes.
-          final clientIpForReset = _resolveLedgerContextFromHeaders(
-            request,
-            trustProxyAuditHeaders: trustProxyAuditHeaders,
-          ).ip ?? 'unknown';
+          final clientIpForReset =
+              _resolveLedgerContextFromHeaders(
+                request,
+                trustProxyAuditHeaders: trustProxyAuditHeaders,
+              ).ip ??
+              'unknown';
           if (passwordResetIpCounter != null) {
             final ipHashHex = hashAuthIpHex(clientIpForReset);
             final ipCount = passwordResetIpCounter.countInWindow(ipHashHex);
@@ -9875,10 +9923,7 @@ Future<void> routeRequest(
         // here — it is superseded entirely by the POST route.
         if (request.method == 'POST' && path == authMagicLinkRedeemPath) {
           response.headers.add('Referrer-Policy', 'no-referrer');
-          response.headers.add(
-            'Cache-Control',
-            'no-store, no-cache',
-          );
+          response.headers.add('Cache-Control', 'no-store, no-cache');
 
           Map<String, Object?> body;
           try {
@@ -10937,6 +10982,176 @@ Future<void> routeRequest(
               return;
             }
 
+            // CODE_OPS_DEBT Theme B#1 — single-admin PII erasure
+            // routes. Three shapes (POST request, POST reverse, GET
+            // status) all live under the user-action prefix; we
+            // dispatch them BEFORE _userActionFromPath so the
+            // 3-segment path (`<id>/erase-pii/reverse`) does not
+            // false-404 against the standard 2-segment parser.
+            final piiErasurePath = _piiErasurePathFromAdminAuthUsersPrefix(
+              authOperationPath,
+            );
+            if (piiErasurePath != null) {
+              final piiService = userPiiErasureService;
+              if (piiService == null) {
+                _writeJson(response, 503, <String, Object?>{
+                  'error': 'pii_erasure_not_configured',
+                  'message':
+                      'route requires a UserPiiErasureService to be installed',
+                });
+                return;
+              }
+              if (!await requirePermission(PermissionKeys.adminUsersErasePii)) {
+                return;
+              }
+              if (request.method == 'GET') {
+                final status = await piiService.statusFor(
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  targetUserId: piiErasurePath.userId,
+                );
+                if (status == null) {
+                  _writeJson(response, 200, <String, Object?>{'erasure': null});
+                  return;
+                }
+                _writeJson(response, 200, <String, Object?>{
+                  'erasure': <String, Object?>{
+                    'erasure_id': status.erasureId,
+                    'requested_at': status.requestedAt
+                        .toUtc()
+                        .toIso8601String(),
+                    'requested_by_user_id': status.requestedByUserId,
+                    'grace_period_ends_at': status.gracePeriodEndsAt
+                        .toUtc()
+                        .toIso8601String(),
+                    'applied_at': status.appliedAt?.toUtc().toIso8601String(),
+                    'reversed_at': status.reversedAt?.toUtc().toIso8601String(),
+                    'reversed_by_user_id': status.reversedByUserId,
+                    'reversal_reason': status.reversalReason,
+                    'state': status.isApplied
+                        ? 'applied'
+                        : status.isReversed
+                        ? 'reversed'
+                        : 'pending',
+                  },
+                });
+                return;
+              }
+              if (request.method == 'POST' &&
+                  piiErasurePath.action == 'request') {
+                final idempotencyKey = readIdempotencyKeyOrFail();
+                if (idempotencyKey == null) return;
+                final routeKey =
+                    '$adminAuthUsersPrefix${piiErasurePath.userId}/erase-pii';
+                final cached = await authOpsCache.runOrReplay(
+                  route: routeKey,
+                  key: idempotencyKey,
+                  compute: () async {
+                    // Carry-over follow-up #3 (2026-05-08): the
+                    // service now derives `business_date` from the
+                    // restaurant's IANA tz when a resolver is bound at
+                    // construction (proxy bootstrap injects an
+                    // IanaTimezoneConverter-backed closure). The
+                    // service falls back to UTC truncation when no
+                    // resolver is bound, preserving the legacy
+                    // behaviour for callers that have not been wired
+                    // yet. The column drives partition routing only.
+                    final result = await piiService.requestErasure(
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      targetUserId: piiErasurePath.userId,
+                      requestedByUserId: scope.userId,
+                    );
+                    if (result == null) {
+                      return CachedProxyResponse(
+                        statusCode: 404,
+                        body: <String, Object?>{
+                          'error': 'user_not_found',
+                          'message':
+                              'no user with the requested id in this operator',
+                        },
+                      );
+                    }
+                    return CachedProxyResponse(
+                      statusCode: 202,
+                      body: <String, Object?>{
+                        'erasure_id': result.erasureId,
+                        'grace_period_ends_at': result.gracePeriodEndsAt
+                            .toUtc()
+                            .toIso8601String(),
+                      },
+                    );
+                  },
+                );
+                _writeJson(response, cached.statusCode, cached.body);
+                return;
+              }
+              if (request.method == 'POST' &&
+                  piiErasurePath.action == 'reverse') {
+                final idempotencyKey = readIdempotencyKeyOrFail();
+                if (idempotencyKey == null) return;
+                final erasureId = _nonBlankString(body['erasure_id']);
+                if (erasureId == null) {
+                  _writeJson(response, 400, <String, Object?>{
+                    'error': 'missing_erasure_id',
+                    'message': 'request body must include erasure_id',
+                  });
+                  return;
+                }
+                final routeKey =
+                    '$adminAuthUsersPrefix'
+                    '${piiErasurePath.userId}/erase-pii/reverse';
+                final cached = await authOpsCache.runOrReplay(
+                  route: routeKey,
+                  key: idempotencyKey,
+                  compute: () async {
+                    final result = await piiService.reverseErasure(
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      targetUserId: piiErasurePath.userId,
+                      erasureId: erasureId,
+                      reversedByUserId: scope.userId,
+                      reversalReason:
+                          _nonBlankString(body['reversal_reason']) ??
+                          _nonBlankString(body['admin_reason']),
+                    );
+                    if (result.notFound) {
+                      return CachedProxyResponse(
+                        statusCode: 404,
+                        body: <String, Object?>{
+                          'error': 'erasure_not_found',
+                          'message': 'no erasure row with the requested id',
+                        },
+                      );
+                    }
+                    if (result.graceExpired) {
+                      return CachedProxyResponse(
+                        statusCode: 410,
+                        body: <String, Object?>{
+                          'error': 'grace_window_expired',
+                          'message':
+                              'erasure grace window has expired or row '
+                              'is already terminal',
+                        },
+                      );
+                    }
+                    return CachedProxyResponse(
+                      statusCode: 200,
+                      body: <String, Object?>{'reversed': true},
+                    );
+                  },
+                );
+                _writeJson(response, cached.statusCode, cached.body);
+                return;
+              }
+              _writeJson(response, 405, <String, Object?>{
+                'error': 'method_not_allowed',
+                'method': request.method,
+                'path': path,
+              });
+              return;
+            }
+
             if (request.method == 'POST' &&
                 authOperationPath.startsWith(adminAuthUsersPrefix)) {
               final action = _userActionFromPath(authOperationPath);
@@ -10963,20 +11178,20 @@ Future<void> routeRequest(
               // removal. Both URL families canonicalize to the admin
               // shape via `_canonicalAuthOperationPath`, so we use the
               // original `path` here to choose the gate.
-              final isAdminCallerPath = path.startsWith(
-                adminAuthUsersPrefix,
-              );
+              final isAdminCallerPath = path.startsWith(adminAuthUsersPrefix);
               final permissionKey = switch (canonicalAction) {
                 'suspend' => 'team.users.deactivate',
                 'reactivate' => 'team.users.reactivate',
                 'soft-delete' => 'team.users.soft_delete',
                 'reset-password' => 'team.users.reset_password',
-                'reset-mfa' => isAdminCallerPath
-                    ? PermissionKeys.adminUsersResetMfaFactors
-                    : PermissionKeys.teamUsersResetMfa,
-                'cancel-mfa-removal' => isAdminCallerPath
-                    ? PermissionKeys.adminUsersResetMfaFactors
-                    : PermissionKeys.teamUsersResetMfa,
+                'reset-mfa' =>
+                  isAdminCallerPath
+                      ? PermissionKeys.adminUsersResetMfaFactors
+                      : PermissionKeys.teamUsersResetMfa,
+                'cancel-mfa-removal' =>
+                  isAdminCallerPath
+                      ? PermissionKeys.adminUsersResetMfaFactors
+                      : PermissionKeys.teamUsersResetMfa,
                 'force-logout' => 'team.session.force_logout',
                 _ => null,
               };
@@ -11329,6 +11544,9 @@ Future<void> routeRequest(
                       unitType: unitType,
                       label: label,
                       name: name,
+                      adminReason:
+                          _nonBlankString(body['admin_reason']) ??
+                          _nonBlankString(body['adminReason']),
                     ),
                   );
                   return CachedProxyResponse(
@@ -11563,9 +11781,8 @@ Future<void> routeRequest(
             });
             return;
           }
-          final effect = snapshot.permissions[
-            PermissionKeys.teamSessionForceLogout
-          ];
+          final effect =
+              snapshot.permissions[PermissionKeys.teamSessionForceLogout];
           if (effect != PermissionEffect.allow) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'forbidden',
@@ -11591,8 +11808,7 @@ Future<void> routeRequest(
                     'user_id': entry.targetUserId,
                     if (entry.targetDisplayName != null)
                       'display_name': entry.targetDisplayName,
-                    if (entry.targetEmail != null)
-                      'email': entry.targetEmail,
+                    if (entry.targetEmail != null) 'email': entry.targetEmail,
                   },
               ],
             });
@@ -11604,8 +11820,7 @@ Future<void> routeRequest(
           } catch (_) {
             _writeJson(response, 503, <String, Object?>{
               'error': 'team_sessions_unavailable',
-              'message':
-                  'team active sessions are unavailable; please retry',
+              'message': 'team active sessions are unavailable; please retry',
             });
           }
           return;
@@ -11694,8 +11909,7 @@ Future<void> routeRequest(
             } catch (_) {
               _writeJson(response, 503, <String, Object?>{
                 'error': 'integrations_projection_unavailable',
-                'message':
-                    'vendor connections are unavailable; please retry',
+                'message': 'vendor connections are unavailable; please retry',
               });
             }
             return;
@@ -11713,6 +11927,167 @@ Future<void> routeRequest(
               'reservation': true,
             },
           });
+          return;
+        }
+
+        // Audit-log server-side CSV export. Same filter shape as the
+        // read route below; gated on `team.audit_log.export` via the
+        // permission snapshot. Streams RFC 4180 rows back as a chunked
+        // `text/csv` attachment, paging the underlying repo so the
+        // proxy's memory footprint stays bounded regardless of how many
+        // rows the operator's filter selects.
+        if (request.method == 'GET' && path == authAuditLogExportPath) {
+          if (authOperationsGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_operations_not_configured',
+              'message':
+                  'route requires an AuthOperationsGateway to be installed',
+            });
+            return;
+          }
+          if (permissionSnapshotResolver == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'permission_snapshot_not_configured',
+              'message':
+                  'route requires a ProxyPermissionSnapshotResolver to be '
+                  'installed',
+            });
+            return;
+          }
+
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+
+          ProxyPermissionSnapshot exportSnapshot;
+          try {
+            exportSnapshot = await permissionSnapshotResolver.load(scope);
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'permission_snapshot_unavailable',
+              'message': 'permissions are unavailable; please retry',
+            });
+            return;
+          }
+          final exportEffect =
+              exportSnapshot.permissions[PermissionKeys.teamAuditLogExport];
+          if (exportEffect != PermissionEffect.allow) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'team.audit_log.export permission is required to export '
+                  'the audit log',
+              'permission_key': PermissionKeys.teamAuditLogExport,
+            });
+            return;
+          }
+
+          final exportParams = request.uri.queryParameters;
+          DateTime? parseExportUtc(String? raw) {
+            if (raw == null || raw.isEmpty) return null;
+            return DateTime.tryParse(raw)?.toUtc();
+          }
+
+          final exportFrom = parseExportUtc(exportParams['from']);
+          final exportTo = parseExportUtc(exportParams['to']);
+          // Coarse server-side bucket; if the screen sent a single
+          // action the live read route also light it up via event_kind.
+          final exportEventKind = AuthEventLabels.fromWireKey(
+            exportParams['event_kind'],
+          );
+
+          // Derive a filename stamp so two exports in the same minute
+          // do not collide. The operator's restaurant-local TZ is not
+          // available proxy-side, so UTC is used (matches the demo
+          // gateway and the existing client-side renderer).
+          final exportNow = clock().toUtc();
+          final stampY = exportNow.year.toString().padLeft(4, '0');
+          final stampM = exportNow.month.toString().padLeft(2, '0');
+          final stampD = exportNow.day.toString().padLeft(2, '0');
+          final stampHh = exportNow.hour.toString().padLeft(2, '0');
+          final stampMm = exportNow.minute.toString().padLeft(2, '0');
+          final exportFilename =
+              'forge_flow_audit_log_$stampY$stampM${stampD}_$stampHh${stampMm}_utc.csv';
+
+          // Headers must be set BEFORE any bytes are written. Once the
+          // first chunk lands we cannot switch to a JSON error response,
+          // so any failure past this point ends the stream early.
+          response.statusCode = 200;
+          response.headers.contentType = ContentType('text', 'csv');
+          response.headers.set(
+            'Content-Disposition',
+            'attachment; filename="$exportFilename"',
+          );
+          response.headers.chunkedTransferEncoding = true;
+          response.headers.set('Cache-Control', 'no-store');
+
+          // RFC 4180 column order is the same shape as the client-side
+          // renderer the operator-web gateway used to emit. Keeping the
+          // column set identical means the CSV body downstream tools
+          // ingest doesn't shift when the export hops from client- to
+          // server-side rendering.
+          response.write(
+            'created_at,action,actor_user_id,actor_display_name,'
+            'actor_email,actor_kind,target_kind,target_id,admin_reason,'
+            'payload\r\n',
+          );
+
+          var emittedRows = 0;
+          var nextOffset = 0;
+          var capped = false;
+          try {
+            while (true) {
+              final pageLimit = (kAuthAuditLogExportRowCap - emittedRows).clamp(
+                1,
+                kAuthAuditLogExportPageSize,
+              );
+              final listed = await authOperationsGateway.listAuthEventsForActor(
+                AuthEventListCommand(
+                  // RLS-authoritative gate: pin user_id to the verified
+                  // bearer-token scope. Any client-supplied user_id
+                  // query param is ignored (matches the read route).
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  limit: pageLimit,
+                  offset: nextOffset,
+                  eventKind: exportEventKind,
+                  from: exportFrom,
+                  to: exportTo,
+                ),
+              );
+              if (listed.entries.isEmpty) break;
+              for (final entry in listed.entries) {
+                response.write(_renderAuthEventCsvRow(entry, scope));
+                emittedRows += 1;
+                if (emittedRows >= kAuthAuditLogExportRowCap) {
+                  capped = true;
+                  break;
+                }
+              }
+              if (capped) break;
+              if (!listed.hasMore) break;
+              nextOffset += listed.entries.length;
+              // Flush so chunks land on the wire as they're ready
+              // rather than buffering the whole response.
+              await response.flush();
+            }
+          } catch (_) {
+            // Mid-stream failure: best we can do is finish the response
+            // so the operator's browser stops waiting. The CSV will be
+            // truncated but the headers and column row already shipped.
+          }
+          await response.close();
           return;
         }
 
@@ -13305,9 +13680,7 @@ Future<void> routeRequest(
             operatorIdemKey = '';
             requestBody = const <String, Object?>{};
           } else {
-            final headerKey = request.headers
-                .value('Idempotency-Key')
-                ?.trim();
+            final headerKey = request.headers.value('Idempotency-Key')?.trim();
             if (headerKey == null || headerKey.isEmpty) {
               _writeJson(response, 400, <String, Object?>{
                 'error': 'idempotency_key_missing',
@@ -13363,6 +13736,101 @@ Future<void> routeRequest(
           return;
         }
 
+        // Doc 1 timing web/admin live parity (2026-05-08) - admin-side
+        // override routes for business-timing profiles. Caller must
+        // hold a super_admin or ff_support role; operator id is taken
+        // from the URL, and writes require `admin_reason` in the body.
+        if (AdminBusinessTimingRouter.matches(path, request.method)) {
+          if (adminBusinessTimingRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'admin_business_timing_router_not_configured',
+              'message':
+                  'route requires an AdminBusinessTimingRouter to be installed',
+            });
+            return;
+          }
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (actor == null) return;
+          if (!actor.roles.any(kAdminBusinessTimingRoles.contains)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'admin business-timing override requires super_admin or '
+                  'ff_support role',
+              'required_roles': kAdminBusinessTimingRoles.toList(),
+            });
+            return;
+          }
+          final isReadOnly = AdminBusinessTimingRouter.isReadOnly(
+            path,
+            request.method,
+          );
+          String adminIdempotencyKey;
+          Map<String, Object?> requestBody;
+          if (isReadOnly) {
+            adminIdempotencyKey = '';
+            requestBody = const <String, Object?>{};
+          } else {
+            final headerKey = request.headers.value('Idempotency-Key')?.trim();
+            if (headerKey == null || headerKey.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_missing',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+            if (headerKey.length > 200) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_too_long',
+                'message':
+                    'Idempotency-Key header must be 200 characters or fewer',
+              });
+              return;
+            }
+            final bodyResult = await readOperatorJsonBody(request);
+            if (bodyResult.errorStatus != null) {
+              _writeJson(
+                response,
+                bodyResult.errorStatus!,
+                bodyResult.errorBody!,
+              );
+              return;
+            }
+            adminIdempotencyKey = headerKey;
+            requestBody = bodyResult.body!;
+          }
+          try {
+            final result = await adminBusinessTimingRouter.handle(
+              method: request.method,
+              path: path,
+              actorUserId: actor.userId,
+              actorKind: actor.actorKind,
+              idempotencyKey: adminIdempotencyKey,
+              body: requestBody,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'admin_business_timing_router',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'admin_business_timing_unavailable',
+              'message':
+                  'admin business-timing override is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
         // Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
         // Mirrors the operator-web Vendor Connections progress widget.
         // Open to any operator-web role; per-tenant RLS is enforced by
@@ -13389,8 +13857,8 @@ Future<void> routeRequest(
               'error': 'forbidden',
               'message':
                   'an operator role with vendor-connections access is required',
-              'required_roles':
-                  kOperatorConnectorBackfillJobsReadRoles.toList(),
+              'required_roles': kOperatorConnectorBackfillJobsReadRoles
+                  .toList(),
             });
             return;
           }
@@ -13456,8 +13924,7 @@ Future<void> routeRequest(
             return;
           }
           try {
-            final result =
-                await vendorLifecycleRecentlyAvailableRouter.handle(
+            final result = await vendorLifecycleRecentlyAvailableRouter.handle(
               operatorId: scope.operatorId,
               locationId: scope.locationId,
               actorUserId: scope.userId,
@@ -13502,8 +13969,7 @@ Future<void> routeRequest(
           if (scope == null) return;
           String? notifIdemKey;
           if (request.method == 'PUT' || request.method == 'DELETE') {
-            notifIdemKey =
-                request.headers.value('Idempotency-Key')?.trim();
+            notifIdemKey = request.headers.value('Idempotency-Key')?.trim();
             if (notifIdemKey == null || notifIdemKey.isEmpty) {
               _writeJson(response, 400, <String, Object?>{
                 'error': 'idempotency_key_missing',
@@ -13573,8 +14039,7 @@ Future<void> routeRequest(
           if (wageRoleRowsRouter == null) {
             _writeJson(response, 503, <String, Object?>{
               'error': 'wage_role_rows_router_not_configured',
-              'message':
-                  'route requires a WageRoleRowsRouter to be installed',
+              'message': 'route requires a WageRoleRowsRouter to be installed',
             });
             return;
           }
@@ -13592,9 +14057,7 @@ Future<void> routeRequest(
             });
             return;
           }
-          final wageIdemKey = request.headers
-              .value('Idempotency-Key')
-              ?.trim();
+          final wageIdemKey = request.headers.value('Idempotency-Key')?.trim();
           if (wageIdemKey == null || wageIdemKey.isEmpty) {
             _writeJson(response, 400, <String, Object?>{
               'error': 'idempotency_key_missing',
@@ -13630,6 +14093,7 @@ Future<void> routeRequest(
               operatorId: scope.operatorId,
               locationId: scope.locationId,
               actorUserId: scope.userId,
+              actorKind: scope.actorKind,
               idempotencyKey: wageIdemKey,
               body: wageBody,
             );
@@ -13861,6 +14325,7 @@ Future<void> _routeOperatorLocationAdmin({
 
   if (method == 'POST' && path == adminLocationsPath) {
     final operatorId = _requireBodyString(body, 'operator_id');
+    final parentOrgUnitId = _requireBodyString(body, 'parent_org_unit_id');
     final name = _requireBodyString(body, 'name');
     final timezone = _requireBodyTimezone(body, 'timezone');
     final rolloverHour = _requireBodyRolloverHour(
@@ -13879,6 +14344,7 @@ Future<void> _routeOperatorLocationAdmin({
         final created = await gateway.addLocation(
           actorUserId: actorUserId,
           operatorId: operatorId,
+          parentOrgUnitId: parentOrgUnitId,
           name: name,
           address: address,
           timezone: timezone,
@@ -14829,6 +15295,15 @@ Future<void> _routeDebugConsoleAdmin({
   required bool includeFullContent,
 }) async {
   final params = request.uri.queryParameters;
+  final repeatedLocationIds = _nonBlankStrings(
+    request.uri.queryParametersAll['location_id'],
+  );
+  final scopedLocationIds = repeatedLocationIds.length > 1
+      ? repeatedLocationIds
+      : _commaSeparatedQueryList(params['location_ids']);
+  final scopedLocationId = repeatedLocationIds.length > 1
+      ? null
+      : _nonBlankString(params['location_id']);
   final reasonPrefix = 'admin.debug.GET:$actorUserId';
 
   if (path == adminDebugRequestsPath) {
@@ -14836,7 +15311,8 @@ Future<void> _routeDebugConsoleAdmin({
       actorUserId: actorUserId,
       adminReason: '$reasonPrefix:list',
       operatorId: _nonBlankString(params['operator_id']),
-      locationId: _nonBlankString(params['location_id']),
+      locationId: scopedLocationId,
+      locationIds: scopedLocationIds.isEmpty ? null : scopedLocationIds,
       usageClass: _nonBlankString(params['usage_class']),
       status: _nonBlankString(params['status']),
       timeWindowSeconds: _clampedQueryInt(
@@ -15176,7 +15652,7 @@ Future<void> runAdminIdempotentForTesting({
   required String? actorUserId,
   required Map<String, Object?> requestBody,
   required Future<({int statusCode, Map<String, Object?> payload})> Function()
-      compute,
+  compute,
   DateTime Function()? clock,
 }) {
   return _runAdminIdempotent(
@@ -15874,8 +16350,7 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
   )) {
     _writeJson(response, 403, <String, Object?>{
       'error': 'permission_denied',
-      'message':
-          'requested data accuracy scope does not match caller access',
+      'message': 'requested data accuracy scope does not match caller access',
     });
     return;
   }
@@ -15884,6 +16359,22 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
   if (bodyResult.errorStatus != null) {
     _writeJson(response, bodyResult.errorStatus!, bodyResult.errorBody!);
     return;
+  }
+
+  // Doc 1 keyed-data-accuracy-write — defence-in-depth body validation
+  // for the keyed service-period write surface. The production gateway
+  // also validates inside `upsertDataAccuracyServicePeriodSettings`
+  // (proxy_bootstrap.dart `_bodyServicePeriodKey` /
+  // `_bodyBusinessDate`); validating here too means alternate gateway
+  // impls (test fakes, future per-tenant routers) cannot accept a
+  // malformed key or business date, and the operator-web client gets a
+  // 400 envelope back before any gateway work.
+  if (target.resource == 'data_accuracy_service_period_settings') {
+    final keyError = _validateServicePeriodWriteBody(bodyResult.body!);
+    if (keyError != null) {
+      _writeJson(response, keyError.$1, keyError.$2);
+      return;
+    }
   }
 
   try {
@@ -15925,6 +16416,85 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       'message': 'data accuracy settings are unavailable; please retry',
     });
   }
+}
+
+/// Doc 1 keyed-data-accuracy-write — body validator for the keyed
+/// service-period PATCH route. Returns `null` when the body is valid;
+/// otherwise returns `(statusCode, jsonEnvelope)` ready to write back.
+///
+/// Validates the same shape the production gateway enforces (mirrors
+/// `proxy_bootstrap.dart::_bodyServicePeriodKey` /
+/// `_bodyBusinessDate` /
+/// `_bodyServicePeriodCoversSource` / `_bodyServicePeriodWageSource`)
+/// so test fakes cannot drift from the production envelope.
+(int, Map<String, Object?>)? _validateServicePeriodWriteBody(
+  Map<String, Object?> body,
+) {
+  final keyRaw = body['service_period_key'];
+  if (keyRaw is! String ||
+      !RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(keyRaw)) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_service_period_key',
+        'message':
+            'service_period_key must start with a lowercase letter and contain '
+            'only lowercase letters, numbers, or underscores',
+      },
+    );
+  }
+  final dateRaw = body['effective_at_business_date'];
+  if (dateRaw is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateRaw)) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_effective_at_business_date',
+        'message':
+            'effective_at_business_date must be a YYYY-MM-DD business date',
+      },
+    );
+  }
+  final coversRaw = body['covers_source'];
+  if (coversRaw != null) {
+    const allowed = <String>{
+      'vendor',
+      'forecast',
+      'manual',
+      'reservation_plus_walkin',
+    };
+    if (coversRaw is! String || !allowed.contains(coversRaw)) {
+      return (
+        400,
+        <String, Object?>{
+          'error': 'invalid_covers_source',
+          'message':
+              'covers_source must be vendor, forecast, manual, or '
+              'reservation_plus_walkin',
+        },
+      );
+    }
+  }
+  final wageRaw = body['wage_source'];
+  if (wageRaw != null) {
+    const allowed = <String>{
+      'vendor_per_employee',
+      'vendor_per_position',
+      'target_substitution',
+      'manual_mix',
+    };
+    if (wageRaw is! String || !allowed.contains(wageRaw)) {
+      return (
+        400,
+        <String, Object?>{
+          'error': 'invalid_wage_source',
+          'message':
+              'wage_source must be vendor_per_employee, vendor_per_position, '
+              'target_substitution, or manual_mix',
+        },
+      );
+    }
+  }
+  return null;
 }
 
 Future<bool> _operatorLocationScopeAllowed({
@@ -16236,6 +16806,12 @@ bool _isAdminAuthOperation(String path, String method) {
   if (method == 'PATCH' && authOperationPath.startsWith(adminAuthUsersPrefix)) {
     return true;
   }
+  // CODE_OPS_DEBT Theme B#1 — GET .../erase-pii for status read.
+  if (method == 'GET' &&
+      authOperationPath.startsWith(adminAuthUsersPrefix) &&
+      _piiErasurePathFromAdminAuthUsersPrefix(authOperationPath) != null) {
+    return true;
+  }
   if (method == 'GET' && authOperationPath == adminAuthSessionsPath) {
     return true;
   }
@@ -16384,10 +16960,24 @@ Future<bool> _requireAdminPermissionOrWrite({
       });
       return false;
     case ProxyAdminMfaStaleAuth(:final refreshAfter):
+      // CODE_OPS_DEBT Theme A item 1 — operator decision is "full
+      // re-auth" (sign-out → login → MFA → return) rather than a
+      // step-up modal. We carry a `redirect_uri` hint here so the
+      // admin shell + operator web client can branch on it without
+      // hard-coding the route. Keep the existing 403 status +
+      // `mfa_freshness_required` error code so the existing test
+      // suite stays green; the 401 + `fresh_mfa_required` shape
+      // documented in the lane prompt is reserved for the
+      // future per-route `requiresFreshMfa` decoration (out of
+      // scope here — this slice un-pins the four UI affordances
+      // and leaves the proxy verifier stable).
       _writeJson(response, 403, <String, Object?>{
         'error': 'mfa_freshness_required',
         'message': 'fresh authentication is required',
         'refresh_after': refreshAfter.toUtc().toIso8601String(),
+        'redirect_uri':
+            '/auth/login?reason=fresh_mfa_required&permission_key='
+            '${Uri.encodeQueryComponent(permissionKey)}',
       });
       return false;
     case ProxyAdminChallengeRequired():
@@ -16545,6 +17135,80 @@ Map<String, Object?> _authEventEntryToJson(AuthEventListEntry entry) {
     if (entry.scope != null) 'scope': entry.scope,
     'payload': entry.payload,
   };
+}
+
+/// Renders one [AuthEventListEntry] as an RFC 4180 CSV row terminated
+/// with `\r\n`. The column order matches the header emitted by the
+/// audit-log CSV export route + the legacy `renderAuditLogCsv` shape
+/// in `web_team_audit_log_gateway.dart` so downstream tools that
+/// already ingested the client-rendered CSV keep working when the
+/// operator-web build flips to the streaming server-side path.
+///
+/// Columns (in order):
+///   1. created_at   - `occurred_at` in UTC ISO-8601.
+///   2. action       - raw `event_type` (e.g. `auth.user.signed_in`).
+///   3. actor_user_id   - the verified bearer-token scope's user id.
+///                        Pinned by the proxy; never the request param.
+///   4. actor_display_name - rendered hint ("F&F admin" or
+///                            "Team member"); the underlying ledger
+///                            does not denormalize the display name.
+///   5. actor_email   - intentionally blank (auth_events_audit does
+///                       not denormalize email; the read route does
+///                       the same).
+///   6. actor_kind    - `forge_admin` if the row carries an
+///                       `admin_reason` payload key OR the event_type
+///                       is in the `admin.*` namespace; `team_member`
+///                       otherwise. Mirrors
+///                       `_authEventEntryToAdminAuditRow` so the
+///                       self-service + admin CSV exports agree on
+///                       the actor classification.
+///   7. target_kind   - left blank for now (auth_events_audit rows
+///                       do not carry a target column; the F&F admin
+///                       audit_logs ledger does, that surface lights
+///                       up later).
+///   8. target_id     - `event_id` so the row is still uniquely
+///                       referenceable in a spreadsheet.
+///   9. admin_reason  - `payload['admin_reason']` if present, blank
+///                       otherwise.
+///  10. payload       - JSON-encoded payload (RFC 4180 escaped).
+String _renderAuthEventCsvRow(AuthEventListEntry entry, OperatorContext scope) {
+  final payload = entry.payload;
+  final adminReason = payload['admin_reason'];
+  final adminReasonText = adminReason is String && adminReason.trim().isNotEmpty
+      ? adminReason
+      : '';
+  final isAdminEvent =
+      entry.eventType.startsWith('admin.') || adminReasonText.isNotEmpty;
+  final actorKind = isAdminEvent ? 'forge_admin' : 'team_member';
+  final actorDisplayName = isAdminEvent ? 'F&F admin' : 'Team member';
+  final payloadJson = payload.isEmpty ? '' : jsonEncode(payload);
+  final cells = <String>[
+    _csvEscape(entry.occurredAt.toUtc().toIso8601String()),
+    _csvEscape(entry.eventType),
+    _csvEscape(scope.userId),
+    _csvEscape(actorDisplayName),
+    _csvEscape(''),
+    _csvEscape(actorKind),
+    _csvEscape(''),
+    _csvEscape(entry.eventId),
+    _csvEscape(adminReasonText),
+    _csvEscape(payloadJson),
+  ];
+  return '${cells.join(',')}\r\n';
+}
+
+/// RFC 4180 cell escaping. Wraps in double quotes when the cell
+/// contains a comma, double quote, CR, or LF; doubles internal
+/// double quotes. Empty input renders as an empty string (no quotes).
+String _csvEscape(String raw) {
+  if (raw.isEmpty) return '';
+  final needsQuoting =
+      raw.contains(',') ||
+      raw.contains('"') ||
+      raw.contains('\n') ||
+      raw.contains('\r');
+  if (!needsQuoting) return raw;
+  return '"${raw.replaceAll('"', '""')}"';
 }
 
 Map<String, Object?> _authEventEntryToAdminAuditRow(
@@ -16713,6 +17377,40 @@ _UserAction? _userActionFromPath(String path) {
   );
 }
 
+/// CODE_OPS_DEBT Theme B#1 — splits the `/v1/admin/auth/users/{id}/
+/// erase-pii[/reverse]` path families. Returns null when the path is
+/// not one of the three erase-pii shapes; otherwise returns the user
+/// id + the sub-action (`'request'` for the bare `/erase-pii`,
+/// `'reverse'` for `/erase-pii/reverse`).
+_PiiErasurePath? _piiErasurePathFromAdminAuthUsersPrefix(String path) {
+  if (!path.startsWith(adminAuthUsersPrefix)) return null;
+  final rest = path.substring(adminAuthUsersPrefix.length);
+  final parts = rest.split('/');
+  if (parts.length == 2 && parts[0].isNotEmpty && parts[1] == 'erase-pii') {
+    return _PiiErasurePath(
+      userId: Uri.decodeComponent(parts[0]),
+      action: 'request',
+    );
+  }
+  if (parts.length == 3 &&
+      parts[0].isNotEmpty &&
+      parts[1] == 'erase-pii' &&
+      parts[2] == 'reverse') {
+    return _PiiErasurePath(
+      userId: Uri.decodeComponent(parts[0]),
+      action: 'reverse',
+    );
+  }
+  return null;
+}
+
+class _PiiErasurePath {
+  const _PiiErasurePath({required this.userId, required this.action});
+
+  final String userId;
+  final String action;
+}
+
 String? _sessionRevokeIdFromPath(String path) {
   if (!path.startsWith(adminAuthSessionsPrefix)) return null;
   final rest = path.substring(adminAuthSessionsPrefix.length);
@@ -16805,6 +17503,22 @@ String? _nonBlankString(Object? value) {
   final trimmed = value.trim();
   if (trimmed.isEmpty) return null;
   return trimmed;
+}
+
+List<String> _nonBlankStrings(Iterable<String>? values) {
+  if (values == null) return const <String>[];
+  final result = <String>[];
+  for (final value in values) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || result.contains(trimmed)) continue;
+    result.add(trimmed);
+  }
+  return List<String>.unmodifiable(result);
+}
+
+List<String> _commaSeparatedQueryList(Object? value) {
+  if (value is! String) return const <String>[];
+  return _nonBlankStrings(value.split(','));
 }
 
 class _MalformedJsonBodyError implements Exception {

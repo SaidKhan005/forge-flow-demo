@@ -45,8 +45,11 @@ import '../../theme/app_theme.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
+import '../admin_route_handoff.dart';
 import '../models/debug_console_admin_models.dart';
 import '../services/debug_console_admin_gateway.dart';
+import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 
 const String _kRequestLogTab = 'request_log';
@@ -57,22 +60,33 @@ class DebugConsoleAdminScreen extends StatefulWidget {
   const DebugConsoleAdminScreen({
     super.key,
     required this.gateway,
+    this.hierarchyGateway,
     this.editingEnabled = true,
+    this.hierarchyScope,
     this.initialFilter = const RequestLogFilter(),
+    this.onBackToBusinessAccounts,
     this.tailPollInterval = kDebugConsoleTailPollInterval,
     @visibleForTesting this.now,
   });
 
   final DebugConsoleAdminGateway gateway;
+  final RolesHierarchySessionsAdminGateway? hierarchyGateway;
 
   /// `true` when the signed-in actor is `super_admin`. Drives the
   /// expand-row full-content reveal - `false` (ff_support) hides the
   /// expand affordance entirely so the meta view is the only path.
   final bool editingEnabled;
 
+  /// Optional hierarchy scope from Business accounts. Business and
+  /// location scopes map directly onto the existing request-log route.
+  /// Org-unit scopes are expanded through [hierarchyGateway] before
+  /// the request-log filter is sent to the admin proxy.
+  final AdminHierarchyScopeIntent? hierarchyScope;
+
   /// Optional route seed used by contextual actions elsewhere in the
   /// admin console. Empty keeps the manual Refresh-first behavior.
   final RequestLogFilter initialFilter;
+  final VoidCallback? onBackToBusinessAccounts;
 
   /// Cadence for live-tail polling. Production uses
   /// [kDebugConsoleTailPollInterval]; tests pin a synthetic value.
@@ -102,6 +116,9 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
   late RequestLogFilter _filter;
   RequestLogFilter? _serverFilter;
   bool _refreshQueued = false;
+  List<String>? _scopeLocationIds;
+  bool _scopeResolving = false;
+  String? _scopeResolutionError;
   final TextEditingController _searchController = TextEditingController();
   final Set<String> _expanded = <String>{};
 
@@ -116,8 +133,18 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     super.initState();
     _filter = widget.initialFilter;
     _tabs = TabController(length: 3, vsync: this);
+    _startScopeResolution();
     if (!widget.initialFilter.isEmpty) {
       unawaited(_refresh());
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant DebugConsoleAdminScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.hierarchyScope?.cacheKey != widget.hierarchyScope?.cacheKey ||
+        oldWidget.hierarchyGateway != widget.hierarchyGateway) {
+      _startScopeResolution();
     }
   }
 
@@ -136,12 +163,115 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     return false;
   }
 
+  RequestLogFilter get _effectiveFilter {
+    final scope = widget.hierarchyScope;
+    if (scope == null) return _filter;
+    switch (scope.scopeType) {
+      case AdminHierarchyScopeType.business:
+        return _filter.copyWith(operatorId: scope.operatorId);
+      case AdminHierarchyScopeType.location:
+        return _filter.copyWith(
+          operatorId: scope.operatorId,
+          locationId: scope.locationId,
+          locationIds: null,
+        );
+      case AdminHierarchyScopeType.orgUnit:
+        final locationIds = _scopeLocationIds ?? const <String>[];
+        return _filter.copyWith(
+          operatorId: scope.operatorId,
+          locationIds: List<String>.unmodifiable(locationIds),
+        );
+    }
+  }
+
+  void _startScopeResolution() {
+    final scope = widget.hierarchyScope;
+    if (scope == null || !scope.isOrgUnitScope) {
+      _scopeLocationIds = null;
+      _scopeResolving = false;
+      _scopeResolutionError = null;
+      return;
+    }
+    final gateway = widget.hierarchyGateway;
+    if (gateway == null) {
+      _scopeLocationIds = null;
+      _scopeResolving = false;
+      _scopeResolutionError =
+          'Org-unit support logs need the hierarchy location list. This route does not expose that data here, so choose a business or location scope.';
+      return;
+    }
+    _scopeLocationIds = null;
+    _scopeResolving = true;
+    _scopeResolutionError = null;
+    unawaited(_resolveOrgUnitLocations(scope, gateway));
+  }
+
+  Future<void> _resolveOrgUnitLocations(
+    AdminHierarchyScopeIntent scope,
+    RolesHierarchySessionsAdminGateway gateway,
+  ) async {
+    try {
+      final results = await Future.wait(<Future<Object>>[
+        gateway.listOrgUnits(operatorId: scope.operatorId),
+        gateway.listHierarchyLocations(operatorId: scope.operatorId),
+      ]);
+      if (!mounted || widget.hierarchyScope?.cacheKey != scope.cacheKey) {
+        return;
+      }
+      final orgUnits = results[0] as List<OrgUnitAdminNode>;
+      final locations = results[1] as List<HierarchyLocationLeaf>;
+      final coveredUnitIds = _coveredOrgUnitIds(orgUnits, scope.orgUnitId!);
+      final locationIds = <String>[
+        for (final location in locations)
+          if (coveredUnitIds.contains(location.orgUnitId)) location.locationId,
+      ]..sort();
+      setState(() {
+        _scopeLocationIds = List<String>.unmodifiable(locationIds);
+        _scopeResolving = false;
+        _scopeResolutionError = null;
+      });
+      unawaited(_refresh());
+    } catch (error) {
+      if (!mounted || widget.hierarchyScope?.cacheKey != scope.cacheKey) {
+        return;
+      }
+      setState(() {
+        _scopeLocationIds = null;
+        _scopeResolving = false;
+        _scopeResolutionError =
+            'Could not expand this org unit to locations: $error';
+      });
+    }
+  }
+
+  Set<String> _coveredOrgUnitIds(
+    List<OrgUnitAdminNode> orgUnits,
+    String rootOrgUnitId,
+  ) {
+    final byParent = <String?, List<OrgUnitAdminNode>>{};
+    for (final unit in orgUnits) {
+      byParent
+          .putIfAbsent(unit.parentOrgUnitId, () => <OrgUnitAdminNode>[])
+          .add(unit);
+    }
+    final covered = <String>{};
+    void visit(String orgUnitId) {
+      if (!covered.add(orgUnitId)) return;
+      for (final child in byParent[orgUnitId] ?? const <OrgUnitAdminNode>[]) {
+        visit(child.orgUnitId);
+      }
+    }
+
+    visit(rootOrgUnitId);
+    return covered;
+  }
+
   Future<void> _refresh() async {
     if (_refreshing) {
       _refreshQueued = true;
       return;
     }
-    final requestFilter = _filter;
+    final requestFilter = _effectiveFilter;
     setState(() {
       _refreshing = true;
       if (_entries.isEmpty) _initialLoading = true;
@@ -180,7 +310,8 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
         setState(() => _refreshing = false);
         final loadedFilter = _serverFilter;
         final needsCurrentFilter =
-            loadedFilter == null || !_filterCovers(loadedFilter, _filter);
+            loadedFilter == null ||
+            !_filterCovers(loadedFilter, _effectiveFilter);
         if (_refreshQueued || needsCurrentFilter) {
           _refreshQueued = false;
           unawaited(_refresh());
@@ -195,10 +326,11 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     setState(() {
       _filter = next;
     });
+    final requestedFilter = _effectiveFilter;
     final loadedFilter = _serverFilter;
     if (_entries.isNotEmpty &&
         loadedFilter != null &&
-        _filterCovers(loadedFilter, next)) {
+        _filterCovers(loadedFilter, requestedFilter)) {
       // Re-narrowing client-side first; refresh on demand if the
       // operator wants a fresh window.
       return;
@@ -214,6 +346,7 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
   bool _filterCovers(RequestLogFilter loaded, RequestLogFilter requested) {
     return _stringAxisCovers(loaded.operatorId, requested.operatorId) &&
         _stringAxisCovers(loaded.locationId, requested.locationId) &&
+        _stringListAxisCovers(loaded.locationIds, requested.locationIds) &&
         _stringAxisCovers(loaded.usageClass, requested.usageClass) &&
         _valueAxisCovers(loaded.status, requested.status) &&
         _valueAxisCovers(loaded.timeWindow, requested.timeWindow) &&
@@ -224,6 +357,13 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     final loadedValue = loaded?.trim();
     if (loadedValue == null || loadedValue.isEmpty) return true;
     return loadedValue == requested?.trim();
+  }
+
+  bool _stringListAxisCovers(List<String>? loaded, List<String>? requested) {
+    if (loaded == null) return true;
+    if (requested == null) return false;
+    final loadedSet = loaded.toSet();
+    return requested.every(loadedSet.contains);
   }
 
   bool _valueAxisCovers<T>(T? loaded, T? requested) {
@@ -286,9 +426,10 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
 
   List<RequestLogEntry> get _visibleEntries {
     final reference = _clockNow();
+    final effectiveFilter = _effectiveFilter;
     return <RequestLogEntry>[
       for (final entry in _entries)
-        if (_filter.matches(entry, now: reference)) entry,
+        if (effectiveFilter.matches(entry, now: reference)) entry,
     ];
   }
 
@@ -308,6 +449,7 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
               onRunRefresh: _refresh,
               loading: _initialLoading || _refreshing,
               editingEnabled: widget.editingEnabled,
+              onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
             ),
             const SizedBox(height: 12),
             TabBar(
@@ -341,6 +483,10 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
                     entries: _visibleEntries,
                     expanded: _expanded,
                     filter: _filter,
+                    hierarchyScope: widget.hierarchyScope,
+                    scopeLocationIds: _scopeLocationIds,
+                    scopeResolving: _scopeResolving,
+                    scopeResolutionError: _scopeResolutionError,
                     searchController: _searchController,
                     optInLookup: _optInOnFor,
                     editingEnabled: widget.editingEnabled,
@@ -390,12 +536,14 @@ class _Header extends StatelessWidget {
     required this.onRunRefresh,
     required this.loading,
     required this.editingEnabled,
+    required this.onBackToBusinessAccounts,
   });
 
   final DateTime? lastRefreshed;
   final Future<void> Function() onRunRefresh;
   final bool loading;
   final bool editingEnabled;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   Widget build(BuildContext context) {
@@ -403,6 +551,11 @@ class _Header extends StatelessWidget {
       title: 'Support logs',
       subtitle:
           'Translate recent backend requests into support-safe details. Filter with exact IDs when you need a precise lookup.',
+      leading: onBackToBusinessAccounts == null
+          ? null
+          : AdminBusinessAccountsBackButton(
+              onPressed: onBackToBusinessAccounts,
+            ),
       compactBreakpoint: 640,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 320),
@@ -466,6 +619,10 @@ class _RequestLogTab extends StatelessWidget {
     required this.entries,
     required this.expanded,
     required this.filter,
+    required this.hierarchyScope,
+    required this.scopeLocationIds,
+    required this.scopeResolving,
+    required this.scopeResolutionError,
     required this.searchController,
     required this.optInLookup,
     required this.editingEnabled,
@@ -483,6 +640,10 @@ class _RequestLogTab extends StatelessWidget {
   final List<RequestLogEntry> entries;
   final Set<String> expanded;
   final RequestLogFilter filter;
+  final AdminHierarchyScopeIntent? hierarchyScope;
+  final List<String>? scopeLocationIds;
+  final bool scopeResolving;
+  final String? scopeResolutionError;
   final TextEditingController searchController;
   final bool Function(String operatorId) optInLookup;
   final bool editingEnabled;
@@ -507,9 +668,21 @@ class _RequestLogTab extends StatelessWidget {
     return CustomScrollView(
       key: const Key('admin_debug_console_request_log_body'),
       slivers: <Widget>[
+        if (hierarchyScope != null)
+          SliverToBoxAdapter(
+            child: _ScopeBanner(
+              scope: hierarchyScope!,
+              locationIds: scopeLocationIds,
+              resolving: scopeResolving,
+              error: scopeResolutionError,
+            ),
+          ),
+        if (hierarchyScope != null)
+          const SliverToBoxAdapter(child: SizedBox(height: 12)),
         SliverToBoxAdapter(
           child: _FilterBar(
             filter: filter,
+            scopeLocationIds: scopeLocationIds,
             searchController: searchController,
             onFilterChanged: onFilterChanged,
             onSearchChanged: onSearchChanged,
@@ -575,15 +748,138 @@ class _RequestLogTab extends StatelessWidget {
   }
 }
 
+class _ScopeBanner extends StatelessWidget {
+  const _ScopeBanner({
+    required this.scope,
+    required this.locationIds,
+    required this.resolving,
+    required this.error,
+  });
+
+  final AdminHierarchyScopeIntent scope;
+  final List<String>? locationIds;
+  final bool resolving;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    final body = switch (scope.scopeType) {
+      AdminHierarchyScopeType.business =>
+        'Business scope includes all recent support-log rows for this operator unless you add a location filter.',
+      AdminHierarchyScopeType.location =>
+        'Location only. Support logs are filtered to this location using the existing operator/location route contract.',
+      AdminHierarchyScopeType.orgUnit => _orgUnitBody(),
+    };
+    final isWarning = error != null;
+    final accent = isWarning ? AppColors.warning : AppColors.peacock;
+    return Container(
+      key: const Key('admin_debug_console_scope_banner'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: accent.withValues(alpha: 0.75), width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(
+            scope.isOrgUnitScope
+                ? Icons.account_tree_outlined
+                : scope.isLocationScope
+                ? Icons.storefront_outlined
+                : Icons.business_outlined,
+            size: 16,
+            color: accent,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: <Widget>[
+                    Text(
+                      '${scope.scopeType.label}: ${scope.displayLabel}',
+                      key: const Key('admin_debug_console_scope_label'),
+                      style: AppTextStyles.body13(
+                        color: AppColors.textPrimary,
+                      ).copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    _ScopePill(label: scope.inheritanceLabel),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  body,
+                  key: const Key('admin_debug_console_scope_body'),
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _orgUnitBody() {
+    final scopedError = error;
+    if (scopedError != null) return scopedError;
+    if (resolving) {
+      return 'Resolving covered locations before filtering support logs.';
+    }
+    final count = locationIds?.length;
+    if (count == null) {
+      return 'Org-unit support logs need the hierarchy location list. This route does not expose that data here, so choose a business or location scope.';
+    }
+    if (count == 0) {
+      return 'This org unit has no covered locations, so no support-log rows can match it.';
+    }
+    return 'Org unit expands to $count covered location${count == 1 ? '' : 's'}. The admin proxy receives the covered-location filter and the screen narrows visible rows to the same scope.';
+  }
+}
+
+class _ScopePill extends StatelessWidget {
+  const _ScopePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_debug_console_scope_state'),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.peacock.withValues(alpha: 0.10),
+        border: Border.all(
+          color: AppColors.peacock.withValues(alpha: 0.35),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.chipLabel(color: AppColors.peacockDark),
+      ),
+    );
+  }
+}
+
 class _FilterBar extends StatelessWidget {
   const _FilterBar({
     required this.filter,
+    required this.scopeLocationIds,
     required this.searchController,
     required this.onFilterChanged,
     required this.onSearchChanged,
   });
 
   final RequestLogFilter filter;
+  final List<String>? scopeLocationIds;
   final TextEditingController searchController;
   final ValueChanged<RequestLogFilter> onFilterChanged;
   final ValueChanged<String> onSearchChanged;
@@ -643,6 +939,11 @@ class _FilterBar extends StatelessWidget {
                 onChanged: (next) =>
                     onFilterChanged(filter.copyWith(locationId: next)),
               ),
+              if (scopeLocationIds != null)
+                _ChipShell(
+                  label: 'Covered locations: ${scopeLocationIds!.length}',
+                  active: true,
+                ),
               _StringFilterChip(
                 keyName: const Key('admin_debug_console_filter_usage_class'),
                 label: 'Request use case ID',
@@ -655,7 +956,7 @@ class _FilterBar extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Tip: choose View logs from an operator or location to fill the exact filters automatically.',
+            'Tip: choose View logs from a business, org unit, or location to fill the exact filters automatically.',
             style: AppTextStyles.body12(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 10),

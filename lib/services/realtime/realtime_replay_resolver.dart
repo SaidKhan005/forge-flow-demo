@@ -118,11 +118,25 @@ abstract class RealtimeReplayBacklog {
 /// implementation; in single-instance demo mode this is the in-process
 /// publisher's ring buffer, in production it is the Cloud Pub/Sub
 /// backlog query.
+///
+/// The optional [pubsubBacklog] parameter wins over [backlog] when
+/// supplied. The N5 cross-pod replay lane plumbs the in-process ring
+/// in as the always-on fallback (`backlog`) and layers the Cloud
+/// Pub/Sub-fed ring on top (`pubsubBacklog`) so a single resolver
+/// instance handles both topologies — the production wiring just
+/// passes the Pub/Sub backlog when `PUBSUB_REALTIME_ENABLED=true` and
+/// omits it otherwise (zero-cost fallback). Keeping the toggle in the
+/// resolver (rather than the call site) means the route never has to
+/// know which transport answered the replay query.
 class RealtimeReplayResolver {
-  RealtimeReplayResolver({required RealtimeReplayBacklog backlog})
-    : _backlog = backlog;
+  RealtimeReplayResolver({
+    required RealtimeReplayBacklog backlog,
+    RealtimeReplayBacklog? pubsubBacklog,
+  })  : _backlog = backlog,
+        _pubsubBacklog = pubsubBacklog;
 
   final RealtimeReplayBacklog _backlog;
+  final RealtimeReplayBacklog? _pubsubBacklog;
 
   /// Resolve the events the connecting client missed on `topic` since
   /// `lastEventId`. Contract:
@@ -144,7 +158,8 @@ class RealtimeReplayResolver {
     required Duration backlogWindow,
   }) async {
     if (lastEventId == null) return const <RealtimeEvent>[];
-    return _backlog.replayMissed(
+    final selected = _pubsubBacklog ?? _backlog;
+    return selected.replayMissed(
       operatorId: operatorId,
       topic: topic,
       lastEventId: lastEventId,

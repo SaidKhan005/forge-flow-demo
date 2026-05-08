@@ -270,6 +270,18 @@ void main() {
             expect(response.statusCode, equals(200));
             expect(guard.permissionKeys, equals(<String>['team.users.view']));
             expect(gateway.orgHierarchyLists, hasLength(1));
+            expect(
+              gateway.orgHierarchyLists.single.actorUserId,
+              equals(_userId),
+            );
+            expect(
+              gateway.orgHierarchyLists.single.operatorId,
+              equals(_operatorId),
+            );
+            expect(
+              gateway.orgHierarchyLists.single.locationId,
+              equals(_locationId),
+            );
             final units = response.json['org_units'] as List<Object?>;
             final firstUnit = Map<String, Object?>.from(units.single as Map);
             expect(firstUnit['unit_type'], equals('corp'));
@@ -301,11 +313,23 @@ void main() {
                   'unit_type': 'region',
                   'label': 'east',
                   'name': 'East Region',
+                  'admin_reason': 'admin hierarchy setup',
                 }, idempotencyKey: 'idem-org-unit-create-1');
 
             expect(response.statusCode, equals(201));
             expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
-            expect(gateway.orgUnitCreates.single.label, equals('east'));
+            final command = gateway.orgUnitCreates.single;
+            expect(command.actorUserId, equals(_userId));
+            expect(command.operatorId, equals(_operatorId));
+            expect(command.locationId, equals(_locationId));
+            expect(
+              command.parentOrgUnitId,
+              equals('66666666-6666-4666-8666-666666666666'),
+            );
+            expect(command.unitType, equals('region'));
+            expect(command.label, equals('east'));
+            expect(command.name, equals('East Region'));
+            expect(command.adminReason, equals('admin hierarchy setup'));
             expect(
               response.json['org_unit_id'],
               equals('77777777-7777-4777-8777-777777777777'),
@@ -339,9 +363,14 @@ void main() {
 
             expect(response.statusCode, equals(200));
             expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
+            final command = gateway.locationOrgUnitMoves.single;
+            expect(command.actorUserId, equals(_userId));
+            expect(command.operatorId, equals(_operatorId));
+            expect(command.locationId, equals(_locationId));
+            expect(command.targetLocationId, equals(targetLocation));
             expect(
-              gateway.locationOrgUnitMoves.single.targetLocationId,
-              equals(targetLocation),
+              command.parentOrgUnitId,
+              equals('77777777-7777-4777-8777-777777777777'),
             );
             expect(response.json['moved'], isTrue);
           } finally {
@@ -690,8 +719,7 @@ void main() {
     );
 
     test('POST admin reset-mfa-factors gates on '
-        'admin.users.reset_mfa_factors and queues delayed removal',
-        () async {
+        'admin.users.reset_mfa_factors and queues delayed removal', () async {
       // 11A.14 ops-debt fix - the F&F admin support path gates on the
       // new `admin.users.reset_mfa_factors` permission key (not the
       // operator-side `team.users.reset_mfa` posture).
@@ -1489,71 +1517,24 @@ void main() {
     // 11W.4 ops-debt - GET /v1/auth/team/sessions tests. The route
     // gates on `team.session.force_logout` and joins on
     // `users.operator_id` so cross-tenant rows never cross the seam.
-    test(
-      'GET team sessions returns the projected payload with target user '
-      'identity when the caller has team.session.force_logout',
-      () async {
-        await _withRealHttp(() async {
-          final gateway = _RecordingAuthOperationsGateway();
-          gateway.teamActiveSessions = <AuthTeamActiveSessionSummary>[
-            AuthTeamActiveSessionSummary(
-              session: AuthSessionSummary(
-                sessionId: 'aaaaaaaa-1111-4111-8111-111111111111',
-                deviceLabel: 'Forge & Flow on iPhone',
-                createdAt: DateTime.utc(2026, 5, 5, 14),
-                lastSeenAt: DateTime.utc(2026, 5, 5, 14, 30),
-                geoCountry: 'CA',
-              ),
-              targetUserId: 'u-jordan',
-              targetDisplayName: 'Jordan Lee',
-              targetEmail: 'jordan.lee@demo.test',
-            ),
-          ];
-          final harness = await _RouteHarness.start(
-            authOperationsGateway: gateway,
-            permissionSnapshotResolver: _FixedSnapshotResolver(
-              ProxyPermissionSnapshot(
-                userId: _userId,
-                operatorId: _operatorId,
-                locationId: _locationId,
-                rolesVersion: 7,
-                evaluatedAt: DateTime.utc(2026, 5, 5),
-                permissions: const <String, PermissionEffect>{
-                  'team.session.force_logout': PermissionEffect.allow,
-                },
-              ),
-            ),
-          );
-          try {
-            final response = await harness.get(authTeamSessionsListPath);
-            expect(response.statusCode, equals(200));
-            final sessions = response.json['sessions'] as List<Object?>;
-            expect(sessions, hasLength(1));
-            final entry = Map<String, Object?>.from(
-              sessions.single as Map<Object?, Object?>,
-            );
-            expect(entry['user_id'], equals('u-jordan'));
-            expect(entry['display_name'], equals('Jordan Lee'));
-            expect(entry['email'], equals('jordan.lee@demo.test'));
-            expect(
-              entry['session_id'],
-              equals('aaaaaaaa-1111-4111-8111-111111111111'),
-            );
-            expect(
-              gateway.teamActiveSessionsLists.single.operatorId,
-              equals(_operatorId),
-            );
-          } finally {
-            await harness.close();
-          }
-        });
-      },
-    );
-
-    test('GET team sessions returns 403 without team.session.force_logout',
-        () async {
+    test('GET team sessions returns the projected payload with target user '
+        'identity when the caller has team.session.force_logout', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingAuthOperationsGateway();
+        gateway.teamActiveSessions = <AuthTeamActiveSessionSummary>[
+          AuthTeamActiveSessionSummary(
+            session: AuthSessionSummary(
+              sessionId: 'aaaaaaaa-1111-4111-8111-111111111111',
+              deviceLabel: 'Forge & Flow on iPhone',
+              createdAt: DateTime.utc(2026, 5, 5, 14),
+              lastSeenAt: DateTime.utc(2026, 5, 5, 14, 30),
+              geoCountry: 'CA',
+            ),
+            targetUserId: 'u-jordan',
+            targetDisplayName: 'Jordan Lee',
+            targetEmail: 'jordan.lee@demo.test',
+          ),
+        ];
         final harness = await _RouteHarness.start(
           authOperationsGateway: gateway,
           permissionSnapshotResolver: _FixedSnapshotResolver(
@@ -1564,41 +1545,89 @@ void main() {
               rolesVersion: 7,
               evaluatedAt: DateTime.utc(2026, 5, 5),
               permissions: const <String, PermissionEffect>{
-                'team.session.force_logout': PermissionEffect.deny,
+                'team.session.force_logout': PermissionEffect.allow,
               },
             ),
           ),
         );
         try {
           final response = await harness.get(authTeamSessionsListPath);
-          expect(response.statusCode, equals(403));
-          expect(response.json['error'], equals('forbidden'));
-          expect(gateway.teamActiveSessionsLists, isEmpty);
-        } finally {
-          await harness.close();
-        }
-      });
-    });
-
-    test('GET team sessions returns 503 without permissionSnapshotResolver',
-        () async {
-      await _withRealHttp(() async {
-        final gateway = _RecordingAuthOperationsGateway();
-        final harness = await _RouteHarness.start(
-          authOperationsGateway: gateway,
-        );
-        try {
-          final response = await harness.get(authTeamSessionsListPath);
-          expect(response.statusCode, equals(503));
+          expect(response.statusCode, equals(200));
+          final sessions = response.json['sessions'] as List<Object?>;
+          expect(sessions, hasLength(1));
+          final entry = Map<String, Object?>.from(
+            sessions.single as Map<Object?, Object?>,
+          );
+          expect(entry['user_id'], equals('u-jordan'));
+          expect(entry['display_name'], equals('Jordan Lee'));
+          expect(entry['email'], equals('jordan.lee@demo.test'));
           expect(
-            response.json['error'],
-            equals('permission_snapshot_not_configured'),
+            entry['session_id'],
+            equals('aaaaaaaa-1111-4111-8111-111111111111'),
+          );
+          expect(
+            gateway.teamActiveSessionsLists.single.operatorId,
+            equals(_operatorId),
           );
         } finally {
           await harness.close();
         }
       });
     });
+
+    test(
+      'GET team sessions returns 403 without team.session.force_logout',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            permissionSnapshotResolver: _FixedSnapshotResolver(
+              ProxyPermissionSnapshot(
+                userId: _userId,
+                operatorId: _operatorId,
+                locationId: _locationId,
+                rolesVersion: 7,
+                evaluatedAt: DateTime.utc(2026, 5, 5),
+                permissions: const <String, PermissionEffect>{
+                  'team.session.force_logout': PermissionEffect.deny,
+                },
+              ),
+            ),
+          );
+          try {
+            final response = await harness.get(authTeamSessionsListPath);
+            expect(response.statusCode, equals(403));
+            expect(response.json['error'], equals('forbidden'));
+            expect(gateway.teamActiveSessionsLists, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'GET team sessions returns 503 without permissionSnapshotResolver',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+          );
+          try {
+            final response = await harness.get(authTeamSessionsListPath);
+            expect(response.statusCode, equals(503));
+            expect(
+              response.json['error'],
+              equals('permission_snapshot_not_configured'),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
 
     test(
       'GET audit log delegates with verified scope and returns the projected '
@@ -1722,6 +1751,244 @@ void main() {
       });
     });
 
+    // Theme B#5 N3 - server-side streaming CSV export.
+    test(
+      'GET audit log export streams RFC 4180 CSV with the export filename + '
+      'attachment headers when the caller has team.audit_log.export',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          gateway.auditLogEntries = <AuthEventListEntry>[
+            AuthEventListEntry(
+              eventId: 'aaaaaaaa-1111-4111-8111-111111111111',
+              eventKind: AuthEventKind.signIn,
+              eventType: 'auth.user.signed_in',
+              friendlyLabel: 'Sign-in',
+              occurredAt: DateTime.utc(2026, 4, 28, 12, 5),
+              ip: '203.0.113.10',
+              geoCountry: 'CA',
+              payload: const <String, Object?>{'reason': 'totp,with comma'},
+            ),
+            AuthEventListEntry(
+              eventId: 'bbbbbbbb-2222-4222-8222-222222222222',
+              eventKind: AuthEventKind.password,
+              eventType: 'auth.user.password_changed',
+              friendlyLabel: 'Password changed',
+              occurredAt: DateTime.utc(2026, 4, 28, 12, 10),
+              payload: const <String, Object?>{
+                'admin_reason': 'support: "rotated by F&F"',
+              },
+            ),
+          ];
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            permissionSnapshotResolver: _FixedSnapshotResolver(
+              ProxyPermissionSnapshot(
+                userId: _userId,
+                operatorId: _operatorId,
+                locationId: _locationId,
+                rolesVersion: 7,
+                evaluatedAt: DateTime.utc(2026, 4, 28, 12),
+                permissions: const <String, PermissionEffect>{
+                  'team.audit_log.export': PermissionEffect.allow,
+                },
+              ),
+            ),
+          );
+          try {
+            final response = await harness.getRaw(authAuditLogExportPath);
+            expect(response.statusCode, equals(200));
+            expect(response.contentType?.toLowerCase(), startsWith('text/csv'));
+            expect(
+              response.headers['content-disposition']?.first,
+              contains('attachment; filename="forge_flow_audit_log_'),
+            );
+            // RFC 4180 header row.
+            final lines = response.body.split('\r\n');
+            expect(
+              lines.first,
+              equals(
+                'created_at,action,actor_user_id,actor_display_name,'
+                'actor_email,actor_kind,target_kind,target_id,admin_reason,'
+                'payload',
+              ),
+            );
+            // Two body rows + a trailing empty entry from the final
+            // \r\n line terminator.
+            expect(lines.length, equals(4));
+            // First body row: comma in payload forces RFC 4180 quoting
+            // and the JSON-encoded payload's internal `"` doubles
+            // ("" per RFC 4180 quoting).
+            expect(lines[1], contains('auth.user.signed_in'));
+            expect(lines[1], contains(_userId));
+            expect(lines[1], contains('team_member'));
+            expect(lines[1], contains('"{""reason"":""totp,with comma""}"'));
+            // Second body row: admin_reason promotes actor_kind.
+            expect(lines[2], contains('forge_admin'));
+            expect(lines[2], contains('F&F admin'));
+            // Verify the proxy paged the gateway with the verified
+            // scope, not a client-supplied user_id.
+            expect(gateway.auditLogLists.single.actorUserId, equals(_userId));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test('GET audit log export forwards from/to/event_kind filters into the '
+        'gateway command', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          permissionSnapshotResolver: _FixedSnapshotResolver(
+            ProxyPermissionSnapshot(
+              userId: _userId,
+              operatorId: _operatorId,
+              locationId: _locationId,
+              rolesVersion: 7,
+              evaluatedAt: DateTime.utc(2026, 4, 28, 12),
+              permissions: const <String, PermissionEffect>{
+                'team.audit_log.export': PermissionEffect.allow,
+              },
+            ),
+          ),
+        );
+        try {
+          final from = DateTime.utc(2026, 4, 1);
+          final to = DateTime.utc(2026, 4, 30, 23, 59, 59);
+          final response = await harness.getRaw(
+            '$authAuditLogExportPath'
+            '?event_kind=password'
+            '&from=${Uri.encodeQueryComponent(from.toIso8601String())}'
+            '&to=${Uri.encodeQueryComponent(to.toIso8601String())}',
+          );
+          expect(response.statusCode, equals(200));
+          expect(gateway.auditLogLists.single.from, equals(from));
+          expect(gateway.auditLogLists.single.to, equals(to));
+          expect(
+            gateway.auditLogLists.single.eventKind,
+            equals(AuthEventKind.password),
+          );
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('GET audit log export returns 403 when the snapshot denies '
+        'team.audit_log.export', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          permissionSnapshotResolver: _FixedSnapshotResolver(
+            ProxyPermissionSnapshot(
+              userId: _userId,
+              operatorId: _operatorId,
+              locationId: _locationId,
+              rolesVersion: 7,
+              evaluatedAt: DateTime.utc(2026, 4, 28, 12),
+              permissions: const <String, PermissionEffect>{
+                'team.audit_log.export': PermissionEffect.deny,
+              },
+            ),
+          ),
+        );
+        try {
+          final response = await harness.get(authAuditLogExportPath);
+          expect(response.statusCode, equals(403));
+          expect(response.json['error'], equals('permission_denied'));
+          expect(
+            response.json['permission_key'],
+            equals('team.audit_log.export'),
+          );
+          expect(gateway.auditLogLists, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test(
+      'GET audit log export returns 503 without a snapshot resolver',
+      () async {
+        await _withRealHttp(() async {
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: _RecordingAuthOperationsGateway(),
+          );
+          try {
+            final response = await harness.get(authAuditLogExportPath);
+            expect(response.statusCode, equals(503));
+            expect(
+              response.json['error'],
+              equals('permission_snapshot_not_configured'),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test('GET audit log export pages the underlying gateway and emits a row '
+        'per audit entry', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        // Fill one full page + one partial page so the route has to
+        // page through twice. The recording gateway's
+        // listAuthEventsForActor honors the offset, so the second
+        // page returns the trailing entries.
+        gateway.auditLogEntries = <AuthEventListEntry>[
+          for (var i = 0; i < 7; i += 1)
+            AuthEventListEntry(
+              eventId:
+                  '${i.toString().padLeft(8, '0')}-1111-4111-8111-111111111111',
+              eventKind: AuthEventKind.signIn,
+              eventType: 'auth.user.signed_in',
+              friendlyLabel: 'Sign-in',
+              occurredAt: DateTime.utc(
+                2026,
+                4,
+                28,
+                12,
+              ).add(Duration(minutes: i)),
+            ),
+        ];
+        gateway.auditLogPagedMode = true;
+        gateway.auditLogPagedPageSize = 5;
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          permissionSnapshotResolver: _FixedSnapshotResolver(
+            ProxyPermissionSnapshot(
+              userId: _userId,
+              operatorId: _operatorId,
+              locationId: _locationId,
+              rolesVersion: 7,
+              evaluatedAt: DateTime.utc(2026, 4, 28, 12),
+              permissions: const <String, PermissionEffect>{
+                'team.audit_log.export': PermissionEffect.allow,
+              },
+            ),
+          ),
+        );
+        try {
+          final response = await harness.getRaw(authAuditLogExportPath);
+          expect(response.statusCode, equals(200));
+          final lines = response.body.split('\r\n');
+          // 1 header + 7 body rows + trailing empty.
+          expect(lines.length, equals(9));
+          expect(gateway.auditLogLists.length, greaterThanOrEqualTo(2));
+          // Offsets advance across calls.
+          expect(gateway.auditLogLists[0].offset, equals(0));
+          expect(gateway.auditLogLists[1].offset, equals(5));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
     test('POST MFA factors revoke requires a fresh sign-in', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingMfaOperationsGateway();
@@ -1826,6 +2093,19 @@ class _RouteHarness {
     return _HttpJsonResponse.from(response);
   }
 
+  /// Streaming-friendly variant of [get] that surfaces the raw body
+  /// + headers (rather than forcing a JSON decode). Used by the CSV
+  /// export tests so they can assert on the streamed bytes + the
+  /// `text/csv` + `Content-Disposition` headers.
+  Future<_HttpRawResponse> getRaw(String path, {bool authorize = true}) async {
+    final request = await client.getUrl(baseUri.resolve(path));
+    if (authorize) {
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer test-token');
+    }
+    final response = await request.close();
+    return _HttpRawResponse.from(response);
+  }
+
   Future<_HttpJsonResponse> postJson(
     String path,
     Map<String, Object?> body, {
@@ -1902,6 +2182,34 @@ class _HttpJsonResponse {
       json: raw.isEmpty
           ? const <String, Object?>{}
           : Map<String, Object?>.from(jsonDecode(raw) as Map),
+    );
+  }
+}
+
+class _HttpRawResponse {
+  const _HttpRawResponse({
+    required this.statusCode,
+    required this.body,
+    required this.contentType,
+    required this.headers,
+  });
+
+  final int statusCode;
+  final String body;
+  final String? contentType;
+  final Map<String, List<String>> headers;
+
+  static Future<_HttpRawResponse> from(HttpClientResponse response) async {
+    final raw = await utf8.decodeStream(response.cast<List<int>>());
+    final headers = <String, List<String>>{};
+    response.headers.forEach((name, values) {
+      headers[name.toLowerCase()] = List<String>.from(values);
+    });
+    return _HttpRawResponse(
+      statusCode: response.statusCode,
+      body: raw,
+      contentType: response.headers.contentType?.toString(),
+      headers: headers,
     );
   }
 }
@@ -2452,11 +2760,31 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
   ];
   bool auditLogHasMore = false;
 
+  /// When true, the recording gateway honors offset + slices
+  /// [auditLogEntries] using [auditLogPagedPageSize] (not the
+  /// command's limit, so the export route's larger inner page size
+  /// can still be forced into multiple roundtrips). `hasMore` is set
+  /// based on whether the slice covers the tail. The export route
+  /// relies on this so the paging loop exercises the seam.
+  bool auditLogPagedMode = false;
+  int auditLogPagedPageSize = 100;
+
   @override
   Future<AuthEventsListed> listAuthEventsForActor(
     AuthEventListCommand command,
   ) async {
     auditLogLists.add(command);
+    if (auditLogPagedMode) {
+      final offset = command.offset < 0 ? 0 : command.offset;
+      final pageSize = auditLogPagedPageSize < 1 ? 1 : auditLogPagedPageSize;
+      final start = offset.clamp(0, auditLogEntries.length);
+      final end = (start + pageSize).clamp(0, auditLogEntries.length);
+      final slice = auditLogEntries.sublist(start, end);
+      return AuthEventsListed(
+        entries: List<AuthEventListEntry>.unmodifiable(slice),
+        hasMore: end < auditLogEntries.length,
+      );
+    }
     return AuthEventsListed(
       entries: List<AuthEventListEntry>.unmodifiable(auditLogEntries),
       hasMore: auditLogHasMore,

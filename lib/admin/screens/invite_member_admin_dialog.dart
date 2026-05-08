@@ -26,6 +26,27 @@ class MemberLocationRef {
 }
 
 @immutable
+class MemberAccessScopeRef {
+  const MemberAccessScopeRef({
+    required this.scopeType,
+    required this.id,
+    required this.label,
+    this.locationId,
+    this.orgUnitId,
+  });
+
+  final String scopeType;
+  final String id;
+  final String label;
+  final String? locationId;
+  final String? orgUnitId;
+
+  bool get isLocation => scopeType == 'location';
+  bool get isOrgUnit => scopeType == 'org_unit';
+  bool get isBusiness => scopeType == 'operator_wide';
+}
+
+@immutable
 class InviteMemberAdminDraft {
   const InviteMemberAdminDraft({
     required this.email,
@@ -33,6 +54,8 @@ class InviteMemberAdminDraft {
     required this.roleKey,
     required this.primaryLocationId,
     required this.adminReason,
+    this.scopeType = 'location',
+    this.orgUnitId,
     this.welcomeNote,
   });
 
@@ -41,6 +64,8 @@ class InviteMemberAdminDraft {
   final String roleKey;
   final String primaryLocationId;
   final String adminReason;
+  final String scopeType;
+  final String? orgUnitId;
   final String? welcomeNote;
 }
 
@@ -49,6 +74,8 @@ class InviteMemberAdminDialog extends StatefulWidget {
     super.key,
     required this.operatorBusinessName,
     required this.locations,
+    this.accessScopes = const <MemberAccessScopeRef>[],
+    this.initialScope,
     this.existingEmails = const <String>{},
     this.existingEmailUsages = const <String, AdminEmailConflictUsage>{},
     this.onReviewExistingEmail,
@@ -56,6 +83,8 @@ class InviteMemberAdminDialog extends StatefulWidget {
 
   final String operatorBusinessName;
   final List<MemberLocationRef> locations;
+  final List<MemberAccessScopeRef> accessScopes;
+  final MemberAccessScopeRef? initialScope;
 
   /// Lower-cased emails already on the team. Used by the dialog to
   /// surface the locked "email already on the team" copy without
@@ -75,9 +104,24 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
   final _adminReasonController = TextEditingController();
   final _welcomeNoteController = TextEditingController();
   String? _roleKey;
-  String? _locationId;
+  late String? _scopeId =
+      widget.initialScope?.id ??
+      (widget.accessScopes.isEmpty ? null : widget.accessScopes.first.id);
   String? _violation;
   AdminEmailConflictUsage? _violationUsage;
+
+  List<MemberAccessScopeRef> get _scopeOptions {
+    if (widget.accessScopes.isNotEmpty) return widget.accessScopes;
+    return <MemberAccessScopeRef>[
+      for (final loc in widget.locations)
+        MemberAccessScopeRef(
+          scopeType: 'location',
+          id: 'location:${loc.locationId}',
+          label: loc.name,
+          locationId: loc.locationId,
+        ),
+    ];
+  }
 
   @override
   void dispose() {
@@ -107,8 +151,8 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
     if (role == null || role.isEmpty) {
       return const _InviteValidationIssue(MembersValidationCopy.roleMissing);
     }
-    final loc = _locationId;
-    if (loc == null || loc.isEmpty) {
+    final scope = _selectedScope;
+    if (scope == null) {
       return const _InviteValidationIssue(
         MembersValidationCopy.locationMissing,
       );
@@ -125,6 +169,15 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
       return const _InviteValidationIssue(
         'Add a reason before sending the invite.',
       );
+    }
+    return null;
+  }
+
+  MemberAccessScopeRef? get _selectedScope {
+    final scopeId = _scopeId;
+    if (scopeId == null) return null;
+    for (final scope in _scopeOptions) {
+      if (scope.id == scopeId) return scope;
     }
     return null;
   }
@@ -155,12 +208,15 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
       return;
     }
     final welcome = _welcomeNoteController.text.trim();
+    final scope = _selectedScope!;
     Navigator.of(context).pop(
       InviteMemberAdminDraft(
         email: _emailController.text.trim(),
         displayName: _displayNameController.text.trim(),
         roleKey: _roleKey!,
-        primaryLocationId: _locationId!,
+        primaryLocationId: scope.locationId ?? '',
+        scopeType: scope.scopeType,
+        orgUnitId: scope.orgUnitId,
         adminReason: _adminReasonController.text.trim(),
         welcomeNote: welcome.isEmpty ? null : welcome,
       ),
@@ -241,24 +297,22 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 key: const Key('admin_members_invite_location'),
-                initialValue: _locationId,
+                initialValue: _scopeId,
                 isExpanded: true,
-                hint: const Text('Choose primary location'),
+                hint: const Text('Choose access scope'),
                 decoration: const InputDecoration(
-                  labelText: 'Primary location',
+                  labelText: 'Access scope',
                   border: OutlineInputBorder(),
                 ),
                 items: <DropdownMenuItem<String>>[
-                  for (final loc in widget.locations)
+                  for (final scope in _scopeOptions)
                     DropdownMenuItem<String>(
-                      key: Key(
-                        'admin_members_invite_location_${loc.locationId}',
-                      ),
-                      value: loc.locationId,
-                      child: Text(loc.name),
+                      key: Key('admin_members_invite_scope_${scope.id}'),
+                      value: scope.id,
+                      child: Text(scope.label),
                     ),
                 ],
-                onChanged: (v) => setState(() => _locationId = v),
+                onChanged: (v) => setState(() => _scopeId = v),
               ),
               const SizedBox(height: 12),
               TextField(

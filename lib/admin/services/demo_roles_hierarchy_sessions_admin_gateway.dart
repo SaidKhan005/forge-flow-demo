@@ -117,10 +117,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
   }
 
   List<HierarchyLocationLeaf> _locationsFor(String operatorId) {
-    return _locations.putIfAbsent(
-      operatorId,
-      () => <HierarchyLocationLeaf>[],
-    );
+    return _locations.putIfAbsent(operatorId, () => <HierarchyLocationLeaf>[]);
   }
 
   List<SessionAdminRow> _sessionsFor(String operatorId) {
@@ -237,7 +234,8 @@ class InMemoryRolesHierarchySessionsAdminGateway
       );
     }
     final created = RoleAdminRow(
-      roleId: 'custom-role-${roles.length + 1}-'
+      roleId:
+          'custom-role-${roles.length + 1}-'
           '${_clock().microsecondsSinceEpoch}',
       roleKey: roleKey,
       displayName: displayName,
@@ -303,6 +301,77 @@ class InMemoryRolesHierarchySessionsAdminGateway
       adminReason: adminReason,
     );
     _idempotentResults[idempotencyKey] = const Object();
+  }
+
+  @override
+  Future<OrgUnitAdminNode> createOrgUnit({
+    required String operatorId,
+    required String parentOrgUnitId,
+    required String unitType,
+    required String label,
+    required String name,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'createOrgUnit');
+    _ensureAdminReason(adminReason, 'createOrgUnit');
+    final cached = _idempotentResults[idempotencyKey];
+    if (cached is OrgUnitAdminNode) return cached;
+    final units = _orgUnitsFor(operatorId);
+    if (!units.any((u) => u.orgUnitId == parentOrgUnitId)) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 404,
+        errorCode: 'unknown_parent_org_unit',
+        message: 'parent org unit $parentOrgUnitId not found',
+      );
+    }
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 400,
+        errorCode: 'validation_failed',
+        message: HierarchyValidationCopy.orgUnitNameEmpty,
+      );
+    }
+    final hasDuplicate = units.any(
+      (u) =>
+          u.parentOrgUnitId == parentOrgUnitId &&
+          u.name.toLowerCase() == trimmedName.toLowerCase(),
+    );
+    if (hasDuplicate) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 400,
+        errorCode: 'validation_failed',
+        message: HierarchyValidationCopy.orgUnitNameDuplicate,
+      );
+    }
+    final created = OrgUnitAdminNode(
+      orgUnitId:
+          'org-unit-demo-${units.length + 1}-'
+          '${_clock().microsecondsSinceEpoch}',
+      name: trimmedName,
+      operatorId: operatorId,
+      parentOrgUnitId: parentOrgUnitId,
+    );
+    units.add(created);
+    _record(
+      action: 'team.org_unit.create',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      targetKind: 'org_unit',
+      targetId: created.orgUnitId,
+      payload: <String, Object?>{
+        'parent_org_unit_id': parentOrgUnitId,
+        'unit_type': unitType,
+        'label': label,
+        'name': trimmedName,
+      },
+      adminReason: adminReason,
+    );
+    _idempotentResults[idempotencyKey] = created;
+    return created;
   }
 
   @override
@@ -381,11 +450,8 @@ class InMemoryRolesHierarchySessionsAdminGateway
       final current = cursor;
       final parent = units.firstWhere(
         (u) => u.orgUnitId == current,
-        orElse: () => OrgUnitAdminNode(
-          orgUnitId: current,
-          name: '',
-          operatorId: '',
-        ),
+        orElse: () =>
+            OrgUnitAdminNode(orgUnitId: current, name: '', operatorId: ''),
       );
       cursor = parent.parentOrgUnitId;
     }
@@ -412,8 +478,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
       throw RolesHierarchySessionsGatewayError(
         statusCode: 404,
         errorCode: 'unknown_location',
-        message:
-            'location $locationId not found for operator $operatorId',
+        message: 'location $locationId not found for operator $operatorId',
       );
     }
     final prev = locations[index];
@@ -472,8 +537,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
       throw RolesHierarchySessionsGatewayError(
         statusCode: 404,
         errorCode: 'unknown_session',
-        message:
-            'session $sessionId not found for operator $operatorId',
+        message: 'session $sessionId not found for operator $operatorId',
       );
     }
     final removed = sessions.removeAt(index);
@@ -483,9 +547,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
       operatorId: operatorId,
       targetKind: 'auth_session',
       targetId: sessionId,
-      payload: <String, Object?>{
-        'user_id': removed.userId,
-      },
+      payload: <String, Object?>{'user_id': removed.userId},
       adminReason: adminReason,
     );
     _idempotentResults[idempotencyKey] = const Object();
@@ -526,14 +588,10 @@ class SessionsValidationCopy {
 /// Demo seeds reuse the operators from `kDemoMembersByOperator` so
 /// the walkthrough can hop seamlessly from Members into Roles /
 /// Hierarchy / Sessions for the same operator.
-const String kDemoDinerOrgUnitRoot =
-    '00000000-0000-4000-8000-000000000d01';
-const String kDemoDinerOrgUnitEast =
-    '00000000-0000-4000-8000-000000000d02';
-const String kDemoDinerOrgUnitWest =
-    '00000000-0000-4000-8000-000000000d03';
-const String kDemoSunsetOrgUnitRoot =
-    '00000000-0000-4000-8000-000000000s01';
+const String kDemoDinerOrgUnitRoot = '00000000-0000-4000-8000-000000000d01';
+const String kDemoDinerOrgUnitEast = '00000000-0000-4000-8000-000000000d02';
+const String kDemoDinerOrgUnitWest = '00000000-0000-4000-8000-000000000d03';
+const String kDemoSunsetOrgUnitRoot = '00000000-0000-4000-8000-000000000s01';
 
 Map<String, List<RoleAdminRow>> kDemoRolesByOperator() {
   const dinerRoles = <RoleAdminRow>[
@@ -558,10 +616,7 @@ Map<String, List<RoleAdminRow>> kDemoRolesByOperator() {
       displayName: 'Operator manager',
       description: 'Day-to-day operations and team management.',
       isSeeded: true,
-      permissionKeys: <String>[
-        'team.users.view',
-        'team.roles.assign',
-      ],
+      permissionKeys: <String>['team.users.view', 'team.roles.assign'],
     ),
     RoleAdminRow(
       roleId: 'role-seed-operator-supervisor',
@@ -586,10 +641,7 @@ Map<String, List<RoleAdminRow>> kDemoRolesByOperator() {
       description:
           'Trusted lead who runs a shift but does not manage the team.',
       isSeeded: false,
-      permissionKeys: <String>[
-        'team.users.view',
-        'team.audit_log.view',
-      ],
+      permissionKeys: <String>['team.users.view', 'team.audit_log.view'],
       operatorId: kDemoDinerOperatorId,
     ),
   ];

@@ -1,6 +1,6 @@
 // CODE_HEALTH C1 - operator_owner role escalation guard tests.
 //
-// Reference: CODE_HEALTH.md C1 -
+// Reference: docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md C1 -
 // `lib/auth/role_management_policy.dart` granted `operator_owner`
 // blanket allow on grant/revoke within their own tenant, which let
 // them emit `super_admin` and `ff_support` grants - a

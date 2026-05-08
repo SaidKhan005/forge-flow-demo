@@ -14,6 +14,16 @@ import '../../state/auth_session_notifier.dart';
 import '../../theme/app_theme.dart';
 import 'password_reset_request_screen.dart';
 
+// kDemoMode carve-out: demo flavor (`--dart-define=kDemoMode=true` or
+// `FORGE_FLOW_DEMO_MODE=true`) shows an additional "Use demo operator"
+// button that one-taps the fixture sign-in. This is a compile-time UX
+// affordance for walkthroughs and the Barrio demo flavor. The button is
+// strictly additive: production builds (no dart-define) hide it via the
+// `showDemoOperatorSignIn` constructor default, and the actual sign-in
+// path the button drives is the same `AuthSessionNotifier
+// .signInWithEmailPassword` call the regular sign-in uses — no parallel
+// auth path. Documented in `docs/contracts/demo_mode_contract.md` and
+// CLAUDE.md → Demo Mode.
 const bool _demoOperatorSignInEnabled =
     bool.fromEnvironment('kDemoMode') ||
     bool.fromEnvironment('FORGE_FLOW_DEMO_MODE');

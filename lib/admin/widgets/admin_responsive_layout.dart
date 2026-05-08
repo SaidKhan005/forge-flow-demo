@@ -66,25 +66,39 @@ class AdminPageHeader extends StatelessWidget {
     super.key,
     required this.title,
     required this.subtitle,
+    this.leading,
     this.trailing,
     this.compactBreakpoint = 560,
   });
 
   final String title;
   final String subtitle;
+  final Widget? leading;
   final Widget? trailing;
   final double compactBreakpoint;
 
   @override
   Widget build(BuildContext context) {
+    final titleText = Text(
+      title,
+      style: AppTextStyles.pageTitle(color: AppColors.textPrimary),
+    );
+    final titleRow = leading == null
+        ? titleText
+        : Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              leading!,
+              const SizedBox(width: 8),
+              Flexible(child: titleText),
+            ],
+          );
     final titleBlock = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          title,
-          style: AppTextStyles.pageTitle(color: AppColors.textPrimary),
-        ),
+        titleRow,
         const SizedBox(height: 4),
         Text(
           subtitle,

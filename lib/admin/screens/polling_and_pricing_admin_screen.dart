@@ -16,11 +16,14 @@ import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
+import '../models/admin_hierarchy_settings_scope_policy.dart';
 import '../services/data_accuracy_admin_gateway.dart';
+import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
+import '../widgets/admin_hierarchy_scope_notice.dart';
+import '../widgets/admin_hierarchy_scope_prompt.dart';
 import '../widgets/data_accuracy_audit_history_panel.dart';
 import '../widgets/margin_rollup_card.dart';
-import '../widgets/operator_location_scope_banner.dart';
 import '../widgets/per_location_tier_assignment_table.dart';
 import '../widgets/per_vendor_cadence_editor.dart';
 import '../widgets/plain_english_explainer_card.dart';
@@ -35,12 +38,16 @@ class PollingAndPricingAdminScreen extends StatefulWidget {
     required this.actorUserId,
     this.editingEnabled = true,
     this.initialScope,
+    this.initialHierarchyScope,
+    this.onBackToBusinessAccounts,
   });
 
   final DataAccuracyAdminGateway gateway;
   final String actorUserId;
   final bool editingEnabled;
   final AdminOperatorLocationScopeIntent? initialScope;
+  final AdminHierarchyScopeIntent? initialHierarchyScope;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   State<PollingAndPricingAdminScreen> createState() =>
@@ -49,6 +56,11 @@ class PollingAndPricingAdminScreen extends StatefulWidget {
 
 class _PollingAndPricingAdminScreenState
     extends State<PollingAndPricingAdminScreen> {
+  static const AdminHierarchySettingsScopePolicy _scopePolicy =
+      AdminHierarchySettingsScopePolicy(
+        AdminHierarchySettingsSurface.pollingPricing,
+      );
+
   bool _loading = true;
   String? _loadError;
   String? _actionError;
@@ -68,8 +80,23 @@ class _PollingAndPricingAdminScreenState
   String? _marginBandFilter;
   String? _locationCountFilter;
   String _operatorNameFilter = '';
-  late AdminOperatorLocationScopeIntent? _scope = widget.initialScope;
+  late AdminHierarchyScopeIntent? _scope = _decoratedInitialScope;
+  AdminHierarchyScopeIntent? _lastHandoffScope;
+  bool _showScopePrompt = false;
   int _refreshGeneration = 0;
+
+  AdminHierarchyScopeIntent? get _rawInitialScope =>
+      widget.initialHierarchyScope ?? widget.initialScope?.toHierarchyScope();
+
+  AdminHierarchyScopeIntent? get _decoratedInitialScope {
+    final scope = _rawInitialScope;
+    if (scope == null) return null;
+    return _decorateScope(scope);
+  }
+
+  AdminHierarchyScopeIntent _decorateScope(AdminHierarchyScopeIntent scope) {
+    return _scopePolicy.decorate(scope, editingEnabled: widget.editingEnabled);
+  }
 
   @override
   void initState() {
@@ -78,10 +105,30 @@ class _PollingAndPricingAdminScreenState
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final handoffScope = AdminRouteHandoff.maybeOf(
+      context,
+    )?.effectiveHierarchyScope;
+    if (handoffScope != _lastHandoffScope) {
+      _lastHandoffScope = handoffScope;
+      if (handoffScope != null) {
+        _scope = _decorateScope(handoffScope);
+        _showScopePrompt = false;
+      }
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant PollingAndPricingAdminScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialScope != oldWidget.initialScope) {
-      _scope = widget.initialScope;
+    if (widget.initialScope != oldWidget.initialScope ||
+        widget.initialHierarchyScope != oldWidget.initialHierarchyScope) {
+      _scope = _decoratedInitialScope;
+      _showScopePrompt = false;
+    } else if (widget.editingEnabled != oldWidget.editingEnabled &&
+        _scope != null) {
+      _scope = _decorateScope(_scope!);
     }
   }
 
@@ -155,7 +202,8 @@ class _PollingAndPricingAdminScreenState
           }
           final scope = _scope;
           if (scope != null &&
-              !scope.matches(
+              !_scopePolicy.includesOperatorLocation(
+                scope,
                 operatorId: row.operatorRef.operatorId,
                 locationId: row.operatorRef.locationId,
               )) {
@@ -194,7 +242,8 @@ class _PollingAndPricingAdminScreenState
     if (scope == null) return _changeRequests;
     return _changeRequests
         .where(
-          (request) => scope.matches(
+          (request) => _scopePolicy.includesOperatorLocation(
+            scope,
             operatorId: request.operatorRef.operatorId,
             locationId: request.operatorRef.locationId,
           ),
@@ -207,7 +256,8 @@ class _PollingAndPricingAdminScreenState
     if (scope == null) return _tierAuditEvents;
     return _tierAuditEvents
         .where(
-          (event) => scope.matches(
+          (event) => _scopePolicy.includesOperatorLocation(
+            scope,
             operatorId: event.operatorId,
             locationId: event.locationId,
           ),
@@ -226,8 +276,67 @@ class _PollingAndPricingAdminScreenState
     return _buildRollupFromRows(_filteredAssignments);
   }
 
+  bool get _locationMutationEnabled {
+    return _scopePolicy.allowsLocationMutation(
+      _scope,
+      editingEnabled: widget.editingEnabled,
+    );
+  }
+
+  String? get _scopeRestrictionCopy => _scopePolicy.restrictionCopy(_scope);
+
+  List<AdminHierarchyScopeIntent> get _availableScopes {
+    final selectedOperatorId = _scope?.operatorId;
+    final scopesByKey = <String, AdminHierarchyScopeIntent>{};
+
+    void add(AdminHierarchyScopeIntent scope) {
+      final decorated = _decorateScope(scope);
+      scopesByKey.putIfAbsent(decorated.cacheKey, () => decorated);
+    }
+
+    final selected = _scope;
+    if (selected != null) {
+      add(selected);
+    }
+    for (final row in _assignments) {
+      final ref = row.operatorRef;
+      if (selectedOperatorId != null && ref.operatorId != selectedOperatorId) {
+        continue;
+      }
+      add(
+        AdminHierarchyScopeIntent.business(
+          operatorId: ref.operatorId,
+          operatorName: ref.businessName,
+        ),
+      );
+      add(
+        AdminHierarchyScopeIntent.location(
+          operatorId: ref.operatorId,
+          locationId: ref.locationId,
+          operatorName: ref.businessName,
+          locationName: ref.locationName,
+        ),
+      );
+    }
+    return scopesByKey.values.toList(growable: false);
+  }
+
+  void _selectScope(AdminHierarchyScopeIntent scope) {
+    setState(() {
+      _scope = _decorateScope(scope);
+      _showScopePrompt = false;
+    });
+  }
+
+  void _clearScope() {
+    setState(() {
+      _scope = null;
+      _showScopePrompt = false;
+    });
+  }
+
   Future<void> _onEditDefinition(TierDefinition definition) async {
-    if (!widget.editingEnabled) return;
+    if (!_locationMutationEnabled) return;
     final result = await TierDefinitionEditDialog.show(context, definition);
     if (result == null) return;
     setState(() => _actionError = null);
@@ -254,7 +363,7 @@ class _PollingAndPricingAdminScreenState
   }
 
   Future<void> _onAssignTier(TierAssignmentAdminRow row) async {
-    if (!widget.editingEnabled) return;
+    if (!_locationMutationEnabled) return;
     final result = await showDialog<_TierAssignmentDraft>(
       context: context,
       builder: (_) =>
@@ -290,7 +399,7 @@ class _PollingAndPricingAdminScreenState
     TierChangeRequest request,
     TierChangeRequestStatus newStatus,
   ) async {
-    if (!widget.editingEnabled) return;
+    if (!_locationMutationEnabled) return;
     setState(() => _actionError = null);
     try {
       await widget.gateway.resolveTierChangeRequest(
@@ -311,7 +420,7 @@ class _PollingAndPricingAdminScreenState
   }
 
   Future<void> _onExportCsv() async {
-    if (!widget.editingEnabled) return;
+    if (!_locationMutationEnabled) return;
     try {
       final csv = await widget.gateway.exportMarginRollupCsv(
         actorUserId: widget.actorUserId,
@@ -342,11 +451,18 @@ class _PollingAndPricingAdminScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const AdminPageHeader(
+            AdminPageHeader(
               title: 'Polling & pricing',
               subtitle:
                   'F&F-controlled tier definitions, per-location assignments, '
-                  'margin rollup, and operator change requests.',
+                  'margin rollup, and operator change requests. Business and '
+                  'org-unit assignment edits stay disabled until scoped '
+                  'resolvers exist.',
+              leading: widget.onBackToBusinessAccounts == null
+                  ? null
+                  : AdminBusinessAccountsBackButton(
+                      onPressed: widget.onBackToBusinessAccounts,
+                    ),
             ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)
@@ -389,26 +505,41 @@ class _PollingAndPricingAdminScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          if (_showScopePrompt)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: AdminHierarchyScopePrompt(
+                surfaceName: 'Polling and pricing',
+                selectedScope: _scope,
+                scopes: _availableScopes,
+                onScopeSelected: _selectScope,
+                onCancel: () => setState(() => _showScopePrompt = false),
+              ),
+            ),
           if (_scope != null)
-            OperatorLocationScopeBanner(
+            AdminHierarchyScopeBanner(
               scope: _scope!,
               surfaceName: 'polling and pricing',
-              onClear: () => setState(() => _scope = null),
+              onChangeScope: () =>
+                  setState(() => _showScopePrompt = !_showScopePrompt),
+              onClear: _clearScope,
             ),
+          if (_scopeRestrictionCopy != null)
+            AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
           _buildPollingSummary(),
           const SizedBox(height: 16),
           const PlainEnglishExplainerCard(),
           const SizedBox(height: 16),
           TierDefinitionsCard(
             definitions: _definitions,
-            editingEnabled: widget.editingEnabled,
+            editingEnabled: _locationMutationEnabled,
             onEdit: _onEditDefinition,
           ),
           const SizedBox(height: 16),
           PerLocationTierAssignmentTable(
             rows: _filteredAssignments,
             tierDefinitions: _definitions,
-            editingEnabled: widget.editingEnabled,
+            editingEnabled: _locationMutationEnabled,
             onAssign: _onAssignTier,
             tierFilter: _tierFilter,
             marginBandFilter: _marginBandFilter,
@@ -425,13 +556,13 @@ class _PollingAndPricingAdminScreenState
           const SizedBox(height: 16),
           MarginRollupCard(
             rollup: _visibleRollup,
-            canExportCsv: widget.editingEnabled,
+            canExportCsv: _locationMutationEnabled,
             onExportCsv: _onExportCsv,
           ),
           const SizedBox(height: 16),
           TierChangeRequestsCard(
             requests: _visibleChangeRequests,
-            editingEnabled: widget.editingEnabled,
+            editingEnabled: _locationMutationEnabled,
             onResolve: _onResolveChangeRequest,
           ),
           const SizedBox(height: 16),

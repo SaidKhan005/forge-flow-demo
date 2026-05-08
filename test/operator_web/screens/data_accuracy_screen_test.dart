@@ -13,11 +13,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/screens/data_accuracy_screen.dart';
+import 'package:forge_and_flow/operator_web/services/operator_web_data_accuracy_gateway.dart';
+import 'package:forge_and_flow/operator_web/widgets/keyed_service_period_accuracy_card.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -627,4 +630,291 @@ void main() {
       },
     );
   });
+
+  // Doc 1 keyed-data-accuracy-write — operator-web screen wires the
+  // keyed service-period card to OperatorWebDataAccuracyGateway. The
+  // dialog round-trips a draft into saveServicePeriodSetting on the
+  // injected gateway.
+  group('DataAccuracyScreen keyed service-period card', () {
+    testWidgets(
+      'card renders existing rows when a data-accuracy gateway is wired',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1400));
+
+        final gateway = _RecordingDataAccuracyGateway()
+          ..seedServicePeriodRows = <DataAccuracyServicePeriodSetting>[
+            DataAccuracyServicePeriodSetting(
+              id: 'period-1',
+              operatorId: ownerSession.operatorId,
+              locationId: ownerSession.primaryLocationId,
+              servicePeriodKey: 'breakfast',
+              coversSource: ServicePeriodCoversSource.reservationPlusWalkin,
+              wageSource: ServicePeriodWageSource.targetSubstitution,
+              effectiveAtBusinessDate: '2026-05-07',
+              createdAt: DateTime.utc(2026, 5, 7),
+              updatedAt: DateTime.utc(2026, 5, 7),
+            ),
+          ];
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId,
+              gateway: InMemoryVendorConnectionsGateway(),
+              dataAccuracyGateway: gateway,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(kKeyedServicePeriodAccuracyCardKey),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key(
+              'data_accuracy_keyed_service_period_row_breakfast_2026-05-07',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(gateway.servicePeriodLoadCalls, equals(1));
+      },
+    );
+
+    testWidgets(
+      'add affordance round-trips a draft into saveServicePeriodSetting',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1400));
+
+        final gateway = _RecordingDataAccuracyGateway();
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId,
+              gateway: InMemoryVendorConnectionsGateway(),
+              dataAccuracyGateway: gateway,
+              businessDateIso: '2026-05-08',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Open the add-or-edit dialog.
+        final addButton = find.byKey(kKeyedServicePeriodAccuracyAddButtonKey);
+        await tester.ensureVisible(addButton);
+        await tester.pumpAndSettle();
+        await tester.tap(addButton, warnIfMissed: false);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(kKeyedServicePeriodAccuracyDialogKey),
+          findsOneWidget,
+        );
+
+        // The dialog pre-fills the effective business date with the
+        // screen's `businessDateIso` so the operator does not have to
+        // type it for "from today" overrides.
+        final dateField = tester.widget<TextField>(
+          find.byKey(kKeyedServicePeriodAccuracyEffectiveDateFieldKey),
+        );
+        expect(dateField.controller!.text, '2026-05-08');
+
+        await tester.enterText(
+          find.byKey(kKeyedServicePeriodAccuracyKeyFieldKey),
+          'breakfast',
+        );
+
+        // Pick covers source = reservation_plus_walkin.
+        await tester.tap(
+          find.byKey(kKeyedServicePeriodAccuracyCoversFieldKey),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Reservations + walk-ins').last);
+        await tester.pumpAndSettle();
+
+        // Pick wage source = target_substitution.
+        await tester.tap(
+          find.byKey(kKeyedServicePeriodAccuracyWageFieldKey),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Target substitution').last);
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(kKeyedServicePeriodAccuracySubmitKey),
+        );
+        await tester.pumpAndSettle();
+
+        expect(gateway.servicePeriodSaveCalls, hasLength(1));
+        final call = gateway.servicePeriodSaveCalls.single;
+        expect(call.servicePeriodKey, 'breakfast');
+        expect(call.coversSource, ServicePeriodCoversSource.reservationPlusWalkin);
+        expect(call.wageSource, ServicePeriodWageSource.targetSubstitution);
+        expect(call.effectiveAtBusinessDateIso, '2026-05-08');
+        expect(call.operatorId, ownerSession.operatorId);
+        expect(call.locationId, ownerSession.primaryLocationId);
+      },
+    );
+
+    testWidgets(
+      'invalid service period key surfaces inline error and skips save',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1400));
+
+        final gateway = _RecordingDataAccuracyGateway();
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId,
+              gateway: InMemoryVendorConnectionsGateway(),
+              dataAccuracyGateway: gateway,
+              businessDateIso: '2026-05-08',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final addButton = find.byKey(kKeyedServicePeriodAccuracyAddButtonKey);
+        await tester.ensureVisible(addButton);
+        await tester.pumpAndSettle();
+        await tester.tap(addButton, warnIfMissed: false);
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(kKeyedServicePeriodAccuracyKeyFieldKey),
+          'Brunch Special',
+        );
+        await tester.tap(
+          find.byKey(kKeyedServicePeriodAccuracySubmitKey),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key(
+              'data_accuracy_keyed_service_period_dialog_error',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(gateway.servicePeriodSaveCalls, isEmpty);
+      },
+    );
+  });
+}
+
+class _ServicePeriodSaveCall {
+  const _ServicePeriodSaveCall({
+    required this.operatorId,
+    required this.locationId,
+    required this.servicePeriodKey,
+    required this.coversSource,
+    required this.wageSource,
+    required this.effectiveAtBusinessDateIso,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String servicePeriodKey;
+  final ServicePeriodCoversSource coversSource;
+  final ServicePeriodWageSource wageSource;
+  final String effectiveAtBusinessDateIso;
+}
+
+/// Minimal in-memory test double for the operator-web data accuracy
+/// gateway. The screen test only exercises the keyed
+/// service-period surface; the legacy load/save methods round-trip a
+/// canned response so the screen's hydrate sequence is happy.
+class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
+  List<DataAccuracyServicePeriodSetting> seedServicePeriodRows =
+      const <DataAccuracyServicePeriodSetting>[];
+
+  int servicePeriodLoadCalls = 0;
+  final List<_ServicePeriodSaveCall> servicePeriodSaveCalls =
+      <_ServicePeriodSaveCall>[];
+
+  @override
+  Future<DataAccuracySettings?> loadSettings({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    return DataAccuracySettings(
+      settingId: 'setting-1',
+      operatorId: operatorId,
+      locationId: locationId,
+      coversSourceLunch: CoversSource.vendor,
+      coversSourceDinner: CoversSource.vendor,
+      coversSourceLateNight: CoversSource.vendor,
+      coversManualEntries: const <String, Map<String, int>>{},
+      wageSource: WageSource.vendor,
+      walkInHandlingMode: DataAccuracyWalkInHandlingMode.reservationsOnly,
+      walkInManualEntries: const <String, int>{},
+      createdAt: DateTime.utc(2026, 5, 8),
+      updatedAt: DateTime.utc(2026, 5, 8),
+    );
+  }
+
+  @override
+  Future<DataAccuracySettings> saveSettings(
+    DataAccuracySettings settings,
+  ) async => settings;
+
+  @override
+  Future<List<DataAccuracyServicePeriodSetting>> loadServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    servicePeriodLoadCalls += 1;
+    return List<DataAccuracyServicePeriodSetting>.unmodifiable(
+      seedServicePeriodRows,
+    );
+  }
+
+  @override
+  Future<DataAccuracyServicePeriodSetting> saveServicePeriodSetting({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required ServicePeriodCoversSource coversSource,
+    required ServicePeriodWageSource wageSource,
+    required String effectiveAtBusinessDateIso,
+  }) async {
+    servicePeriodSaveCalls.add(
+      _ServicePeriodSaveCall(
+        operatorId: operatorId,
+        locationId: locationId,
+        servicePeriodKey: servicePeriodKey,
+        coversSource: coversSource,
+        wageSource: wageSource,
+        effectiveAtBusinessDateIso: effectiveAtBusinessDateIso,
+      ),
+    );
+    final saved = DataAccuracyServicePeriodSetting(
+      id: 'period-${servicePeriodSaveCalls.length}',
+      operatorId: operatorId,
+      locationId: locationId,
+      servicePeriodKey: servicePeriodKey,
+      coversSource: coversSource,
+      wageSource: wageSource,
+      effectiveAtBusinessDate: effectiveAtBusinessDateIso,
+      createdAt: DateTime.utc(2026, 5, 8),
+      updatedAt: DateTime.utc(2026, 5, 8),
+    );
+    seedServicePeriodRows = <DataAccuracyServicePeriodSetting>[
+      ...seedServicePeriodRows.where(
+        (r) =>
+            !(r.servicePeriodKey == servicePeriodKey &&
+                r.effectiveAtBusinessDate == effectiveAtBusinessDateIso),
+      ),
+      saved,
+    ];
+    return saved;
+  }
 }

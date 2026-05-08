@@ -153,9 +153,11 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
                   children: <Widget>[
                     MembersAdminScreen(
                       gateway: membersGateway,
+                      rolesGateway: rolesGateway,
                       actorUserId: actorUserId,
                       pickedOperator: pickedOperator,
                       editingEnabled: editingEnabled,
+                      canEditSeededRoles: canEditSeededRoles,
                       onChangeOperator: onChangeOperator,
                     ),
                     RolesHierarchySessionsAdminScreen(

@@ -42,6 +42,8 @@ import 'package:forge_and_flow/services/email/email_outbox_dispatcher.dart';
 import 'package:forge_and_flow/services/email/email_template_renderer.dart';
 import 'package:forge_and_flow/services/email/postgres_email_outbox_repository.dart';
 import 'package:forge_and_flow/services/email/sendgrid_email_provider.dart';
+import 'package:forge_and_flow/services/realtime/google_cloud_pubsub_message_publisher.dart';
+import 'package:forge_and_flow/services/realtime/google_cloud_pubsub_subscriber.dart';
 import 'package:forge_and_flow/services/realtime/outbox_tripwire_evaluator.dart';
 import 'package:forge_and_flow/services/realtime/pubsub_realtime_publisher.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
@@ -121,6 +123,24 @@ Future<void> main(List<String> args) async {
     exitCode = startupFailure.exitCode;
     return;
   }
+  final deferStartupDatabase = shouldDeferProxyStartupDatabase(
+    Platform.environment,
+  );
+  if (deferStartupDatabase && isProductionEnvironment) {
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'deferred_startup_database',
+        'message':
+            '$kProxyDeferStartupDatabaseEnvVar is not allowed when '
+            'PROXY_ENVIRONMENT=prod',
+        'exit_code': 78,
+      },
+    );
+    exitCode = 78;
+    return;
+  }
 
   // CODE_OPS_DEBT — Theme C #1. When `AUDIT_ANCHOR_REQUIRE_AZURE` is
   // set the proxy refuses to bind unless the Azure Blob anchor
@@ -130,8 +150,9 @@ Future<void> main(List<String> args) async {
   // `audit_anchor_tick` cron resolves to a no-op even though the
   // chain is being written. Production deploys flip the env var on;
   // dev / staging keep it off and accept the scaffold rejecter.
-  final auditAnchorCheck =
-      evaluateAuditAnchorRequireAzure(Platform.environment);
+  final auditAnchorCheck = evaluateAuditAnchorRequireAzure(
+    Platform.environment,
+  );
   if (auditAnchorCheck.shouldFailStartup) {
     log(
       LogSeverity.error,
@@ -222,9 +243,11 @@ Future<void> main(List<String> args) async {
     // comma-split into the supplemental allow-list and merged below.
     // Read happens before binding the port so a flaky DB at startup
     // fails closed rather than silently dropping the extras.
-    final adminCorsExtraOrigins = await loadAdminCorsExtraOrigins(
-      flag: productionBindings.adminCorsOriginsExtraFlag,
-    );
+    final adminCorsExtraOrigins = deferStartupDatabase
+        ? const <String>[]
+        : await loadAdminCorsExtraOrigins(
+            flag: productionBindings.adminCorsOriginsExtraFlag,
+          );
     // HARD-C — resolve the admin CORS allow-list at startup.
     // `resolveAdminCorsAllowList` fails closed when the merged list
     // is empty AND `PROXY_ENVIRONMENT` is not a known dev/staging
@@ -262,96 +285,109 @@ Future<void> main(List<String> args) async {
   // exit 78 instead of degrading every request. The executor emits
   // `request.dependency_timeout` at the wire boundary; the probe
   // helper translates that into a startup-level log line.
-  try {
-    await probeProxyStartupConnectivity(productionBindings);
-  } on DependencyTimeoutException {
-    exitCode = 78;
-    return;
-  } catch (error, stack) {
+  if (deferStartupDatabase) {
     log(
-      LogSeverity.error,
-      'startup.failed',
+      LogSeverity.warning,
+      'startup.database_checks_deferred',
       fields: <String, Object?>{
-        'phase': 'postgres_probe',
-        'error_type': error.runtimeType.toString(),
-        'error_message': error.toString(),
-        'stack_first_frame': firstStackFrame(stack),
-        'exit_code': 78,
+        'env_var': kProxyDeferStartupDatabaseEnvVar,
+        'postgres_probe': 'skipped',
+        'schema_contract': 'skipped',
+        'migration_registry': 'skipped',
       },
     );
-    exitCode = 78;
-    return;
-  }
+  } else {
+    try {
+      await probeProxyStartupConnectivity(productionBindings);
+    } on DependencyTimeoutException {
+      exitCode = 78;
+      return;
+    } catch (error, stack) {
+      log(
+        LogSeverity.error,
+        'startup.failed',
+        fields: <String, Object?>{
+          'phase': 'postgres_probe',
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
+          'stack_first_frame': firstStackFrame(stack),
+          'exit_code': 78,
+        },
+      );
+      exitCode = 78;
+      return;
+    }
 
-  try {
-    await verifyAdminProxySchemaContract(productionBindings);
-    log(
-      LogSeverity.info,
-      'startup.admin_schema_contract_verified',
-      fields: <String, Object?>{
-        'required_table_count':
-            AdminProxySchemaContractVerifier.requiredTables.length,
-        'required_column_count':
-            AdminProxySchemaContractVerifier.requiredColumns.length,
-        'required_feature_flag_count':
-            AdminProxySchemaContractVerifier.requiredFeatureFlags.length,
-      },
-    );
-  } on ProxySchemaContractException catch (error) {
-    log(
-      LogSeverity.error,
-      'startup.failed',
-      fields: <String, Object?>{
-        'phase': 'admin_schema_contract',
-        'missing_objects': error.missingObjects,
-        'exit_code': 78,
-      },
-    );
-    exitCode = 78;
-    return;
-  } catch (error, stack) {
-    log(
-      LogSeverity.error,
-      'startup.failed',
-      fields: <String, Object?>{
-        'phase': 'admin_schema_contract',
-        'error_type': error.runtimeType.toString(),
-        'error_message': error.toString(),
-        'stack_first_frame': firstStackFrame(stack),
-        'exit_code': 78,
-      },
-    );
-    exitCode = 78;
-    return;
-  }
+    try {
+      await verifyAdminProxySchemaContract(productionBindings);
+      log(
+        LogSeverity.info,
+        'startup.admin_schema_contract_verified',
+        fields: <String, Object?>{
+          'required_table_count':
+              AdminProxySchemaContractVerifier.requiredTables.length,
+          'required_column_count':
+              AdminProxySchemaContractVerifier.requiredColumns.length,
+          'required_feature_flag_count':
+              AdminProxySchemaContractVerifier.requiredFeatureFlags.length,
+        },
+      );
+    } on ProxySchemaContractException catch (error) {
+      log(
+        LogSeverity.error,
+        'startup.failed',
+        fields: <String, Object?>{
+          'phase': 'admin_schema_contract',
+          'missing_objects': error.missingObjects,
+          'exit_code': 78,
+        },
+      );
+      exitCode = 78;
+      return;
+    } catch (error, stack) {
+      log(
+        LogSeverity.error,
+        'startup.failed',
+        fields: <String, Object?>{
+          'phase': 'admin_schema_contract',
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
+          'stack_first_frame': firstStackFrame(stack),
+          'exit_code': 78,
+        },
+      );
+      exitCode = 78;
+      return;
+    }
 
-  try {
-    final insertedMigrationRows = await recordProxyStartupMigrations(
-      productionBindings,
-      migrationFilenames,
-    );
-    log(
-      LogSeverity.info,
-      'startup.migrations_recorded',
-      fields: <String, Object?>{
-        'migration_catalog_count': migrationFilenames.length,
-        'inserted_migration_rows': insertedMigrationRows,
-      },
-    );
-  } catch (error, stack) {
-    log(
-      LogSeverity.error,
-      'startup.failed',
-      fields: <String, Object?>{
-        'phase': 'migration_registry',
-        'error_type': error.runtimeType.toString(),
-        'error_message': error.toString(),
-        'stack_first_frame': firstStackFrame(stack),
-        'exit_code': 78,
-      },
-    );
-    exitCode = 78;
-    return;
+    try {
+      final insertedMigrationRows = await recordProxyStartupMigrations(
+        productionBindings,
+        migrationFilenames,
+      );
+      log(
+        LogSeverity.info,
+        'startup.migrations_recorded',
+        fields: <String, Object?>{
+          'migration_catalog_count': migrationFilenames.length,
+          'inserted_migration_rows': insertedMigrationRows,
+        },
+      );
+    } catch (error, stack) {
+      log(
+        LogSeverity.error,
+        'startup.failed',
+        fields: <String, Object?>{
+          'phase': 'migration_registry',
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
+          'stack_first_frame': firstStackFrame(stack),
+          'exit_code': 78,
+        },
+      );
+      exitCode = 78;
+      return;
+    }
   }
 
   // HARD-A: usage guard now installed with the Postgres-backed
@@ -434,9 +470,77 @@ Future<void> main(List<String> args) async {
   final realtimeTripwireGateway = PostgresRealtimeTripwireGateway(
     adminWrapper: realtimeAdminWrapper,
     now: DateTime.now,
-    thresholdOverrides:
-        resolveTripwireThresholdOverrides(Platform.environment),
+    thresholdOverrides: resolveTripwireThresholdOverrides(Platform.environment),
   );
+  // N5 — Cloud Pub/Sub realtime cross-pod replay backlog. When
+  // `PUBSUB_REALTIME_ENABLED=true` the proxy provisions a per-pod
+  // subscription against the shared topic and pulls into a small
+  // in-memory ring; that ring fronts the resolver in production so a
+  // reconnect after a Cloud Run pod restart can replay the last 5
+  // minutes regardless of which pod served the original publish. With
+  // the flag off (default), the subscriber is null and the resolver
+  // falls back to the in-process ring — zero new GCP cost.
+  final pubsubRealtimeStartup =
+      evaluatePubsubRealtimeStartup(Platform.environment);
+  if (pubsubRealtimeStartup.hasMissingEnvVars) {
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'realtime_pubsub_env_missing',
+        'message':
+            '$pubsubRealtimeEnabledEnvVar is set but required env vars '
+            'are missing; remove the flag or supply the names below.',
+        'env_flag_name': pubsubRealtimeEnabledEnvVar,
+        'missing_env_var_names': pubsubRealtimeStartup.missingEnvVarNames,
+        'exit_code': 78,
+      },
+    );
+    exitCode = 78;
+    return;
+  }
+  GoogleCloudPubsubSubscriber? pubsubRealtimeSubscriber;
+  if (pubsubRealtimeStartup.enabled) {
+    pubsubRealtimeSubscriber = GoogleCloudPubsubSubscriber(
+      projectId: pubsubRealtimeStartup.projectId!,
+      topicName: pubsubRealtimeStartup.topicName!,
+      subscriptionName: PubsubSubscriptionName.forPod(
+        revision: Platform.environment['K_REVISION'] ??
+            Platform.environment['CLOUD_RUN_REVISION'] ??
+            'rev-unknown',
+        hostname: Platform.localHostname,
+      ),
+      accessTokenProvider: MetadataServerAccessTokenProvider(),
+      messageRetention:
+          Duration(seconds: pubsubRealtimeStartup.retentionSeconds),
+      logger: _logPubsubSubscriberEvent,
+    );
+    try {
+      await pubsubRealtimeSubscriber.start();
+    } catch (error, stack) {
+      log(
+        LogSeverity.error,
+        'startup.failed',
+        fields: <String, Object?>{
+          'phase': 'realtime_pubsub_subscriber_start',
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
+          'stack_first_frame': firstStackFrame(stack),
+          'exit_code': 78,
+        },
+      );
+      exitCode = 78;
+      return;
+    }
+    stdout.writeln(
+      'pubsub_realtime_enabled: true '
+      '(topic=${pubsubRealtimeStartup.topicName}, '
+      'retention=${pubsubRealtimeStartup.retentionSeconds}s)',
+    );
+  } else {
+    stdout.writeln('pubsub_realtime_enabled: false');
+  }
+
   // Phase 10a.5 — server-side replay seam. The route invokes this
   // closure when a client reconnects with `?last_event_id=<uuid>`.
   // The resolver delegates to the in-process publisher's per-(operator,
@@ -446,17 +550,27 @@ Future<void> main(List<String> args) async {
   // the closure returns `truncated: true` so the route emits the
   // `replay_truncated` control envelope and the client refreshes
   // from Postgres on the affected tables.
+  //
+  // N5: when the Pub/Sub subscriber is wired (flag on), it fronts
+  // replay so the in-process ring's per-pod blind spot does not strand
+  // a reconnect on a different pod.
   final realtimeReplayResolver = RealtimeReplayResolver(
     backlog: realtimeInProcessPublisher,
+    pubsubBacklog: pubsubRealtimeSubscriber,
   );
+  // Capture into a final so the closure's null check promotes (Dart
+  // flow analysis does not promote mutable locals across closure
+  // boundaries).
+  final GoogleCloudPubsubSubscriber? pubsubRealtimeSubscriberFinal =
+      pubsubRealtimeSubscriber;
   Future<RealtimeReplayResult> realtimeReplayFetcher({
     required OperatorContext scope,
     required String lastEventId,
     required Duration window,
   }) async {
-    final topics = realtimeInProcessPublisher.topicsForOperator(
-      scope.operatorId,
-    );
+    final topics = pubsubRealtimeSubscriberFinal != null
+        ? pubsubRealtimeSubscriberFinal.topicsForOperator(scope.operatorId)
+        : realtimeInProcessPublisher.topicsForOperator(scope.operatorId);
     if (topics.isEmpty) {
       // Operator has no recent events in any topic ring. The cursor
       // is by definition unknown — fall through to the truncation
@@ -498,40 +612,42 @@ Future<void> main(List<String> args) async {
     );
   }
 
+  // N5 — when the env flag is on, hand the bridge a real Pub/Sub
+  // publisher backed by REST + ADC. The publisher resolves every
+  // locked namespace to the same topic configured by
+  // `PUBSUB_REALTIME_TOPIC` (one shared topic; per-namespace fan-out
+  // is a future micro-optimization that does not change correctness).
+  // When the flag is off, `selectRealtimePublisher` returns the
+  // in-process publisher and the message-publisher closure is never
+  // invoked.
+  final PubsubMessagePublisher pubsubMessagePublisherCallback;
+  if (pubsubRealtimeStartup.enabled) {
+    final googlePublisher = GoogleCloudPubsubMessagePublisher(
+      projectId: pubsubRealtimeStartup.projectId!,
+      accessTokenProvider: MetadataServerAccessTokenProvider(),
+    );
+    pubsubMessagePublisherCallback = ({
+      required String topicName,
+      required String body,
+      required Map<String, String> attributes,
+    }) =>
+        googlePublisher.publish(
+          topicName: topicName,
+          body: body,
+          attributes: attributes,
+        );
+  } else {
+    pubsubMessagePublisherCallback = _unwiredPubsubMessagePublisher;
+  }
   final realtimeBridgePublisher = selectRealtimePublisher(
     environment: Platform.environment,
     inProcessPublisher: realtimeInProcessPublisher,
-    pubsubMessagePublisher: _unwiredPubsubMessagePublisher,
+    pubsubMessagePublisher: pubsubMessagePublisherCallback,
+    topicNameResolver: pubsubRealtimeStartup.enabled
+        ? (_) => pubsubRealtimeStartup.topicName!
+        : null,
     pubsubLogger: _logPubsubRealtimePublisherEvent,
   );
-  if (realtimeBridgePublisher is PubsubRealtimePublisher) {
-    // Fail-close startup gate: the locked-namespace check in the
-    // PubsubRealtimePublisher constructor already passed (every
-    // namespace resolves to a Pub/Sub topic name), but the message
-    // publisher itself is still the unwired stub. Until the
-    // production callback lands (Application Default Credentials,
-    // GCP project + region, `gcloud_pubsub` SDK or REST), flipping
-    // the flag in a real deploy must NOT silently route fan-out to
-    // a stub. Operators remove the env flag, or land the production
-    // adapter, then redeploy.
-    log(
-      LogSeverity.error,
-      'startup.failed',
-      fields: <String, Object?>{
-        'phase': 'realtime_pubsub_message_publisher_unwired',
-        'message':
-            '$pubsubRealtimeEnabledEnvVar is set but the Pub/Sub '
-            'message publisher adapter is not yet wired in this '
-            'slice; remove the env flag for now or land the '
-            'production Pub/Sub binding (Phase 10a follow-up).',
-        'env_flag_name': pubsubRealtimeEnabledEnvVar,
-        'resolved_topics': realtimeBridgePublisher.resolvedTopics,
-        'exit_code': 78,
-      },
-    );
-    exitCode = 78;
-    return;
-  }
   // Phase 10a.2 — resolve EVENT_OUTBOX_DLQ_CAP from env (default 5).
   // Operators raise this when triaging vendor-side outages and lower
   // it when the live queue is filling with poison-pill rows. The
@@ -561,22 +677,30 @@ Future<void> main(List<String> args) async {
     publishMetricsWriter: realtimePublishMetricsWriter.write,
     logger: _logRealtimeBridgeEvent,
   );
-  try {
-    await realtimeBridge.start();
-  } catch (error, stack) {
+  if (deferStartupDatabase) {
     log(
-      LogSeverity.error,
-      'startup.failed',
-      fields: <String, Object?>{
-        'phase': 'realtime_bridge_start',
-        'error_type': error.runtimeType.toString(),
-        'error_message': error.toString(),
-        'stack_first_frame': firstStackFrame(stack),
-        'exit_code': 78,
-      },
+      LogSeverity.warning,
+      'startup.realtime_bridge_deferred',
+      fields: <String, Object?>{'env_var': kProxyDeferStartupDatabaseEnvVar},
     );
-    exitCode = 78;
-    return;
+  } else {
+    try {
+      await realtimeBridge.start();
+    } catch (error, stack) {
+      log(
+        LogSeverity.error,
+        'startup.failed',
+        fields: <String, Object?>{
+          'phase': 'realtime_bridge_start',
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
+          'stack_first_frame': firstStackFrame(stack),
+          'exit_code': 78,
+        },
+      );
+      exitCode = 78;
+      return;
+    }
   }
 
   // region: phase_9_8_email_routes
@@ -647,320 +771,341 @@ Future<void> main(List<String> args) async {
   // poller. The handle returned by `wireProductionWorkers` is
   // captured in the SIGTERM closure below so a Cloud Run shutdown
   // drains every consumer before exit.
-  final workerStartupAdminWrapper = TenantTransactionWrapper(
-    productionBindings.adminPool,
-  );
-  final workerStartupTenantWrapper =
-      productionBindings.tenantTransactionWrapper;
-
-  // Email outbox — rebuild the SendGrid provider + template
-  // renderer (the `adminEmailRouter` block above does not expose
-  // them; re-reading the templates at startup is one filesystem
-  // walk and not on the request path). The dispatcher writes back
-  // through the admin pool because rows are F&F-platform-internal
-  // bookkeeping (operator_id may be null for onboarding invites)
-  // and the per-minute claim deliberately crosses tenant scope.
-  final emailDispatcherTemplatesDir =
-      Directory('tool/advisor_proxy/email_templates');
-  EmailOutboxDispatcher? emailOutboxDispatcher;
-  if (emailDispatcherTemplatesDir.existsSync()) {
-    final wrapperFile = File(
-      '${emailDispatcherTemplatesDir.path}'
-      '${Platform.pathSeparator}_brand_wrapper.html',
-    );
-    if (wrapperFile.existsSync()) {
-      final templates = <String, String>{};
-      var loaded = true;
-      for (final id in EmailTemplateIds.all) {
-        final file = File(
-          '${emailDispatcherTemplatesDir.path}'
-          '${Platform.pathSeparator}$id.md',
-        );
-        if (!file.existsSync()) {
-          loaded = false;
-          break;
-        }
-        templates[id] = file.readAsStringSync();
-      }
-      if (loaded) {
-        final renderer = EmailTemplateRenderer(
-          templateSource: EmailTemplateRenderer.fromMap(templates),
-          brandWrapperSource:
-              EmailTemplateRenderer.fromString(wrapperFile.readAsStringSync()),
-        );
-        final emailOutboxClient = http.Client();
-        final SendGridEmailProvider emailDispatcherProvider =
-            SendGridEmailProvider(
-          httpGateway: ({
-            required String method,
-            required Uri uri,
-            required Map<String, String> headers,
-            String? body,
-          }) async {
-            final request = http.Request(method, uri);
-            request.headers.addAll(headers);
-            if (body != null) request.body = body;
-            final streamed = await emailOutboxClient
-                .send(request)
-                .timeout(const Duration(seconds: 15));
-            final response = await http.Response.fromStream(streamed);
-            return SendGridHttpResponse(
-              statusCode: response.statusCode,
-              headers: response.headers,
-              body: response.body,
-            );
-          },
-          apiKeyProvider: () async =>
-              Platform.environment['SENDGRID_API_KEY'] ?? '',
-          sandboxMode:
-              (Platform.environment['SENDGRID_SANDBOX_MODE'] ?? '')
-                      .trim()
-                      .toLowerCase() ==
-                  'true',
-        );
-        emailOutboxDispatcher = EmailOutboxDispatcher(
-          provider: emailDispatcherProvider,
-          renderer: renderer,
-          repository: PostgresEmailOutboxRepository(
-            adminWrapper: workerStartupAdminWrapper,
-          ),
-          alertSink: (alert) {
-            log(
-              LogSeverity.error,
-              'email_dispatch.failed',
-              fields: <String, Object?>{
-                'email_id': alert.emailId,
-                'template_id': alert.templateId,
-                'recipient_email': alert.recipientEmail,
-                'attempt_count': alert.attemptCount,
-                'failure_kind': alert.failureKind.name,
-                'message': alert.message,
-                if (alert.operatorId != null) 'operator_id': alert.operatorId,
-              },
-            );
-          },
-          fromAddress: Platform.environment['EMAIL_FROM_ADDRESS'] ??
-              'noreply@mail.forgeflow.app',
-          fromDisplayName:
-              Platform.environment['EMAIL_FROM_DISPLAY_NAME'] ?? 'Forge & Flow',
-        );
-      }
-    }
-  }
-
-  // Mobile-push dispatcher — gated on the token-envelope key being
-  // loaded AND `FIREBASE_PROJECT_ID` because the FCM v1 sender needs
-  // both. Without either, the consumer registers but the handler
-  // logs a warning and returns; the cron still fires harmlessly.
-  MobilePushDispatcher? mobilePushDispatcherForWorker;
-  MobilePushOutboxRepository? mobilePushOutboxRepositoryForWorker;
-  final mobilePushTokenEnvelopeKey = config.hasSecretFor(
-    ProxySecretNames.mobilePushTokenEnvelopeKey,
-  )
-      ? config.secretFor(ProxySecretNames.mobilePushTokenEnvelopeKey)
-      : null;
-  if (mobilePushTokenEnvelopeKey != null && config.firebaseProjectId != null) {
-    mobilePushOutboxRepositoryForWorker =
-        MobilePushOutboxRepository(workerStartupTenantWrapper);
-    mobilePushDispatcherForWorker = MobilePushDispatcher(
-      tokensRepository: MobilePushTokensRepository(workerStartupTenantWrapper),
-      outboxRepository: mobilePushOutboxRepositoryForWorker,
-      sender: FcmHttpV1MobilePushSender(
-        firebaseProjectId: config.firebaseProjectId!,
-        accessTokenProvider: MetadataServerAccessTokenProvider(),
-      ),
-      tokenEnvelopeKey: mobilePushTokenEnvelopeKey,
-    );
-  }
-
-  // Rollups worker — workerOwner identifies the Cloud Run instance
-  // in `aggregation_state.lease_owner` so Dev/Admin Health can spot a
-  // pod whose lease never released.
-  final rollupsWorkerOwner =
-      '${Platform.localHostname}:${pid.toString()}';
-  final rollupsWorker = RollupWorker(
-    runAsSystem: <R>(
-      Future<R> Function(PostgresExecutor exec) body, {
-      required String reason,
-    }) =>
-        workerStartupAdminWrapper.runAsSystem<R>(body, reason: reason),
-    workerOwner: rollupsWorkerOwner,
-  );
-
-  // audit_anchor sweep — build the runtime ONCE at startup and reuse
-  // it on every cron tick so we do not re-open a fresh Postgres pool
-  // every 24 h. The sweep mode wraps every per-operator anchor in
-  // its own transaction + advisory lock so reusing the proxy's
-  // wrapper across ticks is safe; the per-tick `runCli` invocation
-  // below passes `orchestratorOverride` etc. so the CLI helper does
-  // NOT rebuild a runtime on every call.
-  audit_anchor_cli.AuditAnchorRuntime? auditAnchorRuntime;
-  try {
-    final auditAnchorConfig =
-        audit_anchor_cli.AuditAnchorRuntimeConfig.fromEnvironment(
-      Platform.environment,
-    );
-    auditAnchorRuntime = audit_anchor_cli.buildAuditAnchorRuntime(
-      auditAnchorConfig,
-    );
-    log(
-      LogSeverity.info,
-      'startup.audit_anchor_runtime_loaded',
-      fields: <String, Object?>{
-        'loaded_secret_names': auditAnchorConfig.loadedSecretNames,
-        'azure_blob_live_wiring': auditAnchorConfig.hasLiveAzureBlobWiring,
-      },
-    );
-  } on audit_anchor.AuditAnchorConfigError catch (error) {
-    // The audit_anchor CLI requires `AZURE_BLOB_CONTAINER` /
-    // `AZURE_BLOB_ENDPOINT` / `POSTGRES_URL` env vars. Dev / staging
-    // hosts that have not provisioned the Azure surface yet boot the
-    // proxy without the runtime; the LISTEN consumer surfaces a
-    // warning on every tick instead of stranding the entire deploy.
+  WorkerStartupHandle? workerHandle;
+  if (deferStartupDatabase) {
     log(
       LogSeverity.warning,
-      'startup.audit_anchor_runtime_unavailable',
+      'startup.background_workers_deferred',
       fields: <String, Object?>{
-        'error_message': error.toString(),
+        'env_var': kProxyDeferStartupDatabaseEnvVar,
+        'consumers': <String>[
+          kAuditAnchorTickChannel,
+          kRollupsTickChannel,
+          kEmailOutboxTickChannel,
+          kMobilePushOutboxChannel,
+        ],
+        'tripwire_poller_started': false,
+      },
+    );
+  } else {
+    final workerStartupAdminWrapper = TenantTransactionWrapper(
+      productionBindings.adminPool,
+    );
+    final workerStartupTenantWrapper =
+        productionBindings.tenantTransactionWrapper;
+
+    // Email outbox — rebuild the SendGrid provider + template
+    // renderer (the `adminEmailRouter` block above does not expose
+    // them; re-reading the templates at startup is one filesystem
+    // walk and not on the request path). The dispatcher writes back
+    // through the admin pool because rows are F&F-platform-internal
+    // bookkeeping (operator_id may be null for onboarding invites)
+    // and the per-minute claim deliberately crosses tenant scope.
+    final emailDispatcherTemplatesDir = Directory(
+      'tool/advisor_proxy/email_templates',
+    );
+    EmailOutboxDispatcher? emailOutboxDispatcher;
+    if (emailDispatcherTemplatesDir.existsSync()) {
+      final wrapperFile = File(
+        '${emailDispatcherTemplatesDir.path}'
+        '${Platform.pathSeparator}_brand_wrapper.html',
+      );
+      if (wrapperFile.existsSync()) {
+        final templates = <String, String>{};
+        var loaded = true;
+        for (final id in EmailTemplateIds.all) {
+          final file = File(
+            '${emailDispatcherTemplatesDir.path}'
+            '${Platform.pathSeparator}$id.md',
+          );
+          if (!file.existsSync()) {
+            loaded = false;
+            break;
+          }
+          templates[id] = file.readAsStringSync();
+        }
+        if (loaded) {
+          final renderer = EmailTemplateRenderer(
+            templateSource: EmailTemplateRenderer.fromMap(templates),
+            brandWrapperSource: EmailTemplateRenderer.fromString(
+              wrapperFile.readAsStringSync(),
+            ),
+          );
+          final emailOutboxClient = http.Client();
+          final SendGridEmailProvider emailDispatcherProvider =
+              SendGridEmailProvider(
+                httpGateway:
+                    ({
+                      required String method,
+                      required Uri uri,
+                      required Map<String, String> headers,
+                      String? body,
+                    }) async {
+                      final request = http.Request(method, uri);
+                      request.headers.addAll(headers);
+                      if (body != null) request.body = body;
+                      final streamed = await emailOutboxClient
+                          .send(request)
+                          .timeout(const Duration(seconds: 15));
+                      final response = await http.Response.fromStream(streamed);
+                      return SendGridHttpResponse(
+                        statusCode: response.statusCode,
+                        headers: response.headers,
+                        body: response.body,
+                      );
+                    },
+                apiKeyProvider: () async =>
+                    Platform.environment['SENDGRID_API_KEY'] ?? '',
+                sandboxMode:
+                    (Platform.environment['SENDGRID_SANDBOX_MODE'] ?? '')
+                        .trim()
+                        .toLowerCase() ==
+                    'true',
+              );
+          emailOutboxDispatcher = EmailOutboxDispatcher(
+            provider: emailDispatcherProvider,
+            renderer: renderer,
+            repository: PostgresEmailOutboxRepository(
+              adminWrapper: workerStartupAdminWrapper,
+            ),
+            alertSink: (alert) {
+              log(
+                LogSeverity.error,
+                'email_dispatch.failed',
+                fields: <String, Object?>{
+                  'email_id': alert.emailId,
+                  'template_id': alert.templateId,
+                  'recipient_email': alert.recipientEmail,
+                  'attempt_count': alert.attemptCount,
+                  'failure_kind': alert.failureKind.name,
+                  'message': alert.message,
+                  if (alert.operatorId != null) 'operator_id': alert.operatorId,
+                },
+              );
+            },
+            fromAddress:
+                Platform.environment['EMAIL_FROM_ADDRESS'] ??
+                'noreply@mail.forgeflow.app',
+            fromDisplayName:
+                Platform.environment['EMAIL_FROM_DISPLAY_NAME'] ??
+                'Forge & Flow',
+          );
+        }
+      }
+    }
+
+    // Mobile-push dispatcher — gated on the token-envelope key being
+    // loaded AND `FIREBASE_PROJECT_ID` because the FCM v1 sender needs
+    // both. Without either, the consumer registers but the handler
+    // logs a warning and returns; the cron still fires harmlessly.
+    MobilePushDispatcher? mobilePushDispatcherForWorker;
+    MobilePushOutboxRepository? mobilePushOutboxRepositoryForWorker;
+    final mobilePushTokenEnvelopeKey =
+        config.hasSecretFor(ProxySecretNames.mobilePushTokenEnvelopeKey)
+        ? config.secretFor(ProxySecretNames.mobilePushTokenEnvelopeKey)
+        : null;
+    if (mobilePushTokenEnvelopeKey != null &&
+        config.firebaseProjectId != null) {
+      mobilePushOutboxRepositoryForWorker = MobilePushOutboxRepository(
+        workerStartupTenantWrapper,
+      );
+      mobilePushDispatcherForWorker = MobilePushDispatcher(
+        tokensRepository: MobilePushTokensRepository(
+          workerStartupTenantWrapper,
+        ),
+        outboxRepository: mobilePushOutboxRepositoryForWorker,
+        sender: FcmHttpV1MobilePushSender(
+          firebaseProjectId: config.firebaseProjectId!,
+          accessTokenProvider: MetadataServerAccessTokenProvider(),
+        ),
+        tokenEnvelopeKey: mobilePushTokenEnvelopeKey,
+      );
+    }
+
+    // Rollups worker — workerOwner identifies the Cloud Run instance
+    // in `aggregation_state.lease_owner` so Dev/Admin Health can spot a
+    // pod whose lease never released.
+    final rollupsWorkerOwner = '${Platform.localHostname}:${pid.toString()}';
+    final rollupsWorker = RollupWorker(
+      runAsSystem:
+          <R>(
+            Future<R> Function(PostgresExecutor exec) body, {
+            required String reason,
+          }) => workerStartupAdminWrapper.runAsSystem<R>(body, reason: reason),
+      workerOwner: rollupsWorkerOwner,
+    );
+
+    // audit_anchor sweep — build the runtime ONCE at startup and reuse
+    // it on every cron tick so we do not re-open a fresh Postgres pool
+    // every 24 h. The sweep mode wraps every per-operator anchor in
+    // its own transaction + advisory lock so reusing the proxy's
+    // wrapper across ticks is safe; the per-tick `runCli` invocation
+    // below passes `orchestratorOverride` etc. so the CLI helper does
+    // NOT rebuild a runtime on every call.
+    audit_anchor_cli.AuditAnchorRuntime? auditAnchorRuntime;
+    try {
+      final auditAnchorConfig = audit_anchor_cli
+          .AuditAnchorRuntimeConfig.fromEnvironment(Platform.environment);
+      auditAnchorRuntime = audit_anchor_cli.buildAuditAnchorRuntime(
+        auditAnchorConfig,
+      );
+      log(
+        LogSeverity.info,
+        'startup.audit_anchor_runtime_loaded',
+        fields: <String, Object?>{
+          'loaded_secret_names': auditAnchorConfig.loadedSecretNames,
+          'azure_blob_live_wiring': auditAnchorConfig.hasLiveAzureBlobWiring,
+        },
+      );
+    } on audit_anchor.AuditAnchorConfigError catch (error) {
+      // The audit_anchor CLI requires `AZURE_BLOB_CONTAINER` /
+      // `AZURE_BLOB_ENDPOINT` / `POSTGRES_URL` env vars. Dev / staging
+      // hosts that have not provisioned the Azure surface yet boot the
+      // proxy without the runtime; the LISTEN consumer surfaces a
+      // warning on every tick instead of stranding the entire deploy.
+      log(
+        LogSeverity.warning,
+        'startup.audit_anchor_runtime_unavailable',
+        fields: <String, Object?>{'error_message': error.toString()},
+      );
+    }
+    Future<int> auditAnchorSweep() async {
+      final runtime = auditAnchorRuntime;
+      if (runtime == null) {
+        log(
+          LogSeverity.warning,
+          'audit_anchor_tick.runtime_unavailable',
+          fields: <String, Object?>{},
+        );
+        return 0;
+      }
+      return audit_anchor_cli.runCli(
+        const <String>['sweep'],
+        environment: Platform.environment,
+        orchestratorOverride: runtime.orchestrator,
+        operatorIdReaderOverride: runtime.operatorIdReader,
+        sweepLockIdReaderOverride: runtime.sweepLockIdReader,
+        sweepAdvisoryLockOverride: runtime.sweepAdvisoryLock,
+      );
+    }
+
+    workerHandle = wireProductionWorkers(
+      postgresUrl: config.secretFor(ProxySecretNames.postgresUrl),
+      adminWrapper: workerStartupAdminWrapper,
+      tenantWrapper: workerStartupTenantWrapper,
+      tripwireFetcher: () async {
+        final envelope = await realtimeTripwireGateway.fetch();
+        final statusKey = envelope['status'];
+        if (statusKey is String) {
+          switch (statusKey) {
+            case 'red':
+              return OutboxTripwireStatus.red;
+            case 'yellow':
+              return OutboxTripwireStatus.yellow;
+            case 'green':
+            default:
+              return OutboxTripwireStatus.green;
+          }
+        }
+        return OutboxTripwireStatus.green;
+      },
+      auditAnchorHandler: buildProductionAuditAnchorTickHandler(
+        sweep: auditAnchorSweep,
+      ),
+      emailTickHandler: () {
+        final dispatcher = emailOutboxDispatcher;
+        if (dispatcher == null) {
+          return () async {
+            log(
+              LogSeverity.warning,
+              'startup.email_dispatcher_disabled',
+              fields: <String, Object?>{
+                'reason':
+                    'email_templates directory missing on the deployed image',
+              },
+            );
+          };
+        }
+        return () async {
+          await dispatcher.drainBatch();
+        };
+      }(),
+      mobilePushHandler: () {
+        final dispatcher = mobilePushDispatcherForWorker;
+        final outboxRepository = mobilePushOutboxRepositoryForWorker;
+        if (dispatcher == null || outboxRepository == null) {
+          return () async {
+            log(
+              LogSeverity.warning,
+              'startup.mobile_push_dispatcher_disabled',
+              fields: <String, Object?>{
+                'reason':
+                    'mobile_push_token_envelope_key or firebase_project_id missing',
+              },
+            );
+          };
+        }
+        return buildProductionMobilePushTickHandler(
+          adminWrapper: workerStartupAdminWrapper,
+          outboxRepository: outboxRepository,
+          dispatcher: dispatcher,
+        );
+      }(),
+      rollupTickHandler: buildProductionRollupTickHandler(
+        worker: rollupsWorker,
+      ),
+      consumerLogger: _logPgCronNotifyConsumerEvent,
+      onTickError: (channel, error, stack) {
+        log(
+          LogSeverity.error,
+          'pg_cron_notify.tick_handler_failed',
+          fields: <String, Object?>{
+            'channel': channel,
+            'error_type': error.runtimeType.toString(),
+            'error_message': error.toString(),
+            'stack_first_frame': firstStackFrame(stack),
+          },
+        );
+      },
+    );
+
+    // Start each consumer's LISTEN connection. A failure in any one
+    // consumer is logged but does not block startup: the proxy's
+    // existing operator surfaces continue serving while the affected
+    // tick channel falls back to the worker's polling cadence (each
+    // worker is contractually required to poll because NOTIFY is a
+    // wake-up signal only — see the PgCronNotifyConsumer header
+    // comment).
+    for (final consumer in workerHandle.consumers) {
+      try {
+        await consumer.start();
+      } catch (error, stack) {
+        log(
+          LogSeverity.warning,
+          'startup.pg_cron_notify_consumer_failed',
+          fields: <String, Object?>{
+            'channel': consumer.channels.join(','),
+            'error_type': error.runtimeType.toString(),
+            'error_message': error.toString(),
+            'stack_first_frame': firstStackFrame(stack),
+          },
+        );
+      }
+    }
+    log(
+      LogSeverity.info,
+      'startup.workers_wired',
+      fields: <String, Object?>{
+        'consumers': workerHandle.consumers
+            .map((c) => c.channels.join(','))
+            .toList(growable: false),
+        'tripwire_poller_started': true,
+        'email_dispatcher_loaded': emailOutboxDispatcher != null,
+        'mobile_push_dispatcher_loaded': mobilePushDispatcherForWorker != null,
+        'audit_anchor_require_azure': auditAnchorCheck.required,
       },
     );
   }
-  Future<int> auditAnchorSweep() async {
-    final runtime = auditAnchorRuntime;
-    if (runtime == null) {
-      log(
-        LogSeverity.warning,
-        'audit_anchor_tick.runtime_unavailable',
-        fields: <String, Object?>{},
-      );
-      return 0;
-    }
-    return audit_anchor_cli.runCli(
-      const <String>['sweep'],
-      environment: Platform.environment,
-      orchestratorOverride: runtime.orchestrator,
-      operatorIdReaderOverride: runtime.operatorIdReader,
-      sweepLockIdReaderOverride: runtime.sweepLockIdReader,
-      sweepAdvisoryLockOverride: runtime.sweepAdvisoryLock,
-    );
-  }
-
-  final workerHandle = wireProductionWorkers(
-    postgresUrl: config.secretFor(ProxySecretNames.postgresUrl),
-    adminWrapper: workerStartupAdminWrapper,
-    tenantWrapper: workerStartupTenantWrapper,
-    tripwireFetcher: () async {
-      final envelope = await realtimeTripwireGateway.fetch();
-      final statusKey = envelope['status'];
-      if (statusKey is String) {
-        switch (statusKey) {
-          case 'red':
-            return OutboxTripwireStatus.red;
-          case 'yellow':
-            return OutboxTripwireStatus.yellow;
-          case 'green':
-          default:
-            return OutboxTripwireStatus.green;
-        }
-      }
-      return OutboxTripwireStatus.green;
-    },
-    auditAnchorHandler: buildProductionAuditAnchorTickHandler(
-      sweep: auditAnchorSweep,
-    ),
-    emailTickHandler: () {
-          final dispatcher = emailOutboxDispatcher;
-          if (dispatcher == null) {
-            return () async {
-              log(
-                LogSeverity.warning,
-                'startup.email_dispatcher_disabled',
-                fields: <String, Object?>{
-                  'reason':
-                      'email_templates directory missing on the deployed image',
-                },
-              );
-            };
-          }
-          return () async {
-            await dispatcher.drainBatch();
-          };
-        }(),
-    mobilePushHandler: () {
-          final dispatcher = mobilePushDispatcherForWorker;
-          final outboxRepository = mobilePushOutboxRepositoryForWorker;
-          if (dispatcher == null || outboxRepository == null) {
-            return () async {
-              log(
-                LogSeverity.warning,
-                'startup.mobile_push_dispatcher_disabled',
-                fields: <String, Object?>{
-                  'reason':
-                      'mobile_push_token_envelope_key or firebase_project_id missing',
-                },
-              );
-            };
-          }
-          return buildProductionMobilePushTickHandler(
-            adminWrapper: workerStartupAdminWrapper,
-            outboxRepository: outboxRepository,
-            dispatcher: dispatcher,
-          );
-        }(),
-    rollupTickHandler:
-        buildProductionRollupTickHandler(worker: rollupsWorker),
-    consumerLogger: _logPgCronNotifyConsumerEvent,
-    onTickError: (channel, error, stack) {
-      log(
-        LogSeverity.error,
-        'pg_cron_notify.tick_handler_failed',
-        fields: <String, Object?>{
-          'channel': channel,
-          'error_type': error.runtimeType.toString(),
-          'error_message': error.toString(),
-          'stack_first_frame': firstStackFrame(stack),
-        },
-      );
-    },
-  );
-
-  // Start each consumer's LISTEN connection. A failure in any one
-  // consumer is logged but does not block startup: the proxy's
-  // existing operator surfaces continue serving while the affected
-  // tick channel falls back to the worker's polling cadence (each
-  // worker is contractually required to poll because NOTIFY is a
-  // wake-up signal only — see the PgCronNotifyConsumer header
-  // comment).
-  for (final consumer in workerHandle.consumers) {
-    try {
-      await consumer.start();
-    } catch (error, stack) {
-      log(
-        LogSeverity.warning,
-        'startup.pg_cron_notify_consumer_failed',
-        fields: <String, Object?>{
-          'channel': consumer.channels.join(','),
-          'error_type': error.runtimeType.toString(),
-          'error_message': error.toString(),
-          'stack_first_frame': firstStackFrame(stack),
-        },
-      );
-    }
-  }
-  log(
-    LogSeverity.info,
-    'startup.workers_wired',
-    fields: <String, Object?>{
-      'consumers': workerHandle.consumers
-          .map((c) => c.channels.join(','))
-          .toList(growable: false),
-      'tripwire_poller_started': true,
-      'email_dispatcher_loaded': emailOutboxDispatcher != null,
-      'mobile_push_dispatcher_loaded':
-          mobilePushDispatcherForWorker != null,
-      'audit_anchor_require_azure': auditAnchorCheck.required,
-    },
-  );
   // endregion
 
   // region: M2_pepper_runtime_routes
@@ -994,15 +1139,10 @@ Future<void> main(List<String> args) async {
     log(
       LogSeverity.info,
       'startup.pepper_store.ok',
-      fields: <String, Object?>{
-        'active_id': pepperStore.activeId,
-      },
+      fields: <String, Object?>{'active_id': pepperStore.activeId},
     );
   }
-  final pepperRouter = PepperRouter(
-    store: pepperStore,
-    authGuard: authGuard,
-  );
+  final pepperRouter = PepperRouter(store: pepperStore, authGuard: authGuard);
   // endregion
 
   // Phase 8 — wire the inbound integration chain (vendor credential
@@ -1075,14 +1215,15 @@ Future<void> main(List<String> args) async {
       firstBackfillStarted: firstBackfillStarted,
     );
   }
+
   final operatorOAuthWiring = buildPhase8OperatorOAuthWiring(
     proxyConfig: config,
     connectionWriter: operatorOAuthConnectionWriter,
   );
   final operatorOAuthTestConnectionExecutor =
       Phase8IntegrationTestConnectionExecutor(
-    apiKeyValidators: operatorOAuthWiring.apiKeyValidators,
-  );
+        apiKeyValidators: operatorOAuthWiring.apiKeyValidators,
+      );
   operatorOAuthGateway = RepositoryIntegrationRoutesGateway(
     tenantWrapper: productionBindings.tenantTransactionWrapper,
     permissionGuard: productionBindings.adminPermissionGuard,
@@ -1092,8 +1233,9 @@ Future<void> main(List<String> args) async {
   IntegrationOAuthRoutes.globalBindings = _OperatorOAuthRoutesBindingsHolder(
     requestGuard: authGuard,
     stateStore: operatorOAuthStateStore,
-    integrationRoutesGateway:
-        wrapRepositoryGatewayForToolApi(operatorOAuthGateway),
+    integrationRoutesGateway: wrapRepositoryGatewayForToolApi(
+      operatorOAuthGateway,
+    ),
     connectionWriter: operatorOAuthWiring.connectionWriter,
     oauthBeginDescriptors: operatorOAuthWiring.oauthBeginDescriptors,
     oauthExchangers: operatorOAuthWiring.oauthExchangers,
@@ -1125,20 +1267,17 @@ Future<void> main(List<String> args) async {
     );
     return buildOperatorLocationIntegrationsBundleJson(bundle);
   }
+
   log(
     LogSeverity.info,
     'startup.operator_oauth_routes.installed',
     fields: <String, Object?>{
-      'oauth_descriptors_wired': operatorOAuthWiring
-          .oauthBeginDescriptors.keys
-          .toList()
-        ..sort(),
-      'oauth_exchangers_wired': operatorOAuthWiring.oauthExchangers.keys
-          .toList()
-        ..sort(),
-      'api_key_validators_wired': operatorOAuthWiring.apiKeyValidators.keys
-          .toList()
-        ..sort(),
+      'oauth_descriptors_wired':
+          operatorOAuthWiring.oauthBeginDescriptors.keys.toList()..sort(),
+      'oauth_exchangers_wired':
+          operatorOAuthWiring.oauthExchangers.keys.toList()..sort(),
+      'api_key_validators_wired':
+          operatorOAuthWiring.apiKeyValidators.keys.toList()..sort(),
       'disabled_vendors': operatorOAuthWiring.disabledVendors,
     },
   );
@@ -1193,12 +1332,22 @@ Future<void> main(List<String> args) async {
       fields: <String, Object?>{'signal': signalName},
     );
     adminIdempotencySweepTimer.cancel();
+    // N5 — best-effort delete the per-pod Pub/Sub subscription. The
+    // subscription's 1h `expirationPolicy.ttl` cleans up if this call
+    // fails (network blip, IAM transient), so we cap the wait at 5s
+    // and move on.
+    if (pubsubRealtimeSubscriberFinal != null) {
+      await Future.any(<Future<void>>[
+        pubsubRealtimeSubscriberFinal.stop(),
+        Future<void>.delayed(const Duration(seconds: 5)),
+      ]);
+    }
     // CODE_OPS_DEBT — Theme C — drain every pg_cron NOTIFY consumer
     // and the tripwire poller before closing the HTTP listener so
     // SIGTERM does not orphan a `package:postgres` LISTEN connection.
     // The bound is the same 25 s ceiling used below.
     await Future.any(<Future<void>>[
-      workerHandle.stopAll(),
+      workerHandle?.stopAll() ?? Future<void>.value(),
       Future<void>.delayed(const Duration(seconds: 5)),
     ]);
     // Audit-log writes are committed synchronously inside each
@@ -1560,47 +1709,43 @@ class _PostgresOperatorDiscoverer {
 /// migration level holds because the bridge always increments
 /// attempted before optionally incrementing failed.
 class _PostgresPublishMetricsWriter {
-  _PostgresPublishMetricsWriter({required TenantTransactionWrapper adminWrapper})
-      : _adminWrapper = adminWrapper;
+  _PostgresPublishMetricsWriter({
+    required TenantTransactionWrapper adminWrapper,
+  }) : _adminWrapper = adminWrapper;
 
   final TenantTransactionWrapper _adminWrapper;
 
-  Future<void> write(
-    List<RealtimeBridgePublishMetricsBucket> buckets,
-  ) async {
+  Future<void> write(List<RealtimeBridgePublishMetricsBucket> buckets) async {
     if (buckets.isEmpty) return;
-    await _adminWrapper.runAsSystem<void>(
-      (exec) async {
-        for (final bucket in buckets) {
-          await exec.execute(
-            'insert into event_outbox_publish_metrics ('
-            '  window_start, attempted_publish_count, '
-            '  failed_publish_count, updated_at'
-            ') '
-            'values ('
-            '  @window_start::timestamptz, '
-            '  @attempted::bigint, '
-            '  @failed::bigint, '
-            '  now()'
-            ') '
-            'on conflict (window_start) do update set '
-            '  attempted_publish_count = '
-            '    event_outbox_publish_metrics.attempted_publish_count '
-            '    + excluded.attempted_publish_count, '
-            '  failed_publish_count = '
-            '    event_outbox_publish_metrics.failed_publish_count '
-            '    + excluded.failed_publish_count, '
-            '  updated_at = now()',
-            parameters: <String, Object?>{
-              'window_start': bucket.windowStart.toUtc().toIso8601String(),
-              'attempted': bucket.attemptedDelta,
-              'failed': bucket.failedDelta,
-            },
-          );
-        }
-      },
-      reason: 'realtime_bridge_publish_metrics_flush',
-    );
+    await _adminWrapper.runAsSystem<void>((exec) async {
+      for (final bucket in buckets) {
+        await exec.execute(
+          'insert into event_outbox_publish_metrics ('
+          '  window_start, attempted_publish_count, '
+          '  failed_publish_count, updated_at'
+          ') '
+          'values ('
+          '  @window_start::timestamptz, '
+          '  @attempted::bigint, '
+          '  @failed::bigint, '
+          '  now()'
+          ') '
+          'on conflict (window_start) do update set '
+          '  attempted_publish_count = '
+          '    event_outbox_publish_metrics.attempted_publish_count '
+          '    + excluded.attempted_publish_count, '
+          '  failed_publish_count = '
+          '    event_outbox_publish_metrics.failed_publish_count '
+          '    + excluded.failed_publish_count, '
+          '  updated_at = now()',
+          parameters: <String, Object?>{
+            'window_start': bucket.windowStart.toUtc().toIso8601String(),
+            'attempted': bucket.attemptedDelta,
+            'failed': bucket.failedDelta,
+          },
+        );
+      }
+    }, reason: 'realtime_bridge_publish_metrics_flush');
   }
 }
 
@@ -1704,22 +1849,169 @@ void _logPubsubRealtimePublisherEvent(PubsubRealtimePublisherLogEvent event) {
   }
 }
 
-/// Phase 10a.1 — production-not-yet-wired Pub/Sub message publisher
-/// stub. The `PUBSUB_REALTIME_ENABLED` startup gate exits 78 before
-/// this is ever invoked, so it is defensive only. Once the production
-/// adapter (Application Default Credentials, GCP project + region,
-/// `gcloud_pubsub` SDK or REST) lands in a follow-up slice, this stub
-/// is replaced with the real callback and the startup gate is removed.
+/// N5 — Pub/Sub realtime cross-pod replay env-var names. Default off
+/// per the lane's "zero new cost when disabled" constraint; the
+/// startup wiring reads these names by reference so a typo is a
+/// single grep away from a fix.
+const String pubsubRealtimeProjectEnvVar = 'PUBSUB_REALTIME_PROJECT';
+const String pubsubRealtimeTopicEnvVar = 'PUBSUB_REALTIME_TOPIC';
+const String pubsubRealtimeRetentionSecondsEnvVar =
+    'PUBSUB_REALTIME_RETENTION_SECONDS';
+
+/// Default retention when the operator does not override it. Five
+/// minutes matches `kRealtimeReplayBacklogWindow` and the in-process
+/// ring buffer's effective lookback. Going longer would inflate
+/// Pub/Sub storage cost without buying any reconnect coverage.
+const int kPubsubRealtimeDefaultRetentionSeconds = 300;
+
+/// Resolved env-var snapshot for the Pub/Sub realtime cross-pod replay
+/// lane. Built by [evaluatePubsubRealtimeStartup]; the bootstrap
+/// branches on the `enabled` flag, missing-vars list, and resolved
+/// project/topic/retention seconds.
+class PubsubRealtimeStartup {
+  const PubsubRealtimeStartup._({
+    required this.enabled,
+    required this.missingEnvVarNames,
+    required this.projectId,
+    required this.topicName,
+    required this.retentionSeconds,
+  });
+
+  /// Disabled posture (default). The bridge keeps the in-process
+  /// publisher; no GCP env vars consulted.
+  static const PubsubRealtimeStartup disabled = PubsubRealtimeStartup._(
+    enabled: false,
+    missingEnvVarNames: <String>[],
+    projectId: null,
+    topicName: null,
+    retentionSeconds: kPubsubRealtimeDefaultRetentionSeconds,
+  );
+
+  final bool enabled;
+  final List<String> missingEnvVarNames;
+  final String? projectId;
+  final String? topicName;
+  final int retentionSeconds;
+
+  /// True when the env flag is on but at least one required name is
+  /// missing — the bootstrap exits 78 in that case (fail-loud).
+  bool get hasMissingEnvVars =>
+      enabled && missingEnvVarNames.isNotEmpty;
+}
+
+/// Inspect the process environment and return the resolved startup
+/// posture for the Pub/Sub realtime cross-pod replay lane. Pure
+/// function so the integration smoke can drive every branch without
+/// binding sockets or a Pub/Sub project.
+PubsubRealtimeStartup evaluatePubsubRealtimeStartup(
+  Map<String, String> environment,
+) {
+  final rawFlag = environment[pubsubRealtimeEnabledEnvVar];
+  final isEnabled = rawFlag != null &&
+      <String>{'true', '1', 'yes'}.contains(rawFlag.trim().toLowerCase());
+  if (!isEnabled) return PubsubRealtimeStartup.disabled;
+  final missing = <String>[];
+  final projectId = _stringOrNull(environment[pubsubRealtimeProjectEnvVar]);
+  if (projectId == null) missing.add(pubsubRealtimeProjectEnvVar);
+  final topicName = _stringOrNull(environment[pubsubRealtimeTopicEnvVar]);
+  if (topicName == null) missing.add(pubsubRealtimeTopicEnvVar);
+  final retentionRaw =
+      _stringOrNull(environment[pubsubRealtimeRetentionSecondsEnvVar]);
+  var retentionSeconds = kPubsubRealtimeDefaultRetentionSeconds;
+  if (retentionRaw != null) {
+    final parsed = int.tryParse(retentionRaw);
+    if (parsed != null && parsed > 0) retentionSeconds = parsed;
+  }
+  return PubsubRealtimeStartup._(
+    enabled: true,
+    missingEnvVarNames: List<String>.unmodifiable(missing),
+    projectId: projectId,
+    topicName: topicName,
+    retentionSeconds: retentionSeconds,
+  );
+}
+
+String? _stringOrNull(String? raw) {
+  if (raw == null) return null;
+  final trimmed = raw.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+/// N5 — per-pod Pub/Sub subscriber log forwarder. Mirrors the existing
+/// realtime publisher forwarder so subscription lifecycle events flow
+/// through the canonical `log()` envelope without inventing a new
+/// health producer.
+void _logPubsubSubscriberEvent(GoogleCloudPubsubSubscriberLogEvent event) {
+  final fields = <String, Object?>{
+    if (event.subscriptionName != null)
+      'pubsub_subscription_name': event.subscriptionName,
+    if (event.topicName != null) 'pubsub_topic_name': event.topicName,
+    if (event.statusCode != null) 'status_code': event.statusCode,
+    if (event.body != null) 'body_summary': event.body,
+    if (event.error != null) 'error_type': event.error.runtimeType.toString(),
+    if (event.error != null) 'error_message': event.error.toString(),
+    if (event.stack != null) 'stack_first_frame': firstStackFrame(event.stack!),
+  };
+  switch (event.kind) {
+    case GoogleCloudPubsubSubscriberLogKind.subscriptionCreated:
+      log(
+        LogSeverity.info,
+        'realtime.pubsub_subscriber.subscription_created',
+        fields: fields,
+      );
+    case GoogleCloudPubsubSubscriberLogKind.subscriptionAlreadyExists:
+      log(
+        LogSeverity.info,
+        'realtime.pubsub_subscriber.subscription_already_exists',
+        fields: fields,
+      );
+    case GoogleCloudPubsubSubscriberLogKind.subscriptionDeleted:
+      log(
+        LogSeverity.info,
+        'realtime.pubsub_subscriber.subscription_deleted',
+        fields: fields,
+      );
+    case GoogleCloudPubsubSubscriberLogKind.subscriptionAlreadyGone:
+      log(
+        LogSeverity.info,
+        'realtime.pubsub_subscriber.subscription_already_gone',
+        fields: fields,
+      );
+    case GoogleCloudPubsubSubscriberLogKind.deleteFailed:
+      log(
+        LogSeverity.warning,
+        'realtime.pubsub_subscriber.delete_failed',
+        fields: fields,
+      );
+    case GoogleCloudPubsubSubscriberLogKind.pullFailed:
+      log(
+        LogSeverity.warning,
+        'realtime.pubsub_subscriber.pull_failed',
+        fields: fields,
+      );
+    case GoogleCloudPubsubSubscriberLogKind.messageDecodeFailed:
+      log(
+        LogSeverity.warning,
+        'realtime.pubsub_subscriber.message_decode_failed',
+        fields: fields,
+      );
+  }
+}
+
+/// Defensive stub. The N5 wiring above only installs this callback
+/// when `PUBSUB_REALTIME_ENABLED` is unset — `selectRealtimePublisher`
+/// short-circuits to the in-process binding in that case so the
+/// callback is unreachable. Throwing here keeps a future regression
+/// from silently routing fan-out to a no-op.
 Future<void> _unwiredPubsubMessagePublisher({
   required String topicName,
   required String body,
   required Map<String, String> attributes,
 }) async {
   throw StateError(
-    'PubsubMessagePublisher invoked before the production adapter '
-    'is wired. The startup gate in tool/advisor_proxy/main.dart '
-    'should have exited 78 before reaching this call. Either remove '
-    'the env flag or land the production adapter.',
+    'PubsubMessagePublisher invoked while PUBSUB_REALTIME_ENABLED is '
+    'off; selectRealtimePublisher should have returned the in-process '
+    'binding. This is a defensive guard against future regressions.',
   );
 }
 
@@ -1813,4 +2105,3 @@ void _logPgCronNotifyConsumerEvent(PgCronNotifyConsumerEvent event) {
       );
   }
 }
-

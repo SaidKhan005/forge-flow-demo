@@ -36,14 +36,20 @@
 //     `admin.users.reset_mfa_factors` row mirrored in lockstep with
 //     this slice.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
+import '../admin_route_handoff.dart';
 import '../admin_button_styles.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
+import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'operator_picker_screen.dart';
+import 'roles_hierarchy_sessions_admin_screen.dart';
 
 class AuditedSupportActionsAdminScreen extends StatefulWidget {
   const AuditedSupportActionsAdminScreen({
@@ -55,8 +61,13 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
     this.canResetMfaFactors = false,
     this.canIssuePairedErasure = false,
     this.canExportAuditLog = false,
+    this.sessionsGateway,
+    this.hierarchyScope,
     this.idempotencyKeyFactory,
     this.onChangeOperator,
+    this.onBackToBusinessAccounts,
+    this.graceWindowClock,
+    this.graceWindowTickInterval = const Duration(minutes: 1),
   });
 
   final AuditedSupportActionsAdminGateway gateway;
@@ -84,11 +95,36 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
   /// gated on `admin.audit_log.export`.
   final bool canExportAuditLog;
 
+  /// Active sessions live under Security/audit/sessions. This uses
+  /// the existing roles/hierarchy/sessions gateway contract for
+  /// session reads and audited force-logout writes.
+  final RolesHierarchySessionsAdminGateway? sessionsGateway;
+
+  /// Scope selected from the business hierarchy workspace before the
+  /// Security/audit/sessions tile was opened.
+  final AdminHierarchyScopeIntent? hierarchyScope;
+
   final String Function()? idempotencyKeyFactory;
 
   /// Re-opens the operator picker. Wired by the route shell so the
   /// admin can switch operators without leaving the surface.
   final VoidCallback? onChangeOperator;
+  final VoidCallback? onBackToBusinessAccounts;
+
+  /// CODE_OPS_DEBT carry-over #2 — the grace-window countdown chip
+  /// reads "now" from this clock so widget tests can pin the
+  /// countdown to a deterministic value without relying on
+  /// `DateTime.now()`. Production leaves this null and falls back to
+  /// `DateTime.now()`.
+  @visibleForTesting
+  final DateTime Function()? graceWindowClock;
+
+  /// CODE_OPS_DEBT carry-over #2 — period of the chip's tick timer.
+  /// Default 1 minute is plenty (the grace window is 24h). Widget
+  /// tests override this to a sub-second tick so the timer can drive
+  /// expiry without `tester.pump`-ing for hours.
+  @visibleForTesting
+  final Duration graceWindowTickInterval;
 
   @override
   State<AuditedSupportActionsAdminScreen> createState() =>
@@ -112,6 +148,21 @@ class _AuditedSupportActionsAdminScreenState
 
   int _idempotencyCounter = 0;
 
+  // CODE_OPS_DEBT Theme B#1 — last in-flight single-admin PII erasure
+  // captured by `_onIssueErasure`. The build path renders a banner
+  // with a "Reverse" affordance whenever this is non-null and the
+  // grace window has not closed; clearing happens on successful
+  // reverse / on a fresh erasure for a different user.
+  UserPiiErasureRequestSummary? _lastErasure;
+  String? _lastErasureMember;
+
+  /// CODE_OPS_DEBT carry-over #2 — periodic timer that drives the
+  /// grace-window chip's countdown. Started when `_lastErasure`
+  /// becomes non-null and stopped when the chip transitions to its
+  /// final state. Cancelled in [dispose] so a long-lived screen does
+  /// not leak timers.
+  Timer? _graceWindowTicker;
+
   String _nextIdempotencyKey(String operation) {
     final factory = widget.idempotencyKeyFactory;
     if (factory != null) return factory();
@@ -124,6 +175,41 @@ class _AuditedSupportActionsAdminScreenState
   void initState() {
     super.initState();
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    _graceWindowTicker?.cancel();
+    _graceWindowTicker = null;
+    super.dispose();
+  }
+
+  DateTime _graceNow() => widget.graceWindowClock?.call() ?? DateTime.now();
+
+  /// CODE_OPS_DEBT carry-over #2 — start the periodic ticker so the
+  /// chip's "Xh Ym remaining" label refreshes in place. Idempotent;
+  /// stops the existing timer before creating a new one.
+  void _startGraceWindowTicker() {
+    _graceWindowTicker?.cancel();
+    _graceWindowTicker = Timer.periodic(widget.graceWindowTickInterval, (_) {
+      if (!mounted) return;
+      final erasure = _lastErasure;
+      if (erasure == null) {
+        _graceWindowTicker?.cancel();
+        _graceWindowTicker = null;
+        return;
+      }
+      // Trigger a rebuild so the countdown label re-renders. When the
+      // window expires the chip flips to its final state and the
+      // ticker stops on the next iteration (erasure == null after a
+      // refresh / reverse) or via the early-return below once we are
+      // past the grace boundary.
+      setState(() {});
+      if (!_graceNow().isBefore(erasure.gracePeriodEndsAt)) {
+        _graceWindowTicker?.cancel();
+        _graceWindowTicker = null;
+      }
+    });
   }
 
   Future<void> _refresh() async {
@@ -235,10 +321,18 @@ class _AuditedSupportActionsAdminScreenState
     );
   }
 
-  Future<SupportActionsMember?> _pickMember(String title) async {
+  Future<SupportActionsMember?> _pickMember(
+    String title, {
+    List<SupportActionsMember>? members,
+    String emptyCopy = 'This operator has no members yet.',
+  }) async {
     return showDialog<SupportActionsMember>(
       context: context,
-      builder: (_) => _MemberPickerDialog(title: title, members: _members),
+      builder: (_) => _MemberPickerDialog(
+        title: title,
+        members: members ?? _members,
+        emptyCopy: emptyCopy,
+      ),
     );
   }
 
@@ -288,7 +382,15 @@ class _AuditedSupportActionsAdminScreenState
   }
 
   Future<void> _onPasswordReset() async {
-    final member = await _pickMember('Send a password reset to which member?');
+    final eligibleMembers = _members
+        .where((member) => member.canReceivePasswordReset)
+        .toList(growable: false);
+    final member = await _pickMember(
+      'Send a password reset to which member?',
+      members: eligibleMembers,
+      emptyCopy:
+          'No active member can receive a password reset yet. Pending invite-only users must accept their invite first.',
+    );
     if (member == null) return;
     final reason = await _promptAdminReason(
       'Send a password reset to ${member.displayName}',
@@ -312,47 +414,77 @@ class _AuditedSupportActionsAdminScreenState
     final member = await _pickMember('Issue erasure for which member?');
     if (member == null) return;
     final reason = await _promptAdminReason(
-      'Issue paired-approval erasure for ${member.displayName}',
+      'Issue PII erasure for ${member.displayName}',
     );
     if (reason == null) return;
+    // CODE_OPS_DEBT Theme B#1 — single-admin PII erasure with 24h
+    // grace-window reverse. The button still surfaces under the
+    // same `canIssuePairedErasure` flag (renaming the flag is a
+    // follow-up), but the call is now a single-admin POST.
+    await _runAndRefresh(
+      () async {
+        final summary = await widget.gateway.requestPiiErasure(
+          operatorId: widget.pickedOperator.operatorId,
+          targetUserId: member.userId,
+          idempotencyKey: _nextIdempotencyKey('erasure-request'),
+          actorUserId: widget.actorUserId,
+          actorIsForgeAdmin: widget.editingEnabled,
+          adminReason: reason,
+        );
+        _lastErasureMember = member.userId;
+        _lastErasure = summary;
+        // CODE_OPS_DEBT carry-over #2 - kick off the chip's tick timer
+        // so the "Xh Ym remaining" countdown refreshes in place.
+        _startGraceWindowTicker();
+      },
+      successHint:
+          'PII erasure recorded for ${member.displayName}; reversal '
+          'available within the 24-hour grace window.',
+    );
+  }
+
+  /// CODE_OPS_DEBT Theme B#1 — reverses the most recent in-flight
+  /// erasure recorded by [_onIssueErasure]. Surfaced from the
+  /// confirmation banner that renders when [_lastErasure] is non-null
+  /// and the grace window has not yet closed.
+  // ignore: unused_element
+  Future<void> _onReverseLastErasure() async {
+    final erasure = _lastErasure;
+    final memberUserId = _lastErasureMember;
+    if (erasure == null || memberUserId == null) return;
     await _runAndRefresh(() async {
-      final first = await widget.gateway.issuePairedApprovalErasure(
+      final outcome = await widget.gateway.reversePiiErasure(
         operatorId: widget.pickedOperator.operatorId,
-        targetUserId: member.userId,
-        idempotencyKey: _nextIdempotencyKey('erasure-request'),
+        targetUserId: memberUserId,
+        erasureId: erasure.erasureId,
+        idempotencyKey: _nextIdempotencyKey('erasure-reverse'),
         actorUserId: widget.actorUserId,
         actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: reason,
+        reversalReason: 'admin reversed within grace window',
       );
-      if (!first.pendingSecondApproval) {
-        // The proxy returned a single-call confirmation already
-        // (e.g. tests); nothing more to do.
-        return;
-      }
-      if (!mounted) return;
-      final secondAdminUid = await showDialog<String>(
-        context: context,
-        builder: (_) => _SecondApproverDialog(
-          firstApproverUserId: first.firstApproverUserId,
-        ),
-      );
-      if (secondAdminUid == null) return;
-      if (secondAdminUid.trim() == widget.actorUserId) {
+      if (outcome.graceExpired) {
+        // CODE_OPS_DEBT carry-over #2 - once the proxy says the
+        // window is closed, the chip should never offer a reverse
+        // affordance again. Drop the in-flight reference so the chip
+        // hides on the next build.
+        _graceWindowTicker?.cancel();
+        _graceWindowTicker = null;
         setState(() {
-          _actionError = SupportActionsValidationCopy.cannotSelfPair;
+          _actionError =
+              'Grace window has expired; the erasure can no longer be '
+              'reversed.';
+          _lastErasure = null;
+          _lastErasureMember = null;
         });
-        return;
+      } else if (outcome.reversed) {
+        _graceWindowTicker?.cancel();
+        _graceWindowTicker = null;
+        setState(() {
+          _lastErasure = null;
+          _lastErasureMember = null;
+        });
       }
-      await widget.gateway.issuePairedApprovalErasure(
-        operatorId: widget.pickedOperator.operatorId,
-        targetUserId: member.userId,
-        idempotencyKey: _nextIdempotencyKey('erasure-confirm'),
-        actorUserId: secondAdminUid.trim(),
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: reason,
-        confirmRequestId: first.requestId,
-      );
-    }, successHint: 'Erasure recorded for ${member.displayName}.');
+    }, successHint: 'Erasure reversed.');
   }
 
   // --- Build ------------------------------------------------------------
@@ -368,10 +500,15 @@ class _AuditedSupportActionsAdminScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             AdminPageHeader(
-              title: 'Audit & support',
+              title: 'Security, audit, and sessions',
               subtitle:
                   '${widget.pickedOperator.operatorBusinessName}: audit '
-                  'history and gated support actions.',
+                  'history, active sessions, and gated support actions.',
+              leading: widget.onBackToBusinessAccounts == null
+                  ? null
+                  : AdminBusinessAccountsBackButton(
+                      onPressed: widget.onBackToBusinessAccounts,
+                    ),
               trailing: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),
@@ -381,6 +518,15 @@ class _AuditedSupportActionsAdminScreenState
               _ErrorBanner(
                 key: const Key('admin_asa_action_error'),
                 message: _actionError!,
+              ),
+            if (_lastErasure != null)
+              _GraceWindowChip(
+                key: const Key('admin_asa_grace_window_chip'),
+                erasure: _lastErasure!,
+                memberDisplay: _lastErasureMember,
+                now: _graceNow(),
+                canReverse: widget.editingEnabled,
+                onReverse: _onReverseLastErasure,
               ),
             Expanded(child: _buildBody()),
           ],
@@ -431,11 +577,26 @@ class _AuditedSupportActionsAdminScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          if (widget.hierarchyScope != null) ...<Widget>[
+            _SecurityHierarchyScopeBanner(scope: widget.hierarchyScope!),
+            const SizedBox(height: 16),
+          ],
           _SupportAuditSummaryStrip(
             rows: _rows,
             members: _members,
             hasMoreRows: _nextCursor != null,
           ),
+          if (widget.sessionsGateway != null) ...<Widget>[
+            const SizedBox(height: 16),
+            ActiveSessionsAdminPanel(
+              gateway: widget.sessionsGateway!,
+              operatorId: widget.pickedOperator.operatorId,
+              operatorName: widget.pickedOperator.operatorBusinessName,
+              actorUserId: widget.actorUserId,
+              editingEnabled: widget.editingEnabled,
+              idempotencyKeyFactory: widget.idempotencyKeyFactory,
+            ),
+          ],
           const SizedBox(height: 16),
           _AuditLogCard(
             rows: _rows,
@@ -510,6 +671,107 @@ class _SupportAuditSummaryStrip extends StatelessWidget {
   }
 }
 
+class _SecurityHierarchyScopeBanner extends StatelessWidget {
+  const _SecurityHierarchyScopeBanner({required this.scope});
+
+  final AdminHierarchyScopeIntent scope;
+
+  @override
+  Widget build(BuildContext context) {
+    final body = switch (scope.scopeType) {
+      AdminHierarchyScopeType.business =>
+        'Business scope covers audit history, active sessions, and support actions for this operator.',
+      AdminHierarchyScopeType.orgUnit =>
+        'Org-unit scope is the working context for effective access. Audit rows and sessions remain operator-wide until the backend exposes a scoped aggregate route.',
+      AdminHierarchyScopeType.location =>
+        'Location scope is the working context for effective access. Audit rows and sessions remain operator-wide until the backend exposes a location-scoped security route.',
+    };
+    return Container(
+      key: const Key('admin_asa_scope_banner'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(
+          color: AppColors.peacock.withValues(alpha: 0.62),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(
+            scope.isLocationScope
+                ? Icons.storefront_outlined
+                : scope.isOrgUnitScope
+                ? Icons.account_tree_outlined
+                : Icons.business_outlined,
+            size: 16,
+            color: AppColors.peacock,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: <Widget>[
+                    Text(
+                      '${scope.scopeType.label}: ${scope.displayLabel}',
+                      key: const Key('admin_asa_scope_label'),
+                      style: AppTextStyles.body13(
+                        color: AppColors.textPrimary,
+                      ).copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    _SecurityScopePill(label: scope.inheritanceLabel),
+                    if (scope.effectiveValueLabel != null)
+                      _SecurityScopePill(
+                        label: 'Effective: ${scope.effectiveValueLabel}',
+                      ),
+                    if (scope.allowedActionsLabel != null)
+                      _SecurityScopePill(label: scope.allowedActionsLabel!),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  body,
+                  key: const Key('admin_asa_scope_body'),
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SecurityScopePill extends StatelessWidget {
+  const _SecurityScopePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.mono11(color: AppColors.textSecondary),
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------
 // Actions panel
 // ---------------------------------------------------------------------
@@ -566,7 +828,7 @@ class _ActionsPanelCard extends StatelessWidget {
             keyId: 'admin_asa_action_password_reset',
             title: 'Initiate password reset',
             description:
-                'Sends the member a recovery email to set a new password.',
+                'Sends an active member a recovery email. Pending invite-only users must accept their invite first.',
             buttonLabel: 'Send reset email',
             enabled: editingEnabled,
             onPressed: onPasswordReset,
@@ -1388,6 +1650,122 @@ String formatPayload(Map<String, Object?> payload) {
 // Shared bits
 // ---------------------------------------------------------------------
 
+/// CODE_OPS_DEBT carry-over #2 - countdown chip + reverse affordance
+/// rendered while a single-admin PII erasure is inside its 24h grace
+/// window. The chip self-renders one of two states:
+///
+///   * `pending`: `now` is before `erasure.gracePeriodEndsAt`. Shows
+///     "Erasure reversible - Xh Ym remaining" plus a "Reverse erasure"
+///     button wired to [onReverse].
+///   * `final`: `now` is at-or-after the boundary. Shows "Erasure
+///     final" with no reverse affordance. The chip stays mounted
+///     briefly so the operator sees the transition; the parent state
+///     clears the in-flight erasure on the next reverse attempt or
+///     on a fresh erasure.
+///
+/// The chip is intentionally stateless: the parent screen owns the
+/// periodic timer that triggers rebuilds (1-min tick by default). No
+/// per-tick `setState` lives here so widget tests can drive the chip
+/// purely via the parent `now` clock.
+class _GraceWindowChip extends StatelessWidget {
+  const _GraceWindowChip({
+    super.key,
+    required this.erasure,
+    required this.memberDisplay,
+    required this.now,
+    required this.canReverse,
+    required this.onReverse,
+  });
+
+  final UserPiiErasureRequestSummary erasure;
+  final String? memberDisplay;
+  final DateTime now;
+  final bool canReverse;
+  final VoidCallback onReverse;
+
+  bool get _isReversible =>
+      now.toUtc().isBefore(erasure.gracePeriodEndsAt.toUtc());
+
+  @override
+  Widget build(BuildContext context) {
+    final reversible = _isReversible;
+    final tone = reversible ? AppColors.warning : AppColors.textMuted;
+    final iconData = reversible ? Icons.timelapse_outlined : Icons.lock_outline;
+    final label = reversible
+        ? 'Erasure reversible - ${formatGraceWindowRemaining(now: now, endsAt: erasure.gracePeriodEndsAt)} remaining'
+        : 'Erasure final';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: tone, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(iconData, size: 16, color: tone),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  label,
+                  key: const Key('admin_asa_grace_window_chip_label'),
+                  style: AppTextStyles.body13(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w600),
+                ),
+                if (memberDisplay != null && memberDisplay!.isNotEmpty)
+                  Text(
+                    'Target user: ${memberDisplay!}',
+                    style: AppTextStyles.mono11(color: AppColors.textMuted),
+                  ),
+              ],
+            ),
+          ),
+          if (reversible)
+            FilledButton.icon(
+              key: const Key('admin_asa_grace_window_chip_reverse'),
+              onPressed: canReverse ? onReverse : null,
+              style: AdminButtonStyles.primary,
+              icon: const Icon(Icons.undo, size: 14),
+              label: const Text('Reverse erasure'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// CODE_OPS_DEBT carry-over #2 — humanise the time-remaining label
+/// for the grace-window chip. Returns the largest two non-zero units
+/// (e.g. `14h 23m`, `45m 12s`, `1d 0h`) so the chip stays compact and
+/// truthful at every point in the 24h window. Exposed for widget
+/// tests so the format pin lives in one place.
+@visibleForTesting
+String formatGraceWindowRemaining({
+  required DateTime now,
+  required DateTime endsAt,
+}) {
+  final remaining = endsAt.toUtc().difference(now.toUtc());
+  if (remaining.isNegative || remaining == Duration.zero) {
+    return '0m';
+  }
+  final hours = remaining.inHours;
+  final minutes = remaining.inMinutes - hours * 60;
+  final seconds = remaining.inSeconds - remaining.inMinutes * 60;
+  if (hours > 0) {
+    return '${hours}h ${minutes}m';
+  }
+  if (minutes > 0) {
+    return '${minutes}m ${seconds}s';
+  }
+  return '${seconds}s';
+}
+
 class _ReadOnlyBanner extends StatelessWidget {
   const _ReadOnlyBanner({super.key});
 
@@ -1521,10 +1899,15 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
 }
 
 class _MemberPickerDialog extends StatefulWidget {
-  const _MemberPickerDialog({required this.title, required this.members});
+  const _MemberPickerDialog({
+    required this.title,
+    required this.members,
+    required this.emptyCopy,
+  });
 
   final String title;
   final List<SupportActionsMember> members;
+  final String emptyCopy;
 
   @override
   State<_MemberPickerDialog> createState() => _MemberPickerDialogState();
@@ -1557,7 +1940,7 @@ class _MemberPickerDialogState extends State<_MemberPickerDialog> {
         width: 460,
         child: widget.members.isEmpty
             ? Text(
-                'This operator has no members yet.',
+                widget.emptyCopy,
                 style: AppTextStyles.body13(color: AppColors.textMuted),
               )
             : DropdownButtonFormField<String>(

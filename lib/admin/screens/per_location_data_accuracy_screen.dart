@@ -16,14 +16,18 @@
 
 import 'package:flutter/material.dart';
 
+import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../theme/app_theme.dart';
 import '../admin_route_handoff.dart';
 import '../admin_button_styles.dart';
+import '../models/admin_hierarchy_settings_scope_policy.dart';
 import '../services/data_accuracy_admin_gateway.dart';
+import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
+import '../widgets/admin_hierarchy_scope_notice.dart';
+import '../widgets/admin_hierarchy_scope_prompt.dart';
 import '../widgets/data_accuracy_audit_history_panel.dart';
-import '../widgets/operator_location_scope_banner.dart';
 import '../widgets/per_location_data_accuracy_table.dart';
 
 class PerLocationDataAccuracyScreen extends StatefulWidget {
@@ -33,11 +37,15 @@ class PerLocationDataAccuracyScreen extends StatefulWidget {
     required this.actorUserId,
     this.editingEnabled = true,
     this.initialScope,
+    this.initialHierarchyScope,
+    this.onBackToBusinessAccounts,
   });
 
   final DataAccuracyAdminGateway gateway;
   final String actorUserId;
   final AdminOperatorLocationScopeIntent? initialScope;
+  final AdminHierarchyScopeIntent? initialHierarchyScope;
+  final VoidCallback? onBackToBusinessAccounts;
 
   /// Mirror of the pricing screen pattern: when false, the screen
   /// hides every mutate affordance. The gateway is the second line of
@@ -52,14 +60,34 @@ class PerLocationDataAccuracyScreen extends StatefulWidget {
 
 class _PerLocationDataAccuracyScreenState
     extends State<PerLocationDataAccuracyScreen> {
+  static const AdminHierarchySettingsScopePolicy _scopePolicy =
+      AdminHierarchySettingsScopePolicy(
+        AdminHierarchySettingsSurface.dataAccuracy,
+      );
+
   bool _loading = true;
   String? _loadError;
   String? _actionError;
   List<DataAccuracyAdminRow> _rows = const <DataAccuracyAdminRow>[];
   List<DataAccuracyAdminAuditEvent> _auditEvents =
       const <DataAccuracyAdminAuditEvent>[];
-  late AdminOperatorLocationScopeIntent? _scope = widget.initialScope;
+  late AdminHierarchyScopeIntent? _scope = _decoratedInitialScope;
+  AdminHierarchyScopeIntent? _lastHandoffScope;
+  bool _showScopePrompt = false;
   int _refreshGeneration = 0;
+
+  AdminHierarchyScopeIntent? get _rawInitialScope =>
+      widget.initialHierarchyScope ?? widget.initialScope?.toHierarchyScope();
+
+  AdminHierarchyScopeIntent? get _decoratedInitialScope {
+    final scope = _rawInitialScope;
+    if (scope == null) return null;
+    return _decorateScope(scope);
+  }
+
+  AdminHierarchyScopeIntent _decorateScope(AdminHierarchyScopeIntent scope) {
+    return _scopePolicy.decorate(scope, editingEnabled: widget.editingEnabled);
+  }
 
   @override
   void initState() {
@@ -68,10 +96,30 @@ class _PerLocationDataAccuracyScreenState
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final handoffScope = AdminRouteHandoff.maybeOf(
+      context,
+    )?.effectiveHierarchyScope;
+    if (handoffScope != _lastHandoffScope) {
+      _lastHandoffScope = handoffScope;
+      if (handoffScope != null) {
+        _scope = _decorateScope(handoffScope);
+        _showScopePrompt = false;
+      }
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant PerLocationDataAccuracyScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialScope != oldWidget.initialScope) {
-      _scope = widget.initialScope;
+    if (widget.initialScope != oldWidget.initialScope ||
+        widget.initialHierarchyScope != oldWidget.initialHierarchyScope) {
+      _scope = _decoratedInitialScope;
+      _showScopePrompt = false;
+    } else if (widget.editingEnabled != oldWidget.editingEnabled &&
+        _scope != null) {
+      _scope = _decorateScope(_scope!);
     }
   }
 
@@ -113,7 +161,7 @@ class _PerLocationDataAccuracyScreenState
   }
 
   Future<void> _onEditRow(DataAccuracyAdminRow row) async {
-    if (!widget.editingEnabled) return;
+    if (!_locationMutationEnabled) return;
     final result = await showDialog<_DataAccuracyOverrideDraft>(
       context: context,
       builder: (_) => _DataAccuracyOverrideDialog(initial: row),
@@ -143,6 +191,36 @@ class _PerLocationDataAccuracyScreenState
     }
   }
 
+  Future<void> _onEditServicePeriod(DataAccuracyAdminRow row) async {
+    if (!widget.editingEnabled) return;
+    final draft = await showDialog<_ServicePeriodOverrideDraft>(
+      context: context,
+      builder: (_) => _ServicePeriodOverrideDialog(initial: row),
+    );
+    if (draft == null) return;
+    setState(() => _actionError = null);
+    try {
+      await widget.gateway.overrideDataAccuracyServicePeriod(
+        operatorId: row.operatorRef.operatorId,
+        locationId: row.operatorRef.locationId,
+        servicePeriodKey: draft.servicePeriodKey,
+        coversSource: draft.coversSource,
+        wageSource: draft.wageSource,
+        effectiveAtBusinessDateIso: draft.effectiveAtBusinessDateIso,
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        reasonNote: draft.reasonNote,
+      );
+      await _refresh();
+    } on DataAccuracyAdminForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = 'Service-period override failed: $error');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -153,11 +231,17 @@ class _PerLocationDataAccuracyScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const AdminPageHeader(
+            AdminPageHeader(
               title: 'Data accuracy',
               subtitle:
-                  "Inspect and override each operator-location's covers and wage source. "
-                  'Every override is audit-logged.',
+                  "Inspect each operator-location's covers and wage source. "
+                  'Business and org-unit scopes are read-only until scoped '
+                  'settings resolvers exist.',
+              leading: widget.onBackToBusinessAccounts == null
+                  ? null
+                  : AdminBusinessAccountsBackButton(
+                      onPressed: widget.onBackToBusinessAccounts,
+                    ),
             ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)
@@ -181,7 +265,8 @@ class _PerLocationDataAccuracyScreenState
     if (scope == null) return _rows;
     return _rows
         .where(
-          (row) => scope.matches(
+          (row) => _scopePolicy.includesOperatorLocation(
+            scope,
             operatorId: row.operatorRef.operatorId,
             locationId: row.operatorRef.locationId,
           ),
@@ -194,12 +279,65 @@ class _PerLocationDataAccuracyScreenState
     if (scope == null) return _auditEvents;
     return _auditEvents
         .where(
-          (event) => scope.matches(
+          (event) => _scopePolicy.includesOperatorLocation(
+            scope,
             operatorId: event.operatorId,
             locationId: event.locationId,
           ),
         )
         .toList(growable: false);
+  }
+
+  String? get _scopeRestrictionCopy => _scopePolicy.restrictionCopy(_scope);
+
+  List<AdminHierarchyScopeIntent> get _availableScopes {
+    final selectedOperatorId = _scope?.operatorId;
+    final scopesByKey = <String, AdminHierarchyScopeIntent>{};
+
+    void add(AdminHierarchyScopeIntent scope) {
+      final decorated = _decorateScope(scope);
+      scopesByKey.putIfAbsent(decorated.cacheKey, () => decorated);
+    }
+
+    final selected = _scope;
+    if (selected != null) {
+      add(selected);
+    }
+    for (final row in _rows) {
+      final ref = row.operatorRef;
+      if (selectedOperatorId != null && ref.operatorId != selectedOperatorId) {
+        continue;
+      }
+      add(
+        AdminHierarchyScopeIntent.business(
+          operatorId: ref.operatorId,
+          operatorName: ref.businessName,
+        ),
+      );
+      add(
+        AdminHierarchyScopeIntent.location(
+          operatorId: ref.operatorId,
+          locationId: ref.locationId,
+          operatorName: ref.businessName,
+          locationName: ref.locationName,
+        ),
+      );
+    }
+    return scopesByKey.values.toList(growable: false);
+  }
+
+  void _selectScope(AdminHierarchyScopeIntent scope) {
+    setState(() {
+      _scope = _decorateScope(scope);
+      _showScopePrompt = false;
+    });
+  }
+
+  void _clearScope() {
+    setState(() {
+      _scope = null;
+      _showScopePrompt = false;
+    });
   }
 
   Widget _buildBody() {
@@ -226,18 +364,34 @@ class _PerLocationDataAccuracyScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_showScopePrompt)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: AdminHierarchyScopePrompt(
+                surfaceName: 'Data accuracy',
+                selectedScope: _scope,
+                scopes: _availableScopes,
+                onScopeSelected: _selectScope,
+                onCancel: () => setState(() => _showScopePrompt = false),
+              ),
+            ),
           if (_scope != null)
-            OperatorLocationScopeBanner(
+            AdminHierarchyScopeBanner(
               scope: _scope!,
               surfaceName: 'data accuracy',
-              onClear: () => setState(() => _scope = null),
+              onChangeScope: () =>
+                  setState(() => _showScopePrompt = !_showScopePrompt),
+              onClear: _clearScope,
             ),
+          if (_scopeRestrictionCopy != null)
+            AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
           _buildDataAccuracySummary(),
           const SizedBox(height: 16),
           PerLocationDataAccuracyTable(
             rows: _visibleRows,
-            editingEnabled: widget.editingEnabled,
+            editingEnabled: _locationMutationEnabled,
             onEditRow: _onEditRow,
+            onEditServicePeriod: _onEditServicePeriod,
           ),
           const SizedBox(height: 16),
           DataAccuracyAuditHistoryPanel(events: _visibleAuditEvents),
@@ -278,6 +432,13 @@ class _PerLocationDataAccuracyScreenState
           value: '${_visibleAuditEvents.length}',
         ),
       ],
+    );
+  }
+
+  bool get _locationMutationEnabled {
+    return _scopePolicy.allowsLocationMutation(
+      _scope,
+      editingEnabled: widget.editingEnabled,
     );
   }
 }
@@ -547,6 +708,242 @@ class _WalkInHandlingField extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _ServicePeriodOverrideDraft {
+  const _ServicePeriodOverrideDraft({
+    required this.servicePeriodKey,
+    required this.coversSource,
+    required this.wageSource,
+    required this.effectiveAtBusinessDateIso,
+    required this.reasonNote,
+  });
+
+  final String servicePeriodKey;
+  final ServicePeriodCoversSource coversSource;
+  final ServicePeriodWageSource wageSource;
+  final String effectiveAtBusinessDateIso;
+  final String reasonNote;
+}
+
+class _ServicePeriodOverrideDialog extends StatefulWidget {
+  const _ServicePeriodOverrideDialog({required this.initial});
+
+  final DataAccuracyAdminRow initial;
+
+  @override
+  State<_ServicePeriodOverrideDialog> createState() =>
+      _ServicePeriodOverrideDialogState();
+}
+
+class _ServicePeriodOverrideDialogState
+    extends State<_ServicePeriodOverrideDialog> {
+  static final RegExp _keyPattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
+  static final RegExp _datePattern = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+
+  final TextEditingController _keyCtl = TextEditingController();
+  final TextEditingController _dateCtl = TextEditingController();
+  final TextEditingController _reasonCtl = TextEditingController();
+  ServicePeriodCoversSource _covers = ServicePeriodCoversSource.vendor;
+  ServicePeriodWageSource _wage = ServicePeriodWageSource.vendorPerEmployee;
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _keyCtl.dispose();
+    _dateCtl.dispose();
+    _reasonCtl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final key = _keyCtl.text.trim();
+    final date = _dateCtl.text.trim();
+    final reason = _reasonCtl.text.trim();
+    if (!_keyPattern.hasMatch(key)) {
+      setState(() {
+        _errorText =
+            'Service period key must start with a lowercase letter and use '
+            'only lowercase letters, numbers, or underscores.';
+      });
+      return;
+    }
+    if (!_datePattern.hasMatch(date)) {
+      setState(() {
+        _errorText = 'Effective date must be YYYY-MM-DD.';
+      });
+      return;
+    }
+    if (reason.isEmpty) {
+      setState(() {
+        _errorText = 'Reason note is required for the audit log.';
+      });
+      return;
+    }
+    Navigator.of(context).pop(
+      _ServicePeriodOverrideDraft(
+        servicePeriodKey: key,
+        coversSource: _covers,
+        wageSource: _wage,
+        effectiveAtBusinessDateIso: date,
+        reasonNote: reason,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const Key('admin_data_accuracy_service_period_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      title: Text(
+        'Service-period override: ${widget.initial.operatorRef.businessName} '
+        '/ ${widget.initial.operatorRef.locationName}',
+        style: AdminButtonStyles.dialogTitleStyle,
+      ),
+      content: SizedBox(
+        width: 520,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              TextField(
+                key: const Key('admin_data_accuracy_service_period_key'),
+                controller: _keyCtl,
+                decoration: const InputDecoration(
+                  labelText: 'Service period key',
+                  helperText:
+                      'Examples: lunch, dinner, breakfast, brunch, '
+                      'happy_hour.',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                key: const Key(
+                  'admin_data_accuracy_service_period_effective_date',
+                ),
+                controller: _dateCtl,
+                decoration: const InputDecoration(
+                  labelText: 'Effective from (business date)',
+                  helperText: 'YYYY-MM-DD.',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<ServicePeriodCoversSource>(
+                key: const Key(
+                  'admin_data_accuracy_service_period_covers_source',
+                ),
+                initialValue: _covers,
+                decoration: const InputDecoration(
+                  labelText: 'Covers source',
+                  border: OutlineInputBorder(),
+                ),
+                items: ServicePeriodCoversSource.values
+                    .map(
+                      (s) => DropdownMenuItem<ServicePeriodCoversSource>(
+                        value: s,
+                        child: Text(_servicePeriodCoversLabel(s)),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: (value) {
+                  if (value != null) setState(() => _covers = value);
+                },
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<ServicePeriodWageSource>(
+                key: const Key(
+                  'admin_data_accuracy_service_period_wage_source',
+                ),
+                initialValue: _wage,
+                decoration: const InputDecoration(
+                  labelText: 'Wage source',
+                  border: OutlineInputBorder(),
+                ),
+                items: ServicePeriodWageSource.values
+                    .map(
+                      (s) => DropdownMenuItem<ServicePeriodWageSource>(
+                        value: s,
+                        child: Text(_servicePeriodWageLabel(s)),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: (value) {
+                  if (value != null) setState(() => _wage = value);
+                },
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                key: const Key(
+                  'admin_data_accuracy_service_period_reason_note',
+                ),
+                controller: _reasonCtl,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Reason for override',
+                  hintText: 'Brief explanation for the audit log',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (_errorText != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _errorText!,
+                  key: const Key(
+                    'admin_data_accuracy_service_period_dialog_error',
+                  ),
+                  style: AppTextStyles.body12(color: AppColors.warning),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_data_accuracy_service_period_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_data_accuracy_service_period_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: _submit,
+          child: const Text('Apply override'),
+        ),
+      ],
+    );
+  }
+}
+
+String _servicePeriodCoversLabel(ServicePeriodCoversSource source) {
+  switch (source) {
+    case ServicePeriodCoversSource.vendor:
+      return 'Vendor (POS) feed';
+    case ServicePeriodCoversSource.forecast:
+      return 'Forecast substitution';
+    case ServicePeriodCoversSource.manual:
+      return 'Manual entry';
+    case ServicePeriodCoversSource.reservationPlusWalkin:
+      return 'Reservations + walk-ins';
+  }
+}
+
+String _servicePeriodWageLabel(ServicePeriodWageSource source) {
+  switch (source) {
+    case ServicePeriodWageSource.vendorPerEmployee:
+      return 'Vendor per employee';
+    case ServicePeriodWageSource.vendorPerPosition:
+      return 'Vendor per position';
+    case ServicePeriodWageSource.targetSubstitution:
+      return 'Target substitution';
+    case ServicePeriodWageSource.manualMix:
+      return 'Manual mix';
   }
 }
 

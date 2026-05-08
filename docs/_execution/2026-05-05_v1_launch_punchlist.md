@@ -7,8 +7,12 @@ Done items live in `docs/archive/_execution/2026-05-05_v1_launch_punchlist_done_
 Status legend: `[ ]` open · `[~]` in progress · `[-]` deferred post-V1.
 
 Owner shorthand: **You** = operator/founder action · **Eng** =
-Codex/Claude slice · **Legal** = external counsel · **Cloud** =
-GCP/Azure/Firebase provisioning.
+Codex/Claude slice · **Cloud** = GCP/Azure/Firebase provisioning.
+
+Forge & Flow is operator-self-served on T&Cs: the founder authors and
+accepts the inbound-vendor terms themselves; there is no external
+legal-review gate (see
+`docs/contracts/operator_self_served_tos_contract.md`).
 
 ---
 
@@ -46,11 +50,17 @@ Production1 runtime is live. Detail + resume guide:
       explicit operator decision. Runbook:
       `runbooks/phase_9_production1_migration_apply_runbook.md`.
       _Effort: 1–2 hrs after decision._
-- [ ] **Escalate inbound-vendor T&Cs to counsel.** Draft is in
-      `docs/phases/phase_9_8/`. Suggested deadlines: first pass
-      2026-05-10, final 2026-05-13. Without signed T&Cs there is no
-      `tos_acceptances` row → `cutover.2` cannot run.
-      _Effort: 3–7 days external. Blocks: cutover.2._
+- [ ] **Seed operator-authored T&C content into `tos_versions`.**
+      Operator self-authors the inbound-vendor terms and the founder
+      accepts them through the standard `tos_accept_screen.dart`
+      clickwrap. Source draft + per-vendor scope copy already lives in
+      `docs/phases/phase_9_8/`. Land the universal-scope row + the
+      per-vendor rows for the trio (Lightspeed K-Series, Libro,
+      QuickBooks Time) before `cutover.2` runs so the first
+      `tos_acceptances` row can be captured. Contract:
+      `docs/contracts/operator_self_served_tos_contract.md`.
+      _Effort: 1–2 hrs operator authoring + small seeding slice.
+      Blocks: cutover.2._
 - [ ] **Provision sandbox credentials for the live trio:** Lightspeed
       K-Series (developer.lightspeedhq.com), Libro (test account),
       QuickBooks Time (Intuit sandbox). Store each in GCP Secret
@@ -95,7 +105,9 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
       --enforce-budgets`.
 - [ ] **`cutover.2` — First operator onboarding.** Vanessa created on
       production1. T&C-acceptance row captured. RLS isolation verified
-      live. Tier caps seeded. Requires lawyer-signed T&Cs.
+      live. Tier caps seeded. Requires operator-authored T&C content
+      seeded in `tos_versions` (universal + per-vendor scopes for the
+      trio).
 - [ ] **`cutover.3` — Traffic switch to production.** DNS / env-var flip.
 - [ ] **`cutover.4` — 7-day stability watch.** Non-negotiable minimum
       before V1 launch declaration.
@@ -112,11 +124,22 @@ arrival. Tracker:
 
 ### Wave 1 (trio — needed for launch UX)
 
-- [ ] `8.LSK.live.sandbox` — Lightspeed K-Series sandbox verify
+**Pipeline correctness gate is CLOSED 2026-05-08.** Adapter → canonical fact
+→ Postgres sink → demo-flip → RLS isolation is proved for all three trio
+vendors via fixture-based simulation that mirrors each vendor's published
+API field paths. Detail:
+`docs/_execution/2026-05-08_v1_trio_live_pipeline_proof_via_payload_simulation.md`.
+
+The remaining engineering surface is real OAuth handshake + live HTTP
+transport quirks + vendor-minted webhook signing secret. None of those
+require new engineering work; they require operator action to obtain
+credentials and paste them through the existing connect/rotation flow.
+
+- [ ] `8.LSK.live.sandbox` — Lightspeed K-Series sandbox verify (pipeline proved; needs OAuth handshake + live HTTP)
 - [ ] `8.LSK.live.prod` — Lightspeed K-Series production credentialed
-- [ ] `8R.LB.live.sandbox` — Libro sandbox verify
+- [ ] `8R.LB.live.sandbox` — Libro sandbox verify (pipeline proved; needs OAuth handshake + live HTTP + webhook signing secret)
 - [ ] `8R.LB.live.prod` — Libro production credentialed
-- [ ] `8.S.QBT.live.sandbox` — QuickBooks Time sandbox verify
+- [ ] `8.S.QBT.live.sandbox` — QuickBooks Time sandbox verify (pipeline proved; needs OAuth handshake + live HTTP)
 - [ ] `8.S.QBT.live.prod` — QuickBooks Time production credentialed
 
 ### Wave D (rolling, post-launch)
@@ -140,16 +163,49 @@ arrival. Tracker:
 
 ## 4 · Phase work in scope (queued, not launch-blocking by themselves)
 
-- [ ] **`8.spine-bridge-live` connected-device + push proof.** Code
-      components landed (see V1 closure dispatch + first-connect
-      backfill). Awaiting (a) device + (b) staging apply of mobile push
-      migration + (c) operator-blocked sandbox creds.
-- [ ] **Doc 1 remaining post-V1:**
-      - Item 6 — admin/web setting sync inventory (`audit.admin-web-setting-sync`).
-      - Item 7 — connected-device E2E (`8.connected-device-e2e-smoke`); needs physical device.
-      - Item 8 — live provider proof per vendor (same as Wave 1 / Wave D above).
-      - Item 9 — push proof (`8.push-notification-connected-device-proof`); code-ready.
-      - Item 10 — larger pressure suite (already on `cutover.0b`).
+- [ ] **`8.spine-bridge-live` connected-device + push proof.**
+      **Push setup complete on `forge-flow-production1` (Android-only) 2026-05-08.**
+      Prod proxy rev `forge-flow-production1-proxy-00004-g6q` serving
+      100% traffic with `MOBILE_PUSH_TOKEN_ENVELOPE_KEY` env var; SA
+      `forge-flow-production1-admin@forge-flow-production1.iam.gserviceaccount.com`
+      has `roles/firebasecloudmessaging.admin`; FCM HTTP v1 API enabled;
+      all 4 Firebase apps registered (Forge Flow + Barrio × Android + iOS).
+      **iOS push deferred** — no Apple Developer account / Apple device
+      currently. iOS configs stay in repo as no-ops; Android-only for V1.
+      **Staging push setup blocked** by an unrelated pre-existing
+      data-drift on staging Postgres: 4 `kms_real_provider_*` feature_flags
+      rows are missing, causing any new staging proxy revision to fail
+      startup contract check. Staging IAM is granted, env var would land
+      cleanly the moment the schema-contract issue is resolved (separate
+      bug; not push-related). **Fix landed 2026-05-08:** new migration
+      `db/migrations/202605081300_seed_kms_rollout_flags_default_disabled.sql`
+      idempotently re-seeds the four rows at the system-wide sentinel
+      scope with `enabled = false`. Staging unblock requires applying
+      this single migration to the staging Postgres instance via the
+      Phase 9 migration apply runbook
+      (`runbooks/phase_9_production1_migration_apply_runbook.md` — same
+      shape used for staging). Concretely, from a host that can reach
+      the staging Cloud SQL instance:
+      `gcloud sql connect forge-flow-staging-db --user=ff_migrator
+      --database=postgres < db/migrations/202605081300_seed_kms_rollout_flags_default_disabled.sql`
+      (or paste the file's contents into a `psql` session connected
+      with the migrator role). The migration is wrapped in `BEGIN; …
+      COMMIT;` and is fully idempotent — re-running it after a partial
+      apply or in production is a no-op. Once applied, redeploy the
+      staging proxy and the `admin_schema_contract` check will pass.
+      **Live device proof remains operator-blocked:** install ForgeFlow
+      Android build → first prod operator signs in → app registers FCM
+      token → first push event fires. Operationally chained behind the
+      lawyer T&C signing → first prod operator creation → device install
+      sequence in `cutover.2`.
+      Detail / runbook: `runbooks/firebase_console_push_apply_runbook.md`.
+- [-] **Doc 1 remaining — closed 2026-05-08 except operator-blocked gates:**
+      - Item 6 — admin/web setting sync inventory: **closed** (closeout doc + PRs #391, #393, #398).
+      - Item 7 — connected-device E2E: **closed (emulator simulation)** Pixel 5 / Android 14, screens at `.claude/screenshots_doc1_emu/`.
+      - Item 8 — live provider proof per vendor: still gated on Wave 1 / Wave D sandbox creds.
+      - Item 9 — push proof: still gated on staging Firebase apply.
+      - Item 10 — larger pressure suite: still on `cutover.0b`.
+      - Group/region/company rollup truth: explicitly **backlog** — new server primitive; not in V1 scope.
 - [ ] **Phase 11A.8 / .9 / .10 — operations console final slices.**
       Support audit, cross-operator reads, user impersonation. Deferred
       post-launch unless escalated.
@@ -163,8 +219,7 @@ arrival. Tracker:
 
 ### From the code-health audit
 
-Closeout: `CODE_HEALTH.md` (16 PRs across 5 critical + ~22 high findings;
-addendum captures residuals against current master). Open chip-debt:
+Closeout: 5-wave remediation closed 2026-05-08 — 52 findings across 41 PRs. Archived at `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`. Open chip-debt:
 
 - [ ] **Domain-layer test coverage gap.** `lib/domain/` is 70 files / 5
       tests. Pure functions, trivially testable. Add a domain unit test
@@ -179,20 +234,7 @@ addendum captures residuals against current master). Open chip-debt:
       `operator_location_admin_screen.dart` (2151),
       `forge_flow_app.dart` (~2.5k, growing),
       `tool/advisor_proxy/advisor_proxy.dart` (~15.9k, growing).
-- [ ] **CODE_HEALTH residuals** — see addendum at the end of
-      `CODE_HEALTH.md` for items still open against current master:
-      conflicting `actor_kind` constraint definitions;
-      `phase_8_set_business_date()` `SECURITY DEFINER` blast radius;
-      `DatabaseHelper.instance` hardcoded to `DemoScope.restaurantId`;
-      Postgres pool size pinned at 4; pre-flight token estimate
-      client-supplied; cost-discipline levers unwired (caps fail at
-      402); per-process permission cache invalidation; sync worker
-      bare `catch (_)`; `ShiftDashboardNotifier._load` operator-switch
-      TOCTTOU; `CanonicalSink.appendSyncLog` schema-less map intake
-      (now in `toast_pos_postgres_sink.dart`); MFA removal: audit +
-      outbox enqueue post-`markCompleted` not transactional;
-      `labor_model.dart:266` decomposition rounding (deferred —
-      naive rewrite would flip pinned tests).
+- [ ] **CODE_HEALTH residuals** — chapter closed 2026-05-08; remaining items consolidated into normal tracking surfaces. The bulk of open P0–P3 items lives in `docs/POST_HARDENING_FOLLOWUPS.md` (operational unpause, `backfill_dispatch.dart` bare-catch, widget contract violations, monolith splits, common worker base, two-slot key vs counter-store, SQLite singletons). AI-paused follow-ups in `docs/phases/phase_11a/phase_11a_decision_register.md` (cost-discipline levers, Voyage hardening, `labor_model.dart` rounding). Phase 8 deferred work in `phase_8_spine_bridge_plan.md` (watermark transactional discipline). Permission catalog additions in `docs/contracts/auth_permission_key_catalog.md`. Full historical record in `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`.
 
 ### From the architecture audit
 

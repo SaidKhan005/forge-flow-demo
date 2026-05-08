@@ -27,6 +27,7 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 8. AI infrastructure is general-purpose — `LLMProvider`, `EmbeddingProvider`, `RerankProvider`, `DataSourceProvider`, `IntegrationProvider` are not advisor-specific; Phase 12 reuses the plumbing.
 9. AI cost metered by class — `usage_caps` two-slot key + 5 cost-discipline levers keep margin 75–95%.
 10. Every backend phase ships operator-facing UX before phase close. Phase docs include a `Frontend Exposure` section. UX-exposing slices include a demo-mode walkthrough; Codex returns `FOLLOW-UP NEEDED` if missing.
+11. Hierarchy-scoped settings are mandatory. Business/operator values inherit downward through org units to locations; lower configured scopes override higher scopes. Every settings, roles, timing, pricing, accuracy, security, support, and future configuration surface must show selected scope, inherited source, and effective value, or document why the capability is backend-only/gated/incomplete. Integrations are location-editable only because vendor connections are location-bound.
 
 ## Workflow
 
@@ -34,7 +35,8 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 - Parallel lanes: Codex on master; Claude in `.claude/worktrees/<lane>`. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 - Between batches: master runs `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md` to audit, lean docs, archive, emit next prompts.
 - After `db/migrations/*.sql` changes: `tool/migration_drift_scanner.dart --fix --strict-docs` then `tool/migration_cutoff_lint.dart`.
-- Runtime acceptance: `docs/contracts/slice_runtime_acceptance_contract.md`; browser slices use `runbooks/browser_use_codex_acceptance_workflow.md` (Codex-driven, out-of-repo — no harness binary lives here).
+- Runtime acceptance (advisory pattern, not CI-enforced — reviewer judgment): `docs/contracts/slice_runtime_acceptance_contract.md`; browser slices use `runbooks/browser_use_codex_acceptance_workflow.md` (Codex-driven, out-of-repo — no harness binary lives here).
+- Feature lens audit: use `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` before broad feature work, settings work, route/schema changes, runtime-exposed behavior, or any implementation where hidden plumbing may matter.
 - Main chat is read-only across worktrees when worktrees are running. Tracker/memory/coordination edits on master OK.
 - Don't broaden scope. Don't update trackers during implementation unless asked. Report `Links updated: yes/no` if docs move.
 
@@ -113,6 +115,26 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 ## Session Handoff (only when wrapping)
 
 Update `~/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/session_handoff.md` with what finished, files changed, tests run, next steps, doc moves. Hard cap **40 lines**. "What Completed" = last accepted slice only (prior slices live in `PROJECT_TRACKER.md`). Not prompt authority; don't reread mid-execution.
+
+## Demo Mode
+
+HP #2: `kDemoMode` is a writer-side switch — same tables, same reads, same UI either way. Audited end-to-end 2026-05-07. Detail: `docs/contracts/demo_mode_contract.md`.
+
+Architecture:
+- Demo data lives in standard SQLite tables (`shift_records`, `week_records`, `restaurant_locations`, `target_cycles`, `import_runs`, `raw_import_records`, `active_target_profiles`, etc.) under `DemoScope.restaurantId = 'demo_restaurant_001'`. There are no `demo_*` SQLite tables.
+- The writer is `MockReplayDataSourceProvider` (a `DataSourceProvider<MockReplayOutput>` impl) feeding `_seedDemoDataFromReplay` in `lib/infrastructure/persistence/sqlite/sqlite_database_seed.dart`. Phase 8 vendor connectors (`*_pos_postgres_sink.dart`) implement the same `DataSourceProvider` interface, so flipping demo→live changes only the writer.
+- Per-(operator, location, category) demo state lives in the Postgres `demo_mode_state` table; `DemoModeFlipPolicy.evaluateFlip` flips `is_demo = false` after the first vendor connection backfills ≥1 record. Disconnect does NOT auto-revert.
+- Reader paths (services, repositories, widgets) do NOT branch on `kDemoMode`. They read whatever the active scope's tables hold.
+
+Intentional reader-side carve-outs (do not remove without an explicit replacement plan):
+1. `lib/screens/auth/login_screen.dart` — `_demoOperatorSignInEnabled` adds an additive "Use demo operator" button below the regular sign-in. Strictly UX; the button drives the same `signInWithEmailPassword` path.
+2. `lib/services/app_data_status_service.dart` — the data-status badge renders `DEMO` instead of `CURRENT` when `--dart-define=kDemoMode=true`. Label-only; same read math.
+
+Rules for new demo-aware code:
+- Default = NO branch. Demo and prod read from the same code path.
+- If a UX-only label/badge needs the flag, mark the site `// kDemoMode carve-out: <reason>` and append the rationale to the contract doc + this section.
+- Any new SQLite or Postgres table named `demo_*` is a violation of HP #2; use the existing tables with `restaurant_id = DemoScope.restaurantId` (or the per-(operator, location, category) `demo_mode_state` row).
+- Demo seeders MUST write to the same DAOs / tables as production. Adding a parallel `demo_*` table or a `kDemoMode`-gated reader requires explicit operator sign-off.
 
 ## Flavors
 
