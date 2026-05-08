@@ -1,0 +1,34 @@
+{
+  "_fixture_metadata": {
+    "scenario": "DST_SPRING_FORWARD",
+    "outcome": "accept",
+    "reason": "Per `docs/integrations/adp/field_mapping.md` 'Timestamp shapes', ADP datetime fields carry an explicit UTC `Z`. The skipped local clock window (02:00-03:00 America/Toronto on 2026-03-08) is unambiguous in UTC. The canonicalizer stores UTC; the read layer derives `business_date` via `(operator_id, location_id, restaurant_local_tz)` per `docs/contracts/phase_7_55_time_boundary_contract.md`.",
+    "headers": {
+      "adp-signature": "<valid hmac over raw body>",
+      "adp-signature-timestamp": "1741418445",
+      "adp-event-id": "evt-adp-dst-001",
+      "content-type": "application/json"
+    },
+    "location_local_tz": "America/Toronto",
+    "dst_transition": "2026-03-08T07:00:00Z (02:00 EST -> 03:00 EDT)"
+  },
+  "payload": {
+    "event_id": "evt-adp-dst-001",
+    "event_name": "time.timeEvent.modify",
+    "event_action": "submitted",
+    "time_event": {
+      "id": "ADP-TE-DST-20260308-001",
+      "entry_date_time": "2026-03-08T03:30:00Z",
+      "exit_date_time": "2026-03-08T11:00:00Z",
+      "last_modified_date_time": "2026-03-08T11:00:45Z",
+      "status": "submitted",
+      "_local_anchor_note": "shift_start UTC = 03:30Z; America/Toronto = 22:30 EST (2026-03-07); shift_end UTC = 11:00Z; America/Toronto = 07:00 EDT (2026-03-08). Crosses the spring-forward DST boundary — local clock skips 02:00-03:00, but UTC is contiguous."
+    },
+    "worker": {
+      "associate_oid": "G3W-DST-001",
+      "position": {
+        "position_title": "Overnight Cook"
+      }
+    }
+  }
+}

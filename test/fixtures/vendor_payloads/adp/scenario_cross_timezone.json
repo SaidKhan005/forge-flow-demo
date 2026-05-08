@@ -1,0 +1,35 @@
+{
+  "_fixture_metadata": {
+    "scenario": "CROSS_TIMEZONE",
+    "outcome": "accept",
+    "reason": "Forces the resolver to choose between the operator's `business_date` (Vancouver-local) and the UTC timestamp wire shape. Per `docs/contracts/phase_7_55_time_boundary_contract.md`, restaurant-local timing wins; `business_date` is derived from the location's `restaurant_local_tz`, not from the wire-shape timezone. ADP emits UTC; the deriver maps UTC -> America/Vancouver -> `business_date`.",
+    "headers": {
+      "adp-signature": "<valid hmac over raw body>",
+      "adp-signature-timestamp": "1778256030",
+      "adp-event-id": "evt-adp-crosstz-001",
+      "content-type": "application/json"
+    },
+    "location_local_tz": "America/Vancouver",
+    "expected_business_date": "2026-05-04",
+    "wire_format_note": "ADP emits UTC; if the partner doc reveals a per-location wire shape (e.g. `+00:00` offsets pinned to ADP's data-center clock), the resolver still anchors to America/Vancouver."
+  },
+  "payload": {
+    "event_id": "evt-adp-crosstz-001",
+    "event_name": "time.timeEvent.modify",
+    "event_action": "submitted",
+    "time_event": {
+      "id": "ADP-TE-XTZ-20260504-001",
+      "entry_date_time": "2026-05-05T02:30:00Z",
+      "exit_date_time": "2026-05-05T08:00:00Z",
+      "last_modified_date_time": "2026-05-05T08:00:30Z",
+      "status": "submitted",
+      "_local_anchor_note": "shift_start UTC = 02:30Z 2026-05-05; America/Vancouver = 19:30 PDT 2026-05-04. shift_end UTC = 08:00Z 2026-05-05; America/Vancouver = 01:00 PDT 2026-05-05. Wire-shape calendar day differs from local business date — the resolver must pick local."
+    },
+    "worker": {
+      "associate_oid": "G3W-VAN-001",
+      "position": {
+        "position_title": "Closing Server"
+      }
+    }
+  }
+}

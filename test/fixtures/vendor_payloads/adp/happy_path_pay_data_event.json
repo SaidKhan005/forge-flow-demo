@@ -1,0 +1,29 @@
+{
+  "event_id": "evt-adp-paydata-004",
+  "event_name": "time.timeEvent.modify",
+  "event_action": "pay_data_emitted",
+  "time_event": {
+    "id": "ADP-TE-20260504-000002",
+    "entry_date_time": "2026-05-04T11:00:00Z",
+    "exit_date_time": "2026-05-04T19:30:00Z",
+    "last_modified_date_time": "2026-05-04T19:30:45Z",
+    "status": "submitted",
+    "pay_data": {
+      "regular_hours": "8.00",
+      "overtime_hours": "0.00",
+      "double_time_hours": "0.00",
+      "earning_codes": [
+        {
+          "code": "REG",
+          "hours": "8.00"
+        }
+      ]
+    }
+  },
+  "worker": {
+    "associate_oid": "G3W001",
+    "workAssignment": {
+      "jobTitle": "Cook"
+    }
+  }
+}

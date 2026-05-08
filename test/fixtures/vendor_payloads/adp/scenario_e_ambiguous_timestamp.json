@@ -1,0 +1,31 @@
+{
+  "_fixture_metadata": {
+    "scenario": "E",
+    "outcome": "reject",
+    "reason": "Timestamps lack explicit UTC `Z` or offset. `adpTimestampPolicy.ambiguousConvention = AmbiguousTimestampConvention.refuse` — the adapter MUST refuse rather than silently treat as UTC.",
+    "headers": {
+      "adp-signature": "<valid hmac over raw body>",
+      "adp-signature-timestamp": "1778256030",
+      "adp-event-id": "evt-adp-ambiguous-001",
+      "content-type": "application/json"
+    }
+  },
+  "payload": {
+    "event_id": "evt-adp-ambiguous-001",
+    "event_name": "time.timeEvent.modify",
+    "event_action": "submitted",
+    "time_event": {
+      "id": "ADP-TE-AMBIGUOUS-001",
+      "entry_date_time": "2026-05-04T15:00:00",
+      "exit_date_time": "2026-05-04T23:00:00",
+      "last_modified_date_time": "2026-05-04T23:00:30",
+      "status": "submitted"
+    },
+    "worker": {
+      "associate_oid": "G3WXX1Y2Z3A4B5C6",
+      "position": {
+        "position_title": "Server"
+      }
+    }
+  }
+}

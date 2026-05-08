@@ -1,0 +1,30 @@
+{
+  "_fixture_metadata": {
+    "scenario": "D",
+    "credential_kind": "mtls_client_credentials",
+    "outcome": "no_broker_refresh_closure",
+    "reason": "ADP production wires `oauth_2.0_client_credentials + mutual_tls`. Per-call client_credentials re-issue is internal to the ADP transport; F&F does NOT run a refresh-token closure for ADP. mTLS cert rotation is handled out-of-band by ADP partner ops, not by `oauth_refresh_cron`.",
+    "verification_expectations": [
+      "`oauth_refresh_cron` skips ADP rows — no `refresh_token` exists on `vendor_credentials` for `vendor_id = 'adp'`.",
+      "Cert near-expiry surfaces as a `connector_connection.status = 'error'` flip with operator copy 'ADP partner certificate near expiry; please contact ADP support to rotate.' (V1 lean cut 2 — no auto-rotation; partner ops owns this).",
+      "When the cert pair is rotated by partner ops, the operator-scoped cert pair is replaced via the `VendorCredentialHandle` injection at `*.live.prod`; no token refresh occurs in F&F's flow.",
+      "The `client_credentials` token is minted per-call by the ADP transport against `POST /auth/oauth/v2/token` with mutual TLS; the access token is held in-memory only for the duration of the call (no `vendor_credentials.refresh_token` row), so the framework's near-expiry refresh path is N/A by construction."
+    ]
+  },
+  "synthetic_token_state_for_completeness": {
+    "vendor_id": "adp",
+    "operator_id": "<placeholder-operator-id>",
+    "location_id": "<placeholder-location-id>",
+    "module": "workforce_now",
+    "auth_method": "oauth_2.0_client_credentials + mutual_tls",
+    "access_token": "<minted-per-call, never persisted>",
+    "refresh_token": null,
+    "token_expires_at": null,
+    "mtls_cert_pair": {
+      "issued_at": "2026-02-01T00:00:00Z",
+      "expires_at": "2027-02-01T00:00:00Z",
+      "rotation_owner": "adp_partner_ops",
+      "f_and_f_rotation_path": "out_of_band"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "time_event": {
+    "id": "ADP-TE-MIN-001",
+    "entry_date_time": "2026-05-04T15:00:00Z",
+    "exit_date_time": "2026-05-04T23:00:00Z",
+    "last_modified_date_time": "2026-05-04T23:00:00Z"
+  },
+  "worker": {
+    "associate_oid": "G3W-MIN-001",
+    "position": {
+      "position_title": "Server"
+    }
+  }
+}
