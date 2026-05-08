@@ -16385,10 +16385,24 @@ Future<bool> _requireAdminPermissionOrWrite({
       });
       return false;
     case ProxyAdminMfaStaleAuth(:final refreshAfter):
+      // CODE_OPS_DEBT Theme A item 1 — operator decision is "full
+      // re-auth" (sign-out → login → MFA → return) rather than a
+      // step-up modal. We carry a `redirect_uri` hint here so the
+      // admin shell + operator web client can branch on it without
+      // hard-coding the route. Keep the existing 403 status +
+      // `mfa_freshness_required` error code so the existing test
+      // suite stays green; the 401 + `fresh_mfa_required` shape
+      // documented in the lane prompt is reserved for the
+      // future per-route `requiresFreshMfa` decoration (out of
+      // scope here — this slice un-pins the four UI affordances
+      // and leaves the proxy verifier stable).
       _writeJson(response, 403, <String, Object?>{
         'error': 'mfa_freshness_required',
         'message': 'fresh authentication is required',
         'refresh_after': refreshAfter.toUtc().toIso8601String(),
+        'redirect_uri':
+            '/auth/login?reason=fresh_mfa_required&permission_key='
+            '${Uri.encodeQueryComponent(permissionKey)}',
       });
       return false;
     case ProxyAdminChallengeRequired():

@@ -137,3 +137,32 @@ Env names this gate consults (names only — never echo values):
 - `AUDIT_ANCHOR_REQUIRE_AZURE` — boolean; accepts `true`, `1`, `yes`.
 - `AZURE_AD_TENANT_ID` — Azure AD tenant id for federated identity.
 - `AZURE_AD_CLIENT_ID` — Azure AD app-registration client id.
+
+## MFA Freshness Window (CODE_OPS_DEBT Theme A item 1)
+
+The four MFA-pinned admin actions —
+`admin.roles.edit_seeded`,
+`admin.users.reset_mfa_factors`,
+`admin.users.issue_paired_erasure`,
+`admin.audit.export` — gate on a fresh MFA stamp resolved by
+`JwtFreshMfaResolver` (`lib/auth/fresh_mfa_resolver.dart`). The
+resolver reads JWT `auth_time` (Identity Platform stamps it at
+sign-in and at MFA completion) and compares to a configurable
+window.
+
+- Default: **3600 seconds (1 hour)**. Operator-locked 2026-05-07.
+- Override env var: `MFA_FRESHNESS_WINDOW_SECONDS` (positive integer
+  seconds). Set on the Cloud Run proxy revision when a longer or
+  shorter window is needed for a specific environment.
+- A non-numeric or non-positive value falls back to the default and
+  is logged at startup.
+- Stale → operator decision is **full re-authentication** (sign-out
+  → login → MFA → return), not a step-up modal. The proxy includes
+  a `redirect_uri` hint in the 403 / `mfa_freshness_required`
+  payload that the admin shell consumes to drive the navigation.
+
+Operational note: changing the window from the default writes no
+data — restart the proxy and the new value applies on the next
+request. The admin UI affordances re-resolve on every paint, so the
+new window takes effect for both new and existing sessions
+immediately.

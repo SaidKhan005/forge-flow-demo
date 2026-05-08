@@ -58,6 +58,7 @@ class AdminAuthSession {
     required this.email,
     required this.displayName,
     required this.roles,
+    this.lastFreshAuthAt,
   });
 
   /// Firebase user UID (or a synthetic id under demo mode).
@@ -73,6 +74,15 @@ class AdminAuthSession {
   /// Role claims. Membership in [kAdminConsoleRoles] is what the
   /// admit decision keys off.
   final List<String> roles;
+
+  /// JWT `auth_time` (last time the user actually authenticated,
+  /// including MFA completion). Drives the
+  /// [FreshMfaResolver]-backed gate on the four MFA-pinned admin
+  /// actions (canEditSeededRoles, canResetMfaFactors,
+  /// canIssuePairedErasure, canExportAuditLog). Null for demo
+  /// fixtures and the legacy bare-claims path; the resolver treats
+  /// null/epoch-zero as "never fresh" so the affordance fails closed.
+  final DateTime? lastFreshAuthAt;
 
   /// True if any admitted role is present.
   bool get isAdmin => roles.any(kAdminConsoleRoles.contains);
@@ -435,6 +445,12 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
           credential.displayName ??
           _localPartOrUid(email: email, uid: credential.userId),
       roles: roles,
+      // Carry the verified `auth_time` claim through to the admin
+      // shell so the four MFA-pinned action gates (CODE_OPS_DEBT
+      // Theme A, item 1) can resolve via the shared
+      // FreshMfaResolver instead of the historic `const ... = false`
+      // pins.
+      lastFreshAuthAt: credential.lastFreshAuthAt,
     );
     return session.isAdmin
         ? AdminAuthAuthenticated(session)
