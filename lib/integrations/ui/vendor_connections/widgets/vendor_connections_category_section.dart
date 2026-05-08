@@ -9,9 +9,10 @@
 part of '../vendor_connections_widget.dart';
 
 class _Header extends StatelessWidget {
-  const _Header({required this.locationName});
+  const _Header({required this.locationName, this.leading});
 
   final String locationName;
+  final Widget? leading;
 
   String get _locationPhrase {
     final trimmed = locationName.trim();
@@ -38,10 +39,27 @@ class _Header extends StatelessWidget {
         children: [
           _CategoryIcon(category: null, size: 34),
           const SizedBox(height: 10),
-          Text(
-            'Vendor integrations',
-            style: AppTextStyles.pageTitle(color: AppColors.textPrimary),
-          ),
+          if (leading == null)
+            Text(
+              'Vendor integrations',
+              style: AppTextStyles.pageTitle(color: AppColors.textPrimary),
+            )
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                leading!,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    'Vendor integrations',
+                    style: AppTextStyles.pageTitle(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           const SizedBox(height: 6),
           Text(
             'Manage the services connected to $_locationPhrase. Forge & Flow reads data for reporting and forecasting; it does not push changes back to vendor systems.',

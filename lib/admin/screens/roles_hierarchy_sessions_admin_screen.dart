@@ -26,6 +26,7 @@ import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
 import '../services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'operator_picker_screen.dart';
 
@@ -39,6 +40,7 @@ class RolesHierarchySessionsAdminScreen extends StatefulWidget {
     this.canEditSeededRoles = false,
     this.idempotencyKeyFactory,
     this.onChangeOperator,
+    this.onBackToBusinessAccounts,
   });
 
   final RolesHierarchySessionsAdminGateway gateway;
@@ -63,6 +65,7 @@ class RolesHierarchySessionsAdminScreen extends StatefulWidget {
   /// Re-opens the operator picker. Wired by the route shell so the
   /// admin can switch operators without leaving the surface.
   final VoidCallback? onChangeOperator;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   State<RolesHierarchySessionsAdminScreen> createState() =>
@@ -379,6 +382,11 @@ class _RolesHierarchySessionsAdminScreenState
               subtitle:
                   '${widget.pickedOperator.operatorBusinessName}: role policy, '
                   'and location hierarchy. Active sessions moved to Security/audit/sessions.',
+              leading: widget.onBackToBusinessAccounts == null
+                  ? null
+                  : AdminBusinessAccountsBackButton(
+                      onPressed: widget.onBackToBusinessAccounts,
+                    ),
               trailing: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),

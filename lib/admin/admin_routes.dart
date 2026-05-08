@@ -557,6 +557,14 @@ Widget _buildOperators(BuildContext context) {
   );
 }
 
+VoidCallback? _backToBusinessAccounts(BuildContext context) {
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  if (handoff == null) return null;
+  return () => handoff.onSelectRoute(
+    const AdminRouteIntent(routeId: kAdminOperatorsRouteId),
+  );
+}
+
 // Retained for backwards-compatible deep-link handoff while the primary IA
 // moves Support Workspace functions into scoped setup tiles.
 // ignore: unused_element
@@ -942,11 +950,13 @@ Widget _buildDataAccuracy(BuildContext context) {
   final gateway = AdminConsoleServicesScope.dataAccuracyAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final scope = AdminRouteHandoff.maybeOf(context)?.operatorLocationScope;
+  final onBackToBusinessAccounts = _backToBusinessAccounts(context);
   if (source == null) {
     return PerLocationDataAccuracyScreen(
       gateway: gateway,
       actorUserId: 'demo-super-admin',
       initialScope: scope,
+      onBackToBusinessAccounts: onBackToBusinessAccounts,
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -961,6 +971,7 @@ Widget _buildDataAccuracy(BuildContext context) {
         actorUserId: session?.uid ?? 'unknown',
         editingEnabled: canEdit,
         initialScope: scope,
+        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     },
   );
@@ -970,11 +981,13 @@ Widget _buildPollingPricing(BuildContext context) {
   final gateway = AdminConsoleServicesScope.dataAccuracyAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final scope = AdminRouteHandoff.maybeOf(context)?.operatorLocationScope;
+  final onBackToBusinessAccounts = _backToBusinessAccounts(context);
   if (source == null) {
     return PollingAndPricingAdminScreen(
       gateway: gateway,
       actorUserId: 'demo-super-admin',
       initialScope: scope,
+      onBackToBusinessAccounts: onBackToBusinessAccounts,
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -989,6 +1002,7 @@ Widget _buildPollingPricing(BuildContext context) {
         actorUserId: session?.uid ?? 'unknown',
         editingEnabled: canEdit,
         initialScope: scope,
+        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     },
   );
@@ -1090,6 +1104,7 @@ Widget _buildMembers(BuildContext context) {
       openPicker: openPicker,
       onOperatorPicked: rememberPickedOperator,
       onOpenAccess: handoff == null ? null : openScopedAccess,
+      onBackToBusinessAccounts: _backToBusinessAccounts(context),
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -1111,6 +1126,7 @@ Widget _buildMembers(BuildContext context) {
         openPicker: openPicker,
         onOperatorPicked: rememberPickedOperator,
         onOpenAccess: handoff == null ? null : openScopedAccess,
+        onBackToBusinessAccounts: _backToBusinessAccounts(context),
       );
     },
   );
@@ -1129,6 +1145,7 @@ class _MembersAdminRouteShell extends StatefulWidget {
     required this.openPicker,
     required this.onOperatorPicked,
     required this.onOpenAccess,
+    required this.onBackToBusinessAccounts,
   });
 
   final MembersAdminGateway gateway;
@@ -1146,6 +1163,7 @@ class _MembersAdminRouteShell extends StatefulWidget {
   openPicker;
   final ValueChanged<OperatorPickerResult> onOperatorPicked;
   final ValueChanged<OperatorPickerResult>? onOpenAccess;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   State<_MembersAdminRouteShell> createState() =>
@@ -1256,6 +1274,7 @@ class _MembersAdminRouteShellState extends State<_MembersAdminRouteShell> {
       onOpenAccess: widget.onOpenAccess == null
           ? null
           : () => widget.onOpenAccess!(picked),
+      onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
     );
   }
 }
@@ -1309,6 +1328,7 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
       initialPicked: initialPicked,
       openPicker: openPicker,
       onOperatorPicked: rememberPickedOperator,
+      onBackToBusinessAccounts: _backToBusinessAccounts(context),
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -1338,6 +1358,7 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
         initialPicked: initialPicked,
         openPicker: openPicker,
         onOperatorPicked: rememberPickedOperator,
+        onBackToBusinessAccounts: _backToBusinessAccounts(context),
       );
     },
   );
@@ -1353,6 +1374,7 @@ class _RolesHierarchySessionsRouteShell extends StatefulWidget {
     required this.initialPicked,
     required this.openPicker,
     required this.onOperatorPicked,
+    required this.onBackToBusinessAccounts,
   });
 
   final RolesHierarchySessionsAdminGateway gateway;
@@ -1367,6 +1389,7 @@ class _RolesHierarchySessionsRouteShell extends StatefulWidget {
   )
   openPicker;
   final ValueChanged<OperatorPickerResult> onOperatorPicked;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   State<_RolesHierarchySessionsRouteShell> createState() =>
@@ -1461,6 +1484,7 @@ class _RolesHierarchySessionsRouteShellState
       editingEnabled: widget.editingEnabled,
       canEditSeededRoles: widget.canEditSeededRoles,
       onChangeOperator: _openPicker,
+      onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
     );
   }
 }
@@ -1522,6 +1546,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
       initialScope: initialScope,
       openPicker: openPicker,
       onOperatorPicked: rememberPickedOperator,
+      onBackToBusinessAccounts: _backToBusinessAccounts(context),
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -1556,6 +1581,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
         initialScope: initialScope,
         openPicker: openPicker,
         onOperatorPicked: rememberPickedOperator,
+        onBackToBusinessAccounts: _backToBusinessAccounts(context),
       );
     },
   );
@@ -1575,6 +1601,7 @@ class _AuditedSupportActionsRouteShell extends StatefulWidget {
     required this.initialScope,
     required this.openPicker,
     required this.onOperatorPicked,
+    required this.onBackToBusinessAccounts,
   });
 
   final AuditedSupportActionsAdminGateway gateway;
@@ -1593,6 +1620,7 @@ class _AuditedSupportActionsRouteShell extends StatefulWidget {
   )
   openPicker;
   final ValueChanged<OperatorPickerResult> onOperatorPicked;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   State<_AuditedSupportActionsRouteShell> createState() =>
@@ -1691,6 +1719,7 @@ class _AuditedSupportActionsRouteShellState
       canExportAuditLog: widget.canExportAuditLog,
       hierarchyScope: widget.initialScope,
       onChangeOperator: _openPicker,
+      onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
     );
   }
 }
@@ -1706,6 +1735,9 @@ Widget _buildDebugConsole(BuildContext context) {
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final supportLogFilter = AdminRouteHandoff.maybeOf(context)?.supportLogFilter;
   final supportLogScope = supportLogFilter?.effectiveHierarchyScope;
+  final onBackToBusinessAccounts = supportLogFilter == null
+      ? null
+      : _backToBusinessAccounts(context);
   final initialFilter = RequestLogFilter(
     operatorId: supportLogFilter?.effectiveOperatorId,
     locationId: supportLogFilter?.effectiveLocationId,
@@ -1716,6 +1748,7 @@ Widget _buildDebugConsole(BuildContext context) {
       hierarchyGateway: hierarchyGateway,
       hierarchyScope: supportLogScope,
       initialFilter: initialFilter,
+      onBackToBusinessAccounts: onBackToBusinessAccounts,
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -1731,6 +1764,7 @@ Widget _buildDebugConsole(BuildContext context) {
         hierarchyScope: supportLogScope,
         editingEnabled: canEdit,
         initialFilter: initialFilter,
+        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     },
   );

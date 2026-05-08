@@ -1156,6 +1156,8 @@ class _OperatorDetail extends StatelessWidget {
                     scopeOptions: scopedIntegrationOptions,
                     gateway: vendorConnectionsGateway,
                     canMutate: editingEnabled,
+                    onBackToBusinessAccounts: () =>
+                        Navigator.of(context).maybePop(),
                   ),
                 ),
               );
@@ -2821,6 +2823,8 @@ class _LocationActionWrap extends StatelessWidget {
                         locationId: location.locationId,
                         locationName: location.name,
                         canMutate: editingEnabled,
+                        onBackToBusinessAccounts: () =>
+                            Navigator.of(subContext).maybePop(),
                       ),
                     ),
                   );

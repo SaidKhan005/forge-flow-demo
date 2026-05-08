@@ -36,6 +36,7 @@ import '../admin_route_handoff.dart';
 import '../models/email_conflict_details.dart';
 import '../services/members_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'invite_member_admin_dialog.dart';
 import 'operator_picker_screen.dart';
@@ -54,6 +55,7 @@ class MembersAdminScreen extends StatefulWidget {
     this.rolesGateway,
     this.canEditSeededRoles = false,
     this.initialScope,
+    this.onBackToBusinessAccounts,
   });
 
   final MembersAdminGateway gateway;
@@ -87,6 +89,7 @@ class MembersAdminScreen extends StatefulWidget {
   final RolesHierarchySessionsAdminGateway? rolesGateway;
   final bool canEditSeededRoles;
   final AdminHierarchyScopeIntent? initialScope;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   State<MembersAdminScreen> createState() => _MembersAdminScreenState();
@@ -819,6 +822,11 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
               subtitle:
                   '${widget.pickedOperator.operatorBusinessName}: members, '
                   'invites, role grants, and access scopes. Changes require a reason.',
+              leading: widget.onBackToBusinessAccounts == null
+                  ? null
+                  : AdminBusinessAccountsBackButton(
+                      onPressed: widget.onBackToBusinessAccounts,
+                    ),
               trailing: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),

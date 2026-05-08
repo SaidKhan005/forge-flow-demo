@@ -46,6 +46,7 @@ import '../admin_route_handoff.dart';
 import '../admin_button_styles.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'operator_picker_screen.dart';
 import 'roles_hierarchy_sessions_admin_screen.dart';
@@ -64,6 +65,7 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
     this.hierarchyScope,
     this.idempotencyKeyFactory,
     this.onChangeOperator,
+    this.onBackToBusinessAccounts,
     this.graceWindowClock,
     this.graceWindowTickInterval = const Duration(minutes: 1),
   });
@@ -107,6 +109,7 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
   /// Re-opens the operator picker. Wired by the route shell so the
   /// admin can switch operators without leaving the surface.
   final VoidCallback? onChangeOperator;
+  final VoidCallback? onBackToBusinessAccounts;
 
   /// CODE_OPS_DEBT carry-over #2 — the grace-window countdown chip
   /// reads "now" from this clock so widget tests can pin the
@@ -501,6 +504,11 @@ class _AuditedSupportActionsAdminScreenState
               subtitle:
                   '${widget.pickedOperator.operatorBusinessName}: audit '
                   'history, active sessions, and gated support actions.',
+              leading: widget.onBackToBusinessAccounts == null
+                  ? null
+                  : AdminBusinessAccountsBackButton(
+                      onPressed: widget.onBackToBusinessAccounts,
+                    ),
               trailing: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),

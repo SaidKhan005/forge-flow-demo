@@ -76,6 +76,7 @@ class VendorConnectionsWidget extends StatefulWidget {
     this.locationNameOverride,
     this.gateway,
     this.canMutate = true,
+    this.headerLeading,
     this.onConnectFlowStarted,
   });
 
@@ -90,6 +91,7 @@ class VendorConnectionsWidget extends StatefulWidget {
   /// `false` for `ff_support` (read-only in F&F Ops Console). Hides
   /// connect / test / disconnect buttons but still renders status.
   final bool canMutate;
+  final Widget? headerLeading;
 
   /// Optional host hook for OAuth/key-paste redirects. Web hosts can
   /// navigate the browser; test/demo hosts can leave it null and keep
@@ -184,6 +186,7 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
                 _Header(
                   locationName:
                       widget.locationNameOverride ?? bundle.locationName,
+                  leading: widget.headerLeading,
                 ),
                 const SizedBox(height: 16),
                 _CategorySection(
@@ -437,4 +440,3 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
     );
   }
 }
-
