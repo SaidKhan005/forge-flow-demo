@@ -1,0 +1,32 @@
+{
+  "_envelope": {
+    "transport": "webhook",
+    "method": "POST",
+    "path": "/v1/webhooks/op_test_001/loc_test_001/revel",
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Revel-Signature": "0a1b2c3d4e5f60718293a4b5c6d7e8f901020304",
+      "X-Revel-Event-Type": "order.finalized",
+      "X-Revel-Event-Id": "evt_8842500_1746230000",
+      "X-Revel-Message-Id": "msg_zero-covers-1234",
+      "X-Revel-Instance": "demo-instance",
+      "X-Revel-Establishment-Id": "4421"
+    }
+  },
+  "order": {
+    "id": 8842500,
+    "local_id": "A-0145",
+    "uuid": "00000000-0000-4000-8000-dddddddddddd",
+    "created_date": "2026-05-03T15:00:00Z",
+    "updated_date": "2026-05-03T15:08:45Z",
+    "final_total": "12.50",
+    "subtotal": "11.50",
+    "tax": "1.00",
+    "number_of_people": 0,
+    "closed": true,
+    "voided": false,
+    "dining_option": 3,
+    "establishment_id": 4421,
+    "instance_name": "demo-instance"
+  }
+}

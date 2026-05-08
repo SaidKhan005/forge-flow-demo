@@ -1,0 +1,42 @@
+{
+  "_envelope": {
+    "transport": "webhook",
+    "method": "POST",
+    "path": "/v1/webhooks/op_test_001/loc_test_001/revel",
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Revel-Signature": "55aa55aa55aa55aa55aa55aa55aa55aa55aa55aa",
+      "X-Revel-Event-Type": "order.finalized",
+      "X-Revel-Event-Id": "evt_xtz_8843400",
+      "X-Revel-Message-Id": "msg_xtz-0001",
+      "X-Revel-Instance": "demo-instance-vancouver",
+      "X-Revel-Establishment-Id": "4422"
+    },
+    "_assertion": "Accept — Vancouver location (`America/Vancouver`, PST/PDT) connection. Revel emits ISO 8601 UTC for both timestamps. The wire shape is unambiguous; business_date is resolved by `iana_timezone_converter.toBusinessDate` using `location.timezone='America/Vancouver'` (NOT the operator's nominal Toronto headquarters), per Phase 7.55 Rule 11 ('Restaurant-local timing wins; business date is the anchor'). Order opens at UTC 03:30Z = 20:30 PDT on 2026-05-04 (local prior-day); closes at UTC 05:15Z = 22:15 PDT on 2026-05-04. With the default 04:00 rollover, business_date = '2026-05-04' (the local Monday)."
+  },
+  "_cross_timezone_context": {
+    "operator_id": "op_test_001",
+    "operator_nominal_headquarters": "America/Toronto",
+    "this_location_id": "loc_test_002_vancouver",
+    "this_location_timezone": "America/Vancouver",
+    "wire_timezone": "UTC (Revel convention)",
+    "harness_check": "If the harness mistakenly resolves business_date using operator HQ time (Toronto), the order would bucket to 2026-05-04 23:30 EDT and 2026-05-05 01:15 EDT — splitting one event across two business days. The IANA converter MUST honor the per-location timezone."
+  },
+  "order": {
+    "id": 8843400,
+    "local_id": "B-VAN-0001",
+    "uuid": "00000000-0000-4000-8000-bbbbcccc0001",
+    "created_date": "2026-05-05T03:30:00Z",
+    "updated_date": "2026-05-05T05:15:00Z",
+    "final_total": "184.20",
+    "subtotal": "164.50",
+    "tax": "19.70",
+    "number_of_people": 5,
+    "closed": true,
+    "voided": false,
+    "dining_option": 1,
+    "establishment_id": 4422,
+    "instance_name": "demo-instance-vancouver",
+    "timezone": "America/Vancouver"
+  }
+}

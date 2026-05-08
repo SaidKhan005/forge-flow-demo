@@ -1,0 +1,40 @@
+{
+  "_envelope": {
+    "transport": "webhook",
+    "method": "POST",
+    "path": "/v1/webhooks/op_test_001/loc_test_001/revel",
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Revel-Signature": "9988776655443322110099887766554433221100",
+      "X-Revel-Event-Type": "order.finalized",
+      "X-Revel-Event-Id": "evt_dst_8843300",
+      "X-Revel-Message-Id": "msg_dst-spring-0001",
+      "X-Revel-Instance": "demo-instance",
+      "X-Revel-Establishment-Id": "4421"
+    },
+    "_assertion": "Accept — Revel emits ISO 8601 UTC timestamps that are unambiguous across DST transitions (UTC has no DST). The 2026-03-08 spring-forward at America/Toronto skips local 02:00→03:00; this order at UTC 06:30Z is 01:30 EST (pre-transition) and at UTC 08:30Z is 04:30 EDT (post-transition). business_date computation runs in iana_timezone_converter.toBusinessDate from `location.timezone='America/Toronto'` + `business_day_rollover_hour`; both timestamps fall before the location-local rollover (default 04:00) so they bucket to business_date '2026-03-07' (the prior business day). The harness must assert no double-booking and no missing hour."
+  },
+  "_dst_context": {
+    "location_timezone": "America/Toronto",
+    "transition_date_local": "2026-03-08",
+    "transition_local_skip": "02:00 EST → 03:00 EDT (the 02:00–03:00 local hour does not exist)",
+    "transition_utc_window": "2026-03-08T07:00:00Z (last EST instant) → 2026-03-08T07:00:00Z (first EDT instant)",
+    "business_day_rollover_hour_local_default": 4
+  },
+  "order": {
+    "id": 8843300,
+    "local_id": "A-DST-0001",
+    "uuid": "00000000-0000-4000-8000-aaaadddd0001",
+    "created_date": "2026-03-08T06:30:00Z",
+    "updated_date": "2026-03-08T08:30:00Z",
+    "final_total": "92.40",
+    "subtotal": "82.50",
+    "tax": "9.90",
+    "number_of_people": 4,
+    "closed": true,
+    "voided": false,
+    "dining_option": 1,
+    "establishment_id": 4421,
+    "instance_name": "demo-instance"
+  }
+}

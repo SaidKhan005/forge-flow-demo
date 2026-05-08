@@ -1,0 +1,33 @@
+{
+  "_envelope": {
+    "transport": "webhook",
+    "method": "POST",
+    "path": "/v1/webhooks/op_test_001/loc_test_001/revel",
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Revel-Signature": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      "X-Revel-Event-Type": "order.finalized",
+      "X-Revel-Event-Id": "evt_forged_8842999",
+      "X-Revel-Message-Id": "msg_forged-deadbeef",
+      "X-Revel-Instance": "demo-instance",
+      "X-Revel-Establishment-Id": "4421"
+    },
+    "_assertion": "Reject — RevelWebhookSignatureVerifier returns valid=false with failureReason 'X-Revel-Signature HMAC mismatch' (constant-time bytes compare in lib/integrations/pos/revel_webhook_signature_verifier.dart). Inbound handler responds 403; no canonical fact written."
+  },
+  "order": {
+    "id": 8842999,
+    "local_id": "A-0999",
+    "uuid": "00000000-0000-4000-8000-fffffffffffe",
+    "created_date": "2026-05-02T19:50:00Z",
+    "updated_date": "2026-05-02T20:35:00Z",
+    "final_total": "64.30",
+    "subtotal": "57.40",
+    "tax": "6.90",
+    "number_of_people": 3,
+    "closed": true,
+    "voided": false,
+    "dining_option": 1,
+    "establishment_id": 4421,
+    "instance_name": "demo-instance"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "_envelope": {
+    "transport": "webhook",
+    "method": "POST",
+    "path": "/v1/webhooks/op_test_001/loc_test_001/revel",
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Revel-Signature": "1f3a2c5e7b9d0f1e2c3b4a5968778695a4b3c2d1",
+      "X-Revel-Event-Type": "order.finalized",
+      "X-Revel-Event-Id": "evt_8842401_1746214500",
+      "X-Revel-Message-Id": "msg_a1b2c3d4-e5f6-4789-a012-3456789abcde",
+      "X-Revel-Instance": "demo-instance",
+      "X-Revel-Establishment-Id": "4421"
+    }
+  },
+  "order": {
+    "id": 8842401,
+    "local_id": "A-0143",
+    "uuid": "00000000-0000-4000-8000-bbbbbbbbbbbb",
+    "created_date": "2026-05-02T19:50:00Z",
+    "updated_date": "2026-05-02T20:35:00Z",
+    "final_total": 128.75,
+    "subtotal": "115.00",
+    "tax": "13.75",
+    "number_of_people": 4,
+    "closed": true,
+    "voided": false,
+    "dining_option": 1,
+    "establishment_id": 4421,
+    "instance_name": "demo-instance",
+    "payments": [
+      {
+        "id": 92010001,
+        "type": "credit_card",
+        "amount": "100.00",
+        "tip_amount": "18.00",
+        "card_last4": "4242",
+        "card_brand": "VISA",
+        "cardholder_name": "ON FILE — IGNORED PER PCI",
+        "created_date": "2026-05-02T20:34:30Z"
+      },
+      {
+        "id": 92010002,
+        "type": "cash",
+        "amount": "10.75",
+        "tip_amount": "0.00",
+        "created_date": "2026-05-02T20:34:55Z"
+      }
+    ]
+  }
+}
