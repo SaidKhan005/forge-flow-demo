@@ -1,0 +1,19 @@
+{
+  "_pressure_meta": {
+    "scenario": "B — malformed payload",
+    "expected_outcome": "reject",
+    "missing_required_fields": ["venue_id", "size", "reservation_at", "updated_at"],
+    "expected_failure": "LibroReservationDto.fromMap throws (TypeError on null! cast for venue_id, or FormatException on missing reservation_at via _parseInstant)",
+    "verifier": "lib/integrations/reservation/libro_reservation_adapter.dart::LibroReservationDto.fromMap"
+  },
+  "id": "wh-evt-7c2f-800",
+  "type": "reservation.confirmed",
+  "venue_id": "venue-toronto-yorkville",
+  "occurred_at": "2026-05-04T11:30:05",
+  "reservation": {
+    "id": "lbr-evt-7c2f-malformed",
+    "status": "confirmed",
+    "created_at": "2026-05-04T11:30:00",
+    "confirmed_at": "2026-05-04T11:30:04"
+  }
+}

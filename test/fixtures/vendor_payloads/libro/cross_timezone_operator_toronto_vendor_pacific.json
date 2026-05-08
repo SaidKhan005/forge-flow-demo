@@ -1,0 +1,25 @@
+{
+  "_pressure_meta": {
+    "scenario": "Cross-timezone — operator Toronto, vendor Pacific (Vancouver venue)",
+    "expected_outcome": "deterministic projection to operator-local business_date",
+    "edge": "Operator-tenant binding is `op_pressure_test_001` whose connector_connection.metadata.business_day_rollover_hour and restaurantTimezone are configured per-location. This venue is `venue-vancouver-yaletown` (America/Vancouver). The wall-clock `2026-05-04T22:30:00` in Vancouver = `2026-05-05T05:30:00Z` UTC = `2026-05-05T01:30:00` America/Toronto. A naive picker that uses operator default tz instead of the per-location tz would mis-project the business_date.",
+    "expected_behavior": "Adapter materializes the canonical fact using the per-location IANA zone (America/Vancouver) for the wall-clock-to-UTC step (per LibroConnectionContext.restaurantTimezone). Phase 7.55 Rule 11 business_date is computed against the same per-location IANA zone + business_day_rollover_hour."
+  },
+  "id": "wh-evt-7c2f-1400",
+  "type": "reservation.completed",
+  "venue_id": "venue-vancouver-yaletown",
+  "occurred_at": "2026-05-04T22:30:00",
+  "reservation": {
+    "id": "lbr-evt-7c2f-yvr-001",
+    "venue_id": "venue-vancouver-yaletown",
+    "size": 4,
+    "status": "completed",
+    "reservation_at": "2026-05-04T20:00:00",
+    "created_at": "2026-05-04T11:00:00",
+    "confirmed_at": "2026-05-04T11:00:30",
+    "arrived_at": "2026-05-04T19:55:00",
+    "seated_at": "2026-05-04T20:01:00",
+    "completed_at": "2026-05-04T22:29:55",
+    "updated_at": "2026-05-04T22:29:55"
+  }
+}
