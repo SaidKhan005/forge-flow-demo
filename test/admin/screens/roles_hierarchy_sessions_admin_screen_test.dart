@@ -3,11 +3,11 @@
 // Coverage focuses on the parity-contract surface: the role/hierarchy
 // tabs render after picking an operator, seeded-role edit is gated on
 // `canEditSeededRoles`, custom-role create captures admin_reason,
-// hierarchy move dialogs capture admin_reason, the reusable sessions
-// panel captures admin_reason and disables the admin's own session,
-// view-only mode hides every mutate affordance, and every write path
-// captures the F&F admin's UID + a non-empty admin_reason on the
-// audit row.
+// location move dialogs stay live, org-unit moves are visibly gated,
+// the reusable sessions panel captures admin_reason and disables the
+// admin's own session, view-only mode hides every mutate affordance,
+// and every write path captures the F&F admin's UID + a non-empty
+// admin_reason on the audit row.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -142,6 +142,97 @@ void main() {
       );
       expect(
         find.byKey(const Key('admin_rhs_location_$kDemoDinerLocationToronto')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+      'non-root org units show gated copy instead of a live Move button',
+      (tester) async {
+        wideViewport(tester);
+        final gateway = buildDemoGateway();
+        await tester.pumpWidget(
+          wrap(
+            RolesHierarchySessionsAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+              pickedOperator: demoPick(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('admin_rhs_org_unit_move_$kDemoDinerOrgUnitEast'),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.byKey(
+            const Key('admin_rhs_org_unit_move_$kDemoDinerOrgUnitWest'),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.byKey(
+            const Key('admin_rhs_org_unit_move_gated_$kDemoDinerOrgUnitEast'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('admin_rhs_org_unit_move_gated_$kDemoDinerOrgUnitWest'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            'Org-unit moves are gated until schema, proxy, and audit '
+            'support ships.',
+          ),
+          findsWidgets,
+        );
+        expect(
+          find.byKey(const Key('admin_rhs_move_org_unit_dialog')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('location move button remains live', (tester) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+
+      final moveFinder = find.byKey(
+        const Key('admin_rhs_location_move_$kDemoDinerLocationToronto'),
+      );
+      expect(moveFinder, findsOneWidget);
+      final button = tester.widget<OutlinedButton>(moveFinder);
+      expect(button.onPressed, isNotNull);
+
+      await tester.ensureVisible(moveFinder);
+      await tester.tap(moveFinder);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_rhs_move_location_dialog')),
         findsOneWidget,
       );
     });
