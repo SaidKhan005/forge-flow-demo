@@ -28,22 +28,15 @@ The current product flow is:
 
 ## Current Status
 
-- Phase 7.5 structural alignment is complete (restaurant scope, locked target truth, fixture replay)
-- Phases 7.52, 7.53, and 7.54 are complete
-- Phase 7.55 is the active release-stabilization lane
-- Phase 7.55o is the active refactor / extraction lane; it follows `docs/CODEX_PROMPT_GENERATION_STANDARD.md` for prompt generation, verification, tracker ownership, and automatic next-prompt sequencing
-- Phase 9 auth planning is locked in `docs/phases/phase_9/phase_9_auth_plan.md`
-- Phase 8 gate artifacts are archived at `docs/archive/phases/phase_8_gate/` (gate work complete; Phase 8 itself remains queued behind vendor selection)
-- Phase 7.61 driver-key gate is active before Phase 8; `7.61.0` and
-  `7.61.1` are accepted, with `7.61.2`/`.3` still queued.
-- Phase 8 / 8R live integration remains a future adapter lane; the current app is still fixture/replay-backed at the transport layer and should not be described as simple-swap integration-ready
-- Phase 11a advisor infrastructure is active: the Markdown corpus lives under `docs/Knowledge_graph_docs`, local Postgres corpus loading is verified, all 233 local corpus chunks have Voyage `voyage-4-large` vectors, and the current retrieval lane is pgvector -> Voyage `rerank-2.5` -> Claude answer runtime. Live cloud Postgres host: Azure Database for PostgreSQL Flexible Server (`Canada Central`, PG 16) with Apache AGE, pgvector, and `pg_diskann` extensions allowlisted (locked 2026-04-26; replaces prior Supabase plan because AGE is GA on Azure but unavailable on Supabase).
+Active work routes through [PROJECT_TRACKER.md](PROJECT_TRACKER.md). Snapshot as of 2026-05-08:
 
+- V1 launch prep: production cutover gates `cutover.0`–`cutover.5` and the operator punchlist. See `docs/_execution/2026-05-06_v1_operator_punchlist_execution.md`.
+- Phase 8 spine-bridge fanout is well underway: 17 INTEGRATE adapters at lifecycle `documented`; per-vendor Postgres sinks landed; `*.live.sandbox` lanes fire as vendor credentials arrive (rolling, parallel, doesn't block V1).
+- Phase 11a advisor infrastructure: live cloud Postgres host is Azure Database for PostgreSQL Flexible Server (`Canada Central`, PG 16) with Apache AGE, pgvector, and `pg_diskann` (locked 2026-04-26).
+- Phase 7.55 architecture (Layers 1–12) is canonical; see [docs/contracts/core_app_architecture.md](docs/contracts/core_app_architecture.md).
+- Demo mode is a writer-side switch (HP #2): same SQLite tables, same reads, same UI under `kDemoMode=true` or vendor-live. See [docs/contracts/demo_mode_contract.md](docs/contracts/demo_mode_contract.md).
 
-flutter clean
-flutter pub get
-flutter run --flavor forgeflow
-flutter run --flavor barrio
+Earlier phases (7.5 alignment, 7.52/7.53/7.54, 7.55o extraction, 7.61 driver-key gate, Phase 8 gate) are complete; their artifacts live under `docs/archive/`.
 
 ## Local Development
 
@@ -175,7 +168,6 @@ Flutter's `pubspec.yaml` asset declarations apply globally to all build flavors.
 
 ## Notes
 
-- The app is in the pre-adapter alignment gate phase
-- Current displayed data is still fixture/replay-backed at the transport layer, but it already flows through the intended internal app path
-- `BaselineData` remains as a temporary compatibility bridge for Baseline, Schedule, and Learn; persisted `ActiveTargetProfile` is the canonical authority
-- Vendor selection for Phase 8 connectors is TBD
+- Vendor selection for Phase 8 connectors is locked: 17 INTEGRATE adapters across POS / Labor / Reservation. Folder catalog: [docs/integrations/](docs/integrations/README.md).
+- Demo mode (`--dart-define=kDemoMode=true`) writes to the same SQLite tables as production via `MockReplayDataSourceProvider`; reader paths do not branch.
+- `BaselineData` remains as a temporary compatibility bridge for Baseline, Schedule, and Learn; persisted `ActiveTargetProfile` is the canonical authority.

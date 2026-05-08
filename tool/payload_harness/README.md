@@ -1,7 +1,10 @@
 # Mobile Core Payload Harness
 
-This lean harness is the Lane 5 proof wrapper for
-`8.live-and-closed-truth-core`.
+Regression / validation harness for the canonical POS-labor-reservation
+fact pipeline and the proxy-to-mobile snapshot path. Originally landed
+as the Lane 5 proof wrapper for `8.live-and-closed-truth-core` (sprint
+shipped); now used to pin the contract for any slice that touches
+`open_shift_snapshots`, the closed triplet, or the closed-label seams.
 
 Run all proof suites:
 

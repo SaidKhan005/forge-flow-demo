@@ -1,3 +1,17 @@
+# Sink Follow-Up — ARCHIVED 2026-05-08
+
+**Status:** archived. Each section's CI verification + dispatcher
+wiring items closed as the sinks landed on master and the unified
+sync-worker dispatcher registries were populated. The remaining
+adapter-side / live.sandbox-bound items have been folded into
+[`docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`](../phases/phase_8_live_rollout/phase_8_live_rollout_plan.md)
+§ "Per-vendor follow-ups absorbed from sink fanout (2026-05-08)" —
+one bullet per vendor under its `*.live.sandbox` slice.
+
+Use this file as historical reference only.
+
+---
+
 # Sink Follow-Up — `8.spine-bridge.1.AL` (Aloha NCR Voyix)
 
 Three open items left after the sink + test landed on

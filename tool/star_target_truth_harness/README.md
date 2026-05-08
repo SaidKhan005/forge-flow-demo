@@ -1,6 +1,11 @@
 # Star Target Truth Harness
 
-Deterministic fixture proof for the `8.star-target-server-truth` sprint.
+Regression / validation harness for the star-target server-truth seam.
+Originally landed as the deterministic fixture proof for
+`8.star-target-server-truth` (sprint shipped); now used to pin the
+mobile selected-star write, idempotency replay, permission-denied,
+server reader, target-cycle replacement, and active-target-profile
+projection contracts against any future change.
 
 Run from the repo root:
 

@@ -82,8 +82,11 @@ remains:
       sink lane left an `adapter-side` follow-up to land inside its
       `*.live.sandbox` slice (tri-state covers, covers_source projection,
       hours_worked propagation, watermark resource alignment, etc.).
-      Index: `docs/sink_follow_up.md`. These don't gate V1; they fold
-      into the matching sandbox slice.
+      Folded 2026-05-08 into
+      `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`
+      § "Per-vendor follow-ups absorbed from sink fanout"; archive at
+      `docs/archive/sink_follow_up.md`. These don't gate V1; each lives
+      with the matching sandbox slice.
 
 ---
 

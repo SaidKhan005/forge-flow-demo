@@ -37,6 +37,18 @@ docs/integrations/
 17 INTEGRATE vendor folders. ADP carries a single folder with both
 Workforce Now and Workforce Manager modules disambiguated inside.
 
+### Rollout waves
+
+Live rollout proceeds in waves (does not block V1 launch). Tracker:
+[`docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`](../phases/phase_8_live_rollout/phase_8_live_rollout_plan.md).
+
+- **Wave 1 (launch-critical):** Lightspeed K-Series, Libro, QuickBooks
+  Time. Sandbox creds + `*.live.sandbox` slices required before V1
+  declaration.
+- **Wave D (rolling, partnership-paced):** the remaining 14 vendors.
+  `*.live.sandbox` and `*.live.prod` slices fire as credentials and
+  partnership clearance arrive — sequenced, not date-driven.
+
 ## Authoring a new adapter
 
 1. Read `docs/contracts/vendor_adapter_slice_contract.md` (rules) and

@@ -1,7 +1,10 @@
 # First Connection Backfill Harness
 
-This harness is the Lane 5 fixture proof for
-`8.first-connect-backfill-wire-in`.
+Regression / validation harness for the first-connect backfill seam.
+Originally landed as the Lane 5 fixture proof for
+`8.first-connect-backfill-wire-in` (sprint shipped); now used to pin
+the bounded 60-day enqueue, demo-flip, post-commit aggregator, and
+open snapshot projector contracts against any future change.
 
 Run it from the repo root:
 
