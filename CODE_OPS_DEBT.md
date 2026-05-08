@@ -58,18 +58,34 @@ These are the only items that remain — none of them were in the
 original audit's scope; they're carry-overs noted by the implementing
 agents:
 
-- **Frontend listener for `redirect_uri` payload** (from N1) — the
-  proxy now emits `mfa_freshness_required` 403 with a `redirect_uri`
-  hint, but the admin shell + operator web 401-handlers don't yet
-  consume it to drive the navigation. Small follow-up slice.
+- ~~**Frontend listener for `redirect_uri` payload** (from N1)~~ —
+  closed. The admin shell registers its `AdminAuthSource` as the
+  `AdminHttpFreshnessRedirectDispatcher` listener; the operator-web
+  `FirebaseOperatorWebAuthSource` registers itself on
+  `OperatorWebProxyClient`. Both detect the
+  `mfa_freshness_required` 403, sign out via the existing Firebase
+  Auth path, and emit a needs-sign-in state carrying the
+  proxy-supplied `redirect_uri`. Parser + listener seam:
+  `lib/auth/mfa_freshness_redirect_listener.dart`.
 - **Visible grace-window countdown chip** (from N2) — the
   audited-support-actions screen captures `_lastErasure` but doesn't
   yet render a countdown chip during the 24h grace window. Small
   follow-up slice.
-- **Restaurant-local IANA-tz business-date resolution** (from N2) —
+- ~~**Restaurant-local IANA-tz business-date resolution** (from N2) —
   PII erasure rows currently use UTC for `business_date`; future
   improvement to use restaurant-local TZ. Column drives partition
-  routing only, so impact is small.
+  routing only, so impact is small.~~ **Closed 2026-05-08** — landed
+  `PiiBusinessDateResolver` callback on `UserPiiErasureService` +
+  `buildPiiBusinessDateResolver` helper that reads
+  `(timezone, business_day_rollover_hour)` from `public.locations`
+  and projects through `IanaTimezoneConverter.toBusinessDate`. Proxy
+  POST `.../erase-pii` no longer truncates UTC inline; the service
+  resolves restaurant-local business_date when a resolver is bound.
+  Falls back to UTC when no resolver / unknown tz so erasure writes
+  never block on tz reads. Coverage:
+  `test/services/auth/pii_business_date_resolver_test.dart`,
+  `test/services/auth/user_pii_erasure_service_test.dart`
+  (`IANA-tz business_date resolver` group).
 - **Theme H#8 first-backfill status null shape** — owned by the Phase
   8 framework finishing push; will close naturally when that lane
   touches the route.

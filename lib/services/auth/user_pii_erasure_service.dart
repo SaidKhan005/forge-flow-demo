@@ -1,5 +1,18 @@
 // CODE_OPS_DEBT Theme B#1 - single-admin PII erasure service.
 //
+// Carry-over follow-up #3 (2026-05-08): erasure rows previously stored
+// `business_date` from UTC. The migration column drives partition
+// routing only, so the impact was small, but Phase 7.55 time guardrails
+// require restaurant-local IANA-tz business-date resolution. The
+// service now accepts an optional [PiiBusinessDateResolver] callback;
+// when provided, the proxy injects an IANA-backed resolver that reads
+// `locations.timezone` + `business_day_rollover_hour` and runs through
+// the shared [IanaTimezoneConverter] so a 04:00 UTC erasure for an
+// `America/Los_Angeles` restaurant lands on the prior business day.
+// When omitted, the service falls back to the legacy UTC-truncation
+// behaviour so existing wiring (and tests that do not exercise the tz
+// dimension) keep working.
+//
 // Orchestrates the four moving parts of the PII erasure flow on top
 // of [UserPiiErasureRepository]:
 //
@@ -58,6 +71,23 @@ class UserPiiErasureReverseResult {
   final bool notFound;
 }
 
+/// Resolver signature for the restaurant-local business-date used on
+/// the durable erasure ledger row. The proxy passes a closure that
+/// reads `(timezone, business_day_rollover_hour)` from the target
+/// location and runs the [requestedAt] instant through the shared
+/// IANA-backed converter. Returns the YYYY-MM-DD restaurant-local date
+/// string the column expects.
+///
+/// Implementations may return null when the location lookup fails (no
+/// row, missing tz). The service then falls back to UTC-truncation so
+/// the row still inserts — partition routing stays correct in the
+/// degraded case without tying erasure availability to the tz read.
+typedef PiiBusinessDateResolver = Future<String?> Function({
+  required String operatorId,
+  required String locationId,
+  required DateTime requestedAt,
+});
+
 /// Outcome of [UserPiiErasureService.applyDuePending]. The worker
 /// emits per-row apply log lines; this struct reports the batch
 /// totals so the tick handler can surface a counter.
@@ -84,11 +114,13 @@ class UserPiiErasureService {
     Duration? gracePeriod,
     DateTime Function()? now,
     String Function()? erasureIdFactory,
+    PiiBusinessDateResolver? businessDateResolver,
   })  : _erasureRepository = erasureRepository,
         _gracePeriod = gracePeriod ?? _resolveGracePeriod(),
         _now = now ?? DateTime.now,
         _erasureIdFactory =
-            erasureIdFactory ?? _defaultErasureIdFactory;
+            erasureIdFactory ?? _defaultErasureIdFactory,
+        _businessDateResolver = businessDateResolver;
 
   /// Operator-locked default. 24 hours = 86_400 seconds.
   static const Duration defaultGracePeriod = Duration(hours: 24);
@@ -103,6 +135,7 @@ class UserPiiErasureService {
   final Duration _gracePeriod;
   final DateTime Function() _now;
   final String Function() _erasureIdFactory;
+  final PiiBusinessDateResolver? _businessDateResolver;
 
   /// Effective grace window for this service instance. Exposed for
   /// log lines / tests; not meant for security decisions.
@@ -126,6 +159,18 @@ class UserPiiErasureService {
   /// passes the resolved tenant scope (operator + location) plus the
   /// actor user_id of the admin who initiated the request.
   ///
+  /// `business_date` precedence:
+  ///   1. Restaurant-local IANA-tz resolver (when one is bound at
+  ///      construction). The proxy injects an [IanaTimezoneConverter]-
+  ///      backed closure that reads `locations.timezone` +
+  ///      `business_day_rollover_hour` for `(operatorId, locationId)`.
+  ///   2. Caller-provided override (`businessDate` param). Tests use
+  ///      this to pin a deterministic value.
+  ///   3. UTC truncation of `requestedAt` — legacy fallback so the row
+  ///      still inserts when no resolver is bound and no override is
+  ///      passed. The migration column drives partition routing only,
+  ///      so the degraded case is acceptable.
+  ///
   /// Returns null when the target user is not found — proxy maps to
   /// 404 `user_not_found`.
   Future<UserPiiErasureRequestResult?> requestErasure({
@@ -133,11 +178,18 @@ class UserPiiErasureService {
     required String locationId,
     required String targetUserId,
     required String requestedByUserId,
-    required String businessDate,
+    String? businessDate,
   }) async {
     final requestedAt = _now().toUtc();
     final gracePeriodEndsAt = requestedAt.add(_gracePeriod);
     final erasureId = _erasureIdFactory();
+
+    final resolvedBusinessDate = await _resolveBusinessDate(
+      operatorId: operatorId,
+      locationId: locationId,
+      requestedAt: requestedAt,
+      explicit: businessDate,
+    );
 
     final row = await _erasureRepository.snapshotPiiAndInsertPending(
       erasureId: erasureId,
@@ -146,7 +198,7 @@ class UserPiiErasureService {
       userId: targetUserId,
       requestedByUserId: requestedByUserId,
       requestedAt: requestedAt,
-      businessDate: businessDate,
+      businessDate: resolvedBusinessDate,
       gracePeriodEndsAt: gracePeriodEndsAt,
     );
     if (row == null) return null;
@@ -155,6 +207,43 @@ class UserPiiErasureService {
       erasureId: row.erasureId,
       gracePeriodEndsAt: row.gracePeriodEndsAt,
     );
+  }
+
+  /// Carry-over follow-up #3 (2026-05-08): resolve the restaurant-local
+  /// `business_date` for an erasure row.
+  ///
+  /// The injected resolver is preferred so the row reflects the
+  /// operator's IANA tz + per-location rollover hour. When the resolver
+  /// is absent or returns null, falls back to the caller's [explicit]
+  /// override (used by callers who already know the date), and finally
+  /// to UTC truncation of [requestedAt] so the row still inserts in
+  /// the degraded case.
+  Future<String> _resolveBusinessDate({
+    required String operatorId,
+    required String locationId,
+    required DateTime requestedAt,
+    required String? explicit,
+  }) async {
+    final resolver = _businessDateResolver;
+    if (resolver != null) {
+      try {
+        final resolved = await resolver(
+          operatorId: operatorId,
+          locationId: locationId,
+          requestedAt: requestedAt,
+        );
+        if (resolved != null && resolved.isNotEmpty) return resolved;
+      } catch (_) {
+        // Fall through to the explicit / UTC fallback so a transient
+        // tz read does not block the erasure write — the partition
+        // routing stays correct because UTC is a known-safe key.
+      }
+    }
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    final utc = requestedAt.toUtc();
+    return '${utc.year.toString().padLeft(4, '0')}-'
+        '${utc.month.toString().padLeft(2, '0')}-'
+        '${utc.day.toString().padLeft(2, '0')}';
   }
 
   /// Reverses an erasure within its grace window. Reads the row,

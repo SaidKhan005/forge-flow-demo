@@ -85,6 +85,7 @@ import 'business_scope_routes.dart';
 import 'connector_backfill_jobs_routes.dart';
 import 'mobile_push_notifications.dart';
 import 'notification_preferences_routes.dart';
+import 'admin_business_timing_routes.dart';
 import 'operator_routes.dart';
 import 'wage_role_rows_routes.dart';
 import 'proxy_idempotency_cache.dart';
@@ -109,6 +110,7 @@ export 'proxy_idempotency_cache.dart' show ProxyAuthIdempotencyCache;
 export 'operator_routes.dart'
     show
         OperatorWriteRouter,
+        OperatorBusinessTimingMutationListener,
         OperatorAccountWriteGateway,
         OperatorBusinessTimingWriteGateway,
         OperatorWriteAuditSink,
@@ -123,6 +125,11 @@ export 'operator_routes.dart'
         operatorBusinessTimingProfilePrefix,
         hashOperatorRequestBody,
         readOperatorJsonBody;
+export 'admin_business_timing_routes.dart'
+    show
+        AdminBusinessTimingRouter,
+        adminBusinessTimingProfilesPathPrefix,
+        kAdminBusinessTimingRoles;
 export 'notification_preferences_routes.dart'
     show
         NotificationPreferencesRouter,
@@ -140,6 +147,8 @@ export 'wage_role_rows_routes.dart'
         RepositoryWageRoleRowsGateway,
         WageRoleRowsIdempotencyCache,
         WageRoleRowsRouteRejected,
+        WageRoleRowsAuditSink,
+        NoopWageRoleRowsAuditSink,
         wageRoleRowsPath,
         wageRoleRowsPrefix,
         hashWageRoleRowsRequest;
@@ -8258,6 +8267,7 @@ Future<void> routeRequest(
   // so existing tests do not need to plumb the router through every
   // call site.
   OperatorWriteRouter? operatorWriteRouter,
+  AdminBusinessTimingRouter? adminBusinessTimingRouter,
   // Wave W2.D - operator-scoped read of connector_backfill_jobs.
   // Optional: when null the read route returns 503 so existing tests
   // do not need to plumb the router through every call site.
@@ -11041,24 +11051,21 @@ Future<void> routeRequest(
                   route: routeKey,
                   key: idempotencyKey,
                   compute: () async {
-                    // Restaurant-local business date approximation —
-                    // we use UTC here since the proxy does not resolve
-                    // the operator's IANA tz at this layer; the
-                    // business_timing_profiles read happens elsewhere
-                    // when we need the locked posture. The column is
-                    // denormalized for partition routing only.
-                    final nowUtc = clock().toUtc();
-                    final businessDate =
-                        '${nowUtc.year.toString().padLeft(4, '0')}-'
-                        '${nowUtc.month.toString().padLeft(2, '0')}-'
-                        '${nowUtc.day.toString().padLeft(2, '0')}';
+                    // Carry-over follow-up #3 (2026-05-08): the
+                    // service now derives `business_date` from the
+                    // restaurant's IANA tz when a resolver is bound at
+                    // construction (proxy bootstrap injects an
+                    // IanaTimezoneConverter-backed closure). The
+                    // service falls back to UTC truncation when no
+                    // resolver is bound, preserving the legacy
+                    // behaviour for callers that have not been wired
+                    // yet. The column drives partition routing only.
                     final result =
                         await piiService.requestErasure(
                       operatorId: scope.operatorId,
                       locationId: scope.locationId,
                       targetUserId: piiErasurePath.userId,
                       requestedByUserId: scope.userId,
-                      businessDate: businessDate,
                     );
                     if (result == null) {
                       return CachedProxyResponse(
@@ -13736,6 +13743,103 @@ Future<void> routeRequest(
           return;
         }
 
+        // Doc 1 timing web/admin live parity (2026-05-08) - admin-side
+        // override routes for business-timing profiles. Caller must
+        // hold a super_admin or ff_support role; operator id is taken
+        // from the URL, and writes require `admin_reason` in the body.
+        if (AdminBusinessTimingRouter.matches(path, request.method)) {
+          if (adminBusinessTimingRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'admin_business_timing_router_not_configured',
+              'message':
+                  'route requires an AdminBusinessTimingRouter to be installed',
+            });
+            return;
+          }
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (actor == null) return;
+          if (!actor.roles.any(kAdminBusinessTimingRoles.contains)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'admin business-timing override requires super_admin or '
+                  'ff_support role',
+              'required_roles': kAdminBusinessTimingRoles.toList(),
+            });
+            return;
+          }
+          final isReadOnly = AdminBusinessTimingRouter.isReadOnly(
+            path,
+            request.method,
+          );
+          String adminIdempotencyKey;
+          Map<String, Object?> requestBody;
+          if (isReadOnly) {
+            adminIdempotencyKey = '';
+            requestBody = const <String, Object?>{};
+          } else {
+            final headerKey = request.headers
+                .value('Idempotency-Key')
+                ?.trim();
+            if (headerKey == null || headerKey.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_missing',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+            if (headerKey.length > 200) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_too_long',
+                'message':
+                    'Idempotency-Key header must be 200 characters or fewer',
+              });
+              return;
+            }
+            final bodyResult = await readOperatorJsonBody(request);
+            if (bodyResult.errorStatus != null) {
+              _writeJson(
+                response,
+                bodyResult.errorStatus!,
+                bodyResult.errorBody!,
+              );
+              return;
+            }
+            adminIdempotencyKey = headerKey;
+            requestBody = bodyResult.body!;
+          }
+          try {
+            final result = await adminBusinessTimingRouter.handle(
+              method: request.method,
+              path: path,
+              actorUserId: actor.userId,
+              actorKind: actor.actorKind,
+              idempotencyKey: adminIdempotencyKey,
+              body: requestBody,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'admin_business_timing_router',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'admin_business_timing_unavailable',
+              'message':
+                  'admin business-timing override is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
         // Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
         // Mirrors the operator-web Vendor Connections progress widget.
         // Open to any operator-web role; per-tenant RLS is enforced by
@@ -13998,6 +14102,7 @@ Future<void> routeRequest(
               operatorId: scope.operatorId,
               locationId: scope.locationId,
               actorUserId: scope.userId,
+              actorKind: scope.actorKind,
               idempotencyKey: wageIdemKey,
               body: wageBody,
             );
@@ -16255,6 +16360,22 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
     return;
   }
 
+  // Doc 1 keyed-data-accuracy-write — defence-in-depth body validation
+  // for the keyed service-period write surface. The production gateway
+  // also validates inside `upsertDataAccuracyServicePeriodSettings`
+  // (proxy_bootstrap.dart `_bodyServicePeriodKey` /
+  // `_bodyBusinessDate`); validating here too means alternate gateway
+  // impls (test fakes, future per-tenant routers) cannot accept a
+  // malformed key or business date, and the operator-web client gets a
+  // 400 envelope back before any gateway work.
+  if (target.resource == 'data_accuracy_service_period_settings') {
+    final keyError = _validateServicePeriodWriteBody(bodyResult.body!);
+    if (keyError != null) {
+      _writeJson(response, keyError.$1, keyError.$2);
+      return;
+    }
+  }
+
   try {
     final writeScope = _operatorContextFromClaims(
       claims,
@@ -16294,6 +16415,74 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       'message': 'data accuracy settings are unavailable; please retry',
     });
   }
+}
+
+/// Doc 1 keyed-data-accuracy-write — body validator for the keyed
+/// service-period PATCH route. Returns `null` when the body is valid;
+/// otherwise returns `(statusCode, jsonEnvelope)` ready to write back.
+///
+/// Validates the same shape the production gateway enforces (mirrors
+/// `proxy_bootstrap.dart::_bodyServicePeriodKey` /
+/// `_bodyBusinessDate` /
+/// `_bodyServicePeriodCoversSource` / `_bodyServicePeriodWageSource`)
+/// so test fakes cannot drift from the production envelope.
+(int, Map<String, Object?>)? _validateServicePeriodWriteBody(
+  Map<String, Object?> body,
+) {
+  final keyRaw = body['service_period_key'];
+  if (keyRaw is! String ||
+      !RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(keyRaw)) {
+    return (400, <String, Object?>{
+      'error': 'invalid_service_period_key',
+      'message':
+          'service_period_key must start with a lowercase letter and contain '
+          'only lowercase letters, numbers, or underscores',
+    });
+  }
+  final dateRaw = body['effective_at_business_date'];
+  if (dateRaw is! String ||
+      !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateRaw)) {
+    return (400, <String, Object?>{
+      'error': 'invalid_effective_at_business_date',
+      'message':
+          'effective_at_business_date must be a YYYY-MM-DD business date',
+    });
+  }
+  final coversRaw = body['covers_source'];
+  if (coversRaw != null) {
+    const allowed = <String>{
+      'vendor',
+      'forecast',
+      'manual',
+      'reservation_plus_walkin',
+    };
+    if (coversRaw is! String || !allowed.contains(coversRaw)) {
+      return (400, <String, Object?>{
+        'error': 'invalid_covers_source',
+        'message':
+            'covers_source must be vendor, forecast, manual, or '
+            'reservation_plus_walkin',
+      });
+    }
+  }
+  final wageRaw = body['wage_source'];
+  if (wageRaw != null) {
+    const allowed = <String>{
+      'vendor_per_employee',
+      'vendor_per_position',
+      'target_substitution',
+      'manual_mix',
+    };
+    if (wageRaw is! String || !allowed.contains(wageRaw)) {
+      return (400, <String, Object?>{
+        'error': 'invalid_wage_source',
+        'message':
+            'wage_source must be vendor_per_employee, vendor_per_position, '
+            'target_substitution, or manual_mix',
+      });
+    }
+  }
+  return null;
 }
 
 Future<bool> _operatorLocationScopeAllowed({

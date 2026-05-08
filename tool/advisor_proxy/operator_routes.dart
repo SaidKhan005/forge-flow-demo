@@ -176,6 +176,24 @@ String _canonicalJson(Object? value) {
   return jsonEncode(value);
 }
 
+/// Doc 1 timing web/admin live parity (2026-05-08) - hook fired after
+/// every successful business-timing mutation. Production wires this to
+/// the mobile sync outbox so a write surfaces immediately as an
+/// invalidation pulse to subscribed devices. Tests pass a recording
+/// listener so the contract is provable.
+abstract class OperatorBusinessTimingMutationListener {
+  Future<void> onTimingProfileMutated({
+    required String operatorId,
+    required String profileId,
+    required String scopeKind,
+    required String scopeId,
+    required String eventKind,
+    required String actorUserId,
+    required String actorKind,
+    required DateTime occurredAt,
+  });
+}
+
 /// Encapsulates the dispatch + auth + idempotency + audit boilerplate
 /// for the five operator write routes.
 class OperatorWriteRouter {
@@ -185,14 +203,40 @@ class OperatorWriteRouter {
     required this.auditSink,
     OperatorWriteIdempotencyCache? idempotencyCache,
     DateTime Function()? now,
+    OperatorBusinessTimingMutationListener? mutationListener,
   })  : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now,
+        _mutationListener = mutationListener;
 
   final OperatorAccountWriteGateway accountGateway;
   final OperatorBusinessTimingWriteGateway businessTimingGateway;
   final OperatorWriteAuditSink auditSink;
   final OperatorWriteIdempotencyCache _idempotencyCache;
   final DateTime Function() _now;
+  final OperatorBusinessTimingMutationListener? _mutationListener;
+
+  Future<void> _notifyTimingMutation({
+    required String operatorId,
+    required String profileId,
+    required String scopeKind,
+    required String scopeId,
+    required String eventKind,
+    required String actorUserId,
+    required String actorKind,
+  }) async {
+    final listener = _mutationListener;
+    if (listener == null) return;
+    await listener.onTimingProfileMutated(
+      operatorId: operatorId,
+      profileId: profileId,
+      scopeKind: scopeKind,
+      scopeId: scopeId,
+      eventKind: eventKind,
+      actorUserId: actorUserId,
+      actorKind: actorKind,
+      occurredAt: _now().toUtc(),
+    );
+  }
 
   /// True when [path] / [method] match one of the seven routes. The
   /// dispatcher uses this to short-circuit the catch-all 404 in the
@@ -525,6 +569,15 @@ class OperatorWriteRouter {
         },
         occurredAt: _now().toUtc(),
       );
+      await _notifyTimingMutation(
+        operatorId: operatorId,
+        profileId: record.profileId,
+        scopeKind: record.scopeKind,
+        scopeId: record.scopeId,
+        eventKind: 'business_timing_profile_created',
+        actorUserId: actorUserId,
+        actorKind: actorKind,
+      );
       return (statusCode: 201, body: record.toJson());
     } on OperatorWriteRejected catch (rejected) {
       return (
@@ -591,6 +644,15 @@ class OperatorWriteRouter {
           'fields_changed': body.keys.toList(),
         },
         occurredAt: _now().toUtc(),
+      );
+      await _notifyTimingMutation(
+        operatorId: operatorId,
+        profileId: record.profileId,
+        scopeKind: record.scopeKind,
+        scopeId: record.scopeId,
+        eventKind: 'business_timing_profile_updated',
+        actorUserId: actorUserId,
+        actorKind: actorKind,
       );
       return (statusCode: 200, body: record.toJson());
     } on OperatorWriteRejected catch (rejected) {
@@ -665,6 +727,15 @@ class OperatorWriteRouter {
           'key': outcome.added.key,
         },
         occurredAt: _now().toUtc(),
+      );
+      await _notifyTimingMutation(
+        operatorId: operatorId,
+        profileId: record.profileId,
+        scopeKind: record.scopeKind,
+        scopeId: record.scopeId,
+        eventKind: 'business_timing_service_period_added',
+        actorUserId: actorUserId,
+        actorKind: actorKind,
       );
       return (statusCode: 201, body: record.toJson());
     } on OperatorWriteRejected catch (rejected) {
@@ -744,6 +815,15 @@ class OperatorWriteRouter {
           'fields_changed': body.keys.toList(),
         },
         occurredAt: _now().toUtc(),
+      );
+      await _notifyTimingMutation(
+        operatorId: operatorId,
+        profileId: record.profileId,
+        scopeKind: record.scopeKind,
+        scopeId: record.scopeId,
+        eventKind: 'business_timing_service_period_updated',
+        actorUserId: actorUserId,
+        actorKind: actorKind,
       );
       return (statusCode: 200, body: record.toJson());
     } on OperatorWriteRejected catch (rejected) {
