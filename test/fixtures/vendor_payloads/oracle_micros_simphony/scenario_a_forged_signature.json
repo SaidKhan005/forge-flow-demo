@@ -1,0 +1,15 @@
+{
+  "_sourcing_gap": "Oracle MICROS Simphony does not document a webhook delivery surface and the F&F adapter is webhookSupport=pollOnly (see docs/integrations/oracle_micros_simphony/api_consumed.md and webhook_signature.md — single-line N/A). There is no body-signature verifier in the adapter to forge against. This fixture documents the analogous auth-failure path: a poll-side response body that arrives with credentials whose bearer access token has been revoked by the partner portal. The Phase 2 harness asserts that the adapter's poll path treats vendor 401 as auth failure (not as zero rows), refreshes once, and on continued failure flips connector_connection.status to error.",
+  "_substitute_failure_mode": "vendor_401_on_poll",
+  "expected_outcome": "reject",
+  "items": [],
+  "nextCursor": "",
+  "vendor_response_metadata": {
+    "http_status": 401,
+    "http_status_reason": "Unauthorized",
+    "vendor_error_body": {
+      "error": "invalid_token",
+      "error_description": "The access token expired"
+    }
+  }
+}

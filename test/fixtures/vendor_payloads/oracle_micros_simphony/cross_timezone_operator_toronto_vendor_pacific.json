@@ -1,0 +1,25 @@
+{
+  "expected_outcome": "accept_with_iana_resolution",
+  "items": [
+    {
+      "header": {
+        "chkNum": 412960,
+        "cmplOrClsdUTC": "2026-05-03T06:35:00.000Z",
+        "guestCount": 3,
+        "lastUpdatedUTC": "2026-05-03T06:35:00.000Z",
+        "locRef": "002-PIE-VAN",
+        "opnUTC": "2026-05-03T05:50:00.000Z",
+        "subTtlCents": 7295
+      }
+    }
+  ],
+  "nextCursor": "",
+  "timezone_resolution_context": {
+    "_note": "Operator HQ is in Toronto (America/Toronto). This Simphony location is in Vancouver (America/Vancouver). The vendor emits UTC; the location's bound IANA zone in connector_connection.metadata is America/Vancouver, NOT the operator's HQ zone. Business date resolution uses the location's zone, not the operator's HQ. cmplOrClsdUTC = 2026-05-03T06:35:00Z = 2026-05-02T23:35:00 local Vancouver. With 04:00 local cutoff, business_date = 2026-05-02. If the framework wrongly used the operator's Toronto zone, business_date would resolve to 2026-05-03 (02:35 ET, post-cutoff = 2026-05-03 day in Toronto).",
+    "operator_hq_iana_zone": "America/Toronto",
+    "location_iana_zone": "America/Vancouver",
+    "business_day_cutoff_local": "04:00",
+    "expected_business_date": "2026-05-02",
+    "expected_business_date_if_buggy_uses_hq_zone": "2026-05-03"
+  }
+}
