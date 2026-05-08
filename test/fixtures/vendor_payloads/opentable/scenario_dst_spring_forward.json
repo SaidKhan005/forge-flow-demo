@@ -1,0 +1,22 @@
+{
+  "_fixture_meta": {
+    "scenario": "DST — spring forward",
+    "outcome": "accept; canonical UTC instant lands cleanly because OpenTable emits explicit UTC Z (assumed)",
+    "restaurant_timezone": "America/New_York",
+    "dst_event": "2026-03-08 02:00 local clock skips to 03:00 local; the local interval [02:00, 03:00) does not exist",
+    "wall_clock_local": "2026-03-08 06:30 local (after the spring forward — would be 06:30 EDT after the jump; equivalent to 10:30 UTC)",
+    "test_intent": [
+      "1. Vendor emits explicit UTC Z; the local-DST jump is a no-op for the parser.",
+      "2. business_date computation (Phase 7.55 Rule 11) uses the location's IANA tz; the resolver MUST land 2026-03-08 even when the local time crosses the DST boundary.",
+      "3. If the live-sandbox slice discovers OpenTable emits offset-less local strings instead, the timestamp policy switches to asLocationLocal and this fixture's expectation flips to: parser MUST refuse a 02:30 local instant (non-existent local time during spring-forward)."
+    ]
+  },
+  "reservation": {
+    "id": "OT-RES-2026030801",
+    "restaurant_id": "rid-9876",
+    "reserved_at": "2026-03-08T10:30:00Z",
+    "modified_at": "2026-03-08T10:35:00Z",
+    "party_size": 4,
+    "status": "booked"
+  }
+}

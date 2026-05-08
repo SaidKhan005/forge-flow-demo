@@ -1,0 +1,18 @@
+{
+  "_fixture_meta": {
+    "scenario": "C — future-dated event",
+    "outcome": "reject",
+    "expected_failure": "VendorTimestampSanityGuard (rule: opened_in_future)",
+    "now_anchor": "2026-05-08T12:00:00Z",
+    "future_offset": "60 days ahead of now_anchor",
+    "guard_reference": "openTableFutureDatedReservation in opentable_reservations_fixture.dart"
+  },
+  "reservation": {
+    "id": "OT-RES-2026050808",
+    "restaurant_id": "rid-9876",
+    "reserved_at": "2026-07-15T12:00:00Z",
+    "modified_at": "2026-07-15T12:00:00Z",
+    "party_size": 2,
+    "status": "booked"
+  }
+}

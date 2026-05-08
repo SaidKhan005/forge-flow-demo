@@ -1,0 +1,21 @@
+{
+  "_fixture_meta": {
+    "scenario": "E — ambiguous timestamp",
+    "outcome": "reject",
+    "expected_failure": "AmbiguousTimestampConvention.refuse",
+    "policy_reference": "openTableTimestampPolicy in lib/integrations/reservation/opentable_reservation_adapter.dart (ambiguousConvention: AmbiguousTimestampConvention.refuse)",
+    "violations": [
+      "reserved_at lacks both 'Z' suffix and explicit offset (no timezone hint)",
+      "modified_at lacks both 'Z' suffix and explicit offset"
+    ],
+    "what_must_NOT_happen": "Silent fallback to 'treat as UTC'. The contract in field_mapping.md is explicit: 'silent fallback to treat-as-UTC is exactly the bug Scenario E is designed to catch.'"
+  },
+  "reservation": {
+    "id": "OT-RES-2026050809",
+    "restaurant_id": "rid-9876",
+    "reserved_at": "2026-05-12T19:30:00",
+    "modified_at": "2026-05-08T11:00:00",
+    "party_size": 4,
+    "status": "booked"
+  }
+}

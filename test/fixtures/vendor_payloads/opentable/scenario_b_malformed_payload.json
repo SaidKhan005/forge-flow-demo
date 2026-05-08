@@ -1,0 +1,20 @@
+{
+  "_fixture_meta": {
+    "scenario": "B — malformed payload",
+    "outcome": "reject",
+    "expected_failure": "PayloadParseError (canonicalizer returns null)",
+    "violations": [
+      "party_size is the string 'four' (must be int >= 1)",
+      "reserved_at is a non-ISO format ('05/12/2026 7:30 PM')",
+      "status is empty string"
+    ]
+  },
+  "reservation": {
+    "id": "OT-RES-2026050807",
+    "restaurant_id": "rid-9876",
+    "reserved_at": "05/12/2026 7:30 PM",
+    "modified_at": "2026-05-08T11:00:00Z",
+    "party_size": "four",
+    "status": ""
+  }
+}
