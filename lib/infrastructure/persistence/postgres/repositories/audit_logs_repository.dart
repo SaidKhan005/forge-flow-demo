@@ -32,6 +32,21 @@
 //     the constraint, which is the desired hard-stop for misuse.
 //   * `prev_row_hash` and `row_hash` are NOT supplied here; the
 //     BEFORE INSERT trigger sets both before constraint validation.
+//
+// 2026-05-08 P1 hardening (POST_HARDENING_FOLLOWUPS "Audit additions —
+// 2026-05-08"): the writer cross-checks the supplied [operatorId]
+// against `current_setting('app.operator_id', true)` before binding
+// the parameter. The repository's atomic-with-business-write contract
+// requires it to run inside the caller's transaction (so it cannot
+// extend `OperatorScopedRepository<T>` and open its own tenant
+// wrapper without breaking that contract); the cross-check is the
+// defense-in-depth equivalent — if the caller's transaction has a
+// `SET LOCAL app.operator_id`, the parameter MUST match it, otherwise
+// we throw and abort the insert. When `app.operator_id` is unset
+// (the `runAsSystem` admin path, where `forge_admin`'s BYPASSRLS is
+// the gate and a tenant-scope GUC wouldn't make sense), the parameter
+// is accepted as-is — those paths are already audited via
+// `app.bypass_rls_audit = 'system:<reason>'` on the same transaction.
 
 import 'dart:convert';
 
@@ -53,6 +68,16 @@ class AuditLogsRepository {
   /// [actorUserId] (user case) or [actorPrincipalId] (service case)
   /// must be set. The DB CHECK constraint enforces this; callers that
   /// violate the shape get a hard-stop from the constraint.
+  ///
+  /// Defense-in-depth: when [exec]'s transaction has the tenant
+  /// `SET LOCAL app.operator_id` injected (the normal
+  /// `runInTenantContext` path), [operatorId] MUST equal that GUC or
+  /// this method throws [AuditLogsTenantMismatchError] before binding
+  /// any SQL. The check closes the gap that the writer would
+  /// otherwise blindly accept a caller-supplied operator id (a buggy
+  /// or hostile caller could forge audit rows on a different
+  /// operator's chain). When `app.operator_id` is unset (the
+  /// `runAsSystem` admin path), the parameter is accepted as-is.
   Future<void> writeRow(
     PostgresExecutor exec, {
     required String operatorId,
@@ -66,6 +91,7 @@ class AuditLogsRepository {
     required String action,
     Map<String, Object?> payload = const <String, Object?>{},
   }) async {
+    await _assertTenantContextMatches(exec, operatorId);
     final occurred = (occurredAt ?? DateTime.now()).toUtc();
     final chainDate = _formatChainDate(occurred);
     await exec.query(
@@ -95,12 +121,63 @@ class AuditLogsRepository {
     );
   }
 
+  /// Reads `current_setting('app.operator_id', true)` from the
+  /// caller's transaction. When the GUC is set (tenant-scoped path),
+  /// [operatorId] MUST equal it, otherwise we throw before binding
+  /// any SQL so a forged row never reaches Postgres. When the GUC is
+  /// unset (`runAsSystem` admin path), the parameter is accepted —
+  /// admin paths have their own audit marker
+  /// (`app.bypass_rls_audit = 'system:<reason>'`) on the same tx.
+  ///
+  /// `current_setting(name, missing_ok)` with `missing_ok=true`
+  /// returns the empty string when the GUC has never been set on the
+  /// session; we treat empty / null identically.
+  Future<void> _assertTenantContextMatches(
+    PostgresExecutor exec,
+    String operatorId,
+  ) async {
+    final rows = await exec.query(
+      "select current_setting('app.operator_id', true) as operator_id",
+    );
+    if (rows.isEmpty) return;
+    final raw = rows.single['operator_id'];
+    if (raw == null) return;
+    final ctxOperatorId = raw.toString();
+    if (ctxOperatorId.isEmpty) return;
+    if (ctxOperatorId != operatorId) {
+      throw AuditLogsTenantMismatchError(
+        'audit_logs.writeRow operator_id parameter does not match '
+        'the active tenant context (app.operator_id SET LOCAL); '
+        'refusing to insert a forged audit row',
+      );
+    }
+  }
+
   static String _formatChainDate(DateTime instant) {
     final utc = instant.toUtc();
     return '${utc.year.toString().padLeft(4, '0')}-'
         '${utc.month.toString().padLeft(2, '0')}-'
         '${utc.day.toString().padLeft(2, '0')}';
   }
+}
+
+/// Thrown by [AuditLogsRepository.writeRow] when the caller-supplied
+/// `operatorId` parameter does not match the `app.operator_id` GUC
+/// the caller's tenant transaction has injected via `SET LOCAL`. The
+/// mismatch is treated as a hard stop — the audit chain must never
+/// receive a row whose `operator_id` disagrees with the tenant the
+/// surrounding transaction is running under.
+///
+/// The error is emitted before any insert SQL runs so the chain stays
+/// untouched; the caller's transaction is expected to roll back on
+/// the throw (the standard `withTenant` wrapper does this).
+class AuditLogsTenantMismatchError implements Exception {
+  AuditLogsTenantMismatchError(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'AuditLogsTenantMismatchError: $message';
 }
 
 /// Resolves the `audit_logs_cutover_enabled` feature flag. The
