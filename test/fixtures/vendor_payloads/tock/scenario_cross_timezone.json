@@ -1,0 +1,9 @@
+{
+  "id": "res_cross_tz_pacific_toronto_001",
+  "businessId": "bus_3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011",
+  "createdTimestamp": "2026-05-08T22:00:00.000Z",
+  "lastUpdatedTimestamp": "2026-05-09T03:55:00.000Z",
+  "serviceDateTimestamp": "2026-05-09T03:30:00.000Z",
+  "partySize": 5,
+  "status": "EXPECTED"
+}

@@ -1,0 +1,30 @@
+{
+  "transport": "credential_rotation_event",
+  "vendor_id": "tock",
+  "auth_mode": "keyPaste",
+  "oauth_applicable": false,
+  "credential_event": {
+    "kind": "static_api_key_401_response",
+    "vendor_endpoint": "GET /reservations/search",
+    "vendor_response_status": 401,
+    "vendor_response_body": {
+      "error": "unauthorized",
+      "message": "API key invalid or revoked"
+    },
+    "f_and_f_connection_id": "conn_tock_test_0001",
+    "operator_id": "op_test_0001",
+    "location_id": "loc_test_0001",
+    "business_id": "bus_3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011"
+  },
+  "_meta": {
+    "expected_outcome": "no_refresh_path_credential_rotation",
+    "expected_state_change": {
+      "connector_connection.status": "connected -> error",
+      "operator_facing_chrome": "re-paste your Tock API key",
+      "auto_disable_email": "deferred to 9.8.email per V1 lean cut 2 boundaries"
+    },
+    "non_oauth_substitution_note": "Tock issues per-businessId API keys via integrate@tockhq.com under the Premium / Premium Unlimited tier commercial agreement (docs/integrations/tock/oauth_shape.md). API keys do not expire on a documented schedule; Tock revokes on commercial-relationship change (operator off-boards, Premium-tier downgrade). The framework's oauth_refresh_cron has NO closure for Tock — there is no token to refresh. The analog rotation path is: vendor 401 -> adapter flips connector_connection.status to 'error' -> operator re-pastes a new key into the F&F admin's vendor connections widget -> the framework persists the new key in vendor_credentials (HP #7).",
+    "phase_2_adapter_assertion": "On 401 response from any TockApiClient method, the framework wrapping the adapter call MUST flip connector_connection.status to 'error' and surface 're-paste your Tock API key' chrome. The adapter itself does NOT own this transition — the framework's connector_status_service does, on receiving the typed exception from the transport.",
+    "phase_3_load_assertion": "OAuth-refresh storm load lane (3C) MUST treat Tock as out-of-scope for refresh load — the refresh worker has no Tock closure registered. The lane confirms by introspecting the worker's per-vendor closure registry and asserting tock NOT IN registry."
+  }
+}

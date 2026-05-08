@@ -1,0 +1,9 @@
+{
+  "id": "res_5b73f1c9-6e84-49a2-9f1c-2e0d8f4a1b09",
+  "businessId": "bus_3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011",
+  "createdTimestamp": "2026-05-07T22:18:05.000Z",
+  "lastUpdatedTimestamp": "2026-05-09T01:34:22.000Z",
+  "serviceDateTimestamp": "2026-05-09T01:30:00.000Z",
+  "partySize": 4,
+  "status": "SEATED"
+}
