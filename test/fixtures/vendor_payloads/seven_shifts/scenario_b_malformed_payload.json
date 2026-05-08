@@ -1,0 +1,21 @@
+{
+  "_fixture_envelope": {
+    "description": "Body cannot be parsed as a valid time_punch event. Multiple documented violations: missing required time_punch.id, clocked_in is not ISO 8601, user_id is a string when documented as int, role.name is missing.",
+    "expected_outcome": "reject",
+    "expected_failure_mode": "_canonicalizePunch returns null OR JSON parse fails at the proxy boundary; no canonical fact written"
+  },
+  "event_type": "time_punch.edited",
+  "event_id": "evt_7s_malformed_b",
+  "company_id": 4242,
+  "time_punch": {
+    "user_id": "ninety-nine-thousand-one",
+    "shift_id": 887701,
+    "role": {
+      "id": 401
+    },
+    "clocked_in": "yesterday at six pm",
+    "clocked_out": null,
+    "approved": "yes",
+    "modified": ""
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "_fixture_envelope": {
+    "description": "Webhook delivery whose X-7Shifts-Hmac-SHA256 header carries a base64 string that is NOT the HMAC-SHA256 of raw_body under signing_secret. The body is otherwise a valid time_punch.edited event.",
+    "expected_outcome": "reject",
+    "verifier": "lib/integrations/labor/seven_shifts_webhook_signature_verifier.dart",
+    "expected_failure_reason": "X-7Shifts-Hmac-SHA256 HMAC mismatch",
+    "headers": {
+      "X-7Shifts-Hmac-SHA256": "ZmFrZS1zaWduYXR1cmUtbm90LWFjdHVhbC1obWFjLW91dHB1dC1ieXRlcy0xMjM0NTY3OA==",
+      "X-7Shifts-Timestamp": "1778976300",
+      "X-7Shifts-Event-Id": "evt_7s_forged_a"
+    },
+    "signing_secret": "7s_test_signing_secret_aaaa",
+    "raw_body": "{\"event_type\":\"time_punch.edited\",\"event_id\":\"evt_7s_forged_a\",\"company_id\":4242,\"time_punch\":{\"id\":712020,\"user_id\":99001,\"shift_id\":887701,\"role\":{\"id\":401,\"name\":\"Server\"},\"clocked_in\":\"2026-05-06T18:00:00Z\",\"clocked_out\":\"2026-05-06T23:30:00Z\",\"approved\":true,\"modified\":\"2026-05-06T23:31:00Z\"}}"
+  },
+  "event_type": "time_punch.edited",
+  "event_id": "evt_7s_forged_a",
+  "company_id": 4242,
+  "time_punch": {
+    "id": 712020,
+    "user_id": 99001,
+    "shift_id": 887701,
+    "role": {
+      "id": 401,
+      "name": "Server"
+    },
+    "clocked_in": "2026-05-06T18:00:00Z",
+    "clocked_out": "2026-05-06T23:30:00Z",
+    "approved": true,
+    "modified": "2026-05-06T23:31:00Z"
+  }
+}

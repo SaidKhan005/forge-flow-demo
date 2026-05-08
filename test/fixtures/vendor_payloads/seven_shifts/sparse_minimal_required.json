@@ -1,0 +1,13 @@
+{
+  "event_type": "time_punch.created",
+  "event_id": "evt_7s_20260505_011",
+  "company_id": 4242,
+  "time_punch": {
+    "id": 712011,
+    "user_id": 99005,
+    "clocked_in": "2026-05-05T20:00:00Z",
+    "clocked_out": null,
+    "approved": false,
+    "modified": "2026-05-05T20:00:00Z"
+  }
+}
