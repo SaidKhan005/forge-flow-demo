@@ -17,6 +17,7 @@ import 'package:forge_and_flow/admin/screens/invite_member_admin_dialog.dart';
 import 'package:forge_and_flow/admin/screens/members_admin_screen.dart';
 import 'package:forge_and_flow/admin/screens/operator_picker_screen.dart';
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/members_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -647,6 +648,63 @@ void main() {
       },
     );
 
+    testWidgets('Invite member can target the selected business scope', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = InMemoryMembersAdminGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin_members_invite_button')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_email')),
+        'regional@demo-diner.test',
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_display_name')),
+        'Riley Regional',
+      );
+      await tester.tap(find.byKey(const Key('admin_members_invite_role')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Operator manager').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_members_invite_location')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Business / Demo Diner Co.').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_admin_reason')),
+        'regional manager onboarding',
+      );
+      await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
+      await tester.pumpAndSettle();
+
+      final invites = await gateway.listInvites(
+        operatorId: kDemoDinerOperatorId,
+      );
+      final fresh = invites.firstWhere(
+        (i) => i.email == 'regional@demo-diner.test',
+      );
+      expect(fresh.scopeType, equals('operator_wide'));
+      final event = gateway.capturedAuditEvents.firstWhere(
+        (e) => e.action == 'team.users.invite',
+      );
+      expect(event.payload['scope_type'], equals('operator_wide'));
+    });
+
     testWidgets('duplicate invite can show the existing team row', (
       tester,
     ) async {
@@ -823,6 +881,46 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Choose a role for this member.'), findsOneWidget);
+    });
+  });
+
+  group('merged People/access/roles surface', () {
+    testWidgets('renders role policy and Permission Explainer on People', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = InMemoryMembersAdminGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+      final rolesGateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+        locationsByOperator: kDemoHierarchyLocationsByOperator(),
+        sessionsByOperator: kDemoSessionsByOperator(),
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            rolesGateway: rolesGateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_people_access_scope_card')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('admin_rhs_roles_tab')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_rhs_permission_explainer')),
+        findsOneWidget,
+      );
     });
   });
 
