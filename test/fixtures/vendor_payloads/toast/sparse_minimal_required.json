@@ -1,0 +1,23 @@
+{
+  "_event_envelope": {
+    "eventGuid": "evt-2b1c8d4e-9a7f-4e3b-b1d2-5c6f7a8b9c0d",
+    "eventType": "orders.modified",
+    "headers": {
+      "toast-signature": "<<HMAC_SHA256_BASE64_OF_BODY_USING_TEST_HMAC_SECRET>>",
+      "toast-webhook-timestamp": "1778015400"
+    }
+  },
+  "closedDate": "2026-05-04T21:00:00.000Z",
+  "entityType": "Order",
+  "guid": "2b1c8d4e-9a7f-4e3b-b1d2-5c6f7a8b9c0d",
+  "modifiedDate": "2026-05-04T21:00:00.000Z",
+  "numberOfGuests": 1,
+  "openedDate": "2026-05-04T20:55:00.000Z",
+  "paymentStatus": "PAID",
+  "restaurant": {
+    "entityType": "Restaurant",
+    "guid": "3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011"
+  },
+  "totalAmount": 12.0,
+  "voided": false
+}

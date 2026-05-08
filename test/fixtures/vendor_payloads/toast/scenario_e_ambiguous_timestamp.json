@@ -1,0 +1,30 @@
+{
+  "_event_envelope": {
+    "eventGuid": "evt-ambiguous-3d7a4f2e-8b9c-4d1e-a2f5-6b8c9d0e1f2a",
+    "eventType": "orders.modified",
+    "headers": {
+      "toast-signature": "<<HMAC_SHA256_BASE64_OF_BODY_USING_TEST_HMAC_SECRET>>",
+      "toast-webhook-timestamp": "1778011500"
+    }
+  },
+  "_sourcing_gap": "Toast public docs declare every Order timestamp ISO-8601 UTC with trailing 'Z'; producing an ambiguous-timestamp payload is therefore a synthetic adversarial case rather than a documented vendor shape. The fixture exists so the framework's refuse-by-default protection is exercised against a Toast-shaped envelope. Phase 5 escalation: confirm with the Toast partner portal whether any documented endpoint or webhook variant ever drops the 'Z' suffix.",
+  "businessDate": 20260504,
+  "closedDate": "2026-05-04T19:55:00",
+  "deleted": false,
+  "diningOption": {
+    "entityType": "DiningOption",
+    "guid": "00000000-0000-4000-a000-000000000201"
+  },
+  "entityType": "Order",
+  "guid": "3d7a4f2e-8b9c-4d1e-a2f5-6b8c9d0e1f2a",
+  "modifiedDate": "2026-05-04T19:55:00",
+  "numberOfGuests": 4,
+  "openedDate": "2026-05-04T18:30:00",
+  "paymentStatus": "PAID",
+  "restaurant": {
+    "entityType": "Restaurant",
+    "guid": "3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011"
+  },
+  "totalAmount": 87.2,
+  "voided": false
+}
