@@ -207,7 +207,11 @@ class OperatorWebNeedsToken extends OperatorWebAuthState {
 }
 
 class OperatorWebNeedsSignIn extends OperatorWebAuthState {
-  const OperatorWebNeedsSignIn({this.lastErrorMessage, this.lastInfoMessage});
+  const OperatorWebNeedsSignIn({
+    this.lastErrorMessage,
+    this.lastInfoMessage,
+    this.redirectUri,
+  });
   @override
   OnboardingStage get stage => OnboardingStage.signingIn;
   @override
@@ -217,6 +221,15 @@ class OperatorWebNeedsSignIn extends OperatorWebAuthState {
 
   /// Non-error confirmation copy, e.g. after a password reset request.
   final String? lastInfoMessage;
+
+  /// CODE_OPS_DEBT carry-over #1 — populated when the user landed on
+  /// the sign-in surface because a backend route returned the
+  /// `mfa_freshness_required` 403. The router consumes this hint
+  /// after re-auth completes and navigates back to the originating
+  /// surface (typically `/auth/login?reason=fresh_mfa_required`,
+  /// which the router interprets as "show the login card with a
+  /// returnTo hint").
+  final String? redirectUri;
 }
 
 class OperatorWebSignInMfaChallenge extends OperatorWebAuthState {

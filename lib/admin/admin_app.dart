@@ -8,11 +8,13 @@
 
 import 'package:flutter/material.dart';
 
+import '../auth/mfa_freshness_redirect_listener.dart';
 import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
 import 'admin_button_styles.dart';
 import 'admin_routes.dart';
 import 'admin_shell.dart';
+import 'services/admin_http_timeout.dart';
 
 class AdminConsoleApp extends StatefulWidget {
   const AdminConsoleApp({
@@ -32,7 +34,27 @@ class AdminConsoleApp extends StatefulWidget {
 
 class _AdminConsoleAppState extends State<AdminConsoleApp> {
   @override
+  void initState() {
+    super.initState();
+    // CODE_OPS_DEBT carry-over #1 — register the admin shell's auth
+    // source as the process-wide listener for the proxy's
+    // `mfa_freshness_required` 403 redirect. Every admin gateway
+    // funnels through `sendAdminHttpRequest`, which dispatches to
+    // this listener before the gateway's own status-code branch
+    // throws. The auth source signs out and emits an
+    // [AdminAuthUnauthenticated] state with the proxy-supplied
+    // `redirect_uri` hint so the gate widget renders the sign-in
+    // card with a friendly explanation.
+    AdminHttpFreshnessRedirectDispatcher.listener = widget.authSource;
+  }
+
+  @override
   void dispose() {
+    // Reset the dispatcher so a tear-down + re-mount does not leak
+    // the disposed auth source. The default no-op listener absorbs
+    // any in-flight 403s harmlessly.
+    AdminHttpFreshnessRedirectDispatcher.listener =
+        const NoopMfaFreshnessRedirectListener();
     widget.authSource.dispose();
     super.dispose();
   }

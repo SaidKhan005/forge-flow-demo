@@ -11,6 +11,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import '../../auth/mfa_freshness_redirect_listener.dart';
 import '../../services/auth/account_info_gateway.dart';
 
 class OperatorWebProxyClient {
@@ -19,14 +20,29 @@ class OperatorWebProxyClient {
     http.Client? httpClient,
     Duration timeout = const Duration(seconds: 30),
     String Function()? idempotencyKeyFactory,
+    MfaFreshnessRedirectListener? mfaFreshnessRedirectListener,
   }) : _httpClient = httpClient ?? http.Client(),
        _timeout = timeout,
-       _idempotencyKeyFactory = idempotencyKeyFactory ?? _defaultIdempotencyKey;
+       _idempotencyKeyFactory = idempotencyKeyFactory ?? _defaultIdempotencyKey,
+       _mfaFreshnessRedirectListener =
+           mfaFreshnessRedirectListener ??
+           const NoopMfaFreshnessRedirectListener();
 
   final Uri baseUri;
   final http.Client _httpClient;
   final Duration _timeout;
   final String Function() _idempotencyKeyFactory;
+  MfaFreshnessRedirectListener _mfaFreshnessRedirectListener;
+
+  /// Late-bind the listener for cases where the auth source is built
+  /// after the proxy client (e.g. the `FirebaseOperatorWebAuthSource`
+  /// constructor wires both at once but the listener wraps the auth
+  /// source itself, so the listener cannot be ready at proxy-client
+  /// construction).
+  // ignore: avoid_setters_without_getters
+  set mfaFreshnessRedirectListener(MfaFreshnessRedirectListener listener) {
+    _mfaFreshnessRedirectListener = listener;
+  }
 
   static const String authSessionLoginPath = '/v1/auth/session/login';
   static const String authAccountInfoPath = '/v1/auth/account';
@@ -263,12 +279,26 @@ class OperatorWebProxyClient {
 
   void _throwIfUnsuccessful(OperatorWebJsonResponse response, String path) {
     if (response.statusCode >= 200 && response.statusCode < 300) return;
+    // CODE_OPS_DEBT carry-over #1 — detect the proxy's
+    // `mfa_freshness_required` 403 payload, hand the redirect hint to
+    // the listener (which signs out + drives navigation), and surface
+    // the same hint on the thrown exception so screen-level catch
+    // blocks can render a "we signed you out, please sign in again"
+    // message instead of the generic proxy error.
+    final freshnessRedirect = MfaFreshnessRedirectPayload.tryParse(
+      statusCode: response.statusCode,
+      body: response.body,
+    );
+    if (freshnessRedirect != null) {
+      _mfaFreshnessRedirectListener.onMfaFreshnessRedirect(freshnessRedirect);
+    }
     throw OperatorWebProxyException(
       code: _readString(response.body['error']) ?? 'proxy_request_failed',
       message:
           _readString(response.body['message']) ??
           'The operator web proxy could not complete $path.',
       statusCode: response.statusCode,
+      redirectUri: freshnessRedirect?.redirectUri,
     );
   }
 
@@ -305,11 +335,29 @@ class OperatorWebProxyException implements Exception {
     required this.code,
     required this.message,
     this.statusCode,
+    this.redirectUri,
   });
 
   final String code;
   final String message;
   final int? statusCode;
+
+  /// Populated when the proxy returned the `mfa_freshness_required`
+  /// 403 payload (CODE_OPS_DEBT carry-over #1). Screens that catch
+  /// this exception can branch on `redirectUri != null` to render a
+  /// "you've been signed out — please sign in again" affordance
+  /// instead of the generic gateway error. The actual sign-out is
+  /// performed by the auth source's
+  /// [MfaFreshnessRedirectListener] before this exception bubbles.
+  final String? redirectUri;
+
+  /// Convenience: true iff this exception was the
+  /// `mfa_freshness_required` 403. Avoids stringly-typed branching
+  /// in screen code.
+  bool get isMfaFreshnessRedirect =>
+      statusCode == 403 &&
+      code == MfaFreshnessRedirectPayload.errorCode &&
+      redirectUri != null;
 
   @override
   String toString() => 'OperatorWebProxyException(code: $code)';

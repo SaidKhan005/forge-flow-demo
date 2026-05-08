@@ -160,6 +160,16 @@ window.
   → login → MFA → return), not a step-up modal. The proxy includes
   a `redirect_uri` hint in the 403 / `mfa_freshness_required`
   payload that the admin shell consumes to drive the navigation.
+- Frontend listener: `lib/auth/mfa_freshness_redirect_listener.dart`
+  parses the payload; the admin shell (`lib/admin/admin_app.dart`
+  registers `AdminAuthSource` as the process-wide listener via
+  `AdminHttpFreshnessRedirectDispatcher` in
+  `lib/admin/services/admin_http_timeout.dart`) and the operator-web
+  shell (`FirebaseOperatorWebAuthSource` registers itself on the
+  shared `OperatorWebProxyClient`) sign out and emit a
+  needs-sign-in state carrying the `redirect_uri`. The screen
+  layer renders a calm-tone info banner ("Please sign in again to
+  continue. This protects your account.") above the sign-in card.
 
 Operational note: changing the window from the default writes no
 data — restart the proxy and the new value applies on the next
