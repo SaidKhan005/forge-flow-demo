@@ -92,6 +92,15 @@ void main() {
       find.byKey(const Key('admin_integrations_status_quickbooks_time')),
       findsOneWidget,
     );
+    expect(find.text('Vendor connector catalog'), findsOneWidget);
+    expect(
+      find.textContaining('Business vendor setup stays per location'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('selected location Integrations tile'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('rotate flow: confirm → plaintext → reveal modal → close', (
