@@ -1,0 +1,32 @@
+{
+  "_fixture_metadata": {
+    "scenario": "C",
+    "outcome": "reject",
+    "reason": "Future-dated punch — sanity hook rejects (rule: opened_in_future)",
+    "headers": {
+      "adp-signature": "<valid hmac over raw body>",
+      "adp-signature-timestamp": "1778256030",
+      "adp-event-id": "evt-adp-future-001",
+      "content-type": "application/json"
+    },
+    "now_for_test": "2026-05-08T12:00:00Z"
+  },
+  "payload": {
+    "event_id": "evt-adp-future-001",
+    "event_name": "time.timeEvent.modify",
+    "event_action": "submitted",
+    "time_event": {
+      "id": "ADP-TE-FUTURE-001",
+      "entry_date_time": "2026-07-15T12:00:00Z",
+      "exit_date_time": "2026-07-15T20:00:00Z",
+      "last_modified_date_time": "2026-07-15T20:00:30Z",
+      "status": "submitted"
+    },
+    "worker": {
+      "associate_oid": "G3W999",
+      "position": {
+        "position_title": "Server"
+      }
+    }
+  }
+}

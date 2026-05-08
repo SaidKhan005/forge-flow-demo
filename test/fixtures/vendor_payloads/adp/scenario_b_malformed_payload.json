@@ -1,0 +1,24 @@
+{
+  "_fixture_metadata": {
+    "scenario": "B",
+    "outcome": "reject",
+    "reason": "Canonicalizer returns null — required path `time_event.entry_date_time` is missing and `worker` is not a Map",
+    "headers": {
+      "adp-signature": "<valid hmac over raw body>",
+      "adp-signature-timestamp": "1778256030",
+      "adp-event-id": "evt-adp-malformed-001",
+      "content-type": "application/json"
+    }
+  },
+  "payload": {
+    "event_id": "evt-adp-malformed-001",
+    "event_name": "time.timeEvent.modify",
+    "event_action": "submitted",
+    "time_event": {
+      "id": "ADP-TE-MALFORMED-001",
+      "entry_date_time": 9999,
+      "last_modified_date_time": "2026-05-04T23:00:30Z"
+    },
+    "worker": "G3WXX1Y2Z3A4B5C6"
+  }
+}

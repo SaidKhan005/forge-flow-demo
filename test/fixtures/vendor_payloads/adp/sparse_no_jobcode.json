@@ -1,0 +1,15 @@
+{
+  "event_id": "evt-adp-sparse-005",
+  "event_name": "time.timeEvent.modify",
+  "event_action": "submitted",
+  "time_event": {
+    "id": "ADP-TE-20260504-000003",
+    "entry_date_time": "2026-05-04T16:00:00Z",
+    "exit_date_time": null,
+    "last_modified_date_time": "2026-05-04T16:00:05Z",
+    "status": "open"
+  },
+  "worker": {
+    "associate_oid": "G3W003"
+  }
+}

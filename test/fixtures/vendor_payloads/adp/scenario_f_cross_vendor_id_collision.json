@@ -1,0 +1,49 @@
+{
+  "_fixture_metadata": {
+    "scenario": "F",
+    "outcome": "no_shadow_write",
+    "reason": "Idempotency UNIQUE on `(vendor_id, operator_id, vendor_entity_id, vendor_modified_at)` namespaces ADP and the colliding labor vendor separately. The numeric-string `12345` exists as both an ADP `associate_oid` and a hypothetical 7shifts `user_id` for the same operator + location, but the canonical fact rows are keyed by `vendor_id`, so the ADP write does NOT collide with the 7shifts write.",
+    "headers": {
+      "adp-signature": "<valid hmac over raw body>",
+      "adp-signature-timestamp": "1778256030",
+      "adp-event-id": "evt-adp-collision-001",
+      "content-type": "application/json"
+    }
+  },
+  "payload": {
+    "event_id": "evt-adp-collision-001",
+    "event_name": "time.timeEvent.modify",
+    "event_action": "submitted",
+    "time_event": {
+      "id": "12345",
+      "entry_date_time": "2026-05-04T15:00:00Z",
+      "exit_date_time": "2026-05-04T23:00:00Z",
+      "last_modified_date_time": "2026-05-04T23:00:30Z",
+      "status": "submitted"
+    },
+    "worker": {
+      "associate_oid": "12345",
+      "position": {
+        "position_title": "Server"
+      }
+    }
+  },
+  "_collision_context": {
+    "colliding_vendor": "seven_shifts",
+    "colliding_vendor_payload_path": "test/fixtures/vendor_payloads/seven_shifts/<future>",
+    "colliding_id": "12345",
+    "expected_canonical_writes": [
+      {
+        "vendor_id": "adp",
+        "vendor_entity_id": "12345",
+        "employee_id": "12345"
+      },
+      {
+        "vendor_id": "seven_shifts",
+        "vendor_entity_id": "12345",
+        "employee_id": "12345"
+      }
+    ],
+    "expected_canonical_writes_note": "Two distinct rows in `vendor_time_punch_facts` (or its labor analogue) — one per vendor — with no merge. Cross-vendor employee identity is an explicit non-goal at V1 per `docs/integrations/adp/field_mapping.md` and the Phase 8.S plan."
+  }
+}
