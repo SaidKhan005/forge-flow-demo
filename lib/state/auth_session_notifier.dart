@@ -153,7 +153,31 @@ class AuthSessionNotifier extends ChangeNotifier {
         'AuthSessionNotifier.rehydrate storage error: ${error.message}',
       );
       loaded = null;
-    } catch (_) {
+    } on TimeoutException catch (error) {
+      // Secure storage backend stalled. Treat as "no persistence" so
+      // the UI lands at the login screen without blocking on the
+      // hardware-backed keystore. Logged so the session survives in
+      // process logs even though the user gets a clean failure.
+      debugPrint(
+        'AuthSessionNotifier.rehydrate storage timeout: $error',
+      );
+      loaded = null;
+    } on Exception catch (error) {
+      // Any other storage exception (PlatformException, codec error,
+      // etc.). Same posture: drop persistence, log structured, fail
+      // to unauthenticated so the user can re-sign-in.
+      debugPrint(
+        'AuthSessionNotifier.rehydrate storage exception: $error',
+      );
+      loaded = null;
+    } on Object catch (error, stackTrace) {
+      // Non-`Exception` throws (raw `String`, `Error` subclass, etc.).
+      // Same posture as the `Exception` branch with the stack frame
+      // attached for diagnosis.
+      debugPrint(
+        'AuthSessionNotifier.rehydrate storage unhandled: $error',
+      );
+      debugPrint(stackTrace.toString());
       loaded = null;
     }
     if (loaded == null) {
@@ -164,8 +188,21 @@ class AuthSessionNotifier extends ChangeNotifier {
     if (!loaded.session.isLive(now: _now())) {
       try {
         await _storage.clear();
-      } catch (_) {
-        /* ignore */
+      } on TimeoutException catch (error) {
+        // Best-effort cleanup; storage clear stalled. The session is
+        // already past TTL so the next launch will re-clear.
+        debugPrint(
+          'AuthSessionNotifier.rehydrate clear timeout: $error',
+        );
+      } on Exception catch (error) {
+        debugPrint(
+          'AuthSessionNotifier.rehydrate clear exception: $error',
+        );
+      } on Object catch (error, stackTrace) {
+        debugPrint(
+          'AuthSessionNotifier.rehydrate clear unhandled: $error',
+        );
+        debugPrint(stackTrace.toString());
       }
       _activeSessionId = null;
       _setState(const AuthSessionUnauthenticated());
@@ -277,8 +314,22 @@ class AuthSessionNotifier extends ChangeNotifier {
         // session that has no ledger row.
         try {
           await _storage.clear();
-        } catch (_) {
-          /* ignore — best-effort cleanup */
+        } on TimeoutException catch (error) {
+          // Best-effort cleanup; the ledger error is the one we want
+          // the UI to see. A stalled clear here is logged for SREs
+          // but does not change the user-facing failure message.
+          debugPrint(
+            'AuthSessionNotifier.signIn clear timeout: $error',
+          );
+        } on Exception catch (error) {
+          debugPrint(
+            'AuthSessionNotifier.signIn clear exception: $error',
+          );
+        } on Object catch (error, stackTrace) {
+          debugPrint(
+            'AuthSessionNotifier.signIn clear unhandled: $error',
+          );
+          debugPrint(stackTrace.toString());
         }
         const String ledgerFailureCode = 'ledger_unavailable';
         const String ledgerFailureMessage =
@@ -448,8 +499,22 @@ class AuthSessionNotifier extends ChangeNotifier {
     _activeSessionId = null;
     try {
       await _storage.clear();
-    } catch (_) {
-      /* ignore */
+    } on TimeoutException catch (error) {
+      // Sign-out priority is the local security primitive (we're
+      // about to flip state to Unauthenticated). A stalled clear is
+      // logged but does not block the sign-out flow.
+      debugPrint(
+        'AuthSessionNotifier.signOutThisSession clear timeout: $error',
+      );
+    } on Exception catch (error) {
+      debugPrint(
+        'AuthSessionNotifier.signOutThisSession clear exception: $error',
+      );
+    } on Object catch (error, stackTrace) {
+      debugPrint(
+        'AuthSessionNotifier.signOutThisSession clear unhandled: $error',
+      );
+      debugPrint(stackTrace.toString());
     }
     _setState(
       AuthSessionUnauthenticated(
@@ -489,8 +554,22 @@ class AuthSessionNotifier extends ChangeNotifier {
     _setState(const AuthSessionUnauthenticated());
     try {
       await _storage.clear();
-    } catch (_) {
-      /* ignore */
+    } on TimeoutException catch (error) {
+      // Local app state is already flipped to Unauthenticated; the
+      // clear is best-effort. Log so SREs see when secure storage
+      // wedges, then continue to the network revoke below.
+      debugPrint(
+        'AuthSessionNotifier.signOutAllSessions clear timeout: $error',
+      );
+    } on Exception catch (error) {
+      debugPrint(
+        'AuthSessionNotifier.signOutAllSessions clear exception: $error',
+      );
+    } on Object catch (error, stackTrace) {
+      debugPrint(
+        'AuthSessionNotifier.signOutAllSessions clear unhandled: $error',
+      );
+      debugPrint(stackTrace.toString());
     }
 
     var signedOutLocally = false;
