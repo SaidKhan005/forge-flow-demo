@@ -2691,7 +2691,7 @@ Migration count: **66**
   drainable while operators triage the failures.
 
   Authority:
-  * `docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md` —
+  * `docs/archive/phases/phase_10a/phase_10a_shared_state_v1_plan.md` —
   Scope "Dead-letter" subsection.
   * `docs/contracts/event_outbox_contract.md` — "Worker
   Responsibilities" `Dead-letter rows whose attempt_count

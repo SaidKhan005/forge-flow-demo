@@ -129,6 +129,7 @@ Architecture:
 Intentional reader-side carve-outs (do not remove without an explicit replacement plan):
 1. `lib/screens/auth/login_screen.dart` — `_demoOperatorSignInEnabled` adds an additive "Use demo operator" button below the regular sign-in. Strictly UX; the button drives the same `signInWithEmailPassword` path.
 2. `lib/services/app_data_status_service.dart` — the data-status badge renders `DEMO` instead of `CURRENT` when `--dart-define=kDemoMode=true`. Label-only; same read math.
+3. `lib/screens/settings_screen.dart` — `_kDemoMode` const gates two demo-only management sections in the Settings tab: "Data reset" (clears local demo data) and "Demo date" (advance demo restaurant through sample business days). Production builds hide both sections; the rest of the Settings tab (Account, MFA, Active Sessions, Data freshness, Wage authority, Team, Permissions, FF Support) renders identically in demo and prod. Operator sign-off 2026-05-08 — these are demo-only operator affordances that have no production analogue, so the carve-out is the lower-risk option compared to rendering disabled UI in prod.
 
 Rules for new demo-aware code:
 - Default = NO branch. Demo and prod read from the same code path.

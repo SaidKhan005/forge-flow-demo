@@ -1,6 +1,9 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-07
+Updated: 2026-05-08 (multi-agent deep-dive audit recorded 7 new
+findings in `docs/POST_HARDENING_FOLLOWUPS.md` "Audit additions —
+2026-05-08" section; admin hierarchy lane excluded). Prior:
+2026-05-07.
 Owner: You · Execution: We think, Claude codes
 
 Routing map only. This file shows **only what is left**. Completed phases /

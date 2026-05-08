@@ -262,11 +262,11 @@ Each `*.live.*` slice is small (~200 LOC + walkthrough). It:
   permission key.
 - `docs/CODEX_PROMPT_GENERATION_STANDARD.md` — prompt shape;
   walkthrough specificity bar; vendor adapter slice template.
-- `docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md` — POS
+- `docs/archive/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md` — POS
   framework + adapters.
-- `docs/phases/phase_8R/phase_8R_official_reservation_connector_plan.md` —
+- `docs/archive/phases/phase_8R/phase_8R_official_reservation_connector_plan.md` —
   Reservations.
-- `docs/phases/phase_8S/phase_8S_scheduling_connector_plan.md` —
+- `docs/archive/phases/phase_8S/phase_8S_scheduling_connector_plan.md` —
   Scheduling.
 - `docs/phases/phase_8/vendor_master_list.md` — 17 vendor classification +
   Wave B engineering plan + `*.live` rolling rollout.
