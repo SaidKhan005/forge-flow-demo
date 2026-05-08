@@ -50,22 +50,27 @@ class AppColors {
 }
 
 class AppTextStyles {
+  static const String webFallbackFontFamily = 'Arial';
+
   static bool get _isWidgetTestBinding =>
       WidgetsBinding.instance.runtimeType.toString().contains('Test');
 
   static bool get _usesRuntimeGoogleFonts => !_isWidgetTestBinding && !kIsWeb;
 
+  static TextStyle _webSafe(TextStyle style) =>
+      kIsWeb ? style.copyWith(fontFamily: webFallbackFontFamily) : style;
+
   static TextStyle _playfair(TextStyle style) => _usesRuntimeGoogleFonts
       ? GoogleFonts.playfairDisplay(textStyle: style)
-      : style;
+      : _webSafe(style);
 
   static TextStyle _mono(TextStyle style) => _usesRuntimeGoogleFonts
       ? GoogleFonts.ibmPlexMono(textStyle: style)
-      : style;
+      : _webSafe(style);
 
   static TextStyle _sans(TextStyle style) => _usesRuntimeGoogleFonts
       ? GoogleFonts.ibmPlexSans(textStyle: style)
-      : style;
+      : _webSafe(style);
   // ── Display — Playfair Display ────────────────────────────────────────────
   static TextStyle display36({Color? color}) => _playfair(
     TextStyle(
@@ -292,6 +297,7 @@ class AppTheme {
   static ThemeData get themeData => ThemeData(
     brightness: Brightness.light,
     scaffoldBackgroundColor: AppColors.backgroundDeep,
+    fontFamily: kIsWeb ? AppTextStyles.webFallbackFontFamily : null,
     colorScheme: const ColorScheme.light(
       surface: AppColors.backgroundMid,
       primary: AppColors.sunsetDark,
@@ -324,6 +330,8 @@ class AppTheme {
         : const TextTheme(
             bodyMedium: TextStyle(color: AppColors.textPrimary),
             bodySmall: TextStyle(color: AppColors.textSecondary),
+          ).apply(
+            fontFamily: kIsWeb ? AppTextStyles.webFallbackFontFamily : null,
           ),
     useMaterial3: true,
   );
