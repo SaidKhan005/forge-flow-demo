@@ -1,0 +1,29 @@
+{
+  "collision_inputs": [
+    {
+      "namespace_label": "sevenrooms",
+      "vendor_id": "sevenrooms",
+      "operator_id": "op-fixture-001",
+      "vendor_entity_id": "RES-12345",
+      "vendor_modified_at": "2026-05-04T18:00:00.000Z"
+    },
+    {
+      "namespace_label": "opentable_shadow",
+      "vendor_id": "opentable",
+      "operator_id": "op-fixture-001",
+      "vendor_entity_id": "RES-12345",
+      "vendor_modified_at": "2026-05-04T18:00:00.000Z"
+    }
+  ],
+  "payload": {
+    "id": "RES-12345",
+    "venue_id": "sr-venue-7c2f",
+    "arrival_time": "2026-05-04T19:00:00-04:00",
+    "party_size": 2,
+    "status": "BOOKED",
+    "last_updated_at": "2026-05-04T18:00:00.000Z"
+  },
+  "expected_outcome": "no_shadow_write",
+  "expected_failure_mode": "idempotency_namespace_separation",
+  "notes": "The same vendor_entity_id 'RES-12345' arrives via SevenRooms and (in a separate flow) the OpenTable adapter for the same operator. The framework's idempotency UNIQUE on (vendor_id, operator_id, vendor_entity_id, vendor_modified_at) places these in disjoint namespaces — the SevenRooms write does NOT collide with the OpenTable write because vendor_id differs. Conversely, a forged second SevenRooms delivery carrying the same (vendor_id='sevenrooms', operator_id, vendor_entity_id, vendor_modified_at) MUST short-circuit at the gateway (writeReservationFact returns false) without overwriting the canonical fact. Phase 2 harness asserts: two canonical_reservation_fact rows exist (one per real vendor), and a replay of the SevenRooms payload increments the idempotency-hit counter without changing fact-row state."
+}

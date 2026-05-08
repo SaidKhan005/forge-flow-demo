@@ -1,0 +1,17 @@
+{
+  "id": "sr-resv-1003",
+  "venue_id": "sr-venue-7c2f",
+  "arrival_time": "2026-05-04T19:00:00-04:00",
+  "party_size": 6,
+  "status": "COMPLETED",
+  "last_updated_at": "2026-05-05T01:48:00.000Z",
+  "arrived_time": "2026-05-04T23:02:00.000Z",
+  "seated_time": "2026-05-04T23:09:00.000Z",
+  "departed_time": "2026-05-05T01:45:00.000Z",
+  "guest": {
+    "first_name": "IGNORED",
+    "last_name": "IGNORED",
+    "email": "IGNORED"
+  },
+  "notes": "IGNORED"
+}

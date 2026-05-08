@@ -1,0 +1,19 @@
+{
+  "credential_kind": "partner_client_credentials",
+  "vendor_id": "sevenrooms",
+  "auth_endpoint": "POST https://api.sevenrooms.com/2_2/auth",
+  "current_token": {
+    "access_token_credential_id": "cred-sr-bearer-9f3a",
+    "issued_at": "2026-05-04T22:55:00.000Z",
+    "expires_at": "2026-05-04T23:00:00.000Z",
+    "ttl_remaining_seconds": 90
+  },
+  "rotation_inputs_persisted": {
+    "client_id_credential_id": "cred-sr-client-id-7c2f",
+    "client_secret_credential_id": "cred-sr-client-secret-7c2f",
+    "venue_id": "sr-venue-7c2f"
+  },
+  "expected_action": "transport_layer_reissue",
+  "expected_outcome": "fresh_bearer_minted",
+  "notes": "SevenRooms is on the non-OAuth list at test/fixtures/vendor_payloads/README.md (per docs/POST_HARDENING_FOLLOWUPS.md 2026-05-08 confirmed-clean note: 'SevenRooms — transport'). Tokens are minted by the transport layer — there is no broker refresh closure for this vendor. The transport-layer rotation expectation is: when ttl_remaining_seconds < proactive-refresh threshold (cron at hour:05 scans token_expires_at < now() + 24h per docs/integrations/sevenrooms/oauth_shape.md), the transport layer re-exchanges the persisted (client_id, client_secret, venue_id) triple at POST /2_2/auth and writes a fresh bearer to vendor_credentials, leaving the rotation_inputs_persisted ciphertext untouched. No rotating refresh token (client-credentials flow). Reactive refresh on 401 retries once after re-exchange. Three consecutive failures flip connection status to error per oauth_shape.md Refresh semantics."
+}
