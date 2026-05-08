@@ -1,0 +1,38 @@
+{
+  "_fixture_meta": {
+    "scenario": "D — OAuth near-expiry token",
+    "outcome": "refresh path triggers (handled INTERNALLY by OpenTable adapter transport, NOT by the broker oauth_refresh_cron)",
+    "vendor_credential_kind": "oauth_internal",
+    "broker_refresh_closure": false,
+    "doc_reference": "docs/integrations/opentable/oauth_shape.md (Refresh semantics) + adapter audit 2026-05-08 in docs/POST_HARDENING_FOLLOWUPS.md (six non-broker-refresh vendors)",
+    "expected_path": [
+      "1. Adapter's OpenTableTransport.refresh is invoked from inside the adapter (not from the broker's oauth_refresh_cron).",
+      "2. POST /api/v2/oauth/token with grant_type=refresh_token (assumed path; verified in 8R.OT.live.sandbox).",
+      "3. Vendor returns a new access_token + rotating refresh_token.",
+      "4. Adapter persists the new pair via the OpenTableGateway credential surface.",
+      "5. The original API call retries once with the freshened access token."
+    ]
+  },
+  "token_response": {
+    "_comment": "Verbatim shape the adapter expects from POST /api/v2/oauth/token (assumed industry-standard OAuth 2.0 RFC 6749 token response; OpenTable Partner doc gated). Bound to OpenTableTokenResponse in the adapter at lib/integrations/reservation/opentable_reservation_adapter.dart.",
+    "access_token": "ot-access-token-rotated-v2",
+    "refresh_token": "ot-refresh-token-rotated-v2",
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "scope": "reservations.read webhooks.write"
+  },
+  "near_expiry_state_before_refresh": {
+    "access_token": "ot-access-token-v1",
+    "refresh_token": "ot-refresh-token-v1",
+    "token_expires_at": "2026-05-08T12:30:00Z",
+    "now_anchor": "2026-05-08T11:35:00Z",
+    "minutes_to_expiry": 55,
+    "_comment": "Per oauth_shape.md the framework's oauth_refresh_cron horizon is 24h; OpenTable's transport-internal refresh fires on the same horizon but inside the adapter rather than via the broker closure. The 55-minute remaining window mirrors the proactive-refresh trigger."
+  },
+  "reservation_call_after_refresh": {
+    "endpoint": "GET /v1/reservations/search",
+    "modified_since": "2026-05-08T11:00:00Z",
+    "modified_until": "2026-05-08T12:00:00Z",
+    "expected_authorization_header_after_refresh": "Bearer ot-access-token-rotated-v2"
+  }
+}
