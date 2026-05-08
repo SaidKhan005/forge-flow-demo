@@ -1,0 +1,105 @@
+{
+  "_pressure_envelope": {
+    "operator_timezone": "America/Toronto",
+    "operator_business_day_rollover_hour": 4,
+    "vendor_observation_timezone": "America/Los_Angeles",
+    "note": "Operator restaurant runs in `America/Toronto` (UTC-5 standard / UTC-4 DST). The Lightspeed business location was originally configured against a Pacific-coast cluster (informational only — K-Series wire timestamps are always UTC). The fixture stresses the cross-timezone resolver: a UTC instant near midnight Toronto-local must compute the correct business_date in the operator's local zone, NOT the vendor's observation zone."
+  },
+  "nextPageToken": null,
+  "sales": [
+    {
+      "accountFiscId": "A65315.xtz-late",
+      "accountReference": "XtZ1lAtE2dE3fGhIjKlMnOw==",
+      "cancelled": false,
+      "deviceId": 75125,
+      "deviceName": "ipad9",
+      "dineIn": true,
+      "nbCovers": 4.0,
+      "ownerId": 14670,
+      "ownerName": "Manager",
+      "payments": [
+        {
+          "code": "VISA",
+          "currency": "CAD",
+          "fiscDate": "2026-05-09T03:55:00.000Z",
+          "fiscId": "T72691.xtz1",
+          "netAmountWithTax": "184.20",
+          "paymentMethodId": 141948669132825,
+          "tip": "26.20",
+          "type": "NORMAL",
+          "uuid": "XtzA_LCTkeg8qlec77xpa=="
+        }
+      ],
+      "receiptId": "R65315.xtz-late",
+      "salesLines": [
+        {
+          "currency": "CAD",
+          "id": "S65315.xtz1",
+          "menuListPrice": "158.00",
+          "name": "Tasting Menu Pair",
+          "quantity": "2.000",
+          "sku": "551",
+          "taxAmount": "20.54",
+          "taxCode": "HST13",
+          "taxRatePercentage": "13.00",
+          "timeOfSale": "2026-05-09T03:35:00.000Z",
+          "totalDiscountAmount": "0.00",
+          "totalNetAmountWithTax": "158.00",
+          "totalNetAmountWithoutTax": "139.82"
+        }
+      ],
+      "tableName": "Dining Room, Table 8",
+      "tableNumber": "8",
+      "timeClosed": "2026-05-09T03:55:00.000Z",
+      "timeOfOpening": "2026-05-08T23:30:00.000Z",
+      "type": "SALE"
+    },
+    {
+      "accountFiscId": "A65315.xtz-rollover",
+      "accountReference": "XtZ2rOlLoVeR3dE4fGhIjK==",
+      "cancelled": false,
+      "deviceId": 75125,
+      "deviceName": "ipad9",
+      "dineIn": true,
+      "nbCovers": 2.0,
+      "ownerId": 14670,
+      "ownerName": "Manager",
+      "payments": [
+        {
+          "code": "AMEX",
+          "currency": "CAD",
+          "fiscDate": "2026-05-09T08:30:00.000Z",
+          "fiscId": "T72691.xtz2",
+          "netAmountWithTax": "55.00",
+          "paymentMethodId": 141948669132827,
+          "tip": "5.00",
+          "type": "NORMAL",
+          "uuid": "XtzB_LCTkeg8qlec77xpb=="
+        }
+      ],
+      "receiptId": "R65315.xtz-rollover",
+      "salesLines": [
+        {
+          "currency": "CAD",
+          "id": "S65315.xtz2",
+          "menuListPrice": "50.00",
+          "name": "Brunch For Two",
+          "quantity": "1.000",
+          "sku": "552",
+          "taxAmount": "5.75",
+          "taxCode": "HST13",
+          "taxRatePercentage": "13.00",
+          "timeOfSale": "2026-05-09T08:25:00.000Z",
+          "totalDiscountAmount": "0.00",
+          "totalNetAmountWithTax": "50.00",
+          "totalNetAmountWithoutTax": "44.25"
+        }
+      ],
+      "tableName": "Patio, Table 2",
+      "tableNumber": "P2",
+      "timeClosed": "2026-05-09T08:30:00.000Z",
+      "timeOfOpening": "2026-05-09T08:10:00.000Z",
+      "type": "SALE"
+    }
+  ]
+}

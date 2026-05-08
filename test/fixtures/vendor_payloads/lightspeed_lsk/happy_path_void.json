@@ -1,0 +1,44 @@
+{
+  "nextPageToken": null,
+  "sales": [
+    {
+      "accountFiscId": "A65315.19",
+      "accountReference": "Vd0xY1zA2bC3dE4fGhIjKw==",
+      "cancelled": true,
+      "deviceId": 75125,
+      "deviceName": "ipad9",
+      "dineIn": true,
+      "nbCovers": 2.0,
+      "ownerId": 14670,
+      "ownerName": "Manager",
+      "payments": [],
+      "receiptId": "R65315.15",
+      "salesLines": [
+        {
+          "currency": "GBP",
+          "id": "S65315.35",
+          "menuListPrice": "10.00",
+          "name": "Burger",
+          "quantity": "1.000",
+          "sku": "52",
+          "staffId": 14670,
+          "staffName": "Manager",
+          "taxAmount": "1.6667",
+          "taxCode": "VAT20",
+          "taxRatePercentage": "20.00",
+          "timeOfSale": "2023-07-27T19:58:22.474Z",
+          "totalDiscountAmount": "0.00",
+          "totalNetAmountWithTax": "11.00",
+          "totalNetAmountWithoutTax": "8.33",
+          "voidReason": "Unhappy Client"
+        }
+      ],
+      "tableName": "Dining Room, Table 1",
+      "tableNumber": "1",
+      "timeClosed": "2023-07-27T20:01:55.110Z",
+      "timeOfOpening": "2023-07-27T19:55:30.000Z",
+      "type": "SALE",
+      "voidReason": "Unhappy Client"
+    }
+  ]
+}

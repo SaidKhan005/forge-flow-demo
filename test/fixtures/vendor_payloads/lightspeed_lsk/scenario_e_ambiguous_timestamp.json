@@ -1,0 +1,25 @@
+{
+  "_pressure_envelope": {
+    "headers": {
+      "content-type": "application/json",
+      "x-lightspeed-signature": "<computed-at-test-time-over-raw-body>",
+      "x-lightspeed-timestamp": "<computed-at-test-time>"
+    },
+    "note": "timeOfOpening and timeClosed are NAIVE — no `Z` suffix, no `+00:00` offset. The K-Series doc says order timestamps are UTC instants always with `Z`; per `docs/integrations/lightspeed_lsk/field_mapping.md` Timestamp shapes, the framework's vendor_timestamp_policy.lightspeed_lsk.asUtc declares ambiguous parses must NOT silently coerce — they MUST be rejected.",
+    "vendor_timestamp_policy": "asUtc"
+  },
+  "accountFiscId": "A65315.22",
+  "business_id": "lsk-biz-7c2f",
+  "event": "order.DELIVERED",
+  "nbCovers": 2.0,
+  "payments": [
+    {
+      "code": "CASH",
+      "currency": "GBP",
+      "netAmountWithTax": "11.00",
+      "paymentMethodId": 141948669132824
+    }
+  ],
+  "timeClosed": "2023-07-27T20:04:08.734",
+  "timeOfOpening": "2023-07-27T19:58:48.224"
+}

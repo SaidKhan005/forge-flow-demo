@@ -1,0 +1,63 @@
+{
+  "nextPageToken": null,
+  "sales": [
+    {
+      "accountFiscId": "A65315.18",
+      "accountReference": "9aB2Cd3eFgHiJkLmNoPqRw==",
+      "cancelled": false,
+      "deviceId": 75125,
+      "deviceName": "ipad9",
+      "dineIn": true,
+      "nbCovers": 4.0,
+      "ownerId": 14670,
+      "ownerName": "Manager",
+      "payments": [
+        {
+          "authorization": "047",
+          "code": "VISA",
+          "currency": "GBP",
+          "description": "Visa",
+          "deviceId": "72676",
+          "deviceName": "ipad9",
+          "fiscDate": "2023-07-27T20:35:11.012Z",
+          "fiscId": "T72691.9",
+          "netAmountWithTax": "82.50",
+          "paymentMethodId": 141948669132825,
+          "revenueCenter": "Fixed POS",
+          "revenueCenterId": 141948669132822,
+          "staffId": 180480,
+          "staffName": "Manager",
+          "surcharge": "0.00",
+          "tip": "12.50",
+          "type": "NORMAL",
+          "uuid": "Pq2vR_LCTkeg8qlec77xnh=="
+        }
+      ],
+      "receiptId": "R65315.14",
+      "salesLines": [
+        {
+          "currency": "GBP",
+          "id": "S65315.34",
+          "menuListPrice": "70.00",
+          "name": "Set Menu",
+          "quantity": "1.000",
+          "sku": "201",
+          "staffId": 14670,
+          "staffName": "Manager",
+          "taxAmount": "11.6667",
+          "taxCode": "VAT20",
+          "taxRatePercentage": "20.00",
+          "timeOfSale": "2023-07-27T20:30:14.005Z",
+          "totalDiscountAmount": "0.00",
+          "totalNetAmountWithTax": "70.00",
+          "totalNetAmountWithoutTax": "58.33"
+        }
+      ],
+      "tableName": "Dining Room, Table 4",
+      "tableNumber": "4",
+      "timeClosed": "2023-07-27T20:35:11.080Z",
+      "timeOfOpening": "2023-07-27T19:14:20.118Z",
+      "type": "SALE"
+    }
+  ]
+}
