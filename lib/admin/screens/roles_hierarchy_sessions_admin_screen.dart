@@ -1,9 +1,11 @@
-// Phase 11A.13 - F&F Operations Console "Roles + Hierarchy +
-// Sessions" inspect surface.
+// Phase 11A.13 - F&F Operations Console "Roles + Hierarchy"
+// inspect surface.
 //
-// Cross-operator inspect with three tabs (Roles / Hierarchy /
-// Sessions) for the F&F admin to inspect and audit-edit role catalog,
-// org-unit hierarchy, and active sessions for the picked operator.
+// Cross-operator inspect with two tabs (Roles / Hierarchy) for the
+// F&F admin to inspect and audit-edit role catalog and org-unit
+// hierarchy for the picked operator. Active sessions now live under
+// Security/audit/sessions; the reusable panel remains in this file
+// because it shares the roles/hierarchy/sessions gateway contract.
 //
 // Mounts in the admin shell at `/admin/roles-hierarchy-sessions`.
 // The shell passes the shared Operations operator context when one
@@ -71,28 +73,23 @@ class _RolesHierarchySessionsAdminScreenState
     extends State<RolesHierarchySessionsAdminScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController = TabController(
-    length: 3,
+    length: 2,
     vsync: this,
   );
 
   bool _rolesLoading = true;
   bool _hierarchyLoading = false;
-  bool _sessionsLoading = false;
   bool _rolesLoaded = false;
   bool _hierarchyLoaded = false;
-  bool _sessionsLoaded = false;
   String? _rolesLoadError;
   String? _hierarchyLoadError;
-  String? _sessionsLoadError;
   String? _actionError;
 
   List<RoleAdminRow> _roles = const <RoleAdminRow>[];
   List<OrgUnitAdminNode> _orgUnits = const <OrgUnitAdminNode>[];
   List<HierarchyLocationLeaf> _locations = const <HierarchyLocationLeaf>[];
-  List<SessionAdminRow> _sessions = const <SessionAdminRow>[];
   int _rolesGeneration = 0;
   int _hierarchyGeneration = 0;
-  int _sessionsGeneration = 0;
 
   int _idempotencyCounter = 0;
 
@@ -127,10 +124,6 @@ class _RolesHierarchySessionsAdminScreenState
       case 1:
         if (!_hierarchyLoaded && !_hierarchyLoading) {
           _refreshHierarchy();
-        }
-      case 2:
-        if (!_sessionsLoaded && !_sessionsLoading) {
-          _refreshSessions();
         }
     }
   }
@@ -211,44 +204,6 @@ class _RolesHierarchySessionsAdminScreenState
       setState(() {
         _hierarchyLoadError = 'Could not load hierarchy: $error';
         _hierarchyLoading = false;
-      });
-    }
-  }
-
-  Future<void> _refreshSessions() async {
-    final generation = ++_sessionsGeneration;
-    setState(() {
-      _sessionsLoading = true;
-      _sessionsLoadError = null;
-    });
-    try {
-      final sessions = await widget.gateway.listSessions(
-        operatorId: widget.pickedOperator.operatorId,
-      );
-      if (generation != _sessionsGeneration) return;
-      if (!mounted) return;
-      setState(() {
-        _sessions = sessions;
-        _sessionsLoaded = true;
-        _sessionsLoading = false;
-      });
-    } on RolesHierarchySessionsGatewayError catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _sessionsLoadError = error.message;
-        _sessionsLoading = false;
-      });
-    } on RolesHierarchySessionsForbiddenException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _sessionsLoadError = error.message;
-        _sessionsLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _sessionsLoadError = 'Could not load sessions: $error';
-        _sessionsLoading = false;
       });
     }
   }
@@ -404,36 +359,6 @@ class _RolesHierarchySessionsAdminScreenState
     );
   }
 
-  // --- Sessions tab actions ---------------------------------------------
-
-  Future<void> _onForceLogoutSession(SessionAdminRow row) async {
-    if (row.userId == widget.actorUserId) {
-      // Defence in depth alongside the gateway throw + the disabled
-      // button; render the validation copy verbatim.
-      setState(() {
-        _actionError = SessionsValidationCopy.cannotRevokeSelf;
-      });
-      return;
-    }
-    final reason = await _promptAdminReason(
-      'Force logout ${row.userDisplayName}',
-    );
-    if (reason == null) return;
-    await _runAndRefresh(
-      () => widget.gateway.forceLogoutSession(
-        operatorId: widget.pickedOperator.operatorId,
-        sessionId: row.sessionId,
-        userId: row.userId,
-        idempotencyKey: _nextIdempotencyKey('sessions-force-logout'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: reason,
-      ),
-      refresh: _refreshSessions,
-      successHint: 'Signed out ${row.userDisplayName}',
-    );
-  }
-
   // --- Build ------------------------------------------------------------
 
   @override
@@ -450,7 +375,7 @@ class _RolesHierarchySessionsAdminScreenState
               title: 'Team access',
               subtitle:
                   '${widget.pickedOperator.operatorBusinessName}: role policy, '
-                  'location hierarchy, and active sessions. Changes require a reason.',
+                  'and location hierarchy. Active sessions moved to Security/audit/sessions.',
               trailing: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),
@@ -474,10 +399,6 @@ class _RolesHierarchySessionsAdminScreenState
                 Tab(
                   key: Key('admin_rhs_tab_hierarchy'),
                   text: 'Location hierarchy',
-                ),
-                Tab(
-                  key: Key('admin_rhs_tab_sessions'),
-                  text: 'Active sessions',
                 ),
               ],
             ),
@@ -535,18 +456,6 @@ class _RolesHierarchySessionsAdminScreenState
             editingEnabled: widget.editingEnabled,
             onMoveOrgUnit: _onMoveOrgUnit,
             onMoveLocation: _onMoveLocation,
-          ),
-        ),
-        _TabLoadBody(
-          loading: _sessionsLoading,
-          error: _sessionsLoadError,
-          loadingKey: const Key('admin_rhs_sessions_loading'),
-          errorKey: const Key('admin_rhs_sessions_load_error'),
-          child: _SessionsTab(
-            sessions: _sessions,
-            editingEnabled: widget.editingEnabled,
-            actorUserId: widget.actorUserId,
-            onForceLogout: _onForceLogoutSession,
           ),
         ),
       ],
@@ -1319,6 +1228,182 @@ class _OrgUnitNodeRow extends StatelessWidget {
 // ---------------------------------------------------------------------
 // Sessions tab
 // ---------------------------------------------------------------------
+
+class ActiveSessionsAdminPanel extends StatefulWidget {
+  const ActiveSessionsAdminPanel({
+    super.key,
+    required this.gateway,
+    required this.operatorId,
+    required this.operatorName,
+    required this.actorUserId,
+    this.editingEnabled = true,
+    this.idempotencyKeyFactory,
+  });
+
+  final RolesHierarchySessionsAdminGateway gateway;
+  final String operatorId;
+  final String operatorName;
+  final String actorUserId;
+  final bool editingEnabled;
+  final String Function()? idempotencyKeyFactory;
+
+  @override
+  State<ActiveSessionsAdminPanel> createState() =>
+      _ActiveSessionsAdminPanelState();
+}
+
+class _ActiveSessionsAdminPanelState extends State<ActiveSessionsAdminPanel> {
+  bool _loading = true;
+  String? _loadError;
+  String? _actionError;
+  List<SessionAdminRow> _sessions = const <SessionAdminRow>[];
+  int _refreshGeneration = 0;
+  int _idempotencyCounter = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  @override
+  void didUpdateWidget(covariant ActiveSessionsAdminPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.operatorId != widget.operatorId ||
+        oldWidget.gateway != widget.gateway) {
+      _refresh();
+    }
+  }
+
+  String _nextIdempotencyKey(String operation) {
+    final factory = widget.idempotencyKeyFactory;
+    if (factory != null) return factory();
+    _idempotencyCounter += 1;
+    return '$operation-${DateTime.now().toUtc().microsecondsSinceEpoch}-'
+        '$_idempotencyCounter';
+  }
+
+  Future<void> _refresh() async {
+    final generation = ++_refreshGeneration;
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      final sessions = await widget.gateway.listSessions(
+        operatorId: widget.operatorId,
+      );
+      if (generation != _refreshGeneration) return;
+      if (!mounted) return;
+      setState(() {
+        _sessions = sessions;
+        _loading = false;
+      });
+    } on RolesHierarchySessionsGatewayError catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = error.message;
+        _loading = false;
+      });
+    } on RolesHierarchySessionsForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = error.message;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = 'Could not load sessions: $error';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<String?> _promptAdminReason(String title) async {
+    return showDialog<String>(
+      context: context,
+      builder: (_) => _AdminReasonDialog(title: title),
+    );
+  }
+
+  Future<void> _runAndRefresh(
+    Future<void> Function() action, {
+    String? successHint,
+  }) async {
+    setState(() => _actionError = null);
+    try {
+      await action();
+      await _refresh();
+      if (successHint != null && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(successHint)));
+      }
+    } on RolesHierarchySessionsForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } on RolesHierarchySessionsGatewayError catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.toString());
+    }
+  }
+
+  Future<void> _onForceLogoutSession(SessionAdminRow row) async {
+    if (row.userId == widget.actorUserId) {
+      setState(() {
+        _actionError = SessionsValidationCopy.cannotRevokeSelf;
+      });
+      return;
+    }
+    final reason = await _promptAdminReason(
+      'Force logout ${row.userDisplayName}',
+    );
+    if (reason == null) return;
+    await _runAndRefresh(
+      () => widget.gateway.forceLogoutSession(
+        operatorId: widget.operatorId,
+        sessionId: row.sessionId,
+        userId: row.userId,
+        idempotencyKey: _nextIdempotencyKey('sessions-force-logout'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: reason,
+      ),
+      successHint: 'Signed out ${row.userDisplayName}',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      key: const Key('admin_security_sessions_panel'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (_actionError != null)
+          _ErrorBanner(
+            key: const Key('admin_security_sessions_action_error'),
+            message: _actionError!,
+          ),
+        _TabLoadBody(
+          loading: _loading,
+          error: _loadError,
+          loadingKey: const Key('admin_security_sessions_loading'),
+          errorKey: const Key('admin_security_sessions_load_error'),
+          child: _SessionsTab(
+            sessions: _sessions,
+            editingEnabled: widget.editingEnabled,
+            actorUserId: widget.actorUserId,
+            onForceLogout: _onForceLogoutSession,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _SessionsTab extends StatelessWidget {
   const _SessionsTab({
