@@ -112,6 +112,14 @@ class _AuditedSupportActionsAdminScreenState
 
   int _idempotencyCounter = 0;
 
+  // CODE_OPS_DEBT Theme B#1 — last in-flight single-admin PII erasure
+  // captured by `_onIssueErasure`. The build path renders a banner
+  // with a "Reverse" affordance whenever this is non-null and the
+  // grace window has not closed; clearing happens on successful
+  // reverse / on a fresh erasure for a different user.
+  UserPiiErasureRequestSummary? _lastErasure;
+  String? _lastErasureMember;
+
   String _nextIdempotencyKey(String operation) {
     final factory = widget.idempotencyKeyFactory;
     if (factory != null) return factory();
@@ -312,11 +320,15 @@ class _AuditedSupportActionsAdminScreenState
     final member = await _pickMember('Issue erasure for which member?');
     if (member == null) return;
     final reason = await _promptAdminReason(
-      'Issue paired-approval erasure for ${member.displayName}',
+      'Issue PII erasure for ${member.displayName}',
     );
     if (reason == null) return;
+    // CODE_OPS_DEBT Theme B#1 — single-admin PII erasure with 24h
+    // grace-window reverse. The button still surfaces under the
+    // same `canIssuePairedErasure` flag (renaming the flag is a
+    // follow-up), but the call is now a single-admin POST.
     await _runAndRefresh(() async {
-      final first = await widget.gateway.issuePairedApprovalErasure(
+      final summary = await widget.gateway.requestPiiErasure(
         operatorId: widget.pickedOperator.operatorId,
         targetUserId: member.userId,
         idempotencyKey: _nextIdempotencyKey('erasure-request'),
@@ -324,35 +336,43 @@ class _AuditedSupportActionsAdminScreenState
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: reason,
       );
-      if (!first.pendingSecondApproval) {
-        // The proxy returned a single-call confirmation already
-        // (e.g. tests); nothing more to do.
-        return;
-      }
-      if (!mounted) return;
-      final secondAdminUid = await showDialog<String>(
-        context: context,
-        builder: (_) => _SecondApproverDialog(
-          firstApproverUserId: first.firstApproverUserId,
-        ),
-      );
-      if (secondAdminUid == null) return;
-      if (secondAdminUid.trim() == widget.actorUserId) {
-        setState(() {
-          _actionError = SupportActionsValidationCopy.cannotSelfPair;
-        });
-        return;
-      }
-      await widget.gateway.issuePairedApprovalErasure(
+      _lastErasureMember = member.userId;
+      _lastErasure = summary;
+    },
+        successHint:
+            'PII erasure recorded for ${member.displayName}; reversal '
+            'available within the 24-hour grace window.');
+  }
+
+  /// CODE_OPS_DEBT Theme B#1 — reverses the most recent in-flight
+  /// erasure recorded by [_onIssueErasure]. Surfaced from the
+  /// confirmation banner that renders when [_lastErasure] is non-null
+  /// and the grace window has not yet closed.
+  Future<void> _onReverseLastErasure() async {
+    final erasure = _lastErasure;
+    final memberUserId = _lastErasureMember;
+    if (erasure == null || memberUserId == null) return;
+    await _runAndRefresh(() async {
+      final outcome = await widget.gateway.reversePiiErasure(
         operatorId: widget.pickedOperator.operatorId,
-        targetUserId: member.userId,
-        idempotencyKey: _nextIdempotencyKey('erasure-confirm'),
-        actorUserId: secondAdminUid.trim(),
+        targetUserId: memberUserId,
+        erasureId: erasure.erasureId,
+        idempotencyKey: _nextIdempotencyKey('erasure-reverse'),
+        actorUserId: widget.actorUserId,
         actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: reason,
-        confirmRequestId: first.requestId,
+        reversalReason: 'admin reversed within grace window',
       );
-    }, successHint: 'Erasure recorded for ${member.displayName}.');
+      if (outcome.graceExpired) {
+        setState(() {
+          _actionError =
+              'Grace window has expired; the erasure can no longer be '
+              'reversed.';
+        });
+      } else if (outcome.reversed) {
+        _lastErasure = null;
+        _lastErasureMember = null;
+      }
+    }, successHint: 'Erasure reversed.');
   }
 
   // --- Build ------------------------------------------------------------
