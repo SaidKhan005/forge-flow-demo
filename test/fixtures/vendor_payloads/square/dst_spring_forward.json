@@ -1,0 +1,42 @@
+{
+  "event_id": "dst1c5b7-3e2a-4d80-8f95-2a1c0e7b6f04",
+  "merchant_id": "M_TEST_MERCHANT_001",
+  "type": "order.updated",
+  "created_at": "2026-03-08T07:30:00Z",
+  "location_id": "L_RESTAURANT_NYC",
+  "data": {
+    "type": "order",
+    "id": "CAISENdstSF001",
+    "object": {
+      "order": {
+        "id": "CAISENdstSF001",
+        "location_id": "L_RESTAURANT_NYC",
+        "reference_id": "ticket-late-night-dst",
+        "line_items": [
+          {
+            "uid": "li-1",
+            "name": "Late Night Burger",
+            "quantity": "1",
+            "total_money": {
+              "amount": 1850,
+              "currency": "USD"
+            }
+          }
+        ],
+        "total_money": {
+          "amount": 2090,
+          "currency": "USD"
+        },
+        "total_tax_money": {
+          "amount": 240,
+          "currency": "USD"
+        },
+        "created_at": "2026-03-08T07:30:00Z",
+        "updated_at": "2026-03-08T07:30:00Z",
+        "closed_at": "2026-03-08T07:30:00Z",
+        "state": "COMPLETED",
+        "version": 1
+      }
+    }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "event_id": "f1208c5e-4a37-4d8b-a09f-6e3b2c7f9d04",
+  "merchant_id": "M_TEST_MERCHANT_001",
+  "type": "order.updated",
+  "created_at": "2026-05-08T18:45:00Z",
+  "location_id": "L_RESTAURANT_A",
+  "data": {
+    "type": "order",
+    "id": "GUEST_4815162342",
+    "object": {
+      "order": {
+        "id": "GUEST_4815162342",
+        "location_id": "L_RESTAURANT_A",
+        "customer_id": "GUEST_4815162342",
+        "reference_id": "ticket-collision-test",
+        "line_items": [
+          {
+            "uid": "li-1",
+            "name": "Cheeseburger",
+            "quantity": "1",
+            "total_money": {
+              "amount": 1356,
+              "currency": "CAD"
+            }
+          }
+        ],
+        "total_money": {
+          "amount": 1356,
+          "currency": "CAD"
+        },
+        "created_at": "2026-05-08T17:30:00Z",
+        "updated_at": "2026-05-08T18:45:00Z",
+        "closed_at": "2026-05-08T18:45:00Z",
+        "state": "COMPLETED",
+        "version": 1
+      }
+    }
+  }
+}
