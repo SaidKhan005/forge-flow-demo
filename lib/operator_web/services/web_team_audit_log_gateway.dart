@@ -518,6 +518,15 @@ class WebTeamAuditLogPaths {
   /// Existing Phase 9 route. Self-service; proxy auto-clamps the
   /// caller's user_id from the bearer token.
   static const String list = '/v1/auth/audit-log';
+
+  /// Server-side streaming CSV export route (Theme B#5 N3). Same
+  /// filter shape as [list]; gated on `team.audit_log.export`. The
+  /// proxy streams RFC 4180 chunks back as a `text/csv` attachment so
+  /// the operator-web build no longer pages a hundred-thousand-row
+  /// ledger into memory. Aligns the time filter (and other filters)
+  /// end-to-end (frontend filter -> proxy query string -> repository
+  /// WHERE -> CSV bytes).
+  static const String exportCsv = '/v1/auth/audit-log/export.csv';
 }
 
 /// Encodes [offset] as the opaque cursor strings the screen treats as
@@ -585,56 +594,90 @@ class WebTeamAuditLogGatewayLive implements WebTeamAuditLogGateway {
     WebAuditLogQuery query, {
     required String idempotencyKey,
   }) async {
-    // The self-service route does not ship a server-side CSV exporter
-    // (only the F&F admin route does, gated on admin.audit_log.export).
-    // The live operator-web build pages through every matching row and
-    // renders the CSV client-side. Idempotency-Key is forwarded on the
-    // first list call so a replay of the same export reads the cached
-    // page sequence rather than triggering N independent reads.
-    final allEntries = <WebAuditLogEntry>[];
-    String? cursor = query.cursor;
-    var firstPage = true;
-    while (true) {
-      final page = await _send(
-        method: 'GET',
-        path: WebTeamAuditLogPaths.list,
-        queryParameters:
-            _queryParamsFor(query.copyWith(cursor: cursor, limit: 200)),
-        idempotencyKey: firstPage ? idempotencyKey : null,
+    // Theme B#5 N3 - the operator-web build now hits the proxy's
+    // streaming server-side CSV exporter (gated on
+    // `team.audit_log.export`) and surfaces the streamed bytes
+    // verbatim. The proxy applies the same filter shape as the read
+    // route + paginates the underlying repo so memory stays bounded
+    // regardless of row count. The screen surfaces the response as a
+    // download / clipboard fallback.
+    final token = await _idTokenProvider();
+    if (token == null || token.trim().isEmpty) {
+      throw const WebTeamAuditLogError(
+        code: 'no_id_token',
+        message:
+            'audit log gateway has no live Firebase ID token to attach to '
+            'the request.',
       );
-      firstPage = false;
-      if (page.statusCode != 200) {
-        throw _statusError(page);
-      }
-      final raw = page.body['entries'];
-      if (raw is! List) {
-        throw const WebTeamAuditLogError(
-          code: 'malformed_response',
-          message: 'audit log export response was missing the entries list',
-        );
-      }
-      final pageEntries = raw
-          .map((entry) => _entryFromJson(entry))
-          .toList(growable: false);
-      allEntries.addAll(pageEntries);
-      final hasMore = page.body['has_more'] == true;
-      if (!hasMore || pageEntries.isEmpty) break;
-      cursor = encodeAuditLogCursor(
-        decodeAuditLogCursor(cursor) + pageEntries.length,
-      );
-      if (allEntries.length > 100000) {
-        throw const WebTeamAuditLogError(
-          code: 'export_too_large',
-          message:
-              'audit log export exceeded 100,000 rows; narrow the filter and '
-              'try again',
-        );
-      }
     }
-    return WebAuditLogCsvExport(
-      csv: renderAuditLogCsv(allEntries),
-      filename: defaultAuditLogCsvFilename(DateTime.now().toUtc()),
-    );
+    final url = proxyBaseUri.resolve(WebTeamAuditLogPaths.exportCsv).replace(
+          queryParameters: _queryParamsFor(
+            query.copyWith(cursor: null, limit: 200),
+          ),
+        );
+    final request = http.Request('GET', url);
+    request.headers.addAll(<String, String>{
+      'accept': 'text/csv',
+      'authorization': 'Bearer ${token.trim()}',
+      'Idempotency-Key': idempotencyKey,
+    });
+    final http.StreamedResponse streamed;
+    try {
+      streamed = await _httpClient.send(request).timeout(_timeout);
+    } on TimeoutException {
+      throw const WebTeamAuditLogError(
+        code: 'transport_timeout',
+        message:
+            'audit log gateway request timed out before reaching the proxy.',
+      );
+    } catch (error) {
+      throw WebTeamAuditLogError(
+        code: 'transport_error',
+        message:
+            'audit log gateway request failed before reaching the proxy '
+            '($error).',
+      );
+    }
+    if (streamed.statusCode != 200) {
+      // Non-2xx: the proxy emits a JSON error body for these (the
+      // streaming bytes path only fires once the headers + 200 are
+      // committed). Drain + decode so the operator gets a friendly
+      // error.
+      final raw = await streamed.stream.bytesToString().timeout(_timeout);
+      Map<String, Object?> body = const <String, Object?>{};
+      if (raw.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is Map<Object?, Object?>) {
+            body = Map<String, Object?>.from(decoded);
+          }
+        } on FormatException {
+          // Leave body empty; surface generic error below.
+        }
+      }
+      throw _statusError(
+        WebTeamAuditLogResponse(statusCode: streamed.statusCode, body: body),
+      );
+    }
+    final csv = await streamed.stream.bytesToString().timeout(_timeout);
+    final filename = _filenameFromHeaders(streamed.headers) ??
+        defaultAuditLogCsvFilename(DateTime.now().toUtc());
+    return WebAuditLogCsvExport(csv: csv, filename: filename);
+  }
+
+  /// Pulls the `attachment; filename="..."` value out of the
+  /// `Content-Disposition` header so the screen can surface the same
+  /// filename the proxy chose. Returns null when the header is
+  /// missing or malformed.
+  static String? _filenameFromHeaders(Map<String, String> headers) {
+    final disposition = headers['content-disposition'];
+    if (disposition == null) return null;
+    final match = RegExp(r'filename="?([^";]+)"?').firstMatch(disposition);
+    if (match == null) return null;
+    final candidate = match.group(1);
+    if (candidate == null) return null;
+    final trimmed = candidate.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   Map<String, String> _queryParamsFor(WebAuditLogQuery query) {

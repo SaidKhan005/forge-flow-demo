@@ -16727,6 +16727,82 @@ Map<String, Object?> _authEventEntryToJson(AuthEventListEntry entry) {
   };
 }
 
+/// Renders one [AuthEventListEntry] as an RFC 4180 CSV row terminated
+/// with `\r\n`. The column order matches the header emitted by the
+/// audit-log CSV export route + the legacy `renderAuditLogCsv` shape
+/// in `web_team_audit_log_gateway.dart` so downstream tools that
+/// already ingested the client-rendered CSV keep working when the
+/// operator-web build flips to the streaming server-side path.
+///
+/// Columns (in order):
+///   1. created_at   - `occurred_at` in UTC ISO-8601.
+///   2. action       - raw `event_type` (e.g. `auth.user.signed_in`).
+///   3. actor_user_id   - the verified bearer-token scope's user id.
+///                        Pinned by the proxy; never the request param.
+///   4. actor_display_name - rendered hint ("F&F admin" or
+///                            "Team member"); the underlying ledger
+///                            does not denormalize the display name.
+///   5. actor_email   - intentionally blank (auth_events_audit does
+///                       not denormalize email; the read route does
+///                       the same).
+///   6. actor_kind    - `forge_admin` if the row carries an
+///                       `admin_reason` payload key OR the event_type
+///                       is in the `admin.*` namespace; `team_member`
+///                       otherwise. Mirrors
+///                       `_authEventEntryToAdminAuditRow` so the
+///                       self-service + admin CSV exports agree on
+///                       the actor classification.
+///   7. target_kind   - left blank for now (auth_events_audit rows
+///                       do not carry a target column; the F&F admin
+///                       audit_logs ledger does, that surface lights
+///                       up later).
+///   8. target_id     - `event_id` so the row is still uniquely
+///                       referenceable in a spreadsheet.
+///   9. admin_reason  - `payload['admin_reason']` if present, blank
+///                       otherwise.
+///  10. payload       - JSON-encoded payload (RFC 4180 escaped).
+String _renderAuthEventCsvRow(AuthEventListEntry entry, OperatorContext scope) {
+  final payload = entry.payload;
+  final adminReason = payload['admin_reason'];
+  final adminReasonText =
+      adminReason is String && adminReason.trim().isNotEmpty
+          ? adminReason
+          : '';
+  final isAdminEvent = entry.eventType.startsWith('admin.') ||
+      adminReasonText.isNotEmpty;
+  final actorKind = isAdminEvent ? 'forge_admin' : 'team_member';
+  final actorDisplayName =
+      isAdminEvent ? 'F&F admin' : 'Team member';
+  final payloadJson =
+      payload.isEmpty ? '' : jsonEncode(payload);
+  final cells = <String>[
+    _csvEscape(entry.occurredAt.toUtc().toIso8601String()),
+    _csvEscape(entry.eventType),
+    _csvEscape(scope.userId),
+    _csvEscape(actorDisplayName),
+    _csvEscape(''),
+    _csvEscape(actorKind),
+    _csvEscape(''),
+    _csvEscape(entry.eventId),
+    _csvEscape(adminReasonText),
+    _csvEscape(payloadJson),
+  ];
+  return '${cells.join(',')}\r\n';
+}
+
+/// RFC 4180 cell escaping. Wraps in double quotes when the cell
+/// contains a comma, double quote, CR, or LF; doubles internal
+/// double quotes. Empty input renders as an empty string (no quotes).
+String _csvEscape(String raw) {
+  if (raw.isEmpty) return '';
+  final needsQuoting = raw.contains(',') ||
+      raw.contains('"') ||
+      raw.contains('\n') ||
+      raw.contains('\r');
+  if (!needsQuoting) return raw;
+  return '"${raw.replaceAll('"', '""')}"';
+}
+
 Map<String, Object?> _authEventEntryToAdminAuditRow(
   AuthEventListEntry entry,
   OperatorContext scope,
