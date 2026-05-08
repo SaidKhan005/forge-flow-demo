@@ -1,0 +1,32 @@
+{
+  "_endpoint": "GET /v1.0/shifts (time-off rows present alongside regular shifts)",
+  "_transport": "poll",
+  "_note": "Humanity v1 surfaces time-off as a parallel record type with `type=time_off` and a different schedule_id field semantics. Adapter does NOT currently consume time-off rows for the canonical fact write — only `type=shift` (or unset, which defaults to shift) lands on the labor fact table. Time-off rows fall through HumanityShiftDto.tryFromMap because the parser does not branch on `type` but the row may have null position_name in some vendor responses (in which case sparse_no_role behavior applies); when position_name is set, adapter writes a normal shift fact and downstream pipeline treats time-off as zero-hours via business logic.",
+  "data": [
+    {
+      "id": "9800",
+      "employee_id": "EMP-800",
+      "position_name": "Server",
+      "in_time": "2026-05-10T16:00:00Z",
+      "out_time": "2026-05-10T22:00:00Z",
+      "updated": "2026-05-04T09:15:00Z",
+      "status": "approved",
+      "type": "shift"
+    },
+    {
+      "id": "9801",
+      "employee_id": "EMP-800",
+      "position_name": "Server",
+      "in_time": "2026-05-11T00:00:00Z",
+      "out_time": "2026-05-12T00:00:00Z",
+      "updated": "2026-05-04T09:15:00Z",
+      "status": "approved",
+      "type": "time_off",
+      "leave_type": "vacation",
+      "paid": 1,
+      "duration_hours": 8.0
+    }
+  ],
+  "next_cursor": null,
+  "last_modified_seen": "2026-05-04T09:15:00Z"
+}

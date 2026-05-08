@@ -1,0 +1,19 @@
+{
+  "_scenario": "C — future-dated event (sanity hook reject)",
+  "_endpoint": "GET /v1.0/shifts",
+  "_transport": "poll",
+  "_note": "Shift in_time is 60+ days in the future relative to fixture-now (2026-05-08). The sanity hook (rule: opened_in_future) drops the row before the canonical write. Mirrors humanityFutureDatedShift in test/integrations/labor/fixtures/humanity_punches_fixture.dart.",
+  "data": [
+    {
+      "id": "9999",
+      "employee_id": "EMP-999",
+      "position_name": "Server",
+      "in_time": "2026-07-15T16:00:00Z",
+      "out_time": "2026-07-15T22:00:00Z",
+      "updated": "2026-07-15T16:00:00Z",
+      "status": "approved"
+    }
+  ],
+  "next_cursor": null,
+  "last_modified_seen": "2026-07-15T16:00:00Z"
+}

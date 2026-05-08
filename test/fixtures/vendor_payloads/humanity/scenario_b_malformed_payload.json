@@ -1,0 +1,25 @@
+{
+  "_scenario": "B — malformed payload (poll response missing required fields)",
+  "_endpoint": "GET /v1.0/shifts",
+  "_transport": "poll",
+  "_note": "First row is missing in_time and out_time entirely; second row has out_time as a non-string number. HumanityShiftDto.tryFromMap returns null for both (lines 199-208 of humanity_labor_adapter.dart). No partial-write channel exists per V1 lean cut 2 — adapter drops both rows silently and continues; the page returns no canonical writes.",
+  "data": [
+    {
+      "id": "9400",
+      "employee_id": "EMP-400",
+      "position_name": "Server",
+      "updated": "2026-05-01T22:05:00Z",
+      "status": "approved"
+    },
+    {
+      "id": "9401",
+      "employee_id": "EMP-401",
+      "position_name": "Cook",
+      "in_time": "2026-05-01T11:00:00Z",
+      "out_time": 1714578000,
+      "updated": "2026-05-01T19:00:00Z"
+    }
+  ],
+  "next_cursor": null,
+  "last_modified_seen": "2026-05-01T22:05:00Z"
+}

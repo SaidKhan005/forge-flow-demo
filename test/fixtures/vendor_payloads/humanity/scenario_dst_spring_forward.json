@@ -1,0 +1,40 @@
+{
+  "_scenario": "DST spring-forward (2026-03-08 — US Eastern jumps from 02:00 to 03:00 local)",
+  "_endpoint": "GET /v1.0/shifts",
+  "_transport": "poll",
+  "_note": "Humanity returns UTC `Z`-suffixed timestamps regardless of operator timezone (per field_mapping.md). The 2026-03-08 spring-forward in US Eastern means 02:30 ET does not exist locally; UTC values that translate to non-existent local times must still business-date correctly via iana_timezone_converter.toBusinessDate. Three shifts span the transition window: one ends just before, one straddles the gap, one starts just after.",
+  "data": [
+    {
+      "id": "9600",
+      "employee_id": "EMP-600",
+      "position_name": "Cook",
+      "in_time": "2026-03-07T22:00:00Z",
+      "out_time": "2026-03-08T06:00:00Z",
+      "updated": "2026-03-08T06:01:00Z",
+      "status": "approved",
+      "_local_window_note": "America/New_York: 17:00 EST -> 02:00 EST (last instant before clock jumps to 03:00 EDT)"
+    },
+    {
+      "id": "9601",
+      "employee_id": "EMP-601",
+      "position_name": "Server",
+      "in_time": "2026-03-08T05:00:00Z",
+      "out_time": "2026-03-08T13:00:00Z",
+      "updated": "2026-03-08T13:01:00Z",
+      "status": "approved",
+      "_local_window_note": "America/New_York: 00:00 EST -> 09:00 EDT (in_time before transition; out_time after; 1 hour 'lost' in local-clock terms but UTC duration = 8h)"
+    },
+    {
+      "id": "9602",
+      "employee_id": "EMP-602",
+      "position_name": "Bartender",
+      "in_time": "2026-03-08T07:30:00Z",
+      "out_time": "2026-03-08T15:30:00Z",
+      "updated": "2026-03-08T15:31:00Z",
+      "status": "approved",
+      "_local_window_note": "America/New_York: 03:30 EDT -> 11:30 EDT (entirely after the DST transition)"
+    }
+  ],
+  "next_cursor": null,
+  "last_modified_seen": "2026-03-08T15:31:00Z"
+}
