@@ -1,0 +1,23 @@
+{
+  "_scenario": "D — OAuth near-expiry (Humanity v1 password-grant access token)",
+  "_endpoint": "POST /v1.0/oauth2/token",
+  "_transport": "auth",
+  "_note": "Humanity v1 uses OAuth 2.0 Resource Owner Password Credentials grant (per api_consumed.md). The token endpoint returns access_token + refresh_token + expires_in. This fixture captures the near-expiry shape: expires_in below the framework's refresh threshold (300s). Per live_verification_checklist.md: 'Humanity v1's password-grant access tokens are long-lived; the framework's refresh cron is not exercised for this vendor at V1' — but the framework MUST still react to a vendor returning a short-lived token by triggering refresh on the next call.",
+  "request": {
+    "method": "POST",
+    "url": "https://platform.humanity.com/v1.0/oauth2/token",
+    "headers": {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Accept": "application/json"
+    },
+    "body": "grant_type=password&username=operator%40example.com&password=REDACTED&client_id=forge_and_flow"
+  },
+  "response": {
+    "_http_status": 200,
+    "access_token": "humanity_access_token_NEAR_EXPIRY_aaaa",
+    "token_type": "Bearer",
+    "expires_in": 120,
+    "refresh_token": "humanity_refresh_token_bbbb",
+    "scope": "shifts employees positions company"
+  }
+}

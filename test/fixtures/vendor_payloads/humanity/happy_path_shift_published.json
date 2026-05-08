@@ -1,0 +1,31 @@
+{
+  "_endpoint": "GET /v1.0/shifts?last_modified=2026-05-04T00:00:00Z&cursor=eyJpZCI6OTAwMn0",
+  "_transport": "poll",
+  "_note": "Published / scheduled shift (status=published) — assignment exists but is not yet clocked. Adapter writes the canonical row; downstream sanity hook still fires using opened_at/closed_at from in_time/out_time.",
+  "data": [
+    {
+      "id": "9100",
+      "employee_id": "201",
+      "position_name": "Bartender",
+      "in_time": "2026-05-09T17:00:00Z",
+      "out_time": "2026-05-10T01:00:00Z",
+      "updated": "2026-05-04T11:32:08Z",
+      "status": "published",
+      "schedule": "457",
+      "location": "789"
+    },
+    {
+      "id": "9101",
+      "employee_id": "202",
+      "position_name": "Cook",
+      "in_time": "2026-05-09T11:00:00Z",
+      "out_time": "2026-05-09T19:00:00Z",
+      "updated": "2026-05-04T11:32:08Z",
+      "status": "published",
+      "schedule": "457",
+      "location": "789"
+    }
+  ],
+  "next_cursor": "eyJpZCI6OTEwMn0",
+  "last_modified_seen": "2026-05-04T11:32:08Z"
+}

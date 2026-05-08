@@ -1,0 +1,18 @@
+{
+  "_scenario": "A — forged signature (mapped to invalid OAuth bearer for Humanity)",
+  "_note": "Humanity does NOT support webhooks (pollOnly per capability profile). The binding A-F set's 'forged signature' rejection point therefore maps to the polling auth header — an invalid / forged OAuth bearer token presented on a poll request. The fixture below captures the request envelope plus the documented Humanity v1 401 response shape. Adapter must throw HumanityAuthException (401) and surface reconnect_required.",
+  "_endpoint": "GET /v1.0/shifts",
+  "_transport": "poll",
+  "request_headers": {
+    "Authorization": "Bearer FORGED-NOT-A-REAL-HUMANITY-TOKEN-AAAA",
+    "Accept": "application/json",
+    "User-Agent": "ForgeAndFlow/8.S.HM (test fixture)"
+  },
+  "response": {
+    "_http_status": 401,
+    "error": "invalid_token",
+    "error_description": "The access token is invalid or has been revoked.",
+    "code": 401,
+    "message": "Unauthorized"
+  }
+}

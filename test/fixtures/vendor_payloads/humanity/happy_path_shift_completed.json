@@ -1,0 +1,21 @@
+{
+  "_endpoint": "GET /v1.0/shifts?last_modified=2026-05-01T00:00:00Z",
+  "_transport": "poll",
+  "_note": "Humanity is poll-only (pollOnly per capability profile). The `_endpoint`, `_transport`, and `_note` keys are fixture metadata and are stripped before the page is handed to HumanityShiftDto.tryFromMap. The `data` array shape mirrors the documented Humanity v1 paged listing.",
+  "data": [
+    {
+      "id": "9001",
+      "employee_id": "100",
+      "position_name": "Server",
+      "in_time": "2026-05-01T16:00:00Z",
+      "out_time": "2026-05-01T22:00:00Z",
+      "updated": "2026-05-01T22:05:12Z",
+      "status": "approved",
+      "schedule": "456",
+      "location": "789",
+      "paid": 1
+    }
+  ],
+  "next_cursor": null,
+  "last_modified_seen": "2026-05-01T22:05:12Z"
+}

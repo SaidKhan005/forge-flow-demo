@@ -1,0 +1,51 @@
+{
+  "_scenario": "Cross-timezone — Toronto operator, vendor `company.timezone` reports America/Vancouver, individual shift UTC values land on different local business_dates per zone",
+  "_endpoint": "GET /v1.0/shifts (paired with /v1.0/company response below)",
+  "_transport": "poll",
+  "_note": "The /company endpoint is documented (api_consumed.md) as the source of timezone + business-day rollover hints. This fixture pairs a /company response carrying `timezone: America/Vancouver` with a /shifts page whose UTC timestamps fall on different business_dates depending on whether the resolver picks the Humanity-reported timezone or the operator's restaurant_locations.iana_timezone (Toronto). Per HP #4 / time guardrails, restaurant-local timing wins — operator's location_id timezone is authoritative; the vendor company timezone is metadata.",
+  "company_response": {
+    "_endpoint": "GET /v1.0/company",
+    "id": "company-789",
+    "name": "F&F Demo Restaurant",
+    "timezone": "America/Vancouver",
+    "business_day_rollover_hour": 4,
+    "country": "CA"
+  },
+  "shifts_response": {
+    "_endpoint": "GET /v1.0/shifts",
+    "data": [
+      {
+        "id": "9700",
+        "employee_id": "EMP-700",
+        "position_name": "Server",
+        "in_time": "2026-05-05T03:30:00Z",
+        "out_time": "2026-05-05T11:30:00Z",
+        "updated": "2026-05-05T11:31:00Z",
+        "status": "approved",
+        "_resolver_note": "America/Toronto: 23:30 EDT 2026-05-04 -> 07:30 EDT 2026-05-05 (in_time business_date = 2026-05-04). America/Vancouver: 20:30 PDT 2026-05-04 -> 04:30 PDT 2026-05-05 (in_time business_date = 2026-05-04 still). DIFFERENT pre-rollover handling: with rollover_hour=4, Toronto opens 04:00 EDT and rolls 04:00 EDT next day -> in_time 23:30 EDT lands in 2026-05-04 service period; Vancouver rollover at 04:00 PDT -> in_time 20:30 PDT also lands in 2026-05-04 service period. Same business_date here; resolver discrepancy hits when in_time is 06:00 UTC (next case)."
+      },
+      {
+        "id": "9701",
+        "employee_id": "EMP-701",
+        "position_name": "Cook",
+        "in_time": "2026-05-05T06:00:00Z",
+        "out_time": "2026-05-05T14:00:00Z",
+        "updated": "2026-05-05T14:01:00Z",
+        "status": "approved",
+        "_resolver_note": "America/Toronto: 02:00 EDT 2026-05-05 -> 10:00 EDT 2026-05-05 (in_time pre-rollover_hour=4 -> business_date 2026-05-04). America/Vancouver: 23:00 PDT 2026-05-04 -> 07:00 PDT 2026-05-05 (in_time pre-rollover_hour=4 -> business_date 2026-05-04). NOTE: business_date matches both ways here too because rollover applies. The bug surface this fixture pins is: if the resolver MISTAKENLY consults Humanity company.timezone instead of restaurant_locations.iana_timezone, business_date/SPLH bucketing silently mis-aligns when the vendor and operator zones diverge by 3+ hours."
+      },
+      {
+        "id": "9702",
+        "employee_id": "EMP-702",
+        "position_name": "Bartender",
+        "in_time": "2026-05-05T08:00:00Z",
+        "out_time": "2026-05-05T16:00:00Z",
+        "updated": "2026-05-05T16:01:00Z",
+        "status": "approved",
+        "_resolver_note": "America/Toronto: 04:00 EDT 2026-05-05 -> 12:00 EDT (post-rollover -> business_date 2026-05-05). America/Vancouver: 01:00 PDT 2026-05-05 -> 09:00 PDT (pre-rollover at 04:00 PDT -> business_date 2026-05-04). DIVERGENCE: same UTC instant lands on DIFFERENT business_dates depending on which timezone the resolver picks. The Toronto operator MUST see business_date=2026-05-05; if the resolver consults company.timezone (Vancouver), it incorrectly returns 2026-05-04. This fixture pins that the resolver picks restaurant_locations.iana_timezone (operator authority) and ignores Humanity company.timezone."
+      }
+    ],
+    "next_cursor": null,
+    "last_modified_seen": "2026-05-05T16:01:00Z"
+  }
+}

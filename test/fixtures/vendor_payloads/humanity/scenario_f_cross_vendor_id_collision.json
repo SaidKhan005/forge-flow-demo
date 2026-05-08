@@ -1,0 +1,33 @@
+{
+  "_scenario": "F — cross-vendor id collision (idempotency-key namespace prevents shadow-write)",
+  "_endpoint": "GET /v1.0/shifts",
+  "_transport": "poll",
+  "_note": "Humanity vendor returns shift id '9001'. The same canonical operator+location ALSO has a 7shifts-sourced canonical fact for vendorEntityId='9001' on the prior tick. Per docs/contracts/vendor_adapter_slice_contract.md, the canonical UNIQUE includes vendor_id: (vendor_id, operator_id, vendor_entity_id, vendor_modified_at). The 'humanity' namespace must isolate this row from any 'seven_shifts' row with the same numeric id, so no shadow-write occurs.",
+  "data": [
+    {
+      "id": "9001",
+      "employee_id": "EMP-100",
+      "position_name": "Server",
+      "in_time": "2026-05-04T16:00:00Z",
+      "out_time": "2026-05-04T22:00:00Z",
+      "updated": "2026-05-04T22:05:00Z",
+      "status": "approved",
+      "schedule": "457",
+      "location": "789"
+    }
+  ],
+  "next_cursor": null,
+  "last_modified_seen": "2026-05-04T22:05:00Z",
+  "_pre_existing_canonical_row": {
+    "_note": "Reference shape only — pre-seeded by the Phase 2 harness BEFORE this Humanity poll runs. The 7shifts adapter wrote this on a prior tick. Both rows share entity_id='9001'; only the vendor_id namespace differs.",
+    "vendor_id": "seven_shifts",
+    "operator_id": "operator-test-001",
+    "location_id": "location-test-001",
+    "vendor_entity_id": "9001",
+    "vendor_modified_at": "2026-05-03T18:00:00Z",
+    "shift_start": "2026-05-03T16:00:00Z",
+    "shift_end": "2026-05-03T22:00:00Z",
+    "employee_id": "EMP-7S-100",
+    "position_name": "Server"
+  }
+}
