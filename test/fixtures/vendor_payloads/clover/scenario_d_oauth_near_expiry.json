@@ -1,0 +1,18 @@
+{
+  "_transport": {
+    "endpoint": "POST https://api.clover.com/oauth/v2/token",
+    "grant_type": "refresh_token",
+    "refresh_request_headers": {
+      "authorization": "Bearer <<TEST_BEARER>>",
+      "content-type": "application/x-www-form-urlencoded"
+    }
+  },
+  "access_token": "<<TEST_BEARER>>",
+  "access_token_expiration": 1777750980,
+  "client_id": "DRKVJT2ZRRRSC",
+  "employee_id": "CLV-EMP-9KX2J3RPQ",
+  "merchant_id": "CLV-MERCH-CCD13C7B",
+  "refresh_token": "<<TEST_BEARER>>",
+  "refresh_token_expiration": 1780339380,
+  "token_type": "BEARER"
+}
