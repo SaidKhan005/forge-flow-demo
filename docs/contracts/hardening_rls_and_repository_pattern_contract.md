@@ -163,21 +163,22 @@ Each repository:
 Service-layer callers swap raw SQL execution for repository method calls.
 Behavior is preserved — same result for same input.
 
-### Known exception under remediation — `audit_logs_repository.dart`
+### Sanctioned exception — `audit_logs_repository.dart` (defense-in-depth probe, PR [#424](https://github.com/SaidKhan005/forge-flow-demo/pull/424))
 
 `lib/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart`
-currently bypasses the base: `AuditLogsRepository` is a plain class
-(no `extends OperatorScopedRepository`) whose `writeRow(...)` accepts a
-caller-supplied `PostgresExecutor exec` and a string `operatorId`
-parameter, rather than reading the operator from a `TenantContext`
-injected through `withTenant`. The shape is intentional today — the
-audit-event boundary writes into the caller's existing tenant-scoped
-transaction so the `audit_logs` row commits atomically with the
-business write it accompanies — but it leaves the operator value as a
-caller responsibility instead of forcing it through the tenant
-context. Remediation tracked in the parallel "audit_logs repo
-tenant-context" Lane A work; once that lands, this paragraph should
-be removed and the standard repository guarantees apply uniformly.
+intentionally does NOT extend `OperatorScopedRepository`. Its
+atomic-with-business-write contract requires that the audit row
+commit in the same transaction as the change it audits — opening its
+own `withTenant` wrapper would break that boundary. Instead, the
+writer cross-checks the caller-supplied `operatorId` parameter
+against `current_setting('app.operator_id', true)` BEFORE binding any
+insert SQL and throws `AuditLogsTenantMismatchError` on disagreement.
+When the GUC is unset (the `runAsSystem` admin path, where
+`forge_admin BYPASSRLS` is the gate and a tenant-scope GUC wouldn't
+make sense), the parameter is accepted as-is — those paths are
+already audited via `app.bypass_rls_audit = 'system:<reason>'` on
+the same transaction. This is the defense-in-depth equivalent of the
+base-class enforcement.
 
 ## Required — Lint Coverage
 
