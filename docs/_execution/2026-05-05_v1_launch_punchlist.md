@@ -144,12 +144,13 @@ arrival. Tracker:
       components landed (see V1 closure dispatch + first-connect
       backfill). Awaiting (a) device + (b) staging apply of mobile push
       migration + (c) operator-blocked sandbox creds.
-- [ ] **Doc 1 remaining post-V1:**
-      - Item 6 — admin/web setting sync inventory (`audit.admin-web-setting-sync`).
-      - Item 7 — connected-device E2E (`8.connected-device-e2e-smoke`); needs physical device.
-      - Item 8 — live provider proof per vendor (same as Wave 1 / Wave D above).
-      - Item 9 — push proof (`8.push-notification-connected-device-proof`); code-ready.
-      - Item 10 — larger pressure suite (already on `cutover.0b`).
+- [-] **Doc 1 remaining — closed 2026-05-08 except operator-blocked gates:**
+      - Item 6 — admin/web setting sync inventory: **closed** (closeout doc + PRs #391, #393, #398).
+      - Item 7 — connected-device E2E: **closed (emulator simulation)** Pixel 5 / Android 14, screens at `.claude/screenshots_doc1_emu/`.
+      - Item 8 — live provider proof per vendor: still gated on Wave 1 / Wave D sandbox creds.
+      - Item 9 — push proof: still gated on staging Firebase apply.
+      - Item 10 — larger pressure suite: still on `cutover.0b`.
+      - Group/region/company rollup truth: explicitly **backlog** — new server primitive; not in V1 scope.
 - [ ] **Phase 11A.8 / .9 / .10 — operations console final slices.**
       Support audit, cross-operator reads, user impersonation. Deferred
       post-launch unless escalated.
