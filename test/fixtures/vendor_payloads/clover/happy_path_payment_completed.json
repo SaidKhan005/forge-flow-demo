@@ -1,0 +1,12 @@
+{
+  "appId": "DRKVJT2ZRRRSC",
+  "merchants": {
+    "CLV-MERCH-CCD13C7B": [
+      {
+        "objectId": "P:CLV-PMT-7HXJ-001",
+        "ts": 1777750980000,
+        "type": "CREATE"
+      }
+    ]
+  }
+}

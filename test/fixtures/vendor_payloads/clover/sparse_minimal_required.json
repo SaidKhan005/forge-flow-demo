@@ -1,0 +1,15 @@
+{
+  "elements": [
+    {
+      "createdTime": 1777747500000,
+      "id": "CLV-ORDER-MINIMAL-001",
+      "merchant": {
+        "id": "CLV-MERCH-CCD13C7B"
+      },
+      "modifiedTime": 1777747500000,
+      "state": "open",
+      "total": 0
+    }
+  ],
+  "href": "https://api.clover.com/v3/merchants/CLV-MERCH-CCD13C7B/orders?offset=0&limit=100"
+}

@@ -1,0 +1,40 @@
+{
+  "elements": [
+    {
+      "createdTime": 1777834500000,
+      "currency": "USD",
+      "employee": {
+        "id": "CLV-EMP-9KX2J3RPQ"
+      },
+      "id": "CLV-ORDER-7HXJ-2026-05-02-001",
+      "manualTransaction": false,
+      "merchant": {
+        "id": "CLV-MERCH-CCD13C7B"
+      },
+      "modifiedTime": 1777834500000,
+      "payments": {
+        "elements": [
+          {
+            "amount": 3140,
+            "id": "CLV-PMT-7HXJ-001",
+            "refunds": {
+              "elements": [
+                {
+                  "amount": 3140,
+                  "createdTime": 1777834500000,
+                  "id": "CLV-REF-7HXJ-001",
+                  "taxAmount": 0
+                }
+              ]
+            },
+            "result": "SUCCESS"
+          }
+        ]
+      },
+      "state": "paid",
+      "taxRemoved": false,
+      "total": 0
+    }
+  ],
+  "href": "https://api.clover.com/v3/merchants/CLV-MERCH-CCD13C7B/orders/CLV-ORDER-7HXJ-2026-05-02-001"
+}

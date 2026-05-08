@@ -1,0 +1,15 @@
+{
+  "elements": [
+    {
+      "createdTime": 1777747500000,
+      "currency": "USD",
+      "merchant": {
+        "id": "CLV-MERCH-CCD13C7B"
+      },
+      "modifiedTime": 1777750980000,
+      "state": "paid",
+      "total": 3140
+    }
+  ],
+  "href": "https://api.clover.com/v3/merchants/CLV-MERCH-CCD13C7B/orders?offset=0&limit=100"
+}

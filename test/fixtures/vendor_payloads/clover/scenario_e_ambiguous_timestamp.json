@@ -1,0 +1,18 @@
+{
+  "elements": [
+    {
+      "createdTime": "2026-05-02T18:45:00",
+      "currency": "USD",
+      "id": "CLV-ORDER-AMBIGUOUS-TS-001",
+      "manualTransaction": false,
+      "merchant": {
+        "id": "CLV-MERCH-CCD13C7B"
+      },
+      "modifiedTime": "2026-05-02T19:43:00",
+      "state": "paid",
+      "taxRemoved": false,
+      "total": 3140
+    }
+  ],
+  "href": "https://api.clover.com/v3/merchants/CLV-MERCH-CCD13C7B/orders?offset=0&limit=100"
+}
