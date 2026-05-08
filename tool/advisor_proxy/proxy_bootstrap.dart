@@ -158,6 +158,21 @@ ProxyStartupFailure? evaluateProxyStartup({
   return null;
 }
 
+const String kProxyDeferStartupDatabaseEnvVar = 'PROXY_DEFER_STARTUP_DATABASE';
+
+/// Returns true when a preview/operator deploy should bind HTTP before
+/// running database-backed startup checks and background consumers.
+///
+/// This is an explicit operational escape hatch for staging-preview
+/// saturation: production still refuses this mode in `main.dart`, and
+/// request handlers continue to use the normal Postgres-backed gateways.
+bool shouldDeferProxyStartupDatabase(Map<String, String> environment) {
+  final value = (environment[kProxyDeferStartupDatabaseEnvVar] ?? '')
+      .trim()
+      .toLowerCase();
+  return value == 'true' || value == '1' || value == 'yes';
+}
+
 class ProxyProductionBindings {
   const ProxyProductionBindings({
     required this.accountingStore,
@@ -377,7 +392,7 @@ class ProxyProductionBindings {
   /// route returns only rows the signed-in operator is permitted to
   /// see.
   final OperatorVendorLifecycleRecentlyAvailableRouter
-      vendorLifecycleRecentlyAvailableRouter;
+  vendorLifecycleRecentlyAvailableRouter;
 
   /// Phase 8 W2.B - per-actor notification preferences router. Backed
   /// by [NotificationPreferencesRepository] (tenant pool, per-user
@@ -690,12 +705,12 @@ ProxyProductionBindings buildProxyProductionBindings(
   // surface.
   final vendorLifecycleRecentlyAvailableRouter =
       OperatorVendorLifecycleRecentlyAvailableRouter(
-    gateway: _PostgresOperatorRecentlyAvailableVendorsGateway(
-      tenantWrapper: tenantWrapper,
-    ),
-    displayNameResolver: (vendorId) =>
-        lookupVendorCapability(vendorId)?.displayName,
-  );
+        gateway: _PostgresOperatorRecentlyAvailableVendorsGateway(
+          tenantWrapper: tenantWrapper,
+        ),
+        displayNameResolver: (vendorId) =>
+            lookupVendorCapability(vendorId)?.displayName,
+      );
   // Phase 8 W2.B - per-actor notification preferences router. Tenant
   // pool + per-user RLS policy on the table; the repository pattern is
   // the primary defense.
@@ -1100,29 +1115,31 @@ class _PostgresOperatorRecentlyAvailableVendorsGateway
       locationId: locationId,
       userId: actorUserId,
     );
-    return _tenantWrapper.runInTenantContext<
-        List<OperatorRecentlyAvailableVendorRow>>(ctx, (exec) async {
-      final rows = await exec.query(
-        'select vendor_id, max(notified_at) as promoted_at '
-        'from public.vendor_lifecycle_notification '
-        'where operator_id = @operator_id::uuid '
-        '  and notified_at is not null '
-        '  and notified_at >= @since::timestamptz '
-        'group by vendor_id '
-        'order by max(notified_at) desc, vendor_id asc',
-        parameters: <String, Object?>{
-          'operator_id': operatorId,
-          'since': since.toUtc(),
-        },
-      );
-      return <OperatorRecentlyAvailableVendorRow>[
-        for (final row in rows)
-          OperatorRecentlyAvailableVendorRow(
-            vendorId: (row['vendor_id'] as String).trim(),
-            promotedAt: _readDateTime(row['promoted_at']),
-          ),
-      ];
-    });
+    return _tenantWrapper
+        .runInTenantContext<List<OperatorRecentlyAvailableVendorRow>>(ctx, (
+          exec,
+        ) async {
+          final rows = await exec.query(
+            'select vendor_id, max(notified_at) as promoted_at '
+            'from public.vendor_lifecycle_notification '
+            'where operator_id = @operator_id::uuid '
+            '  and notified_at is not null '
+            '  and notified_at >= @since::timestamptz '
+            'group by vendor_id '
+            'order by max(notified_at) desc, vendor_id asc',
+            parameters: <String, Object?>{
+              'operator_id': operatorId,
+              'since': since.toUtc(),
+            },
+          );
+          return <OperatorRecentlyAvailableVendorRow>[
+            for (final row in rows)
+              OperatorRecentlyAvailableVendorRow(
+                vendorId: (row['vendor_id'] as String).trim(),
+                promotedAt: _readDateTime(row['promoted_at']),
+              ),
+          ];
+        });
   }
 
   static DateTime _readDateTime(Object? value) {
@@ -2984,10 +3001,7 @@ class RepositoryMobileOperationalSyncProxyGateway
     return out;
   }
 
-  static Map<String, int> _bodyIntMap(
-    Map<String, Object?> body,
-    String field,
-  ) {
+  static Map<String, int> _bodyIntMap(Map<String, Object?> body, String field) {
     final raw = body[field];
     if (raw == null) return const <String, int>{};
     if (raw is! Map) {
@@ -7828,10 +7842,11 @@ class PostgresAuditChainAnchorsGateway implements AuditChainAnchorsGateway {
         blobUri: blobUri,
         lastAnchorBlobUrl:
             (lastAnchorBlobUrl != null && lastAnchorBlobUrl.isNotEmpty)
-                ? lastAnchorBlobUrl
-                : null,
-        lastAnchorBlobAt:
-            lastAnchorBlobAt is DateTime ? lastAnchorBlobAt.toUtc() : null,
+            ? lastAnchorBlobUrl
+            : null,
+        lastAnchorBlobAt: lastAnchorBlobAt is DateTime
+            ? lastAnchorBlobAt.toUtc()
+            : null,
       );
     });
   }

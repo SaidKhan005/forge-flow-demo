@@ -109,6 +109,28 @@ void main() {
       },
     );
 
+    test('supports bounded instance count and deferred preview DB startup', () {
+      expect(script, contains('[int] \$MaxInstances = 2'));
+      expect(script, contains('[switch] \$DeferStartupDatabase'));
+      expect(script, contains('BLOCKED: -MaxInstances must be at least 1.'));
+      expect(
+        script,
+        contains(
+          'BLOCKED: -DeferStartupDatabase is not allowed with '
+          '-ProxyEnvironment prod.',
+        ),
+      );
+      expect(
+        script,
+        contains("\$envAssignments['PROXY_DEFER_STARTUP_DATABASE'] = 'true'"),
+      );
+      expect(script, contains("'--max-instances', \$MaxInstances"));
+      expect(
+        script,
+        contains('Cloud Run min/max instances: \$MinInstances/\$MaxInstances'),
+      );
+    });
+
     test('requires FIREBASE_WEB_API_KEY for the Phase 9 route bindings', () {
       expect(script, contains("'FIREBASE_WEB_API_KEY'"));
       expect(
@@ -259,6 +281,19 @@ void main() {
       expect(script, contains(r'$ProxyUrl/v1/admin/auth/users'));
       expect(script, contains('admin-auth CORS preflight'));
       expect(script, contains('AdminAuthCorsPreflightStatusCode'));
+    });
+
+    test('passes preview DB-deferred startup and max-instance cap through', () {
+      expect(script, contains('[int] \$ProxyMaxInstances = 1'));
+      expect(script, contains('[switch] \$DeferProxyStartupDatabase'));
+      expect(script, contains('MaxInstances = \$ProxyMaxInstances'));
+      expect(script, contains('\$proxyArgs.DeferStartupDatabase = \$true'));
+      expect(
+        script,
+        contains(
+          'Would pass -DeferStartupDatabase to the proxy deploy script.',
+        ),
+      );
     });
   });
 

@@ -20,6 +20,8 @@ param(
   [string] $VpcConnector = 'ff-staging-proxy-egress',
   [string] $VpcEgress = 'all-traffic',
   [int] $MinInstances = 0,
+  [int] $ProxyMaxInstances = 1,
+  [switch] $DeferProxyStartupDatabase,
   [switch] $SkipApiEnable,
   [switch] $SkipSecretManagerSync,
   [switch] $PrintCommandOnly
@@ -240,7 +242,10 @@ Write-Host "Preview admin service: $adminService"
 Write-Host "Preview operator service: $operatorService"
 Write-Host "Secret prefix: $SecretPrefix"
 Write-Host "Proxy base env var: $proxyEnvName"
-Write-Host "Min instances: $MinInstances"
+Write-Host "Proxy min/max instances: $MinInstances/$ProxyMaxInstances"
+if ($DeferProxyStartupDatabase) {
+  Write-Host 'Proxy startup database mode: deferred checks/background consumers.'
+}
 if ($SecretPrefix -eq 'forge-flow-staging-') {
   Write-Host 'Database mode: staging secrets, read-only smoke unless exact write approval is given.'
 } elseif ($SecretPrefix -eq 'forge-flow-preview-') {
@@ -263,6 +268,7 @@ function Invoke-PreviewProxyDeploy {
     ProxyBaseUriEnvVarName = $proxyEnvName
     ProxyEnvironment = $proxyEnvironment
     MinInstances = $MinInstances
+    MaxInstances = $ProxyMaxInstances
   }
   if (-not [string]::IsNullOrWhiteSpace($FirebaseGoogleServicesPath)) {
     $proxyArgs.FirebaseGoogleServicesPath = $FirebaseGoogleServicesPath
@@ -280,6 +286,9 @@ function Invoke-PreviewProxyDeploy {
   if ($SkipSecretManagerSync) {
     $proxyArgs.SkipSecretManagerSync = $true
   }
+  if ($DeferProxyStartupDatabase) {
+    $proxyArgs.DeferStartupDatabase = $true
+  }
 
   & $proxyScript @proxyArgs
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -289,6 +298,9 @@ if ($PrintCommandOnly) {
   Write-Host 'Would deploy preview proxy, preview admin, then redeploy proxy with admin/operator CORS.'
   Write-Host "Proxy script: $(Join-Path $PSScriptRoot 'deploy_staging_proxy.ps1')"
   Write-Host "Admin script: $(Join-Path $PSScriptRoot 'deploy_admin_console.ps1')"
+  if ($DeferProxyStartupDatabase) {
+    Write-Host 'Would pass -DeferStartupDatabase to the proxy deploy script.'
+  }
   exit 0
 }
 

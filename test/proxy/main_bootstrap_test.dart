@@ -149,6 +149,32 @@ void main() {
     );
   });
 
+  group('shouldDeferProxyStartupDatabase', () {
+    test('accepts explicit preview escape-hatch truthy values', () {
+      for (final value in <String>['true', 'TRUE', '1', 'yes', ' yes ']) {
+        expect(
+          shouldDeferProxyStartupDatabase(<String, String>{
+            kProxyDeferStartupDatabaseEnvVar: value,
+          }),
+          isTrue,
+        );
+      }
+    });
+
+    test('defaults to strict startup database checks', () {
+      expect(
+        shouldDeferProxyStartupDatabase(const <String, String>{}),
+        isFalse,
+      );
+      expect(
+        shouldDeferProxyStartupDatabase(<String, String>{
+          kProxyDeferStartupDatabaseEnvVar: 'false',
+        }),
+        isFalse,
+      );
+    });
+  });
+
   group('main.dart entrypoint surface (source assertions)', () {
     String readMainSource() =>
         File('tool/advisor_proxy/main.dart').readAsStringSync();
@@ -192,6 +218,19 @@ void main() {
       expect(source, contains("'phase': 'migration_registry'"));
       expect(source, contains("'migration_catalog_count'"));
     });
+
+    test(
+      'deferred preview startup skips DB probes and background consumers',
+      () {
+        final source = readMainSource();
+        expect(source, contains('shouldDeferProxyStartupDatabase'));
+        expect(source, contains('deferred_startup_database'));
+        expect(source, contains('startup.database_checks_deferred'));
+        expect(source, contains('startup.realtime_bridge_deferred'));
+        expect(source, contains('startup.background_workers_deferred'));
+        expect(source, contains('workerHandle?.stopAll()'));
+      },
+    );
 
     test('no longer references the scaffold-failing usage / health stores', () {
       final source = readMainSource();
