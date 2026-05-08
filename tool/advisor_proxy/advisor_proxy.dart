@@ -7622,6 +7622,7 @@ abstract class DebugConsoleAdminProxyGateway {
     required String adminReason,
     String? operatorId,
     String? locationId,
+    List<String>? locationIds,
     String? usageClass,
     String? status,
     int? timeWindowSeconds,
@@ -10987,8 +10988,9 @@ Future<void> routeRequest(
             // dispatch them BEFORE _userActionFromPath so the
             // 3-segment path (`<id>/erase-pii/reverse`) does not
             // false-404 against the standard 2-segment parser.
-            final piiErasurePath =
-                _piiErasurePathFromAdminAuthUsersPrefix(authOperationPath);
+            final piiErasurePath = _piiErasurePathFromAdminAuthUsersPrefix(
+              authOperationPath,
+            );
             if (piiErasurePath != null) {
               final piiService = userPiiErasureService;
               if (piiService == null) {
@@ -10999,9 +11001,7 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              if (!await requirePermission(
-                PermissionKeys.adminUsersErasePii,
-              )) {
+              if (!await requirePermission(PermissionKeys.adminUsersErasePii)) {
                 return;
               }
               if (request.method == 'GET') {
@@ -11011,32 +11011,28 @@ Future<void> routeRequest(
                   targetUserId: piiErasurePath.userId,
                 );
                 if (status == null) {
-                  _writeJson(response, 200, <String, Object?>{
-                    'erasure': null,
-                  });
+                  _writeJson(response, 200, <String, Object?>{'erasure': null});
                   return;
                 }
                 _writeJson(response, 200, <String, Object?>{
                   'erasure': <String, Object?>{
                     'erasure_id': status.erasureId,
-                    'requested_at':
-                        status.requestedAt.toUtc().toIso8601String(),
-                    'requested_by_user_id': status.requestedByUserId,
-                    'grace_period_ends_at': status
-                        .gracePeriodEndsAt
+                    'requested_at': status.requestedAt
                         .toUtc()
                         .toIso8601String(),
-                    'applied_at':
-                        status.appliedAt?.toUtc().toIso8601String(),
-                    'reversed_at':
-                        status.reversedAt?.toUtc().toIso8601String(),
+                    'requested_by_user_id': status.requestedByUserId,
+                    'grace_period_ends_at': status.gracePeriodEndsAt
+                        .toUtc()
+                        .toIso8601String(),
+                    'applied_at': status.appliedAt?.toUtc().toIso8601String(),
+                    'reversed_at': status.reversedAt?.toUtc().toIso8601String(),
                     'reversed_by_user_id': status.reversedByUserId,
                     'reversal_reason': status.reversalReason,
                     'state': status.isApplied
                         ? 'applied'
                         : status.isReversed
-                            ? 'reversed'
-                            : 'pending',
+                        ? 'reversed'
+                        : 'pending',
                   },
                 });
                 return;
@@ -11060,8 +11056,7 @@ Future<void> routeRequest(
                     // resolver is bound, preserving the legacy
                     // behaviour for callers that have not been wired
                     // yet. The column drives partition routing only.
-                    final result =
-                        await piiService.requestErasure(
+                    final result = await piiService.requestErasure(
                       operatorId: scope.operatorId,
                       locationId: scope.locationId,
                       targetUserId: piiErasurePath.userId,
@@ -11081,8 +11076,7 @@ Future<void> routeRequest(
                       statusCode: 202,
                       body: <String, Object?>{
                         'erasure_id': result.erasureId,
-                        'grace_period_ends_at': result
-                            .gracePeriodEndsAt
+                        'grace_period_ends_at': result.gracePeriodEndsAt
                             .toUtc()
                             .toIso8601String(),
                       },
@@ -11100,19 +11094,18 @@ Future<void> routeRequest(
                 if (erasureId == null) {
                   _writeJson(response, 400, <String, Object?>{
                     'error': 'missing_erasure_id',
-                    'message':
-                        'request body must include erasure_id',
+                    'message': 'request body must include erasure_id',
                   });
                   return;
                 }
-                final routeKey = '$adminAuthUsersPrefix'
+                final routeKey =
+                    '$adminAuthUsersPrefix'
                     '${piiErasurePath.userId}/erase-pii/reverse';
                 final cached = await authOpsCache.runOrReplay(
                   route: routeKey,
                   key: idempotencyKey,
                   compute: () async {
-                    final result =
-                        await piiService.reverseErasure(
+                    final result = await piiService.reverseErasure(
                       operatorId: scope.operatorId,
                       locationId: scope.locationId,
                       targetUserId: piiErasurePath.userId,
@@ -11120,15 +11113,14 @@ Future<void> routeRequest(
                       reversedByUserId: scope.userId,
                       reversalReason:
                           _nonBlankString(body['reversal_reason']) ??
-                              _nonBlankString(body['admin_reason']),
+                          _nonBlankString(body['admin_reason']),
                     );
                     if (result.notFound) {
                       return CachedProxyResponse(
                         statusCode: 404,
                         body: <String, Object?>{
                           'error': 'erasure_not_found',
-                          'message':
-                              'no erasure row with the requested id',
+                          'message': 'no erasure row with the requested id',
                         },
                       );
                     }
@@ -11145,9 +11137,7 @@ Future<void> routeRequest(
                     }
                     return CachedProxyResponse(
                       statusCode: 200,
-                      body: <String, Object?>{
-                        'reversed': true,
-                      },
+                      body: <String, Object?>{'reversed': true},
                     );
                   },
                 );
@@ -11554,6 +11544,9 @@ Future<void> routeRequest(
                       unitType: unitType,
                       label: label,
                       name: name,
+                      adminReason:
+                          _nonBlankString(body['admin_reason']) ??
+                          _nonBlankString(body['adminReason']),
                     ),
                   );
                   return CachedProxyResponse(
@@ -13782,9 +13775,7 @@ Future<void> routeRequest(
             adminIdempotencyKey = '';
             requestBody = const <String, Object?>{};
           } else {
-            final headerKey = request.headers
-                .value('Idempotency-Key')
-                ?.trim();
+            final headerKey = request.headers.value('Idempotency-Key')?.trim();
             if (headerKey == null || headerKey.isEmpty) {
               _writeJson(response, 400, <String, Object?>{
                 'error': 'idempotency_key_missing',
@@ -15304,6 +15295,15 @@ Future<void> _routeDebugConsoleAdmin({
   required bool includeFullContent,
 }) async {
   final params = request.uri.queryParameters;
+  final repeatedLocationIds = _nonBlankStrings(
+    request.uri.queryParametersAll['location_id'],
+  );
+  final scopedLocationIds = repeatedLocationIds.length > 1
+      ? repeatedLocationIds
+      : _commaSeparatedQueryList(params['location_ids']);
+  final scopedLocationId = repeatedLocationIds.length > 1
+      ? null
+      : _nonBlankString(params['location_id']);
   final reasonPrefix = 'admin.debug.GET:$actorUserId';
 
   if (path == adminDebugRequestsPath) {
@@ -15311,7 +15311,8 @@ Future<void> _routeDebugConsoleAdmin({
       actorUserId: actorUserId,
       adminReason: '$reasonPrefix:list',
       operatorId: _nonBlankString(params['operator_id']),
-      locationId: _nonBlankString(params['location_id']),
+      locationId: scopedLocationId,
+      locationIds: scopedLocationIds.isEmpty ? null : scopedLocationIds,
       usageClass: _nonBlankString(params['usage_class']),
       status: _nonBlankString(params['status']),
       timeWindowSeconds: _clampedQueryInt(
@@ -16432,21 +16433,26 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
   final keyRaw = body['service_period_key'];
   if (keyRaw is! String ||
       !RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(keyRaw)) {
-    return (400, <String, Object?>{
-      'error': 'invalid_service_period_key',
-      'message':
-          'service_period_key must start with a lowercase letter and contain '
-          'only lowercase letters, numbers, or underscores',
-    });
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_service_period_key',
+        'message':
+            'service_period_key must start with a lowercase letter and contain '
+            'only lowercase letters, numbers, or underscores',
+      },
+    );
   }
   final dateRaw = body['effective_at_business_date'];
-  if (dateRaw is! String ||
-      !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateRaw)) {
-    return (400, <String, Object?>{
-      'error': 'invalid_effective_at_business_date',
-      'message':
-          'effective_at_business_date must be a YYYY-MM-DD business date',
-    });
+  if (dateRaw is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateRaw)) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_effective_at_business_date',
+        'message':
+            'effective_at_business_date must be a YYYY-MM-DD business date',
+      },
+    );
   }
   final coversRaw = body['covers_source'];
   if (coversRaw != null) {
@@ -16457,12 +16463,15 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       'reservation_plus_walkin',
     };
     if (coversRaw is! String || !allowed.contains(coversRaw)) {
-      return (400, <String, Object?>{
-        'error': 'invalid_covers_source',
-        'message':
-            'covers_source must be vendor, forecast, manual, or '
-            'reservation_plus_walkin',
-      });
+      return (
+        400,
+        <String, Object?>{
+          'error': 'invalid_covers_source',
+          'message':
+              'covers_source must be vendor, forecast, manual, or '
+              'reservation_plus_walkin',
+        },
+      );
     }
   }
   final wageRaw = body['wage_source'];
@@ -16474,12 +16483,15 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       'manual_mix',
     };
     if (wageRaw is! String || !allowed.contains(wageRaw)) {
-      return (400, <String, Object?>{
-        'error': 'invalid_wage_source',
-        'message':
-            'wage_source must be vendor_per_employee, vendor_per_position, '
-            'target_substitution, or manual_mix',
-      });
+      return (
+        400,
+        <String, Object?>{
+          'error': 'invalid_wage_source',
+          'message':
+              'wage_source must be vendor_per_employee, vendor_per_position, '
+              'target_substitution, or manual_mix',
+        },
+      );
     }
   }
   return null;
@@ -17374,9 +17386,7 @@ _PiiErasurePath? _piiErasurePathFromAdminAuthUsersPrefix(String path) {
   if (!path.startsWith(adminAuthUsersPrefix)) return null;
   final rest = path.substring(adminAuthUsersPrefix.length);
   final parts = rest.split('/');
-  if (parts.length == 2 &&
-      parts[0].isNotEmpty &&
-      parts[1] == 'erase-pii') {
+  if (parts.length == 2 && parts[0].isNotEmpty && parts[1] == 'erase-pii') {
     return _PiiErasurePath(
       userId: Uri.decodeComponent(parts[0]),
       action: 'request',
@@ -17493,6 +17503,22 @@ String? _nonBlankString(Object? value) {
   final trimmed = value.trim();
   if (trimmed.isEmpty) return null;
   return trimmed;
+}
+
+List<String> _nonBlankStrings(Iterable<String>? values) {
+  if (values == null) return const <String>[];
+  final result = <String>[];
+  for (final value in values) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || result.contains(trimmed)) continue;
+    result.add(trimmed);
+  }
+  return List<String>.unmodifiable(result);
+}
+
+List<String> _commaSeparatedQueryList(Object? value) {
+  if (value is! String) return const <String>[];
+  return _nonBlankStrings(value.split(','));
 }
 
 class _MalformedJsonBodyError implements Exception {

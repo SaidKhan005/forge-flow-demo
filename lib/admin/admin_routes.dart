@@ -386,12 +386,16 @@ Widget _buildOperators(BuildContext context) {
   final vendorConnectionsGateway =
       AdminConsoleServicesScope.vendorConnectionsGatewayOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
-  Widget buildScreen({required bool editingEnabled}) {
+  Widget buildScreen({
+    required bool editingEnabled,
+    String actorUserId = 'admin-console',
+  }) {
     return OperatorLocationAdminScreen(
       gateway: gateway,
       hierarchyGateway: hierarchyGateway,
       vendorConnectionsGateway: vendorConnectionsGateway,
       editingEnabled: editingEnabled,
+      actorUserId: actorUserId,
       onOpenSupportLogs: handoff == null
           ? null
           : (operatorId, locationId) {
@@ -416,10 +420,8 @@ Widget _buildOperators(BuildContext context) {
                 AdminRouteIntent(
                   routeId: kAdminDebugConsoleRouteId,
                   hierarchyScope: scope,
-                  supportLogFilter: AdminSupportLogFilterIntent(
-                    operatorId: scope.operatorId,
-                    locationId: scope.locationId,
-                  ),
+                  supportLogFilter:
+                      AdminSupportLogFilterIntent.fromHierarchyScope(scope),
                 ),
               );
             },
@@ -547,7 +549,10 @@ Widget _buildOperators(BuildContext context) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
       final canEdit = session != null && session.roles.contains('super_admin');
-      return buildScreen(editingEnabled: canEdit);
+      return buildScreen(
+        editingEnabled: canEdit,
+        actorUserId: session?.uid ?? 'admin-console',
+      );
     },
   );
 }
@@ -1035,11 +1040,11 @@ Widget _buildMembers(BuildContext context) {
   );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
   final initialPicked = _pickerResultFromScope(
-    handoff?.operatorLocationScope,
+    handoff?.operatorLocationScope ?? initialScope?.toOperatorLocationScope(),
     allowBusinessScope: true,
   );
-  final initialScope = handoff?.effectiveHierarchyScope;
   void rememberPickedOperator(OperatorPickerResult result) {
     handoff?.onSelectRoute(
       AdminRouteIntent(
@@ -1263,8 +1268,9 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
   );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
   final initialPicked = _pickerResultFromScope(
-    handoff?.operatorLocationScope,
+    handoff?.operatorLocationScope ?? initialScope?.toOperatorLocationScope(),
     allowBusinessScope: true,
   );
   void rememberPickedOperator(OperatorPickerResult result) {
@@ -1470,8 +1476,9 @@ Widget _buildAuditedSupportActions(BuildContext context) {
   );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
   final initialPicked = _pickerResultFromScope(
-    handoff?.operatorLocationScope,
+    handoff?.operatorLocationScope ?? initialScope?.toOperatorLocationScope(),
     allowBusinessScope: true,
   );
   void rememberPickedOperator(OperatorPickerResult result) {
@@ -1512,6 +1519,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
       canExportAuditLog: false,
       adminUid: null,
       initialPicked: initialPicked,
+      initialScope: initialScope,
       openPicker: openPicker,
       onOperatorPicked: rememberPickedOperator,
     );
@@ -1545,6 +1553,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
         canExportAuditLog: canExportAuditLog,
         adminUid: session?.uid,
         initialPicked: initialPicked,
+        initialScope: initialScope,
         openPicker: openPicker,
         onOperatorPicked: rememberPickedOperator,
       );
@@ -1563,6 +1572,7 @@ class _AuditedSupportActionsRouteShell extends StatefulWidget {
     required this.canExportAuditLog,
     required this.adminUid,
     required this.initialPicked,
+    required this.initialScope,
     required this.openPicker,
     required this.onOperatorPicked,
   });
@@ -1576,6 +1586,7 @@ class _AuditedSupportActionsRouteShell extends StatefulWidget {
   final bool canExportAuditLog;
   final String? adminUid;
   final OperatorPickerResult? initialPicked;
+  final AdminHierarchyScopeIntent? initialScope;
   final Future<OperatorPickerResult?> Function(
     BuildContext context,
     String? adminUid,
@@ -1678,6 +1689,7 @@ class _AuditedSupportActionsRouteShellState
       canResetMfaFactors: widget.canResetMfaFactors,
       canIssuePairedErasure: widget.canIssuePairedErasure,
       canExportAuditLog: widget.canExportAuditLog,
+      hierarchyScope: widget.initialScope,
       onChangeOperator: _openPicker,
     );
   }

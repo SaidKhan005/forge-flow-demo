@@ -456,6 +456,7 @@ class TeamOrgUnitCreateCommand {
     required this.unitType,
     required this.label,
     required this.name,
+    this.adminReason,
   });
 
   final String actorUserId;
@@ -465,6 +466,7 @@ class TeamOrgUnitCreateCommand {
   final String unitType;
   final String label;
   final String name;
+  final String? adminReason;
 }
 
 class TeamOrgUnitCreated {

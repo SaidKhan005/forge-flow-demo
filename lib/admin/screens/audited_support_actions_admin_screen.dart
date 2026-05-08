@@ -42,6 +42,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
+import '../admin_route_handoff.dart';
 import '../admin_button_styles.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
@@ -60,6 +61,7 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
     this.canIssuePairedErasure = false,
     this.canExportAuditLog = false,
     this.sessionsGateway,
+    this.hierarchyScope,
     this.idempotencyKeyFactory,
     this.onChangeOperator,
     this.graceWindowClock,
@@ -95,6 +97,10 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
   /// the existing roles/hierarchy/sessions gateway contract for
   /// session reads and audited force-logout writes.
   final RolesHierarchySessionsAdminGateway? sessionsGateway;
+
+  /// Scope selected from the business hierarchy workspace before the
+  /// Security/audit/sessions tile was opened.
+  final AdminHierarchyScopeIntent? hierarchyScope;
 
   final String Function()? idempotencyKeyFactory;
 
@@ -563,6 +569,10 @@ class _AuditedSupportActionsAdminScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          if (widget.hierarchyScope != null) ...<Widget>[
+            _SecurityHierarchyScopeBanner(scope: widget.hierarchyScope!),
+            const SizedBox(height: 16),
+          ],
           _SupportAuditSummaryStrip(
             rows: _rows,
             members: _members,
@@ -649,6 +659,107 @@ class _SupportAuditSummaryStrip extends StatelessWidget {
           tone: hasMoreRows ? AppColors.warning : AppColors.positive,
         ),
       ],
+    );
+  }
+}
+
+class _SecurityHierarchyScopeBanner extends StatelessWidget {
+  const _SecurityHierarchyScopeBanner({required this.scope});
+
+  final AdminHierarchyScopeIntent scope;
+
+  @override
+  Widget build(BuildContext context) {
+    final body = switch (scope.scopeType) {
+      AdminHierarchyScopeType.business =>
+        'Business scope covers audit history, active sessions, and support actions for this operator.',
+      AdminHierarchyScopeType.orgUnit =>
+        'Org-unit scope is the working context for effective access. Audit rows and sessions remain operator-wide until the backend exposes a scoped aggregate route.',
+      AdminHierarchyScopeType.location =>
+        'Location scope is the working context for effective access. Audit rows and sessions remain operator-wide until the backend exposes a location-scoped security route.',
+    };
+    return Container(
+      key: const Key('admin_asa_scope_banner'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(
+          color: AppColors.peacock.withValues(alpha: 0.62),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(
+            scope.isLocationScope
+                ? Icons.storefront_outlined
+                : scope.isOrgUnitScope
+                ? Icons.account_tree_outlined
+                : Icons.business_outlined,
+            size: 16,
+            color: AppColors.peacock,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: <Widget>[
+                    Text(
+                      '${scope.scopeType.label}: ${scope.displayLabel}',
+                      key: const Key('admin_asa_scope_label'),
+                      style: AppTextStyles.body13(
+                        color: AppColors.textPrimary,
+                      ).copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    _SecurityScopePill(label: scope.inheritanceLabel),
+                    if (scope.effectiveValueLabel != null)
+                      _SecurityScopePill(
+                        label: 'Effective: ${scope.effectiveValueLabel}',
+                      ),
+                    if (scope.allowedActionsLabel != null)
+                      _SecurityScopePill(label: scope.allowedActionsLabel!),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  body,
+                  key: const Key('admin_asa_scope_body'),
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SecurityScopePill extends StatelessWidget {
+  const _SecurityScopePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.mono11(color: AppColors.textSecondary),
+      ),
     );
   }
 }

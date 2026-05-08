@@ -27,6 +27,26 @@ void main() {
     home: child,
   );
 
+  Future<void> chooseScopePrompt(
+    WidgetTester tester, {
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+  }) async {
+    expect(
+      find.byKey(const Key('admin_hierarchy_scope_prompt')),
+      findsOneWidget,
+    );
+    final cacheKey =
+        '$operatorId|$scopeType|${orgUnitId ?? ''}|${locationId ?? ''}';
+    final option = find.byKey(Key('admin_hierarchy_scope_option_$cacheKey'));
+    await tester.ensureVisible(option);
+    await tester.pumpAndSettle();
+    await tester.tap(option);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('renders branded header with role pill + identity chip', (
     tester,
   ) async {
@@ -319,6 +339,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(logsTile);
     await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: '00000000-0000-4000-8000-000000000001',
+      scopeType: 'business',
+    );
 
     expect(find.byKey(const Key('admin_debug_console_screen')), findsOneWidget);
     expect(
@@ -483,6 +508,11 @@ void main() {
       await tester.ensureVisible(peopleTile);
       await tester.tap(peopleTile);
       await tester.pumpAndSettle();
+      await chooseScopePrompt(
+        tester,
+        operatorId: '00000000-0000-4000-8000-000000000001',
+        scopeType: 'business',
+      );
 
       expect(find.byKey(const Key('admin_members_screen')), findsOneWidget);
       expect(find.text('People, access, and roles'), findsWidgets);
@@ -512,6 +542,11 @@ void main() {
       await tester.ensureVisible(securityTile);
       await tester.tap(securityTile);
       await tester.pumpAndSettle();
+      await chooseScopePrompt(
+        tester,
+        operatorId: '00000000-0000-4000-8000-000000000001',
+        scopeType: 'business',
+      );
 
       expect(
         find.byKey(const Key('admin_audited_support_actions_screen')),
@@ -550,6 +585,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(supportLogsTile);
     await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: '00000000-0000-4000-8000-000000000001',
+      scopeType: 'business',
+    );
 
     expect(find.byKey(const Key('admin_debug_console_screen')), findsOneWidget);
     expect(
@@ -598,6 +638,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(peopleTile);
     await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: '00000000-0000-4000-8000-000000000001',
+      scopeType: 'location',
+      orgUnitId: '00000000-0000-4000-8000-000000000d02',
+      locationId: '00000000-0000-4000-8000-0000000000a1',
+    );
 
     expect(find.byKey(const Key('admin_members_screen')), findsOneWidget);
     expect(find.text('People, access, and roles'), findsWidgets);

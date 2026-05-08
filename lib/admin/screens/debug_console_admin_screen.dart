@@ -77,8 +77,8 @@ class DebugConsoleAdminScreen extends StatefulWidget {
 
   /// Optional hierarchy scope from Business accounts. Business and
   /// location scopes map directly onto the existing request-log route.
-  /// Org-unit scopes are expanded client-side through [hierarchyGateway]
-  /// when the location tree is available.
+  /// Org-unit scopes are expanded through [hierarchyGateway] before
+  /// the request-log filter is sent to the admin proxy.
   final AdminHierarchyScopeIntent? hierarchyScope;
 
   /// Optional route seed used by contextual actions elsewhere in the
@@ -828,7 +828,7 @@ class _ScopeBanner extends StatelessWidget {
     if (count == 0) {
       return 'This org unit has no covered locations, so no support-log rows can match it.';
     }
-    return 'Org unit expands to $count covered location${count == 1 ? '' : 's'}. The existing support-log route is operator/location only, so recent operator rows are filtered client-side.';
+    return 'Org unit expands to $count covered location${count == 1 ? '' : 's'}. The admin proxy receives the covered-location filter and the screen narrows visible rows to the same scope.';
   }
 }
 

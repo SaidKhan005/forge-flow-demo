@@ -23,7 +23,9 @@ import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart';
+import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/widgets/admin_responsive_layout.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -88,6 +90,26 @@ void main() {
     await tester.pumpAndSettle();
 
     final option = find.byKey(Key('admin_timezone_option_text_$timezone'));
+    await tester.tap(option);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> chooseScopePrompt(
+    WidgetTester tester, {
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+  }) async {
+    expect(
+      find.byKey(const Key('admin_hierarchy_scope_prompt')),
+      findsOneWidget,
+    );
+    final cacheKey =
+        '$operatorId|$scopeType|${orgUnitId ?? ''}|${locationId ?? ''}';
+    final option = find.byKey(Key('admin_hierarchy_scope_option_$cacheKey'));
+    await tester.ensureVisible(option);
+    await tester.pumpAndSettle();
     await tester.tap(option);
     await tester.pumpAndSettle();
   }
@@ -183,6 +205,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(supportLogsTile);
     await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: 'op-support',
+      scopeType: 'business',
+    );
     expect(supportLogRequests, hasLength(1));
     expect(supportLogRequests.single, <String?>['op-support', null]);
 
@@ -197,11 +224,17 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(supportLogsTile);
     await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: 'op-support',
+      scopeType: 'location',
+      locationId: 'loc-support',
+    );
     expect(supportLogRequests, hasLength(2));
     expect(supportLogRequests.last, <String?>['op-support', 'loc-support']);
   });
 
-  testWidgets('setup tiles preserve business and location hierarchy scope', (
+  testWidgets('setup tiles offer business, org-unit, and location scope', (
     tester,
   ) async {
     final scopes = <AdminHierarchyScopeIntent>[];
@@ -214,10 +247,32 @@ void main() {
         ),
       ],
     );
+    final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+      orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+        'op-workspace': const <OrgUnitAdminNode>[
+          OrgUnitAdminNode(
+            orgUnitId: 'org-root',
+            name: 'Workspace root',
+            operatorId: 'op-workspace',
+          ),
+        ],
+      },
+      locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+        'op-workspace': const <HierarchyLocationLeaf>[
+          HierarchyLocationLeaf(
+            locationId: 'loc-workspace',
+            name: 'HQ',
+            operatorId: 'op-workspace',
+            orgUnitId: 'org-root',
+          ),
+        ],
+      },
+    );
     await tester.pumpWidget(
       wrap(
         OperatorLocationAdminScreen(
           gateway: gateway,
+          hierarchyGateway: hierarchyGateway,
           onOpenPeopleAccessRolesScope: scopes.add,
         ),
       ),
@@ -231,11 +286,32 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(peopleTile);
     await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: 'op-workspace',
+      scopeType: 'business',
+    );
     expect(scopes, hasLength(1));
     expect(scopes.single.operatorId, 'op-workspace');
     expect(scopes.single.scopeType, AdminHierarchyScopeType.business);
     expect(scopes.single.locationId, isNull);
     expect(scopes.single.operatorName, 'Workspace Cafe');
+
+    await tester.ensureVisible(peopleTile);
+    await tester.pumpAndSettle();
+    await tester.tap(peopleTile);
+    await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: 'op-workspace',
+      scopeType: 'org_unit',
+      orgUnitId: 'org-root',
+    );
+    expect(scopes, hasLength(2));
+    expect(scopes.last.operatorId, 'op-workspace');
+    expect(scopes.last.scopeType, AdminHierarchyScopeType.orgUnit);
+    expect(scopes.last.orgUnitId, 'org-root');
+    expect(scopes.last.orgUnitName, 'Workspace root');
 
     final locationRow = find.byKey(
       const Key('admin_hierarchy_location_loc-workspace'),
@@ -248,11 +324,20 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(peopleTile);
     await tester.pumpAndSettle();
-    expect(scopes, hasLength(2));
+    await chooseScopePrompt(
+      tester,
+      operatorId: 'op-workspace',
+      scopeType: 'location',
+      orgUnitId: 'org-root',
+      locationId: 'loc-workspace',
+    );
+    expect(scopes, hasLength(3));
     expect(scopes.last.operatorId, 'op-workspace');
     expect(scopes.last.scopeType, AdminHierarchyScopeType.location);
     expect(scopes.last.locationId, 'loc-workspace');
     expect(scopes.last.operatorName, 'Workspace Cafe');
+    expect(scopes.last.orgUnitId, 'org-root');
+    expect(scopes.last.orgUnitName, 'Workspace root');
     expect(scopes.last.locationName, 'HQ');
   });
 
@@ -280,6 +365,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(profileTile);
     await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: 'op-profile',
+      scopeType: 'business',
+    );
 
     final dialog = find.byKey(const Key('admin_edit_operator_dialog'));
     expect(dialog, findsOneWidget);
@@ -325,6 +415,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(profileTile);
     await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: 'op-profile-conflict',
+      scopeType: 'business',
+    );
     await tester.enterText(
       find.byKey(const Key('admin_edit_owner_email')),
       'taken@business.test',
@@ -379,6 +474,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(timingTile);
     await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: 'op-timing',
+      scopeType: 'location',
+      locationId: 'loc-timing',
+    );
 
     expect(
       find.byKey(const Key('admin_location_timing_dialog')),
@@ -429,6 +530,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(timingTile);
     await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: 'op-business-timing',
+      scopeType: 'business',
+    );
 
     expect(
       find.byKey(const Key('admin_location_timing_dialog')),
@@ -480,6 +586,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(timingTile);
       await tester.pumpAndSettle();
+      await chooseScopePrompt(
+        tester,
+        operatorId: 'op-timing-readonly',
+        scopeType: 'location',
+        locationId: 'loc-timing-readonly',
+      );
 
       expect(
         find.byKey(const Key('admin_location_timing_dialog')),
@@ -748,6 +860,78 @@ void main() {
     );
   });
 
+  testWidgets('business hierarchy manager creates a child org unit', (
+    tester,
+  ) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[seedBundle()],
+    );
+    final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+      orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+        'op-seed-1': <OrgUnitAdminNode>[
+          const OrgUnitAdminNode(
+            orgUnitId: 'org-root',
+            name: 'Demo Diner Co.',
+            operatorId: 'op-seed-1',
+          ),
+        ],
+      },
+      locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+        'op-seed-1': <HierarchyLocationLeaf>[
+          const HierarchyLocationLeaf(
+            locationId: 'loc-seed-1',
+            name: 'HQ',
+            operatorId: 'op-seed-1',
+            orgUnitId: 'org-root',
+          ),
+        ],
+      },
+    );
+    await tester.pumpWidget(
+      wrap(
+        OperatorLocationAdminScreen(
+          gateway: gateway,
+          hierarchyGateway: hierarchyGateway,
+          actorUserId: 'demo-super-admin',
+          idempotencyKeyFactory: () => 'idem-business-hierarchy-add-child',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final addChild = find.byKey(
+      const Key('admin_hierarchy_org_unit_add_child_org-root'),
+    );
+    await tester.ensureVisible(addChild);
+    await tester.pumpAndSettle();
+    await tester.tap(addChild);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_hierarchy_add_child_org_unit_dialog')),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      find.byKey(const Key('admin_hierarchy_add_org_unit_name')),
+      'North district',
+    );
+    await tester.enterText(
+      find.byKey(const Key('admin_hierarchy_add_org_unit_reason')),
+      'operator requested hierarchy setup',
+    );
+    await tester.tap(
+      find.byKey(const Key('admin_hierarchy_add_org_unit_submit')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('North district'), findsOneWidget);
+    final event = hierarchyGateway.capturedAuditEvents.single;
+    expect(event.action, equals('team.org_unit.create'));
+    expect(event.actorUserId, equals('demo-super-admin'));
+    expect(event.adminReason, equals('operator requested hierarchy setup'));
+    expect(event.payload['parent_org_unit_id'], equals('org-root'));
+  });
+
   testWidgets('add location dialog submits the selected IANA timezone', (
     tester,
   ) async {
@@ -893,6 +1077,12 @@ void main() {
 
     await tester.tap(integrationsTile);
     await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: 'op-seed-1',
+      scopeType: 'location',
+      locationId: 'loc-seed-1',
+    );
 
     expect(
       find.byKey(const Key('admin_vendor_connections_screen')),
@@ -929,6 +1119,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(integrationsTile);
       await tester.pumpAndSettle();
+      await chooseScopePrompt(
+        tester,
+        operatorId: 'op-integrations',
+        scopeType: 'business',
+      );
 
       expect(
         find.byKey(const Key('admin_vendor_connections_location_required')),

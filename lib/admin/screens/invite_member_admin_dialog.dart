@@ -75,6 +75,7 @@ class InviteMemberAdminDialog extends StatefulWidget {
     required this.operatorBusinessName,
     required this.locations,
     this.accessScopes = const <MemberAccessScopeRef>[],
+    this.initialScope,
     this.existingEmails = const <String>{},
     this.existingEmailUsages = const <String, AdminEmailConflictUsage>{},
     this.onReviewExistingEmail,
@@ -83,6 +84,7 @@ class InviteMemberAdminDialog extends StatefulWidget {
   final String operatorBusinessName;
   final List<MemberLocationRef> locations;
   final List<MemberAccessScopeRef> accessScopes;
+  final MemberAccessScopeRef? initialScope;
 
   /// Lower-cased emails already on the team. Used by the dialog to
   /// surface the locked "email already on the team" copy without
@@ -102,7 +104,9 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
   final _adminReasonController = TextEditingController();
   final _welcomeNoteController = TextEditingController();
   String? _roleKey;
-  String? _scopeId;
+  late String? _scopeId =
+      widget.initialScope?.id ??
+      (widget.accessScopes.isEmpty ? null : widget.accessScopes.first.id);
   String? _violation;
   AdminEmailConflictUsage? _violationUsage;
 

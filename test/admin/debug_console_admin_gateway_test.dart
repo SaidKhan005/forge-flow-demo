@@ -19,6 +19,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/models/debug_console_admin_models.dart';
 import 'package:forge_and_flow/admin/services/debug_console_admin_gateway.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart' as http_testing;
 
 void main() {
   RequestLogEntry entry({
@@ -334,6 +336,42 @@ void main() {
       final tailed = await gateway.tailRecent();
       expect(tailed.first.requestId, equals('req-newer'));
     });
+  });
+
+  group('HttpDebugConsoleAdminGateway', () {
+    test(
+      'sends multi-location org-unit support log scope to the proxy',
+      () async {
+        http.Request? captured;
+        final gateway = HttpDebugConsoleAdminGateway(
+          baseUri: Uri.parse('https://admin-proxy.test'),
+          bearerTokenProvider: () async => 'token',
+          httpClient: http_testing.MockClient((http.Request request) async {
+            captured = request;
+            return http.Response('{"requests":[]}', 200);
+          }),
+        );
+
+        await gateway.listRequests(
+          const RequestLogFilter(
+            operatorId: 'op-1',
+            locationIds: <String>['loc-a', 'loc-b'],
+          ),
+        );
+
+        expect(captured, isNotNull);
+        expect(captured!.url.path, equals('/v1/admin/debug/requests'));
+        expect(captured!.url.queryParameters['operator_id'], equals('op-1'));
+        expect(
+          captured!.url.queryParameters['location_ids'],
+          equals('loc-a,loc-b'),
+        );
+        expect(
+          captured!.url.queryParameters.containsKey('location_id'),
+          isFalse,
+        );
+      },
+    );
   });
 
   group('Demo seed', () {

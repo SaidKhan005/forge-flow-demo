@@ -226,10 +226,20 @@ void main() {
           unitType: 'region',
           label: 'east',
           name: 'East',
+          adminReason: 'admin hierarchy setup',
         ),
       );
 
       expect(result.orgUnitId, equals('77777777-7777-7777-7777-777777777777'));
+      final auditParams = pool.transactions
+          .expand((tx) => tx.parameters)
+          .firstWhere(
+            (params) => params['event_type'] == 'auth.org_unit_created',
+          );
+      expect(
+        auditParams['payload'] as String,
+        contains('"admin_reason":"admin hierarchy setup"'),
+      );
     });
 
     test('createOrgUnit refuses mixed-scope actor whose operator-wide role '
