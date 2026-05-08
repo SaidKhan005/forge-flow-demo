@@ -95,6 +95,90 @@ labels.
                           └──────────────────────────────────────────────────┘
 ```
 
+### Mobile demo path with every demo-vs-prod fork marked
+
+Every `[FORK]` marker is a place the code reads the `kDemoMode` flag.
+There are exactly four reader-side reads in the mobile app
+(two in `lib/screens/auth/login_screen.dart`, both behind the same
+const, so they count as one carve-out, plus one in
+`lib/services/app_data_status_service.dart`). Everything else is the
+SAME code as production.
+
+```
+[App start: --dart-define=kDemoMode=true]
+        │
+        ▼
+┌────────────────────────────────────────────────────────────────┐
+│ Bootstrap (lib/main_forgeflow.dart / lib/main_barrio.dart)     │
+│   • SqliteDatabase.instance.database  ← creates the SAME       │
+│     schema as production. No demo branch in the schema.        │
+│   • If first launch: _seedDemoDataFromReplay writes the demo   │
+│     fixture into the SAME tables prod would receive vendor     │
+│     data into.                                                 │
+│   • [WRITER FORK] choice of DataSourceProvider impl            │
+│       demo  → MockReplayDataSourceProvider                     │
+│       prod  → vendor-specific *_pos_postgres_sink              │
+│     (Both implement DataSourceProvider<T>; the only            │
+│      difference is the data SOURCE.)                           │
+└──────────────────┬─────────────────────────────────────────────┘
+                   │
+                   ▼
+┌────────────────────────────────────────────────────────────────┐
+│ Login screen (lib/screens/auth/login_screen.dart)              │
+│   • [READER FORK #1 — CARVE-OUT] _demoOperatorSignInEnabled    │
+│       demo  → renders extra "Use demo operator" button         │
+│       prod  → button hidden                                    │
+│     ❶ The button only pre-fills credentials and calls          │
+│       AuthSessionNotifier.signInWithEmailPassword — same       │
+│       code path as the regular form. NO parallel auth.         │
+└──────────────────┬─────────────────────────────────────────────┘
+                   │
+                   ▼
+┌────────────────────────────────────────────────────────────────┐
+│ AuthSessionNotifier.signInWithEmailPassword                    │
+│   No demo branch. Same gateway impl, same JWT, same audit.     │
+└──────────────────┬─────────────────────────────────────────────┘
+                   │
+                   ▼
+┌────────────────────────────────────────────────────────────────┐
+│ App shell + screens (no demo branch anywhere)                  │
+│   • Repositories scoped by restaurant_id read demo rows the    │
+│     same way they read live rows.                              │
+│   • Widgets render whatever the repos return.                  │
+│   • Service-layer formulas (LaborModel, TargetCycleService,    │
+│     ShiftService, etc.) — NO kDemoMode branch.                 │
+└──────────────────┬─────────────────────────────────────────────┘
+                   │
+                   ▼
+┌────────────────────────────────────────────────────────────────┐
+│ App data status badge (lib/services/app_data_status_service)   │
+│   • [READER FORK #2 — CARVE-OUT] _demoMode && hasOpenState     │
+│       demo  → AppDataStatus.demo()      label = "DEMO"         │
+│       prod  → AppDataStatus.current()   label = "CURRENT"      │
+│     ❷ Label-only branch. The freshness math, the table reads,  │
+│       and every other status code (noData, stale, …) are       │
+│       identical in demo and prod.                              │
+└──────────────────┬─────────────────────────────────────────────┘
+                   │
+                   ▼
+┌────────────────────────────────────────────────────────────────┐
+│ Closing a shift (write path)                                   │
+│   • ShiftService.closeShift(...)                               │
+│   • TargetSnapshotBuilder.fromActiveTargetProfile(...)         │
+│   • ShiftFactBuilder.fromClosedShiftInput(...)                 │
+│   • SqliteShiftRecordRepository.upsertClosedShift(...)         │
+│       writes to shift_records — SAME table prod uses.          │
+│   No kDemoMode branch on this path. The `restaurant_id` is     │
+│   the only thing distinguishing the demo row.                  │
+└────────────────────────────────────────────────────────────────┘
+
+LEGEND
+  [WRITER FORK] = legitimate writer-side switch (HP #2 endorses)
+  [READER FORK — CARVE-OUT] = compile-time read of kDemoMode in
+                              non-writer code. Strictly limited to
+                              the two carve-outs above.
+```
+
 ### Demo session entry
 
 The mobile demo flow does NOT add a parallel auth path. The login
@@ -171,8 +255,10 @@ comments and listed here so future audits don't re-flag them.
 
 ### Carve-out #2: App data status badge label
 
-- **Location:** `lib/services/app_data_status_service.dart:16,136`
-  (`_demoMode` const + the `_demoMode && hasOpenState` branch).
+- **Location:** `lib/services/app_data_status_service.dart:33` (the
+  `_demoMode` const) and `:153` (the `if (_demoMode && hasOpenState)`
+  branch). Line numbers reflect the inline carve-out comment block
+  added 2026-05-07; the const moved when the comment was inserted.
 - **What it does:** Returns `AppDataStatus.demo()` (label `DEMO`)
   instead of `AppDataStatus.current()` (label `CURRENT`) when the
   binary was built with `--dart-define=kDemoMode=true` AND the
@@ -196,6 +282,34 @@ comments and listed here so future audits don't re-flag them.
   label through `DemoModeStateGateway.readOrCreateDefault(...)`
   instead of the compile-time flag, in which case the carve-out would
   collapse. No such slice is currently scheduled.
+
+---
+
+## Proxy / server-side auth carve-outs (NOT mobile reader paths)
+
+Two additional `bool.fromEnvironment('kDemoMode')` reads exist in
+proxy/server-side auth code. They are NOT wired into either mobile
+entrypoint (`lib/main_forgeflow.dart` / `lib/main_barrio.dart`) and
+therefore do not influence the mobile demo→prod alignment. They are
+listed here so future audits don't re-flag them as drift.
+
+- `lib/services/auth/pepper_resolver.dart:64`
+  (`EnvPepperResolver._demoMode`). When the
+  `PASSWORD_HISTORY_PEPPER` env is empty AND `kDemoMode=true`, the
+  resolver returns the empty pepper instead of throwing. Demo builds
+  intentionally run without a real pepper because the demo SQLite db
+  carries fixture password hashes; production proxy startup hard-fails
+  if the pepper is missing.
+- `lib/services/auth/repository_password_history_check.dart:131`
+  (`_envDemoMode`). Same idea: in demo mode, the pepper-missing
+  startup error is suppressed. In production the error is thrown so
+  the proxy refuses to write un-peppered rows.
+
+Both reads are server-side hardening: demo mode loosens a startup
+precondition that exists only because production peppering is not yet
+provisioned. Replacing them is part of the proxy hardening backlog,
+not the mobile alignment backlog. They are documented here, not as
+mobile carve-outs.
 
 ---
 
@@ -251,8 +365,15 @@ These are NOT violations even though they reference `kDemoMode`:
   `DemoModeFlipPolicy` semantics (default `is_demo = true`, flip on
   connected + first backfill commit, no auto-revert on disconnect).
 - `test/integration/demo_mode_writer_side_test.dart` (added 2026-05-07
-  alongside this contract) asserts there are NO `demo_*` SQLite
-  tables — the demo writer path uses standard table names only.
+  alongside this contract) asserts:
+  - The schema has zero `demo_*` SQLite tables.
+  - Demo `restaurant_locations`, `shift_records`, `week_records`,
+    `import_runs`, `raw_import_records` rows live under
+    `restaurant_id = 'demo_restaurant_001'`.
+  - Production-side scoped repositories (`SqliteShiftRecordRepository`,
+    `SqliteWeekRecordRepository`, `SqliteRestaurantScopeRepository`)
+    surface those rows without a `kDemoMode` branch — proving the
+    writer-side switch is honored end-to-end.
 
 ---
 
