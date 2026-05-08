@@ -306,9 +306,11 @@ class ProxyProductionBindings {
 
   /// HARD-H — admin idempotency cache backed by
   /// `public.admin_request_idempotency`. The router uses this to dedupe
-  /// duplicate `Idempotency-Key` headers on admin POST routes (today:
-  /// feature flags toggle), so a retry returns the cached response
-  /// instead of re-executing the gateway.
+  /// duplicate `Idempotency-Key` headers on admin POST routes (feature
+  /// flags toggle, operator/location admin, pricing tier admin, and
+  /// the four Phase 8 integration write routes — oauth/start,
+  /// connect-key, test-connection, disconnect), so a retry returns the
+  /// cached response instead of re-executing the gateway.
   final AdminRequestIdempotencyStore adminRequestIdempotencyStore;
 
   /// Phase 11A.4b — primary LLM provider feeding the

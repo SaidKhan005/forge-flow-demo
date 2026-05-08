@@ -285,22 +285,26 @@ Single-repository scope; the other 46 repos correctly extend the base
 or are non-scoped global tables (`kms_rollout_flag`,
 `service_principals`).
 
-### P1 — 4 admin integration routes missing idempotency guard
+### P1 — 4 admin integration routes missing idempotency guard ✅ FIXED 2026-05-08
 
-`tool/advisor_proxy/admin_integrations_routes.dart` writes do not
-extract `Idempotency-Key` or consult `proxy_requests` despite the file
-header (line 15) claiming "All admin writes are idempotent via the
-existing `proxy_requests` table". Affected:
+`tool/advisor_proxy/admin_integrations_routes.dart` writes did not
+extract `Idempotency-Key` or consult the cross-tenant
+`admin_request_idempotency` ledger despite the file header claiming
+they did. Affected (now fixed):
 
-- `POST /v1/admin/integrations/oauth/{vendor}/start` — `:284`
-- `POST /v1/admin/integrations/{vendor}/connect-key` — `:326`
-- `POST /v1/admin/integrations/{vendor}/test-connection` — `:368`
-- `POST /v1/admin/integrations/{vendor}/disconnect` — `:393`
+- `POST /v1/admin/integrations/oauth/{vendor}/start`
+- `POST /v1/admin/integrations/{vendor}/connect-key`
+- `POST /v1/admin/integrations/{vendor}/test-connection`
+- `POST /v1/admin/integrations/{vendor}/disconnect`
 
-Action: thread `Idempotency-Key` into `Phase80IntegrationRoutes._handleAdmin`
-and reuse the existing `OperatorWriteIdempotencyCache` pattern (or
-delegate to `AdminRequestIdempotencyStore` referenced at
-`tool/advisor_proxy/advisor_proxy.dart:7706`).
+Resolution: `Phase80IntegrationRoutes` now accepts an optional
+`AdminRequestIdempotencyStore` (wired in production via
+`phase_8_production_binder.dart` from `productionBindings
+.adminRequestIdempotencyStore`). Each of the 4 write routes now:
+missing key → 400 `missing_idempotency_key`; duplicate key →
+cached replay; new key → reserve → run → cache. Body-hash mismatch
+on the same key → 409 `idempotency_key_conflict`. Coverage:
+`test/tool/advisor_proxy/admin_integrations_idempotency_test.dart`.
 
 ### P1 — `advisor_proxy.dart:9105-9106` hardcoded prompt placeholders
 
