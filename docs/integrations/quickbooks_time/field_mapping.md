@@ -36,7 +36,7 @@ against this constant.
 
 `not_applicable` — labor systems do not expose a covers field. Covers
 come from POS adapters per
-`docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`.
+`docs/archive/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`.
 
 The adapter records `covers_source = not_applicable` so the
 operator-facing chrome (per
@@ -96,4 +96,4 @@ Vendor fields the adapter intentionally ignores:
 - `users[].first_name` / `users[].last_name` — recorded as opaque
   `employee_id` only at V1; per-employee identity reconciliation is
   out of scope per
-  `docs/phases/phase_8S/phase_8S_scheduling_connector_plan.md`.
+  `docs/archive/phases/phase_8S/phase_8S_scheduling_connector_plan.md`.

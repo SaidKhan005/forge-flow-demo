@@ -106,7 +106,7 @@ Vendor fields the adapter intentionally ignores:
 - `reservations[].client_id` and the `/2_2/clients/{client_id}`
   endpoint — guest profile detail; refused at the adapter boundary
   per privacy. F&F at V1 is aggregate-first per
-  `docs/phases/phase_8R/phase_8R_official_reservation_connector_plan.md`
+  `docs/archive/phases/phase_8R/phase_8R_official_reservation_connector_plan.md`
   Non-Negotiables.
 - `reservations[].notes` / `internal_notes` — operator-private notes
   may carry guest PII; out of V1 scope.

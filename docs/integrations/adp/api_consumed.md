@@ -32,7 +32,7 @@ Agreement — see `partnership_status.md`.)
 tokens (matches the ADP Marketplace partner sign-in surface). Live
 production wires `oauth_2.0_client_credentials + mutual_tls` per the
 phase plan note in
-`docs/phases/phase_8S/phase_8S_scheduling_connector_plan.md`; mutual
+`docs/archive/phases/phase_8S/phase_8S_scheduling_connector_plan.md`; mutual
 TLS lands at the `*.live.prod` slice when partner-issued certs
 arrive. Cite vendor doc:
 <https://developers.adp.com/articles/guides/adp-workforce-now-api-catalog>
