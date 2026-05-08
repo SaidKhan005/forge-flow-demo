@@ -987,9 +987,9 @@ class ProxyConfig {
   /// Phase 8 framework — Humanity static app credentials. Throws
   /// [StateError] when either secret name is unloaded.
   HumanityAppCredentials get humanityAppCredentials => HumanityAppCredentials(
-        clientId: secretFor(ProxySecretNames.humanityClientId),
-        clientSecret: secretFor(ProxySecretNames.humanityClientSecret),
-      );
+    clientId: secretFor(ProxySecretNames.humanityClientId),
+    clientSecret: secretFor(ProxySecretNames.humanityClientSecret),
+  );
 
   /// Phase 8 framework — QuickBooks Time (Intuit) static app
   /// credentials. Throws [StateError] when either secret name is
@@ -1011,9 +1011,9 @@ class ProxyConfig {
   /// Phase 8 framework — Libro static app credentials. Throws
   /// [StateError] when either secret name is unloaded.
   LibroAppCredentials get libroAppCredentials => LibroAppCredentials(
-        clientId: secretFor(ProxySecretNames.libroClientId),
-        clientSecret: secretFor(ProxySecretNames.libroClientSecret),
-      );
+    clientId: secretFor(ProxySecretNames.libroClientId),
+    clientSecret: secretFor(ProxySecretNames.libroClientSecret),
+  );
 
   /// Phase 8 framework — public base URI the binder presents to
   /// vendors when constructing the per-tenant location config
@@ -5716,14 +5716,19 @@ class GeminiProxyLlmProvider implements ProxyLlmProvider {
 enum SecondaryLlmFailureKind {
   /// Secondary call did not complete inside the per-call deadline.
   timeout,
+
   /// HTTP 429.
   rateLimit,
+
   /// HTTP 401 / 403 — credentials or scope problem; never retry.
   auth,
+
   /// HTTP 5xx — transient server-side failure; safe to retry.
   transient,
+
   /// HTTP 4xx other than 429/401/403 — permanent client error; never retry.
   permanent,
+
   /// Anything we cannot classify (DNS, socket, parse). Treated as transient
   /// for breaker accounting (false positives are safer than false
   /// negatives for breakers).
@@ -5878,14 +5883,15 @@ class AdvisorRequestPipeline {
     int secondaryBreakerMaxFailures = 5,
     Duration secondaryBreakerWindow = const Duration(seconds: 60),
     Duration secondaryBreakerOpenDuration = const Duration(seconds: 30),
-    DateTime Function() secondaryBreakerClock = SecondaryLlmBreaker._defaultClock,
-  })  : _secondaryTimeout = secondaryTimeout,
-        secondaryBreaker = SecondaryLlmBreaker(
-          maxFailures: secondaryBreakerMaxFailures,
-          windowDuration: secondaryBreakerWindow,
-          openDuration: secondaryBreakerOpenDuration,
-          clock: secondaryBreakerClock,
-        );
+    DateTime Function() secondaryBreakerClock =
+        SecondaryLlmBreaker._defaultClock,
+  }) : _secondaryTimeout = secondaryTimeout,
+       secondaryBreaker = SecondaryLlmBreaker(
+         maxFailures: secondaryBreakerMaxFailures,
+         windowDuration: secondaryBreakerWindow,
+         openDuration: secondaryBreakerOpenDuration,
+         clock: secondaryBreakerClock,
+       );
 
   final CircuitBreaker breaker;
   final AdvisorResponseCache cache;
@@ -7756,9 +7762,7 @@ abstract class AdminRequestIdempotencyStore {
   /// of scope for L4) and pg_cron is the live backstop. Tests that
   /// drive the reclaim flow override this to flip the in-flight row
   /// in their fake.
-  Future<bool> tryReclaimOrphan({
-    required String idempotencyKey,
-  }) async {
+  Future<bool> tryReclaimOrphan({required String idempotencyKey}) async {
     return false;
   }
 
@@ -7871,6 +7875,7 @@ abstract class OperatorLocationAdminProxyGateway {
   Future<Map<String, Object?>> addLocation({
     required String actorUserId,
     required String operatorId,
+    required String parentOrgUnitId,
     required String name,
     required String address,
     required String timezone,
@@ -7990,8 +7995,9 @@ Map<String, Object?> buildOperatorLocationIntegrationsBundleJson(
     'demo_flags': <String, Object?>{
       'pos': bundle.noConnectedRowForCategory(IntegrationCategory.pos),
       'labor': bundle.noConnectedRowForCategory(IntegrationCategory.labor),
-      'reservation':
-          bundle.noConnectedRowForCategory(IntegrationCategory.reservation),
+      'reservation': bundle.noConnectedRowForCategory(
+        IntegrationCategory.reservation,
+      ),
     },
   };
 }
@@ -8012,8 +8018,7 @@ Map<String, Object?> _connectorConnectionRowToWireJson(
       'last_error_at': row.lastErrorAt!.toIso8601String(),
     if (row.lastErrorMessage != null)
       'last_error_message': row.lastErrorMessage,
-    if (row.disconnectReason != null)
-      'disconnect_reason': row.disconnectReason,
+    if (row.disconnectReason != null) 'disconnect_reason': row.disconnectReason,
     'webhook_url_provisioned': row.webhookUrlProvisioned,
     if (row.createdAt != null) 'created_at': row.createdAt!.toIso8601String(),
     if (row.updatedAt != null) 'updated_at': row.updatedAt!.toIso8601String(),
@@ -8188,7 +8193,7 @@ Future<void> routeRequest(
   // production binds the [ConnectorConnectionListRepository]-backed
   // projection in the proxy bootstrap.
   OperatorLocationIntegrationsProjection?
-      operatorLocationIntegrationsProjection,
+  operatorLocationIntegrationsProjection,
   AuthOperationsGateway? authOperationsGateway,
   ProxyAdminPermissionGuard? adminPermissionGuard,
   ServicePrincipalJwtIssuanceGateway? servicePrincipalJwtIssuanceGateway,
@@ -8272,7 +8277,7 @@ Future<void> routeRequest(
   // when null the read route returns 503 so existing tests do not need
   // to plumb the router through every call site.
   OperatorVendorLifecycleRecentlyAvailableRouter?
-      vendorLifecycleRecentlyAvailableRouter,
+  vendorLifecycleRecentlyAvailableRouter,
   // Phase 8 W2.B - operator-scoped notification preferences router.
   // Optional: when null the three routes return 503 so existing tests
   // do not need to plumb the router through every call site.
@@ -8332,7 +8337,9 @@ Future<void> routeRequest(
         authorizationHeader: authorizationHeader,
       );
     } on ProxyAuthError catch (error) {
-      _writeJson(resp, error.statusCode, <String, Object?>{'error': error.message});
+      _writeJson(resp, error.statusCode, <String, Object?>{
+        'error': error.message,
+      });
       return null;
     }
     if (permissionVersionChecker != null && scope.permissionVersion != null) {
@@ -8816,8 +8823,10 @@ Future<void> routeRequest(
         // Operator-scoped: operatorId resolved from the JWT, never
         // from the URL or body. RLS clamps the read inside the
         // gateway via the tenant transaction wrapper.
-        final auditChainAnchorMatch =
-            AuditChainAnchorsRouter.match(path, request.method);
+        final auditChainAnchorMatch = AuditChainAnchorsRouter.match(
+          path,
+          request.method,
+        );
         if (auditChainAnchorMatch != null) {
           if (auditChainAnchorsGateway == null) {
             _writeJson(response, 503, <String, Object?>{
@@ -9117,8 +9126,7 @@ Future<void> routeRequest(
           if (estimate.tokenCount > maxTokensPerRequest) {
             _writeJson(response, 413, <String, Object?>{
               'error': 'request_too_large',
-              'message':
-                  'estimated request tokens exceed the per-request cap',
+              'message': 'estimated request tokens exceed the per-request cap',
               'estimate_request_tokens': estimate.tokenCount,
               'cap_request_tokens': maxTokensPerRequest,
             });
@@ -9681,10 +9689,12 @@ Future<void> routeRequest(
 
           // B1.S8 — per-IP 24h cap (50 requests).
           // Prevents a single IP from flooding arbitrary victim inboxes.
-          final clientIpForReset = _resolveLedgerContextFromHeaders(
-            request,
-            trustProxyAuditHeaders: trustProxyAuditHeaders,
-          ).ip ?? 'unknown';
+          final clientIpForReset =
+              _resolveLedgerContextFromHeaders(
+                request,
+                trustProxyAuditHeaders: trustProxyAuditHeaders,
+              ).ip ??
+              'unknown';
           if (passwordResetIpCounter != null) {
             final ipHashHex = hashAuthIpHex(clientIpForReset);
             final ipCount = passwordResetIpCounter.countInWindow(ipHashHex);
@@ -9912,10 +9922,7 @@ Future<void> routeRequest(
         // here — it is superseded entirely by the POST route.
         if (request.method == 'POST' && path == authMagicLinkRedeemPath) {
           response.headers.add('Referrer-Policy', 'no-referrer');
-          response.headers.add(
-            'Cache-Control',
-            'no-store, no-cache',
-          );
+          response.headers.add('Cache-Control', 'no-store, no-cache');
 
           Map<String, Object?> body;
           try {
@@ -11181,20 +11188,20 @@ Future<void> routeRequest(
               // removal. Both URL families canonicalize to the admin
               // shape via `_canonicalAuthOperationPath`, so we use the
               // original `path` here to choose the gate.
-              final isAdminCallerPath = path.startsWith(
-                adminAuthUsersPrefix,
-              );
+              final isAdminCallerPath = path.startsWith(adminAuthUsersPrefix);
               final permissionKey = switch (canonicalAction) {
                 'suspend' => 'team.users.deactivate',
                 'reactivate' => 'team.users.reactivate',
                 'soft-delete' => 'team.users.soft_delete',
                 'reset-password' => 'team.users.reset_password',
-                'reset-mfa' => isAdminCallerPath
-                    ? PermissionKeys.adminUsersResetMfaFactors
-                    : PermissionKeys.teamUsersResetMfa,
-                'cancel-mfa-removal' => isAdminCallerPath
-                    ? PermissionKeys.adminUsersResetMfaFactors
-                    : PermissionKeys.teamUsersResetMfa,
+                'reset-mfa' =>
+                  isAdminCallerPath
+                      ? PermissionKeys.adminUsersResetMfaFactors
+                      : PermissionKeys.teamUsersResetMfa,
+                'cancel-mfa-removal' =>
+                  isAdminCallerPath
+                      ? PermissionKeys.adminUsersResetMfaFactors
+                      : PermissionKeys.teamUsersResetMfa,
                 'force-logout' => 'team.session.force_logout',
                 _ => null,
               };
@@ -11781,9 +11788,8 @@ Future<void> routeRequest(
             });
             return;
           }
-          final effect = snapshot.permissions[
-            PermissionKeys.teamSessionForceLogout
-          ];
+          final effect =
+              snapshot.permissions[PermissionKeys.teamSessionForceLogout];
           if (effect != PermissionEffect.allow) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'forbidden',
@@ -11809,8 +11815,7 @@ Future<void> routeRequest(
                     'user_id': entry.targetUserId,
                     if (entry.targetDisplayName != null)
                       'display_name': entry.targetDisplayName,
-                    if (entry.targetEmail != null)
-                      'email': entry.targetEmail,
+                    if (entry.targetEmail != null) 'email': entry.targetEmail,
                   },
               ],
             });
@@ -11822,8 +11827,7 @@ Future<void> routeRequest(
           } catch (_) {
             _writeJson(response, 503, <String, Object?>{
               'error': 'team_sessions_unavailable',
-              'message':
-                  'team active sessions are unavailable; please retry',
+              'message': 'team active sessions are unavailable; please retry',
             });
           }
           return;
@@ -11912,8 +11916,7 @@ Future<void> routeRequest(
             } catch (_) {
               _writeJson(response, 503, <String, Object?>{
                 'error': 'integrations_projection_unavailable',
-                'message':
-                    'vendor connections are unavailable; please retry',
+                'message': 'vendor connections are unavailable; please retry',
               });
             }
             return;
@@ -12055,8 +12058,7 @@ Future<void> routeRequest(
                 1,
                 kAuthAuditLogExportPageSize,
               );
-              final listed =
-                  await authOperationsGateway.listAuthEventsForActor(
+              final listed = await authOperationsGateway.listAuthEventsForActor(
                 AuthEventListCommand(
                   // RLS-authoritative gate: pin user_id to the verified
                   // bearer-token scope. Any client-supplied user_id
@@ -13685,9 +13687,7 @@ Future<void> routeRequest(
             operatorIdemKey = '';
             requestBody = const <String, Object?>{};
           } else {
-            final headerKey = request.headers
-                .value('Idempotency-Key')
-                ?.trim();
+            final headerKey = request.headers.value('Idempotency-Key')?.trim();
             if (headerKey == null || headerKey.isEmpty) {
               _writeJson(response, 400, <String, Object?>{
                 'error': 'idempotency_key_missing',
@@ -13866,8 +13866,8 @@ Future<void> routeRequest(
               'error': 'forbidden',
               'message':
                   'an operator role with vendor-connections access is required',
-              'required_roles':
-                  kOperatorConnectorBackfillJobsReadRoles.toList(),
+              'required_roles': kOperatorConnectorBackfillJobsReadRoles
+                  .toList(),
             });
             return;
           }
@@ -13933,8 +13933,7 @@ Future<void> routeRequest(
             return;
           }
           try {
-            final result =
-                await vendorLifecycleRecentlyAvailableRouter.handle(
+            final result = await vendorLifecycleRecentlyAvailableRouter.handle(
               operatorId: scope.operatorId,
               locationId: scope.locationId,
               actorUserId: scope.userId,
@@ -13979,8 +13978,7 @@ Future<void> routeRequest(
           if (scope == null) return;
           String? notifIdemKey;
           if (request.method == 'PUT' || request.method == 'DELETE') {
-            notifIdemKey =
-                request.headers.value('Idempotency-Key')?.trim();
+            notifIdemKey = request.headers.value('Idempotency-Key')?.trim();
             if (notifIdemKey == null || notifIdemKey.isEmpty) {
               _writeJson(response, 400, <String, Object?>{
                 'error': 'idempotency_key_missing',
@@ -14050,8 +14048,7 @@ Future<void> routeRequest(
           if (wageRoleRowsRouter == null) {
             _writeJson(response, 503, <String, Object?>{
               'error': 'wage_role_rows_router_not_configured',
-              'message':
-                  'route requires a WageRoleRowsRouter to be installed',
+              'message': 'route requires a WageRoleRowsRouter to be installed',
             });
             return;
           }
@@ -14069,9 +14066,7 @@ Future<void> routeRequest(
             });
             return;
           }
-          final wageIdemKey = request.headers
-              .value('Idempotency-Key')
-              ?.trim();
+          final wageIdemKey = request.headers.value('Idempotency-Key')?.trim();
           if (wageIdemKey == null || wageIdemKey.isEmpty) {
             _writeJson(response, 400, <String, Object?>{
               'error': 'idempotency_key_missing',
@@ -14339,6 +14334,7 @@ Future<void> _routeOperatorLocationAdmin({
 
   if (method == 'POST' && path == adminLocationsPath) {
     final operatorId = _requireBodyString(body, 'operator_id');
+    final parentOrgUnitId = _requireBodyString(body, 'parent_org_unit_id');
     final name = _requireBodyString(body, 'name');
     final timezone = _requireBodyTimezone(body, 'timezone');
     final rolloverHour = _requireBodyRolloverHour(
@@ -14357,6 +14353,7 @@ Future<void> _routeOperatorLocationAdmin({
         final created = await gateway.addLocation(
           actorUserId: actorUserId,
           operatorId: operatorId,
+          parentOrgUnitId: parentOrgUnitId,
           name: name,
           address: address,
           timezone: timezone,
@@ -15654,7 +15651,7 @@ Future<void> runAdminIdempotentForTesting({
   required String? actorUserId,
   required Map<String, Object?> requestBody,
   required Future<({int statusCode, Map<String, Object?> payload})> Function()
-      compute,
+  compute,
   DateTime Function()? clock,
 }) {
   return _runAdminIdempotent(
@@ -16352,8 +16349,7 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
   )) {
     _writeJson(response, 403, <String, Object?>{
       'error': 'permission_denied',
-      'message':
-          'requested data accuracy scope does not match caller access',
+      'message': 'requested data accuracy scope does not match caller access',
     });
     return;
   }
@@ -17166,17 +17162,14 @@ Map<String, Object?> _authEventEntryToJson(AuthEventListEntry entry) {
 String _renderAuthEventCsvRow(AuthEventListEntry entry, OperatorContext scope) {
   final payload = entry.payload;
   final adminReason = payload['admin_reason'];
-  final adminReasonText =
-      adminReason is String && adminReason.trim().isNotEmpty
-          ? adminReason
-          : '';
-  final isAdminEvent = entry.eventType.startsWith('admin.') ||
-      adminReasonText.isNotEmpty;
+  final adminReasonText = adminReason is String && adminReason.trim().isNotEmpty
+      ? adminReason
+      : '';
+  final isAdminEvent =
+      entry.eventType.startsWith('admin.') || adminReasonText.isNotEmpty;
   final actorKind = isAdminEvent ? 'forge_admin' : 'team_member';
-  final actorDisplayName =
-      isAdminEvent ? 'F&F admin' : 'Team member';
-  final payloadJson =
-      payload.isEmpty ? '' : jsonEncode(payload);
+  final actorDisplayName = isAdminEvent ? 'F&F admin' : 'Team member';
+  final payloadJson = payload.isEmpty ? '' : jsonEncode(payload);
   final cells = <String>[
     _csvEscape(entry.occurredAt.toUtc().toIso8601String()),
     _csvEscape(entry.eventType),
@@ -17197,7 +17190,8 @@ String _renderAuthEventCsvRow(AuthEventListEntry entry, OperatorContext scope) {
 /// double quotes. Empty input renders as an empty string (no quotes).
 String _csvEscape(String raw) {
   if (raw.isEmpty) return '';
-  final needsQuoting = raw.contains(',') ||
+  final needsQuoting =
+      raw.contains(',') ||
       raw.contains('"') ||
       raw.contains('\n') ||
       raw.contains('\r');
@@ -17371,7 +17365,7 @@ _UserAction? _userActionFromPath(String path) {
   );
 }
 
-/// CODE_OPS_DEBT Theme B#1 — splits the `/v1/admin/auth/users/<id>/
+/// CODE_OPS_DEBT Theme B#1 — splits the `/v1/admin/auth/users/{id}/
 /// erase-pii[/reverse]` path families. Returns null when the path is
 /// not one of the three erase-pii shapes; otherwise returns the user
 /// id + the sub-action (`'request'` for the bare `/erase-pii`,

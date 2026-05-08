@@ -24,15 +24,15 @@ class InMemoryAuditedSupportActionsAdminGateway
     Map<String, List<AuditLogRow>>? auditLogByOperator,
     Map<String, List<SupportActionsMember>>? membersByOperator,
     DateTime Function()? clock,
-  })  : _clock = clock ?? DateTime.now,
-        _auditLogs = <String, List<AuditLogRow>>{
-          for (final entry in (auditLogByOperator ?? const {}).entries)
-            entry.key: List<AuditLogRow>.of(entry.value),
-        },
-        _members = <String, List<SupportActionsMember>>{
-          for (final entry in (membersByOperator ?? const {}).entries)
-            entry.key: List<SupportActionsMember>.of(entry.value),
-        };
+  }) : _clock = clock ?? DateTime.now,
+       _auditLogs = <String, List<AuditLogRow>>{
+         for (final entry in (auditLogByOperator ?? const {}).entries)
+           entry.key: List<AuditLogRow>.of(entry.value),
+       },
+       _members = <String, List<SupportActionsMember>>{
+         for (final entry in (membersByOperator ?? const {}).entries)
+           entry.key: List<SupportActionsMember>.of(entry.value),
+       };
 
   final DateTime Function() _clock;
   final Map<String, List<AuditLogRow>> _auditLogs;
@@ -102,7 +102,8 @@ class InMemoryAuditedSupportActionsAdminGateway
   }) {
     final occurredAt = _clock();
     final row = AuditLogRow(
-      eventId: 'audit-${_logsFor(operatorId).length + 1}-'
+      eventId:
+          'audit-${_logsFor(operatorId).length + 1}-'
           '${occurredAt.microsecondsSinceEpoch}',
       action: action,
       occurredAt: occurredAt,
@@ -136,7 +137,8 @@ class InMemoryAuditedSupportActionsAdminGateway
   }) {
     final occurredAt = _clock();
     final entry = AdminActionLogRow(
-      actionLogId: 'admin-action-${_adminActionLog.length + 1}-'
+      actionLogId:
+          'admin-action-${_adminActionLog.length + 1}-'
           '${occurredAt.microsecondsSinceEpoch}',
       action: action,
       occurredAt: occurredAt,
@@ -265,9 +267,7 @@ class InMemoryAuditedSupportActionsAdminGateway
       actorKind: AuditActorKind.forgeAdmin,
       targetKind: 'audit_log_export',
       targetId: 'csv-${_clock().microsecondsSinceEpoch}',
-      payload: <String, Object?>{
-        'rows_exported': page.rows.length,
-      },
+      payload: <String, Object?>{'rows_exported': page.rows.length},
       adminReason: adminReason,
     );
     final csv = buf.toString();
@@ -336,6 +336,8 @@ class InMemoryAuditedSupportActionsAdminGateway
         email: member.email,
         displayName: member.displayName,
         mfaEnrolled: false,
+        canReceivePasswordReset: member.canReceivePasswordReset,
+        passwordResetBlockedReason: member.passwordResetBlockedReason,
       );
     }
     _idempotentResults[idempotencyKey] = entry;
@@ -365,9 +367,7 @@ class InMemoryAuditedSupportActionsAdminGateway
       actorKind: AuditActorKind.forgeAdmin,
       targetKind: 'user',
       targetId: targetUserId,
-      payload: <String, Object?>{
-        'recovery_email_to': member.email,
-      },
+      payload: <String, Object?>{'recovery_email_to': member.email},
       adminReason: adminReason,
     );
     final entry = _appendAdminActionLog(
@@ -524,11 +524,14 @@ class InMemoryAuditedSupportActionsAdminGateway
 
     final requestedAt = _clock();
     final gracePeriodEndsAt = requestedAt.add(_demoGracePeriod);
-    final erasureId = 'pii-erasure-'
+    final erasureId =
+        'pii-erasure-'
         '${_singleAdminErasures.length + 1}-'
         '${requestedAt.microsecondsSinceEpoch}';
-    _singleAdminErasures[_erasureKey(operatorId, targetUserId)] =
-        _SingleAdminErasure(
+    _singleAdminErasures[_erasureKey(
+      operatorId,
+      targetUserId,
+    )] = _SingleAdminErasure(
       erasureId: erasureId,
       operatorId: operatorId,
       targetUserId: targetUserId,
@@ -548,8 +551,7 @@ class InMemoryAuditedSupportActionsAdminGateway
       targetId: targetUserId,
       payload: <String, Object?>{
         'erasure_id': erasureId,
-        'grace_period_ends_at':
-            gracePeriodEndsAt.toUtc().toIso8601String(),
+        'grace_period_ends_at': gracePeriodEndsAt.toUtc().toIso8601String(),
       },
       adminReason: adminReason,
     );
@@ -574,8 +576,7 @@ class InMemoryAuditedSupportActionsAdminGateway
     _ensureForgeAdmin(actorIsForgeAdmin, 'reversePiiErasure');
     final cached = _idempotentResults[idempotencyKey];
     if (cached is UserPiiErasureReverseSummary) return cached;
-    final entry =
-        _singleAdminErasures[_erasureKey(operatorId, targetUserId)];
+    final entry = _singleAdminErasures[_erasureKey(operatorId, targetUserId)];
     if (entry == null || entry.erasureId != erasureId) {
       throw AuditedSupportActionsGatewayError(
         statusCode: 404,
@@ -592,13 +593,13 @@ class InMemoryAuditedSupportActionsAdminGateway
       _idempotentResults[idempotencyKey] = result;
       return result;
     }
-    _singleAdminErasures[_erasureKey(operatorId, targetUserId)] =
-        entry.copyWith(
-      state: 'reversed',
-      reversedAt: _clock(),
-      reversedByUserId: actorUserId,
-      reversalReason: reversalReason,
-    );
+    _singleAdminErasures[_erasureKey(operatorId, targetUserId)] = entry
+        .copyWith(
+          state: 'reversed',
+          reversedAt: _clock(),
+          reversedByUserId: actorUserId,
+          reversalReason: reversalReason,
+        );
     _appendAuditRow(
       operatorId: operatorId,
       action: SupportActionsAuditAction.erasureRequested,
@@ -627,8 +628,7 @@ class InMemoryAuditedSupportActionsAdminGateway
     required String operatorId,
     required String targetUserId,
   }) async {
-    final entry =
-        _singleAdminErasures[_erasureKey(operatorId, targetUserId)];
+    final entry = _singleAdminErasures[_erasureKey(operatorId, targetUserId)];
     if (entry == null) return null;
     return UserPiiErasureStatusSummary(
       erasureId: entry.erasureId,
@@ -771,9 +771,7 @@ Map<String, List<AuditLogRow>> kDemoAuditLogByOperator({DateTime? at}) {
         operatorId: kDemoDinerOperatorId,
         targetKind: 'auth_session',
         targetId: 'session-diner-owner-mobile',
-        payload: const <String, Object?>{
-          'user_id': 'demo-user-diner-owner',
-        },
+        payload: const <String, Object?>{'user_id': 'demo-user-diner-owner'},
         businessDate: DateTime.utc(ts.year, ts.month, ts.day - 2),
         adminReason: 'support escalation',
         rowHash: 'demo-hash-3',

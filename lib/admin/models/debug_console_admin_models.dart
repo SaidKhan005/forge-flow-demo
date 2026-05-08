@@ -190,6 +190,7 @@ class RequestLogFilter {
   const RequestLogFilter({
     this.operatorId,
     this.locationId,
+    this.locationIds,
     this.usageClass,
     this.status,
     this.timeWindow,
@@ -198,6 +199,7 @@ class RequestLogFilter {
 
   final String? operatorId;
   final String? locationId;
+  final List<String>? locationIds;
   final String? usageClass;
   final RequestLogStatus? status;
   final RequestLogTimeWindow? timeWindow;
@@ -209,6 +211,7 @@ class RequestLogFilter {
   bool get isEmpty =>
       operatorId == null &&
       locationId == null &&
+      locationIds == null &&
       usageClass == null &&
       status == null &&
       timeWindow == null &&
@@ -217,6 +220,7 @@ class RequestLogFilter {
   RequestLogFilter copyWith({
     Object? operatorId = _unset,
     Object? locationId = _unset,
+    Object? locationIds = _unset,
     Object? usageClass = _unset,
     Object? status = _unset,
     Object? timeWindow = _unset,
@@ -229,6 +233,9 @@ class RequestLogFilter {
       locationId: locationId == _unset
           ? this.locationId
           : locationId as String?,
+      locationIds: locationIds == _unset
+          ? this.locationIds
+          : locationIds as List<String>?,
       usageClass: usageClass == _unset
           ? this.usageClass
           : usageClass as String?,
@@ -256,6 +263,14 @@ class RequestLogFilter {
         locationId!.isNotEmpty &&
         entry.locationId != locationId) {
       return false;
+    }
+    final scopedLocationIds = locationIds;
+    if (scopedLocationIds != null) {
+      final entryLocationId = entry.locationId;
+      if (entryLocationId == null ||
+          !scopedLocationIds.contains(entryLocationId)) {
+        return false;
+      }
     }
     if (usageClass != null &&
         usageClass!.isNotEmpty &&

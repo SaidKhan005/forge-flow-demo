@@ -44,6 +44,7 @@ class _AdminShellState extends State<AdminShell> {
   late String _selectedRouteId;
   AdminSupportLogFilterIntent? _supportLogFilter;
   AdminOperatorLocationScopeIntent? _operatorLocationScope;
+  AdminHierarchyScopeIntent? _hierarchyScope;
 
   @override
   void initState() {
@@ -66,20 +67,31 @@ class _AdminShellState extends State<AdminShell> {
 
   void _selectIntent(AdminRouteIntent intent) {
     final nextRouteId = _routeIdOrFallback(intent.routeId);
+    final explicitHierarchyScope = intent.effectiveHierarchyScope;
     final nextSupportLogFilter = nextRouteId == kAdminDebugConsoleRouteId
-        ? intent.supportLogFilter
+        ? intent.supportLogFilter ??
+              (explicitHierarchyScope == null
+                  ? null
+                  : AdminSupportLogFilterIntent.fromHierarchyScope(
+                      explicitHierarchyScope,
+                    ))
         : null;
+    final nextHierarchyScope = explicitHierarchyScope ?? _hierarchyScope;
     final nextOperatorLocationScope =
-        intent.operatorLocationScope ?? _operatorLocationScope;
+        nextHierarchyScope?.toOperatorLocationScope() ??
+        intent.operatorLocationScope ??
+        _operatorLocationScope;
     if (nextRouteId == _selectedRouteId &&
         nextSupportLogFilter == _supportLogFilter &&
-        nextOperatorLocationScope == _operatorLocationScope) {
+        nextOperatorLocationScope == _operatorLocationScope &&
+        nextHierarchyScope == _hierarchyScope) {
       return;
     }
     setState(() {
       _selectedRouteId = nextRouteId;
       _supportLogFilter = nextSupportLogFilter;
       _operatorLocationScope = nextOperatorLocationScope;
+      _hierarchyScope = nextHierarchyScope;
     });
   }
 
@@ -92,12 +104,13 @@ class _AdminShellState extends State<AdminShell> {
       selectedRouteId: _selectedRouteId,
       supportLogFilter: _supportLogFilter,
       operatorLocationScope: _operatorLocationScope,
+      hierarchyScope: _hierarchyScope,
       onSelectRoute: _selectIntent,
       child: _AdminBody(
         key: ValueKey(
           'admin-body-${_currentRoute.id}-'
           '${_supportLogFilter?.cacheKey ?? 'none'}-'
-          '${_routeUsesOperatorScope(_currentRoute.id) ? _operatorLocationScope?.cacheKey ?? 'all' : 'global'}',
+          '${_routeUsesOperatorScope(_currentRoute.id) ? _hierarchyScope?.cacheKey ?? _operatorLocationScope?.cacheKey ?? 'all' : 'global'}',
         ),
         route: _currentRoute,
       ),

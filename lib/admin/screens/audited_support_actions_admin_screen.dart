@@ -38,15 +38,16 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
+import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'operator_picker_screen.dart';
+import 'roles_hierarchy_sessions_admin_screen.dart';
 
 class AuditedSupportActionsAdminScreen extends StatefulWidget {
   const AuditedSupportActionsAdminScreen({
@@ -58,6 +59,7 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
     this.canResetMfaFactors = false,
     this.canIssuePairedErasure = false,
     this.canExportAuditLog = false,
+    this.sessionsGateway,
     this.idempotencyKeyFactory,
     this.onChangeOperator,
     this.graceWindowClock,
@@ -88,6 +90,11 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
   /// Per the parity contract § Audit Log line 147: CSV export is
   /// gated on `admin.audit_log.export`.
   final bool canExportAuditLog;
+
+  /// Active sessions live under Security/audit/sessions. This uses
+  /// the existing roles/hierarchy/sessions gateway contract for
+  /// session reads and audited force-logout writes.
+  final RolesHierarchySessionsAdminGateway? sessionsGateway;
 
   final String Function()? idempotencyKeyFactory;
 
@@ -305,10 +312,18 @@ class _AuditedSupportActionsAdminScreenState
     );
   }
 
-  Future<SupportActionsMember?> _pickMember(String title) async {
+  Future<SupportActionsMember?> _pickMember(
+    String title, {
+    List<SupportActionsMember>? members,
+    String emptyCopy = 'This operator has no members yet.',
+  }) async {
     return showDialog<SupportActionsMember>(
       context: context,
-      builder: (_) => _MemberPickerDialog(title: title, members: _members),
+      builder: (_) => _MemberPickerDialog(
+        title: title,
+        members: members ?? _members,
+        emptyCopy: emptyCopy,
+      ),
     );
   }
 
@@ -358,7 +373,15 @@ class _AuditedSupportActionsAdminScreenState
   }
 
   Future<void> _onPasswordReset() async {
-    final member = await _pickMember('Send a password reset to which member?');
+    final eligibleMembers = _members
+        .where((member) => member.canReceivePasswordReset)
+        .toList(growable: false);
+    final member = await _pickMember(
+      'Send a password reset to which member?',
+      members: eligibleMembers,
+      emptyCopy:
+          'No active member can receive a password reset yet. Pending invite-only users must accept their invite first.',
+    );
     if (member == null) return;
     final reason = await _promptAdminReason(
       'Send a password reset to ${member.displayName}',
@@ -389,30 +412,33 @@ class _AuditedSupportActionsAdminScreenState
     // grace-window reverse. The button still surfaces under the
     // same `canIssuePairedErasure` flag (renaming the flag is a
     // follow-up), but the call is now a single-admin POST.
-    await _runAndRefresh(() async {
-      final summary = await widget.gateway.requestPiiErasure(
-        operatorId: widget.pickedOperator.operatorId,
-        targetUserId: member.userId,
-        idempotencyKey: _nextIdempotencyKey('erasure-request'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: reason,
-      );
-      _lastErasureMember = member.userId;
-      _lastErasure = summary;
-      // CODE_OPS_DEBT carry-over #2 — kick off the chip's tick timer
-      // so the "Xh Ym remaining" countdown refreshes in place.
-      _startGraceWindowTicker();
-    },
-        successHint:
-            'PII erasure recorded for ${member.displayName}; reversal '
-            'available within the 24-hour grace window.');
+    await _runAndRefresh(
+      () async {
+        final summary = await widget.gateway.requestPiiErasure(
+          operatorId: widget.pickedOperator.operatorId,
+          targetUserId: member.userId,
+          idempotencyKey: _nextIdempotencyKey('erasure-request'),
+          actorUserId: widget.actorUserId,
+          actorIsForgeAdmin: widget.editingEnabled,
+          adminReason: reason,
+        );
+        _lastErasureMember = member.userId;
+        _lastErasure = summary;
+        // CODE_OPS_DEBT carry-over #2 - kick off the chip's tick timer
+        // so the "Xh Ym remaining" countdown refreshes in place.
+        _startGraceWindowTicker();
+      },
+      successHint:
+          'PII erasure recorded for ${member.displayName}; reversal '
+          'available within the 24-hour grace window.',
+    );
   }
 
   /// CODE_OPS_DEBT Theme B#1 — reverses the most recent in-flight
   /// erasure recorded by [_onIssueErasure]. Surfaced from the
   /// confirmation banner that renders when [_lastErasure] is non-null
   /// and the grace window has not yet closed.
+  // ignore: unused_element
   Future<void> _onReverseLastErasure() async {
     final erasure = _lastErasure;
     final memberUserId = _lastErasureMember;
@@ -465,10 +491,10 @@ class _AuditedSupportActionsAdminScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             AdminPageHeader(
-              title: 'Audit & support',
+              title: 'Security, audit, and sessions',
               subtitle:
                   '${widget.pickedOperator.operatorBusinessName}: audit '
-                  'history and gated support actions.',
+                  'history, active sessions, and gated support actions.',
               trailing: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),
@@ -542,6 +568,17 @@ class _AuditedSupportActionsAdminScreenState
             members: _members,
             hasMoreRows: _nextCursor != null,
           ),
+          if (widget.sessionsGateway != null) ...<Widget>[
+            const SizedBox(height: 16),
+            ActiveSessionsAdminPanel(
+              gateway: widget.sessionsGateway!,
+              operatorId: widget.pickedOperator.operatorId,
+              operatorName: widget.pickedOperator.operatorBusinessName,
+              actorUserId: widget.actorUserId,
+              editingEnabled: widget.editingEnabled,
+              idempotencyKeyFactory: widget.idempotencyKeyFactory,
+            ),
+          ],
           const SizedBox(height: 16),
           _AuditLogCard(
             rows: _rows,
@@ -672,7 +709,7 @@ class _ActionsPanelCard extends StatelessWidget {
             keyId: 'admin_asa_action_password_reset',
             title: 'Initiate password reset',
             description:
-                'Sends the member a recovery email to set a new password.',
+                'Sends an active member a recovery email. Pending invite-only users must accept their invite first.',
             buttonLabel: 'Send reset email',
             enabled: editingEnabled,
             onPressed: onPasswordReset,
@@ -1534,13 +1571,9 @@ class _GraceWindowChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final reversible = _isReversible;
     final tone = reversible ? AppColors.warning : AppColors.textMuted;
-    final iconData =
-        reversible ? Icons.timelapse_outlined : Icons.lock_outline;
+    final iconData = reversible ? Icons.timelapse_outlined : Icons.lock_outline;
     final label = reversible
-        ? 'Erasure reversible - ${formatGraceWindowRemaining(
-            now: now,
-            endsAt: erasure.gracePeriodEndsAt,
-          )} remaining'
+        ? 'Erasure reversible - ${formatGraceWindowRemaining(now: now, endsAt: erasure.gracePeriodEndsAt)} remaining'
         : 'Erasure final';
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1562,8 +1595,9 @@ class _GraceWindowChip extends StatelessWidget {
                 Text(
                   label,
                   key: const Key('admin_asa_grace_window_chip_label'),
-                  style: AppTextStyles.body13(color: AppColors.textPrimary)
-                      .copyWith(fontWeight: FontWeight.w600),
+                  style: AppTextStyles.body13(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w600),
                 ),
                 if (memberDisplay != null && memberDisplay!.isNotEmpty)
                   Text(
@@ -1746,10 +1780,15 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
 }
 
 class _MemberPickerDialog extends StatefulWidget {
-  const _MemberPickerDialog({required this.title, required this.members});
+  const _MemberPickerDialog({
+    required this.title,
+    required this.members,
+    required this.emptyCopy,
+  });
 
   final String title;
   final List<SupportActionsMember> members;
+  final String emptyCopy;
 
   @override
   State<_MemberPickerDialog> createState() => _MemberPickerDialogState();
@@ -1782,7 +1821,7 @@ class _MemberPickerDialogState extends State<_MemberPickerDialog> {
         width: 460,
         child: widget.members.isEmpty
             ? Text(
-                'This operator has no members yet.',
+                widget.emptyCopy,
                 style: AppTextStyles.body13(color: AppColors.textMuted),
               )
             : DropdownButtonFormField<String>(

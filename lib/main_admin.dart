@@ -38,6 +38,7 @@ import 'package:flutter/material.dart';
 import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
+import 'admin/services/admin_vendor_connections_gateway.dart';
 import 'admin/services/corpus_admin_gateway.dart';
 import 'admin/services/data_accuracy_admin_gateway.dart';
 import 'admin/services/debug_console_admin_gateway.dart';
@@ -50,6 +51,7 @@ import 'admin/services/operator_location_admin_gateway.dart';
 import 'admin/services/pricing_tier_admin_gateway.dart';
 import 'admin/services/audited_support_actions_admin_gateway.dart';
 import 'admin/services/roles_hierarchy_sessions_admin_gateway.dart';
+import 'integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import 'services/auth/firebase_auth_client.dart';
 import 'services/auth/firebase_auth_client_sdk.dart';
 import 'services/auth/timeout_firebase_auth_client.dart';
@@ -124,6 +126,9 @@ Future<void> main() async {
     final integrationGateway = gateway == null
         ? null
         : _resolveIntegrationAdminGateway(authBinding.authClient);
+    final vendorConnectionsGateway = gateway == null
+        ? null
+        : _resolveVendorConnectionsGateway(authBinding.authClient);
     final healthGateway = gateway == null ? null : _resolveHealthAdminGateway();
     final observabilityGateway = gateway == null
         ? null
@@ -160,6 +165,7 @@ Future<void> main() async {
         dataAccuracyAdminGateway: dataAccuracyGateway,
         corpusAdminGateway: corpusGateway,
         integrationGateway: integrationGateway,
+        vendorConnectionsGateway: vendorConnectionsGateway,
         healthGateway: healthGateway,
         observabilityGateway: observabilityGateway,
         featureFlagsGateway: featureFlagsGateway,
@@ -304,6 +310,24 @@ IntegrationAdminGateway? _resolveIntegrationAdminGateway(
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpIntegrationAdminGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+  );
+}
+
+/// Slice 9 - per-location vendor connections admin gateway. Demo mode
+/// returns null so the route shows the explicit not-wired state instead
+/// of using in-memory vendor data.
+VendorConnectionsGateway? _resolveVendorConnectionsGateway(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return AdminHttpVendorConnectionsGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );

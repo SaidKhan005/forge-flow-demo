@@ -1,10 +1,10 @@
 // Phase 11A.13 - Roles + Hierarchy + Sessions screen widget tests.
 //
-// Coverage focuses on the parity-contract surface: the three tabs
-// render after picking an operator, seeded-role edit is gated on
+// Coverage focuses on the parity-contract surface: the role/hierarchy
+// tabs render after picking an operator, seeded-role edit is gated on
 // `canEditSeededRoles`, custom-role create captures admin_reason,
-// hierarchy move dialogs capture admin_reason, sessions force-logout
-// captures admin_reason and is disabled for the admin's own session,
+// hierarchy move dialogs capture admin_reason, the reusable sessions
+// panel captures admin_reason and disables the admin's own session,
 // view-only mode hides every mutate affordance, and every write path
 // captures the F&F admin's UID + a non-empty admin_reason on the
 // audit row.
@@ -13,7 +13,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/screens/operator_picker_screen.dart';
 import 'package:forge_and_flow/admin/screens/roles_hierarchy_sessions_admin_screen.dart'
-    show RolesHierarchySessionsAdminScreen, kMfaRequiredTooltip;
+    show
+        ActiveSessionsAdminPanel,
+        RolesHierarchySessionsAdminScreen,
+        kMfaRequiredTooltip;
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
@@ -21,17 +24,17 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   OperatorPickerResult demoPick() => const OperatorPickerResult(
-        operatorId: kDemoDinerOperatorId,
-        locationId: kDemoDinerLocationToronto,
-        operatorBusinessName: 'Demo Diner Co.',
-        locationName: 'Toronto Yorkville',
-      );
+    operatorId: kDemoDinerOperatorId,
+    locationId: kDemoDinerLocationToronto,
+    operatorBusinessName: 'Demo Diner Co.',
+    locationName: 'Toronto Yorkville',
+  );
 
   void wideViewport(WidgetTester tester) {
     tester.view.physicalSize = const Size(1600, 1200);
@@ -51,9 +54,10 @@ void main() {
     );
   }
 
-  group('three-tab render', () {
-    testWidgets('renders Roles, Hierarchy, Sessions tabs after operator pick',
-        (tester) async {
+  group('role and hierarchy render', () {
+    testWidgets('renders Roles and Hierarchy tabs after operator pick', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
       await tester.pumpWidget(
@@ -70,12 +74,13 @@ void main() {
       expect(find.byKey(const Key('admin_rhs_tab_bar')), findsOneWidget);
       expect(find.byKey(const Key('admin_rhs_tab_roles')), findsOneWidget);
       expect(find.byKey(const Key('admin_rhs_tab_hierarchy')), findsOneWidget);
-      expect(find.byKey(const Key('admin_rhs_tab_sessions')), findsOneWidget);
+      expect(find.byKey(const Key('admin_rhs_tab_sessions')), findsNothing);
       expect(find.byKey(const Key('admin_rhs_roles_tab')), findsOneWidget);
     });
 
-    testWidgets('loads only the selected tab until another tab is opened',
-        (tester) async {
+    testWidgets('loads only the selected tab until another tab is opened', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = _CountingRolesHierarchySessionsGateway(
         rolesByOperator: kDemoRolesByOperator(),
@@ -106,18 +111,11 @@ void main() {
       expect(gateway.listOrgUnitsCalls, equals(1));
       expect(gateway.listHierarchyLocationsCalls, equals(1));
       expect(gateway.listSessionsCalls, equals(0));
-
-      await tester.tap(find.byKey(const Key('admin_rhs_tab_sessions')));
-      await tester.pumpAndSettle();
-
-      expect(gateway.listRolesCalls, equals(1));
-      expect(gateway.listOrgUnitsCalls, equals(1));
-      expect(gateway.listHierarchyLocationsCalls, equals(1));
-      expect(gateway.listSessionsCalls, equals(1));
     });
 
-    testWidgets('Hierarchy tab renders org-unit tree + locations',
-        (tester) async {
+    testWidgets('Hierarchy tab renders org-unit tree + locations', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
       await tester.pumpWidget(
@@ -148,41 +146,42 @@ void main() {
       );
     });
 
-    testWidgets('Sessions tab renders one row per session', (tester) async {
+    testWidgets('reusable sessions panel renders one row per session', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
       await tester.pumpWidget(
         wrap(
-          RolesHierarchySessionsAdminScreen(
+          ActiveSessionsAdminPanel(
             gateway: gateway,
+            operatorId: kDemoDinerOperatorId,
+            operatorName: 'Demo Diner Co.',
             actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('admin_rhs_tab_sessions')));
-      await tester.pumpAndSettle();
-
       expect(
-        find.byKey(const Key(
-          'admin_rhs_session_row_session-diner-owner-mobile',
-        )),
+        find.byKey(
+          const Key('admin_rhs_session_row_session-diner-owner-mobile'),
+        ),
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key(
-          'admin_rhs_session_row_session-diner-manager-mobile',
-        )),
+        find.byKey(
+          const Key('admin_rhs_session_row_session-diner-manager-mobile'),
+        ),
         findsOneWidget,
       );
     });
   });
 
   group('Roles tab gating', () {
-    testWidgets('seeded-role edit hidden when canEditSeededRoles is false',
-        (tester) async {
+    testWidgets('seeded-role edit hidden when canEditSeededRoles is false', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
       await tester.pumpWidget(
@@ -202,73 +201,65 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(
-          const Key('admin_rhs_role_edit_role-seed-operator-owner'),
-        ),
+        find.byKey(const Key('admin_rhs_role_edit_role-seed-operator-owner')),
         findsNothing,
       );
     });
 
-    testWidgets(
-      'seeded-role edit visible when canEditSeededRoles is true',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildDemoGateway();
-        await tester.pumpWidget(
-          wrap(
-            RolesHierarchySessionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-              canEditSeededRoles: true,
-            ),
+    testWidgets('seeded-role edit visible when canEditSeededRoles is true', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            canEditSeededRoles: true,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(
-            const Key('admin_rhs_role_edit_role-seed-operator-owner'),
-          ),
-          findsOneWidget,
-        );
-      },
-    );
+      expect(
+        find.byKey(const Key('admin_rhs_role_edit_role-seed-operator-owner')),
+        findsOneWidget,
+      );
+    });
 
-    testWidgets(
-      'view-only mode hides every mutate affordance',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildDemoGateway();
-        await tester.pumpWidget(
-          wrap(
-            RolesHierarchySessionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-ff-support',
-              pickedOperator: demoPick(),
-              editingEnabled: false,
-              canEditSeededRoles: false,
-            ),
+    testWidgets('view-only mode hides every mutate affordance', (tester) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-ff-support',
+            pickedOperator: demoPick(),
+            editingEnabled: false,
+            canEditSeededRoles: false,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const Key('admin_rhs_readonly_banner')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_rhs_roles_create_custom')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(
-            const Key('admin_rhs_role_delete_role-custom-floor-captain'),
-          ),
-          findsNothing,
-        );
-      },
-    );
+      expect(
+        find.byKey(const Key('admin_rhs_readonly_banner')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_rhs_roles_create_custom')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const Key('admin_rhs_role_delete_role-custom-floor-captain'),
+        ),
+        findsNothing,
+      );
+    });
   });
 
   group('write paths capture admin_reason', () {
@@ -279,22 +270,22 @@ void main() {
         final gateway = buildDemoGateway();
         await tester.pumpWidget(
           wrap(
-            RolesHierarchySessionsAdminScreen(
+            ActiveSessionsAdminPanel(
               gateway: gateway,
+              operatorId: kDemoDinerOperatorId,
+              operatorName: 'Demo Diner Co.',
               actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
             ),
           ),
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const Key('admin_rhs_tab_sessions')));
-        await tester.pumpAndSettle();
-
         await tester.tap(
-          find.byKey(const Key(
-            'admin_rhs_session_force_logout_session-diner-owner-mobile',
-          )),
+          find.byKey(
+            const Key(
+              'admin_rhs_session_force_logout_session-diner-owner-mobile',
+            ),
+          ),
         );
         await tester.pumpAndSettle();
 
@@ -444,22 +435,18 @@ void main() {
         );
         await tester.pumpWidget(
           wrap(
-            RolesHierarchySessionsAdminScreen(
+            ActiveSessionsAdminPanel(
               gateway: gateway,
+              operatorId: kDemoDinerOperatorId,
+              operatorName: 'Demo Diner Co.',
               actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
             ),
           ),
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const Key('admin_rhs_tab_sessions')));
-        await tester.pumpAndSettle();
-
         final button = tester.widget<OutlinedButton>(
-          find.byKey(const Key(
-            'admin_rhs_session_force_logout_session-actor',
-          )),
+          find.byKey(const Key('admin_rhs_session_force_logout_session-actor')),
         );
         expect(button.onPressed, isNull);
       },
@@ -511,36 +498,35 @@ void main() {
       },
     );
 
-    testWidgets(
-      'MFA-required keys carry the contract-pinned tooltip',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildDemoGateway();
-        await tester.pumpWidget(
-          wrap(
-            RolesHierarchySessionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-            ),
+    testWidgets('MFA-required keys carry the contract-pinned tooltip', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // The Explainer card contains every MFA-required catalog key.
-        // Each MFA key chip is wrapped in a Tooltip with the locked
-        // contract message (line 110).
-        final tooltip = tester.widget<Tooltip>(
-          find.byKey(const Key(
-            'admin_rhs_perm_mfa_tooltip_admin.roles.edit_seeded',
-          )),
-        );
-        expect(tooltip.message, equals(kMfaRequiredTooltip));
-        // No emoji-only signal: the chip carries the literal "MFA"
-        // text plus a Lock icon, not just an emoji.
-        expect(find.text('MFA'), findsWidgets);
-      },
-    );
+      // The Explainer card contains every MFA-required catalog key.
+      // Each MFA key chip is wrapped in a Tooltip with the locked
+      // contract message (line 110).
+      final tooltip = tester.widget<Tooltip>(
+        find.byKey(
+          const Key('admin_rhs_perm_mfa_tooltip_admin.roles.edit_seeded'),
+        ),
+      );
+      expect(tooltip.message, equals(kMfaRequiredTooltip));
+      // No emoji-only signal: the chip carries the literal "MFA"
+      // text plus a Lock icon, not just an emoji.
+      expect(find.text('MFA'), findsWidgets);
+    });
   });
 
   group('zero em dashes in operator-facing literals', () {
@@ -591,9 +577,7 @@ class _CountingRolesHierarchySessionsGateway
   }
 
   @override
-  Future<List<OrgUnitAdminNode>> listOrgUnits({
-    required String operatorId,
-  }) {
+  Future<List<OrgUnitAdminNode>> listOrgUnits({required String operatorId}) {
     listOrgUnitsCalls += 1;
     return super.listOrgUnits(operatorId: operatorId);
   }

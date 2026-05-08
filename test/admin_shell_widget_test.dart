@@ -135,7 +135,6 @@ void main() {
           .map((route) => route.id),
       <String>[
         kAdminOperatorsRouteId,
-        kAdminSupportOperatorViewRouteId,
         kAdminDataAccuracyRouteId,
         kAdminPollingPricingRouteId,
         kAdminMembersRouteId,
@@ -169,7 +168,7 @@ void main() {
         AdminShell(
           session: superAdmin,
           authSource: source,
-          initialRouteId: kAdminSupportOperatorViewRouteId,
+          initialRouteId: kAdminOperatorsRouteId,
         ),
       ),
     );
@@ -177,20 +176,10 @@ void main() {
 
     expect(find.byKey(const Key('admin_side_nav')), findsNothing);
     expect(find.byKey(const Key('admin_compact_nav')), findsOneWidget);
+    expect(find.byKey(const Key('admin_nav_item_operators')), findsOneWidget);
+    expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
     expect(
-      find.byKey(const Key('admin_nav_item_support-operator-view')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_support_operator_view_no_scope_state')),
-      findsOneWidget,
-    );
-    expect(
-      tester
-          .getSize(
-            find.byKey(const Key('admin_support_operator_view_no_scope_state')),
-          )
-          .width,
+      tester.getSize(find.byKey(const Key('admin_operators_screen'))).width,
       greaterThan(320),
     );
     expect(tester.takeException(), isNull);
@@ -313,14 +302,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final logsButton = find.byKey(
-      const Key(
-        'admin_operator_support_logs_00000000-0000-4000-8000-000000000001',
-      ),
+    final logsTile = find.byKey(
+      const Key('admin_business_setup_tile_support_logs'),
     );
-    await tester.ensureVisible(logsButton);
+    await tester.ensureVisible(logsTile);
     await tester.pumpAndSettle();
-    await tester.tap(logsButton);
+    await tester.tap(logsTile);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_debug_console_screen')), findsOneWidget);
@@ -424,7 +411,7 @@ void main() {
     },
   );
 
-  testWidgets('support workspace waits inline until a business is chosen', (
+  testWidgets('Support Workspace is hidden from primary route IA', (
     tester,
   ) async {
     final source = DemoAdminAuthSource.signedInAsSuperAdmin();
@@ -442,11 +429,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const Key('admin_support_operator_view_no_scope_state')),
-      findsOneWidget,
+      find.byKey(const Key('admin_nav_item_support-operator-view')),
+      findsNothing,
     );
-    expect(find.text('Choose a business'), findsOneWidget);
-    expect(find.byKey(const Key('admin_operator_picker_screen')), findsNothing);
+    expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_support_operator_view_no_scope_state')),
+      findsNothing,
+    );
   });
 
   testWidgets(
@@ -516,7 +506,7 @@ void main() {
     },
   );
 
-  testWidgets('Business accounts opens the scoped support workspace', (
+  testWidgets('Business accounts opens scoped support logs from setup tile', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1440, 1100);
@@ -534,23 +524,19 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final supportViewButton = find.byKey(
-      const Key(
-        'admin_operator_support_view_00000000-0000-4000-8000-000000000001',
-      ),
+    final supportLogsTile = find.byKey(
+      const Key('admin_business_setup_tile_support_logs'),
     );
-    await tester.ensureVisible(supportViewButton);
+    await tester.ensureVisible(supportLogsTile);
     await tester.pumpAndSettle();
-    await tester.tap(supportViewButton);
+    await tester.tap(supportLogsTile);
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const Key('admin_debug_console_screen')), findsOneWidget);
     expect(
-      find.byKey(const Key('admin_support_operator_view_screen')),
+      find.text('Operator: 00000000-0000-4000-8000-000000000001'),
       findsOneWidget,
     );
-    expect(find.text('Support workspace'), findsWidgets);
-    expect(find.text('Demo Diner Co.'), findsWidgets);
-    expect(find.text('Toronto Yorkville'), findsWidgets);
     expect(
       find.byKey(const Key('admin_support_operator_view_no_scope_state')),
       findsNothing,
@@ -558,7 +544,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('operator action buttons keep the same scope for Team', (
+  testWidgets('Business accounts opens People/access/roles with scope', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1440, 1100);
@@ -576,27 +562,29 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final dataAccuracyButton = find.byKey(
+    final locationRow = find.byKey(
       const Key(
-        'admin_operator_data_accuracy_00000000-0000-4000-8000-000000000001',
+        'admin_hierarchy_location_00000000-0000-4000-8000-0000000000a1',
       ),
     );
-    await tester.ensureVisible(dataAccuracyButton);
+    await tester.ensureVisible(locationRow);
     await tester.pumpAndSettle();
-    await tester.tap(dataAccuracyButton);
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('admin_data_accuracy_screen')), findsOneWidget);
-
-    await tester.ensureVisible(find.byKey(const Key('admin_nav_item_members')));
-    await tester.tap(find.byKey(const Key('admin_nav_item_members')));
+    await tester.tap(locationRow);
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('admin_members_screen')), findsOneWidget);
-    expect(
-      find.byKey(const Key('admin_members_no_operator_state')),
-      findsNothing,
+    final peopleTile = find.byKey(
+      const Key('admin_business_setup_tile_people_access_roles'),
     );
+    await tester.ensureVisible(peopleTile);
+    await tester.pumpAndSettle();
+    await tester.tap(peopleTile);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_roles_hierarchy_sessions_screen')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('admin_rhs_no_operator_state')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

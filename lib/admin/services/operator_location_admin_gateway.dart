@@ -32,6 +32,16 @@ import 'admin_http_timeout.dart';
 /// tests pin a synthetic value.
 typedef AdminBearerTokenProvider = Future<String> Function();
 
+void _validateParentOrgUnitId(String? value) {
+  if (value == null || value.trim().isEmpty) {
+    throw const OperatorLocationAdminGatewayError(
+      statusCode: 400,
+      errorCode: 'missing_parent_org_unit_id',
+      message: 'parent_org_unit_id is required when creating a location',
+    );
+  }
+}
+
 /// Top-level error type for gateway calls. Carries an HTTP-style
 /// status code + machine-readable error code so the screen can branch
 /// on `permission_denied` / `validation_failed` etc. without parsing
@@ -173,6 +183,7 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
 
   @override
   Future<LocationAdminRecord> addLocation(LocationCreateCommand command) async {
+    _validateParentOrgUnitId(command.parentOrgUnitId);
     final body = await _send(
       method: 'POST',
       path: locationsPath,
@@ -443,6 +454,7 @@ class InMemoryOperatorLocationAdminGateway
   Future<LocationAdminRecord> addLocation(LocationCreateCommand command) async {
     final cached = _idempotentResults[command.idempotencyKey];
     if (cached is LocationAdminRecord) return cached;
+    _validateParentOrgUnitId(command.parentOrgUnitId);
     _validateTimezone(command.timezone);
     _validateRolloverHour(command.businessDayRolloverHour);
     _validateNonBlank(command.name, field: 'name');
@@ -451,6 +463,7 @@ class InMemoryOperatorLocationAdminGateway
     final location = LocationAdminRecord(
       locationId: _idGenerator(),
       operatorId: command.operatorId,
+      parentOrgUnitId: command.parentOrgUnitId!.trim(),
       name: command.name.trim(),
       address: command.address,
       timezone: command.timezone,

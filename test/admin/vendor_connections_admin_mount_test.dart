@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -10,6 +11,33 @@ void main() {
     debugShowCheckedModeBanner: false,
     theme: AppTheme.themeData,
     home: child,
+  );
+
+  const businessScope = AdminHierarchyScopeIntent.business(
+    operatorId: 'op-1',
+    operatorName: 'Harbour Group',
+    valueState: AdminHierarchyScopeValueState.setAtScope,
+    allowedActionsLabel: 'Location required',
+  );
+
+  const orgUnitScope = AdminHierarchyScopeIntent.orgUnit(
+    operatorId: 'op-1',
+    orgUnitId: 'ou-downtown',
+    operatorName: 'Harbour Group',
+    orgUnitName: 'Downtown',
+    valueState: AdminHierarchyScopeValueState.inheritedFromBusiness,
+    inheritedFromLabel: 'business',
+    allowedActionsLabel: 'Location required',
+  );
+
+  const locationScope = AdminHierarchyScopeIntent.location(
+    operatorId: 'op-1',
+    orgUnitId: 'ou-downtown',
+    orgUnitName: 'Downtown',
+    locationId: 'loc-1',
+    locationName: 'Harbour',
+    valueState: AdminHierarchyScopeValueState.locationOnly,
+    allowedActionsLabel: 'Can edit',
   );
 
   testWidgets('does not fall back to demo vendor data without a gateway', (
@@ -71,5 +99,93 @@ void main() {
       find.byKey(const Key('vendor_connections_section_pos')),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+    'business scope shows hierarchy prompt and location-required copy',
+    (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          VendorConnectionsAdminMount(
+            operatorId: 'op-1',
+            selectedScope: businessScope,
+            scopeOptions: const <AdminHierarchyScopeIntent>[
+              businessScope,
+              orgUnitScope,
+              locationScope,
+            ],
+            gateway: InMemoryVendorConnectionsGateway(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_vendor_connections_scope_context')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_hierarchy_scope_prompt')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_vendor_connections_location_required')),
+        findsOneWidget,
+      );
+      expect(find.text('Location required'), findsWidgets);
+      expect(
+        find.textContaining('vendor setup remains location-only'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('vendor_connections_section_pos')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('selecting a location scope enables the shared vendor widget', (
+    tester,
+  ) async {
+    AdminHierarchyScopeIntent? selected;
+    await tester.pumpWidget(
+      wrap(
+        VendorConnectionsAdminMount(
+          operatorId: 'op-1',
+          selectedScope: businessScope,
+          scopeOptions: const <AdminHierarchyScopeIntent>[
+            businessScope,
+            orgUnitScope,
+            locationScope,
+          ],
+          onScopeSelected: (scope) => selected = scope,
+          gateway: InMemoryVendorConnectionsGateway(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final locationOption = find.byKey(
+      Key('admin_hierarchy_scope_option_${locationScope.cacheKey}'),
+    );
+    await tester.ensureVisible(locationOption);
+    await tester.pumpAndSettle();
+    await tester.tap(locationOption);
+    await tester.pumpAndSettle();
+
+    expect(selected, locationScope);
+    expect(
+      find.byKey(const Key('admin_vendor_connections_location_required')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('vendor_connections_section_pos')),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Showing vendor integrations for location scope'),
+      findsOneWidget,
+    );
+    expect(find.text('Location only'), findsOneWidget);
   });
 }
