@@ -151,16 +151,27 @@ credentials and paste them through the existing connect/rotation flow.
 
 ## 4 · Phase work in scope (queued, not launch-blocking by themselves)
 
-- [ ] **`8.spine-bridge-live` connected-device + push proof.** Code
-      components landed (see V1 closure dispatch + first-connect
-      backfill). Awaiting (a) device + (b) staging apply of mobile push
-      migration + (c) operator-blocked sandbox creds. **Push specifically:**
-      operator-driven runbook now landed at `runbooks/firebase_console_push_apply_runbook.md`
-      — ~15 minute total operator time across Firebase Console + Apple
-      Developer + Cloud Run consoles to bring push live. All code,
-      mobile runtime, proxy dispatcher, IAM-aware service-account auth,
-      and per-flavor Firebase config files (`google-services.json` +
-      `GoogleService-Info.plist`) are already on master.
+- [ ] **`8.spine-bridge-live` connected-device + push proof.**
+      **Push setup complete on `forge-flow-production1` (Android-only) 2026-05-08.**
+      Prod proxy rev `forge-flow-production1-proxy-00004-g6q` serving
+      100% traffic with `MOBILE_PUSH_TOKEN_ENVELOPE_KEY` env var; SA
+      `forge-flow-production1-admin@forge-flow-production1.iam.gserviceaccount.com`
+      has `roles/firebasecloudmessaging.admin`; FCM HTTP v1 API enabled;
+      all 4 Firebase apps registered (Forge Flow + Barrio × Android + iOS).
+      **iOS push deferred** — no Apple Developer account / Apple device
+      currently. iOS configs stay in repo as no-ops; Android-only for V1.
+      **Staging push setup blocked** by an unrelated pre-existing
+      data-drift on staging Postgres: 4 `kms_real_provider_*` feature_flags
+      rows are missing, causing any new staging proxy revision to fail
+      startup contract check. Staging IAM is granted, env var would land
+      cleanly the moment the schema-contract issue is resolved (separate
+      bug; not push-related).
+      **Live device proof remains operator-blocked:** install ForgeFlow
+      Android build → first prod operator signs in → app registers FCM
+      token → first push event fires. Operationally chained behind the
+      lawyer T&C signing → first prod operator creation → device install
+      sequence in `cutover.2`.
+      Detail / runbook: `runbooks/firebase_console_push_apply_runbook.md`.
 - [-] **Doc 1 remaining — closed 2026-05-08 except operator-blocked gates:**
       - Item 6 — admin/web setting sync inventory: **closed** (closeout doc + PRs #391, #393, #398).
       - Item 7 — connected-device E2E: **closed (emulator simulation)** Pixel 5 / Android 14, screens at `.claude/screenshots_doc1_emu/`.
