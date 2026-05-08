@@ -104,6 +104,7 @@ class MemberAdminRow {
     this.createdBy,
     this.updatedBy,
     this.orgUnitId,
+    this.grants = const <MemberRoleGrantRow>[],
   });
 
   final String userId;
@@ -120,8 +121,34 @@ class MemberAdminRow {
   final String? createdBy;
   final String? updatedBy;
   final String? orgUnitId;
+  final List<MemberRoleGrantRow> grants;
 
   bool get isSoftDeleted => status == MemberStatus.softDeleted;
+}
+
+@immutable
+class MemberRoleGrantRow {
+  const MemberRoleGrantRow({
+    required this.userRoleId,
+    required this.roleKey,
+    required this.scopeType,
+    this.roleLabel,
+    this.locationId,
+    this.locationName,
+    this.orgUnitId,
+    this.orgUnitName,
+  });
+
+  final String userRoleId;
+  final String roleKey;
+  final String? roleLabel;
+  final String scopeType;
+  final String? locationId;
+  final String? locationName;
+  final String? orgUnitId;
+  final String? orgUnitName;
+
+  String get roleDisplayLabel => roleLabel ?? memberRoleLabel(roleKey);
 }
 
 /// One invite row paired with the operator that owns it. The admin
@@ -138,6 +165,8 @@ class MemberInviteRow {
     required this.invitedAt,
     required this.invitedBy,
     this.orgUnitId,
+    this.orgUnitName,
+    this.scopeType = 'location',
     this.welcomeNote,
   });
 
@@ -150,6 +179,8 @@ class MemberInviteRow {
   final DateTime invitedAt;
   final String invitedBy;
   final String? orgUnitId;
+  final String? orgUnitName;
+  final String scopeType;
   final String? welcomeNote;
 }
 
@@ -348,6 +379,9 @@ abstract class MembersAdminGateway {
     required String actorUserId,
     required bool actorIsForgeAdmin,
     required String adminReason,
+    String scopeType = 'operator_wide',
+    String? primaryLocationId,
+    String? orgUnitId,
   });
 
   Future<MemberInviteRow> createInvite({
@@ -360,6 +394,7 @@ abstract class MembersAdminGateway {
     required String actorUserId,
     required bool actorIsForgeAdmin,
     required String adminReason,
+    String scopeType = 'location',
     String? orgUnitId,
     String? welcomeNote,
   });
@@ -655,6 +690,9 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
     required String actorUserId,
     required bool actorIsForgeAdmin,
     required String adminReason,
+    String scopeType = 'operator_wide',
+    String? primaryLocationId,
+    String? orgUnitId,
   }) async {
     _requireEditable(actorIsForgeAdmin, 'overrideRoleGrant');
     _requireAdminReason(adminReason, 'overrideRoleGrant');
@@ -666,11 +704,46 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
         'operator_id': operatorId,
         'user_id': userId,
         'role_key': roleKey,
+        'role_id': roleKey,
+        'scope_type': scopeType,
+        if (scopeType == 'location' &&
+            primaryLocationId != null &&
+            primaryLocationId.isNotEmpty)
+          'location_id': primaryLocationId,
+        if (scopeType == 'org_unit' &&
+            orgUnitId != null &&
+            orgUnitId.isNotEmpty)
+          'org_unit_id': orgUnitId,
         'admin_reason': adminReason,
         'override': true,
       },
     );
-    return _memberRowFromJson(_asMap(body['user']));
+    final user = _asMap(body['user']);
+    if (user.isNotEmpty) return _memberRowFromJson(user);
+    return MemberAdminRow(
+      userId: userId,
+      email: userId,
+      displayName: userId,
+      roleKey: roleKey,
+      primaryLocationId: primaryLocationId ?? '',
+      primaryLocationName: primaryLocationId ?? 'Business-wide',
+      status: MemberStatus.active,
+      mfaEnrolled: false,
+      lastActiveAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      createdAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      updatedAt: DateTime.now().toUtc(),
+      updatedBy: actorUserId,
+      orgUnitId: orgUnitId,
+      grants: <MemberRoleGrantRow>[
+        MemberRoleGrantRow(
+          userRoleId: _optionalString(body['user_role_id']) ?? '',
+          roleKey: roleKey,
+          scopeType: scopeType,
+          locationId: primaryLocationId,
+          orgUnitId: orgUnitId,
+        ),
+      ],
+    );
   }
 
   @override
@@ -684,6 +757,7 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
     required String actorUserId,
     required bool actorIsForgeAdmin,
     required String adminReason,
+    String scopeType = 'location',
     String? orgUnitId,
     String? welcomeNote,
   }) async {
@@ -703,12 +777,15 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
         // needed by the routed invite mutation.
         'role_id': roleKey,
         'role_key': roleKey,
-        'scope_type': orgUnitId != null && orgUnitId.isNotEmpty
-            ? 'org_unit'
-            : 'location',
-        'location_id': primaryLocationId,
-        'primary_location_id': primaryLocationId,
-        if (orgUnitId != null && orgUnitId.isNotEmpty) 'org_unit_id': orgUnitId,
+        'scope_type': scopeType,
+        if (scopeType == 'location') ...<String, Object?>{
+          'location_id': primaryLocationId,
+          'primary_location_id': primaryLocationId,
+        },
+        if (scopeType == 'org_unit' &&
+            orgUnitId != null &&
+            orgUnitId.isNotEmpty)
+          'org_unit_id': orgUnitId,
         if (welcomeNote != null && welcomeNote.trim().isNotEmpty)
           'welcome_note': welcomeNote.trim(),
         'admin_reason': adminReason,
@@ -721,12 +798,14 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
       'email': email.trim(),
       'display_name': displayName.trim(),
       'role_key': roleKey,
-      'primary_location_id': primaryLocationId,
+      if (scopeType == 'location') 'primary_location_id': primaryLocationId,
+      'scope_type': scopeType,
       'created_at':
           _optionalString(body['created_at']) ??
           DateTime.now().toUtc().toIso8601String(),
       'invited_by': actorUserId,
-      if (orgUnitId != null && orgUnitId.isNotEmpty) 'org_unit_id': orgUnitId,
+      if (scopeType == 'org_unit' && orgUnitId != null && orgUnitId.isNotEmpty)
+        'org_unit_id': orgUnitId,
       if (welcomeNote != null && welcomeNote.trim().isNotEmpty)
         'welcome_note': welcomeNote.trim(),
     });
@@ -843,6 +922,70 @@ MemberAdminRow _memberRowFromJson(Map<String, Object?> json) {
     createdBy: _optionalString(json['created_by']),
     updatedBy: _optionalString(json['updated_by']),
     orgUnitId: _optionalString(json['org_unit_id']),
+    grants: _memberGrantsFromJson(json),
+  );
+}
+
+List<MemberRoleGrantRow> _memberGrantsFromJson(Map<String, Object?> json) {
+  final raw = json['grants'];
+  if (raw is List) {
+    return List<MemberRoleGrantRow>.unmodifiable(<MemberRoleGrantRow>[
+      for (final grant in raw)
+        if (grant is Map)
+          _memberGrantFromJson(grant.cast<String, Object?>(), parent: json),
+    ]);
+  }
+  final userRoleId = _optionalString(json['user_role_id']);
+  final roleKey = _firstOptionalStringField(json, const <String>[
+    'role_key',
+    'role_label',
+    'role_id',
+  ]);
+  if (userRoleId == null || roleKey == null) {
+    return const <MemberRoleGrantRow>[];
+  }
+  return <MemberRoleGrantRow>[
+    MemberRoleGrantRow(
+      userRoleId: userRoleId,
+      roleKey: roleKey,
+      roleLabel: _optionalString(json['role_label']),
+      scopeType: _optionalString(json['scope_type']) ?? 'location',
+      locationId: _optionalString(json['location_id']),
+      locationName: _optionalString(json['location_label']),
+      orgUnitId: _optionalString(json['org_unit_id']),
+      orgUnitName: _optionalString(json['org_unit_label']),
+    ),
+  ];
+}
+
+MemberRoleGrantRow _memberGrantFromJson(
+  Map<String, Object?> json, {
+  required Map<String, Object?> parent,
+}) {
+  final roleKey = _firstOptionalStringField(json, const <String>[
+    'role_key',
+    'role_id',
+    'role_label',
+  ]);
+  final locationId =
+      _optionalString(json['location_id']) ??
+      _optionalString(parent['location_id']);
+  final orgUnitId =
+      _optionalString(json['org_unit_id']) ??
+      _optionalString(json['source_org_unit_id']);
+  return MemberRoleGrantRow(
+    userRoleId:
+        _firstOptionalStringField(json, const <String>['user_role_id', 'id']) ??
+        '',
+    roleKey: roleKey ?? '',
+    roleLabel: _optionalString(json['role_label']),
+    scopeType: _optionalString(json['scope_type']) ?? 'location',
+    locationId: locationId,
+    locationName:
+        _optionalString(json['location_label']) ??
+        _optionalString(parent['location_label']),
+    orgUnitId: orgUnitId,
+    orgUnitName: _optionalString(json['org_unit_label']),
   );
 }
 
@@ -882,6 +1025,8 @@ MemberInviteRow _inviteRowFromJson(Map<String, Object?> json) {
     invitedAt: invitedAt,
     invitedBy: _optionalString(json['invited_by']) ?? '',
     orgUnitId: _optionalString(json['org_unit_id']),
+    orgUnitName: _optionalString(json['org_unit_label']),
+    scopeType: _optionalString(json['scope_type']) ?? 'location',
     welcomeNote: _optionalString(json['welcome_note']),
   );
 }
