@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/admin_auth_gate.dart';
 import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/admin_shell.dart';
+import 'package:forge_and_flow/admin/widgets/admin_business_accounts_back_button.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -45,6 +46,35 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(option);
     await tester.pumpAndSettle();
+  }
+
+  Future<void> openSetupTileAndReturn(
+    WidgetTester tester, {
+    required Key tileKey,
+    required Key screenKey,
+    String scopeType = 'business',
+    String? orgUnitId,
+    String? locationId,
+  }) async {
+    final tile = find.byKey(tileKey);
+    await tester.ensureVisible(tile);
+    await tester.pumpAndSettle();
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: '00000000-0000-4000-8000-000000000001',
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+    );
+
+    expect(find.byKey(screenKey), findsOneWidget);
+    expect(find.byKey(kAdminBusinessAccountsBackButtonKey), findsOneWidget);
+    await tester.tap(find.byKey(kAdminBusinessAccountsBackButtonKey));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+    expect(find.byKey(screenKey), findsNothing);
   }
 
   testWidgets('renders branded header with role pill + identity chip', (
@@ -601,6 +631,148 @@ void main() {
       findsNothing,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Business setup screens route back to Business accounts', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(AdminShell(session: superAdmin, authSource: source)),
+    );
+    await tester.pumpAndSettle();
+
+    await openSetupTileAndReturn(
+      tester,
+      tileKey: const Key('admin_business_setup_tile_data_accuracy'),
+      screenKey: const Key('admin_data_accuracy_screen'),
+    );
+    await openSetupTileAndReturn(
+      tester,
+      tileKey: const Key('admin_business_setup_tile_polling_pricing'),
+      screenKey: const Key('admin_polling_pricing_screen'),
+    );
+    await openSetupTileAndReturn(
+      tester,
+      tileKey: const Key('admin_business_setup_tile_people_access_roles'),
+      screenKey: const Key('admin_members_screen'),
+    );
+    await openSetupTileAndReturn(
+      tester,
+      tileKey: const Key('admin_business_setup_tile_security_audit_sessions'),
+      screenKey: const Key('admin_audited_support_actions_screen'),
+    );
+    await openSetupTileAndReturn(
+      tester,
+      tileKey: const Key('admin_business_setup_tile_support_logs'),
+      screenKey: const Key('admin_debug_console_screen'),
+    );
+  });
+
+  testWidgets('Team access setup screen routes back to Business accounts', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(AdminShell(session: superAdmin, authSource: source)),
+    );
+    await tester.pumpAndSettle();
+
+    final peopleTile = find.byKey(
+      const Key('admin_business_setup_tile_people_access_roles'),
+    );
+    await tester.ensureVisible(peopleTile);
+    await tester.pumpAndSettle();
+    await tester.tap(peopleTile);
+    await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: '00000000-0000-4000-8000-000000000001',
+      scopeType: 'business',
+    );
+
+    await tester.tap(find.byKey(const Key('admin_members_open_access')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_roles_hierarchy_sessions_screen')),
+      findsOneWidget,
+    );
+    expect(find.byKey(kAdminBusinessAccountsBackButtonKey), findsOneWidget);
+    await tester.tap(find.byKey(kAdminBusinessAccountsBackButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_roles_hierarchy_sessions_screen')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('Integrations setup screen returns to Business accounts', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(AdminShell(session: superAdmin, authSource: source)),
+    );
+    await tester.pumpAndSettle();
+
+    final integrationsTile = find.byKey(
+      const Key('admin_business_setup_tile_integrations'),
+    );
+    await tester.ensureVisible(integrationsTile);
+    await tester.pumpAndSettle();
+    await tester.tap(integrationsTile);
+    await tester.pumpAndSettle();
+    await chooseScopePrompt(
+      tester,
+      operatorId: '00000000-0000-4000-8000-000000000001',
+      scopeType: 'location',
+      orgUnitId: '00000000-0000-4000-8000-000000000d02',
+      locationId: '00000000-0000-4000-8000-0000000000a1',
+    );
+
+    expect(
+      find.byKey(const Key('admin_vendor_connections_screen')),
+      findsOneWidget,
+    );
+    expect(find.byKey(kAdminBusinessAccountsBackButtonKey), findsOneWidget);
+    await tester.tap(find.byKey(kAdminBusinessAccountsBackButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_vendor_connections_screen')),
+      findsNothing,
+    );
   });
 
   testWidgets('Business accounts opens People/access/roles with scope', (

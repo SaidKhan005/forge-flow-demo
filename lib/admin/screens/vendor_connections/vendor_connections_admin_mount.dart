@@ -14,6 +14,7 @@ import '../../../integrations/ui/vendor_connections/vendor_connections_gateway.d
 import '../../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
 import '../../../theme/app_theme.dart';
 import '../../admin_route_handoff.dart';
+import '../../widgets/admin_business_accounts_back_button.dart';
 import '../../widgets/admin_hierarchy_scope_prompt.dart';
 import '../../widgets/admin_responsive_layout.dart';
 
@@ -31,6 +32,7 @@ class VendorConnectionsAdminMount extends StatefulWidget {
     this.gateway,
     this.canMutate = true,
     this.embedded = false,
+    this.onBackToBusinessAccounts,
   }) : assert(
          locationId != null || selectedScope != null,
          'VendorConnectionsAdminMount needs a location or hierarchy scope',
@@ -63,6 +65,7 @@ class VendorConnectionsAdminMount extends StatefulWidget {
   /// True when the mount is hosted inside another admin workspace
   /// instead of being pushed as its own route.
   final bool embedded;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   State<VendorConnectionsAdminMount> createState() =>
@@ -116,7 +119,17 @@ class _VendorConnectionsAdminMountState
     }
     return Scaffold(
       key: const Key('admin_vendor_connections_screen'),
-      appBar: AppBar(title: const Text('Vendor integrations')),
+      appBar: AppBar(
+        leading: widget.onBackToBusinessAccounts == null
+            ? null
+            : IconButton(
+                key: kAdminBusinessAccountsBackButtonKey,
+                tooltip: 'Back to Business accounts',
+                onPressed: widget.onBackToBusinessAccounts,
+                icon: const Icon(Icons.arrow_back),
+              ),
+        title: const Text('Vendor integrations'),
+      ),
       body: body,
     );
   }
@@ -130,7 +143,12 @@ class _VendorConnectionsAdminMountState
       fallbackLocationName: widget.locationName,
     );
     final content = location == null
-        ? _VendorLocationRequiredPanel(scope: scope)
+        ? _VendorLocationRequiredPanel(
+            scope: scope,
+            onBackToBusinessAccounts: widget.embedded
+                ? widget.onBackToBusinessAccounts
+                : null,
+          )
         : _buildLocationContent(location);
 
     if (!_hasHierarchyContext) {
@@ -196,7 +214,12 @@ class _VendorConnectionsAdminMountState
   Widget _buildLocationContent(_VendorConnectionsLocationScope location) {
     final resolvedGateway = widget.gateway;
     return resolvedGateway == null
-        ? _VendorLifecycleUnavailablePanel(locationName: location.locationName)
+        ? _VendorLifecycleUnavailablePanel(
+            locationName: location.locationName,
+            onBackToBusinessAccounts: widget.embedded
+                ? widget.onBackToBusinessAccounts
+                : null,
+          )
         : VendorConnectionsWidget(
             key: ValueKey<String>(
               'admin_vendor_connections_widget_'
@@ -207,6 +230,12 @@ class _VendorConnectionsAdminMountState
             locationNameOverride: location.locationName,
             gateway: resolvedGateway,
             canMutate: widget.canMutate,
+            headerLeading:
+                widget.embedded && widget.onBackToBusinessAccounts != null
+                ? AdminBusinessAccountsBackButton(
+                    onPressed: widget.onBackToBusinessAccounts,
+                  )
+                : null,
           );
   }
 }
@@ -249,9 +278,13 @@ class _VendorConnectionsLocationScope {
 }
 
 class _VendorLocationRequiredPanel extends StatelessWidget {
-  const _VendorLocationRequiredPanel({required this.scope});
+  const _VendorLocationRequiredPanel({
+    required this.scope,
+    required this.onBackToBusinessAccounts,
+  });
 
   final AdminHierarchyScopeIntent? scope;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   Widget build(BuildContext context) {
@@ -268,10 +301,15 @@ class _VendorLocationRequiredPanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const AdminPageHeader(
+                AdminPageHeader(
                   title: 'Vendor integrations',
                   subtitle:
                       'Vendor credentials are connected, tested, disconnected, and logged per location.',
+                  leading: onBackToBusinessAccounts == null
+                      ? null
+                      : AdminBusinessAccountsBackButton(
+                          onPressed: onBackToBusinessAccounts,
+                        ),
                 ),
                 const SizedBox(height: 14),
                 AdminCard(
@@ -336,9 +374,13 @@ class _VendorLocationRequiredPanel extends StatelessWidget {
 }
 
 class _VendorLifecycleUnavailablePanel extends StatelessWidget {
-  const _VendorLifecycleUnavailablePanel({required this.locationName});
+  const _VendorLifecycleUnavailablePanel({
+    required this.locationName,
+    required this.onBackToBusinessAccounts,
+  });
 
   final String locationName;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   Widget build(BuildContext context) {
@@ -352,10 +394,15 @@ class _VendorLifecycleUnavailablePanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const AdminPageHeader(
+                AdminPageHeader(
                   title: 'Vendor integrations',
                   subtitle:
                       'Live provider summary is available in Connected services. Per-location lifecycle actions stay disabled here until the proxy route has production bindings.',
+                  leading: onBackToBusinessAccounts == null
+                      ? null
+                      : AdminBusinessAccountsBackButton(
+                          onPressed: onBackToBusinessAccounts,
+                        ),
                 ),
                 const SizedBox(height: 14),
                 AdminCard(

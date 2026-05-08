@@ -18,6 +18,7 @@ import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../models/admin_hierarchy_settings_scope_policy.dart';
 import '../services/data_accuracy_admin_gateway.dart';
+import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_hierarchy_scope_notice.dart';
 import '../widgets/admin_hierarchy_scope_prompt.dart';
@@ -38,6 +39,7 @@ class PollingAndPricingAdminScreen extends StatefulWidget {
     this.editingEnabled = true,
     this.initialScope,
     this.initialHierarchyScope,
+    this.onBackToBusinessAccounts,
   });
 
   final DataAccuracyAdminGateway gateway;
@@ -45,6 +47,7 @@ class PollingAndPricingAdminScreen extends StatefulWidget {
   final bool editingEnabled;
   final AdminOperatorLocationScopeIntent? initialScope;
   final AdminHierarchyScopeIntent? initialHierarchyScope;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   State<PollingAndPricingAdminScreen> createState() =>
@@ -448,13 +451,18 @@ class _PollingAndPricingAdminScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const AdminPageHeader(
+            AdminPageHeader(
               title: 'Polling & pricing',
               subtitle:
                   'F&F-controlled tier definitions, per-location assignments, '
                   'margin rollup, and operator change requests. Business and '
                   'org-unit assignment edits stay disabled until scoped '
                   'resolvers exist.',
+              leading: widget.onBackToBusinessAccounts == null
+                  ? null
+                  : AdminBusinessAccountsBackButton(
+                      onPressed: widget.onBackToBusinessAccounts,
+                    ),
             ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)

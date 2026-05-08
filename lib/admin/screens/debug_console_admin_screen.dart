@@ -49,6 +49,7 @@ import '../admin_route_handoff.dart';
 import '../models/debug_console_admin_models.dart';
 import '../services/debug_console_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 
 const String _kRequestLogTab = 'request_log';
@@ -63,6 +64,7 @@ class DebugConsoleAdminScreen extends StatefulWidget {
     this.editingEnabled = true,
     this.hierarchyScope,
     this.initialFilter = const RequestLogFilter(),
+    this.onBackToBusinessAccounts,
     this.tailPollInterval = kDebugConsoleTailPollInterval,
     @visibleForTesting this.now,
   });
@@ -84,6 +86,7 @@ class DebugConsoleAdminScreen extends StatefulWidget {
   /// Optional route seed used by contextual actions elsewhere in the
   /// admin console. Empty keeps the manual Refresh-first behavior.
   final RequestLogFilter initialFilter;
+  final VoidCallback? onBackToBusinessAccounts;
 
   /// Cadence for live-tail polling. Production uses
   /// [kDebugConsoleTailPollInterval]; tests pin a synthetic value.
@@ -446,6 +449,7 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
               onRunRefresh: _refresh,
               loading: _initialLoading || _refreshing,
               editingEnabled: widget.editingEnabled,
+              onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
             ),
             const SizedBox(height: 12),
             TabBar(
@@ -532,12 +536,14 @@ class _Header extends StatelessWidget {
     required this.onRunRefresh,
     required this.loading,
     required this.editingEnabled,
+    required this.onBackToBusinessAccounts,
   });
 
   final DateTime? lastRefreshed;
   final Future<void> Function() onRunRefresh;
   final bool loading;
   final bool editingEnabled;
+  final VoidCallback? onBackToBusinessAccounts;
 
   @override
   Widget build(BuildContext context) {
@@ -545,6 +551,11 @@ class _Header extends StatelessWidget {
       title: 'Support logs',
       subtitle:
           'Translate recent backend requests into support-safe details. Filter with exact IDs when you need a precise lookup.',
+      leading: onBackToBusinessAccounts == null
+          ? null
+          : AdminBusinessAccountsBackButton(
+              onPressed: onBackToBusinessAccounts,
+            ),
       compactBreakpoint: 640,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 320),

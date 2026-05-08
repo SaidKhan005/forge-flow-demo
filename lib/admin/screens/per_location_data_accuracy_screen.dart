@@ -23,6 +23,7 @@ import '../admin_route_handoff.dart';
 import '../admin_button_styles.dart';
 import '../models/admin_hierarchy_settings_scope_policy.dart';
 import '../services/data_accuracy_admin_gateway.dart';
+import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_hierarchy_scope_notice.dart';
 import '../widgets/admin_hierarchy_scope_prompt.dart';
@@ -37,12 +38,14 @@ class PerLocationDataAccuracyScreen extends StatefulWidget {
     this.editingEnabled = true,
     this.initialScope,
     this.initialHierarchyScope,
+    this.onBackToBusinessAccounts,
   });
 
   final DataAccuracyAdminGateway gateway;
   final String actorUserId;
   final AdminOperatorLocationScopeIntent? initialScope;
   final AdminHierarchyScopeIntent? initialHierarchyScope;
+  final VoidCallback? onBackToBusinessAccounts;
 
   /// Mirror of the pricing screen pattern: when false, the screen
   /// hides every mutate affordance. The gateway is the second line of
@@ -228,12 +231,17 @@ class _PerLocationDataAccuracyScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const AdminPageHeader(
+            AdminPageHeader(
               title: 'Data accuracy',
               subtitle:
                   "Inspect each operator-location's covers and wage source. "
                   'Business and org-unit scopes are read-only until scoped '
                   'settings resolvers exist.',
+              leading: widget.onBackToBusinessAccounts == null
+                  ? null
+                  : AdminBusinessAccountsBackButton(
+                      onPressed: widget.onBackToBusinessAccounts,
+                    ),
             ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)
