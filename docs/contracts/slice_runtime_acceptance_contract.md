@@ -208,9 +208,12 @@ identity assumptions should not leak into production paths.
 
 ### 9.8 Compliance
 
-Legal text is not complete until founder/counsel review. T&C acceptance,
-privacy views, GDPR request/deletion flows, processor chain, and re-acceptance
-gates should be real before customer-data cutover. Compliance/audit history
+Forge & Flow is operator-self-served on T&C content (see
+`docs/contracts/operator_self_served_tos_contract.md`); the
+operator/founder authors and accepts the language directly without an
+external legal-review gate. T&C acceptance, privacy views, GDPR
+request/deletion flows, processor chain, and re-acceptance gates
+should be real before customer-data cutover. Compliance/audit history
 should be paginated from the beginning.
 
 ### Production Cutover

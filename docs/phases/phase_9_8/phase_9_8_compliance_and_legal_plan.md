@@ -84,8 +84,10 @@ Phase 9.8 does not own:
 - engineering implementation work
 - connector implementation (`Phase 8` / `8R`)
 - auth implementation (`Phase 9`)
-- legal advice itself; founders and counsel still own the final legal
-  review and signoff
+- the operator/founder owns the final wording and acceptance of the
+  T&C / privacy package; Forge & Flow ships operator-self-served terms
+  per `docs/contracts/operator_self_served_tos_contract.md`. No
+  external legal-review gate blocks V1.
 - security-audit execution itself; that is adjacent launch work
 
 ## Frontend Exposure
@@ -181,7 +183,10 @@ Helpful adjacent inputs:
 - SOC2 inheritance documentation must distinguish vendor attestations
   from Forge & Flow's own claims
 - do not treat this phase as an engineering backlog
-- do not treat legal text as complete until founders and counsel review it
+- the operator/founder authors and accepts the legal text directly
+  (operator-self-served per
+  `docs/contracts/operator_self_served_tos_contract.md`); no external
+  legal-review gate blocks V1
 
 ## Adjacent Phases
 

@@ -113,13 +113,19 @@ After approval: run the runbook live-mutation gate, then the apply
 order section. The runbook codifies the BLOCKED checklist; following
 it is sufficient.
 
-### Send inbound T&Cs to counsel
+### Seed operator-authored T&C content
 
-- [ ] **Escalate inbound-vendor T&Cs to lawyer.** Draft is in
-      `docs/phases/phase_9_8/`. Suggested deadlines: first pass
-      2026-05-10, final 2026-05-13. Without signed T&Cs there is no
-      `tos_acceptances` row, so `cutover.2` (first operator
-      onboarding) cannot run. _Effort: 3–7 days external._
+- [ ] **Author and seed inbound-vendor T&C content into `tos_versions`.**
+      Forge & Flow is operator-self-served on terms: the founder
+      authors the universal inbound-vendor copy + the per-vendor scope
+      copy and accepts it through the standard
+      `tos_accept_screen.dart` clickwrap. Source draft + per-vendor
+      scope language already live in `docs/phases/phase_9_8/`.
+      Land the universal-scope row + the per-vendor rows for the trio
+      (Lightspeed K-Series, Libro, QuickBooks Time) before
+      `cutover.2`, so the first `tos_acceptances` row can be captured.
+      Contract: `docs/contracts/operator_self_served_tos_contract.md`.
+      _Effort: 1–2 hrs operator authoring + small seeding slice._
 
 ### Provision live-trio vendor sandbox credentials
 
@@ -162,7 +168,7 @@ land._
 3. If the migration applies are still open, follow
    `runbooks/phase_9_production1_migration_apply_runbook.md`
    live-mutation gate.
-4. If T&Cs are still open, ping counsel.
+4. If T&Cs are still open, finalize the operator-authored copy and run the seeding slice (no external legal review required — see `docs/contracts/operator_self_served_tos_contract.md`).
 5. If trio sandbox creds are still open, ping vendor portals.
 6. The four boxes above are the entire operator critical path between
    today and `cutover.0` pre-flight.

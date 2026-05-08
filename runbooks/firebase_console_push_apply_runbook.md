@@ -14,7 +14,8 @@ binding, one APNs auth key upload, and one test push.
 
 - Bring mobile push notifications live on `forge-flow-production1`.
 - Unlock the V1 push proof checkbox (the only remaining engineering-side
-  push gate beyond live-vendor proof and lawyer T&Cs).
+  push gate beyond live-vendor proof and operator-authored T&C
+  seeding into `tos_versions`).
 
 ## What this DOES NOT change
 
