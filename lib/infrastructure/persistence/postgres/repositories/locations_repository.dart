@@ -27,7 +27,9 @@ class LocationsRepository extends OperatorScopedRepository {
     return withSystem<List<LocationAdminRow>>((exec) async {
       final rows = await exec.query(
         'select location_id::text as location_id, '
-        'operator_id::text as operator_id, name, address, timezone, '
+        'operator_id::text as operator_id, '
+        'parent_org_unit_id::text as parent_org_unit_id, '
+        'name, address, timezone, '
         'business_day_rollover_hour, created_at, updated_at '
         'from locations '
         'where operator_id = @operator_id::uuid '
@@ -49,7 +51,9 @@ class LocationsRepository extends OperatorScopedRepository {
     return withSystem<List<LocationAdminRow>>((exec) async {
       final rows = await exec.query(
         'select location_id::text as location_id, '
-        'operator_id::text as operator_id, name, address, timezone, '
+        'operator_id::text as operator_id, '
+        'parent_org_unit_id::text as parent_org_unit_id, '
+        'name, address, timezone, '
         'business_day_rollover_hour, created_at, updated_at '
         'from locations '
         'order by operator_id asc, created_at asc',
@@ -67,6 +71,7 @@ class LocationsRepository extends OperatorScopedRepository {
   /// the operator + primary-location pair lands in one transaction.
   Future<LocationAdminRow> insertLocation({
     required String operatorId,
+    required String parentOrgUnitId,
     required String name,
     required String address,
     required String timezone,
@@ -76,17 +81,20 @@ class LocationsRepository extends OperatorScopedRepository {
     return withSystem<LocationAdminRow>((exec) async {
       final rows = await exec.query(
         'insert into locations ('
-        'operator_id, name, address, timezone, '
+        'operator_id, parent_org_unit_id, name, address, timezone, '
         'business_day_rollover_hour'
         ') values ('
-        '@operator_id::uuid, @name, @address, '
+        '@operator_id::uuid, @parent_org_unit_id::uuid, @name, @address, '
         '@timezone, @business_day_rollover_hour'
         ') '
         'returning location_id::text as location_id, '
-        'operator_id::text as operator_id, name, address, timezone, '
+        'operator_id::text as operator_id, '
+        'parent_org_unit_id::text as parent_org_unit_id, '
+        'name, address, timezone, '
         'business_day_rollover_hour, created_at, updated_at',
         parameters: <String, Object?>{
           'operator_id': operatorId,
+          'parent_org_unit_id': parentOrgUnitId,
           'name': name,
           'address': address,
           'timezone': timezone,
@@ -121,7 +129,9 @@ class LocationsRepository extends OperatorScopedRepository {
         'updated_at = now() '
         'where location_id = @location_id::uuid '
         'returning location_id::text as location_id, '
-        'operator_id::text as operator_id, name, address, timezone, '
+        'operator_id::text as operator_id, '
+        'parent_org_unit_id::text as parent_org_unit_id, '
+        'name, address, timezone, '
         'business_day_rollover_hour, created_at, updated_at',
         parameters: <String, Object?>{
           'location_id': locationId,
@@ -166,6 +176,7 @@ class LocationAdminRow {
   const LocationAdminRow({
     required this.locationId,
     required this.operatorId,
+    required this.parentOrgUnitId,
     required this.name,
     required this.address,
     required this.timezone,
@@ -176,6 +187,7 @@ class LocationAdminRow {
 
   final String locationId;
   final String operatorId;
+  final String parentOrgUnitId;
   final String name;
   final String address;
   final String timezone;
@@ -184,21 +196,23 @@ class LocationAdminRow {
   final DateTime updatedAt;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'location_id': locationId,
-        'operator_id': operatorId,
-        'name': name,
-        'address': address,
-        'timezone': timezone,
-        'business_day_rollover_hour': businessDayRolloverHour,
-        'created_at': createdAt.toUtc().toIso8601String(),
-        'updated_at': updatedAt.toUtc().toIso8601String(),
-      };
+    'location_id': locationId,
+    'operator_id': operatorId,
+    'parent_org_unit_id': parentOrgUnitId,
+    'name': name,
+    'address': address,
+    'timezone': timezone,
+    'business_day_rollover_hour': businessDayRolloverHour,
+    'created_at': createdAt.toUtc().toIso8601String(),
+    'updated_at': updatedAt.toUtc().toIso8601String(),
+  };
 }
 
 LocationAdminRow _locationAdminRowFromMap(PostgresRow row) {
   return LocationAdminRow(
     locationId: row['location_id']! as String,
     operatorId: row['operator_id']! as String,
+    parentOrgUnitId: row['parent_org_unit_id']! as String,
     name: row['name']! as String,
     address: (row['address'] as String?) ?? '',
     timezone: row['timezone']! as String,

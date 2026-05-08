@@ -41,10 +41,14 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     this.onOpenAccess,
     this.onOpenAuditSupport,
     this.onSelectOperatorScope,
+    this.selectedParentOrgUnitId,
+    this.selectedParentOrgUnitLabel,
     this.editingEnabled = true,
   });
 
   final OperatorLocationAdminGateway gateway;
+  final String? selectedParentOrgUnitId;
+  final String? selectedParentOrgUnitLabel;
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
@@ -317,6 +321,8 @@ class _OperatorLocationAdminScreenState
               onOpenTeam: widget.onOpenTeam,
               onOpenAccess: widget.onOpenAccess,
               onOpenAuditSupport: widget.onOpenAuditSupport,
+              selectedParentOrgUnitId: widget.selectedParentOrgUnitId,
+              selectedParentOrgUnitLabel: widget.selectedParentOrgUnitLabel,
               editingEnabled: widget.editingEnabled,
             ),
     );
@@ -374,10 +380,20 @@ class _OperatorLocationAdminScreenState
 
   Future<void> _openAddLocationDialog(OperatorAdminBundle bundle) async {
     if (!widget.editingEnabled) return;
+    final parentOrgUnitId = widget.selectedParentOrgUnitId?.trim();
+    if (parentOrgUnitId == null || parentOrgUnitId.isEmpty) {
+      setState(() {
+        _actionError = 'Select an org unit before adding a location.';
+        _actionEmailConflicts = const <AdminEmailConflictUsage>[];
+      });
+      return;
+    }
     final command = await showDialog<LocationCreateCommand>(
       context: context,
       builder: (_) => _LocationDialog(
         operatorId: bundle.operator.operatorId,
+        parentOrgUnitId: parentOrgUnitId,
+        parentOrgUnitLabel: widget.selectedParentOrgUnitLabel,
         idempotencyKey: _nextIdempotencyKey(),
       ),
     );
@@ -825,6 +841,8 @@ class _OperatorDetail extends StatelessWidget {
     required this.onOpenTeam,
     required this.onOpenAccess,
     required this.onOpenAuditSupport,
+    required this.selectedParentOrgUnitId,
+    this.selectedParentOrgUnitLabel,
     required this.editingEnabled,
   });
 
@@ -844,7 +862,16 @@ class _OperatorDetail extends StatelessWidget {
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenTeam;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAccess;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAuditSupport;
+  final String? selectedParentOrgUnitId;
+  final String? selectedParentOrgUnitLabel;
   final bool editingEnabled;
+
+  bool get _canAddLocation {
+    final parentOrgUnitId = selectedParentOrgUnitId?.trim();
+    return editingEnabled &&
+        parentOrgUnitId != null &&
+        parentOrgUnitId.isNotEmpty;
+  }
 
   AdminOperatorLocationScopeIntent get _primaryScope {
     final primaryLocation = bundle.primaryLocation;
@@ -863,6 +890,7 @@ class _OperatorDetail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final operator = bundle.operator;
+    final canAddLocation = _canAddLocation;
     return SingleChildScrollView(
       key: Key('admin_operator_detail_${operator.operatorId}'),
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1052,14 +1080,35 @@ class _OperatorDetail extends StatelessWidget {
                         ),
                       ),
                       if (editingEnabled)
-                        OutlinedButton.icon(
-                          key: const Key('admin_operator_add_location_button'),
-                          onPressed: () => onAddLocation(bundle),
-                          icon: const Icon(Icons.add, size: 14),
-                          label: const Text('Add location'),
+                        Tooltip(
+                          message: canAddLocation
+                              ? 'Add location'
+                              : 'Select an org unit before adding a location',
+                          child: OutlinedButton.icon(
+                            key: const Key(
+                              'admin_operator_add_location_button',
+                            ),
+                            onPressed: canAddLocation
+                                ? () => onAddLocation(bundle)
+                                : null,
+                            icon: const Icon(Icons.add, size: 14),
+                            label: const Text('Add location'),
+                          ),
                         ),
                     ],
                   ),
+                  if (editingEnabled && !canAddLocation) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'Select an org unit before adding a location.',
+                      key: const Key(
+                        'admin_location_parent_org_unit_required_copy',
+                      ),
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   ...bundle.locations.map(
                     (location) => _LocationRow(
@@ -2407,10 +2456,14 @@ class _LocationDialog extends StatefulWidget {
   const _LocationDialog({
     required this.operatorId,
     required this.idempotencyKey,
+    this.parentOrgUnitId,
+    this.parentOrgUnitLabel,
     this.existing,
   });
 
   final String operatorId;
+  final String? parentOrgUnitId;
+  final String? parentOrgUnitLabel;
   final LocationAdminRecord? existing;
 
   /// Per-action idempotency key minted by the screen.
@@ -2446,6 +2499,7 @@ class _LocationDialogState extends State<_LocationDialog> {
       Navigator.of(context).pop(
         LocationCreateCommand(
           operatorId: widget.operatorId,
+          parentOrgUnitId: widget.parentOrgUnitId?.trim(),
           name: _name.text.trim(),
           timezone: _timezone,
           businessDayRolloverHour: _rolloverHour,
@@ -2485,6 +2539,14 @@ class _LocationDialogState extends State<_LocationDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (!isEdit) ...[
+                _LocationParentOrgUnitField(
+                  label: widget.parentOrgUnitLabel?.trim().isNotEmpty == true
+                      ? widget.parentOrgUnitLabel!.trim()
+                      : widget.parentOrgUnitId ?? 'Selected org unit',
+                ),
+                const SizedBox(height: 12),
+              ],
               _DialogField(
                 fieldKey: const Key('admin_location_name_field'),
                 controller: _name,
@@ -2614,6 +2676,40 @@ class _DialogField extends StatelessWidget {
           borderRadius: BorderRadius.circular(6),
           borderSide: const BorderSide(color: AppColors.sunset, width: 1.6),
         ),
+      ),
+    );
+  }
+}
+
+class _LocationParentOrgUnitField extends StatelessWidget {
+  const _LocationParentOrgUnitField({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(6),
+      borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
+    );
+    return InputDecorator(
+      key: const Key('admin_location_parent_org_unit_field'),
+      decoration: InputDecoration(
+        labelText: 'Parent org unit',
+        labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
+        filled: true,
+        fillColor: AppColors.cardGlow,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
+        border: border,
+        enabledBorder: border,
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.body14(color: AppColors.textPrimary),
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }

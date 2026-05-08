@@ -3331,6 +3331,7 @@ class RepositoryOperatorLocationAdminProxyGateway
   Future<Map<String, Object?>> addLocation({
     required String actorUserId,
     required String operatorId,
+    required String parentOrgUnitId,
     required String name,
     required String address,
     required String timezone,
@@ -3339,6 +3340,7 @@ class RepositoryOperatorLocationAdminProxyGateway
   }) async {
     final created = await _locations.insertLocation(
       operatorId: operatorId,
+      parentOrgUnitId: parentOrgUnitId,
       name: name,
       address: address,
       timezone: timezone,
@@ -3351,7 +3353,10 @@ class RepositoryOperatorLocationAdminProxyGateway
       locationId: created.locationId,
       eventType: 'admin.operator_location.location_added',
       adminReason: adminReason,
-      payload: <String, Object?>{'name': name},
+      payload: <String, Object?>{
+        'name': name,
+        'parent_org_unit_id': parentOrgUnitId,
+      },
     );
     return created.toJson();
   }
