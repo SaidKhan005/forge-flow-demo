@@ -66,10 +66,21 @@ agents:
   audited-support-actions screen captures `_lastErasure` but doesn't
   yet render a countdown chip during the 24h grace window. Small
   follow-up slice.
-- **Restaurant-local IANA-tz business-date resolution** (from N2) —
+- ~~**Restaurant-local IANA-tz business-date resolution** (from N2) —
   PII erasure rows currently use UTC for `business_date`; future
   improvement to use restaurant-local TZ. Column drives partition
-  routing only, so impact is small.
+  routing only, so impact is small.~~ **Closed 2026-05-08** — landed
+  `PiiBusinessDateResolver` callback on `UserPiiErasureService` +
+  `buildPiiBusinessDateResolver` helper that reads
+  `(timezone, business_day_rollover_hour)` from `public.locations`
+  and projects through `IanaTimezoneConverter.toBusinessDate`. Proxy
+  POST `.../erase-pii` no longer truncates UTC inline; the service
+  resolves restaurant-local business_date when a resolver is bound.
+  Falls back to UTC when no resolver / unknown tz so erasure writes
+  never block on tz reads. Coverage:
+  `test/services/auth/pii_business_date_resolver_test.dart`,
+  `test/services/auth/user_pii_erasure_service_test.dart`
+  (`IANA-tz business_date resolver` group).
 - **Theme H#8 first-backfill status null shape** — owned by the Phase
   8 framework finishing push; will close naturally when that lane
   touches the route.

@@ -11034,24 +11034,21 @@ Future<void> routeRequest(
                   route: routeKey,
                   key: idempotencyKey,
                   compute: () async {
-                    // Restaurant-local business date approximation —
-                    // we use UTC here since the proxy does not resolve
-                    // the operator's IANA tz at this layer; the
-                    // business_timing_profiles read happens elsewhere
-                    // when we need the locked posture. The column is
-                    // denormalized for partition routing only.
-                    final nowUtc = clock().toUtc();
-                    final businessDate =
-                        '${nowUtc.year.toString().padLeft(4, '0')}-'
-                        '${nowUtc.month.toString().padLeft(2, '0')}-'
-                        '${nowUtc.day.toString().padLeft(2, '0')}';
+                    // Carry-over follow-up #3 (2026-05-08): the
+                    // service now derives `business_date` from the
+                    // restaurant's IANA tz when a resolver is bound at
+                    // construction (proxy bootstrap injects an
+                    // IanaTimezoneConverter-backed closure). The
+                    // service falls back to UTC truncation when no
+                    // resolver is bound, preserving the legacy
+                    // behaviour for callers that have not been wired
+                    // yet. The column drives partition routing only.
                     final result =
                         await piiService.requestErasure(
                       operatorId: scope.operatorId,
                       locationId: scope.locationId,
                       targetUserId: piiErasurePath.userId,
                       requestedByUserId: scope.userId,
-                      businessDate: businessDate,
                     );
                     if (result == null) {
                       return CachedProxyResponse(
