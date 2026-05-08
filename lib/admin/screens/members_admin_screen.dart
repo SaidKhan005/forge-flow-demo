@@ -728,7 +728,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             AdminPageHeader(
-              title: 'Team',
+              title: 'People, access, and roles',
               subtitle:
                   '${widget.pickedOperator.operatorBusinessName}: members, '
                   'invites, and support actions. Changes require a reason.',

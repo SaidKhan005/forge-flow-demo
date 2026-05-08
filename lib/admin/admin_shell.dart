@@ -65,6 +65,9 @@ class _AdminShellState extends State<AdminShell> {
     orElse: () => widget.routes.first,
   );
 
+  String get _selectedNavRouteId =>
+      _currentRoute.navAnchorRouteId ?? _selectedRouteId;
+
   void _selectIntent(AdminRouteIntent intent) {
     final nextRouteId = _routeIdOrFallback(intent.routeId);
     final explicitHierarchyScope = intent.effectiveHierarchyScope;
@@ -140,7 +143,7 @@ class _AdminShellState extends State<AdminShell> {
                           children: [
                             _AdminCompactNav(
                               routes: widget.routes,
-                              selectedRouteId: _selectedRouteId,
+                              selectedRouteId: _selectedNavRouteId,
                               onSelect: _select,
                             ),
                             Expanded(child: _buildRouteBody()),
@@ -151,7 +154,7 @@ class _AdminShellState extends State<AdminShell> {
                           children: [
                             _AdminSideNav(
                               routes: widget.routes,
-                              selectedRouteId: _selectedRouteId,
+                              selectedRouteId: _selectedNavRouteId,
                               onSelect: _select,
                             ),
                             Expanded(child: _buildRouteBody()),
@@ -197,7 +200,9 @@ class _AdminCompactNav extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         child: Row(
           children: [
-            for (final route in routes) ...[
+            for (final route in routes.where(
+              (route) => route.visibleInNav,
+            )) ...[
               _CompactNavItem(
                 key: Key('admin_nav_item_${route.id}'),
                 route: route,
@@ -562,7 +567,9 @@ class _AdminSideNav extends StatelessWidget {
 
   List<Widget> _buildSection(BuildContext context, _NavSectionMeta section) {
     final sectionRoutes = routes
-        .where((route) => route.section == section.section)
+        .where(
+          (route) => route.section == section.section && route.visibleInNav,
+        )
         .toList(growable: false);
     if (sectionRoutes.isEmpty) return const <Widget>[];
     return <Widget>[

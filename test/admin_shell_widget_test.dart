@@ -1,7 +1,7 @@
 // Phase 11A.0 — Admin shell widget tests.
 //
 // Verifies the brand-styled shell renders, the side nav surfaces
-// every route from `kAdminRoutes`, the default route opens the live
+// primary routes from `kAdminRoutes`, the default route opens the live
 // operator surface, and the header sign-out
 // affordance routes through the auth source.
 
@@ -48,7 +48,9 @@ void main() {
     expect(find.text('Admin Console'), findsOneWidget);
   });
 
-  testWidgets('side nav lists every route in kAdminRoutes', (tester) async {
+  testWidgets('side nav lists primary routes and hides setup-only routes', (
+    tester,
+  ) async {
     final source = DemoAdminAuthSource.signedInAsSuperAdmin();
     addTearDown(source.dispose);
 
@@ -132,22 +134,30 @@ void main() {
     expect(
       kAdminRoutes
           .where((route) => route.section == AdminRouteSection.operations)
+          .where((route) => route.visibleInNav)
           .map((route) => route.id),
-      <String>[
-        kAdminOperatorsRouteId,
-        kAdminDataAccuracyRouteId,
-        kAdminPollingPricingRouteId,
-        kAdminMembersRouteId,
-        kAdminRolesHierarchySessionsRouteId,
-        kAdminAuditedSupportActionsRouteId,
-      ],
+      <String>[kAdminOperatorsRouteId],
     );
 
-    for (final route in kAdminRoutes) {
+    final hiddenSetupRoutes = <String>{
+      kAdminDataAccuracyRouteId,
+      kAdminPollingPricingRouteId,
+      kAdminMembersRouteId,
+      kAdminRolesHierarchySessionsRouteId,
+      kAdminAuditedSupportActionsRouteId,
+    };
+    for (final route in kAdminRoutes.where((route) => route.visibleInNav)) {
       expect(
         find.byKey(Key('admin_nav_item_${route.id}')),
         findsOneWidget,
-        reason: 'side nav must surface ${route.id}',
+        reason: 'side nav must surface primary route ${route.id}',
+      );
+    }
+    for (final routeId in hiddenSetupRoutes) {
+      expect(
+        find.byKey(Key('admin_nav_item_$routeId')),
+        findsNothing,
+        reason: '$routeId is reached through Business setup, not side nav',
       );
     }
   });
@@ -440,7 +450,7 @@ void main() {
   });
 
   testWidgets(
-    'Operations routes reuse selected operator context across Team, Access, and Audit',
+    'Setup tiles open hidden Operations routes without old side-nav entries',
     (tester) async {
       tester.view.physicalSize = const Size(1440, 1100);
       tester.view.devicePixelRatio = 1;
@@ -457,24 +467,31 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_nav_item_members')),
+      expect(find.byKey(const Key('admin_nav_item_members')), findsNothing);
+      expect(
+        find.byKey(const Key('admin_nav_item_roles-hierarchy-sessions')),
+        findsNothing,
       );
-      await tester.tap(find.byKey(const Key('admin_nav_item_members')));
+      expect(
+        find.byKey(const Key('admin_nav_item_audited-support-actions')),
+        findsNothing,
+      );
+
+      final peopleTile = find.byKey(
+        const Key('admin_business_setup_tile_people_access_roles'),
+      );
+      await tester.ensureVisible(peopleTile);
+      await tester.tap(peopleTile);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('admin_members_screen')), findsOneWidget);
+      expect(find.text('People, access, and roles'), findsWidgets);
       expect(
         find.byKey(const Key('admin_operator_picker_screen')),
         findsNothing,
       );
 
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_nav_item_roles-hierarchy-sessions')),
-      );
-      await tester.tap(
-        find.byKey(const Key('admin_nav_item_roles-hierarchy-sessions')),
-      );
+      await tester.tap(find.byKey(const Key('admin_members_open_access')));
       await tester.pumpAndSettle();
 
       expect(
@@ -486,12 +503,14 @@ void main() {
         findsNothing,
       );
 
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_nav_item_audited-support-actions')),
+      await tester.tap(find.byKey(const Key('admin_nav_item_operators')));
+      await tester.pumpAndSettle();
+
+      final securityTile = find.byKey(
+        const Key('admin_business_setup_tile_security_audit_sessions'),
       );
-      await tester.tap(
-        find.byKey(const Key('admin_nav_item_audited-support-actions')),
-      );
+      await tester.ensureVisible(securityTile);
+      await tester.tap(securityTile);
       await tester.pumpAndSettle();
 
       expect(
@@ -578,6 +597,12 @@ void main() {
     await tester.ensureVisible(peopleTile);
     await tester.pumpAndSettle();
     await tester.tap(peopleTile);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_members_screen')), findsOneWidget);
+    expect(find.text('People, access, and roles'), findsWidgets);
+    expect(find.byKey(const Key('admin_members_open_access')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('admin_members_open_access')));
     await tester.pumpAndSettle();
 
     expect(
