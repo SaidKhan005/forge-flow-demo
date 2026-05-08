@@ -14,6 +14,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../auth/auth_session.dart';
+import '../auth/fresh_mfa_resolver.dart';
 import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
 import 'admin_route_handoff.dart';
@@ -54,6 +56,51 @@ import 'services/operator_location_admin_gateway.dart';
 import 'services/pricing_tier_admin_gateway.dart';
 import 'services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../domain/models/forge_flow_polling_tier_assignment.dart';
+
+/// CODE_OPS_DEBT Theme A item 1 — overridable MFA-freshness resolver
+/// for the four MFA-pinned admin actions. Tests inject a
+/// [FakeFreshMfaResolver]; production binds [JwtFreshMfaResolver]
+/// once at app boot. Lazy default keeps the boot cost off the
+/// critical path (the resolver reads `Platform.environment` once
+/// for the optional `MFA_FRESHNESS_WINDOW_SECONDS` override).
+FreshMfaResolver? _freshMfaResolverOverride;
+
+/// Bind a custom resolver. Pass `null` to revert to the default
+/// [JwtFreshMfaResolver].
+@visibleForTesting
+void debugSetFreshMfaResolver(FreshMfaResolver? resolver) {
+  _freshMfaResolverOverride = resolver;
+}
+
+FreshMfaResolver get _freshMfaResolver =>
+    _freshMfaResolverOverride ??= JwtFreshMfaResolver();
+
+/// Resolves whether [session]'s MFA stamp is fresh enough to expose
+/// MFA-pinned admin affordances. Returns false when the admin
+/// session is null OR when the credential was sourced from a code
+/// path that does not carry `lastFreshAuthAt` (legacy demo fixtures
+/// → fail closed, never expose the affordance).
+bool _isAdminMfaFresh(AdminAuthSession? session) {
+  if (session == null) return false;
+  final stamp = session.lastFreshAuthAt;
+  if (stamp == null) return false;
+  // Re-use the operator-app AuthSession freshness logic by wrapping
+  // the admin session into the same shape. Only `lastFreshAuthAt`
+  // matters for this resolver; other fields are placeholders that
+  // the resolver does not read.
+  final wrapped = AuthSession(
+    userId: session.uid,
+    operatorId: '',
+    locationId: '',
+    firebaseIdToken: '',
+    issuedAt: stamp,
+    expiresAt: stamp.add(const Duration(hours: 1)),
+    lastFreshAuthAt: stamp,
+    roles: session.roles,
+    mfaEnrolled: true,
+  );
+  return _freshMfaResolver.isFresh(wrapped);
+}
 
 /// One entry in the admin route catalog.
 @immutable
@@ -494,12 +541,16 @@ Widget _buildSupportOperatorView(BuildContext context) {
         supportGateway: supportGateway,
         actorUserId: session?.uid ?? 'unknown',
         editingEnabled: canEdit,
-        // These remain false until AdminAuthSession carries the
-        // MFA-fresh permission claims required by the parity contract.
-        canEditSeededRoles: false,
-        canResetMfaFactors: false,
-        canIssuePairedErasure: false,
-        canExportAuditLog: false,
+        // CODE_OPS_DEBT Theme A item 1 — resolved off the JWT
+        // `auth_time` claim (carried via
+        // [AdminAuthSession.lastFreshAuthAt]) through the shared
+        // [FreshMfaResolver] (1-hour window, env-overridable). The
+        // proxy is authoritative on the per-call check; the UI just
+        // hides affordances when the resolver says stale.
+        canEditSeededRoles: _isAdminMfaFresh(session),
+        canResetMfaFactors: _isAdminMfaFresh(session),
+        canIssuePairedErasure: _isAdminMfaFresh(session),
+        canExportAuditLog: _isAdminMfaFresh(session),
         adminUid: session?.uid,
         initialPicked: initialPicked,
         openPicker: openPicker,
@@ -1146,16 +1197,17 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
       final canEdit = session != null && session.roles.contains('super_admin');
+      // CODE_OPS_DEBT Theme A item 1 — un-pin from `const false`.
       // `admin.roles.edit_seeded` is MFA-required per the parity
-      // contract § "Seeded roles" line 104. The MFA-asserted claim
-      // is not plumbed through `AdminAuthSession` yet (no
-      // `permissions` / `auth_time_fresh` field on the session
-      // record). Default to false so we never expose the seeded-edit
-      // affordance without a verified MFA claim — production lights
-      // this up by passing `canEditSeededRoles: true` from a future
-      // session-claim resolver. The proxy stays authoritative
-      // regardless and rejects the call without an MFA-fresh token.
-      const canEditSeeded = false;
+      // contract § "Seeded roles" line 104. We now resolve the
+      // affordance off the JWT `auth_time` claim (carried through
+      // [AdminAuthSession.lastFreshAuthAt] from
+      // [FirebaseAdminAuthSource]) via the shared
+      // [FreshMfaResolver] (1-hour window, env-overridable via
+      // `MFA_FRESHNESS_WINDOW_SECONDS`). Stale → affordance hidden;
+      // the proxy stays authoritative and double-rejects on a stale
+      // claim regardless.
+      final canEditSeeded = _isAdminMfaFresh(session);
       return _RolesHierarchySessionsRouteShell(
         gateway: gateway,
         actorUserId: session?.uid ?? 'unknown',
@@ -1350,16 +1402,18 @@ Widget _buildAuditedSupportActions(BuildContext context) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
       final canEdit = session != null && session.roles.contains('super_admin');
-      // The MFA-asserted claim is not plumbed through `AdminAuthSession`
-      // yet (no `permissions` / `auth_time_fresh` field on the session
-      // record). Default to false so the screen never exposes the
-      // MFA-required affordances without a verified claim — production
-      // lights this up by passing the relevant flags from a future
-      // session-claim resolver. The proxy stays authoritative
-      // regardless and rejects the call without an MFA-fresh token.
-      const canResetMfa = false;
-      const canIssuePairedErasure = false;
-      const canExportAuditLog = false;
+      // CODE_OPS_DEBT Theme A item 1 — un-pin from `const false`.
+      // The three MFA-required audited-support actions
+      // (`admin.users.reset_mfa_factors`,
+      // `admin.users.issue_paired_erasure`,
+      // `admin.audit.export`) all gate on the same fresh-MFA window.
+      // Resolve via the shared [FreshMfaResolver] (1-hour default,
+      // env-overridable). The proxy double-rejects on stale claims
+      // regardless of what the UI exposes.
+      final fresh = _isAdminMfaFresh(session);
+      final canResetMfa = fresh;
+      final canIssuePairedErasure = fresh;
+      final canExportAuditLog = fresh;
       return _AuditedSupportActionsRouteShell(
         gateway: gateway,
         actorUserId: session?.uid ?? 'unknown',
