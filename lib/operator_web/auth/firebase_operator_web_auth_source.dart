@@ -10,6 +10,8 @@ import '../../services/auth/account_info_gateway.dart';
 import '../../services/auth/firebase_auth_client.dart';
 import '../account/operator_web_account_actions.dart';
 import '../services/operator_web_notification_preferences_gateway_provider.dart';
+import '../services/business_timing_gateway.dart';
+import '../services/http_business_timing_read_gateway.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/operator_web_team_gateway_providers.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
@@ -30,6 +32,7 @@ class FirebaseOperatorWebAuthSource
         OperatorWebVendorConnectionsGatewayProvider,
         OperatorWebVendorLifecycleRecentlyAvailableGatewayProvider,
         OperatorWebAccountGatewayProvider,
+        OperatorWebBusinessTimingGatewayProvider,
         OperatorWebBusinessTimingWriteGatewayProvider,
         OperatorWebDataAccuracyGatewayProvider,
         OperatorWebTeamUsersGatewayProvider,
@@ -42,20 +45,38 @@ class FirebaseOperatorWebAuthSource
         OperatorWebWageAuthorityGatewayProvider,
         OperatorWebScheduleGatewayProvider,
         MfaFreshnessRedirectListener {
-  FirebaseOperatorWebAuthSource({
+  factory FirebaseOperatorWebAuthSource({
     required FirebaseAuthClient authClient,
     required OperatorWebProxyClient proxyClient,
+  }) {
+    final businessTimingWriteGateway = HttpWebBusinessTimingGateway(
+      client: proxyClient,
+      idTokenProvider: authClient.currentIdToken,
+    );
+    final businessTimingReadGateway = HttpBusinessTimingReadGateway(
+      gateway: businessTimingWriteGateway,
+    );
+    return FirebaseOperatorWebAuthSource._(
+      authClient: authClient,
+      proxyClient: proxyClient,
+      businessTimingReadGateway: businessTimingReadGateway,
+      businessTimingWriteGateway: businessTimingWriteGateway,
+    );
+  }
+
+  FirebaseOperatorWebAuthSource._({
+    required FirebaseAuthClient authClient,
+    required OperatorWebProxyClient proxyClient,
+    required HttpBusinessTimingReadGateway businessTimingReadGateway,
+    required this.businessTimingWriteGateway,
   }) : _authClient = authClient,
        _proxyClient = proxyClient,
+       _businessTimingReadGateway = businessTimingReadGateway,
        vendorConnectionsGateway = OperatorWebHttpVendorConnectionsGateway(
          proxyClient: proxyClient,
          idTokenProvider: authClient.currentIdToken,
        ),
        accountGateway = HttpWebAccountGateway(
-         client: proxyClient,
-         idTokenProvider: authClient.currentIdToken,
-       ),
-       businessTimingWriteGateway = HttpWebBusinessTimingGateway(
          client: proxyClient,
          idTokenProvider: authClient.currentIdToken,
        ),
@@ -122,6 +143,7 @@ class FirebaseOperatorWebAuthSource
 
   final FirebaseAuthClient _authClient;
   final OperatorWebProxyClient _proxyClient;
+  final HttpBusinessTimingReadGateway _businessTimingReadGateway;
   final StreamController<OperatorWebAuthState> _controller =
       StreamController<OperatorWebAuthState>.broadcast();
   OperatorWebAuthState _state = const OperatorWebLoading();
@@ -132,6 +154,18 @@ class FirebaseOperatorWebAuthSource
 
   @override
   final WebAccountGateway accountGateway;
+
+  /// Live read gateway for the Business setup screen. Wraps
+  /// [businessTimingWriteGateway] so the read view and the editor see
+  /// the same proxy responses without a duplicate round trip.
+  @override
+  BusinessTimingGateway get businessTimingGateway => _businessTimingReadGateway;
+
+  /// Most recently observed timing profiles, exposed so the router can
+  /// hand the resolved profile to [BusinessTimingEditorScreen] in edit
+  /// mode rather than defaulting to "new profile".
+  HttpBusinessTimingReadGateway get businessTimingReadAdapter =>
+      _businessTimingReadGateway;
 
   @override
   final WebBusinessTimingGateway businessTimingWriteGateway;

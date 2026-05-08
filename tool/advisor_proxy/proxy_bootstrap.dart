@@ -221,6 +221,7 @@ class ProxyProductionBindings {
     required this.mfaTotpRetryCounter,
     required this.passwordResetThrottleCounter,
     required this.operatorWriteRouter,
+    required this.adminBusinessTimingRouter,
     required this.auditChainAnchorsGateway,
     required this.connectorBackfillJobsRouter,
     required this.vendorLifecycleRecentlyAvailableRouter,
@@ -371,6 +372,12 @@ class ProxyProductionBindings {
   /// [RepositoryOperatorBusinessTimingWriteGateway] +
   /// [ProductionOperatorWriteAuditSink].
   final OperatorWriteRouter operatorWriteRouter;
+
+  /// Doc 1 timing web/admin live parity (2026-05-08) - admin-side
+  /// override router for business-timing profiles. Caller must hold a
+  /// super_admin or ff_support role; writes require an `admin_reason`
+  /// in the body (audited).
+  final AdminBusinessTimingRouter adminBusinessTimingRouter;
 
   /// Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
   /// Backed by [PostgresAuditChainAnchorsGateway]; the route
@@ -665,27 +672,44 @@ ProxyProductionBindings buildProxyProductionBindings(
   // through tenant-pool repositories so RLS + per-operator isolation
   // hold; the audit sink fans out to the hash-chained audit_logs
   // table inside the same tenant pool.
+  // Doc 1 timing web/admin live parity (2026-05-08) - shared timing
+  // gateway + audit sink between the operator and admin routers so a
+  // single repository row + single audit chain entry covers both
+  // surfaces. The mutation listener fans out to the realtime/sync
+  // outbox so a write is observable to subscribed devices without
+  // waiting for the next mobile poll.
+  final operatorBusinessTimingWriteGateway =
+      RepositoryOperatorBusinessTimingWriteGateway(
+    repository: BusinessTimingProfilesRepository(tenantWrapper),
+  );
+  final operatorBusinessTimingAuditSink = ProductionOperatorWriteAuditSink(
+    tenantWrapper: tenantWrapper,
+    onError: (error, stackTrace) {
+      log(
+        LogSeverity.error,
+        'proxy.operator_write_audit_failed',
+        fields: <String, Object?>{
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
+          'stack_first_frame': firstStackFrame(stackTrace),
+        },
+      );
+    },
+  );
+  final timingMutationListener =
+      _LoggingBusinessTimingMutationListener();
   final operatorWriteRouter = OperatorWriteRouter(
     accountGateway: RepositoryOperatorAccountWriteGateway(
       repository: OperatorAccountRepository(tenantWrapper),
     ),
-    businessTimingGateway: RepositoryOperatorBusinessTimingWriteGateway(
-      repository: BusinessTimingProfilesRepository(tenantWrapper),
-    ),
-    auditSink: ProductionOperatorWriteAuditSink(
-      tenantWrapper: tenantWrapper,
-      onError: (error, stackTrace) {
-        log(
-          LogSeverity.error,
-          'proxy.operator_write_audit_failed',
-          fields: <String, Object?>{
-            'error_type': error.runtimeType.toString(),
-            'error_message': error.toString(),
-            'stack_first_frame': firstStackFrame(stackTrace),
-          },
-        );
-      },
-    ),
+    businessTimingGateway: operatorBusinessTimingWriteGateway,
+    auditSink: operatorBusinessTimingAuditSink,
+    mutationListener: timingMutationListener,
+  );
+  final adminBusinessTimingRouter = AdminBusinessTimingRouter(
+    businessTimingGateway: operatorBusinessTimingWriteGateway,
+    auditSink: operatorBusinessTimingAuditSink,
+    mutationListener: timingMutationListener,
   );
   // Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
   // Reuses the existing [ConnectorBackfillJobRepository] so the read
@@ -1070,6 +1094,7 @@ ProxyProductionBindings buildProxyProductionBindings(
       usersRepository: UsersRepository(adminWrapper),
     ),
     operatorWriteRouter: operatorWriteRouter,
+    adminBusinessTimingRouter: adminBusinessTimingRouter,
     // Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
     // Runs through the tenant transaction wrapper so the per-tenant
     // RLS policy `audit_chain_anchors_per_tenant_select` clamps the
@@ -7999,6 +8024,46 @@ class PostgresAuditChainAnchorsGateway implements AuditChainAnchorsGateway {
             : null,
       );
     });
+  }
+}
+
+/// Doc 1 timing web/admin live parity (2026-05-08) - default mutation
+/// listener wired into both [OperatorWriteRouter] and
+/// [AdminBusinessTimingRouter]. The listener emits a structured log
+/// entry on every successful timing write so the existing realtime
+/// bridge / mobile sync outbox observers (which already follow the
+/// `proxy.timing.invalidate` event in production) can fan out a
+/// `business_timing_invalidated` notification without each handler
+/// re-discovering the boundary. Tests can swap this for a recording
+/// listener; production keeps the log-only fanout until the dedicated
+/// outbox writer lands in a follow-up.
+class _LoggingBusinessTimingMutationListener
+    implements OperatorBusinessTimingMutationListener {
+  @override
+  Future<void> onTimingProfileMutated({
+    required String operatorId,
+    required String profileId,
+    required String scopeKind,
+    required String scopeId,
+    required String eventKind,
+    required String actorUserId,
+    required String actorKind,
+    required DateTime occurredAt,
+  }) async {
+    log(
+      LogSeverity.info,
+      'proxy.timing.invalidate',
+      fields: <String, Object?>{
+        'operator_id': operatorId,
+        'profile_id': profileId,
+        'scope_kind': scopeKind,
+        'scope_id': scopeId,
+        'event_kind': eventKind,
+        'actor_user_id': actorUserId,
+        'actor_kind': actorKind,
+        'occurred_at': occurredAt.toUtc().toIso8601String(),
+      },
+    );
   }
 }
 

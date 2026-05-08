@@ -85,6 +85,7 @@ import 'business_scope_routes.dart';
 import 'connector_backfill_jobs_routes.dart';
 import 'mobile_push_notifications.dart';
 import 'notification_preferences_routes.dart';
+import 'admin_business_timing_routes.dart';
 import 'operator_routes.dart';
 import 'wage_role_rows_routes.dart';
 import 'proxy_idempotency_cache.dart';
@@ -109,6 +110,7 @@ export 'proxy_idempotency_cache.dart' show ProxyAuthIdempotencyCache;
 export 'operator_routes.dart'
     show
         OperatorWriteRouter,
+        OperatorBusinessTimingMutationListener,
         OperatorAccountWriteGateway,
         OperatorBusinessTimingWriteGateway,
         OperatorWriteAuditSink,
@@ -123,6 +125,11 @@ export 'operator_routes.dart'
         operatorBusinessTimingProfilePrefix,
         hashOperatorRequestBody,
         readOperatorJsonBody;
+export 'admin_business_timing_routes.dart'
+    show
+        AdminBusinessTimingRouter,
+        adminBusinessTimingProfilesPathPrefix,
+        kAdminBusinessTimingRoles;
 export 'notification_preferences_routes.dart'
     show
         NotificationPreferencesRouter,
@@ -8255,6 +8262,7 @@ Future<void> routeRequest(
   // so existing tests do not need to plumb the router through every
   // call site.
   OperatorWriteRouter? operatorWriteRouter,
+  AdminBusinessTimingRouter? adminBusinessTimingRouter,
   // Wave W2.D - operator-scoped read of connector_backfill_jobs.
   // Optional: when null the read route returns 503 so existing tests
   // do not need to plumb the router through every call site.
@@ -13730,6 +13738,103 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'operator_write_unavailable',
               'message': 'operator write is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Doc 1 timing web/admin live parity (2026-05-08) - admin-side
+        // override routes for business-timing profiles. Caller must
+        // hold a super_admin or ff_support role; operator id is taken
+        // from the URL, and writes require `admin_reason` in the body.
+        if (AdminBusinessTimingRouter.matches(path, request.method)) {
+          if (adminBusinessTimingRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'admin_business_timing_router_not_configured',
+              'message':
+                  'route requires an AdminBusinessTimingRouter to be installed',
+            });
+            return;
+          }
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (actor == null) return;
+          if (!actor.roles.any(kAdminBusinessTimingRoles.contains)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'admin business-timing override requires super_admin or '
+                  'ff_support role',
+              'required_roles': kAdminBusinessTimingRoles.toList(),
+            });
+            return;
+          }
+          final isReadOnly = AdminBusinessTimingRouter.isReadOnly(
+            path,
+            request.method,
+          );
+          String adminIdempotencyKey;
+          Map<String, Object?> requestBody;
+          if (isReadOnly) {
+            adminIdempotencyKey = '';
+            requestBody = const <String, Object?>{};
+          } else {
+            final headerKey = request.headers
+                .value('Idempotency-Key')
+                ?.trim();
+            if (headerKey == null || headerKey.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_missing',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+            if (headerKey.length > 200) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_too_long',
+                'message':
+                    'Idempotency-Key header must be 200 characters or fewer',
+              });
+              return;
+            }
+            final bodyResult = await readOperatorJsonBody(request);
+            if (bodyResult.errorStatus != null) {
+              _writeJson(
+                response,
+                bodyResult.errorStatus!,
+                bodyResult.errorBody!,
+              );
+              return;
+            }
+            adminIdempotencyKey = headerKey;
+            requestBody = bodyResult.body!;
+          }
+          try {
+            final result = await adminBusinessTimingRouter.handle(
+              method: request.method,
+              path: path,
+              actorUserId: actor.userId,
+              actorKind: actor.actorKind,
+              idempotencyKey: adminIdempotencyKey,
+              body: requestBody,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'admin_business_timing_router',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'admin_business_timing_unavailable',
+              'message':
+                  'admin business-timing override is unavailable; please retry',
             });
           }
           return;
