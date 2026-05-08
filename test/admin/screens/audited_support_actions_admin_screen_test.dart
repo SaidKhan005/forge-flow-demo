@@ -671,6 +671,229 @@ void main() {
     });
   });
 
+  group('CODE_OPS_DEBT carry-over #2 grace-window chip', () {
+    testWidgets(
+      'reversible state shows countdown label and Reverse button',
+      (tester) async {
+        wideViewport(tester);
+        final fixedNow = DateTime.utc(2026, 5, 8, 12, 0);
+        final gateway = InMemoryAuditedSupportActionsAdminGateway(
+          auditLogByOperator: kDemoAuditLogByOperator(at: fixedNow),
+          membersByOperator: kDemoSupportActionsMembersByOperator(),
+          clock: () => fixedNow,
+        );
+        // Screen-side clock matches the gateway's "now" so the chip
+        // mounts inside the 24h grace window.
+        final viewNow = fixedNow;
+
+        await tester.pumpWidget(
+          wrap(
+            AuditedSupportActionsAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+              pickedOperator: demoPick(),
+              canIssuePairedErasure: true,
+              graceWindowClock: () => viewNow,
+              // Use a far-future tick interval so `pumpAndSettle`
+              // does not chase the periodic timer; the chip's
+              // initial build is what we are asserting against.
+              graceWindowTickInterval: const Duration(days: 30),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Chip is hidden before any erasure runs.
+        expect(
+          find.byKey(const Key('admin_asa_grace_window_chip')),
+          findsNothing,
+        );
+
+        // Drive an erasure through the action panel.
+        await tester.ensureVisible(
+          find.byKey(const Key('admin_asa_action_erasure_btn')),
+        );
+        await tester.tap(find.byKey(const Key('admin_asa_action_erasure_btn')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('admin_asa_member_picker_submit')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('admin_asa_reason_field')),
+          'walkthrough verification',
+        );
+        await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
+        await tester.pumpAndSettle();
+
+        // Chip is mounted, label shows the countdown, and the
+        // Reverse button is enabled while inside the window.
+        expect(
+          find.byKey(const Key('admin_asa_grace_window_chip')),
+          findsOneWidget,
+        );
+        final label = tester.widget<Text>(
+          find.byKey(const Key('admin_asa_grace_window_chip_label')),
+        );
+        expect(label.data, contains('Erasure reversible'));
+        expect(label.data, contains('remaining'));
+        expect(
+          find.byKey(const Key('admin_asa_grace_window_chip_reverse')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'expired state hides Reverse button and shows "Erasure final"',
+      (tester) async {
+        wideViewport(tester);
+        final fixedNow = DateTime.utc(2026, 5, 8, 12, 0);
+        // Gateway computes `gracePeriodEndsAt = fixedNow + 24h`; the
+        // screen-side clock starts 30h in the future so the chip is
+        // mounted past the boundary on its very first build. This
+        // avoids racing the periodic ticker (which would force
+        // `pumpAndSettle` to chase a moving fake clock).
+        final gateway = InMemoryAuditedSupportActionsAdminGateway(
+          auditLogByOperator: kDemoAuditLogByOperator(at: fixedNow),
+          membersByOperator: kDemoSupportActionsMembersByOperator(),
+          clock: () => fixedNow,
+        );
+        final viewNow = fixedNow.add(const Duration(hours: 30));
+
+        await tester.pumpWidget(
+          wrap(
+            AuditedSupportActionsAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+              pickedOperator: demoPick(),
+              canIssuePairedErasure: true,
+              graceWindowClock: () => viewNow,
+              graceWindowTickInterval: const Duration(days: 30),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(
+          find.byKey(const Key('admin_asa_action_erasure_btn')),
+        );
+        await tester.tap(find.byKey(const Key('admin_asa_action_erasure_btn')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('admin_asa_member_picker_submit')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('admin_asa_reason_field')),
+          'walkthrough verification',
+        );
+        await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
+        await tester.pumpAndSettle();
+
+        // Chip mounted past the 24h boundary - shows "Erasure final"
+        // and offers no reverse affordance.
+        final label = tester.widget<Text>(
+          find.byKey(const Key('admin_asa_grace_window_chip_label')),
+        );
+        expect(label.data, equals('Erasure final'));
+        expect(
+          find.byKey(const Key('admin_asa_grace_window_chip_reverse')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'tapping Reverse erasure calls reversePiiErasure on the gateway',
+      (tester) async {
+        wideViewport(tester);
+        final fixedNow = DateTime.utc(2026, 5, 8, 12, 0);
+        final gateway = _RecordingErasureGateway(
+          auditLogByOperator: kDemoAuditLogByOperator(at: fixedNow),
+          membersByOperator: kDemoSupportActionsMembersByOperator(),
+          clock: () => fixedNow,
+        );
+        await tester.pumpWidget(
+          wrap(
+            AuditedSupportActionsAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+              pickedOperator: demoPick(),
+              canIssuePairedErasure: true,
+              graceWindowClock: () => fixedNow,
+              // Use a far-future tick interval so `pumpAndSettle`
+              // does not chase the periodic timer; the chip's
+              // initial build is what we are asserting against.
+              graceWindowTickInterval: const Duration(days: 30),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(
+          find.byKey(const Key('admin_asa_action_erasure_btn')),
+        );
+        await tester.tap(find.byKey(const Key('admin_asa_action_erasure_btn')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('admin_asa_member_picker_submit')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('admin_asa_reason_field')),
+          'walkthrough verification',
+        );
+        await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
+        await tester.pumpAndSettle();
+
+        expect(gateway.reverseCallCount, equals(0));
+        await tester.ensureVisible(
+          find.byKey(const Key('admin_asa_grace_window_chip_reverse')),
+        );
+        await tester.tap(
+          find.byKey(const Key('admin_asa_grace_window_chip_reverse')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(gateway.reverseCallCount, equals(1));
+        // Chip clears once the reverse outcome lands.
+        expect(
+          find.byKey(const Key('admin_asa_grace_window_chip')),
+          findsNothing,
+        );
+      },
+    );
+
+    test(
+      'formatGraceWindowRemaining truncates to compact two-unit form',
+      () {
+        final base = DateTime.utc(2026, 5, 8, 12);
+        expect(
+          formatGraceWindowRemaining(
+            now: base,
+            endsAt: base.add(const Duration(hours: 14, minutes: 23)),
+          ),
+          equals('14h 23m'),
+        );
+        expect(
+          formatGraceWindowRemaining(
+            now: base,
+            endsAt: base.add(const Duration(minutes: 45, seconds: 12)),
+          ),
+          equals('45m 12s'),
+        );
+        expect(
+          formatGraceWindowRemaining(
+            now: base,
+            endsAt: base.subtract(const Duration(minutes: 1)),
+          ),
+          equals('0m'),
+        );
+      },
+    );
+  });
+
   group('zero em dashes in operator-facing literals', () {
     testWidgets('rendered text never contains an em dash', (tester) async {
       wideViewport(tester);
@@ -695,4 +918,40 @@ void main() {
       }
     });
   });
+}
+
+/// Test-only gateway: extends the in-memory demo gateway just to count
+/// `reversePiiErasure` invocations so the chip-test can assert that
+/// tapping the "Reverse erasure" affordance actually fires the
+/// existing reversal seam.
+class _RecordingErasureGateway extends InMemoryAuditedSupportActionsAdminGateway {
+  _RecordingErasureGateway({
+    super.auditLogByOperator,
+    super.membersByOperator,
+    super.clock,
+  });
+
+  int reverseCallCount = 0;
+
+  @override
+  Future<UserPiiErasureReverseSummary> reversePiiErasure({
+    required String operatorId,
+    required String targetUserId,
+    required String erasureId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reversalReason,
+  }) {
+    reverseCallCount += 1;
+    return super.reversePiiErasure(
+      operatorId: operatorId,
+      targetUserId: targetUserId,
+      erasureId: erasureId,
+      idempotencyKey: idempotencyKey,
+      actorUserId: actorUserId,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      reversalReason: reversalReason,
+    );
+  }
 }

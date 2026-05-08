@@ -36,6 +36,9 @@
 //     `admin.users.reset_mfa_factors` row mirrored in lockstep with
 //     this slice.
 
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -57,6 +60,8 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
     this.canExportAuditLog = false,
     this.idempotencyKeyFactory,
     this.onChangeOperator,
+    this.graceWindowClock,
+    this.graceWindowTickInterval = const Duration(minutes: 1),
   });
 
   final AuditedSupportActionsAdminGateway gateway;
@@ -90,6 +95,21 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
   /// admin can switch operators without leaving the surface.
   final VoidCallback? onChangeOperator;
 
+  /// CODE_OPS_DEBT carry-over #2 — the grace-window countdown chip
+  /// reads "now" from this clock so widget tests can pin the
+  /// countdown to a deterministic value without relying on
+  /// `DateTime.now()`. Production leaves this null and falls back to
+  /// `DateTime.now()`.
+  @visibleForTesting
+  final DateTime Function()? graceWindowClock;
+
+  /// CODE_OPS_DEBT carry-over #2 — period of the chip's tick timer.
+  /// Default 1 minute is plenty (the grace window is 24h). Widget
+  /// tests override this to a sub-second tick so the timer can drive
+  /// expiry without `tester.pump`-ing for hours.
+  @visibleForTesting
+  final Duration graceWindowTickInterval;
+
   @override
   State<AuditedSupportActionsAdminScreen> createState() =>
       _AuditedSupportActionsAdminScreenState();
@@ -120,6 +140,13 @@ class _AuditedSupportActionsAdminScreenState
   UserPiiErasureRequestSummary? _lastErasure;
   String? _lastErasureMember;
 
+  /// CODE_OPS_DEBT carry-over #2 — periodic timer that drives the
+  /// grace-window chip's countdown. Started when `_lastErasure`
+  /// becomes non-null and stopped when the chip transitions to its
+  /// final state. Cancelled in [dispose] so a long-lived screen does
+  /// not leak timers.
+  Timer? _graceWindowTicker;
+
   String _nextIdempotencyKey(String operation) {
     final factory = widget.idempotencyKeyFactory;
     if (factory != null) return factory();
@@ -132,6 +159,41 @@ class _AuditedSupportActionsAdminScreenState
   void initState() {
     super.initState();
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    _graceWindowTicker?.cancel();
+    _graceWindowTicker = null;
+    super.dispose();
+  }
+
+  DateTime _graceNow() => widget.graceWindowClock?.call() ?? DateTime.now();
+
+  /// CODE_OPS_DEBT carry-over #2 — start the periodic ticker so the
+  /// chip's "Xh Ym remaining" label refreshes in place. Idempotent;
+  /// stops the existing timer before creating a new one.
+  void _startGraceWindowTicker() {
+    _graceWindowTicker?.cancel();
+    _graceWindowTicker = Timer.periodic(widget.graceWindowTickInterval, (_) {
+      if (!mounted) return;
+      final erasure = _lastErasure;
+      if (erasure == null) {
+        _graceWindowTicker?.cancel();
+        _graceWindowTicker = null;
+        return;
+      }
+      // Trigger a rebuild so the countdown label re-renders. When the
+      // window expires the chip flips to its final state and the
+      // ticker stops on the next iteration (erasure == null after a
+      // refresh / reverse) or via the early-return below once we are
+      // past the grace boundary.
+      setState(() {});
+      if (!_graceNow().isBefore(erasure.gracePeriodEndsAt)) {
+        _graceWindowTicker?.cancel();
+        _graceWindowTicker = null;
+      }
+    });
   }
 
   Future<void> _refresh() async {
@@ -338,6 +400,9 @@ class _AuditedSupportActionsAdminScreenState
       );
       _lastErasureMember = member.userId;
       _lastErasure = summary;
+      // CODE_OPS_DEBT carry-over #2 — kick off the chip's tick timer
+      // so the "Xh Ym remaining" countdown refreshes in place.
+      _startGraceWindowTicker();
     },
         successHint:
             'PII erasure recorded for ${member.displayName}; reversal '
@@ -363,14 +428,26 @@ class _AuditedSupportActionsAdminScreenState
         reversalReason: 'admin reversed within grace window',
       );
       if (outcome.graceExpired) {
+        // CODE_OPS_DEBT carry-over #2 - once the proxy says the
+        // window is closed, the chip should never offer a reverse
+        // affordance again. Drop the in-flight reference so the chip
+        // hides on the next build.
+        _graceWindowTicker?.cancel();
+        _graceWindowTicker = null;
         setState(() {
           _actionError =
               'Grace window has expired; the erasure can no longer be '
               'reversed.';
+          _lastErasure = null;
+          _lastErasureMember = null;
         });
       } else if (outcome.reversed) {
-        _lastErasure = null;
-        _lastErasureMember = null;
+        _graceWindowTicker?.cancel();
+        _graceWindowTicker = null;
+        setState(() {
+          _lastErasure = null;
+          _lastErasureMember = null;
+        });
       }
     }, successHint: 'Erasure reversed.');
   }
@@ -401,6 +478,15 @@ class _AuditedSupportActionsAdminScreenState
               _ErrorBanner(
                 key: const Key('admin_asa_action_error'),
                 message: _actionError!,
+              ),
+            if (_lastErasure != null)
+              _GraceWindowChip(
+                key: const Key('admin_asa_grace_window_chip'),
+                erasure: _lastErasure!,
+                memberDisplay: _lastErasureMember,
+                now: _graceNow(),
+                canReverse: widget.editingEnabled,
+                onReverse: _onReverseLastErasure,
               ),
             Expanded(child: _buildBody()),
           ],
@@ -1407,6 +1493,125 @@ String formatPayload(Map<String, Object?> payload) {
 // ---------------------------------------------------------------------
 // Shared bits
 // ---------------------------------------------------------------------
+
+/// CODE_OPS_DEBT carry-over #2 - countdown chip + reverse affordance
+/// rendered while a single-admin PII erasure is inside its 24h grace
+/// window. The chip self-renders one of two states:
+///
+///   * `pending`: `now` is before `erasure.gracePeriodEndsAt`. Shows
+///     "Erasure reversible - Xh Ym remaining" plus a "Reverse erasure"
+///     button wired to [onReverse].
+///   * `final`: `now` is at-or-after the boundary. Shows "Erasure
+///     final" with no reverse affordance. The chip stays mounted
+///     briefly so the operator sees the transition; the parent state
+///     clears the in-flight erasure on the next reverse attempt or
+///     on a fresh erasure.
+///
+/// The chip is intentionally stateless: the parent screen owns the
+/// periodic timer that triggers rebuilds (1-min tick by default). No
+/// per-tick `setState` lives here so widget tests can drive the chip
+/// purely via the parent `now` clock.
+class _GraceWindowChip extends StatelessWidget {
+  const _GraceWindowChip({
+    super.key,
+    required this.erasure,
+    required this.memberDisplay,
+    required this.now,
+    required this.canReverse,
+    required this.onReverse,
+  });
+
+  final UserPiiErasureRequestSummary erasure;
+  final String? memberDisplay;
+  final DateTime now;
+  final bool canReverse;
+  final VoidCallback onReverse;
+
+  bool get _isReversible =>
+      now.toUtc().isBefore(erasure.gracePeriodEndsAt.toUtc());
+
+  @override
+  Widget build(BuildContext context) {
+    final reversible = _isReversible;
+    final tone = reversible ? AppColors.warning : AppColors.textMuted;
+    final iconData =
+        reversible ? Icons.timelapse_outlined : Icons.lock_outline;
+    final label = reversible
+        ? 'Erasure reversible - ${formatGraceWindowRemaining(
+            now: now,
+            endsAt: erasure.gracePeriodEndsAt,
+          )} remaining'
+        : 'Erasure final';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: tone, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(iconData, size: 16, color: tone),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  label,
+                  key: const Key('admin_asa_grace_window_chip_label'),
+                  style: AppTextStyles.body13(color: AppColors.textPrimary)
+                      .copyWith(fontWeight: FontWeight.w600),
+                ),
+                if (memberDisplay != null && memberDisplay!.isNotEmpty)
+                  Text(
+                    'Target user: ${memberDisplay!}',
+                    style: AppTextStyles.mono11(color: AppColors.textMuted),
+                  ),
+              ],
+            ),
+          ),
+          if (reversible)
+            FilledButton.icon(
+              key: const Key('admin_asa_grace_window_chip_reverse'),
+              onPressed: canReverse ? onReverse : null,
+              style: AdminButtonStyles.primary,
+              icon: const Icon(Icons.undo, size: 14),
+              label: const Text('Reverse erasure'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// CODE_OPS_DEBT carry-over #2 — humanise the time-remaining label
+/// for the grace-window chip. Returns the largest two non-zero units
+/// (e.g. `14h 23m`, `45m 12s`, `1d 0h`) so the chip stays compact and
+/// truthful at every point in the 24h window. Exposed for widget
+/// tests so the format pin lives in one place.
+@visibleForTesting
+String formatGraceWindowRemaining({
+  required DateTime now,
+  required DateTime endsAt,
+}) {
+  final remaining = endsAt.toUtc().difference(now.toUtc());
+  if (remaining.isNegative || remaining == Duration.zero) {
+    return '0m';
+  }
+  final hours = remaining.inHours;
+  final minutes = remaining.inMinutes - hours * 60;
+  final seconds = remaining.inSeconds - remaining.inMinutes * 60;
+  if (hours > 0) {
+    return '${hours}h ${minutes}m';
+  }
+  if (minutes > 0) {
+    return '${minutes}m ${seconds}s';
+  }
+  return '${seconds}s';
+}
 
 class _ReadOnlyBanner extends StatelessWidget {
   const _ReadOnlyBanner({super.key});
