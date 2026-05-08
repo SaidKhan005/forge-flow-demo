@@ -16,6 +16,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../theme/app_theme.dart';
 import '../admin_route_handoff.dart';
@@ -143,6 +144,36 @@ class _PerLocationDataAccuracyScreenState
     }
   }
 
+  Future<void> _onEditServicePeriod(DataAccuracyAdminRow row) async {
+    if (!widget.editingEnabled) return;
+    final draft = await showDialog<_ServicePeriodOverrideDraft>(
+      context: context,
+      builder: (_) => _ServicePeriodOverrideDialog(initial: row),
+    );
+    if (draft == null) return;
+    setState(() => _actionError = null);
+    try {
+      await widget.gateway.overrideDataAccuracyServicePeriod(
+        operatorId: row.operatorRef.operatorId,
+        locationId: row.operatorRef.locationId,
+        servicePeriodKey: draft.servicePeriodKey,
+        coversSource: draft.coversSource,
+        wageSource: draft.wageSource,
+        effectiveAtBusinessDateIso: draft.effectiveAtBusinessDateIso,
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        reasonNote: draft.reasonNote,
+      );
+      await _refresh();
+    } on DataAccuracyAdminForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = 'Service-period override failed: $error');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -238,6 +269,7 @@ class _PerLocationDataAccuracyScreenState
             rows: _visibleRows,
             editingEnabled: widget.editingEnabled,
             onEditRow: _onEditRow,
+            onEditServicePeriod: _onEditServicePeriod,
           ),
           const SizedBox(height: 16),
           DataAccuracyAuditHistoryPanel(events: _visibleAuditEvents),
@@ -547,6 +579,242 @@ class _WalkInHandlingField extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _ServicePeriodOverrideDraft {
+  const _ServicePeriodOverrideDraft({
+    required this.servicePeriodKey,
+    required this.coversSource,
+    required this.wageSource,
+    required this.effectiveAtBusinessDateIso,
+    required this.reasonNote,
+  });
+
+  final String servicePeriodKey;
+  final ServicePeriodCoversSource coversSource;
+  final ServicePeriodWageSource wageSource;
+  final String effectiveAtBusinessDateIso;
+  final String reasonNote;
+}
+
+class _ServicePeriodOverrideDialog extends StatefulWidget {
+  const _ServicePeriodOverrideDialog({required this.initial});
+
+  final DataAccuracyAdminRow initial;
+
+  @override
+  State<_ServicePeriodOverrideDialog> createState() =>
+      _ServicePeriodOverrideDialogState();
+}
+
+class _ServicePeriodOverrideDialogState
+    extends State<_ServicePeriodOverrideDialog> {
+  static final RegExp _keyPattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
+  static final RegExp _datePattern = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+
+  final TextEditingController _keyCtl = TextEditingController();
+  final TextEditingController _dateCtl = TextEditingController();
+  final TextEditingController _reasonCtl = TextEditingController();
+  ServicePeriodCoversSource _covers = ServicePeriodCoversSource.vendor;
+  ServicePeriodWageSource _wage = ServicePeriodWageSource.vendorPerEmployee;
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _keyCtl.dispose();
+    _dateCtl.dispose();
+    _reasonCtl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final key = _keyCtl.text.trim();
+    final date = _dateCtl.text.trim();
+    final reason = _reasonCtl.text.trim();
+    if (!_keyPattern.hasMatch(key)) {
+      setState(() {
+        _errorText =
+            'Service period key must start with a lowercase letter and use '
+            'only lowercase letters, numbers, or underscores.';
+      });
+      return;
+    }
+    if (!_datePattern.hasMatch(date)) {
+      setState(() {
+        _errorText = 'Effective date must be YYYY-MM-DD.';
+      });
+      return;
+    }
+    if (reason.isEmpty) {
+      setState(() {
+        _errorText = 'Reason note is required for the audit log.';
+      });
+      return;
+    }
+    Navigator.of(context).pop(
+      _ServicePeriodOverrideDraft(
+        servicePeriodKey: key,
+        coversSource: _covers,
+        wageSource: _wage,
+        effectiveAtBusinessDateIso: date,
+        reasonNote: reason,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const Key('admin_data_accuracy_service_period_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      title: Text(
+        'Service-period override: ${widget.initial.operatorRef.businessName} '
+        '/ ${widget.initial.operatorRef.locationName}',
+        style: AdminButtonStyles.dialogTitleStyle,
+      ),
+      content: SizedBox(
+        width: 520,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              TextField(
+                key: const Key('admin_data_accuracy_service_period_key'),
+                controller: _keyCtl,
+                decoration: const InputDecoration(
+                  labelText: 'Service period key',
+                  helperText:
+                      'Examples: lunch, dinner, breakfast, brunch, '
+                      'happy_hour.',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                key: const Key(
+                  'admin_data_accuracy_service_period_effective_date',
+                ),
+                controller: _dateCtl,
+                decoration: const InputDecoration(
+                  labelText: 'Effective from (business date)',
+                  helperText: 'YYYY-MM-DD.',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<ServicePeriodCoversSource>(
+                key: const Key(
+                  'admin_data_accuracy_service_period_covers_source',
+                ),
+                initialValue: _covers,
+                decoration: const InputDecoration(
+                  labelText: 'Covers source',
+                  border: OutlineInputBorder(),
+                ),
+                items: ServicePeriodCoversSource.values
+                    .map(
+                      (s) => DropdownMenuItem<ServicePeriodCoversSource>(
+                        value: s,
+                        child: Text(_servicePeriodCoversLabel(s)),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: (value) {
+                  if (value != null) setState(() => _covers = value);
+                },
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<ServicePeriodWageSource>(
+                key: const Key(
+                  'admin_data_accuracy_service_period_wage_source',
+                ),
+                initialValue: _wage,
+                decoration: const InputDecoration(
+                  labelText: 'Wage source',
+                  border: OutlineInputBorder(),
+                ),
+                items: ServicePeriodWageSource.values
+                    .map(
+                      (s) => DropdownMenuItem<ServicePeriodWageSource>(
+                        value: s,
+                        child: Text(_servicePeriodWageLabel(s)),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: (value) {
+                  if (value != null) setState(() => _wage = value);
+                },
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                key: const Key(
+                  'admin_data_accuracy_service_period_reason_note',
+                ),
+                controller: _reasonCtl,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Reason for override',
+                  hintText: 'Brief explanation for the audit log',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (_errorText != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _errorText!,
+                  key: const Key(
+                    'admin_data_accuracy_service_period_dialog_error',
+                  ),
+                  style: AppTextStyles.body12(color: AppColors.warning),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_data_accuracy_service_period_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_data_accuracy_service_period_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: _submit,
+          child: const Text('Apply override'),
+        ),
+      ],
+    );
+  }
+}
+
+String _servicePeriodCoversLabel(ServicePeriodCoversSource source) {
+  switch (source) {
+    case ServicePeriodCoversSource.vendor:
+      return 'Vendor (POS) feed';
+    case ServicePeriodCoversSource.forecast:
+      return 'Forecast substitution';
+    case ServicePeriodCoversSource.manual:
+      return 'Manual entry';
+    case ServicePeriodCoversSource.reservationPlusWalkin:
+      return 'Reservations + walk-ins';
+  }
+}
+
+String _servicePeriodWageLabel(ServicePeriodWageSource source) {
+  switch (source) {
+    case ServicePeriodWageSource.vendorPerEmployee:
+      return 'Vendor per employee';
+    case ServicePeriodWageSource.vendorPerPosition:
+      return 'Vendor per position';
+    case ServicePeriodWageSource.targetSubstitution:
+      return 'Target substitution';
+    case ServicePeriodWageSource.manualMix:
+      return 'Manual mix';
   }
 }
 
