@@ -28,6 +28,14 @@ import 'settings/settings_wage_authority_section.dart';
 /// web console. `kDemoMode` toggles demo-only rows (Data reset + Demo
 /// date) without changing the production layout. Defined as a top-
 /// level const so widget tests can flip it via `--dart-define`.
+//
+// kDemoMode carve-out #3 (blessed 2026-05-08): the two demo-only
+// management sections gated below ("Data reset" at line 374, "Demo
+// date" at line 383) have no production analogue. A "Demo date" picker
+// in prod would let an operator move the restaurant clock backward and
+// corrupt closed truth; a "Data reset" button in prod would bypass the
+// audit-anchored data-deletion path. Hiding them is the lower-risk
+// choice. See docs/contracts/demo_mode_contract.md "Carve-out #3".
 const bool _kDemoMode = bool.fromEnvironment('kDemoMode');
 
 class SettingsScreen extends StatefulWidget {

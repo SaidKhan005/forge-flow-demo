@@ -148,7 +148,7 @@ in `vendor_adapter_slice_contract.md`:
 
 The slice's walkthrough at `docs/_walkthroughs/<slice-id>.md` MUST
 cover the anchor scenarios from
-`docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md` Walkthrough
+`docs/archive/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md` Walkthrough
 section (forged signature, malformed payload, future-dated event,
 OAuth near-expiry).
 

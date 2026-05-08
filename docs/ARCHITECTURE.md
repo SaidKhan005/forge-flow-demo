@@ -2730,8 +2730,8 @@ Rules:
 
 ### Where It Lives
 
-- POS/labor plan: `docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
-- Reservation plan: `docs/phases/phase_8R/phase_8R_official_reservation_connector_plan.md`
+- POS/labor plan: `docs/archive/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
+- Reservation plan: `docs/archive/phases/phase_8R/phase_8R_official_reservation_connector_plan.md`
 - External integrations plan: `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`
 
 ## 20. Shared State Roadmap
@@ -2823,7 +2823,7 @@ manager changes shared setting
 
 ### Where It Lives
 
-- Shared state plan: `docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md`
+- Shared state plan: `docs/archive/phases/phase_10a/phase_10a_shared_state_v1_plan.md`
 - Event contract: `docs/contracts/event_outbox_contract.md`
 
 ## 21. Operations Console
@@ -3551,11 +3551,11 @@ This guide was synthesized from:
 - `docs/README.md`
 - `docs/contracts/phase_7_55_plain_english_architecture.md`
 - `docs/contracts/event_outbox_contract.md`
-- `docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
-- `docs/phases/phase_8R/phase_8R_official_reservation_connector_plan.md`
+- `docs/archive/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
+- `docs/archive/phases/phase_8R/phase_8R_official_reservation_connector_plan.md`
 - `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`
 - `docs/phases/phase_9/phase_9_auth_plan.md`
-- `docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md`
+- `docs/archive/phases/phase_10a/phase_10a_shared_state_v1_plan.md`
 - `docs/phases/phase_11a/phase_11a_decision_register.md`
 - `docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md`
 - `docs/phases/phase_12_workflow_platform/phase_12_workflow_platform_plan.md`

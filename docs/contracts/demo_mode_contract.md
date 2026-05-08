@@ -98,11 +98,12 @@ labels.
 ### Mobile demo path with every demo-vs-prod fork marked
 
 Every `[FORK]` marker is a place the code reads the `kDemoMode` flag.
-There are exactly four reader-side reads in the mobile app
-(two in `lib/screens/auth/login_screen.dart`, both behind the same
-const, so they count as one carve-out, plus one in
-`lib/services/app_data_status_service.dart`). Everything else is the
-SAME code as production.
+There are exactly six reader-side reads in the mobile app
+(two in `lib/screens/auth/login_screen.dart` behind the same const →
+carve-out #1; one in `lib/services/app_data_status_service.dart` →
+carve-out #2; one const + two conditional renders in
+`lib/screens/settings_screen.dart` behind the same const → carve-out
+#3). Everything else is the SAME code as production.
 
 ```
 [App start: --dart-define=kDemoMode=true]
@@ -230,9 +231,10 @@ boundary:
 
 ## Intentional reader-side carve-outs
 
-Two compile-time `kDemoMode` reads exist in the operator-app (mobile)
-codebase. Both are documented inline with `// kDemoMode carve-out:`
-comments and listed here so future audits don't re-flag them.
+Three compile-time `kDemoMode` carve-outs exist in the operator-app
+(mobile) codebase. All are documented inline with
+`// kDemoMode carve-out:` comments and listed here so future audits
+don't re-flag them.
 
 ### Carve-out #1: Login screen "Use demo operator" button
 
@@ -282,6 +284,46 @@ comments and listed here so future audits don't re-flag them.
   label through `DemoModeStateGateway.readOrCreateDefault(...)`
   instead of the compile-time flag, in which case the carve-out would
   collapse. No such slice is currently scheduled.
+
+### Carve-out #3: Settings screen demo-only management sections
+
+- **Location:** `lib/screens/settings_screen.dart:31` (the `_kDemoMode`
+  const), `:374` (gates the "Data reset" section), `:383` (gates the
+  "Demo date" section). One const + two conditional renders, all
+  behind the same flag, so this counts as one carve-out.
+- **What it does:** When the binary was built with
+  `--dart-define=kDemoMode=true`, the Settings tab renders two
+  additional sections below "Latest updates":
+  1. **Data reset** — `SettingsDataManagementSection` — operator
+     affordance to clear local demo / operational data. No production
+     analogue (production data clears come through the proxy + audit
+     trail, not a local button).
+  2. **Demo date** — `SettingsMockReplaySection` — advances the demo
+     restaurant through sample business days so a walkthrough can
+     show shift close → variance → history → next-day flow without
+     waiting on real time.
+  Production builds hide both sections. Every other Settings section
+  (Account, MFA, Active Sessions, Data freshness, Wage authority,
+  Team, Permissions, FF Support) renders identically in demo and
+  prod.
+- **Why exempt:** Both sections are demo-only operator affordances
+  that have no production meaning. A "Demo date" picker in prod
+  would let a real operator move the restaurant clock backward —
+  which would corrupt closed truth. A "Data reset" button in prod
+  would bypass the audit-anchored data-deletion path. Hiding them
+  is the lower-risk choice compared to rendering disabled UI or
+  inventing a "production data reset" alternative the operator does
+  not need.
+- **Relationship to runtime demo state:** Same as carve-out #2 — the
+  per-(operator, location, category) runtime answer lives in the
+  Postgres `demo_mode_state.is_demo` column. The compile-time flag
+  here is purely a build-mode signal; widgets that need to render a
+  per-(O, L, C) "in demo" banner should read the runtime state.
+- **What would replace it:** A future slice could surface "Demo
+  date" / "Data reset" only when `DemoModeStateGateway` reports
+  `is_demo = true` for the active scope, but the build flag adds a
+  belt-and-braces guarantee that release builds never ship the
+  affordances. No replacement slice is currently scheduled.
 
 ---
 
