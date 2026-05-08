@@ -41,8 +41,9 @@
 -- rule from the hardening RLS contract does not bind to this slice.
 --
 -- Authority:
---   * `CODE_HEALTH.md` (Audit Anchor section — advisory lock,
---     paused cadence, crash-recovery rollforward).
+--   * `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`
+--     (Audit Anchor section — advisory lock, paused cadence,
+--     crash-recovery rollforward).
 --   * `db/migrations/202604280005_phase_9_0sigma_f_audit_logs.sql`
 --     (original `audit_chain_anchors` CREATE TABLE — append-only
 --     grant shape preserved; this slice only ALTERs to add columns).

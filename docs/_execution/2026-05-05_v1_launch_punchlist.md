@@ -163,8 +163,7 @@ arrival. Tracker:
 
 ### From the code-health audit
 
-Closeout: `CODE_HEALTH.md` (16 PRs across 5 critical + ~22 high findings;
-addendum captures residuals against current master). Open chip-debt:
+Closeout: 5-wave remediation closed 2026-05-08 — 52 findings across 41 PRs. Archived at `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`. Open chip-debt:
 
 - [ ] **Domain-layer test coverage gap.** `lib/domain/` is 70 files / 5
       tests. Pure functions, trivially testable. Add a domain unit test
@@ -179,20 +178,7 @@ addendum captures residuals against current master). Open chip-debt:
       `operator_location_admin_screen.dart` (2151),
       `forge_flow_app.dart` (~2.5k, growing),
       `tool/advisor_proxy/advisor_proxy.dart` (~15.9k, growing).
-- [ ] **CODE_HEALTH residuals** — see addendum at the end of
-      `CODE_HEALTH.md` for items still open against current master:
-      conflicting `actor_kind` constraint definitions;
-      `phase_8_set_business_date()` `SECURITY DEFINER` blast radius;
-      `DatabaseHelper.instance` hardcoded to `DemoScope.restaurantId`;
-      Postgres pool size pinned at 4; pre-flight token estimate
-      client-supplied; cost-discipline levers unwired (caps fail at
-      402); per-process permission cache invalidation; sync worker
-      bare `catch (_)`; `ShiftDashboardNotifier._load` operator-switch
-      TOCTTOU; `CanonicalSink.appendSyncLog` schema-less map intake
-      (now in `toast_pos_postgres_sink.dart`); MFA removal: audit +
-      outbox enqueue post-`markCompleted` not transactional;
-      `labor_model.dart:266` decomposition rounding (deferred —
-      naive rewrite would flip pinned tests).
+- [ ] **CODE_HEALTH residuals** — chapter closed 2026-05-08; remaining items consolidated into normal tracking surfaces. The bulk of open P0–P3 items lives in `docs/POST_HARDENING_FOLLOWUPS.md` (operational unpause, `backfill_dispatch.dart` bare-catch, widget contract violations, monolith splits, common worker base, two-slot key vs counter-store, SQLite singletons). AI-paused follow-ups in `docs/phases/phase_11a/phase_11a_decision_register.md` (cost-discipline levers, Voyage hardening, `labor_model.dart` rounding). Phase 8 deferred work in `phase_8_spine_bridge_plan.md` (watermark transactional discipline). Permission catalog additions in `docs/contracts/auth_permission_key_catalog.md`. Full historical record in `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`.
 
 ### From the architecture audit
 

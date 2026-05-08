@@ -472,7 +472,8 @@ void main() {
 
   // ───────────────────────────────────────────────────────────────────
   // L9 (Code-Health Lane): crash-recovery + advisory-lock + breadcrumb
-  // tests. See CODE_HEALTH.md "Audit anchor verify can't recover from
+  // tests. See docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md
+  // "Audit anchor verify can't recover from
   // crashed-write state", "Audit anchor sweep has no advisory-lock
   // guard", and "Audit-anchor cadence is paused" (daily wire only).
   group('L9 — crash recovery (runStartupRecovery)', () {

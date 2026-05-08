@@ -5,9 +5,8 @@
 `docs/archive/CODE_OPS_DEBT_RESOLVED_2026-05-07.md`. This doc shows
 **only what is left**.
 
-This doc is the operational-debt sibling to `CODE_HEALTH.md`:
-- `CODE_HEALTH.md` = original 2026-05-06 audit + closeout + 2026-05-07
-  fact-check addendum.
+This doc is the operational-debt sibling to the CODE_HEALTH audit:
+- CODE_HEALTH = original 2026-05-06 audit + 5-wave remediation, closed 2026-05-08. Archived at `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`; residuals consolidated into `docs/POST_HARDENING_FOLLOWUPS.md` + phase docs + contracts.
 - `CODE_OPS_DEBT.md` = doc-vs-code drift findings.
 
 ## Closeout summary (2026-05-07 fix sweep)
@@ -119,8 +118,7 @@ the promise without the implementation.
 
 ## What's NOT in this doc (excluded scope)
 
-- Anything in `CODE_HEALTH.md` Closed / Deferred / Out-of-scope /
-  Addendum sections.
+- Anything in the CODE_HEALTH archive's Closed / Deferred / Out-of-scope / Addendum sections (`docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`).
 - The Phase 8 framework finishing pushes (vendor-credential broker,
   sink production binder, OAuth refresh worker, per-vendor OAuth
   descriptors, `8.framework.*`, `8.gap-*`, `8.transport.*`,
@@ -140,7 +138,7 @@ out in the "Blocker" column, then dispatch a fix lane the same way the
 
 **Cross-references:**
 - `docs/archive/CODE_OPS_DEBT_RESOLVED_2026-05-07.md` — closed findings + 13-lane scoreboard.
-- `CODE_HEALTH.md` — original 2026-05-06 audit + closeout + addendum.
+- `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md` — original 2026-05-06 audit + 5-wave remediation closeout (2026-05-08). Active CODE_HEALTH residuals are now in `docs/POST_HARDENING_FOLLOWUPS.md` + phase 11a decision register + phase 8 spine bridge plan + auth permission key catalog.
 - `docs/_execution/2026-05-05_v1_launch_punchlist.md` — operator-blocked V1 launch items.
 - `docs/POST_HARDENING_FOLLOWUPS.md` — open P0–P3 items from the 2026-05-02 deep audit.
 - `PROJECT_TRACKER.md` — routing.
