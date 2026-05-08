@@ -240,6 +240,30 @@ the product on production, and we have evidence the system is stable."
 Order is sequential. Do not start the next slice until the prior
 accepts.
 
+**AI-paused note (2026-05-08):** V1 ships with the AI advisor paused
+(see `docs/_execution/2026-05-05_v1_launch_punchlist.md` § 6:
+`AI advisor unfreeze` is `[-]` deferred post-V1). Because of this:
+
+- **`cutover.0` AGE/audit/rollup checks are not blocking.** Those
+  reds are downstream of "no advisor corpus loaded yet" and clear
+  only when the corpus loads, which doesn't happen until AI
+  unfreezes. The schema/RLS/pgvector/extension green checks are the
+  V1-relevant ones.
+- **`cutover.1` (corpus load) is SKIPPED for V1.** It is entirely
+  Voyage embeddings + Anthropic Contextual Retrieval + AGE projection
+  + BM25 — all advisor-side. None of cutover.1 touches Shift, Plan,
+  Variance, Benchmark, vendor connectors, push, auth, or any V1
+  operational surface. When AI unfreezes, return here, run cutover.1
+  as written.
+- **`cutover.0b` (Tier-M perf gate) is SKIPPED for V1.** It tests AI
+  query latency against the corpus from cutover.1; without the corpus
+  it cannot run, and without the AI advisor in V1 the gate is moot.
+  Returns when AI unfreezes.
+
+V1 cutover sequence reduces to:
+**`cutover.0` (preflight) → `cutover.2` (first operator) → `cutover.3`
+(traffic switch) → `cutover.4` (7-day stability watch).**
+
 ### `cutover.0` Pre-flight readiness (~2-3 days)
 
 Read-only verification slice. No live mutation.
@@ -289,7 +313,16 @@ Read-only verification slice. No live mutation.
 Acceptance: every check passes, rollback plan documented, user
 explicitly approves moving to `cutover.1`.
 
-### `cutover.1` Production corpus load (~3-5 days)
+### `cutover.1` Production corpus load (~3-5 days) — **SKIPPED for V1 (AI paused)**
+
+This entire slice is for the AI advisor (Phase 11b). With the advisor
+paused for V1 (`docs/_execution/2026-05-05_v1_launch_punchlist.md`
+§ 6), no corpus load happens. Return when AI unfreezes; run as written
+below. The first operator (`cutover.2`) onboards on a corpus-empty
+production1 and the advisor surface is intentionally absent from her
+client.
+
+The original spec is preserved verbatim for the unfreeze:
 
 Live, billable. Mirror of staging load with explicit approval gates.
 

@@ -151,6 +151,25 @@ sequences the 17-adapter migration. Lands after the sink-fanout +
 business-timing-live wave so the executor seam is shared by every
 sink rather than retrofitted per vendor.
 
+### `fetchFirstBackfillStatus` null-shape conflation (was CODE_OPS_DEBT theme H#8)
+
+Surfaced by the 2026-05-07 doc-vs-code drift audit; transferred here
+2026-05-08 when CODE_OPS_DEBT closed.
+
+Evidence: `tool/advisor_proxy/proxy_bootstrap.dart:2102-2137` +
+`lib/services/sync/http_sync_proxy_client.dart:281-296`. Today the
+route returns `{first_backfill_status: null}` with HTTP 200 when no
+row exists. That single shape conflates **"no first-connect has ever
+started for this operator"** with **"first-connect job was started
+but is genuinely missing or lost"** — operationally these are
+different and need different operator surfaces.
+
+Action: when the Phase 8 framework finishing lane next touches this
+route, split the response into two distinct shapes (e.g.,
+`{state: "never_started"}` vs `{state: "lost", started_at, last_seen_at}`)
+and update the mobile `http_sync_proxy_client` decoder accordingly.
+Self-closes via that lane; not its own slice.
+
 ## Out of scope (binding)
 
 - First-connection backfill and live/closed production wire-in ->
