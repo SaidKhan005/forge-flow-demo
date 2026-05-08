@@ -1,0 +1,23 @@
+{
+  "expected_outcome": "accept_with_iana_resolution",
+  "items": [
+    {
+      "header": {
+        "chkNum": 412950,
+        "cmplOrClsdUTC": "2026-03-08T08:30:00.000Z",
+        "guestCount": 6,
+        "lastUpdatedUTC": "2026-03-08T08:30:00.000Z",
+        "locRef": "001-PIE-NYC",
+        "opnUTC": "2026-03-08T06:55:00.000Z",
+        "subTtlCents": 14580
+      }
+    }
+  ],
+  "nextCursor": "",
+  "timezone_resolution_context": {
+    "_note": "2026-03-08 is the US spring-forward date. Local clocks in America/New_York jump from 02:00 EST to 03:00 EDT. The vendor emits both timestamps in UTC (explicit Z), so the adapter parses unambiguously. The downstream business-date resolver (iana_timezone_converter.toBusinessDate) projects onto 2026-03-07 if business-day-cutoff is 04:00 local, since 06:55 UTC = 02:55 EST (pre-shift) and 08:30 UTC = 04:30 EDT (post-shift). The fact straddles the spring-forward gap.",
+    "iana_zone": "America/New_York",
+    "business_day_cutoff_local": "04:00",
+    "expected_business_date": "2026-03-07"
+  }
+}
