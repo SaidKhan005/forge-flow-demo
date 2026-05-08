@@ -723,9 +723,31 @@ ProxyProductionBindings buildProxyProductionBindings(
   // Wired through tenant-pool repository so RLS + per-operator
   // isolation hold; the read path stays in `fetchWageRoleRows`
   // (lower in this file).
+  //
+  // Doc 1 wage/role editor write proof — production audit sink lands
+  // one hash-chained `public.audit_logs` row per upsert / soft-delete,
+  // wrapped in the same tenant transaction posture as the operator
+  // account / business timing audit fan-out. Failures are swallowed
+  // and surfaced via the structured logger so an audit-write outage
+  // cannot 5xx a request whose business write already committed.
   final wageRoleRowsRouter = WageRoleRowsRouter(
     gateway: RepositoryWageRoleRowsGateway(
       repository: WageRoleRowsRepository(tenantWrapper),
+    ),
+    auditSink: _ProductionWageRoleRowsAuditSink(
+      tenantWrapper: tenantWrapper,
+      auditLogsRepository: auditLogsRepository,
+      onError: (error, stackTrace) {
+        log(
+          LogSeverity.error,
+          'proxy.wage_role_rows_audit_failed',
+          fields: <String, Object?>{
+            'error_type': error.runtimeType.toString(),
+            'error_message': error.toString(),
+            'stack_first_frame': firstStackFrame(stackTrace),
+          },
+        );
+      },
     ),
   );
   SelectedStarTargetRouter.installGlobal(
@@ -1149,6 +1171,134 @@ class _PostgresOperatorRecentlyAvailableVendorsGateway
       'vendor_lifecycle_notification.notified_at returned non-timestamp '
       'value (${value.runtimeType})',
     );
+  }
+}
+
+/// Doc 1 wage/role editor write proof — production audit sink for
+/// `wage_role_rows` POST/DELETE writes. Mirrors
+/// [ProductionOperatorWriteAuditSink] (used by the operator account /
+/// business-timing write router) so wage edits land one hash-chained
+/// `public.audit_logs` row per call, scoped through the tenant pool so
+/// per-tenant RLS confines the write to the calling operator.
+///
+/// The sink swallows audit-write failures (logging them via [_onError])
+/// rather than rethrowing, because the wage-row business write has
+/// already committed by the time this is called and we do not want to
+/// roll it back on a downstream observability failure.
+class _ProductionWageRoleRowsAuditSink implements WageRoleRowsAuditSink {
+  _ProductionWageRoleRowsAuditSink({
+    required TenantTransactionWrapper tenantWrapper,
+    required AuditLogsRepository auditLogsRepository,
+    void Function(Object error, StackTrace stackTrace)? onError,
+  })  : _tenantWrapper = tenantWrapper,
+        _auditLogsRepository = auditLogsRepository,
+        _onError = onError;
+
+  final TenantTransactionWrapper _tenantWrapper;
+  final AuditLogsRepository _auditLogsRepository;
+  final void Function(Object error, StackTrace stackTrace)? _onError;
+
+  @override
+  Future<void> recordUpsert({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String actorKind,
+    required String wageRoleRowId,
+    required String restaurantId,
+    required String roleName,
+    required String laborBucket,
+    required double hourlyRate,
+    required double weightedHours,
+    required String source,
+    required DateTime occurredAt,
+  }) async {
+    await _writeAudit(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      actorKind: actorKind,
+      action: 'wage_role_row_upserted',
+      occurredAt: occurredAt,
+      targetId: wageRoleRowId,
+      payload: <String, Object?>{
+        'wage_role_row_id': wageRoleRowId,
+        'restaurant_id': restaurantId,
+        'role_name': roleName,
+        'labor_bucket': laborBucket,
+        'hourly_rate': hourlyRate,
+        'weighted_hours': weightedHours,
+        'source': source,
+      },
+    );
+  }
+
+  @override
+  Future<void> recordSoftDelete({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String actorKind,
+    required String wageRoleRowId,
+    required bool removed,
+    required DateTime occurredAt,
+  }) async {
+    await _writeAudit(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      actorKind: actorKind,
+      action: 'wage_role_row_soft_deleted',
+      occurredAt: occurredAt,
+      targetId: wageRoleRowId,
+      payload: <String, Object?>{
+        'wage_role_row_id': wageRoleRowId,
+        'removed': removed,
+      },
+    );
+  }
+
+  Future<void> _writeAudit({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String actorKind,
+    required String action,
+    required DateTime occurredAt,
+    required String targetId,
+    required Map<String, Object?> payload,
+  }) async {
+    try {
+      final ctx = TenantContext(
+        operatorId: operatorId,
+        locationId: locationId,
+        userId: actorUserId.isEmpty ? null : actorUserId,
+      );
+      final auditActorKind = actorKind == 'service' ? 'service' : 'user';
+      await _tenantWrapper.runInTenantContext(ctx, (exec) async {
+        await _auditLogsRepository.writeRow(
+          exec,
+          operatorId: operatorId,
+          locationId: locationId,
+          occurredAt: occurredAt,
+          actorKind: auditActorKind,
+          actorUserId:
+              auditActorKind == 'user' && actorUserId.isNotEmpty
+                  ? actorUserId
+                  : null,
+          actorPrincipalId:
+              auditActorKind == 'service' && actorUserId.isNotEmpty
+                  ? actorUserId
+                  : null,
+          targetKind: 'wage_role_row',
+          targetId: targetId,
+          action: action,
+          payload: payload,
+        );
+      });
+    } catch (error, stackTrace) {
+      _onError?.call(error, stackTrace);
+    }
   }
 }
 

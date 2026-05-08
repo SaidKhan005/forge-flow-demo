@@ -140,6 +140,8 @@ export 'wage_role_rows_routes.dart'
         RepositoryWageRoleRowsGateway,
         WageRoleRowsIdempotencyCache,
         WageRoleRowsRouteRejected,
+        WageRoleRowsAuditSink,
+        NoopWageRoleRowsAuditSink,
         wageRoleRowsPath,
         wageRoleRowsPrefix,
         hashWageRoleRowsRequest;
@@ -14000,6 +14002,7 @@ Future<void> routeRequest(
               operatorId: scope.operatorId,
               locationId: scope.locationId,
               actorUserId: scope.userId,
+              actorKind: scope.actorKind,
               idempotencyKey: wageIdemKey,
               body: wageBody,
             );
