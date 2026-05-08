@@ -140,8 +140,9 @@ arrive.
   data exists; transition at `cutover.4`.
 - Migration changes: `dart run tool/migration_drift_scanner.dart --fix
   --strict-docs`, then `dart run tool/migration_cutoff_lint.dart`.
-- Runtime-exposed slices satisfy
-  `docs/contracts/slice_runtime_acceptance_contract.md`. Browser-exposed
+- Runtime-exposed slices should follow
+  `docs/contracts/slice_runtime_acceptance_contract.md` (advisory pattern,
+  not CI-enforced — reviewer judgment, not auto-blocking). Browser-exposed
   slices use Codex-driven Browser Use evidence per
   `runbooks/browser_use_codex_acceptance_workflow.md` (out-of-repo automation,
   not a binary in this tree) and full E2E uses

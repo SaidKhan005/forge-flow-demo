@@ -16,10 +16,12 @@ This doc is the operational-debt sibling to `CODE_HEALTH.md`:
 closed-redundant; ~40 of 50 audit findings closed; all 7 P0
 launch-blockers resolved.** Detail: `docs/archive/CODE_OPS_DEBT_RESOLVED_2026-05-07.md`.
 
-What remains is **8 outstanding findings** across 6 themes — all of
+What remains is **7 outstanding findings** across 5 themes — all of
 which need an operator decision (contract / cloud-infra / UX /
-meta-slice) before a fix lane can be authored. (Theme J#5 graphify
-candidates closed 2026-05-07: backlog under AI freeze.)
+meta-slice) before a fix lane can be authored. (Theme J#4
+slice-runtime-acceptance enforcement closed 2026-05-07 — operator chose
+to relax the contract to advisory pattern instead of building a CI
+lint. Theme J#5 graphify candidates closed 2026-05-07: backlog under AI freeze.)
 
 ---
 
@@ -101,21 +103,19 @@ framework push touches the route shape. Tracked here for visibility.
 CLAUDE.md). If "keep," add a comment + note in CLAUDE.md so future
 audits don't re-flag.
 
-### Theme J — Acceptance harness theater (3 findings; J#5 closed 2026-05-07)
+### Theme J — Acceptance harness theater (1 finding remaining; J#3 + J#4 + J#5 all closed 2026-05-07)
 
-2 of 5 closed via PR #341; J#5 closed 2026-05-07 by operator decision
-(graphify-candidates marked backlog under AI freeze). Two findings
-remain — both meta-slices.
+2 of 5 closed via PR #341 (smokes + Secret Manager). J#3 closed via PR #368 (Browser Use runbook rewritten — Codex-driven, out-of-repo). J#4 closed by operator decision (slice-runtime-acceptance relaxed to advisory pattern). J#5 closed by operator decision (graphify-candidates marked backlog under AI freeze).
 
-| Sev | Finding | Ref | Blocker |
+| Sev | Finding | Ref | Status |
 |---|---|---|---|
-| ~~P3~~ RESOLVED | Browser Use runbook described manual click-path workflow as if Forge & Flow owned a harness binary. Operator decision: Browser Use is invoked via Codex (out-of-repo), not by anything in this tree. Runbook renamed + rewritten to reflect that. | `runbooks/browser_use_codex_acceptance_workflow.md` (was `browser_use_acceptance_harness_runbook.md`) | resolved — no harness to build; Codex runs the flow |
-| P3 | `slice_runtime_acceptance_contract.md` claims acceptance gate for every runtime slice; **no CI lint, no commit hook, no enforcement.** Operator-honor-system. | `docs/contracts/slice_runtime_acceptance_contract.md` | needs decision: build a CI lint that parses walkthrough docs against a schema (useful if shipping lots of slices), or relax the contract |
-| P3 | 11A.3.x graphify routes return `graph_candidates_not_configured` 503 when bundle isn't on disk. `tool/advisor_proxy/graphify_candidates/candidates/` is empty. **Any deploy without hand-staged bundle is a 503 wall.** _Closed 2026-05-07 by operator decision: marked backlog under AI freeze; will return when AI unpauses. Proxy 503 message rewritten to surface the paused-by-design status; see `PROJECT_TRACKER.md` "Paused" + `phase_11A_operations_console_plan.md` `11A.3.x` Status header._ | `tool/advisor_proxy/advisor_proxy.dart:12747,12824` | operator-staged content, not a code task. Either ship bundles via deploy automation or accept the 503 wall during dev |
+| ~~P3~~ CLOSED 2026-05-07 | Browser Use runbook described manual click-path workflow as if Forge & Flow owned a harness binary. Operator decision: Browser Use is invoked via Codex (out-of-repo), not by anything in this tree. Runbook renamed + rewritten. | `runbooks/browser_use_codex_acceptance_workflow.md` (was `browser_use_acceptance_harness_runbook.md`) | closed — PR #368 |
+| ~~P3~~ CLOSED 2026-05-07 | ~~`slice_runtime_acceptance_contract.md` claims acceptance gate for every runtime slice; no CI enforcement.~~ **Closed by operator decision — enforcement intentionally relaxed; contract is now advisory.** Contract softened from "must" to "should/recommended"; cross-references in `CLAUDE.md`, `PROJECT_TRACKER.md`, `docs/CODEX_PROMPT_GENERATION_STANDARD.md` updated to mark it advisory (CI cost discipline). | `docs/contracts/slice_runtime_acceptance_contract.md` | closed — operator decision |
+| ~~P3~~ CLOSED 2026-05-07 | 11A.3.x graphify routes 503 when bundle isn't on disk. _Closed by operator decision: marked backlog under AI freeze; will return when AI unpauses. Proxy 503 message rewritten to surface paused-by-design; see `PROJECT_TRACKER.md` "Paused" + `phase_11A_operations_console_plan.md` `11A.3.x` Status header._ | `tool/advisor_proxy/advisor_proxy.dart:12747,12824` | closed — PR #369 |
 
-**Decisions needed:** for each, "build the real version" or "delete
-the doc that promises it." Both are valid. What's not valid is keeping
-the promise without the implementation.
+**Decisions needed:** for each remaining open item, "build the real
+version" or "delete the doc that promises it." Both are valid. What's
+not valid is keeping the promise without the implementation.
 
 ---
 
@@ -132,10 +132,11 @@ the promise without the implementation.
 
 ## Status & maintenance
 
-**Status:** 8 outstanding findings across 6 themes (Theme J#5 closed
-2026-05-07: graphify-candidates backlog under AI freeze). All closed
-findings (~41 of 50) live in
-`docs/archive/CODE_OPS_DEBT_RESOLVED_2026-05-07.md`.
+**Status:** 7 outstanding findings across 5 themes. Closed findings
+(~40 of 50 from the original audit, plus Theme J#4 + J#5 closed
+2026-05-07 by operator decision) live in
+`docs/archive/CODE_OPS_DEBT_RESOLVED_2026-05-07.md` (audit-batch
+closeouts) and inline above (later operator-decision closeouts).
 
 **To act on an outstanding finding:** make the operator decision called
 out in the "Blocker" column, then dispatch a fix lane the same way the
