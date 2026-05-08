@@ -122,4 +122,27 @@ or have a clear closure path:
 | 4 | ForgeFlow flavor missing star/target server-write client | ✅ closed — PR #303 |
 | 5 | Mobile push migration not staging-applied but client unconditionally calls proxy | ✅ closed — PR #305 |
 | 6 | Cutover preflight missing 4/6 smokes + secret check stub | ✅ closed — PR #341 |
-| 7 | 11A.14 paired-approval erasure has no proxy route + reset-MFA-factors gates on legacy key | ⚪ partial — gate-key alignment closed (PR #344); paired-approval erasure route deferred (needs contract decision) |
+| 7 | 11A.14 paired-approval erasure has no proxy route + reset-MFA-factors gates on legacy key | ✅ closed — gate-key alignment via PR #344; single-admin PII erasure route via PR #377 (operator chose single-admin + grace-window reverse instead of paired approval) |
+
+---
+
+## Evening sweep — operator-decision closures (2026-05-07 → 2026-05-08)
+
+After the morning audit-batch sweep, the operator gave decisions on the
+9 outstanding items. Eight lanes dispatched in parallel. All 8 with PRs
+merged; item 9 (Theme H#8) is owned by the Phase 8 framework finishing
+push.
+
+| Item | Theme | Decision | PR |
+|---|---|---|---|
+| 1 | A — session-claim resolver | 1hr MFA freshness; redirect-to-login + redo MFA on stale | [#384](https://github.com/SaidKhan005/forge-flow-demo/pull/384) — `JwtFreshMfaResolver` reads Firebase `auth_time` claim; 4 admin actions un-pinned |
+| 2 | B#1 — paired-approval erasure | Single-admin (uses item 1's resolver); reversible during grace; PII-only | [#377](https://github.com/SaidKhan005/forge-flow-demo/pull/377) — 3 routes + grace-expiry worker + 24h reverse window |
+| 3 | B#5 — server-side audit-log CSV | Server-side streamed; respect same UX filters; verify time filter end-to-end | [#378](https://github.com/SaidKhan005/forge-flow-demo/pull/378) — `GET /v1/auth/audit-log/export.csv`; time filter already present at every layer; replaces 100k-row client-side renderer |
+| 4 | I#1-2 — kDemoMode reader-side branches | Keep the demo switch; verify writer-side end-to-end on mobile; document carve-outs | [#379](https://github.com/SaidKhan005/forge-flow-demo/pull/379) — zero drift found; 2 carve-outs documented; flow diagram in `docs/contracts/demo_mode_contract.md`; regression test asserts demo writes to same SQLite tables as prod |
+| 5 | D — Pub/Sub realtime cross-pod replay | Approve all; simplicity + functionality first; cost-aware | [#380](https://github.com/SaidKhan005/forge-flow-demo/pull/380) — default-disabled; 5-min retention; per-pod subscription with TTL=1h auto-cleanup; <\$1/pod/month when enabled, \$0 when disabled; Azure split-DB cron migration |
+| 6 | J#3 — Browser Use harness | Codex automation, not in-repo binary | [#368](https://github.com/SaidKhan005/forge-flow-demo/pull/368) — runbook renamed + rewritten; 7 cross-refs updated |
+| 7 | J#4 — slice-acceptance contract | Relax — CI's are expensive | [#381](https://github.com/SaidKhan005/forge-flow-demo/pull/381) — contract softened to advisory pattern; CLAUDE.md/PROJECT_TRACKER.md/CODEX_PROMPT_GENERATION_STANDARD.md updated |
+| 8 | J#5 — graphify candidates | Backlog under AI freeze | [#369](https://github.com/SaidKhan005/forge-flow-demo/pull/369) — 503 message rewritten to surface paused-by-design; tracker entry under AI-paused set |
+| 9 | H#8 — first-backfill status null | Self-closes via Phase 8 framework finishing push | n/a — naturally resolves when that push touches the route shape |
+
+**~50 of 50 audit findings closed across both sweeps.**
