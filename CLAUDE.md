@@ -114,6 +114,26 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 
 Update `~/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/session_handoff.md` with what finished, files changed, tests run, next steps, doc moves. Hard cap **40 lines**. "What Completed" = last accepted slice only (prior slices live in `PROJECT_TRACKER.md`). Not prompt authority; don't reread mid-execution.
 
+## Demo Mode
+
+HP #2: `kDemoMode` is a writer-side switch — same tables, same reads, same UI either way. Audited end-to-end 2026-05-07. Detail: `docs/contracts/demo_mode_contract.md`.
+
+Architecture:
+- Demo data lives in standard SQLite tables (`shift_records`, `week_records`, `restaurant_locations`, `target_cycles`, `import_runs`, `raw_import_records`, `active_target_profiles`, etc.) under `DemoScope.restaurantId = 'demo_restaurant_001'`. There are no `demo_*` SQLite tables.
+- The writer is `MockReplayDataSourceProvider` (a `DataSourceProvider<MockReplayOutput>` impl) feeding `_seedDemoDataFromReplay` in `lib/infrastructure/persistence/sqlite/sqlite_database_seed.dart`. Phase 8 vendor connectors (`*_pos_postgres_sink.dart`) implement the same `DataSourceProvider` interface, so flipping demo→live changes only the writer.
+- Per-(operator, location, category) demo state lives in the Postgres `demo_mode_state` table; `DemoModeFlipPolicy.evaluateFlip` flips `is_demo = false` after the first vendor connection backfills ≥1 record. Disconnect does NOT auto-revert.
+- Reader paths (services, repositories, widgets) do NOT branch on `kDemoMode`. They read whatever the active scope's tables hold.
+
+Intentional reader-side carve-outs (do not remove without an explicit replacement plan):
+1. `lib/screens/auth/login_screen.dart` — `_demoOperatorSignInEnabled` adds an additive "Use demo operator" button below the regular sign-in. Strictly UX; the button drives the same `signInWithEmailPassword` path.
+2. `lib/services/app_data_status_service.dart` — the data-status badge renders `DEMO` instead of `CURRENT` when `--dart-define=kDemoMode=true`. Label-only; same read math.
+
+Rules for new demo-aware code:
+- Default = NO branch. Demo and prod read from the same code path.
+- If a UX-only label/badge needs the flag, mark the site `// kDemoMode carve-out: <reason>` and append the rationale to the contract doc + this section.
+- Any new SQLite or Postgres table named `demo_*` is a violation of HP #2; use the existing tables with `restaurant_id = DemoScope.restaurantId` (or the per-(operator, location, category) `demo_mode_state` row).
+- Demo seeders MUST write to the same DAOs / tables as production. Adding a parallel `demo_*` table or a `kDemoMode`-gated reader requires explicit operator sign-off.
+
 ## Flavors
 
 - Forge & Flow: `lib/main_forgeflow.dart`
