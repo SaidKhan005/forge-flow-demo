@@ -1,0 +1,33 @@
+{
+  "labour": [
+    {
+      "id": 700401,
+      "employee_id": 5512,
+      "position_id": 311,
+      "position_name": "Server",
+      "clocked_in_at": "2026-05-02T16:05:00.000Z",
+      "clocked_out_at": "2026-05-02T23:30:00.000Z",
+      "breaks": [
+        {
+          "id": 8801,
+          "start_at": "2026-05-02T19:00:00.000Z",
+          "end_at": "2026-05-02T19:30:00.000Z",
+          "paid": false
+        }
+      ],
+      "scheduled_start_at": "2026-05-02T16:00:00.000Z",
+      "scheduled_end_at": "2026-05-02T23:30:00.000Z",
+      "actual_start_at": "2026-05-02T15:58:12.000Z",
+      "actual_end_at": "2026-05-02T23:34:55.000Z",
+      "hours": 6.92,
+      "wage": 18.50,
+      "tip_amount": 142.50,
+      "edited_by_user_id": 9911,
+      "edit_reason": "manager_correction",
+      "updated_at": "2026-05-03T08:14:42.000Z"
+    }
+  ],
+  "page": 1,
+  "limit": 100,
+  "total": 1
+}

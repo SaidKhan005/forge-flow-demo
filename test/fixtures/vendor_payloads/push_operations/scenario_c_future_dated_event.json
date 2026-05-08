@@ -1,0 +1,18 @@
+{
+  "shifts": [
+    {
+      "id": 999001,
+      "employee_id": 5599,
+      "position_id": 311,
+      "position_name": "Server",
+      "start_at": "2027-05-02T16:00:00.000Z",
+      "end_at": "2027-05-02T23:30:00.000Z",
+      "published": true,
+      "published_at": "2027-04-28T14:02:11.000Z",
+      "updated_at": "2027-05-02T15:45:00.000Z"
+    }
+  ],
+  "page": 1,
+  "limit": 100,
+  "total": 1
+}

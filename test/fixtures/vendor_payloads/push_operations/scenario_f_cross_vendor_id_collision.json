@@ -1,0 +1,42 @@
+{
+  "_pressure_test_envelope": {
+    "scenario": "F — cross-vendor ID collision",
+    "colliding_vendors": [
+      "push_operations",
+      "seven_shifts"
+    ],
+    "shared_id_value": 800101,
+    "expected_outcome": "Both rows persist independently because the canonical UNIQUE key namespace includes vendor_id"
+  },
+  "push_operations_response": {
+    "shifts": [
+      {
+        "id": 800101,
+        "employee_id": 5512,
+        "position_id": 311,
+        "position_name": "Server",
+        "start_at": "2026-05-02T16:00:00.000Z",
+        "end_at": "2026-05-02T23:30:00.000Z",
+        "published": true,
+        "published_at": "2026-04-28T14:02:11.000Z",
+        "updated_at": "2026-04-28T14:02:11.000Z"
+      }
+    ],
+    "page": 1,
+    "limit": 100,
+    "total": 1
+  },
+  "seven_shifts_response_for_collision": {
+    "_note": "Same numeric id; emitted by 7shifts (different vendor) for a different shift. The idempotency-key namespace on the proxy and the canonical UNIQUE on the sink both lead with vendor_id, so this is NOT a collision in the real system — but the test asserts that.",
+    "data": [
+      {
+        "id": 800101,
+        "user_id": 1099,
+        "role_id": 5051,
+        "start": "2026-05-02T13:00:00-04:00",
+        "end": "2026-05-02T21:00:00-04:00",
+        "modified": "2026-04-28T18:00:00Z"
+      }
+    ]
+  }
+}

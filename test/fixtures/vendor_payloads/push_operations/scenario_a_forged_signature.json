@@ -1,0 +1,20 @@
+{
+  "_pressure_test_envelope": {
+    "scenario": "A — forged signature",
+    "transport": "poll-only (no webhooks per api_consumed.md)",
+    "substitute_assertion": "bearer_token_tamper",
+    "request": {
+      "method": "GET",
+      "path": "/api/v1/shifts",
+      "headers": {
+        "Authorization": "Bearer pushop_partner_FORGED_NOT_PARTNER_ISSUED_aaaaaaaaaaaaaaaaaaaaaaaa",
+        "Accept": "application/json"
+      }
+    }
+  },
+  "response_status": 401,
+  "response_body": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked partner bearer token."
+  }
+}
