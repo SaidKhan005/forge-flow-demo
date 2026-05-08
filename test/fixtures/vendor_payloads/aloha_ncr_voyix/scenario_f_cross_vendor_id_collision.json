@@ -1,0 +1,26 @@
+{
+  "_scenario": "F — cross-vendor id collision",
+  "_expected_outcome": "reject (idempotency-key namespace prevents shadow-write)",
+  "_adapter_assertion": "inbound_webhook_idempotency UNIQUE on (vendor_id, operator_id, vendor_event_id) prevents shadow-write; the prior Toast row is retained; no Aloha row is written under the colliding key.",
+  "_note": "The `eventId` and `checkId` deliberately collide with values that may also be emitted by Toast or Square (string-based, low-entropy IDs are common across POS vendors). The framework's idempotency UNIQUE is keyed on (vendor_id, operator_id, vendor_event_id) — i.e., vendor_id namespace is part of the key — so a same-string collision from a different vendor must NOT clobber the existing row. This fixture is the Aloha event arriving second.",
+  "eventId": "12345",
+  "eventType": "aloha.check.modified",
+  "siteId": "site-aloha-001",
+  "checkId": "12345",
+  "openedAt": "2026-05-04T18:30:00.000Z",
+  "closedAt": "2026-05-04T19:55:00.000Z",
+  "modifiedAt": "2026-05-04T19:55:00.000Z",
+  "numberOfGuests": 4,
+  "totalAmount": 87.20,
+  "voided": false,
+  "_prior_state_under_test": {
+    "_table": "inbound_webhook_idempotency",
+    "_pre-existing_row": {
+      "vendor_id": "toast",
+      "operator_id": "operator-pressure-001",
+      "vendor_event_id": "12345",
+      "received_at": "2026-05-04T17:00:00.000Z"
+    },
+    "_assertion": "After this Aloha event, a NEW row exists keyed on (aloha_ncr_voyix, operator-pressure-001, 12345) AND the original Toast row is unchanged. Two distinct fact writes occur — one per vendor — neither shadows the other."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "_scenario": "DST spring-forward edge",
+  "_expected_outcome": "accept; business_date resolves to 2026-03-08 in location-local timezone",
+  "_adapter_assertion": "iana_timezone_converter.toBusinessDate maps the UTC timestamps to America/New_York and selects business_date = 2026-03-08 even though local clock skipped 02:00-03:00. Canonical fact upserted with business_date = 2026-03-08.",
+  "_note": "2026-03-08 is the US DST spring-forward day. Local clocks jump from 01:59:59 EST to 03:00:00 EDT. The vendor emits UTC timestamps with the trailing Z; this fixture uses 06:30Z (= 01:30 EST, before the gap) and 08:15Z (= 04:15 EDT, after the gap). The adapter must map both to local-business-date 2026-03-08 without crashing on the missing local hour.",
+  "eventId": "evt-chk-2026-03-08-401",
+  "eventType": "aloha.check.modified",
+  "siteId": "site-aloha-NYC-001",
+  "checkId": "chk-2026-03-08-401",
+  "openedAt": "2026-03-08T06:30:00.000Z",
+  "closedAt": "2026-03-08T08:15:00.000Z",
+  "modifiedAt": "2026-03-08T08:15:00.000Z",
+  "numberOfGuests": 3,
+  "totalAmount": 71.40,
+  "voided": false,
+  "_location_iana_timezone": "America/New_York"
+}

@@ -1,0 +1,16 @@
+{
+  "_scenario": "B — malformed payload",
+  "_expected_outcome": "reject",
+  "_adapter_assertion": "Parser throws PayloadParseError; sanity log not called; no DB write.",
+  "_note": "JSON is structurally invalid — `numberOfGuests` is a string instead of int, `totalAmount` carries a stray currency symbol, and `closedAt` is the literal string 'not-a-timestamp'. The adapter's `_canonicalize` rejects.",
+  "eventId": "evt-chk-2026-05-04-302",
+  "eventType": "aloha.check.modified",
+  "siteId": "site-aloha-001",
+  "checkId": "chk-2026-05-04-302",
+  "openedAt": "2026-05-04T18:30:00.000Z",
+  "closedAt": "not-a-timestamp",
+  "modifiedAt": "2026-05-04T19:55:00.000Z",
+  "numberOfGuests": "four",
+  "totalAmount": "$87.20",
+  "voided": false
+}

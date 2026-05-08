@@ -1,0 +1,13 @@
+{
+  "_sourcing_gap": "NCR Voyix Aloha-module sandbox does not currently document whether voided checks emit a separate webhook event or arrive as `aloha.check.modified` with `voided: true`. Per docs/integrations/aloha_ncr_voyix/api_consumed.md, this is verified live in 8.AL.live.sandbox. This fixture treats the documented shape — `aloha.check.modified` + `voided: true` — as canonical until the live slice confirms.",
+  "eventId": "evt-chk-2026-05-04-103-void",
+  "eventType": "aloha.check.modified",
+  "siteId": "site-aloha-001",
+  "checkId": "chk-2026-05-04-103",
+  "openedAt": "2026-05-04T18:45:00.000Z",
+  "closedAt": "2026-05-04T19:02:00.000Z",
+  "modifiedAt": "2026-05-04T19:05:00.000Z",
+  "numberOfGuests": 3,
+  "totalAmount": 0.00,
+  "voided": true
+}

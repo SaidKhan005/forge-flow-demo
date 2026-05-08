@@ -1,0 +1,7 @@
+{
+  "_sourcing_gap": "Aloha (NCR Voyix) employee labor exposure is partner-gated and not in V1 adapter scope (POS only). The Aloha module ships labor data through a separate Workforce API surface that requires its own per-API access request. The F&F engineering slice (8.AL) consumes only `aloha:checks.read` and `aloha:sites.read`. This fixture documents the gap so Phase 2 harnesses skip employee-punch assertions for Aloha rather than treating them as a regression.",
+  "eventId": "evt-aloha-employee-punch-PLACEHOLDER",
+  "eventType": "aloha.employee.punch",
+  "siteId": "site-aloha-001",
+  "_note": "Placeholder shape — DO NOT consume in Phase 2 harness assertions. Aloha (NCR Voyix) labor is out of V1 adapter scope per docs/integrations/aloha_ncr_voyix/oauth_shape.md (no labor scopes requested)."
+}
