@@ -91,23 +91,29 @@ remains:
 
 Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 
-- [ ] **`cutover.0` — Pre-flight readiness.** Read-only smoke tests on
-      Production1 (schemas, firewall, DNS, RLS isolation, secrets).
-      Harness: `tool/cutover/preflight_smoke.dart` (V1.G shipped).
-      Requires Production1 provisioning + Firebase Auth switch + 2
-      pending migrations applied.
-- [ ] **`cutover.1` — Corpus load to production.** Voyage embeddings +
-      Anthropic Contextual Retrieval. Cost approval gate (you must
-      sign off on spend before execution).
-- [ ] **`cutover.0b` — Tier-M perf gate.** Requires `cutover.1` corpus
-      artifacts. Launch-blocking.
-      `dart run tool/perf_gate/staging_console_probe.dart --run
-      --enforce-budgets`.
+**AI-paused for V1 (decided 2026-05-08):** `cutover.1` (corpus load)
+and `cutover.0b` (Tier-M perf gate) are entirely advisor-side and
+SKIPPED for V1. They resume when the AI advisor unfreezes (§ 6 below).
+V1 cutover sequence reduces to: `cutover.0` → `cutover.2` →
+`cutover.3` → `cutover.4`.
+
+- [~] **`cutover.0` — Pre-flight readiness.** Ran 2026-05-08 against
+      production1. Schema/RLS/pgvector/extensions green. AGE/audit/rollup
+      red but **expected** (downstream of "no advisor corpus loaded";
+      clears when AI unfreezes; not V1-blocking). Result:
+      `docs/_execution/2026-05-08_cutover_0_preflight_result.json`.
+      Harness: `tool/cutover/preflight_smoke.dart`.
+- [-] **`cutover.1` — Corpus load to production.** **SKIPPED for V1** —
+      Voyage embeddings + Anthropic Contextual Retrieval + AGE projection
+      are all advisor-side. None of it touches Shift/Plan/Variance/
+      Benchmark/vendor/push/auth. Resumes when AI unfreezes.
+- [-] **`cutover.0b` — Tier-M perf gate.** **SKIPPED for V1** — tests
+      AI query latency against the cutover.1 corpus. Without corpus, can't
+      run; without advisor, gate is moot. Resumes when AI unfreezes.
 - [ ] **`cutover.2` — First operator onboarding.** Vanessa created on
-      production1. T&C-acceptance row captured. RLS isolation verified
-      live. Tier caps seeded. Requires operator-authored T&C content
-      seeded in `tos_versions` (universal + per-vendor scopes for the
-      trio).
+      production1. T&C-acceptance row captured (operator-self-served per
+      `docs/contracts/operator_self_served_tos_contract.md` — no lawyer
+      gate). RLS isolation verified live. Tier caps seeded.
 - [ ] **`cutover.3` — Traffic switch to production.** DNS / env-var flip.
 - [ ] **`cutover.4` — 7-day stability watch.** Non-negotiable minimum
       before V1 launch declaration.
