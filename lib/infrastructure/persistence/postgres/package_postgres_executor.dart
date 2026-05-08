@@ -116,7 +116,33 @@ class PackagePostgresPool implements PostgresPool {
         operation: 'begin',
         timeout: _perStatementTimeout,
       );
-    } catch (_) {
+    } on Exception catch (e) {
+      // BEGIN failed for a non-timeout reason (server killed the
+      // session, network reset, role-elevate refused, etc.). Discard
+      // the lease so the bad connection isn't reused, log structured,
+      // and let the caller see the original error.
+      log(
+        LogSeverity.warning,
+        'postgres.begin_failed',
+        fields: <String, Object?>{
+          'kind': 'exception',
+          'error': e.toString(),
+        },
+      );
+      await lease.discard();
+      rethrow;
+    } on Object catch (e, st) {
+      // Non-`Exception` throws (raw `String`, `Error` subclass, etc.).
+      // Same posture: discard, log with stack, rethrow.
+      log(
+        LogSeverity.error,
+        'postgres.begin_failed',
+        fields: <String, Object?>{
+          'kind': 'unhandled',
+          'error': e.toString(),
+          'stack_first_frame': firstStackFrame(st),
+        },
+      );
       await lease.discard();
       rethrow;
     }
@@ -266,7 +292,33 @@ class _ReusablePackagePostgresConnections {
       );
       _openForNextWaiter();
       rethrow;
-    } catch (_) {
+    } on Exception catch (e) {
+      // Non-timeout open failure (DNS, TLS handshake, auth refused).
+      // Roll back the count so the pool can try again, log
+      // structured, and let the caller see the original error.
+      log(
+        LogSeverity.warning,
+        'postgres.open_connection_failed',
+        fields: <String, Object?>{
+          'kind': 'exception',
+          'error': e.toString(),
+        },
+      );
+      _openConnectionCount -= 1;
+      _openForNextWaiter();
+      rethrow;
+    } on Object catch (e, st) {
+      // Non-`Exception` throws — same posture as the `Exception`
+      // branch with the stack frame attached for diagnosis.
+      log(
+        LogSeverity.error,
+        'postgres.open_connection_failed',
+        fields: <String, Object?>{
+          'kind': 'unhandled',
+          'error': e.toString(),
+          'stack_first_frame': firstStackFrame(st),
+        },
+      );
       _openConnectionCount -= 1;
       _openForNextWaiter();
       rethrow;
@@ -402,7 +454,34 @@ class _PackagePostgresTransaction implements PostgresTransaction {
         operation: 'commit',
         timeout: _perStatementTimeout,
       );
-    } catch (_) {
+    } on Exception catch (e) {
+      // COMMIT failed for a non-timeout reason (constraint deferred
+      // to commit time, server abort, etc.). Discard the lease so a
+      // wedged session is not returned to the pool, log structured,
+      // and let the caller see the original error.
+      log(
+        LogSeverity.warning,
+        'postgres.commit_failed',
+        fields: <String, Object?>{
+          'kind': 'exception',
+          'error': e.toString(),
+        },
+      );
+      shouldRelease = false;
+      await _lease.discard();
+      rethrow;
+    } on Object catch (e, st) {
+      // Non-`Exception` throws — same posture, with stack for
+      // diagnosis. The original error still reaches the caller.
+      log(
+        LogSeverity.error,
+        'postgres.commit_failed',
+        fields: <String, Object?>{
+          'kind': 'unhandled',
+          'error': e.toString(),
+          'stack_first_frame': firstStackFrame(st),
+        },
+      );
       shouldRelease = false;
       await _lease.discard();
       rethrow;
