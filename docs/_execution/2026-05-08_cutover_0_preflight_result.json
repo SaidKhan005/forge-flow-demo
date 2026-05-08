@@ -1,0 +1,74 @@
+{
+  "schema_version": "1",
+  "tested_at": "2026-05-08T14:03:50.376019Z",
+  "label": "production1_preflight_2026_05_08",
+  "require_all": false,
+  "overall_status": "red",
+  "overall_green": false,
+  "checks": [
+    {
+      "name": "schema_presence",
+      "status": "green",
+      "message": "all 21 expected tables present, RLS posture matches expected, tenant-leading indexes ok",
+      "elapsed_ms": 1563.9,
+      "details": {
+        "expected_table_count": 21,
+        "present_table_count": 116,
+        "expected_rls_table_count": 8
+      }
+    },
+    {
+      "name": "age_cypher_match",
+      "status": "red",
+      "message": "cutover_preflight_red_age_cypher_match: cypher MATCH on graph forge_graph failed (ServerException)",
+      "elapsed_ms": 784.0,
+      "details": {
+        "graph_name": "forge_graph",
+        "error_kind": "ServerException"
+      }
+    },
+    {
+      "name": "pgvector_cosine",
+      "status": "green",
+      "message": "pgvector_cosine: cosine distance probe returned 1.0 (within [0.0, 2.0])",
+      "elapsed_ms": 802.8,
+      "details": {
+        "distance": 1.0
+      }
+    },
+    {
+      "name": "partman_cron_active",
+      "status": "red",
+      "message": "cutover_preflight_red_partman_cron_active: 1 required extension(s) missing",
+      "elapsed_ms": 808.7,
+      "details": {
+        "missing_extensions": [
+          "pg_cron"
+        ],
+        "present_extensions": [
+          "pg_partman"
+        ]
+      }
+    },
+    {
+      "name": "health_endpoint",
+      "status": "red",
+      "message": "cutover_preflight_red_health_endpoint: probe to https://forge-flow-production1-proxy-e42g7oyaiq-pd.a.run.app/health threw TimeoutException",
+      "elapsed_ms": 10026.5,
+      "details": {
+        "health_uri": "https://forge-flow-production1-proxy-e42g7oyaiq-pd.a.run.app/health",
+        "error_kind": "TimeoutException"
+      }
+    },
+    {
+      "name": "secret_manager_reachability",
+      "status": "yellow",
+      "message": "secret_manager_reachability: skipped (workstation_run)",
+      "elapsed_ms": 0.0,
+      "details": {
+        "skipped": true,
+        "required_secret_count": 5
+      }
+    }
+  ]
+}

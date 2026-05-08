@@ -177,7 +177,22 @@ credentials and paste them through the existing connect/rotation flow.
       rows are missing, causing any new staging proxy revision to fail
       startup contract check. Staging IAM is granted, env var would land
       cleanly the moment the schema-contract issue is resolved (separate
-      bug; not push-related).
+      bug; not push-related). **Fix landed 2026-05-08:** new migration
+      `db/migrations/202605081300_seed_kms_rollout_flags_default_disabled.sql`
+      idempotently re-seeds the four rows at the system-wide sentinel
+      scope with `enabled = false`. Staging unblock requires applying
+      this single migration to the staging Postgres instance via the
+      Phase 9 migration apply runbook
+      (`runbooks/phase_9_production1_migration_apply_runbook.md` — same
+      shape used for staging). Concretely, from a host that can reach
+      the staging Cloud SQL instance:
+      `gcloud sql connect forge-flow-staging-db --user=ff_migrator
+      --database=postgres < db/migrations/202605081300_seed_kms_rollout_flags_default_disabled.sql`
+      (or paste the file's contents into a `psql` session connected
+      with the migrator role). The migration is wrapped in `BEGIN; …
+      COMMIT;` and is fully idempotent — re-running it after a partial
+      apply or in production is a no-op. Once applied, redeploy the
+      staging proxy and the `admin_schema_contract` check will pass.
       **Live device proof remains operator-blocked:** install ForgeFlow
       Android build → first prod operator signs in → app registers FCM
       token → first push event fires. Operationally chained behind the
