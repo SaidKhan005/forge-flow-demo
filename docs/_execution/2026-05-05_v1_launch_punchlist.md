@@ -112,11 +112,22 @@ arrival. Tracker:
 
 ### Wave 1 (trio — needed for launch UX)
 
-- [ ] `8.LSK.live.sandbox` — Lightspeed K-Series sandbox verify
+**Pipeline correctness gate is CLOSED 2026-05-08.** Adapter → canonical fact
+→ Postgres sink → demo-flip → RLS isolation is proved for all three trio
+vendors via fixture-based simulation that mirrors each vendor's published
+API field paths. Detail:
+`docs/_execution/2026-05-08_v1_trio_live_pipeline_proof_via_payload_simulation.md`.
+
+The remaining engineering surface is real OAuth handshake + live HTTP
+transport quirks + vendor-minted webhook signing secret. None of those
+require new engineering work; they require operator action to obtain
+credentials and paste them through the existing connect/rotation flow.
+
+- [ ] `8.LSK.live.sandbox` — Lightspeed K-Series sandbox verify (pipeline proved; needs OAuth handshake + live HTTP)
 - [ ] `8.LSK.live.prod` — Lightspeed K-Series production credentialed
-- [ ] `8R.LB.live.sandbox` — Libro sandbox verify
+- [ ] `8R.LB.live.sandbox` — Libro sandbox verify (pipeline proved; needs OAuth handshake + live HTTP + webhook signing secret)
 - [ ] `8R.LB.live.prod` — Libro production credentialed
-- [ ] `8.S.QBT.live.sandbox` — QuickBooks Time sandbox verify
+- [ ] `8.S.QBT.live.sandbox` — QuickBooks Time sandbox verify (pipeline proved; needs OAuth handshake + live HTTP)
 - [ ] `8.S.QBT.live.prod` — QuickBooks Time production credentialed
 
 ### Wave D (rolling, post-launch)
@@ -143,7 +154,13 @@ arrival. Tracker:
 - [ ] **`8.spine-bridge-live` connected-device + push proof.** Code
       components landed (see V1 closure dispatch + first-connect
       backfill). Awaiting (a) device + (b) staging apply of mobile push
-      migration + (c) operator-blocked sandbox creds.
+      migration + (c) operator-blocked sandbox creds. **Push specifically:**
+      operator-driven runbook now landed at `runbooks/firebase_console_push_apply_runbook.md`
+      — ~15 minute total operator time across Firebase Console + Apple
+      Developer + Cloud Run consoles to bring push live. All code,
+      mobile runtime, proxy dispatcher, IAM-aware service-account auth,
+      and per-flavor Firebase config files (`google-services.json` +
+      `GoogleService-Info.plist`) are already on master.
 - [-] **Doc 1 remaining — closed 2026-05-08 except operator-blocked gates:**
       - Item 6 — admin/web setting sync inventory: **closed** (closeout doc + PRs #391, #393, #398).
       - Item 7 — connected-device E2E: **closed (emulator simulation)** Pixel 5 / Android 14, screens at `.claude/screenshots_doc1_emu/`.
