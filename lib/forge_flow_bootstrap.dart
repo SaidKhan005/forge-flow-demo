@@ -106,14 +106,24 @@ Future<void> bootstrapAndRunApp(
         value: syncProxyClient is BusinessScopeClient
             ? syncProxyClient as BusinessScopeClient
             : null,
-        child: ChangeNotifierProvider<AuthSessionNotifier>.value(
-          value: authNotifier,
-          child: Provider<RealtimeSubscription?>.value(
-            value: realtimeSubscription,
-            child: RealtimeAuthBridge(
-              child: MobileOperationalSyncHost(
-                syncClient: syncProxyClient,
-                child: app,
+        // 8.demo-mode-banner — expose the same SyncProxyClient instance
+        // the operational sync host uses so the AppShell-mounted
+        // [DemoModeBanner] can call `fetchDemoModeStates(...)` for the
+        // active (operator, location) without standing up a parallel
+        // HTTP client. Demo / no-Firebase paths leave this null; the
+        // banner stays hidden when no client is wired (matches the
+        // no-runtime-state-available reality).
+        child: Provider<SyncProxyClient?>.value(
+          value: syncProxyClient,
+          child: ChangeNotifierProvider<AuthSessionNotifier>.value(
+            value: authNotifier,
+            child: Provider<RealtimeSubscription?>.value(
+              value: realtimeSubscription,
+              child: RealtimeAuthBridge(
+                child: MobileOperationalSyncHost(
+                  syncClient: syncProxyClient,
+                  child: app,
+                ),
               ),
             ),
           ),
