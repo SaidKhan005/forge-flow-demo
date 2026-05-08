@@ -1,0 +1,17 @@
+{
+  "_scenario": "Cross-timezone (Toronto-local business_date with Pacific UTC timestamp)",
+  "_expected_outcome": "accept; business_date resolves to the location's local timezone (America/Toronto), NOT to whatever the UTC offset implies",
+  "_adapter_assertion": "iana_timezone_converter.toBusinessDate uses the location's IANA timezone (from connector_connection.metadata or location.iana_timezone). Even though the UTC timestamp falls within Pacific business hours, the canonical fact's business_date is the Toronto-local date for the close time.",
+  "_note": "This fixture forces the resolver to choose between (a) the location's IANA timezone and (b) the timezone implied by the UTC instant. The contract requires (a). The closeAt 2026-05-05T05:30:00Z is 22:30 Pacific (PDT, UTC-7) on 2026-05-04 but 01:30 Toronto (EDT, UTC-4) on 2026-05-05 — so the resolver picks 2026-05-05 as business_date. The fixture catches resolvers that accidentally key on the UTC-day or PDT-day.",
+  "eventId": "evt-chk-2026-05-05-402",
+  "eventType": "aloha.check.modified",
+  "siteId": "site-aloha-TOR-001",
+  "checkId": "chk-2026-05-05-402",
+  "openedAt": "2026-05-05T03:45:00.000Z",
+  "closedAt": "2026-05-05T05:30:00.000Z",
+  "modifiedAt": "2026-05-05T05:30:00.000Z",
+  "numberOfGuests": 4,
+  "totalAmount": 92.80,
+  "voided": false,
+  "_location_iana_timezone": "America/Toronto"
+}

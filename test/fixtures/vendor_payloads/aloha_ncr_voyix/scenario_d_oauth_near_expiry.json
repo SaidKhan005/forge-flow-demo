@@ -1,0 +1,26 @@
+{
+  "_scenario": "D — OAuth client_credentials near-expiry",
+  "_expected_outcome": "refresh path triggers; subsequent request succeeds with the freshly-minted token",
+  "_adapter_assertion": "oauth_refresh_cron observes token_expires_at < now() + 1h; re-mints via client_credentials replay; vendor_credentials.token_expires_at advances; subsequent fetchChecksPage call uses the new token.",
+  "_note": "NCR Voyix Aloha uses OAuth 2.0 client_credentials. There is no refresh token — refresh is a fresh /oauth2/token POST replaying client_id + client_secret. This fixture is the credentials envelope (placeholders) plus the observed token-mint response with expires_in showing a token within the proactive-refresh window.",
+  "credentials_request": {
+    "method": "POST",
+    "path": "/oauth2/token",
+    "headers": {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    "body": "grant_type=client_credentials&client_id=PLACEHOLDER_CLIENT_ID&client_secret=PLACEHOLDER_CLIENT_SECRET&scope=aloha%3Achecks.read%20aloha%3Asites.read%20events%3Asubscriptions.write%20events%3Asubscriptions.delete"
+  },
+  "near_expiry_token_state": {
+    "access_token": "PLACEHOLDER_ACCESS_TOKEN_NEAR_EXPIRY",
+    "token_type": "Bearer",
+    "expires_in": 60,
+    "scope": "aloha:checks.read aloha:sites.read events:subscriptions.write events:subscriptions.delete"
+  },
+  "post_refresh_token_state": {
+    "access_token": "PLACEHOLDER_ACCESS_TOKEN_FRESH",
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "scope": "aloha:checks.read aloha:sites.read events:subscriptions.write events:subscriptions.delete"
+  }
+}
