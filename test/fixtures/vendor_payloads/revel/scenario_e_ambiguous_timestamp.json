@@ -1,0 +1,33 @@
+{
+  "_envelope": {
+    "transport": "webhook",
+    "method": "POST",
+    "path": "/v1/webhooks/op_test_001/loc_test_001/revel",
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Revel-Signature": "abcdef0123456789abcdef0123456789abcdef01",
+      "X-Revel-Event-Type": "order.finalized",
+      "X-Revel-Event-Id": "evt_ambig_8843200",
+      "X-Revel-Message-Id": "msg_ambig-0001",
+      "X-Revel-Instance": "demo-instance",
+      "X-Revel-Establishment-Id": "4421"
+    },
+    "_assertion": "Reject — Per docs/integrations/revel/field_mapping.md 'Timestamp shapes': if the sandbox surface ever emits location-local timestamps with no offset, the adapter REFUSES the event at parse time (drops with connector_sync_log.event_kind = parse_error); it does NOT silently re-interpret. The naive timestamp `2026-05-02 19:31:00` (no `T`, no `Z`, no offset) is the documented refuse-path. RevelPosAdapter._parseUtc returns null because DateTime.tryParse on this shape is platform-dependent, and even when it parses, treating it as UTC would silently mis-bucket the operator's day. Adapter must reject, not best-effort."
+  },
+  "order": {
+    "id": 8843200,
+    "local_id": "A-AMBIG-0001",
+    "uuid": "00000000-0000-4000-8000-aaaaeeee0001",
+    "created_date": "2026-05-02 18:45:00",
+    "updated_date": "2026-05-02 19:31:00",
+    "final_total": "64.30",
+    "subtotal": "57.40",
+    "tax": "6.90",
+    "number_of_people": 3,
+    "closed": true,
+    "voided": false,
+    "dining_option": 1,
+    "establishment_id": 4421,
+    "instance_name": "demo-instance"
+  }
+}

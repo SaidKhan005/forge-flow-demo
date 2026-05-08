@@ -1,0 +1,48 @@
+{
+  "_envelope": {
+    "transport": "webhook",
+    "method": "POST",
+    "path": "/v1/webhooks/op_test_001/loc_test_001/revel",
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Revel-Signature": "112233445566778899aabbccddeeff0011223344",
+      "X-Revel-Event-Type": "order.finalized",
+      "X-Revel-Event-Id": "8842301",
+      "X-Revel-Message-Id": "msg_collision-0001",
+      "X-Revel-Instance": "demo-instance",
+      "X-Revel-Establishment-Id": "4421"
+    },
+    "_assertion": "Reject — `inbound_webhook_idempotency` UNIQUE on (vendor_id, operator_id, vendor_event_id) prevents shadow-write across vendors. The numeric id 8842301 is identical to a Square `order_id` previously seen for the same operator, but the idempotency key is namespaced by `vendor_id = 'revel'` so the row inserts fresh on Revel's side. Crucially, the canonical fact upsert key is also namespaced — `(vendor_id, operator_id, vendor_entity_id, vendor_modified_at)` — so Revel's row never overwrites Square's row even though the numeric id collides. The fixture documents that the Revel side accepts the write (its own namespace) while ANY attempt to write into a non-Revel namespace using this id MUST be rejected by the namespace UNIQUE."
+  },
+  "_collision_context": {
+    "this_event": {
+      "vendor_id": "revel",
+      "operator_id": "op_test_001",
+      "vendor_entity_id": "8842301",
+      "vendor_modified_at": "2026-05-02T19:31:00Z"
+    },
+    "pre_existing_square_event_for_same_operator": {
+      "vendor_id": "square",
+      "operator_id": "op_test_001",
+      "vendor_entity_id": "8842301",
+      "vendor_modified_at": "2026-04-25T12:00:00Z",
+      "note": "Hypothetical pre-existing row in inbound_webhook_idempotency + canonical fact for the Square namespace. Numeric id collision; namespace prevents shadow-write."
+    }
+  },
+  "order": {
+    "id": 8842301,
+    "local_id": "A-0142",
+    "uuid": "00000000-0000-4000-8000-aaaaaaaaaaaa",
+    "created_date": "2026-05-02T18:45:00Z",
+    "updated_date": "2026-05-02T19:31:00Z",
+    "final_total": "64.30",
+    "subtotal": "57.40",
+    "tax": "6.90",
+    "number_of_people": 3,
+    "closed": true,
+    "voided": false,
+    "dining_option": 1,
+    "establishment_id": 4421,
+    "instance_name": "demo-instance"
+  }
+}

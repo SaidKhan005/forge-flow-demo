@@ -1,0 +1,33 @@
+{
+  "_envelope": {
+    "transport": "webhook",
+    "method": "POST",
+    "path": "/v1/webhooks/op_test_001/loc_test_001/revel",
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Revel-Signature": "fa9e8d7c6b5a4938271605040302010fedcba987",
+      "X-Revel-Event-Type": "order.finalized",
+      "X-Revel-Event-Id": "evt_future_8843100",
+      "X-Revel-Message-Id": "msg_future-0001",
+      "X-Revel-Instance": "demo-instance",
+      "X-Revel-Establishment-Id": "4421"
+    },
+    "_assertion": "Reject — VendorTimestampSanity rule 'opened_in_future' fails (opened_at > now() + 1h). Adapter sanity hook returns false; canonical write skipped; connector_sync_log records the drop. Reference value: row matches `revelFutureDatedOrder` in test/integrations/pos/fixtures/revel_orders_fixture.dart (created_date 30 days ahead)."
+  },
+  "order": {
+    "id": 9999,
+    "local_id": "A-9999",
+    "uuid": "00000000-0000-4000-8000-eeeeeeeeeeee",
+    "created_date": "2026-06-15T12:00:00Z",
+    "updated_date": "2026-06-15T13:00:00Z",
+    "final_total": "50.00",
+    "subtotal": "44.65",
+    "tax": "5.35",
+    "number_of_people": 2,
+    "closed": true,
+    "voided": false,
+    "dining_option": 1,
+    "establishment_id": 4421,
+    "instance_name": "demo-instance"
+  }
+}
