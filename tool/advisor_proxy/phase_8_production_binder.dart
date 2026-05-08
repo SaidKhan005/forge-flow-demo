@@ -279,6 +279,8 @@ Future<void> bindPhase8IntegrationsForProduction(
     firstBackfillEnqueueGateway:
         productionBindings.firstConnectionBackfillEnqueueGateway,
     integrationCategoryResolver: productionBindings.integrationCategoryResolver,
+    adminRequestIdempotencyStore:
+        productionBindings.adminRequestIdempotencyStore,
   );
   Phase80IntegrationRoutes.globalBindings = bindings;
   _alreadyBound = true;
@@ -339,6 +341,7 @@ class _Phase8BindingsHolder
     required this.webhookHandler,
     required this.firstBackfillEnqueueGateway,
     required this.integrationCategoryResolver,
+    required this.adminRequestIdempotencyStore,
   });
 
   @override
@@ -351,6 +354,8 @@ class _Phase8BindingsHolder
   final FirstConnectionBackfillEnqueueGateway firstBackfillEnqueueGateway;
   @override
   final IntegrationCategoryResolver? integrationCategoryResolver;
+  @override
+  final AdminRequestIdempotencyStore? adminRequestIdempotencyStore;
 }
 
 // ─── tool/lib seam adapters ────────────────────────────────────────────

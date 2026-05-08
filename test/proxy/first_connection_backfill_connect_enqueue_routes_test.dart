@@ -100,6 +100,7 @@ void main() {
               'location_id': _loc,
               'api_key': 'test-key',
             },
+            idempotencyKey: 'idem-key-paste-1',
           );
 
           expect(response.statusCode, equals(200));
@@ -158,8 +159,23 @@ void main() {
           final uri = ctx.baseUri.resolve(
             '/v1/admin/integrations/toast/connect-key',
           );
-          final first = await _postJson(ctx.client, uri, _connectBody());
-          final second = await _postJson(ctx.client, uri, _connectBody());
+          // Distinct Idempotency-Keys so each request reaches the
+          // gateway. Same-key dedup is covered by
+          // `admin_integrations_idempotency_test.dart`. This test
+          // verifies the *gateway-level* job reuse: both reaches the
+          // gateway, gateway returns the same active job.
+          final first = await _postJson(
+            ctx.client,
+            uri,
+            _connectBody(),
+            idempotencyKey: 'idem-retry-1',
+          );
+          final second = await _postJson(
+            ctx.client,
+            uri,
+            _connectBody(),
+            idempotencyKey: 'idem-retry-2',
+          );
 
           expect(first.statusCode, equals(200));
           expect(second.statusCode, equals(200));
@@ -190,6 +206,7 @@ void main() {
             ctx.client,
             ctx.baseUri.resolve('/v1/admin/integrations/toast/connect-key'),
             _connectBody(),
+            idempotencyKey: 'idem-not-enqueued',
           );
 
           expect(response.statusCode, equals(200));
@@ -268,10 +285,14 @@ String? _jobId(Map<String, Object?> body) {
 Future<_HttpResponseBody> _postJson(
   HttpClient client,
   Uri uri,
-  Map<String, Object?> body,
-) async {
+  Map<String, Object?> body, {
+  String? idempotencyKey,
+}) async {
   final request = await client.postUrl(uri);
   request.headers.contentType = ContentType.json;
+  if (idempotencyKey != null) {
+    request.headers.set('Idempotency-Key', idempotencyKey);
+  }
   request.add(utf8.encode(jsonEncode(body)));
   final response = await request.close();
   return _readResponse(response);
