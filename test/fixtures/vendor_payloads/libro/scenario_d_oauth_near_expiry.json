@@ -1,0 +1,28 @@
+{
+  "_pressure_meta": {
+    "scenario": "D — OAuth near-expiry token (refresh path)",
+    "expected_outcome": "refresh_path_triggers",
+    "credential_type": "oauth_authorization_code",
+    "auth_flow": "https://libroreserve.github.io/api-documentation/#section/Authentication",
+    "refresh_endpoint": "POST /v1/oauth/token",
+    "rotation_semantics": "rotating — each refresh issues a new refresh token; old refresh token revoked",
+    "expected_path": "lib/services/integration/oauth_refresh_cron.dart scans vendor_credentials for token_expires_at < now() + 24h and calls Libro /v1/oauth/token before adapter pollIncremental hits the 401 reactive path"
+  },
+  "vendor_credential_row_state": {
+    "vendor_id": "libro",
+    "operator_id": "op_pressure_test_001",
+    "location_id": "loc_pressure_test_yyz_001",
+    "auth_mode": "oauth",
+    "token_issued_at": "2026-05-08T08:00:00Z",
+    "token_expires_at": "2026-05-08T08:55:00Z",
+    "consecutive_refresh_failures": 0,
+    "scopes_granted": ["reservations.read", "webhooks.write"]
+  },
+  "expected_token_refresh_response_shape": {
+    "access_token": "lbr_access_redacted",
+    "refresh_token": "lbr_refresh_redacted_rotated",
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "scope": "reservations.read webhooks.write"
+  }
+}

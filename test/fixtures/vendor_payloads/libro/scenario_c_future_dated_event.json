@@ -1,0 +1,23 @@
+{
+  "_pressure_meta": {
+    "scenario": "C — future-dated event",
+    "domain_nuance": "Reservation domain: `reservation_at` is LEGITIMATELY in the future (a future booking). The bounded value is the EVENT timestamp — `created_at` / `updated_at` for backfill+poll, `occurred_at` for webhook delivery. Sanity hook receives `opened_at = reservation_at` per the adapter, so the framework MUST bound on the event-creation timestamp, not the reservation_at booking time. This fixture sets `created_at` and `updated_at` 36 hours in the future to force the sanity guard to fire while leaving `reservation_at` valid.",
+    "expected_outcome": "reject",
+    "expected_failure": "framework sanity_log row + drop; sanityHook returns false; no upsertReservationFact call",
+    "guard": "framework's pollIncremental sanity ceiling kInboundWebhookFutureSkewCeiling"
+  },
+  "id": "wh-evt-7c2f-900",
+  "type": "reservation.confirmed",
+  "venue_id": "venue-toronto-yorkville",
+  "occurred_at": "2026-05-10T11:30:05",
+  "reservation": {
+    "id": "lbr-evt-7c2f-future",
+    "venue_id": "venue-toronto-yorkville",
+    "size": 4,
+    "status": "confirmed",
+    "reservation_at": "2026-06-15T19:00:00",
+    "created_at": "2026-05-10T11:30:00",
+    "confirmed_at": "2026-05-10T11:30:04",
+    "updated_at": "2026-05-10T11:30:04"
+  }
+}

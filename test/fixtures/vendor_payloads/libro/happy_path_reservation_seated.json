@@ -1,0 +1,22 @@
+{
+  "id": "wh-evt-7c2f-200",
+  "type": "reservation.seated",
+  "venue_id": "venue-toronto-yorkville",
+  "occurred_at": "2026-05-04T17:46:10",
+  "reservation": {
+    "id": "lbr-evt-7c2f-003",
+    "venue_id": "venue-toronto-yorkville",
+    "size": 6,
+    "status": "seated",
+    "reservation_at": "2026-05-04T17:45:00",
+    "created_at": "2026-05-04T09:00:00",
+    "confirmed_at": "2026-05-04T09:01:00",
+    "arrived_at": "2026-05-04T17:42:00",
+    "seated_at": "2026-05-04T17:46:00",
+    "updated_at": "2026-05-04T17:46:00",
+    "guest_first_name": "Jordan",
+    "guest_last_name": "Lee",
+    "guest_email": "jordan.lee@example.com",
+    "guest_phone": "+14165550456"
+  }
+}
