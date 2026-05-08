@@ -1,0 +1,13 @@
+{
+  "time_entries": [
+    {
+      "id": "te_412904",
+      "user_id": "usr_98233",
+      "position": null,
+      "start_time": "2026-05-02T17:00:00.000Z",
+      "end_time": "2026-05-02T21:00:00.000Z",
+      "updated_at": "2026-05-02T21:02:08.000Z"
+    }
+  ],
+  "next_cursor": ""
+}

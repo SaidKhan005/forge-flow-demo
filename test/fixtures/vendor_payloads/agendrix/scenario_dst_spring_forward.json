@@ -1,0 +1,37 @@
+{
+  "_location_context": {
+    "operator_id": "op_alpha_001",
+    "location_id": "loc_alpha_yul_001",
+    "iana_timezone": "America/Toronto",
+    "dst_window": {
+      "transition_local": "2026-03-08T02:00 -> 03:00",
+      "skipped_local_window_start": "2026-03-08T02:00",
+      "skipped_local_window_end": "2026-03-08T03:00"
+    }
+  },
+  "time_entries": [
+    {
+      "id": "te_513001",
+      "user_id": "usr_98231",
+      "position": {
+        "id": "pos_foh_server",
+        "name": "Server"
+      },
+      "start_time": "2026-03-08T06:00:00.000Z",
+      "end_time": "2026-03-08T15:30:00.000Z",
+      "updated_at": "2026-03-08T15:32:08.000Z"
+    },
+    {
+      "id": "te_513002",
+      "user_id": "usr_98232",
+      "position": {
+        "id": "pos_boh_line",
+        "name": "Line Cook"
+      },
+      "start_time": "2026-03-08T13:00:00.000Z",
+      "end_time": "2026-03-08T22:00:00.000Z",
+      "updated_at": "2026-03-08T22:01:55.000Z"
+    }
+  ],
+  "next_cursor": ""
+}

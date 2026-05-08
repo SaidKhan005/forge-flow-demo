@@ -1,0 +1,24 @@
+{
+  "time_entries": [
+    {
+      "id": "te_412903",
+      "user_id": "usr_98232",
+      "position": {
+        "id": "pos_boh_line",
+        "name": "Line Cook"
+      },
+      "start_time": "2026-05-02T16:30:00.000Z",
+      "end_time": "2026-05-02T23:45:00.000Z",
+      "breaks": [
+        {
+          "id": "br_771042",
+          "start_time": "2026-05-02T19:00:00.000Z",
+          "end_time": "2026-05-02T19:30:00.000Z",
+          "paid": false
+        }
+      ],
+      "updated_at": "2026-05-02T23:48:01.000Z"
+    }
+  ],
+  "next_cursor": ""
+}
