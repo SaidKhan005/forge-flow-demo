@@ -1,0 +1,55 @@
+{
+  "_event_envelope": {
+    "eventGuid": "evt-d1f9cd4a-4f4b-4d6e-9b7d-9a4f1f7c8e21",
+    "eventType": "orders.modified",
+    "headers": {
+      "toast-signature": "<<HMAC_SHA256_BASE64_OF_BODY_USING_TEST_HMAC_SECRET>>",
+      "toast-webhook-timestamp": "1778011500"
+    }
+  },
+  "businessDate": 20260504,
+  "closedDate": "2026-05-04T19:55:00.000Z",
+  "deleted": false,
+  "deletedDate": null,
+  "diningOption": {
+    "guid": "00000000-0000-4000-a000-000000000201",
+    "entityType": "DiningOption"
+  },
+  "duration": 5100,
+  "entityType": "Order",
+  "externalId": null,
+  "guid": "d1f9cd4a-4f4b-4d6e-9b7d-9a4f1f7c8e21",
+  "modifiedDate": "2026-05-04T19:55:00.000Z",
+  "numberOfGuests": 4,
+  "openedDate": "2026-05-04T18:30:00.000Z",
+  "paidDate": "2026-05-04T19:54:30.000Z",
+  "paymentStatus": "PAID",
+  "promisedDate": null,
+  "restaurant": {
+    "guid": "3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011",
+    "entityType": "Restaurant"
+  },
+  "restaurantService": {
+    "guid": "00000000-0000-4000-a000-000000000301",
+    "entityType": "RestaurantService"
+  },
+  "revenueCenter": {
+    "guid": "00000000-0000-4000-a000-000000000401",
+    "entityType": "RevenueCenter"
+  },
+  "server": {
+    "guid": "00000000-0000-4000-a000-000000000501",
+    "entityType": "Employee"
+  },
+  "source": "In Store",
+  "table": {
+    "guid": "00000000-0000-4000-a000-000000000601",
+    "entityType": "Table"
+  },
+  "totalAmount": 87.2,
+  "totalAmountWithoutTaxAndDiscounts": 79.99,
+  "totalDiscountAmount": 0.0,
+  "totalTaxAmount": 7.21,
+  "voidDate": null,
+  "voided": false
+}

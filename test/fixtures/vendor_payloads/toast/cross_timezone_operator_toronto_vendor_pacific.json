@@ -1,0 +1,32 @@
+{
+  "_event_envelope": {
+    "eventGuid": "evt-cross-tz-5c1d2e3f-4a8b-4f9c-92e1-6d8a7b5c4d3e",
+    "eventType": "orders.modified",
+    "headers": {
+      "toast-signature": "<<HMAC_SHA256_BASE64_OF_BODY_USING_TEST_HMAC_SECRET>>",
+      "toast-webhook-timestamp": "1778157600"
+    }
+  },
+  "_test_local_intent": "Operator headquartered in Toronto operates a Toast-equipped location in Los Angeles. Order opens 23:30 PT (2026-05-06) which is already 02:30 ET (2026-05-07). business_date MUST resolve against the location's timezone (LA), not the operator's device clock (Toronto).",
+  "_test_location_iana": "America/Los_Angeles",
+  "_test_operator_iana": "America/Toronto",
+  "businessDate": 20260506,
+  "closedDate": "2026-05-07T07:30:00.000Z",
+  "deleted": false,
+  "diningOption": {
+    "entityType": "DiningOption",
+    "guid": "00000000-0000-4000-a000-000000000201"
+  },
+  "entityType": "Order",
+  "guid": "5c1d2e3f-4a8b-4f9c-92e1-6d8a7b5c4d3e",
+  "modifiedDate": "2026-05-07T07:30:00.000Z",
+  "numberOfGuests": 3,
+  "openedDate": "2026-05-07T06:30:00.000Z",
+  "paymentStatus": "PAID",
+  "restaurant": {
+    "entityType": "Restaurant",
+    "guid": "9b3a7c5e-2d1f-4e8a-b6c9-3a8e1d2f4b5c"
+  },
+  "totalAmount": 64.2,
+  "voided": false
+}

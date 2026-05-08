@@ -1,0 +1,99 @@
+{
+  "_event_envelope": {
+    "eventGuid": "evt-a8d2f1e4-5c8b-49e2-bd77-3f1a8e7b9c44",
+    "eventType": "orders.modified",
+    "headers": {
+      "toast-signature": "<<HMAC_SHA256_BASE64_OF_BODY_USING_TEST_HMAC_SECRET>>",
+      "toast-webhook-timestamp": "1778012700"
+    }
+  },
+  "businessDate": 20260504,
+  "checks": [
+    {
+      "amount": 56.0,
+      "appliedDiscounts": [],
+      "appliedServiceCharges": [],
+      "closedDate": "2026-05-04T20:15:00.000Z",
+      "deleted": false,
+      "displayNumber": "1",
+      "entityType": "Check",
+      "guid": "ab12cd34-ef56-4789-9012-3456789abcde",
+      "openedDate": "2026-05-04T19:00:00.000Z",
+      "paidDate": "2026-05-04T20:14:45.000Z",
+      "paymentStatus": "PAID",
+      "payments": [
+        {
+          "amount": 56.0,
+          "amountTendered": 70.0,
+          "cardType": "VISA",
+          "entityType": "OrderPayment",
+          "guid": "11112222-3333-4444-5555-666677778888",
+          "paidDate": "2026-05-04T20:14:45.000Z",
+          "paymentStatus": "CAPTURED",
+          "refundStatus": "NONE",
+          "tipAmount": 9.0,
+          "type": "CREDIT"
+        }
+      ],
+      "selections": [
+        {
+          "deferred": false,
+          "displayName": "Margherita Pizza",
+          "entityType": "MenuItemSelection",
+          "guid": "99999999-aaaa-4bbb-8ccc-dddddddddddd",
+          "preDiscountPrice": 18.0,
+          "price": 18.0,
+          "quantity": 1.0,
+          "salesCategory": {
+            "entityType": "SalesCategory",
+            "guid": "00000000-0000-4000-a000-000000000801"
+          },
+          "voided": false
+        },
+        {
+          "deferred": false,
+          "displayName": "Caesar Salad",
+          "entityType": "MenuItemSelection",
+          "guid": "88888888-eeee-4fff-8888-aaaaaaaaaaaa",
+          "preDiscountPrice": 11.0,
+          "price": 11.0,
+          "quantity": 1.0,
+          "salesCategory": {
+            "entityType": "SalesCategory",
+            "guid": "00000000-0000-4000-a000-000000000802"
+          },
+          "voided": false
+        }
+      ],
+      "taxAmount": 4.0,
+      "totalAmount": 56.0
+    }
+  ],
+  "closedDate": "2026-05-04T20:15:00.000Z",
+  "deleted": false,
+  "diningOption": {
+    "entityType": "DiningOption",
+    "guid": "00000000-0000-4000-a000-000000000201"
+  },
+  "entityType": "Order",
+  "guid": "a8d2f1e4-5c8b-49e2-bd77-3f1a8e7b9c44",
+  "modifiedDate": "2026-05-04T20:15:00.000Z",
+  "numberOfGuests": 2,
+  "openedDate": "2026-05-04T19:00:00.000Z",
+  "paidDate": "2026-05-04T20:14:45.000Z",
+  "paymentStatus": "PAID",
+  "restaurant": {
+    "entityType": "Restaurant",
+    "guid": "3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011"
+  },
+  "server": {
+    "entityType": "Employee",
+    "guid": "00000000-0000-4000-a000-000000000502"
+  },
+  "source": "In Store",
+  "totalAmount": 56.0,
+  "totalAmountWithoutTaxAndDiscounts": 52.0,
+  "totalDiscountAmount": 0.0,
+  "totalTaxAmount": 4.0,
+  "voided": false
+}
