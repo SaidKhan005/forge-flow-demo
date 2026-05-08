@@ -1,9 +1,19 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-08 (multi-agent deep-dive audit recorded 7 new
-findings in `docs/POST_HARDENING_FOLLOWUPS.md` "Audit additions —
-2026-05-08" section; admin hierarchy lane excluded). Prior:
-2026-05-07.
+Updated: 2026-05-08 (post-audit remediation wave: 9 lanes merged
+across PRs #417–#426 — 4 of 5 P1 audit-addition items closed +
+P2 partial bare-catch fix + Carve-out #3 blessed + closed-phase
+plan archive + vendor doc path updates + phase_9 folder triage +
+hardening_rls contract drift + RestaurantScopeService extraction +
+8.demo-mode-banner slice. The AI-frozen `advisor_proxy.dart`
+placeholder strings remain on the freeze-thaw checklist. **CI is
+currently blocked on a GitHub Actions billing/spending limit** —
+all jobs since #425 stopped before starting; no test runs against
+master have completed for this remediation wave. Verification
+deferred to next CI green run. Earlier 2026-05-08: multi-agent
+deep-dive audit recorded 7 new findings in
+`docs/POST_HARDENING_FOLLOWUPS.md` "Audit additions — 2026-05-08"
+section; admin hierarchy lane excluded). Prior: 2026-05-07.
 Owner: You · Execution: We think, Claude codes
 
 Routing map only. This file shows **only what is left**. Completed phases /
@@ -185,6 +195,14 @@ arrive.
 
 ## Notes
 
+- **2026-05-08 — GitHub Actions billing block.** Recent CI runs show
+  "The job was not started because recent account payments have failed
+  or your spending limit needs to be increased." All 3 master CI jobs
+  (postgres-tests, repo-lints, analyze-and-test) plus the
+  Apple-platform-verification workflow stop in <15s without starting.
+  This blocks automated validation of the remediation wave merged
+  2026-05-08 (PRs #417–#426). Action: resolve the GitHub billing /
+  spending-limit issue, then re-run CI on master.
 - Mobile architecture (canonical-fact dicts → operator-scoped Postgres
   `shift_records` → mobile SQLite via proxy sync) bound by
   `integration_spine_architecture_contract.md`.
@@ -202,6 +220,22 @@ arrive.
   billing setup, provider call, or product decision.
 
 ## Recently archived (see `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`)
+
+2026-05-08 post-audit remediation wave (PRs #417–#426 merged):
+
+- 2026-05-08 audit closeout (#417) — Carve-out #3 blessed, 5 closed-phase plan docs retired to `docs/archive/phases/`, audit findings recorded.
+- POST_HARDENING wage-authority line drift fix + 2026-05-12 _execution sweep reminder (#418).
+- Lane A — `audit_logs_repository` defense-in-depth GUC probe (#424); chose Option B over base-class extension to preserve atomic-with-business-write contract.
+- Lane B — 4 admin integration write routes wired to `admin_request_idempotency` (#425).
+- Lane C — `RestaurantScopeService` extraction; `notifications_screen` + `schedule_forecast_notifier` no longer import SQLite repo directly (#419).
+- Lane D — typed catch arms in `auth_session_notifier` + `tenant_transaction` + `package_postgres_executor` (PR #364 pattern; advisor_proxy 16 sites still open) (#420).
+- Lane E — `8.demo-mode-banner` slice: runtime per-(O, L, C) banner, AppShell mount, walkthrough, 5 widget tests (#426).
+- Lane G — `hardening_rls_and_repository_pattern_contract.md` drift fixes (lint state past-tense, 4 wrapper function names corrected) (#421); subsequently revised post-Lane-A merge to reflect the sanctioned defense-in-depth exception.
+- Lane H — 9 vendor docs in `docs/integrations/<vendor>/` updated to point at archived phase plan paths (#422).
+- Lane I — `docs/phases/phase_9/` folder triage: 1 of 11 moved (the closed `admin_console_mfa_challenge_parity_plan.md`); 10 kept with documented reason (durable authority refs / evergreen runbooks / not-yet-shipped specs) (#423).
+
+CI did NOT validate this wave — GitHub Actions billing block still
+in effect at merge time. Re-run CI once billing is resolved.
 
 2026-05-07 closeout pass moved the following accepted/closed phase rows out
 of the active board:

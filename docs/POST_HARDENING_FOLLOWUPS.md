@@ -1,10 +1,16 @@
 # Post-Hardening Follow-ups
 
-Updated: 2026-05-08 (multi-agent deep-dive sweep added 7 new findings
-in the new "Audit additions — 2026-05-08" section; postgres-repo
-coverage line corrected from "18 of 29 / 10 covered" to actual
-"27 of 47 / 20 covered"; admin hierarchy lane excluded — separate
-team). Prior update 2026-05-07 (Phase 8 plug-and-play V1 closeout —
+Updated: 2026-05-08 (post-audit remediation wave landed: 9 lanes
+merged across PRs [#417](https://github.com/SaidKhan005/forge-flow-demo/pull/417)–
+[#426](https://github.com/SaidKhan005/forge-flow-demo/pull/426). 4 of
+5 P1 audit-addition items closed; the AI-frozen `advisor_proxy.dart`
+placeholder strings remain on the freeze-thaw checklist. P2
+broader-bare-catch pattern partially closed for 3 files (`tool/advisor_proxy/advisor_proxy.dart`'s
+16 sites still open). 2026-05-08 multi-agent deep-dive sweep added 7
+new findings in the "Audit additions — 2026-05-08" section;
+postgres-repo coverage line corrected from "18 of 29 / 10 covered"
+to actual "27 of 47 / 20 covered"; admin hierarchy lane excluded —
+separate team). Prior update 2026-05-07 (Phase 8 plug-and-play V1 closeout —
 resolved operator-self-service / backfill-factory / OAuth-refresh-closures /
 location-integrations-list / test-connection / api-key paste / route
 alignment / binder split / analyzer sweep gaps archived to
@@ -264,28 +270,29 @@ Findings below are NEW or refine prior items. Confirmed-clean lanes
 function presence, all 17 Phase 8 vendor adapters at literal
 `lifecycle: VendorLifecycle.documented`) are not re-listed.
 
-### P1 — `audit_logs_repository.dart` bypasses `OperatorScopedRepository<T>`
+### P1 — `audit_logs_repository.dart` bypasses `OperatorScopedRepository` ✅ FIXED 2026-05-08 ([#424](https://github.com/SaidKhan005/forge-flow-demo/pull/424))
 
 `lib/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart`
-is a stateless writer that takes `operatorId` as a **caller-supplied
-parameter** (`writeRow(exec, operatorId: ..., ...)`) instead of
-extending `OperatorScopedRepository<T>` and reading the operator from
-the tenant `SET LOCAL` context. The underlying `audit_logs` table is
-operator-scoped (`operator_id uuid not null`).
+was a stateless writer that took `operatorId` as a caller-supplied
+parameter — primary-defense bypass for the operator-scoped
+`audit_logs` table.
 
-Why it exists: thin stateless writer designed to run inside the same
-transaction as the business change so audit commits atomically.
-
-Risk: a careless caller or logic bug could pass an attacker-controlled
-operator id and forge audit rows on a different operator's chain. The
-repository pattern's primary defense is bypassed; only RLS on
-`audit_logs` (the backup) prevents the leak.
-
-Action: refactor to extend `OperatorScopedRepository<T>` so
-`operator_id` is injected from `withTenant(...)` rather than passed in.
-Single-repository scope; the other 46 repos correctly extend the base
-or are non-scoped global tables (`kms_rollout_flag`,
-`service_principals`).
+Resolution: chose **Option B (defense-in-depth)** rather than
+extending `OperatorScopedRepository`, because the writer's
+atomic-with-business-write contract requires it to run inside the
+caller's transaction (extending the base would have forced its own
+`withTenant` wrapper and broken the same-commit-boundary semantics).
+`writeRow` now reads `current_setting('app.operator_id', true)` from
+the executor BEFORE binding any insert SQL and throws
+`AuditLogsTenantMismatchError` when the parameter disagrees with the
+GUC. When the GUC is unset (the `runAsSystem` admin path, where
+`forge_admin BYPASSRLS` is the gate), the parameter is accepted —
+preserving `auth_events_audit_repository.insertSystemEvent` and
+`invited_user_activation_repository` paths that already use
+`withSystem`. Verified all 10 caller sites already pass the matching
+operator id; signature unchanged. Coverage:
+`test/infrastructure/persistence/postgres/repositories/audit_logs_repository_test.dart`
+(happy path, mismatch throws before insert, GUC-unset accepts param).
 
 ### P1 — 4 admin integration routes missing idempotency guard ✅ FIXED 2026-05-08
 
@@ -308,7 +315,7 @@ cached replay; new key → reserve → run → cache. Body-hash mismatch
 on the same key → 409 `idempotency_key_conflict`. Coverage:
 `test/tool/advisor_proxy/admin_integrations_idempotency_test.dart`.
 
-### P1 — `advisor_proxy.dart:9105-9106` hardcoded prompt placeholders
+### P1 — `advisor_proxy.dart:9105-9106` hardcoded prompt placeholders ⏸️ DEFERRED (AI freeze)
 
 Production launch-tier prompt build path passes literal strings
 `'launch methodology context placeholder'` and
@@ -320,8 +327,10 @@ when `corpusVersion` is resolved.
 Action: replace with the real methodology context + tool definitions
 strings before any AI-paused work resumes (Phase `11b` /
 `12.0`–`12.5`). Tracked here so the freeze-thaw checklist sees it.
+Not addressed in 2026-05-08 remediation wave because the AI lane is
+frozen; first task at thaw.
 
-### P1 — Demo-mode banner promised by architecture but never wired
+### P1 — Demo-mode banner promised by architecture but never wired ✅ FIXED 2026-05-08 ([#426](https://github.com/SaidKhan005/forge-flow-demo/pull/426) — slice `8.demo-mode-banner`)
 
 `lib/services/integration/demo_mode_state.dart:12-15` (the file header)
 explicitly promises: *"Operator-app UX: the demo-mode banner reads
@@ -357,11 +366,23 @@ Action — slice `8.demo-mode-banner`:
 - Walkthrough doc per HP #10.
 
 This is a runtime-state read, not a `kDemoMode` carve-out; no contract
-change needed. Test approach: integration test asserting the banner
-shows when `demo_mode_state.is_demo = true` for the active scope and
-clears when the row flips.
+change needed.
 
-### P1 — Two new widget→repo direct-call violations
+Resolution: shipped via PR #426 with `lib/widgets/demo_mode_banner.dart`,
+`lib/state/demo_mode_state_notifier.dart`, AppShell mount in
+`lib/forge_flow_app.dart` (banner stack above the IndexedStack tab
+body), `Provider<SyncProxyClient?>` exposure in
+`lib/forge_flow_bootstrap.dart`, walkthrough at
+`docs/_walkthroughs/8.demo-mode-banner.md`, and 5 widget tests at
+`test/widgets/demo_mode_banner_test.dart`. Two follow-ups punted:
+(1) mobile-side vendor-connections route doesn't exist yet, so the
+banner is informational-only; (2) the realtime invalidation path
+uses a permissive `integrations.*` / `first_backfill.*` topic-prefix
+match — tightening to a dedicated `demo_mode_state.flipped` topic
+when the proxy starts publishing it would remove the redundant proxy
+round-trip on unrelated integrations events.
+
+### P1 — Two new widget→repo direct-call violations ✅ FIXED 2026-05-08 ([#419](https://github.com/SaidKhan005/forge-flow-demo/pull/419))
 
 Both violate the CLAUDE.md "Architecture Guardrails" rule that widgets
 do not own source-truth or service-period bucketing.
@@ -377,7 +398,16 @@ Action: route both through a service that owns the SQLite call. Same
 shape as the known `settings_wage_authority_section.dart` violation in
 the P2 list above.
 
-### P2 — Undocumented `kDemoMode` reader-side carve-out
+Resolution: created `lib/services/restaurant_scope_service.dart` (thin
+singleton wrapper with `overrideRepositoryForTest` / `resetForTest`
+seams matching the `AppNotificationService` pattern). Updated both
+widget files to use `RestaurantScopeService.instance.getActiveRestaurantId()`
+and dropped the direct `SqliteRestaurantScopeRepository` imports.
+Coverage: `test/services/restaurant_scope_service_test.dart`. The
+P2 `settings_wage_authority_section.dart` follow-up uses the same
+shape — defer to a separate slice.
+
+### P2 — Undocumented `kDemoMode` reader-side carve-out ✅ FIXED 2026-05-08 ([#417](https://github.com/SaidKhan005/forge-flow-demo/pull/417) — option 1, blessed as Carve-out #3)
 
 `lib/screens/settings_screen.dart:31,374,383` adds a third reader-side
 `kDemoMode` branch (Data reset + Demo date sections gated on
@@ -396,7 +426,7 @@ Action: pick one of:
 HP #2 strict reading: option 2 is preferred; option 1 acknowledges the
 existing UX intent.
 
-### P2 — `audit_logs_repository.dart:368` style bare catches in advisor proxy
+### P2 — `audit_logs_repository.dart:368` style bare catches in advisor proxy ✅ PARTIAL ([#420](https://github.com/SaidKhan005/forge-flow-demo/pull/420) — 3 of 4 files closed; advisor_proxy 16 sites still open)
 
 The known `tool/integration_sync_worker/backfill_dispatch.dart:368`
 bare-catch (justified by terminal-state comment) is one site; the
@@ -416,9 +446,20 @@ broader pattern is wider:
 Same fix pattern as the LB3 work that closed Wave 5
 ([#364](https://github.com/SaidKhan005/forge-flow-demo/pull/364)):
 typed `on TimeoutException` / `on Exception` / `on Object` arms with
-structured-log reporter. Concentrate on the auth-lifecycle and
-tenant-transaction sites first — those swallow errors that should
-surface as security/data-integrity signals.
+structured-log reporter.
+
+Resolution (PR #420): typed-arms applied to `auth_session_notifier.dart`
+(5 sites), `tenant_transaction.dart` (3 sites via shared
+`_logRollbackFailure` helper), and `package_postgres_executor.dart`
+(3 sites). 11 bare catches converted total. Server-side modules use
+`log()` from `lib/services/observability/log.dart`; the Flutter UI
+module reuses its existing `debugPrint` idiom.
+
+**Still open:** the 16 bare catches in `tool/advisor_proxy/advisor_proxy.dart`
+(lines `1319,1352,1429,1661,1698,1789,1944,1974,1980,1997,2306,2540,
+2618,5143,5221,5274`) — separate larger effort; the monolith is too
+risky for a one-shot agent. Sequence with the
+`tool/advisor_proxy/advisor_proxy.dart` split-up phase doc.
 
 ### P3 — `docs/_execution/` retirement window opens 2026-05-12
 
