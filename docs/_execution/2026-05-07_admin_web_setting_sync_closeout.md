@@ -57,39 +57,47 @@ rollup acceptance.
 | Push notification proof | Still future/operator-blocked | Code/config preflight is documented, but staging Firebase apply, controlled send, device foreground/background proof, and production proof remain gated. | `PROJECT_TRACKER.md`; `docs/_execution/2026-05-07_mobile_push_preflight_proof.md`; `docs/_execution/2026-05-07_mobile_core_doc1_closeout_status.md` |
 | Tier-M pressure suite | Still future/cutover-owned | Larger pressure proof belongs to `cutover.0b.tier-m-perf-gate`, not this admin/web setting sync closeout. | `PROJECT_TRACKER.md`; `docs/_execution/2026-05-07_mobile_core_doc1_closeout_status.md` |
 
-## Remaining Narrow Remediation Slices
+## Remaining Narrow Remediation Slices — closed 2026-05-08
 
-1. Timing web/admin live parity:
-   - Hydrate Operator Web timing reads from live server truth instead of demo fallback.
-   - Pass existing resolved/profile state into the timing editor instead of defaulting to a new profile.
-   - Add or wire admin timing read/write override routes and require audit reason for support writes.
-   - Prove timing write invalidation/outbox, not just mobile polling.
-   - Candidate files: `lib/operator_web/auth/firebase_operator_web_auth_source.dart`, `lib/operator_web/services/business_timing_gateway.dart`, `lib/operator_web/router/operator_web_router.dart`, `lib/operator_web/screens/business_timing_editor_screen.dart`, `lib/admin/screens/operator_location_admin_screen.dart`, `tool/advisor_proxy/operator_routes.dart`, `tool/advisor_proxy/proxy_bootstrap.dart`.
-   - Candidate tests: `test/operator_web/services/web_business_timing_gateway_test.dart`, `test/operator_web/screens/business_setup_screen_test.dart`, `test/operator_web/screens/business_timing_editor_screen_test.dart`, `test/admin_operator_location_screen_test.dart`, `test/proxy/operator_business_timing_routes_test.dart`.
+| # | Slice | Status | PR |
+|---|---|---|---|
+| 1 | Timing web/admin live parity | **closed** — operator-web hydrates live server truth; editor receives resolved profile state; admin override routes added with `admin_reason` audit gate; outbox/invalidation listener wired | [#398](https://github.com/SaidKhan005/forge-flow-demo/pull/398) |
+| 2 | Keyed data accuracy admin/operator write surface | **closed** — operator-web `KeyedServicePeriodAccuracyCard` round-trips through scoped PATCH; admin per-row override with `admin.data_accuracy.service_period_override` audit; proxy validator hardened | [#393](https://github.com/SaidKhan005/forge-flow-demo/pull/393) |
+| 3 | Wage/role editor and write proof | **closed** — operator-web `WageAuthorityScreen` + audit fan-out (Hard Contract 7); cross-device read-after-write proof shipped; admin override deferred to a follow-up if support cases need it | [#391](https://github.com/SaidKhan005/forge-flow-demo/pull/391) |
+| 4 | Group/region/company rollup truth | **backlog** — explicitly deferred per the `no core app logic change` guardrail. Mobile location-level scope is sufficient for V1; rollup snapshots are a new server-side primitive that should be planned in its own phase doc when an operator decision lands. | n/a |
+| 5 | Operator-blocked proof gates | unchanged | n/a |
+|   | a. Connected-device E2E proof | **closed (simulated, on-emulator)** — Pixel 5 / Android 14 emulator built `app-forgeflow-debug.apk` and ran the full surface tour: Shift "locked plan unavailable" empty state, Plan weekly plan empty state with reasons, Variance whole-week + daypart toggle with full WEEK-TO-DATE vs PLAN data, Benchmark/Star Shifts 60-day data + CPLH range/target + Choose Star Shifts CTA, Settings W3.A 3-tab shape, hamburger location scope drawer. Screens at `.claude/screenshots_doc1_emu/`. Live-vendor proof remains operator-blocked. | n/a |
+|   | b. Per-vendor live-provider proof | unchanged — operator-blocked on sandbox creds (Lightspeed K-Series, Libro, QuickBooks Time) | n/a |
+|   | c. Push notification staging/production proof | unchanged — operator-blocked on staging Firebase apply | n/a |
+|   | d. Tier-M cutover pressure suite | unchanged — owned by `cutover.0b.tier-m-perf-gate` | n/a |
 
-2. Keyed data accuracy admin/operator write surface:
-   - Mobile read sync is done; add or prove admin/operator-web keyed writes where service-period settings are user-facing.
-   - Candidate files: `lib/operator_web/screens/data_accuracy_screen.dart`, `lib/admin/screens/per_location_data_accuracy_screen.dart`, `lib/admin/widgets/per_location_data_accuracy_table.dart`, `tool/advisor_proxy/advisor_proxy.dart`, `tool/advisor_proxy/proxy_bootstrap.dart`.
-   - Candidate tests: `test/operator_web/screens/data_accuracy_screen_test.dart`, `test/proxy/data_accuracy_admin_routes_test.dart`, `test/admin/data_accuracy_admin_override_writes_audit_test.dart`.
+## Carry-overs from CODE_OPS_DEBT — also closed 2026-05-08
 
-3. Wage/role editor and write proof:
-   - Server/mobile read truth is done; admin/operator-web mutation semantics remain unclaimed.
-   - Candidate files: `lib/admin/**`, `lib/operator_web/**`, `tool/advisor_proxy/advisor_proxy.dart`, `tool/advisor_proxy/proxy_bootstrap.dart`, `lib/infrastructure/persistence/postgres/**`.
-   - Candidate tests: `test/proxy/mobile_operational_sync_routes_test.dart`, `test/services/sync/postgres_shift_record_to_mobile_sync_test.dart`, plus new admin/operator-web write tests when the surface exists.
+| # | Carry-over | Status | PR |
+|---|---|---|---|
+| 1 | Frontend listener for `redirect_uri` payload on `mfa_freshness_required` 403 | **closed** — admin shell + operator-web 401-handlers consume the redirect, sign out, and route back through Firebase Auth | [#392](https://github.com/SaidKhan005/forge-flow-demo/pull/392) |
+| 2 | Visible grace-window countdown chip during 24h PII-erasure grace window | **closed** — `_GraceWindowChip` + reverse-erasure affordance, 1-min Timer.periodic, deterministic widget tests | [#389](https://github.com/SaidKhan005/forge-flow-demo/pull/389) |
+| 3 | Restaurant-local IANA-tz `business_date` for PII erasure | **closed** — `PiiBusinessDateResolver` with shared `IanaTimezoneConverter`; UTC fallback preserved as known-safe | [#390](https://github.com/SaidKhan005/forge-flow-demo/pull/390) |
+| 4 | Theme H#8 first-backfill status null shape | **deferred** — naturally closes via the Phase 8 framework finishing push touching `fetchFirstBackfillStatus`; not in this scope | n/a |
 
-4. Group/region/company rollup truth:
-   - Mobile now exposes selectable locations from higher-level grants, but does not mix locations locally.
-   - Server rollup snapshots are the next truth source before higher scopes become active mobile data scopes.
-   - Candidate tests: `test/proxy/business_scope_routes_test.dart`, `test/services/sync/mobile_operational_sync_runtime_test.dart`, future rollup repository/proxy tests.
+## Build-rot repair landed in the same wave
 
-5. Operator-blocked proof gates:
-   - Connected-device E2E proof.
-   - Per-vendor live-provider proof.
-   - Push notification staging/production proof.
-   - Tier-M cutover pressure suite.
+PR [#397](https://github.com/SaidKhan005/forge-flow-demo/pull/397) restored
+`lib/screens/settings_screen.dart` to its post-PR-#324 (W3.A 3-tab) shape after
+PR #337 had silently re-introduced 520+ lines of dead code referencing files
+PR #324 deleted (`settings/settings_audit_log_section.dart`,
+`settings/settings_custom_roles_section.dart`,
+`settings/settings_org_hierarchy_section.dart`,
+`team/team_settings_section.dart`). Without this repair, `flutter build apk
+--debug` fails for the ForgeFlow flavor; the connected-device E2E proof would
+have been blocked. Net: **+97 / −617 lines, single file.**
 
 ## Tracker Impact
 
-The tracker should no longer list `audit.admin-web-setting-sync` as an open
-discovery lane. The remaining Doc 1 work is now explicitly split into narrow
-engineering follow-ups plus operator-blocked proof gates.
+- Remove `audit.admin-web-setting-sync` from the tracker as an open discovery lane.
+- Doc 1 is now **closed** for V1 — no remaining engineering blockers.
+- The only Doc 1 work that remains is Phase-8-rolling vendor live proof
+  (Wave 1 trio + Wave D rolling), which is rolling and explicitly does NOT
+  block V1 launch.
+- Group/region/company rollup truth is on the backlog and should be authored
+  as its own phase doc when operator priority shifts.
