@@ -53,6 +53,8 @@ param(
   [string] $VpcConnector = '',
   [string] $VpcEgress = 'all-traffic',
   [int] $MinInstances = 1,
+  [int] $MaxInstances = 2,
+  [switch] $DeferStartupDatabase,
   [switch] $SkipApiEnable,
   [switch] $SkipSecretManagerSync
 )
@@ -66,6 +68,15 @@ if (
   [string]::IsNullOrWhiteSpace($VpcEgress)
 ) {
   Write-Host 'BLOCKED: -VpcEgress is required when -VpcConnector is set.'
+  exit 1
+}
+if ($MaxInstances -lt 1) {
+  Write-Host 'BLOCKED: -MaxInstances must be at least 1.'
+  exit 1
+}
+$normalizedProxyEnvironment = $ProxyEnvironment.Trim().ToLowerInvariant()
+if ($DeferStartupDatabase -and $normalizedProxyEnvironment -eq 'prod') {
+  Write-Host 'BLOCKED: -DeferStartupDatabase is not allowed with -ProxyEnvironment prod.'
   exit 1
 }
 
@@ -385,6 +396,9 @@ if (-not [string]::IsNullOrWhiteSpace($effectiveAdminCorsAllowedOrigins)) {
   $envAssignments['ADMIN_CORS_ALLOWED_ORIGINS'] =
     $effectiveAdminCorsAllowedOrigins
 }
+if ($DeferStartupDatabase) {
+  $envAssignments['PROXY_DEFER_STARTUP_DATABASE'] = 'true'
+}
 
 function ConvertTo-YamlSingleQuotedValue {
   param([string] $Value)
@@ -413,7 +427,7 @@ $deployArgs = @(
   '--env-vars-file', $envVarsFile,
   '--set-secrets', $secretAssignments,
   '--min-instances', $MinInstances,
-  '--max-instances', '2'
+  '--max-instances', $MaxInstances
 )
 if (-not [string]::IsNullOrWhiteSpace($VpcConnector)) {
   $deployArgs += @(
@@ -478,6 +492,10 @@ Write-Host ' - PGCRYPTO_ENVELOPE_KEY'
 Write-Host ' - PUBLIC_BASE_URI'
 Write-Host ' - ADMIN_CORS_ALLOWED_ORIGINS includes Firebase auth action hosts'
 Write-Host ' - Cloud Run secret env refs backed by Secret Manager'
+Write-Host " - Cloud Run min/max instances: $MinInstances/$MaxInstances"
+if ($DeferStartupDatabase) {
+  Write-Host ' - PROXY_DEFER_STARTUP_DATABASE=true (startup DB checks and background consumers deferred)'
+}
 if ($optionalSecretEnv.Count -gt 0) {
   Write-Host ' - Optional vendor app credentials wired:'
   foreach ($entry in $optionalSecretEnv.GetEnumerator()) {

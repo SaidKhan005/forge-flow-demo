@@ -1,7 +1,7 @@
 # Preview Environment Runbook
 
 Status: Active
-Last updated: 2026-05-06
+Last updated: 2026-05-08
 
 Use this runbook when a branch needs end-to-end proof before shared staging or
 production. Preview deploys separate Cloud Run services, so shared staging users
@@ -44,6 +44,85 @@ namespace with preview `POSTGRES_URL` and `POSTGRES_ADMIN_URL`, then run with
 `-SecretPrefix forge-flow-preview-`.
 
 Do not point preview at production secrets.
+
+## Preview DB-Safe Startup Mode
+
+Use `-DeferProxyStartupDatabase` when a runtime-isolated preview shares
+staging Postgres and the database is already near its connection ceiling. This
+mode lets the proxy bind HTTP and pass `/readyz` without first opening
+startup-only Postgres checks or background consumers.
+
+What the mode changes:
+
+- sets `PROXY_DEFER_STARTUP_DATABASE=true`
+- skips boot-time Postgres connectivity, schema, migration-registry, and CORS
+  feature-flag reads
+- skips realtime outbox, audit anchor, rollup, email outbox, mobile push outbox,
+  and tripwire background consumers
+- keeps route-level Postgres access intact for real HTTP requests
+- is blocked when `PROXY_ENVIRONMENT=prod`
+
+Use `/readyz` for liveness/startup verification. `/health` remains the deep
+dependency health envelope and may return 503 while Postgres, AGE, or pgvector
+are unavailable; do not use `/health` as a Cloud Run startup probe.
+
+Recommended saturated-preview deploy:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\deploy_preview_stack.ps1 `
+  -PreviewName backend-surface-additions `
+  -DeferProxyStartupDatabase `
+  -ProxyMaxInstances 1 `
+  -SkipApiEnable `
+  -SkipSecretManagerSync
+```
+
+For a direct shared-staging proxy deploy, use the lower-level switch only after
+confirming the target is not production:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\deploy_staging_proxy.ps1 `
+  -DeferStartupDatabase `
+  -MaxInstances 1 `
+  -SkipApiEnable `
+  -SkipSecretManagerSync
+```
+
+If Postgres is already saturated, first cut traffic to the ready deferred
+revision, then let old instances drain. If connection slots remain exhausted,
+inspect DB sessions before terminating anything:
+
+```sql
+select pid, usename, application_name, client_addr, state, query_start,
+       state_change, wait_event_type, wait_event
+from pg_stat_activity
+where datname = current_database()
+order by state_change;
+```
+
+Cut traffic to the ready revision and cap scale before DB cleanup:
+
+```powershell
+gcloud run services update-traffic <preview-proxy-service> `
+  --project forge-flow-staging `
+  --region northamerica-northeast2 `
+  --to-revisions <ready-deferred-revision>=100
+
+gcloud run services update <preview-proxy-service> `
+  --project forge-flow-staging `
+  --region northamerica-northeast2 `
+  --min-instances 0 `
+  --max-instances 1
+```
+
+After confirming the PIDs belong to stale preview/staging proxy instances, a DB
+operator can terminate only those exact sessions:
+
+```sql
+select pg_terminate_backend(pid)
+from pg_stat_activity
+where pid in (<confirmed_stale_proxy_pid_list>);
+```
 
 ## Deploy Preview
 
