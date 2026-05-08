@@ -16259,6 +16259,22 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
     return;
   }
 
+  // Doc 1 keyed-data-accuracy-write — defence-in-depth body validation
+  // for the keyed service-period write surface. The production gateway
+  // also validates inside `upsertDataAccuracyServicePeriodSettings`
+  // (proxy_bootstrap.dart `_bodyServicePeriodKey` /
+  // `_bodyBusinessDate`); validating here too means alternate gateway
+  // impls (test fakes, future per-tenant routers) cannot accept a
+  // malformed key or business date, and the operator-web client gets a
+  // 400 envelope back before any gateway work.
+  if (target.resource == 'data_accuracy_service_period_settings') {
+    final keyError = _validateServicePeriodWriteBody(bodyResult.body!);
+    if (keyError != null) {
+      _writeJson(response, keyError.$1, keyError.$2);
+      return;
+    }
+  }
+
   try {
     final writeScope = _operatorContextFromClaims(
       claims,
@@ -16298,6 +16314,74 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       'message': 'data accuracy settings are unavailable; please retry',
     });
   }
+}
+
+/// Doc 1 keyed-data-accuracy-write — body validator for the keyed
+/// service-period PATCH route. Returns `null` when the body is valid;
+/// otherwise returns `(statusCode, jsonEnvelope)` ready to write back.
+///
+/// Validates the same shape the production gateway enforces (mirrors
+/// `proxy_bootstrap.dart::_bodyServicePeriodKey` /
+/// `_bodyBusinessDate` /
+/// `_bodyServicePeriodCoversSource` / `_bodyServicePeriodWageSource`)
+/// so test fakes cannot drift from the production envelope.
+(int, Map<String, Object?>)? _validateServicePeriodWriteBody(
+  Map<String, Object?> body,
+) {
+  final keyRaw = body['service_period_key'];
+  if (keyRaw is! String ||
+      !RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(keyRaw)) {
+    return (400, <String, Object?>{
+      'error': 'invalid_service_period_key',
+      'message':
+          'service_period_key must start with a lowercase letter and contain '
+          'only lowercase letters, numbers, or underscores',
+    });
+  }
+  final dateRaw = body['effective_at_business_date'];
+  if (dateRaw is! String ||
+      !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateRaw)) {
+    return (400, <String, Object?>{
+      'error': 'invalid_effective_at_business_date',
+      'message':
+          'effective_at_business_date must be a YYYY-MM-DD business date',
+    });
+  }
+  final coversRaw = body['covers_source'];
+  if (coversRaw != null) {
+    const allowed = <String>{
+      'vendor',
+      'forecast',
+      'manual',
+      'reservation_plus_walkin',
+    };
+    if (coversRaw is! String || !allowed.contains(coversRaw)) {
+      return (400, <String, Object?>{
+        'error': 'invalid_covers_source',
+        'message':
+            'covers_source must be vendor, forecast, manual, or '
+            'reservation_plus_walkin',
+      });
+    }
+  }
+  final wageRaw = body['wage_source'];
+  if (wageRaw != null) {
+    const allowed = <String>{
+      'vendor_per_employee',
+      'vendor_per_position',
+      'target_substitution',
+      'manual_mix',
+    };
+    if (wageRaw is! String || !allowed.contains(wageRaw)) {
+      return (400, <String, Object?>{
+        'error': 'invalid_wage_source',
+        'message':
+            'wage_source must be vendor_per_employee, vendor_per_position, '
+            'target_substitution, or manual_mix',
+      });
+    }
+  }
+  return null;
 }
 
 Future<bool> _operatorLocationScopeAllowed({

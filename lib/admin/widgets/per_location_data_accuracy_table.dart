@@ -15,11 +15,18 @@ class PerLocationDataAccuracyTable extends StatefulWidget {
     required this.rows,
     required this.editingEnabled,
     required this.onEditRow,
+    this.onEditServicePeriod,
   });
 
   final List<DataAccuracyAdminRow> rows;
   final bool editingEnabled;
   final void Function(DataAccuracyAdminRow row) onEditRow;
+
+  /// Doc 1 keyed-data-accuracy-write — invoked when the F&F admin
+  /// presses "Service-period override" on a row. When `null`, the
+  /// service-period button is hidden (preserves backward compatibility
+  /// with callers that have not yet wired the gateway extension).
+  final void Function(DataAccuracyAdminRow row)? onEditServicePeriod;
 
   @override
   State<PerLocationDataAccuracyTable> createState() =>
@@ -135,15 +142,36 @@ class _PerLocationDataAccuracyTableState
     ];
 
     final action = widget.editingEnabled
-        ? OutlinedButton.icon(
-            key: Key(
-              'admin_data_accuracy_edit_'
-              '${row.operatorRef.operatorId}_${row.operatorRef.locationId}',
-            ),
-            style: AdminButtonStyles.secondary(minWidth: 88, minHeight: 36),
-            onPressed: () => widget.onEditRow(row),
-            icon: const Icon(Icons.edit_outlined, size: 14),
-            label: const Text('Edit'),
+        ? Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: <Widget>[
+              OutlinedButton.icon(
+                key: Key(
+                  'admin_data_accuracy_edit_'
+                  '${row.operatorRef.operatorId}_${row.operatorRef.locationId}',
+                ),
+                style: AdminButtonStyles.secondary(minWidth: 88, minHeight: 36),
+                onPressed: () => widget.onEditRow(row),
+                icon: const Icon(Icons.edit_outlined, size: 14),
+                label: const Text('Edit'),
+              ),
+              if (widget.onEditServicePeriod != null)
+                OutlinedButton.icon(
+                  key: Key(
+                    'admin_data_accuracy_service_period_'
+                    '${row.operatorRef.operatorId}_'
+                    '${row.operatorRef.locationId}',
+                  ),
+                  style: AdminButtonStyles.secondary(
+                    minWidth: 88,
+                    minHeight: 36,
+                  ),
+                  onPressed: () => widget.onEditServicePeriod!(row),
+                  icon: const Icon(Icons.schedule_outlined, size: 14),
+                  label: const Text('Service period'),
+                ),
+            ],
           )
         : Text(
             'Read-only',
