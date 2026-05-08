@@ -1,0 +1,102 @@
+{
+  "nextPageToken": null,
+  "sales": [
+    {
+      "accountFiscId": "A65315.17",
+      "accountProfileCode": "AAP",
+      "accountReference": "57X0j3hzTZ2oo9sdVWiUog==",
+      "cancelled": false,
+      "deviceId": 75125,
+      "deviceName": "ipad9",
+      "dineIn": true,
+      "externalFiscalNumber": "IntegratorReferenceId",
+      "nbCovers": 2.0,
+      "ownerId": 14670,
+      "ownerName": "Manager",
+      "payments": [
+        {
+          "authorization": "001",
+          "code": "CASH",
+          "currency": "GBP",
+          "description": "Cash",
+          "deviceId": "72676",
+          "deviceName": "ipad9",
+          "externalReference": "1000",
+          "fiscDate": "2023-02-14T20:04:08.665Z",
+          "fiscId": "T72691.8",
+          "netAmountWithTax": "11.00",
+          "paymentMethodId": 141948669132824,
+          "revenueCenter": "Fixed POS",
+          "revenueCenterId": 141948669132822,
+          "staffId": 180480,
+          "staffName": "Manager",
+          "surcharge": "0.00",
+          "tip": "0.00",
+          "type": "NORMAL",
+          "uuid": "bc7i2X_CTkeg8qlec66wmg=="
+        }
+      ],
+      "receiptId": "R65315.13",
+      "salesLines": [
+        {
+          "accountingGroup": {
+            "accountingGroupId": 141948669132845,
+            "code": "123",
+            "name": "Food",
+            "statisticGroup": "Food"
+          },
+          "categories": [
+            {
+              "category": "default",
+              "value": "Food"
+            }
+          ],
+          "currency": "GBP",
+          "deviceId": 75125,
+          "deviceName": "iPad9",
+          "discountAmount": "0.00",
+          "discountCode": "10PCT",
+          "discountName": "10% Discount",
+          "discountType": "DISCOUNT",
+          "id": "S65315.33",
+          "menuListPrice": "10.00",
+          "name": "Burger",
+          "nameOverride": "Burger Double Cheese",
+          "quantity": "1.000",
+          "revenueCenter": "Fixed POS",
+          "revenueCenterId": 141948669132822,
+          "serviceCharge": "1.00",
+          "serviceChargeRate": "10.00",
+          "serviceChargeType": "APPORTIONED",
+          "sku": "52",
+          "staffId": 14670,
+          "staffName": "Manager",
+          "statisticGroup": "Food",
+          "tags": ["dinner"],
+          "taxAmount": "1.6667",
+          "taxCode": "VAT20",
+          "taxLines": [
+            {
+              "taxAmount": "1.666667",
+              "taxCode": "VAT20",
+              "taxId": "41910290874374",
+              "taxIncluded": true,
+              "taxRate": "1.2"
+            }
+          ],
+          "taxRatePercentage": "20.00",
+          "timeOfSale": "2023-07-27T19:58:22.474Z",
+          "totalDiscountAmount": "1.00",
+          "totalNetAmountWithTax": "11.00",
+          "totalNetAmountWithoutTax": "8.33",
+          "unitCostPrice": "5.00"
+        }
+      ],
+      "tableName": "Dining Room, Table 1",
+      "tableNumber": "1",
+      "timeClosed": "2023-02-14T20:04:08.734Z",
+      "timeOfOpening": "2023-02-14T19:58:48.224Z",
+      "type": "SALE"
+    }
+  ]
+}

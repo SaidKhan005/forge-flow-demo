@@ -1,0 +1,24 @@
+{
+  "_pressure_envelope": {
+    "headers": {
+      "content-type": "application/json",
+      "x-lightspeed-signature": "<computed-at-test-time-over-raw-body>",
+      "x-lightspeed-timestamp": "<computed-at-test-time>"
+    },
+    "note": "Required field `accountFiscId` is missing. The signature is valid (computed at test time over this exact body); the adapter still must reject at the parse boundary because `_projectCanonicalRecord` returns null when `entityId is! String || entityId.isEmpty`.",
+    "missing_required_field": "accountFiscId"
+  },
+  "business_id": "lsk-biz-7c2f",
+  "event": "order.DELIVERED",
+  "nbCovers": 2.0,
+  "payments": [
+    {
+      "code": "CASH",
+      "currency": "GBP",
+      "netAmountWithTax": "11.00",
+      "paymentMethodId": 141948669132824
+    }
+  ],
+  "timeClosed": "2023-07-27T20:04:08.734Z",
+  "timeOfOpening": "2023-07-27T19:58:48.224Z"
+}

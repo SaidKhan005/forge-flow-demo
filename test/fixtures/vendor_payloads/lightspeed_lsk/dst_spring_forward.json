@@ -1,0 +1,144 @@
+{
+  "nextPageToken": null,
+  "sales": [
+    {
+      "accountFiscId": "A65315.dst-pre",
+      "accountReference": "DsT1pReSpRiNg2dE3fGhIjK==",
+      "cancelled": false,
+      "deviceId": 75125,
+      "deviceName": "ipad9",
+      "dineIn": true,
+      "nbCovers": 2.0,
+      "ownerId": 14670,
+      "ownerName": "Manager",
+      "payments": [
+        {
+          "code": "VISA",
+          "currency": "USD",
+          "fiscDate": "2026-03-08T06:55:00.000Z",
+          "fiscId": "T72691.dst1",
+          "netAmountWithTax": "62.40",
+          "paymentMethodId": 141948669132825,
+          "tip": "9.40",
+          "type": "NORMAL",
+          "uuid": "DstA_LCTkeg8qlec77xnk=="
+        }
+      ],
+      "receiptId": "R65315.dst-pre",
+      "salesLines": [
+        {
+          "currency": "USD",
+          "id": "S65315.dst1",
+          "menuListPrice": "53.00",
+          "name": "Late Night Plate",
+          "quantity": "1.000",
+          "sku": "777",
+          "taxAmount": "9.00",
+          "taxCode": "ST10",
+          "taxRatePercentage": "10.00",
+          "timeOfSale": "2026-03-08T06:48:00.000Z",
+          "totalDiscountAmount": "0.00",
+          "totalNetAmountWithTax": "53.00",
+          "totalNetAmountWithoutTax": "44.00"
+        }
+      ],
+      "tableName": "Bar 3",
+      "tableNumber": "B3",
+      "timeClosed": "2026-03-08T06:55:00.000Z",
+      "timeOfOpening": "2026-03-08T06:45:00.000Z",
+      "type": "SALE"
+    },
+    {
+      "accountFiscId": "A65315.dst-skip",
+      "accountReference": "DsT2sKiP3eFgHiJkLmNoPq==",
+      "cancelled": false,
+      "deviceId": 75125,
+      "deviceName": "ipad9",
+      "dineIn": true,
+      "nbCovers": 1.0,
+      "ownerId": 14670,
+      "ownerName": "Manager",
+      "payments": [
+        {
+          "code": "CASH",
+          "currency": "USD",
+          "fiscDate": "2026-03-08T07:05:00.000Z",
+          "fiscId": "T72691.dst2",
+          "netAmountWithTax": "8.50",
+          "paymentMethodId": 141948669132824,
+          "tip": "0.00",
+          "type": "NORMAL",
+          "uuid": "DstB_LCTkeg8qlec77xnl=="
+        }
+      ],
+      "receiptId": "R65315.dst-skip",
+      "salesLines": [
+        {
+          "currency": "USD",
+          "id": "S65315.dst2",
+          "menuListPrice": "8.50",
+          "name": "Coffee",
+          "quantity": "1.000",
+          "sku": "910",
+          "taxAmount": "0.77",
+          "taxCode": "ST10",
+          "taxRatePercentage": "10.00",
+          "timeOfSale": "2026-03-08T07:02:00.000Z",
+          "totalDiscountAmount": "0.00",
+          "totalNetAmountWithTax": "8.50",
+          "totalNetAmountWithoutTax": "7.73"
+        }
+      ],
+      "timeClosed": "2026-03-08T07:05:00.000Z",
+      "timeOfOpening": "2026-03-08T07:01:00.000Z",
+      "type": "SALE"
+    },
+    {
+      "accountFiscId": "A65315.dst-post",
+      "accountReference": "DsT3pOsT4dE5fGhIjKlMnOw==",
+      "cancelled": false,
+      "deviceId": 75125,
+      "deviceName": "ipad9",
+      "dineIn": true,
+      "nbCovers": 3.0,
+      "ownerId": 14670,
+      "ownerName": "Manager",
+      "payments": [
+        {
+          "code": "VISA",
+          "currency": "USD",
+          "fiscDate": "2026-03-08T13:18:00.000Z",
+          "fiscId": "T72691.dst3",
+          "netAmountWithTax": "78.00",
+          "paymentMethodId": 141948669132825,
+          "tip": "12.00",
+          "type": "NORMAL",
+          "uuid": "DstC_LCTkeg8qlec77xnm=="
+        }
+      ],
+      "receiptId": "R65315.dst-post",
+      "salesLines": [
+        {
+          "currency": "USD",
+          "id": "S65315.dst3",
+          "menuListPrice": "66.00",
+          "name": "Brunch Trio",
+          "quantity": "1.000",
+          "sku": "808",
+          "taxAmount": "11.00",
+          "taxCode": "ST10",
+          "taxRatePercentage": "10.00",
+          "timeOfSale": "2026-03-08T13:10:00.000Z",
+          "totalDiscountAmount": "0.00",
+          "totalNetAmountWithTax": "66.00",
+          "totalNetAmountWithoutTax": "55.00"
+        }
+      ],
+      "tableName": "Dining Room, Table 5",
+      "tableNumber": "5",
+      "timeClosed": "2026-03-08T13:18:00.000Z",
+      "timeOfOpening": "2026-03-08T12:45:00.000Z",
+      "type": "SALE"
+    }
+  ]
+}
