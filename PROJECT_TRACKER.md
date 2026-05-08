@@ -194,7 +194,7 @@ of the active board:
 - Phase `10a` real-time infra `.0`–`.5` + `UX.0`/`UX.1` ACCEPT 2026-05-06
 - Phase `7.58` depth wave ACCEPT 2026-05-05
 - `9.8.email` ACCEPT (PR #88)
-- CODE_HEALTH remediation closed 2026-05-07 (16 PRs across 5 critical + ~22 high findings; residuals in `CODE_HEALTH.md` addendum)
+- CODE_HEALTH remediation closed 2026-05-08 across 5 waves (52 findings closed across 41 PRs; archived at `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`; residuals consolidated into `docs/POST_HARDENING_FOLLOWUPS.md`, phase 11a decision register, phase 8 spine bridge plan, and the auth permission key catalog)
 - Production1 runtime live 2026-05-06 (Cloud Run + Firebase + Postgres-CMK + production DNS for `app.forgeflow.app` + `mail.forgeflow.app`)
 - Phase 8 plug-and-play V1 onboarding engineering-complete 2026-05-07 (PRs #280-#301 across operator-self-service descriptors / validators / route alignment / test-connection / disconnect / api-key paste / location integrations list / OAuth refresh closures / backfill adapter factory / analyzer sweep). Detail: `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-07_phase_8_plug_and_play.md`. Operations work (Production1 migration apply + Cloud Run vendor app creds + partner-portal redirect URIs) gates each Wave D `*.live.*` slice firing.
 

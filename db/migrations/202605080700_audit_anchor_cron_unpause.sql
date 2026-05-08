@@ -34,7 +34,8 @@
 --     (the original schedule registration that left active=true; this
 --     migration is a belt-and-suspenders unpause for the code-lane
 --     graduation).
---   * `CODE_HEALTH.md` — "Audit-anchor cadence is paused" finding.
+--   * `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`
+--     — "Audit-anchor cadence is paused" finding.
 --
 -- Verification SQL (run in the cron database, typically `postgres`):
 --

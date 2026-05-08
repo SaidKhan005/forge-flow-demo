@@ -28,7 +28,7 @@
 --     by `response_status IS NULL AND completed_at IS NULL`. The
 --     partial index and sweep WHERE clause use that pair as the
 --     in-flight predicate.
---   * `CODE_HEALTH.md` — C4 finding.
+--   * `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md` — C4 finding.
 --
 -- Sweep scope:
 -- ============

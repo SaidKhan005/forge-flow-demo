@@ -2247,7 +2247,8 @@ class UsageEstimate {
 // CODE_HEALTH residual: "No per-request token cap on outbound LLM calls. Repo-
 // wide search for `MAX_TOKENS_PER_REQUEST`, `requestTokenCap`, etc. returns
 // zero matches. The proxy's outbound LLM call sites (`tool/advisor_proxy/
-// advisor_proxy.dart:8485-8700`) have no enforced cap." (CODE_HEALTH.md L31).
+// advisor_proxy.dart:8485-8700`) have no enforced cap." (archived at
+// `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`).
 //
 // This is a hard, dispatch-site cap independent of [PolicyTier.maxRequestTokens]:
 //   - The tier cap (8000) only applies when [ProxyUsageGuard] is wired AND the

@@ -1,6 +1,6 @@
 # CODE_HEALTH Audit + Remediation — 2026-05-06
 
-This is the archived historical record of the 2026-05-06 audit and its 2026-05-07 closeout. Active residuals — what's still open — live at `/CODE_HEALTH.md` at the repo root.
+This is the archived historical record of the 2026-05-06 audit and its 5-wave remediation (closed 2026-05-08). The active CODE_HEALTH tracker file at the repo root has been removed; remaining open residuals were consolidated into the project's normal tracking surfaces (`docs/POST_HARDENING_FOLLOWUPS.md`, `docs/phases/phase_11a/phase_11a_decision_register.md`, `docs/phases/phase_8/phase_8_spine_bridge_plan.md`, `docs/contracts/auth_permission_key_catalog.md`).
 
 ---
 
@@ -389,7 +389,7 @@ A handful of items did not close during the remediation. They were consolidated 
 - **`docs/phases/phase_8/phase_8_spine_bridge_plan.md`** — watermark transactional discipline (deferred 17-adapter refactor).
 - **`docs/contracts/auth_permission_key_catalog.md`** — pending namespace additions.
 
-The active `/CODE_HEALTH.md` is now a small pointer to those destinations + this archive.
+The active `/CODE_HEALTH.md` tracker file at the repo root has been removed; this archive is the canonical historical record.
 
 ## What this closure means
 
