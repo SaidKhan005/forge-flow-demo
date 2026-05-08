@@ -16,6 +16,7 @@ import 'package:forge_and_flow/admin/screens/operator_picker_screen.dart';
 import 'package:forge_and_flow/admin/services/audited_support_actions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_audited_support_actions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -54,10 +55,17 @@ void main() {
     ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
+      final sessionsGateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+        locationsByOperator: kDemoHierarchyLocationsByOperator(),
+        sessionsByOperator: kDemoSessionsByOperator(),
+      );
       await tester.pumpWidget(
         wrap(
           AuditedSupportActionsAdminScreen(
             gateway: gateway,
+            sessionsGateway: sessionsGateway,
             actorUserId: 'demo-super-admin',
             pickedOperator: demoPick(),
             canResetMfaFactors: true,
@@ -73,6 +81,16 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('admin_asa_actions_panel')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_security_sessions_panel')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('admin_rhs_session_row_session-diner-owner-mobile'),
+        ),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('admin_asa_audit_log')), findsOneWidget);
       // Each Actions panel row carries a stable key + button.
       expect(
@@ -221,6 +239,56 @@ void main() {
       expect(resetBtn.onPressed, isNull);
       expect(passwordBtn.onPressed, isNull);
       expect(erasureBtn.onPressed, isNull);
+    });
+
+    testWidgets('password reset excludes pending invite-only users', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = InMemoryAuditedSupportActionsAdminGateway(
+        auditLogByOperator: kDemoAuditLogByOperator(),
+        membersByOperator: const <String, List<SupportActionsMember>>{
+          kDemoDinerOperatorId: <SupportActionsMember>[
+            SupportActionsMember(
+              userId: 'invite-only-user',
+              email: 'invite-only@demo.test',
+              displayName: 'Invite Only',
+              mfaEnrolled: false,
+              canReceivePasswordReset: false,
+              passwordResetBlockedReason: 'Pending invite',
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        wrap(
+          AuditedSupportActionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final passwordResetButton = find.byKey(
+        const Key('admin_asa_action_password_reset_btn'),
+      );
+      await tester.ensureVisible(passwordResetButton);
+      await tester.pumpAndSettle();
+      await tester.tap(passwordResetButton);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'No active member can receive a password reset yet. Pending invite-only users must accept their invite first.',
+        ),
+        findsOneWidget,
+      );
+      final submit = tester.widget<FilledButton>(
+        find.byKey(const Key('admin_asa_member_picker_submit')),
+      );
+      expect(submit.onPressed, isNull);
     });
   });
 

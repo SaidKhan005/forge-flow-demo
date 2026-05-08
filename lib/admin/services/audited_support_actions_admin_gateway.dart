@@ -56,13 +56,7 @@ typedef AuditedSupportActionsBearerTokenProvider = Future<String> Function();
 /// "Filter set (locked)" line 141: `{last 24h, last 7d, last 30d,
 /// last 90d, custom range}`. `customRange` carries [from] / [to] in
 /// [AuditLogFilters].
-enum AuditLogTimeWindow {
-  last24h,
-  last7d,
-  last30d,
-  last90d,
-  customRange,
-}
+enum AuditLogTimeWindow { last24h, last7d, last30d, last90d, customRange }
 
 extension AuditLogTimeWindowWire on AuditLogTimeWindow {
   String get wire {
@@ -195,8 +189,9 @@ class AuditLogFilters {
       targetKind: identical(targetKind, _undef)
           ? this.targetKind
           : targetKind as String?,
-      targetId:
-          identical(targetId, _undef) ? this.targetId : targetId as String?,
+      targetId: identical(targetId, _undef)
+          ? this.targetId
+          : targetId as String?,
       timeWindow: identical(timeWindow, _undef)
           ? this.timeWindow
           : timeWindow as AuditLogTimeWindow?,
@@ -290,12 +285,16 @@ class SupportActionsMember {
     required this.email,
     required this.displayName,
     required this.mfaEnrolled,
+    this.canReceivePasswordReset = true,
+    this.passwordResetBlockedReason,
   });
 
   final String userId;
   final String email;
   final String displayName;
   final bool mfaEnrolled;
+  final bool canReceivePasswordReset;
+  final String? passwordResetBlockedReason;
 }
 
 /// One row written to `admin_action_log`, the F&F-internal
@@ -419,8 +418,7 @@ class AuditedSupportActionsForbiddenException implements Exception {
   final String message;
 
   @override
-  String toString() =>
-      'AuditedSupportActionsForbiddenException: $message';
+  String toString() => 'AuditedSupportActionsForbiddenException: $message';
 }
 
 class AuditedSupportActionsGatewayError implements Exception {
@@ -461,9 +459,7 @@ abstract class AuditedSupportActionsAdminGateway {
 
   // ── Actions panel ──────────────────────────────────────────────────
 
-  Future<List<SupportActionsMember>> listMembers({
-    required String operatorId,
-  });
+  Future<List<SupportActionsMember>> listMembers({required String operatorId});
 
   /// Reset member MFA. Gated on the new
   /// `admin.users.reset_mfa_factors` key (MFA-required) per the
@@ -551,8 +547,8 @@ class HttpAuditedSupportActionsAdminGateway
     required this.bearerTokenProvider,
     http.Client? httpClient,
     Duration timeout = kAdminHttpRequestTimeout,
-  })  : _httpClient = httpClient ?? http.Client(),
-        _timeout = timeout;
+  }) : _httpClient = httpClient ?? http.Client(),
+       _timeout = timeout;
 
   final Uri baseUri;
   final AuditedSupportActionsBearerTokenProvider bearerTokenProvider;
@@ -560,8 +556,7 @@ class HttpAuditedSupportActionsAdminGateway
   final Duration _timeout;
 
   static const String auditLogPath = '/v1/admin/auth/audit-log';
-  static const String auditLogExportPath =
-      '/v1/admin/auth/audit-log/export';
+  static const String auditLogExportPath = '/v1/admin/auth/audit-log/export';
   static const String membersPath = '/v1/admin/auth/users';
   static const String mfaResetPathPrefix = '/v1/admin/auth/users/';
   static const String mfaResetPathSuffix = '/mfa/reset';
@@ -584,15 +579,13 @@ class HttpAuditedSupportActionsAdminGateway
       if (filters.targetKind != null) 'target_kind': filters.targetKind!,
       if (filters.targetId != null && filters.targetId!.trim().isNotEmpty)
         'target_id': filters.targetId!.trim(),
-      if (filters.timeWindow != null)
-        'time_window': filters.timeWindow!.wire,
+      if (filters.timeWindow != null) 'time_window': filters.timeWindow!.wire,
       if (filters.customRangeFrom != null)
         'from': filters.customRangeFrom!.toUtc().toIso8601String(),
       if (filters.customRangeTo != null)
         'to': filters.customRangeTo!.toUtc().toIso8601String(),
       if (filters.actorKinds.isNotEmpty)
-        'actor_kinds':
-            filters.actorKinds.map((k) => k.wire).join(','),
+        'actor_kinds': filters.actorKinds.map((k) => k.wire).join(','),
       if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
     };
     final body = await _send(
@@ -628,14 +621,12 @@ class HttpAuditedSupportActionsAdminGateway
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
-        if (filters.actorUserId != null)
-          'actor_user_id': filters.actorUserId,
+        if (filters.actorUserId != null) 'actor_user_id': filters.actorUserId,
         if (filters.actions.isNotEmpty) 'actions': filters.actions,
         if (filters.targetKind != null) 'target_kind': filters.targetKind,
         if (filters.targetId != null && filters.targetId!.trim().isNotEmpty)
           'target_id': filters.targetId!.trim(),
-        if (filters.timeWindow != null)
-          'time_window': filters.timeWindow!.wire,
+        if (filters.timeWindow != null) 'time_window': filters.timeWindow!.wire,
         if (filters.customRangeFrom != null)
           'from': filters.customRangeFrom!.toUtc().toIso8601String(),
         if (filters.customRangeTo != null)
@@ -851,8 +842,7 @@ class HttpAuditedSupportActionsAdminGateway
       throw AuditedSupportActionsGatewayError(
         statusCode: 502,
         errorCode: 'malformed_pii_erasure_status',
-        message:
-            'admin proxy returned a malformed PII erasure status row',
+        message: 'admin proxy returned a malformed PII erasure status row',
       );
     }
     return UserPiiErasureStatusSummary(
@@ -936,7 +926,8 @@ class HttpAuditedSupportActionsAdminGateway
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return parsed;
     }
-    final message = (parsed['message'] as String?) ??
+    final message =
+        (parsed['message'] as String?) ??
         'admin audited-support-actions proxy returned an error';
     if (response.statusCode == 403) {
       throw AuditedSupportActionsForbiddenException(message);
@@ -972,11 +963,27 @@ AuditLogRow _auditRowFromJson(Map<String, Object?> json) {
 }
 
 SupportActionsMember _memberFromJson(Map<String, Object?> json) {
+  final status =
+      _optionalString(json['status']) ??
+      _optionalString(json['state']) ??
+      _optionalString(json['invite_status']);
+  final inviteOnly =
+      status == 'pending_invite' ||
+      status == 'invite_pending' ||
+      status == 'pending';
   return SupportActionsMember(
     userId: _stringField(json, 'user_id'),
     email: _stringField(json, 'email'),
     displayName: _stringField(json, 'display_name'),
     mfaEnrolled: _boolField(json, 'mfa_enrolled'),
+    canReceivePasswordReset: _optionalBoolField(
+      json,
+      'can_receive_password_reset',
+      defaultValue: !inviteOnly,
+    ),
+    passwordResetBlockedReason: _optionalString(
+      json['password_reset_blocked_reason'],
+    ),
   );
 }
 
@@ -994,9 +1001,7 @@ AdminActionLogRow _adminActionLogRowFromJson(Map<String, Object?> json) {
   );
 }
 
-PairedApprovalErasureResult _pairedApprovalFromJson(
-  Map<String, Object?> json,
-) {
+PairedApprovalErasureResult _pairedApprovalFromJson(Map<String, Object?> json) {
   return PairedApprovalErasureResult(
     requestId: _stringField(json, 'request_id'),
     pendingSecondApproval: _boolField(json, 'pending_second_approval'),
@@ -1022,6 +1027,17 @@ bool _boolField(Map<String, Object?> json, String key) {
   if (value is bool) return value;
   if (value is String) return value == 'true';
   return false;
+}
+
+bool _optionalBoolField(
+  Map<String, Object?> json,
+  String key, {
+  required bool defaultValue,
+}) {
+  final value = json[key];
+  if (value is bool) return value;
+  if (value is String) return value == 'true';
+  return defaultValue;
 }
 
 int _intField(Map<String, Object?> json, String key) {

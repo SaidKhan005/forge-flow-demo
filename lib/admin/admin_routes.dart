@@ -1417,6 +1417,8 @@ Widget _buildAuditedSupportActions(BuildContext context) {
   final gateway = AdminConsoleServicesScope.auditedSupportActionsAdminGatewayOf(
     context,
   );
+  final sessionsGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
   final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
     context,
   );
@@ -1450,6 +1452,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
   if (source == null) {
     return _AuditedSupportActionsRouteShell(
       gateway: gateway,
+      sessionsGateway: sessionsGateway,
       actorUserId: 'demo-super-admin',
       editingEnabled: true,
       // Demo / test path: leave MFA-required affordances disabled.
@@ -1485,6 +1488,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
       final canExportAuditLog = fresh;
       return _AuditedSupportActionsRouteShell(
         gateway: gateway,
+        sessionsGateway: sessionsGateway,
         actorUserId: session?.uid ?? 'unknown',
         editingEnabled: canEdit,
         canResetMfaFactors: canResetMfa,
@@ -1502,6 +1506,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
 class _AuditedSupportActionsRouteShell extends StatefulWidget {
   const _AuditedSupportActionsRouteShell({
     required this.gateway,
+    required this.sessionsGateway,
     required this.actorUserId,
     required this.editingEnabled,
     required this.canResetMfaFactors,
@@ -1514,6 +1519,7 @@ class _AuditedSupportActionsRouteShell extends StatefulWidget {
   });
 
   final AuditedSupportActionsAdminGateway gateway;
+  final RolesHierarchySessionsAdminGateway sessionsGateway;
   final String actorUserId;
   final bool editingEnabled;
   final bool canResetMfaFactors;
@@ -1616,6 +1622,7 @@ class _AuditedSupportActionsRouteShellState
     return AuditedSupportActionsAdminScreen(
       key: ValueKey<String>('asa-${picked.operatorId}'),
       gateway: widget.gateway,
+      sessionsGateway: widget.sessionsGateway,
       actorUserId: widget.actorUserId,
       pickedOperator: picked,
       editingEnabled: widget.editingEnabled,
