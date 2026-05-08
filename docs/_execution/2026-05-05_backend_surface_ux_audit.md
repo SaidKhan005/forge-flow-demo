@@ -10,9 +10,9 @@ This audit compared implemented backend and proxy capabilities against the
 admin and operator UX. The pass followed:
 
 - `PROJECT_TRACKER.md`
-- `docs/UX_ADJUSTMENT_FRAMEWORK.md`
-- `docs/PERFORMANCE_FRAMEWORK.md`
-- `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
+- `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md`
+- `docs/frameworks/PERFORMANCE_FRAMEWORK.md`
+- `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
 - relevant `docs/contracts/**`
 - `runbooks/admin_console_browser_qa_runbook.md`
 - `runbooks/preview_environment_runbook.md`, which was absent on the base

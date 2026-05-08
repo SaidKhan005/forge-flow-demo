@@ -8,7 +8,7 @@ Canonical contracts:
 - `docs/contracts/vendor_adapter_slice_contract.md`
 - `docs/contracts/per_vendor_doc_pack_contract.md`
 - `docs/contracts/metric_card_honesty_contract.md`
-- `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
+- `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
 
 This note preserves the deep vendor API access check, the local
 payment-orchestrator Oracle evidence, and the remaining product proof gap after

@@ -370,7 +370,7 @@ schema, or visible truth. Do not build a replacement UI.
 
 Authority:
 - PROJECT_TRACKER.md
-- docs/PERFORMANCE_FRAMEWORK.md
+- docs/frameworks/PERFORMANCE_FRAMEWORK.md
 - docs/contracts/slice_runtime_acceptance_contract.md
 - <active phase doc, if this belongs to a phase>
 
