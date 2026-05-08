@@ -17,8 +17,10 @@ slices live in `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
    `docs/phases/phase_9/phase_9_scalability_decisions_2026-04-27.md`,
    `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md`.
 6. `docs/CODEX_PROMPT_GENERATION_STANDARD.md` — prompt shape, parallel-lane rules.
-7. `docs/PERFORMANCE_FRAMEWORK.md` · `docs/UX_ADJUSTMENT_FRAMEWORK.md` ·
-   `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — applied per slice when relevant.
+7. `docs/frameworks/deployFramework.md` ·
+   `docs/frameworks/PERFORMANCE_FRAMEWORK.md` ·
+   `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md` ·
+   `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — applied per slice when relevant.
 
 `docs/archive/**` is history; ignore unless explicitly named. Authority is
 normative in `CLAUDE.md`.
@@ -145,7 +147,7 @@ arrive.
   slices use Codex-driven Browser Use evidence per
   `runbooks/browser_use_codex_acceptance_workflow.md` (out-of-repo automation,
   not a binary in this tree) and full E2E uses
-  `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`.
+  `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`.
 - Before staging console perf claims:
   `dart run tool/perf_gate/staging_console_probe.dart --run
   --admin-url=<url> --proxy-url=<url>` and attach JSON.

@@ -28,10 +28,12 @@ Read only what the slice needs:
 - At most one relevant contract under `docs/contracts/**`.
 - `docs/contracts/slice_runtime_acceptance_contract.md` for runtime-exposed
   slices.
-- `docs/PERFORMANCE_FRAMEWORK.md` for performance, scale, mobile
+- `docs/frameworks/deployFramework.md` for deploy, redeploy, preview,
+  staging, Cloud Run, CORS, auth, database-mode, and rollback work.
+- `docs/frameworks/PERFORMANCE_FRAMEWORK.md` for performance, scale, mobile
   responsiveness, web-console timing, load, polling, health, or bundle-size
   work.
-- `docs/UX_ADJUSTMENT_FRAMEWORK.md` for UX polish, copy, navigation, button,
+- `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md` for UX polish, copy, navigation, button,
   modal, filter, tooltip, browser-tab, and no-regression admin-console polish.
 
 Avoid archived docs unless explicitly named. Keep `PROJECT_TRACKER.md` and
@@ -159,12 +161,12 @@ evidence, the prompt must include the relevant checks from
 
 If a slice is performance-sensitive or asks for performance optimization, the
 prompt must also include the measurement, behavior-preservation, runtime-proof,
-and reporting loop from `docs/PERFORMANCE_FRAMEWORK.md`.
+and reporting loop from `docs/frameworks/PERFORMANCE_FRAMEWORK.md`.
 
 If a slice changes visible UX copy, layout, tab structure, filters, keys,
 tooltips, buttons, modals, browser metadata, or admin/operator console polish,
 the prompt must also include the behavior-preservation, browser-loop, and
-reporting rules from `docs/UX_ADJUSTMENT_FRAMEWORK.md`.
+reporting rules from `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md`.
 
 Minimum acceptance path:
 

@@ -9,7 +9,7 @@ Lane: `11W.5` — worktree `.claude/worktrees/<assigned-by-runbook>` on branch `
 Authority:
 - `docs/contracts/team_roles_hierarchy_console_parity_contract.md` (binding parity contract)
 - `docs/phases/phase_11W/phase_11W_operator_web_console_plan.md` § `11W.5` Audit Log
-- `docs/PERFORMANCE_FRAMEWORK.md` (pagination cap rule, manual-refresh rule for expensive lists)
+- `docs/frameworks/PERFORMANCE_FRAMEWORK.md` (pagination cap rule, manual-refresh rule for expensive lists)
 
 Current issue:
 - Operators have no web surface for audit-log review. Mobile Audit Log exists. Web parity needed for desktop bulk filter + CSV export.

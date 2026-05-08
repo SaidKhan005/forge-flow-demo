@@ -599,7 +599,7 @@ Lane: `8.first-connect-backfill.5` - worktree
 Authority:
 - `docs/contracts/mobile_core_first_connection_backfill_contract.md`
 - `docs/_execution/2026-05-06_mobile_core_first_connection_backfill_sprint_plan.md`
-- `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
+- `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
 
 Current issue:
 - Component tests exist, but no first-connect to mobile-visible-history proof

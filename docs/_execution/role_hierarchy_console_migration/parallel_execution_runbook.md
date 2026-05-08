@@ -276,7 +276,7 @@ Use port 8081 for operator-web and 8082 for admin so both can run concurrently w
 
 ### Live staging QA (after wave merges to master)
 
-Per `docs/UX_ADJUSTMENT_FRAMEWORK.md` § Browser And Runtime Loop and `docs/contracts/slice_runtime_acceptance_contract.md` § Live Staging Proof:
+Per `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md` § Browser And Runtime Loop and `docs/contracts/slice_runtime_acceptance_contract.md` § Live Staging Proof:
 
 ```powershell
 scripts/deploy_operator_web.ps1 -OperatorWebProxyBaseUri https://staging-api.feflow.org

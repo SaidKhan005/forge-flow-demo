@@ -22,7 +22,7 @@ The contract enforces a single end-to-end behavior across all three surfaces (mo
 
 A team member who can do action X on the mobile Settings screen can do action X with identical effect on the Operator Web Console screen for the same surface. An F&F support user who can do action X on the F&F Operations Console for a chosen operator produces an audit-row that is indistinguishable from a mobile/web-self-service audit-row except for the actor identity, the `admin_reason` field, and the `audit_logs.actor_kind = 'forge_admin'` marker.
 
-The interface is a translator, not a different product (per `docs/UX_ADJUSTMENT_FRAMEWORK.md` golden rule).
+The interface is a translator, not a different product (per `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md` golden rule).
 
 ## Surface map (binding)
 
