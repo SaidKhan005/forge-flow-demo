@@ -1,0 +1,20 @@
+{
+  "results": {
+    "timesheets": [
+      {
+        "user_id": 8001,
+        "jobcode_id": 5001,
+        "start": "2026-05-04T11:00:00Z",
+        "end": "2026-05-04T19:30:00Z",
+        "duration": 30600,
+        "date": "2026-05-04",
+        "tz": -7,
+        "tz_str": "-07:00",
+        "type": "regular",
+        "on_the_clock": false,
+        "last_modified": "2026-05-04T19:31:12Z"
+      }
+    ],
+    "more": false
+  }
+}

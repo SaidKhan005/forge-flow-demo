@@ -1,0 +1,47 @@
+{
+  "results": {
+    "timesheets": [
+      {
+        "id": 903001,
+        "user_id": 8011,
+        "jobcode_id": 5001,
+        "start": "2026-03-08T09:00:00Z",
+        "end": "2026-03-08T15:00:00Z",
+        "duration": 21600,
+        "date": "2026-03-08",
+        "tz": -8,
+        "tz_str": "-08:00",
+        "type": "regular",
+        "location": "Granville Bar",
+        "on_the_clock": false,
+        "locked": 0,
+        "notes": "Bartender open — clocked in 01:00 PST, out 08:00 PDT (clocks sprang forward at 02:00 → 03:00 local during the shift).",
+        "customfields": {},
+        "attached_files": [],
+        "created": "2026-03-08T09:00:01Z",
+        "last_modified": "2026-03-08T15:00:30Z"
+      }
+    ],
+    "supplemental_data": {
+      "users": {
+        "8011": {
+          "id": 8011,
+          "first_name": "Robin",
+          "last_name": "Bartender",
+          "active": true,
+          "pay_rate": "22.00",
+          "pay_interval": "hour",
+          "last_modified": "2026-03-01T00:00:00Z"
+        }
+      },
+      "jobcodes": {
+        "5001": {
+          "id": 5001,
+          "name": "server",
+          "active": true
+        }
+      }
+    },
+    "more": false
+  }
+}
