@@ -8,6 +8,7 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../services/restaurant_scope_service.dart';
 import '../../services/restaurant_timing_config_read_service.dart';
 import '../../services/schedule_plan_read_service.dart';
 import '../../domain/models/active_target_profile.dart';
@@ -16,7 +17,6 @@ import '../../domain/models/schedule_forecast_demand.dart';
 import '../../domain/models/schedule_plan.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../domain/services/service_period_definition_resolver.dart';
-import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../../services/daypart_plan_allocator.dart';
 import '../../services/labor_model.dart';
 import 'schedule_view_models.dart';
@@ -207,8 +207,8 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   Future<void> _loadDistributionWeightsIfUnavailable() async {
     if (_distributionWeights != null) return;
     try {
-      final restaurantId = await SqliteRestaurantScopeRepository.instance
-          .getActiveRestaurantId();
+      final restaurantId =
+          await RestaurantScopeService.instance.getActiveRestaurantId();
       _distributionWeights =
           await SchedulePlanReadService.loadDistributionWeights(restaurantId);
     } catch (_) {

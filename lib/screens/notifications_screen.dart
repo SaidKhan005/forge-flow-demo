@@ -8,8 +8,8 @@
 
 import 'package:flutter/material.dart';
 import '../services/app_notification_service.dart';
+import '../services/restaurant_scope_service.dart';
 import '../domain/models/app_notification.dart';
-import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../theme/app_theme.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -33,7 +33,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _load() async {
-    final restaurantId = await SqliteRestaurantScopeRepository.instance
+    final restaurantId = await RestaurantScopeService.instance
         .getActiveRestaurantId();
     final notifications = await AppNotificationService.instance
         .getNotifications(restaurantId);
