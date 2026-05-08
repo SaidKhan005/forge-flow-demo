@@ -1916,6 +1916,7 @@ class _SetupTile extends StatelessWidget {
     final content = Container(
       key: tileKey,
       width: 176,
+      height: 112,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: tone.withValues(alpha: 0.08),
@@ -1930,7 +1931,7 @@ class _SetupTile extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             label,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: AppTextStyles.mono11(color: AppColors.textMuted),
           ),
