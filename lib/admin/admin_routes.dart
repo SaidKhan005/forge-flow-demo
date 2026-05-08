@@ -116,6 +116,8 @@ class AdminRoute {
     this.subtitle,
     this.badge,
     this.placeholder = false,
+    this.visibleInNav = true,
+    this.navAnchorRouteId,
   });
 
   /// Stable ID used by tests, deep-links, and audit logs.
@@ -147,6 +149,19 @@ class AdminRoute {
   /// instead of [builder] so the nav structure is visible from
   /// 11A.0 without exposing scaffolding.
   final bool placeholder;
+
+  /// Whether this route appears as a primary side-nav destination.
+  ///
+  /// Some settings routes are still real destinations for route
+  /// handoff/deep-link tests, but the product IA reaches them from
+  /// Business accounts setup tiles rather than exposing duplicate
+  /// top-level Operations entries.
+  final bool visibleInNav;
+
+  /// Optional visible route that should stay highlighted while this
+  /// route is active. Setup-only routes anchor to Business accounts
+  /// because the business hierarchy workspace is their entry point.
+  final String? navAnchorRouteId;
 
   /// Builds the route surface. For [placeholder] routes the shell
   /// substitutes a branded "coming soon" panel; for live routes the
@@ -311,6 +326,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     badge: 'Work in progress',
     subtitle: 'Inspect and override per-location covers and wage source.',
     builder: _buildDataAccuracy,
+    visibleInNav: false,
+    navAnchorRouteId: kAdminOperatorsRouteId,
   ),
   AdminRoute(
     id: kAdminPollingPricingRouteId,
@@ -322,6 +339,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     subtitle:
         'Set tier definitions, per-location assignments, and review margin.',
     builder: _buildPollingPricing,
+    visibleInNav: false,
+    navAnchorRouteId: kAdminOperatorsRouteId,
   ),
   AdminRoute(
     id: kAdminMembersRouteId,
@@ -332,6 +351,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     subtitle:
         'Review members, invites, role grants, and role policy for one business.',
     builder: _buildMembers,
+    visibleInNav: false,
+    navAnchorRouteId: kAdminOperatorsRouteId,
   ),
   AdminRoute(
     id: kAdminRolesHierarchySessionsRouteId,
@@ -341,6 +362,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     section: AdminRouteSection.operations,
     subtitle: 'Review hierarchy and active sessions for the selected business.',
     builder: _buildRolesHierarchySessions,
+    visibleInNav: false,
+    navAnchorRouteId: kAdminOperatorsRouteId,
   ),
   AdminRoute(
     id: kAdminAuditedSupportActionsRouteId,
@@ -351,6 +374,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     subtitle:
         'Review audit history and gated support actions for one operator.',
     builder: _buildAuditedSupportActions,
+    visibleInNav: false,
+    navAnchorRouteId: kAdminOperatorsRouteId,
   ),
 ];
 
@@ -473,7 +498,7 @@ Widget _buildOperators(BuildContext context) {
           : (scope) {
               handoff.onSelectRoute(
                 AdminRouteIntent(
-                  routeId: kAdminRolesHierarchySessionsRouteId,
+                  routeId: kAdminMembersRouteId,
                   hierarchyScope: scope,
                 ),
               );
@@ -965,25 +990,32 @@ Widget _buildPollingPricing(BuildContext context) {
 }
 
 OperatorPickerResult? _pickerResultFromScope(
-  AdminOperatorLocationScopeIntent? scope,
-) {
-  if (scope == null || scope.locationId == null) return null;
+  AdminOperatorLocationScopeIntent? scope, {
+  bool allowBusinessScope = false,
+}) {
+  if (scope == null) return null;
+  final locationId = scope.locationId;
+  final hasLocation = locationId != null && locationId.isNotEmpty;
+  if (!hasLocation && !allowBusinessScope) return null;
   return OperatorPickerResult(
     operatorId: scope.operatorId,
-    locationId: scope.locationId!,
+    locationId: locationId ?? '',
     operatorBusinessName: scope.operatorName ?? 'Selected operator',
-    locationName: scope.locationName ?? 'Selected location',
+    locationName: hasLocation
+        ? scope.locationName ?? 'Selected location'
+        : 'Business scope',
   );
 }
 
 AdminOperatorLocationScopeIntent _scopeFromPickerResult(
   OperatorPickerResult result,
 ) {
+  final locationId = result.locationId.isEmpty ? null : result.locationId;
   return AdminOperatorLocationScopeIntent(
     operatorId: result.operatorId,
-    locationId: result.locationId,
+    locationId: locationId,
     operatorName: result.operatorBusinessName,
-    locationName: result.locationName,
+    locationName: locationId == null ? null : result.locationName,
   );
 }
 
@@ -1003,7 +1035,10 @@ Widget _buildMembers(BuildContext context) {
   );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
-  final initialPicked = _pickerResultFromScope(handoff?.operatorLocationScope);
+  final initialPicked = _pickerResultFromScope(
+    handoff?.operatorLocationScope,
+    allowBusinessScope: true,
+  );
   final initialScope = handoff?.effectiveHierarchyScope;
   void rememberPickedOperator(OperatorPickerResult result) {
     handoff?.onSelectRoute(
@@ -1228,7 +1263,10 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
   );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
-  final initialPicked = _pickerResultFromScope(handoff?.operatorLocationScope);
+  final initialPicked = _pickerResultFromScope(
+    handoff?.operatorLocationScope,
+    allowBusinessScope: true,
+  );
   void rememberPickedOperator(OperatorPickerResult result) {
     handoff?.onSelectRoute(
       AdminRouteIntent(
@@ -1432,7 +1470,10 @@ Widget _buildAuditedSupportActions(BuildContext context) {
   );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
-  final initialPicked = _pickerResultFromScope(handoff?.operatorLocationScope);
+  final initialPicked = _pickerResultFromScope(
+    handoff?.operatorLocationScope,
+    allowBusinessScope: true,
+  );
   void rememberPickedOperator(OperatorPickerResult result) {
     handoff?.onSelectRoute(
       AdminRouteIntent(
