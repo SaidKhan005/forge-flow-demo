@@ -255,6 +255,97 @@ void main() {
     expect(scopes.last.locationName, 'HQ');
   });
 
+  testWidgets('Account profile tile edits the business contact email', (
+    tester,
+  ) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[
+        seedBundle(
+          operatorId: 'op-profile',
+          primaryLocationId: 'loc-profile',
+          businessName: 'Profile Cafe',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
+
+    final profileTile = find.byKey(
+      const Key('admin_business_setup_tile_account_profile'),
+    );
+    await tester.ensureVisible(profileTile);
+    await tester.pumpAndSettle();
+    await tester.tap(profileTile);
+    await tester.pumpAndSettle();
+
+    final dialog = find.byKey(const Key('admin_edit_operator_dialog'));
+    expect(dialog, findsOneWidget);
+    expect(
+      find.descendant(of: dialog, matching: find.text('Account profile')),
+      findsOneWidget,
+    );
+    expect(find.text('Owner email'), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const Key('admin_edit_owner_email')),
+      'contact@profile.test',
+    );
+    await tester.tap(find.byKey(const Key('admin_edit_submit_button')));
+    await tester.pumpAndSettle();
+
+    final operators = await gateway.listOperators();
+    expect(operators.single.operator.ownerEmail, 'contact@profile.test');
+    expect(find.text('contact@profile.test'), findsWidgets);
+  });
+
+  testWidgets('Account profile conflict details show existing email usage', (
+    tester,
+  ) async {
+    final gateway = _EmailConflictOperatorGateway(
+      seed: <OperatorAdminBundle>[
+        seedBundle(
+          operatorId: 'op-profile-conflict',
+          primaryLocationId: 'loc-profile-conflict',
+          businessName: 'Conflict Source Cafe',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
+
+    final profileTile = find.byKey(
+      const Key('admin_business_setup_tile_account_profile'),
+    );
+    await tester.ensureVisible(profileTile);
+    await tester.pumpAndSettle();
+    await tester.tap(profileTile);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('admin_edit_owner_email')),
+      'taken@business.test',
+    );
+    await tester.tap(find.byKey(const Key('admin_edit_submit_button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Contact email is already used by another account.'),
+      findsOneWidget,
+    );
+    expect(find.text('Where this email is used'), findsOneWidget);
+    expect(
+      find.byKey(
+        const Key('admin_operators_email_conflict_taken@business.test'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Conflict Bistro / Downtown'), findsOneWidget);
+    expect(find.textContaining('Business contact'), findsOneWidget);
+  });
+
   testWidgets('location Timing action opens a scoped non-destructive dialog', (
     tester,
   ) async {
@@ -948,4 +1039,33 @@ void main() {
     expect(find.byKey(const Key('admin_operators_new_button')), findsNothing);
     expect(find.byKey(const Key('admin_operator_edit_button')), findsNothing);
   });
+}
+
+class _EmailConflictOperatorGateway
+    extends InMemoryOperatorLocationAdminGateway {
+  _EmailConflictOperatorGateway({required super.seed});
+
+  @override
+  Future<OperatorAdminRecord> patchOperator(
+    OperatorPatchCommand command,
+  ) async {
+    throw const OperatorLocationAdminGatewayError(
+      statusCode: 409,
+      errorCode: 'email_in_use',
+      message: 'Contact email is already used by another account.',
+      details: <String, Object?>{
+        'email_conflicts': <Object?>[
+          <String, Object?>{
+            'email': 'taken@business.test',
+            'source': 'business_contact',
+            'operator_id': 'op-existing-business',
+            'business_name': 'Conflict Bistro',
+            'location_id': 'loc-existing-business',
+            'location_name': 'Downtown',
+            'status': 'active',
+          },
+        ],
+      },
+    );
+  }
 }

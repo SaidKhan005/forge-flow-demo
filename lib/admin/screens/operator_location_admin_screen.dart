@@ -418,7 +418,7 @@ class _OperatorLocationAdminScreenState
     if (patch == null) return;
     await _runAndRefresh(() async {
       await widget.gateway.patchOperator(patch);
-    }, successHint: 'Operator updated.');
+    }, successHint: 'Account profile updated.');
   }
 
   Future<void> _suspend(OperatorAdminBundle bundle) async {
@@ -2886,7 +2886,7 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
       key: const Key('admin_edit_operator_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Edit operator',
+        'Account profile',
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
       content: SizedBox(
@@ -2942,7 +2942,7 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
           key: const Key('admin_edit_submit_button'),
           onPressed: _submit,
           style: AdminButtonStyles.primary,
-          child: const Text('Save'),
+          child: const Text('Save profile'),
         ),
       ],
     );

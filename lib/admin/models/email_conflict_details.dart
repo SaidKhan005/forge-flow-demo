@@ -28,6 +28,9 @@ class AdminEmailConflictUsage {
 
   String get sourceLabel {
     switch (source) {
+      case 'business':
+      case 'business_contact':
+        return 'Business contact';
       case 'pending_invite':
         return 'Pending invite';
       case 'firebase_account':
