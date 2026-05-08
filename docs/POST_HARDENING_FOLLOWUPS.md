@@ -317,18 +317,9 @@ on the same key → 409 `idempotency_key_conflict`. Coverage:
 
 ### P1 — `advisor_proxy.dart:9105-9106` hardcoded prompt placeholders ⏸️ DEFERRED (AI freeze)
 
-Production launch-tier prompt build path passes literal strings
-`'launch methodology context placeholder'` and
-`'advisor tool definitions placeholder'` for the `methodologyContext`
-and `toolDefinitions` prompt blocks. These are not stub fallbacks —
-they ship in the cached prompt for every launch-tier advisor request
-when `corpusVersion` is resolved.
-
-Action: replace with the real methodology context + tool definitions
-strings before any AI-paused work resumes (Phase `11b` /
-`12.0`–`12.5`). Tracked here so the freeze-thaw checklist sees it.
-Not addressed in 2026-05-08 remediation wave because the AI lane is
-frozen; first task at thaw.
+Moved to phase_11b plan freeze-thaw checklist (2026-05-08). See
+`docs/phases/phase_11b/phase_11b_advisor_ux_plan.md` "Freeze-thaw
+pre-conditions (must close before unfreezing 11b)".
 
 ### P1 — Demo-mode banner promised by architecture but never wired ✅ FIXED 2026-05-08 ([#426](https://github.com/SaidKhan005/forge-flow-demo/pull/426) — slice `8.demo-mode-banner`)
 
@@ -428,38 +419,13 @@ existing UX intent.
 
 ### P2 — `audit_logs_repository.dart:368` style bare catches in advisor proxy ✅ PARTIAL ([#420](https://github.com/SaidKhan005/forge-flow-demo/pull/420) — 3 of 4 files closed; advisor_proxy 16 sites still open)
 
-The known `tool/integration_sync_worker/backfill_dispatch.dart:368`
-bare-catch (justified by terminal-state comment) is one site; the
-broader pattern is wider:
+11 bare catches converted via PR #420 across `auth_session_notifier.dart`,
+`tenant_transaction.dart`, and `package_postgres_executor.dart`.
 
-- `tool/advisor_proxy/advisor_proxy.dart` — 16 bare `catch (_)` arms
-  in the request-handling path
-  (lines `1319,1352,1429,1661,1698,1789,1944,1974,1980,1997,2306,2540,
-  2618,5143,5221,5274`).
-- `lib/state/auth_session_notifier.dart` — 5 bare catches in auth
-  lifecycle (lines `156,167,280,451,492`).
-- `lib/infrastructure/persistence/postgres/tenant_transaction.dart` —
-  3 (lines `81,127,172`).
-- `lib/infrastructure/persistence/postgres/package_postgres_executor.dart`
-  — 3 (lines `119,269,405`).
-
-Same fix pattern as the LB3 work that closed Wave 5
-([#364](https://github.com/SaidKhan005/forge-flow-demo/pull/364)):
-typed `on TimeoutException` / `on Exception` / `on Object` arms with
-structured-log reporter.
-
-Resolution (PR #420): typed-arms applied to `auth_session_notifier.dart`
-(5 sites), `tenant_transaction.dart` (3 sites via shared
-`_logRollbackFailure` helper), and `package_postgres_executor.dart`
-(3 sites). 11 bare catches converted total. Server-side modules use
-`log()` from `lib/services/observability/log.dart`; the Flutter UI
-module reuses its existing `debugPrint` idiom.
-
-**Still open:** the 16 bare catches in `tool/advisor_proxy/advisor_proxy.dart`
-(lines `1319,1352,1429,1661,1698,1789,1944,1974,1980,1997,2306,2540,
-2618,5143,5221,5274`) — separate larger effort; the monolith is too
-risky for a one-shot agent. Sequence with the
-`tool/advisor_proxy/advisor_proxy.dart` split-up phase doc.
+**Still open:** the 16 bare catches in `tool/advisor_proxy/advisor_proxy.dart`.
+Moved to `docs/phases/proxy_split/proxy_split_plan.md` "Pre-Split
+Cleanup" (2026-05-08) — the monolith is too risky for a one-shot
+agent and the split phase is the natural home.
 
 ### P3 — `docs/_execution/` retirement window opens 2026-05-12
 

@@ -314,3 +314,30 @@ Helpful but not required:
   to Voyage embeddings + rerank from 11a.
 - Tracker folding: add to `PROJECT_TRACKER.md` Active Planning Docs list
   on next Codex pass
+
+## Freeze-thaw pre-conditions (must close before unfreezing 11b)
+
+These items were deferred from earlier audits because the AI lane is
+frozen; they are first-task items at thaw, not 11b feature work.
+Origin: `docs/POST_HARDENING_FOLLOWUPS.md` 2026-05-08 audit-additions
+sweep.
+
+### `tool/advisor_proxy/advisor_proxy.dart:9105-9106` — hardcoded prompt placeholders
+
+Production launch-tier prompt build path passes literal strings
+`'launch methodology context placeholder'` and
+`'advisor tool definitions placeholder'` for the `methodologyContext`
+and `toolDefinitions` prompt blocks. These are not stub fallbacks —
+they ship in the cached prompt for every launch-tier advisor request
+when `corpusVersion` is resolved.
+
+Action at thaw: replace with the real methodology-context and
+tool-definitions strings before any AI-paused 11b / 12.0 / 12.5 work
+resumes. Re-verify the prompt-cache key shape (the placeholder strings
+were in the cache key namespace when they shipped; production payload
+must produce the same — or intentionally different — cache discriminant).
+
+Source citation: `tool/advisor_proxy/advisor_proxy.dart:9105-9106`.
+Tracked here so the freeze-thaw checklist sees it. Not addressed in
+the 2026-05-08 remediation wave because the AI lane is frozen; first
+task at thaw.
