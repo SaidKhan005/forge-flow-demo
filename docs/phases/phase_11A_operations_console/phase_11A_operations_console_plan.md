@@ -324,7 +324,8 @@ deliberately returns `graph_candidates_not_configured` /
 First task on AI unpause: stand up the candidate-bundle staging path
 (deploy automation + initial Graphify run) so the routes exit the 503
 wall and the admin review surface lights up. See
-`CODE_OPS_DEBT.md` Theme J#5 for the closeout note.
+`docs/archive/CODE_OPS_DEBT_FINAL_2026-05-08.md` Theme J#5 for the
+closeout note.
 
 This is the phase slice where the open-source Graphify repo can feed the
 Forge & Flow advisor graph. It is an admin/review feature, not runtime

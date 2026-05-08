@@ -11,9 +11,10 @@ Last updated: 2026-05-07
 > reach for, not a gate to pass.
 >
 > History: 2026-05-07 — operator decision to relax enforcement
-> (`CODE_OPS_DEBT.md` Theme J#4). Prior wording used "must" / "shall" /
-> "every slice MUST"; that language has been softened to "should" /
-> "recommended" / "best-effort" throughout.
+> (archived `docs/archive/CODE_OPS_DEBT_FINAL_2026-05-08.md` Theme
+> J#4). Prior wording used "must" / "shall" / "every slice MUST";
+> that language has been softened to "should" / "recommended" /
+> "best-effort" throughout.
 
 This contract captures the staging-console remediation and performance lessons
 from the 2026-05-03 execution reports. It is a recommended pattern for future

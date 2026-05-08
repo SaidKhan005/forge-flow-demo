@@ -138,7 +138,7 @@ Env names this gate consults (names only — never echo values):
 - `AZURE_AD_TENANT_ID` — Azure AD tenant id for federated identity.
 - `AZURE_AD_CLIENT_ID` — Azure AD app-registration client id.
 
-## MFA Freshness Window (CODE_OPS_DEBT Theme A item 1)
+## MFA Freshness Window (closeout: archived `docs/archive/CODE_OPS_DEBT_FINAL_2026-05-08.md` Theme A item 1)
 
 The four MFA-pinned admin actions —
 `admin.roles.edit_seeded`,
