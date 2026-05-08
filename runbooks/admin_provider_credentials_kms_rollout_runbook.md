@@ -166,3 +166,73 @@ data — restart the proxy and the new value applies on the next
 request. The admin UI affordances re-resolve on every paint, so the
 new window takes effect for both new and existing sessions
 immediately.
+
+## Cloud Pub/Sub Realtime Cross-Pod Replay (`PUBSUB_REALTIME_*`)
+
+The N5 cross-pod replay lane fronts the `RealtimeReplayResolver` with
+a per-pod Cloud Pub/Sub subscription so a reconnecting client can
+replay the last 5 minutes of events even when its original pod has
+restarted. Default off; enabling it provisions one short-lived
+subscription per pod against a single shared topic.
+
+Env names this gate consults (names only — never echo values):
+
+- `PUBSUB_REALTIME_ENABLED` — boolean; accepts `true`, `1`, `yes`.
+  Defaults to `false`. With the flag off, the proxy uses the
+  in-process ring buffer alone (single-instance demo mode) and makes
+  zero Pub/Sub API calls. **Zero new GCP cost when disabled.**
+- `PUBSUB_REALTIME_TOPIC` — Pub/Sub topic short name (no project
+  prefix). The bridge publishes every locked namespace into this one
+  topic; subscriptions filter by the `topic` message attribute.
+- `PUBSUB_REALTIME_PROJECT` — GCP project id that owns the topic.
+- `PUBSUB_REALTIME_RETENTION_SECONDS` — message retention applied
+  when the per-pod subscription is created. Default `300` (5 minutes,
+  matches the in-process replay window). Operators raising this beyond
+  300 should expect proportional storage cost from Pub/Sub.
+
+Topic provisioning (one-time per project):
+
+1. Create a single Pub/Sub topic — name it `forge-realtime` (or
+   match your existing convention) in the same GCP project that hosts
+   the proxy Cloud Run service.
+2. The proxy creates a per-pod **subscription** named
+   `forge-realtime-<revision>-<hostname>-<random4>` on startup. The
+   subscription has `expiration_policy.ttl=1h` so an evicted pod's
+   subscription auto-cleans even if SIGTERM did not run; the SIGTERM
+   handler best-efforts deletes it sooner.
+3. Grant the proxy Cloud Run service account these IAM roles on the
+   topic / project:
+   - `roles/pubsub.publisher` on the topic — for the bridge worker's
+     publish path.
+   - `roles/pubsub.subscriber` on the topic — for the per-pod pull
+     loop.
+   - `roles/pubsub.editor` on the project (or a custom role with
+     `pubsub.subscriptions.create` + `pubsub.subscriptions.delete`)
+     — so the pod can create / delete its own subscription on
+     start / stop.
+
+Bring-up:
+
+1. Create the topic and grant the service-account roles above.
+2. Set `PUBSUB_REALTIME_ENABLED`, `PUBSUB_REALTIME_TOPIC`, and
+   `PUBSUB_REALTIME_PROJECT` on the proxy Cloud Run revision. Leave
+   `PUBSUB_REALTIME_RETENTION_SECONDS` unset to keep the 300s default.
+3. Redeploy. Confirm `pubsub_realtime_enabled: true` appears in the
+   deploy log alongside the chosen topic + retention.
+4. Confirm at least one log line of
+   `realtime.pubsub_subscriber.subscription_created` per pod, and that
+   `realtime.pubsub_subscriber.pull_failed` does not fire after warm
+   up.
+5. Disable by removing `PUBSUB_REALTIME_ENABLED` (or setting to `false`)
+   and redeploying. The next pod cycle stops calling Pub/Sub
+   immediately; existing subscriptions reach TTL within an hour.
+
+Cost notes (operator constraint — simplicity + cost control):
+
+- Pub/Sub charges $40 / TiB throughput; expected message volume
+  (~1000 msg/day per pod, sub-1KB payloads) lands well below $1/month
+  per pod.
+- Storage cost only applies past the free tier (10 GB/month). The 5
+  minute retention window keeps the storage footprint negligible.
+- With the flag off, **no Pub/Sub API calls fire and the per-pod
+  subscription is never created** — zero new GCP cost.

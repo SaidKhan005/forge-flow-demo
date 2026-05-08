@@ -42,6 +42,8 @@ import 'package:forge_and_flow/services/email/email_outbox_dispatcher.dart';
 import 'package:forge_and_flow/services/email/email_template_renderer.dart';
 import 'package:forge_and_flow/services/email/postgres_email_outbox_repository.dart';
 import 'package:forge_and_flow/services/email/sendgrid_email_provider.dart';
+import 'package:forge_and_flow/services/realtime/google_cloud_pubsub_message_publisher.dart';
+import 'package:forge_and_flow/services/realtime/google_cloud_pubsub_subscriber.dart';
 import 'package:forge_and_flow/services/realtime/outbox_tripwire_evaluator.dart';
 import 'package:forge_and_flow/services/realtime/pubsub_realtime_publisher.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
@@ -470,6 +472,75 @@ Future<void> main(List<String> args) async {
     now: DateTime.now,
     thresholdOverrides: resolveTripwireThresholdOverrides(Platform.environment),
   );
+  // N5 — Cloud Pub/Sub realtime cross-pod replay backlog. When
+  // `PUBSUB_REALTIME_ENABLED=true` the proxy provisions a per-pod
+  // subscription against the shared topic and pulls into a small
+  // in-memory ring; that ring fronts the resolver in production so a
+  // reconnect after a Cloud Run pod restart can replay the last 5
+  // minutes regardless of which pod served the original publish. With
+  // the flag off (default), the subscriber is null and the resolver
+  // falls back to the in-process ring — zero new GCP cost.
+  final pubsubRealtimeStartup =
+      evaluatePubsubRealtimeStartup(Platform.environment);
+  if (pubsubRealtimeStartup.hasMissingEnvVars) {
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'realtime_pubsub_env_missing',
+        'message':
+            '$pubsubRealtimeEnabledEnvVar is set but required env vars '
+            'are missing; remove the flag or supply the names below.',
+        'env_flag_name': pubsubRealtimeEnabledEnvVar,
+        'missing_env_var_names': pubsubRealtimeStartup.missingEnvVarNames,
+        'exit_code': 78,
+      },
+    );
+    exitCode = 78;
+    return;
+  }
+  GoogleCloudPubsubSubscriber? pubsubRealtimeSubscriber;
+  if (pubsubRealtimeStartup.enabled) {
+    pubsubRealtimeSubscriber = GoogleCloudPubsubSubscriber(
+      projectId: pubsubRealtimeStartup.projectId!,
+      topicName: pubsubRealtimeStartup.topicName!,
+      subscriptionName: PubsubSubscriptionName.forPod(
+        revision: Platform.environment['K_REVISION'] ??
+            Platform.environment['CLOUD_RUN_REVISION'] ??
+            'rev-unknown',
+        hostname: Platform.localHostname,
+      ),
+      accessTokenProvider: MetadataServerAccessTokenProvider(),
+      messageRetention:
+          Duration(seconds: pubsubRealtimeStartup.retentionSeconds),
+      logger: _logPubsubSubscriberEvent,
+    );
+    try {
+      await pubsubRealtimeSubscriber.start();
+    } catch (error, stack) {
+      log(
+        LogSeverity.error,
+        'startup.failed',
+        fields: <String, Object?>{
+          'phase': 'realtime_pubsub_subscriber_start',
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
+          'stack_first_frame': firstStackFrame(stack),
+          'exit_code': 78,
+        },
+      );
+      exitCode = 78;
+      return;
+    }
+    stdout.writeln(
+      'pubsub_realtime_enabled: true '
+      '(topic=${pubsubRealtimeStartup.topicName}, '
+      'retention=${pubsubRealtimeStartup.retentionSeconds}s)',
+    );
+  } else {
+    stdout.writeln('pubsub_realtime_enabled: false');
+  }
+
   // Phase 10a.5 — server-side replay seam. The route invokes this
   // closure when a client reconnects with `?last_event_id=<uuid>`.
   // The resolver delegates to the in-process publisher's per-(operator,
@@ -479,17 +550,27 @@ Future<void> main(List<String> args) async {
   // the closure returns `truncated: true` so the route emits the
   // `replay_truncated` control envelope and the client refreshes
   // from Postgres on the affected tables.
+  //
+  // N5: when the Pub/Sub subscriber is wired (flag on), it fronts
+  // replay so the in-process ring's per-pod blind spot does not strand
+  // a reconnect on a different pod.
   final realtimeReplayResolver = RealtimeReplayResolver(
     backlog: realtimeInProcessPublisher,
+    pubsubBacklog: pubsubRealtimeSubscriber,
   );
+  // Capture into a final so the closure's null check promotes (Dart
+  // flow analysis does not promote mutable locals across closure
+  // boundaries).
+  final GoogleCloudPubsubSubscriber? pubsubRealtimeSubscriberFinal =
+      pubsubRealtimeSubscriber;
   Future<RealtimeReplayResult> realtimeReplayFetcher({
     required OperatorContext scope,
     required String lastEventId,
     required Duration window,
   }) async {
-    final topics = realtimeInProcessPublisher.topicsForOperator(
-      scope.operatorId,
-    );
+    final topics = pubsubRealtimeSubscriberFinal != null
+        ? pubsubRealtimeSubscriberFinal.topicsForOperator(scope.operatorId)
+        : realtimeInProcessPublisher.topicsForOperator(scope.operatorId);
     if (topics.isEmpty) {
       // Operator has no recent events in any topic ring. The cursor
       // is by definition unknown — fall through to the truncation
@@ -531,40 +612,42 @@ Future<void> main(List<String> args) async {
     );
   }
 
+  // N5 — when the env flag is on, hand the bridge a real Pub/Sub
+  // publisher backed by REST + ADC. The publisher resolves every
+  // locked namespace to the same topic configured by
+  // `PUBSUB_REALTIME_TOPIC` (one shared topic; per-namespace fan-out
+  // is a future micro-optimization that does not change correctness).
+  // When the flag is off, `selectRealtimePublisher` returns the
+  // in-process publisher and the message-publisher closure is never
+  // invoked.
+  final PubsubMessagePublisher pubsubMessagePublisherCallback;
+  if (pubsubRealtimeStartup.enabled) {
+    final googlePublisher = GoogleCloudPubsubMessagePublisher(
+      projectId: pubsubRealtimeStartup.projectId!,
+      accessTokenProvider: MetadataServerAccessTokenProvider(),
+    );
+    pubsubMessagePublisherCallback = ({
+      required String topicName,
+      required String body,
+      required Map<String, String> attributes,
+    }) =>
+        googlePublisher.publish(
+          topicName: topicName,
+          body: body,
+          attributes: attributes,
+        );
+  } else {
+    pubsubMessagePublisherCallback = _unwiredPubsubMessagePublisher;
+  }
   final realtimeBridgePublisher = selectRealtimePublisher(
     environment: Platform.environment,
     inProcessPublisher: realtimeInProcessPublisher,
-    pubsubMessagePublisher: _unwiredPubsubMessagePublisher,
+    pubsubMessagePublisher: pubsubMessagePublisherCallback,
+    topicNameResolver: pubsubRealtimeStartup.enabled
+        ? (_) => pubsubRealtimeStartup.topicName!
+        : null,
     pubsubLogger: _logPubsubRealtimePublisherEvent,
   );
-  if (realtimeBridgePublisher is PubsubRealtimePublisher) {
-    // Fail-close startup gate: the locked-namespace check in the
-    // PubsubRealtimePublisher constructor already passed (every
-    // namespace resolves to a Pub/Sub topic name), but the message
-    // publisher itself is still the unwired stub. Until the
-    // production callback lands (Application Default Credentials,
-    // GCP project + region, `gcloud_pubsub` SDK or REST), flipping
-    // the flag in a real deploy must NOT silently route fan-out to
-    // a stub. Operators remove the env flag, or land the production
-    // adapter, then redeploy.
-    log(
-      LogSeverity.error,
-      'startup.failed',
-      fields: <String, Object?>{
-        'phase': 'realtime_pubsub_message_publisher_unwired',
-        'message':
-            '$pubsubRealtimeEnabledEnvVar is set but the Pub/Sub '
-            'message publisher adapter is not yet wired in this '
-            'slice; remove the env flag for now or land the '
-            'production Pub/Sub binding (Phase 10a follow-up).',
-        'env_flag_name': pubsubRealtimeEnabledEnvVar,
-        'resolved_topics': realtimeBridgePublisher.resolvedTopics,
-        'exit_code': 78,
-      },
-    );
-    exitCode = 78;
-    return;
-  }
   // Phase 10a.2 — resolve EVENT_OUTBOX_DLQ_CAP from env (default 5).
   // Operators raise this when triaging vendor-side outages and lower
   // it when the live queue is filling with poison-pill rows. The
@@ -1249,6 +1332,16 @@ Future<void> main(List<String> args) async {
       fields: <String, Object?>{'signal': signalName},
     );
     adminIdempotencySweepTimer.cancel();
+    // N5 — best-effort delete the per-pod Pub/Sub subscription. The
+    // subscription's 1h `expirationPolicy.ttl` cleans up if this call
+    // fails (network blip, IAM transient), so we cap the wait at 5s
+    // and move on.
+    if (pubsubRealtimeSubscriberFinal != null) {
+      await Future.any(<Future<void>>[
+        pubsubRealtimeSubscriberFinal.stop(),
+        Future<void>.delayed(const Duration(seconds: 5)),
+      ]);
+    }
     // CODE_OPS_DEBT — Theme C — drain every pg_cron NOTIFY consumer
     // and the tripwire poller before closing the HTTP listener so
     // SIGTERM does not orphan a `package:postgres` LISTEN connection.
@@ -1756,22 +1849,169 @@ void _logPubsubRealtimePublisherEvent(PubsubRealtimePublisherLogEvent event) {
   }
 }
 
-/// Phase 10a.1 — production-not-yet-wired Pub/Sub message publisher
-/// stub. The `PUBSUB_REALTIME_ENABLED` startup gate exits 78 before
-/// this is ever invoked, so it is defensive only. Once the production
-/// adapter (Application Default Credentials, GCP project + region,
-/// `gcloud_pubsub` SDK or REST) lands in a follow-up slice, this stub
-/// is replaced with the real callback and the startup gate is removed.
+/// N5 — Pub/Sub realtime cross-pod replay env-var names. Default off
+/// per the lane's "zero new cost when disabled" constraint; the
+/// startup wiring reads these names by reference so a typo is a
+/// single grep away from a fix.
+const String pubsubRealtimeProjectEnvVar = 'PUBSUB_REALTIME_PROJECT';
+const String pubsubRealtimeTopicEnvVar = 'PUBSUB_REALTIME_TOPIC';
+const String pubsubRealtimeRetentionSecondsEnvVar =
+    'PUBSUB_REALTIME_RETENTION_SECONDS';
+
+/// Default retention when the operator does not override it. Five
+/// minutes matches `kRealtimeReplayBacklogWindow` and the in-process
+/// ring buffer's effective lookback. Going longer would inflate
+/// Pub/Sub storage cost without buying any reconnect coverage.
+const int kPubsubRealtimeDefaultRetentionSeconds = 300;
+
+/// Resolved env-var snapshot for the Pub/Sub realtime cross-pod replay
+/// lane. Built by [evaluatePubsubRealtimeStartup]; the bootstrap
+/// branches on the `enabled` flag, missing-vars list, and resolved
+/// project/topic/retention seconds.
+class PubsubRealtimeStartup {
+  const PubsubRealtimeStartup._({
+    required this.enabled,
+    required this.missingEnvVarNames,
+    required this.projectId,
+    required this.topicName,
+    required this.retentionSeconds,
+  });
+
+  /// Disabled posture (default). The bridge keeps the in-process
+  /// publisher; no GCP env vars consulted.
+  static const PubsubRealtimeStartup disabled = PubsubRealtimeStartup._(
+    enabled: false,
+    missingEnvVarNames: <String>[],
+    projectId: null,
+    topicName: null,
+    retentionSeconds: kPubsubRealtimeDefaultRetentionSeconds,
+  );
+
+  final bool enabled;
+  final List<String> missingEnvVarNames;
+  final String? projectId;
+  final String? topicName;
+  final int retentionSeconds;
+
+  /// True when the env flag is on but at least one required name is
+  /// missing — the bootstrap exits 78 in that case (fail-loud).
+  bool get hasMissingEnvVars =>
+      enabled && missingEnvVarNames.isNotEmpty;
+}
+
+/// Inspect the process environment and return the resolved startup
+/// posture for the Pub/Sub realtime cross-pod replay lane. Pure
+/// function so the integration smoke can drive every branch without
+/// binding sockets or a Pub/Sub project.
+PubsubRealtimeStartup evaluatePubsubRealtimeStartup(
+  Map<String, String> environment,
+) {
+  final rawFlag = environment[pubsubRealtimeEnabledEnvVar];
+  final isEnabled = rawFlag != null &&
+      <String>{'true', '1', 'yes'}.contains(rawFlag.trim().toLowerCase());
+  if (!isEnabled) return PubsubRealtimeStartup.disabled;
+  final missing = <String>[];
+  final projectId = _stringOrNull(environment[pubsubRealtimeProjectEnvVar]);
+  if (projectId == null) missing.add(pubsubRealtimeProjectEnvVar);
+  final topicName = _stringOrNull(environment[pubsubRealtimeTopicEnvVar]);
+  if (topicName == null) missing.add(pubsubRealtimeTopicEnvVar);
+  final retentionRaw =
+      _stringOrNull(environment[pubsubRealtimeRetentionSecondsEnvVar]);
+  var retentionSeconds = kPubsubRealtimeDefaultRetentionSeconds;
+  if (retentionRaw != null) {
+    final parsed = int.tryParse(retentionRaw);
+    if (parsed != null && parsed > 0) retentionSeconds = parsed;
+  }
+  return PubsubRealtimeStartup._(
+    enabled: true,
+    missingEnvVarNames: List<String>.unmodifiable(missing),
+    projectId: projectId,
+    topicName: topicName,
+    retentionSeconds: retentionSeconds,
+  );
+}
+
+String? _stringOrNull(String? raw) {
+  if (raw == null) return null;
+  final trimmed = raw.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+/// N5 — per-pod Pub/Sub subscriber log forwarder. Mirrors the existing
+/// realtime publisher forwarder so subscription lifecycle events flow
+/// through the canonical `log()` envelope without inventing a new
+/// health producer.
+void _logPubsubSubscriberEvent(GoogleCloudPubsubSubscriberLogEvent event) {
+  final fields = <String, Object?>{
+    if (event.subscriptionName != null)
+      'pubsub_subscription_name': event.subscriptionName,
+    if (event.topicName != null) 'pubsub_topic_name': event.topicName,
+    if (event.statusCode != null) 'status_code': event.statusCode,
+    if (event.body != null) 'body_summary': event.body,
+    if (event.error != null) 'error_type': event.error.runtimeType.toString(),
+    if (event.error != null) 'error_message': event.error.toString(),
+    if (event.stack != null) 'stack_first_frame': firstStackFrame(event.stack!),
+  };
+  switch (event.kind) {
+    case GoogleCloudPubsubSubscriberLogKind.subscriptionCreated:
+      log(
+        LogSeverity.info,
+        'realtime.pubsub_subscriber.subscription_created',
+        fields: fields,
+      );
+    case GoogleCloudPubsubSubscriberLogKind.subscriptionAlreadyExists:
+      log(
+        LogSeverity.info,
+        'realtime.pubsub_subscriber.subscription_already_exists',
+        fields: fields,
+      );
+    case GoogleCloudPubsubSubscriberLogKind.subscriptionDeleted:
+      log(
+        LogSeverity.info,
+        'realtime.pubsub_subscriber.subscription_deleted',
+        fields: fields,
+      );
+    case GoogleCloudPubsubSubscriberLogKind.subscriptionAlreadyGone:
+      log(
+        LogSeverity.info,
+        'realtime.pubsub_subscriber.subscription_already_gone',
+        fields: fields,
+      );
+    case GoogleCloudPubsubSubscriberLogKind.deleteFailed:
+      log(
+        LogSeverity.warning,
+        'realtime.pubsub_subscriber.delete_failed',
+        fields: fields,
+      );
+    case GoogleCloudPubsubSubscriberLogKind.pullFailed:
+      log(
+        LogSeverity.warning,
+        'realtime.pubsub_subscriber.pull_failed',
+        fields: fields,
+      );
+    case GoogleCloudPubsubSubscriberLogKind.messageDecodeFailed:
+      log(
+        LogSeverity.warning,
+        'realtime.pubsub_subscriber.message_decode_failed',
+        fields: fields,
+      );
+  }
+}
+
+/// Defensive stub. The N5 wiring above only installs this callback
+/// when `PUBSUB_REALTIME_ENABLED` is unset — `selectRealtimePublisher`
+/// short-circuits to the in-process binding in that case so the
+/// callback is unreachable. Throwing here keeps a future regression
+/// from silently routing fan-out to a no-op.
 Future<void> _unwiredPubsubMessagePublisher({
   required String topicName,
   required String body,
   required Map<String, String> attributes,
 }) async {
   throw StateError(
-    'PubsubMessagePublisher invoked before the production adapter '
-    'is wired. The startup gate in tool/advisor_proxy/main.dart '
-    'should have exited 78 before reaching this call. Either remove '
-    'the env flag or land the production adapter.',
+    'PubsubMessagePublisher invoked while PUBSUB_REALTIME_ENABLED is '
+    'off; selectRealtimePublisher should have returned the in-process '
+    'binding. This is a defensive guard against future regressions.',
   );
 }
 
