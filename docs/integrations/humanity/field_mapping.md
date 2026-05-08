@@ -99,4 +99,4 @@ out-of-scope):
   rates, not per-employee, so the adapter's wage path falls back
   to the app-owned wage generator (`wage_source = app_fallback`)
   per the Wage Ingestion Policy in
-  `docs/phases/phase_8S/phase_8S_scheduling_connector_plan.md`.
+  `docs/archive/phases/phase_8S/phase_8S_scheduling_connector_plan.md`.

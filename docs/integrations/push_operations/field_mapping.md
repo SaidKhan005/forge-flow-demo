@@ -59,7 +59,7 @@ adapter does not contribute to covers provenance).
 The adapter parses every documented timestamp via
 `DateTime.parse(...).toUtc()`. Ambiguous shapes (no `Z`, no offset)
 are refused per the timestamp policy — Scenario E from the binding A-F
-test set (`docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`).
+test set (`docs/archive/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`).
 The `8.S.PU.live.sandbox` slice verifies that production shift records
 always carry the explicit-Z form.
 
