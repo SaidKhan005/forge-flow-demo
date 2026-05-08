@@ -270,6 +270,12 @@ void main() {
             expect(response.statusCode, equals(200));
             expect(guard.permissionKeys, equals(<String>['team.users.view']));
             expect(gateway.orgHierarchyLists, hasLength(1));
+            expect(gateway.orgHierarchyLists.single.actorUserId,
+                equals(_userId));
+            expect(gateway.orgHierarchyLists.single.operatorId,
+                equals(_operatorId));
+            expect(gateway.orgHierarchyLists.single.locationId,
+                equals(_locationId));
             final units = response.json['org_units'] as List<Object?>;
             final firstUnit = Map<String, Object?>.from(units.single as Map);
             expect(firstUnit['unit_type'], equals('corp'));
@@ -305,7 +311,15 @@ void main() {
 
             expect(response.statusCode, equals(201));
             expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
-            expect(gateway.orgUnitCreates.single.label, equals('east'));
+            final command = gateway.orgUnitCreates.single;
+            expect(command.actorUserId, equals(_userId));
+            expect(command.operatorId, equals(_operatorId));
+            expect(command.locationId, equals(_locationId));
+            expect(command.parentOrgUnitId,
+                equals('66666666-6666-4666-8666-666666666666'));
+            expect(command.unitType, equals('region'));
+            expect(command.label, equals('east'));
+            expect(command.name, equals('East Region'));
             expect(
               response.json['org_unit_id'],
               equals('77777777-7777-4777-8777-777777777777'),
@@ -339,10 +353,16 @@ void main() {
 
             expect(response.statusCode, equals(200));
             expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
+            final command = gateway.locationOrgUnitMoves.single;
+            expect(command.actorUserId, equals(_userId));
+            expect(command.operatorId, equals(_operatorId));
+            expect(command.locationId, equals(_locationId));
             expect(
-              gateway.locationOrgUnitMoves.single.targetLocationId,
+              command.targetLocationId,
               equals(targetLocation),
             );
+            expect(command.parentOrgUnitId,
+                equals('77777777-7777-4777-8777-777777777777'));
             expect(response.json['moved'], isTrue);
           } finally {
             await harness.close();

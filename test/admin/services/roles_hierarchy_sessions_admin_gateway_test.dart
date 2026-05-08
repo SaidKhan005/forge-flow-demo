@@ -599,6 +599,7 @@ void main() {
                 <String, Object?>{
                   'location_id': 'loc-1',
                   'location_label': '95 Water Street',
+                  'parent_org_unit_id': 'unit-1',
                 },
               ],
             }),
@@ -637,9 +638,40 @@ void main() {
       expect(roles.single.displayName, equals('Operator staff'));
       expect(units.single.name, equals('Front'));
       expect(locations.single.name, equals('95 Water Street'));
+      expect(locations.single.orgUnitId, equals('unit-1'));
       expect(sessions.single.userDisplayName, equals('user@op.test'));
       expect(sessions.single.deviceFingerprint, equals('Unknown device'));
       expect(sessions.single.createdAt, equals(sessions.single.lastActiveAt));
+    });
+
+    test('listOrgUnits GET pins /v1/admin/auth/org-units + operator_id',
+        () async {
+      late http.Request captured;
+      final mock = http_testing.MockClient((http.Request request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'org_units': <Object?>[
+              <String, Object?>{'org_unit_id': 'unit-1', 'name': 'Front'},
+            ],
+            'locations': const <Object?>[],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpRolesHierarchySessionsAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+      final units = await gateway.listOrgUnits(operatorId: 'op-1');
+
+      expect(captured.method, equals('GET'));
+      expect(captured.url.path, equals('/v1/admin/auth/org-units'));
+      expect(captured.url.queryParameters['operator_id'], equals('op-1'));
+      expect(captured.headers['authorization'], equals('Bearer tok'));
+      expect(units.single.orgUnitId, equals('unit-1'));
     });
 
     test('hierarchy reads coalesce simultaneous org-unit and location loads',
@@ -728,6 +760,92 @@ void main() {
       expect(body['role_key'], equals('custom.lead'));
       expect(body['admin_reason'], equals('support'));
       expect(body['permission_keys'], equals(<String>['team.users.view']));
+    });
+
+    test(
+      'moveLocation PATCH pins /v1/admin/auth/locations/<id>/org-unit + parent_org_unit_id',
+      () async {
+        late http.Request captured;
+        final mock = http_testing.MockClient((http.Request request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{'ok': true, 'moved': true}),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+        final gateway = HttpRolesHierarchySessionsAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+        final moved = await gateway.moveLocation(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          newOrgUnitId: 'unit-2',
+          idempotencyKey: 'idem-move-location-1',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'hierarchy realignment',
+        );
+
+        expect(captured.method, equals('PATCH'));
+        expect(
+          captured.url.path,
+          equals('/v1/admin/auth/locations/loc-1/org-unit'),
+        );
+        expect(
+          captured.headers['Idempotency-Key'],
+          equals('idem-move-location-1'),
+        );
+        expect(captured.headers['authorization'], equals('Bearer tok'));
+        final body = jsonDecode(captured.body) as Map<String, Object?>;
+        expect(
+          body,
+          equals(<String, Object?>{
+            'operator_id': 'op-1',
+            'parent_org_unit_id': 'unit-2',
+            'admin_reason': 'hierarchy realignment',
+          }),
+        );
+        expect(moved.locationId, equals('loc-1'));
+        expect(moved.operatorId, equals('op-1'));
+        expect(moved.orgUnitId, equals('unit-2'));
+      },
+    );
+
+    test('moveOrgUnit stays unimplemented when no proxy route exists',
+        () async {
+      var hits = 0;
+      final mock = http_testing.MockClient((http.Request request) async {
+        hits += 1;
+        return http.Response('', 500);
+      });
+      final gateway = HttpRolesHierarchySessionsAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      await expectLater(
+        gateway.moveOrgUnit(
+          operatorId: 'op-1',
+          orgUnitId: 'unit-1',
+          newParentOrgUnitId: 'unit-2',
+          idempotencyKey: 'idem-move-org-unit-1',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'hierarchy realignment',
+        ),
+        throwsA(
+          isA<RolesHierarchySessionsGatewayError>().having(
+            (e) => e.errorCode,
+            'errorCode',
+            equals('org_unit_move_unimplemented'),
+          ),
+        ),
+      );
+      expect(hits, equals(0));
     });
 
     test('non-forge-admin caller never reaches the network', () async {

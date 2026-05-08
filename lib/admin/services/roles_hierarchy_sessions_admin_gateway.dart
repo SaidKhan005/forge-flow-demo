@@ -511,17 +511,11 @@ class HttpRolesHierarchySessionsAdminGateway
   }) async {
     _requireEditable(actorIsForgeAdmin, 'moveOrgUnit');
     _requireAdminReason(adminReason, 'moveOrgUnit');
-    final body = await _send(
-      method: 'POST',
-      path: '$orgUnitsPath/${Uri.encodeComponent(orgUnitId)}/move',
-      idempotencyKey: idempotencyKey,
-      jsonBody: <String, Object?>{
-        'operator_id': operatorId,
-        'parent_org_unit_id': newParentOrgUnitId,
-        'admin_reason': adminReason,
-      },
+    throw const RolesHierarchySessionsGatewayError(
+      statusCode: 501,
+      errorCode: 'org_unit_move_unimplemented',
+      message: 'Org-unit move is not exposed by the admin auth route contract.',
     );
-    return _orgUnitFromJson(_asMap(body['org_unit']));
   }
 
   @override
@@ -537,16 +531,26 @@ class HttpRolesHierarchySessionsAdminGateway
     _requireEditable(actorIsForgeAdmin, 'moveLocation');
     _requireAdminReason(adminReason, 'moveLocation');
     final body = await _send(
-      method: 'POST',
-      path: '/v1/admin/auth/locations/${Uri.encodeComponent(locationId)}/move',
+      method: 'PATCH',
+      path:
+          '/v1/admin/auth/locations/${Uri.encodeComponent(locationId)}/org-unit',
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
-        'org_unit_id': newOrgUnitId,
+        'parent_org_unit_id': newOrgUnitId,
         'admin_reason': adminReason,
       },
     );
-    return _locationLeafFromJson(_asMap(body['location']));
+    final location = body['location'];
+    if (location != null) {
+      return _locationLeafFromJson(_asMap(location));
+    }
+    return HierarchyLocationLeaf(
+      locationId: locationId,
+      name: _optionalString(body['location_label']) ?? locationId,
+      operatorId: operatorId,
+      orgUnitId: newOrgUnitId,
+    );
   }
 
   @override
@@ -707,7 +711,10 @@ HierarchyLocationLeaf _locationLeafFromJson(Map<String, Object?> json) {
       'location_label',
     ]),
     operatorId: _optionalString(json['operator_id']) ?? '',
-    orgUnitId: _optionalString(json['org_unit_id']) ?? '',
+    orgUnitId:
+        _optionalString(json['org_unit_id']) ??
+        _optionalString(json['parent_org_unit_id']) ??
+        '',
   );
 }
 
