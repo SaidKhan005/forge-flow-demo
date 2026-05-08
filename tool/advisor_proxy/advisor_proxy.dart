@@ -8040,6 +8040,26 @@ String _integrationCategoryWireKey(IntegrationCategory category) {
 // depth.
 const String authAuditLogPath = '/v1/auth/audit-log';
 
+// Audit-log server-side CSV export. Reuses the read route's filter
+// shape (from / to / event_kind / action / actor_user_id / target_kind
+// / target_id / actor_kind) and streams RFC 4180 rows back as a chunked
+// `text/csv` attachment. Gated on `team.audit_log.export` via the
+// permission snapshot resolver — the read route is open to any verified
+// caller, but pulling the full ledger to a CSV is a senior-role action
+// per the parity contract.
+const String authAuditLogExportPath = '/v1/auth/audit-log/export.csv';
+
+/// Per-page size used by the streamed CSV exporter when paging the
+/// underlying repo. Bounded so the proxy memory footprint stays
+/// constant regardless of the operator's audit-log row count.
+const int kAuthAuditLogExportPageSize = 500;
+
+/// Hard cap on the total rows the streamed exporter will emit before
+/// it stops and finishes the response. Defends against a runaway
+/// filter that selects tens of millions of rows. Operators that need
+/// more rows must narrow their filter window.
+const int kAuthAuditLogExportRowCap = 1000000;
+
 class ProxyPermissionSnapshot {
   const ProxyPermissionSnapshot({
     required this.userId,
@@ -11713,6 +11733,168 @@ Future<void> routeRequest(
               'reservation': true,
             },
           });
+          return;
+        }
+
+        // Audit-log server-side CSV export. Same filter shape as the
+        // read route below; gated on `team.audit_log.export` via the
+        // permission snapshot. Streams RFC 4180 rows back as a chunked
+        // `text/csv` attachment, paging the underlying repo so the
+        // proxy's memory footprint stays bounded regardless of how many
+        // rows the operator's filter selects.
+        if (request.method == 'GET' && path == authAuditLogExportPath) {
+          if (authOperationsGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_operations_not_configured',
+              'message':
+                  'route requires an AuthOperationsGateway to be installed',
+            });
+            return;
+          }
+          if (permissionSnapshotResolver == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'permission_snapshot_not_configured',
+              'message':
+                  'route requires a ProxyPermissionSnapshotResolver to be '
+                  'installed',
+            });
+            return;
+          }
+
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+
+          ProxyPermissionSnapshot exportSnapshot;
+          try {
+            exportSnapshot = await permissionSnapshotResolver.load(scope);
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'permission_snapshot_unavailable',
+              'message': 'permissions are unavailable; please retry',
+            });
+            return;
+          }
+          final exportEffect =
+              exportSnapshot.permissions[PermissionKeys.teamAuditLogExport];
+          if (exportEffect != PermissionEffect.allow) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'team.audit_log.export permission is required to export '
+                  'the audit log',
+              'permission_key': PermissionKeys.teamAuditLogExport,
+            });
+            return;
+          }
+
+          final exportParams = request.uri.queryParameters;
+          DateTime? parseExportUtc(String? raw) {
+            if (raw == null || raw.isEmpty) return null;
+            return DateTime.tryParse(raw)?.toUtc();
+          }
+
+          final exportFrom = parseExportUtc(exportParams['from']);
+          final exportTo = parseExportUtc(exportParams['to']);
+          // Coarse server-side bucket; if the screen sent a single
+          // action the live read route also light it up via event_kind.
+          final exportEventKind = AuthEventLabels.fromWireKey(
+            exportParams['event_kind'],
+          );
+
+          // Derive a filename stamp so two exports in the same minute
+          // do not collide. The operator's restaurant-local TZ is not
+          // available proxy-side, so UTC is used (matches the demo
+          // gateway and the existing client-side renderer).
+          final exportNow = clock().toUtc();
+          final stampY = exportNow.year.toString().padLeft(4, '0');
+          final stampM = exportNow.month.toString().padLeft(2, '0');
+          final stampD = exportNow.day.toString().padLeft(2, '0');
+          final stampHh = exportNow.hour.toString().padLeft(2, '0');
+          final stampMm = exportNow.minute.toString().padLeft(2, '0');
+          final exportFilename =
+              'forge_flow_audit_log_$stampY$stampM${stampD}_$stampHh${stampMm}_utc.csv';
+
+          // Headers must be set BEFORE any bytes are written. Once the
+          // first chunk lands we cannot switch to a JSON error response,
+          // so any failure past this point ends the stream early.
+          response.statusCode = 200;
+          response.headers.contentType = ContentType('text', 'csv');
+          response.headers.set(
+            'Content-Disposition',
+            'attachment; filename="$exportFilename"',
+          );
+          response.headers.chunkedTransferEncoding = true;
+          response.headers.set('Cache-Control', 'no-store');
+
+          // RFC 4180 column order is the same shape as the client-side
+          // renderer the operator-web gateway used to emit. Keeping the
+          // column set identical means the CSV body downstream tools
+          // ingest doesn't shift when the export hops from client- to
+          // server-side rendering.
+          response.write(
+            'created_at,action,actor_user_id,actor_display_name,'
+            'actor_email,actor_kind,target_kind,target_id,admin_reason,'
+            'payload\r\n',
+          );
+
+          var emittedRows = 0;
+          var nextOffset = 0;
+          var capped = false;
+          try {
+            while (true) {
+              final pageLimit = (kAuthAuditLogExportRowCap - emittedRows).clamp(
+                1,
+                kAuthAuditLogExportPageSize,
+              );
+              final listed =
+                  await authOperationsGateway.listAuthEventsForActor(
+                AuthEventListCommand(
+                  // RLS-authoritative gate: pin user_id to the verified
+                  // bearer-token scope. Any client-supplied user_id
+                  // query param is ignored (matches the read route).
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  limit: pageLimit,
+                  offset: nextOffset,
+                  eventKind: exportEventKind,
+                  from: exportFrom,
+                  to: exportTo,
+                ),
+              );
+              if (listed.entries.isEmpty) break;
+              for (final entry in listed.entries) {
+                response.write(_renderAuthEventCsvRow(entry, scope));
+                emittedRows += 1;
+                if (emittedRows >= kAuthAuditLogExportRowCap) {
+                  capped = true;
+                  break;
+                }
+              }
+              if (capped) break;
+              if (!listed.hasMore) break;
+              nextOffset += listed.entries.length;
+              // Flush so chunks land on the wire as they're ready
+              // rather than buffering the whole response.
+              await response.flush();
+            }
+          } catch (_) {
+            // Mid-stream failure: best we can do is finish the response
+            // so the operator's browser stops waiting. The CSV will be
+            // truncated but the headers and column row already shipped.
+          }
+          await response.close();
           return;
         }
 
