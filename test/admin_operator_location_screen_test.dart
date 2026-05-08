@@ -25,6 +25,7 @@ import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart'
 import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/admin/widgets/admin_responsive_layout.dart';
+import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -898,6 +899,71 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'business Integrations tile requires a location and then mounts live gateway',
+    (tester) async {
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[
+          seedBundle(
+            operatorId: 'op-integrations',
+            primaryLocationId: 'loc-integrations',
+            businessName: 'Integrations Cafe',
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(
+          OperatorLocationAdminScreen(
+            gateway: gateway,
+            vendorConnectionsGateway: InMemoryVendorConnectionsGateway(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final integrationsTile = find.byKey(
+        const Key('admin_business_setup_tile_integrations'),
+      );
+      await tester.ensureVisible(integrationsTile);
+      await tester.pumpAndSettle();
+      await tester.tap(integrationsTile);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_vendor_connections_location_required')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_hierarchy_scope_prompt')),
+        findsOneWidget,
+      );
+
+      const locationScope = AdminHierarchyScopeIntent.location(
+        operatorId: 'op-integrations',
+        locationId: 'loc-integrations',
+        operatorName: 'Integrations Cafe',
+        orgUnitId: 'org-root',
+        locationName: 'HQ',
+      );
+      final locationOption = find.byKey(
+        Key('admin_hierarchy_scope_option_${locationScope.cacheKey}'),
+      );
+      await tester.ensureVisible(locationOption);
+      await tester.pumpAndSettle();
+      await tester.tap(locationOption);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_vendor_connections_location_required')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('vendor_connections_section_pos')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('editingEnabled false hides operator and location mutations', (
     tester,

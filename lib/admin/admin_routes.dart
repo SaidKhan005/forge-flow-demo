@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../auth/auth_session.dart';
 import '../auth/fresh_mfa_resolver.dart';
+import '../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
 import 'admin_route_handoff.dart';
@@ -357,11 +358,14 @@ Widget _buildOperators(BuildContext context) {
   final gateway = AdminConsoleServicesScope.operatorLocationGatewayOf(context);
   final hierarchyGateway =
       AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  final vendorConnectionsGateway =
+      AdminConsoleServicesScope.vendorConnectionsGatewayOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
   Widget buildScreen({required bool editingEnabled}) {
     return OperatorLocationAdminScreen(
       gateway: gateway,
       hierarchyGateway: hierarchyGateway,
+      vendorConnectionsGateway: vendorConnectionsGateway,
       editingEnabled: editingEnabled,
       onOpenSupportLogs: handoff == null
           ? null
@@ -1691,6 +1695,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.pricingTierGateway,
     this.corpusAdminGateway,
     this.integrationGateway,
+    this.vendorConnectionsGateway,
     this.healthGateway,
     this.observabilityGateway,
     this.featureFlagsGateway,
@@ -1740,6 +1745,12 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// the default fallback is a seeded in-memory gateway sharing the
   /// `kDemoMode` walkthrough fixtures.
   final IntegrationAdminGateway? integrationGateway;
+
+  /// Slice 9 - per-location vendor lifecycle gateway. Kept separate
+  /// from [integrationGateway], which owns global/platform provider
+  /// status. Null intentionally leaves the location tile in a
+  /// not-wired state instead of falling back to demo vendor data.
+  final VendorConnectionsGateway? vendorConnectionsGateway;
 
   /// Phase 11A.UX.health (F.1) - proxy `/health` envelope gateway.
   /// Optional; the default fallback is the seeded in-memory demo
@@ -1820,6 +1831,14 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.integrationGateway ?? _defaultIntegrationDemoGateway;
   }
 
+  static VendorConnectionsGateway? vendorConnectionsGatewayOf(
+    BuildContext context,
+  ) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.vendorConnectionsGateway;
+  }
+
   static HealthAdminGateway healthGatewayOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
@@ -1889,6 +1908,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
       pricingTierGateway != oldWidget.pricingTierGateway ||
       corpusAdminGateway != oldWidget.corpusAdminGateway ||
       integrationGateway != oldWidget.integrationGateway ||
+      vendorConnectionsGateway != oldWidget.vendorConnectionsGateway ||
       healthGateway != oldWidget.healthGateway ||
       observabilityGateway != oldWidget.observabilityGateway ||
       featureFlagsGateway != oldWidget.featureFlagsGateway ||

@@ -18,6 +18,7 @@ import '../../domain/models/business_timing_profile.dart';
 import '../../domain/models/restaurant_timing_config.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../domain/services/business_timing_profile_resolver.dart';
+import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/iana_timezones.dart';
 
@@ -39,6 +40,7 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     super.key,
     required this.gateway,
     this.hierarchyGateway,
+    this.vendorConnectionsGateway,
     this.idempotencyKeyFactory,
     this.onOpenSupportLogs,
     this.onOpenSupportLogsScope,
@@ -60,6 +62,7 @@ class OperatorLocationAdminScreen extends StatefulWidget {
 
   final OperatorLocationAdminGateway gateway;
   final RolesHierarchySessionsAdminGateway? hierarchyGateway;
+  final VendorConnectionsGateway? vendorConnectionsGateway;
   final String? selectedParentOrgUnitId;
   final String? selectedParentOrgUnitLabel;
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
@@ -358,6 +361,7 @@ class _OperatorLocationAdminScreenState
           : _OperatorDetail(
               bundle: _selected!,
               hierarchyGateway: widget.hierarchyGateway,
+              vendorConnectionsGateway: widget.vendorConnectionsGateway,
               selectedHierarchyScope:
                   _selectedHierarchyScope ??
                   _businessHierarchyScope(_selected!),
@@ -897,6 +901,7 @@ class _OperatorDetail extends StatelessWidget {
   const _OperatorDetail({
     required this.bundle,
     required this.hierarchyGateway,
+    required this.vendorConnectionsGateway,
     required this.selectedHierarchyScope,
     required this.onSelectHierarchyScope,
     required this.onEditOperator,
@@ -925,6 +930,7 @@ class _OperatorDetail extends StatelessWidget {
 
   final OperatorAdminBundle bundle;
   final RolesHierarchySessionsAdminGateway? hierarchyGateway;
+  final VendorConnectionsGateway? vendorConnectionsGateway;
   final AdminHierarchyScopeIntent selectedHierarchyScope;
   final ValueChanged<AdminHierarchyScopeIntent> onSelectHierarchyScope;
   final ValueChanged<OperatorAdminBundle> onEditOperator;
@@ -977,6 +983,10 @@ class _OperatorDetail extends StatelessWidget {
         selectedLocation ??
         bundle.primaryLocation ??
         (bundle.locations.isEmpty ? null : bundle.locations.first);
+    final integrationScopeOptions = _integrationScopeOptions(
+      bundle: bundle,
+      selectedScope: selectedHierarchyScope,
+    );
     return SingleChildScrollView(
       key: Key('admin_operator_detail_${operator.operatorId}'),
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1108,23 +1118,22 @@ class _OperatorDetail extends StatelessWidget {
                     selectedHierarchyScope.operatorId,
                     selectedHierarchyScope.locationId,
                   ),
-            onOpenIntegrations: selectedLocation == null
-                ? null
-                : () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        settings: const RouteSettings(
-                          name: '/vendor-connections',
-                        ),
-                        builder: (_) => VendorConnectionsAdminMount(
-                          operatorId: selectedLocation.operatorId,
-                          locationId: selectedLocation.locationId,
-                          locationName: selectedLocation.name,
-                          canMutate: editingEnabled,
-                        ),
-                      ),
-                    );
-                  },
+            onOpenIntegrations: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  settings: const RouteSettings(name: '/vendor-connections'),
+                  builder: (_) => VendorConnectionsAdminMount(
+                    operatorId: operator.operatorId,
+                    locationId: selectedLocation?.locationId,
+                    locationName: selectedLocation?.name,
+                    selectedScope: selectedHierarchyScope,
+                    scopeOptions: integrationScopeOptions,
+                    gateway: vendorConnectionsGateway,
+                    canMutate: editingEnabled,
+                  ),
+                ),
+              );
+            },
             onOpenTiming: selectedLocation == null
                 ? () {
                     showDialog<void>(
@@ -1165,6 +1174,42 @@ class _OperatorDetail extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  List<AdminHierarchyScopeIntent> _integrationScopeOptions({
+    required OperatorAdminBundle bundle,
+    required AdminHierarchyScopeIntent selectedScope,
+  }) {
+    final operator = bundle.operator;
+    final scopesByKey = <String, AdminHierarchyScopeIntent>{};
+
+    void add(AdminHierarchyScopeIntent scope) {
+      scopesByKey.putIfAbsent(scope.cacheKey, () => scope);
+    }
+
+    add(selectedScope);
+    add(
+      AdminHierarchyScopeIntent.business(
+        operatorId: operator.operatorId,
+        operatorName: operator.businessName,
+        valueState: AdminHierarchyScopeValueState.setAtScope,
+        allowedActionsLabel: 'Location required',
+      ),
+    );
+    for (final location in bundle.locations) {
+      add(
+        AdminHierarchyScopeIntent.location(
+          operatorId: operator.operatorId,
+          locationId: location.locationId,
+          operatorName: operator.businessName,
+          orgUnitId: location.parentOrgUnitId,
+          locationName: location.name,
+          valueState: AdminHierarchyScopeValueState.locationOnly,
+          allowedActionsLabel: 'Can edit',
+        ),
+      );
+    }
+    return scopesByKey.values.toList(growable: false);
   }
 }
 
