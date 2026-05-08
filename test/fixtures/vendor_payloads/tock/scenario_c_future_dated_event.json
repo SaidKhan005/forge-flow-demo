@@ -1,0 +1,9 @@
+{
+  "id": "res_c3e5f7a9-2468-4b1c-9d3e-0f1a2b3c4d5e",
+  "businessId": "bus_3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011",
+  "createdTimestamp": "2099-01-01T00:00:00.000Z",
+  "lastUpdatedTimestamp": "2099-01-01T00:00:00.000Z",
+  "serviceDateTimestamp": "2099-06-15T01:00:00.000Z",
+  "partySize": 8,
+  "status": "EXPECTED"
+}

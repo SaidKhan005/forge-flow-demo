@@ -1,0 +1,9 @@
+{
+  "id": "res_dst_spring_2026_03_08_001",
+  "businessId": "bus_3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011",
+  "createdTimestamp": "2026-03-07T18:00:00.000Z",
+  "lastUpdatedTimestamp": "2026-03-08T07:25:00.000Z",
+  "serviceDateTimestamp": "2026-03-08T07:30:00.000Z",
+  "partySize": 2,
+  "status": "EXPECTED"
+}
