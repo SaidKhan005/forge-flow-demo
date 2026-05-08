@@ -320,10 +320,7 @@ void main() {
           'booting and `hasAlohaNcrVoyixCredentials` is false', () {
         final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
         expect(config.hasAlohaNcrVoyixCredentials, isFalse);
-        expect(
-          () => config.alohaNcrVoyixCredentials,
-          throwsStateError,
-        );
+        expect(() => config.alohaNcrVoyixCredentials, throwsStateError);
       });
 
       test('Aloha NCR Voyix bundle materializes the typed record when all '
@@ -414,12 +411,16 @@ void main() {
         expect(creds.clientSecret, equals('humanity-client-secret'));
       });
 
-      test('Humanity bundle is absent → `hasHumanityAppCredentials` is false',
-          () {
-        final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
-        expect(config.hasHumanityAppCredentials, isFalse);
-        expect(() => config.humanityAppCredentials, throwsStateError);
-      });
+      test(
+        'Humanity bundle is absent → `hasHumanityAppCredentials` is false',
+        () {
+          final config = ProxyConfig.fromEnvironment(
+            environmentWithAllSecrets(),
+          );
+          expect(config.hasHumanityAppCredentials, isFalse);
+          expect(() => config.humanityAppCredentials, throwsStateError);
+        },
+      );
 
       test('partial Humanity bundle (one of two set) → '
           '`hasHumanityAppCredentials` stays false', () {
@@ -435,8 +436,7 @@ void main() {
           'both secrets load', () {
         final env = environmentWithAllSecrets()
           ..[ProxySecretNames.quickBooksTimeClientId] = 'qbt-client-id'
-          ..[ProxySecretNames.quickBooksTimeClientSecret] =
-              'qbt-client-secret';
+          ..[ProxySecretNames.quickBooksTimeClientSecret] = 'qbt-client-secret';
         final config = ProxyConfig.fromEnvironment(env);
         expect(config.hasQuickBooksTimeAppCredentials, isTrue);
         final creds = config.quickBooksTimeAppCredentials;
@@ -494,7 +494,10 @@ void main() {
       test('publicBaseUri parses the canonical production URL', () {
         final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
         // The shared helper sets `PUBLIC_BASE_URI=https://api.forgeflow.app`.
-        expect(config.publicBaseUri, equals(Uri.parse('https://api.forgeflow.app')));
+        expect(
+          config.publicBaseUri,
+          equals(Uri.parse('https://api.forgeflow.app')),
+        );
         expect(config.publicBaseUri.scheme, equals('https'));
         expect(config.publicBaseUri.host, equals('api.forgeflow.app'));
       });
@@ -5425,6 +5428,7 @@ void main() {
         gateway.addLocationResult = <String, Object?>{
           'location_id': 'loc-new',
           'operator_id': 'op-1',
+          'parent_org_unit_id': 'org-unit-east',
           'name': 'West Coast',
           'timezone': 'America/Vancouver',
         };
@@ -5445,6 +5449,7 @@ void main() {
             authorization: 'Bearer fake.token',
             body: <String, Object?>{
               'operator_id': 'op-1',
+              'parent_org_unit_id': 'org-unit-east',
               'name': 'West Coast',
               'timezone': 'America/Vancouver',
               'business_day_rollover_hour': 5,
@@ -5452,6 +5457,10 @@ void main() {
           );
           expect(response.statusCode, equals(201));
           expect(gateway.lastAddLocationOperatorId, equals('op-1'));
+          expect(
+            gateway.lastAddLocationParentOrgUnitId,
+            equals('org-unit-east'),
+          );
           expect(gateway.lastAddLocationTimezone, equals('America/Vancouver'));
         } finally {
           ctx.client.close(force: true);
@@ -5459,6 +5468,44 @@ void main() {
         }
       });
     });
+
+    test(
+      '11A.1 POST /v1/admin/locations requires parent_org_unit_id',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(adminLocationsPath),
+              authorization: 'Bearer fake.token',
+              body: <String, Object?>{
+                'operator_id': 'op-1',
+                'name': 'West Coast',
+                'timezone': 'America/Vancouver',
+                'business_day_rollover_hour': 5,
+              },
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('missing_parent_org_unit_id'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test(
       '11A.1 PATCH /v1/admin/locations/{id} returns updated location',
@@ -6357,6 +6404,7 @@ class _FakeAdminGateway implements OperatorLocationAdminProxyGateway {
   String? suspendOperatorId;
   String? reactivateOperatorId;
   String? lastAddLocationOperatorId;
+  String? lastAddLocationParentOrgUnitId;
   String? lastAddLocationTimezone;
   String? lastPatchLocationId;
   String? lastPatchLocationName;
@@ -6446,6 +6494,7 @@ class _FakeAdminGateway implements OperatorLocationAdminProxyGateway {
   Future<Map<String, Object?>> addLocation({
     required String actorUserId,
     required String operatorId,
+    required String parentOrgUnitId,
     required String name,
     required String address,
     required String timezone,
@@ -6454,6 +6503,7 @@ class _FakeAdminGateway implements OperatorLocationAdminProxyGateway {
   }) async {
     lastActorUserId = actorUserId;
     lastAddLocationOperatorId = operatorId;
+    lastAddLocationParentOrgUnitId = parentOrgUnitId;
     lastAddLocationTimezone = timezone;
     lastReason = adminReason;
     return addLocationResult;

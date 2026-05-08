@@ -1,4 +1,4 @@
-﻿// Phase 11A.1 - Operator + location admin value objects.
+// Phase 11A.1 - Operator + location admin value objects.
 //
 // Carry only the fields the F&F admin console needs to render and
 // edit. Mirror the Postgres column shapes from
@@ -78,6 +78,7 @@ class LocationAdminRecord {
   const LocationAdminRecord({
     required this.locationId,
     required this.operatorId,
+    this.parentOrgUnitId,
     required this.name,
     required this.address,
     required this.timezone,
@@ -88,6 +89,7 @@ class LocationAdminRecord {
 
   final String locationId;
   final String operatorId;
+  final String? parentOrgUnitId;
   final String name;
   final String address;
   final String timezone;
@@ -99,6 +101,7 @@ class LocationAdminRecord {
     return LocationAdminRecord(
       locationId: json['location_id']! as String,
       operatorId: json['operator_id']! as String,
+      parentOrgUnitId: json['parent_org_unit_id'] as String?,
       name: json['name']! as String,
       address: (json['address'] as String?) ?? '',
       timezone: json['timezone']! as String,
@@ -111,6 +114,7 @@ class LocationAdminRecord {
   Map<String, Object?> toJson() => <String, Object?>{
     'location_id': locationId,
     'operator_id': operatorId,
+    'parent_org_unit_id': parentOrgUnitId,
     'name': name,
     'address': address,
     'timezone': timezone,
@@ -235,6 +239,7 @@ class OperatorPatchCommand {
 class LocationCreateCommand {
   const LocationCreateCommand({
     required this.operatorId,
+    this.parentOrgUnitId,
     required this.name,
     required this.timezone,
     required this.businessDayRolloverHour,
@@ -243,6 +248,7 @@ class LocationCreateCommand {
   });
 
   final String operatorId;
+  final String? parentOrgUnitId;
   final String name;
   final String address;
   final String timezone;
@@ -255,6 +261,7 @@ class LocationCreateCommand {
 
   Map<String, Object?> toJson() => <String, Object?>{
     'operator_id': operatorId,
+    if (parentOrgUnitId != null) 'parent_org_unit_id': parentOrgUnitId,
     'name': name,
     'address': address,
     'timezone': timezone,

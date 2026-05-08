@@ -234,6 +234,7 @@ void main() {
         final added = await gateway.addLocation(
           LocationCreateCommand(
             operatorId: bundle.operator.operatorId,
+            parentOrgUnitId: 'org-unit-west',
             name: 'West Coast',
             timezone: 'America/Vancouver',
             businessDayRolloverHour: 5,
@@ -241,6 +242,7 @@ void main() {
           ),
         );
         expect(added.timezone, equals('America/Vancouver'));
+        expect(added.parentOrgUnitId, equals('org-unit-west'));
         expect(added.businessDayRolloverHour, equals(5));
 
         final refreshed = (await gateway.listOperators()).single;
@@ -256,6 +258,7 @@ void main() {
         await gateway.addLocation(
           LocationCreateCommand(
             operatorId: bundle.operator.operatorId,
+            parentOrgUnitId: 'org-unit-test',
             name: 'Test',
             timezone: 'badzone',
             businessDayRolloverHour: 4,
@@ -269,6 +272,30 @@ void main() {
       expect(
         (thrown! as OperatorLocationAdminGatewayError).errorCode,
         equals('invalid_timezone'),
+      );
+    });
+
+    test('addLocation requires a selected parent org unit', () async {
+      final gateway = InMemoryOperatorLocationAdminGateway();
+      final bundle = await seededOperator(gateway);
+      Object? thrown;
+      try {
+        await gateway.addLocation(
+          LocationCreateCommand(
+            operatorId: bundle.operator.operatorId,
+            name: 'No Parent',
+            timezone: 'America/Toronto',
+            businessDayRolloverHour: 4,
+            idempotencyKey: 'k-add-loc-no-parent',
+          ),
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<OperatorLocationAdminGatewayError>());
+      expect(
+        (thrown! as OperatorLocationAdminGatewayError).errorCode,
+        equals('missing_parent_org_unit_id'),
       );
     });
 
@@ -314,6 +341,7 @@ void main() {
       final added = await gateway.addLocation(
         LocationCreateCommand(
           operatorId: bundle.operator.operatorId,
+          parentOrgUnitId: 'org-unit-west',
           name: 'West Coast',
           timezone: 'America/Vancouver',
           businessDayRolloverHour: 5,
@@ -380,6 +408,20 @@ void main() {
       final json = command.toJson();
       expect(json.keys, equals(<String>{'timezone'}));
     });
+
+    test('LocationCreateCommand serializes parent_org_unit_id', () {
+      final command = const LocationCreateCommand(
+        operatorId: 'op-123',
+        parentOrgUnitId: 'org-unit-east',
+        name: 'East',
+        timezone: 'America/Toronto',
+        businessDayRolloverHour: 4,
+        idempotencyKey: 'k-json-create-loc',
+      );
+      final json = command.toJson();
+      expect(json['parent_org_unit_id'], equals('org-unit-east'));
+      expect(json.containsKey('idempotency_key'), isFalse);
+    });
   });
 
   // HARD-H — admin idempotency parcel. Mirrors the envelope cases in
@@ -388,13 +430,36 @@ void main() {
   // surfaces. The InMemory gateway caches per-key like the proxy
   // does against `admin_request_idempotency`.
   group('InMemoryOperatorLocationAdminGateway — idempotency replay', () {
-    test(
-      'second onboardOperator with same key returns cached bundle '
-      'without creating a duplicate',
-      () async {
-        final gateway = InMemoryOperatorLocationAdminGateway();
-        final command = const OperatorOnboardCommand(
-          businessName: 'Idem Cafe',
+    test('second onboardOperator with same key returns cached bundle '
+        'without creating a duplicate', () async {
+      final gateway = InMemoryOperatorLocationAdminGateway();
+      final command = const OperatorOnboardCommand(
+        businessName: 'Idem Cafe',
+        ownerEmail: 'a@b.c',
+        subscriptionTier: 'launch',
+        preferredCurrency: 'CAD',
+        primaryLocationName: 'Main',
+        primaryLocationTimezone: 'America/Toronto',
+        primaryLocationRolloverHour: 4,
+        adminUserEmail: 'admin@b.c',
+        idempotencyKey: 'idem-onboard',
+      );
+      final first = await gateway.onboardOperator(command);
+      final second = await gateway.onboardOperator(command);
+      // Cached replay returns the same operator_id — not a fresh
+      // one — so the in-memory ledger holds exactly one operator.
+      expect(second.operator.operatorId, equals(first.operator.operatorId));
+      final list = await gateway.listOperators();
+      expect(list, hasLength(1));
+    });
+
+    test('second patchOperator with same key returns cached record', () async {
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        now: () => DateTime.utc(2026, 5, 2, 12),
+      );
+      final bundle = await gateway.onboardOperator(
+        const OperatorOnboardCommand(
+          businessName: 'Original',
           ownerEmail: 'a@b.c',
           subscriptionTier: 'launch',
           preferredCurrency: 'CAD',
@@ -402,62 +467,30 @@ void main() {
           primaryLocationTimezone: 'America/Toronto',
           primaryLocationRolloverHour: 4,
           adminUserEmail: 'admin@b.c',
-          idempotencyKey: 'idem-onboard',
-        );
-        final first = await gateway.onboardOperator(command);
-        final second = await gateway.onboardOperator(command);
-        // Cached replay returns the same operator_id — not a fresh
-        // one — so the in-memory ledger holds exactly one operator.
-        expect(
-          second.operator.operatorId,
-          equals(first.operator.operatorId),
-        );
-        final list = await gateway.listOperators();
-        expect(list, hasLength(1));
-      },
-    );
-
-    test(
-      'second patchOperator with same key returns cached record',
-      () async {
-        final gateway = InMemoryOperatorLocationAdminGateway(
-          now: () => DateTime.utc(2026, 5, 2, 12),
-        );
-        final bundle = await gateway.onboardOperator(
-          const OperatorOnboardCommand(
-            businessName: 'Original',
-            ownerEmail: 'a@b.c',
-            subscriptionTier: 'launch',
-            preferredCurrency: 'CAD',
-            primaryLocationName: 'Main',
-            primaryLocationTimezone: 'America/Toronto',
-            primaryLocationRolloverHour: 4,
-            adminUserEmail: 'admin@b.c',
-            idempotencyKey: 'idem-onboard-patch',
-          ),
-        );
-        final patch = OperatorPatchCommand(
+          idempotencyKey: 'idem-onboard-patch',
+        ),
+      );
+      final patch = OperatorPatchCommand(
+        operatorId: bundle.operator.operatorId,
+        businessName: 'Renamed',
+        idempotencyKey: 'idem-patch',
+      );
+      final first = await gateway.patchOperator(patch);
+      // A retry that flips the businessName under the SAME key
+      // would be a payload mismatch at the proxy. The in-memory
+      // demo gateway returns the cached result regardless, so the
+      // second call sees 'Renamed' (the first call's outcome) even
+      // though the second call would have stamped something else.
+      final second = await gateway.patchOperator(
+        OperatorPatchCommand(
           operatorId: bundle.operator.operatorId,
-          businessName: 'Renamed',
+          businessName: 'Different Name',
           idempotencyKey: 'idem-patch',
-        );
-        final first = await gateway.patchOperator(patch);
-        // A retry that flips the businessName under the SAME key
-        // would be a payload mismatch at the proxy. The in-memory
-        // demo gateway returns the cached result regardless, so the
-        // second call sees 'Renamed' (the first call's outcome) even
-        // though the second call would have stamped something else.
-        final second = await gateway.patchOperator(
-          OperatorPatchCommand(
-            operatorId: bundle.operator.operatorId,
-            businessName: 'Different Name',
-            idempotencyKey: 'idem-patch',
-          ),
-        );
-        expect(first.businessName, equals('Renamed'));
-        expect(second.businessName, equals('Renamed'));
-      },
-    );
+        ),
+      );
+      expect(first.businessName, equals('Renamed'));
+      expect(second.businessName, equals('Renamed'));
+    });
 
     test(
       'second suspendOperator with same key returns cached record',
@@ -508,6 +541,7 @@ void main() {
         final added = await gateway.addLocation(
           LocationCreateCommand(
             operatorId: bundle.operator.operatorId,
+            parentOrgUnitId: 'org-unit-branch',
             name: 'Branch',
             timezone: 'America/Vancouver',
             businessDayRolloverHour: 5,
@@ -537,71 +571,68 @@ void main() {
   // wire shape the proxy's `admin_request_idempotency` lookup
   // relies on.
   group('HttpOperatorLocationAdminGateway — Idempotency-Key wiring', () {
-    test(
-      'onboardOperator sends Idempotency-Key header and keeps key out '
-      'of the JSON body',
-      () async {
-        final captured = <_CapturedAdminRequest>[];
-        final client = _SingleResponseClient(
-          captured: captured,
-          response: _HttpFixture(
-            statusCode: 201,
-            body: <String, Object?>{
-              'operator': <String, Object?>{
+    test('onboardOperator sends Idempotency-Key header and keeps key out '
+        'of the JSON body', () async {
+      final captured = <_CapturedAdminRequest>[];
+      final client = _SingleResponseClient(
+        captured: captured,
+        response: _HttpFixture(
+          statusCode: 201,
+          body: <String, Object?>{
+            'operator': <String, Object?>{
+              'operator_id': 'op-new',
+              'business_name': 'Cafe',
+              'owner_email': 'a@b.c',
+              'subscription_tier': 'launch',
+              'preferred_currency': 'CAD',
+              'primary_location_id': 'loc-new',
+              'suspended_at': null,
+              'created_at': '2026-05-02T12:00:00.000Z',
+              'updated_at': '2026-05-02T12:00:00.000Z',
+            },
+            'locations': <Map<String, Object?>>[
+              <String, Object?>{
+                'location_id': 'loc-new',
                 'operator_id': 'op-new',
-                'business_name': 'Cafe',
-                'owner_email': 'a@b.c',
-                'subscription_tier': 'launch',
-                'preferred_currency': 'CAD',
-                'primary_location_id': 'loc-new',
-                'suspended_at': null,
+                'name': 'Main',
+                'address': '',
+                'timezone': 'America/Toronto',
+                'business_day_rollover_hour': 4,
                 'created_at': '2026-05-02T12:00:00.000Z',
                 'updated_at': '2026-05-02T12:00:00.000Z',
               },
-              'locations': <Map<String, Object?>>[
-                <String, Object?>{
-                  'location_id': 'loc-new',
-                  'operator_id': 'op-new',
-                  'name': 'Main',
-                  'address': '',
-                  'timezone': 'America/Toronto',
-                  'business_day_rollover_hour': 4,
-                  'created_at': '2026-05-02T12:00:00.000Z',
-                  'updated_at': '2026-05-02T12:00:00.000Z',
-                },
-              ],
-            },
-          ),
-        );
-        final gateway = HttpOperatorLocationAdminGateway(
-          baseUri: Uri.parse('https://proxy.example.com'),
-          bearerTokenProvider: () async => 'fake.token',
-          httpClient: client,
-        );
-        await gateway.onboardOperator(
-          const OperatorOnboardCommand(
-            businessName: 'Cafe',
-            ownerEmail: 'a@b.c',
-            subscriptionTier: 'launch',
-            preferredCurrency: 'CAD',
-            primaryLocationName: 'Main',
-            primaryLocationTimezone: 'America/Toronto',
-            primaryLocationRolloverHour: 4,
-            adminUserEmail: 'admin@b.c',
-            idempotencyKey: 'idem-http-onboard',
-          ),
-        );
-        expect(captured, hasLength(1));
-        final req = captured.single;
-        expect(req.method, equals('POST'));
-        expect(req.uri.path, equals('/v1/admin/operators'));
-        expect(
-          req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
-          equals('idem-http-onboard'),
-        );
-        expect(req.body.containsKey('idempotency_key'), isFalse);
-      },
-    );
+            ],
+          },
+        ),
+      );
+      final gateway = HttpOperatorLocationAdminGateway(
+        baseUri: Uri.parse('https://proxy.example.com'),
+        bearerTokenProvider: () async => 'fake.token',
+        httpClient: client,
+      );
+      await gateway.onboardOperator(
+        const OperatorOnboardCommand(
+          businessName: 'Cafe',
+          ownerEmail: 'a@b.c',
+          subscriptionTier: 'launch',
+          preferredCurrency: 'CAD',
+          primaryLocationName: 'Main',
+          primaryLocationTimezone: 'America/Toronto',
+          primaryLocationRolloverHour: 4,
+          adminUserEmail: 'admin@b.c',
+          idempotencyKey: 'idem-http-onboard',
+        ),
+      );
+      expect(captured, hasLength(1));
+      final req = captured.single;
+      expect(req.method, equals('POST'));
+      expect(req.uri.path, equals('/v1/admin/operators'));
+      expect(
+        req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+        equals('idem-http-onboard'),
+      );
+      expect(req.body.containsKey('idempotency_key'), isFalse);
+    });
 
     test(
       'suspendOperator forwards the gateway idempotencyKey as a header',
@@ -641,6 +672,56 @@ void main() {
         expect(
           req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
           equals('idem-http-suspend'),
+        );
+      },
+    );
+
+    test(
+      'addLocation sends parent_org_unit_id with the create request',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final client = _SingleResponseClient(
+          captured: captured,
+          response: _HttpFixture(
+            statusCode: 201,
+            body: <String, Object?>{
+              'location': <String, Object?>{
+                'location_id': 'loc-new',
+                'operator_id': 'op-1',
+                'parent_org_unit_id': 'org-unit-east',
+                'name': 'East',
+                'address': '',
+                'timezone': 'America/Toronto',
+                'business_day_rollover_hour': 4,
+                'created_at': '2026-05-02T12:00:00.000Z',
+                'updated_at': '2026-05-02T12:00:00.000Z',
+              },
+            },
+          ),
+        );
+        final gateway = HttpOperatorLocationAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: client,
+        );
+        final added = await gateway.addLocation(
+          const LocationCreateCommand(
+            operatorId: 'op-1',
+            parentOrgUnitId: 'org-unit-east',
+            name: 'East',
+            timezone: 'America/Toronto',
+            businessDayRolloverHour: 4,
+            idempotencyKey: 'idem-http-add-location',
+          ),
+        );
+        expect(added.parentOrgUnitId, equals('org-unit-east'));
+        final req = captured.single;
+        expect(req.method, equals('POST'));
+        expect(req.uri.path, equals('/v1/admin/locations'));
+        expect(req.body['parent_org_unit_id'], equals('org-unit-east'));
+        expect(
+          req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+          equals('idem-http-add-location'),
         );
       },
     );
@@ -685,6 +766,7 @@ void main() {
           <String, Object?>{
             'location_id': 'loc-1',
             'operator_id': 'op-1',
+            'parent_org_unit_id': 'org-unit-root',
             'name': 'Main',
             'address': '',
             'timezone': 'America/Toronto',
@@ -697,6 +779,7 @@ void main() {
       final bundle = OperatorAdminBundle.fromJson(json);
       expect(bundle.operator.businessName, equals('Cafe'));
       expect(bundle.locations, hasLength(1));
+      expect(bundle.locations.single.parentOrgUnitId, equals('org-unit-root'));
       expect(bundle.primaryLocation?.timezone, equals('America/Toronto'));
     });
   });

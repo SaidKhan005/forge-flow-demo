@@ -57,6 +57,7 @@ void main() {
         LocationAdminRecord(
           locationId: primaryLocationId,
           operatorId: operatorId,
+          parentOrgUnitId: 'org-root',
           name: 'HQ',
           address: '',
           timezone: 'America/Toronto',
@@ -520,7 +521,7 @@ void main() {
     expect(planField.onChanged, isNull);
   });
 
-  testWidgets('add location dialog submits the selected IANA timezone', (
+  testWidgets('add location requires a selected hierarchy org unit', (
     tester,
   ) async {
     final gateway = InMemoryOperatorLocationAdminGateway(
@@ -528,6 +529,33 @@ void main() {
     );
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
+
+    final addButton = tester.widget<OutlinedButton>(
+      find.byKey(const Key('admin_operator_add_location_button')),
+    );
+    expect(addButton.onPressed, isNull);
+    expect(
+      find.byKey(const Key('admin_location_parent_org_unit_required_copy')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('add location dialog submits the selected IANA timezone', (
+    tester,
+  ) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[seedBundle()],
+    );
+    await tester.pumpWidget(
+      wrap(
+        OperatorLocationAdminScreen(
+          gateway: gateway,
+          selectedParentOrgUnitId: 'org-unit-harbour',
+          selectedParentOrgUnitLabel: 'Harbour Region',
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -540,6 +568,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_location_add_dialog')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_location_parent_org_unit_field')),
+      findsOneWidget,
+    );
+    expect(find.text('Harbour Region'), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const Key('admin_location_name_field')),
@@ -558,6 +591,7 @@ void main() {
       (l) => l.name == 'Harbour',
     );
     expect(added.timezone, equals('America/Halifax'));
+    expect(added.parentOrgUnitId, equals('org-unit-harbour'));
     expect(find.byKey(const Key('admin_location_add_dialog')), findsNothing);
   });
 
@@ -607,7 +641,13 @@ void main() {
       seed: <OperatorAdminBundle>[bundle],
     );
     await tester.pumpWidget(
-      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+      wrap(
+        OperatorLocationAdminScreen(
+          gateway: gateway,
+          selectedParentOrgUnitId: 'org-unit-west',
+          selectedParentOrgUnitLabel: 'West Region',
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -696,7 +736,13 @@ void main() {
       seed: <OperatorAdminBundle>[bundle],
     );
     await tester.pumpWidget(
-      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+      wrap(
+        OperatorLocationAdminScreen(
+          gateway: gateway,
+          selectedParentOrgUnitId: 'org-unit-west',
+          selectedParentOrgUnitLabel: 'West Region',
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
