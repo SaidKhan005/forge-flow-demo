@@ -60,7 +60,7 @@ Detail + resume guide: `docs/_execution/2026-05-06_v1_operator_punchlist_executi
 |---|---|---|
 | Firebase Auth action-domain switch (`auth.feflow.org` → `forge-flow-production1.web.app`, set `callbackUri`, run 4 validation checks) | You / Cloud | `cutover.0` preflight |
 | Decide + apply 2 remaining Production1 migrations (first-connect-backfill jobs + 11W.7 operator account fields). 18 of 20 already staging-verified; full queue in `docs/POST_HARDENING_FOLLOWUPS.md` P0 | You + runbook | First-connect on prod, operator-web Account writes on prod |
-| Inbound-vendor T&Cs to counsel | You / Legal | `cutover.2` |
+| Seed operator-authored T&C content into `tos_versions` (universal + per-vendor scopes) at deploy time. Operator self-authors per `docs/contracts/operator_self_served_tos_contract.md`; no external legal-review gate. | You / Eng | `cutover.2` |
 | Sandbox creds for trio: Lightspeed K-Series · Libro · QuickBooks Time | You / Vendors | `*.live.sandbox` slices for trio |
 
 ### 2. Cutover sequence (gate-driven, not date-driven)
@@ -72,7 +72,7 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 | `cutover.0` preflight | not started | Read-only smoke on Production1; harness ready (V1.G). Needs Firebase Auth switch + 2 pending migrations applied |
 | `cutover.1` corpus load | not started | Voyage embeddings + Anthropic Contextual Retrieval; cost approval gate |
 | `cutover.0b` Tier-M perf gate | not started | Launch-blocking; needs `cutover.1` corpus first |
-| `cutover.2` first operator onboarding | not started | Vanessa on production1; needs lawyer-signed T&Cs |
+| `cutover.2` first operator onboarding | not started | Vanessa on production1; needs operator-authored T&C content seeded in `tos_versions` |
 | `cutover.3` traffic switch | not started | DNS / env-var flip |
 | `cutover.4` 7-day stability watch | not started | Non-negotiable before V1 declaration |
 | `cutover.5` post-launch hardening | not started | After V1 declaration |
@@ -84,7 +84,7 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 | `11A.8` Support audit | not started | `phase_11A_operations_console/*` |
 | `11A.9` Cross-operator reads | not started | `phase_11A_operations_console/*` |
 | `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |
-| `9.8` inbound vendor T&Cs (code lane) | code-ready, awaiting counsel | `phase_9_8/*` |
+| `9.8` inbound vendor T&Cs (code lane) | code-ready; operator-self-served content seeding pending | `phase_9_8/*` |
 | `business-timing-live` full hierarchy + settings lanes | future | `phase_business_timing_live/*` |
 | `admin-hierarchy-settings-overhaul` | planned | `docs/_execution/admin_hierarchy_settings_overhaul_plan_2026-05-08.md` |
 | Doc 1 item 7 — physical connected-device E2E | simulated proof documented; physical/emulator proof pending | new sprint `8.connected-device-e2e-smoke`; needs physical device |

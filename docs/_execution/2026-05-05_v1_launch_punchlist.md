@@ -7,8 +7,12 @@ Done items live in `docs/archive/_execution/2026-05-05_v1_launch_punchlist_done_
 Status legend: `[ ]` open · `[~]` in progress · `[-]` deferred post-V1.
 
 Owner shorthand: **You** = operator/founder action · **Eng** =
-Codex/Claude slice · **Legal** = external counsel · **Cloud** =
-GCP/Azure/Firebase provisioning.
+Codex/Claude slice · **Cloud** = GCP/Azure/Firebase provisioning.
+
+Forge & Flow is operator-self-served on T&Cs: the founder authors and
+accepts the inbound-vendor terms themselves; there is no external
+legal-review gate (see
+`docs/contracts/operator_self_served_tos_contract.md`).
 
 ---
 
@@ -46,11 +50,17 @@ Production1 runtime is live. Detail + resume guide:
       explicit operator decision. Runbook:
       `runbooks/phase_9_production1_migration_apply_runbook.md`.
       _Effort: 1–2 hrs after decision._
-- [ ] **Escalate inbound-vendor T&Cs to counsel.** Draft is in
-      `docs/phases/phase_9_8/`. Suggested deadlines: first pass
-      2026-05-10, final 2026-05-13. Without signed T&Cs there is no
-      `tos_acceptances` row → `cutover.2` cannot run.
-      _Effort: 3–7 days external. Blocks: cutover.2._
+- [ ] **Seed operator-authored T&C content into `tos_versions`.**
+      Operator self-authors the inbound-vendor terms and the founder
+      accepts them through the standard `tos_accept_screen.dart`
+      clickwrap. Source draft + per-vendor scope copy already lives in
+      `docs/phases/phase_9_8/`. Land the universal-scope row + the
+      per-vendor rows for the trio (Lightspeed K-Series, Libro,
+      QuickBooks Time) before `cutover.2` runs so the first
+      `tos_acceptances` row can be captured. Contract:
+      `docs/contracts/operator_self_served_tos_contract.md`.
+      _Effort: 1–2 hrs operator authoring + small seeding slice.
+      Blocks: cutover.2._
 - [ ] **Provision sandbox credentials for the live trio:** Lightspeed
       K-Series (developer.lightspeedhq.com), Libro (test account),
       QuickBooks Time (Intuit sandbox). Store each in GCP Secret
@@ -95,7 +105,9 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
       --enforce-budgets`.
 - [ ] **`cutover.2` — First operator onboarding.** Vanessa created on
       production1. T&C-acceptance row captured. RLS isolation verified
-      live. Tier caps seeded. Requires lawyer-signed T&Cs.
+      live. Tier caps seeded. Requires operator-authored T&C content
+      seeded in `tos_versions` (universal + per-vendor scopes for the
+      trio).
 - [ ] **`cutover.3` — Traffic switch to production.** DNS / env-var flip.
 - [ ] **`cutover.4` — 7-day stability watch.** Non-negotiable minimum
       before V1 launch declaration.
