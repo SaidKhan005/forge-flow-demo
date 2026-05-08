@@ -283,6 +283,18 @@ abstract class RolesHierarchySessionsAdminGateway {
 
   /// Move an org-unit under a new parent. Audited per the parity
   /// contract § "Move semantics" + "§ Hierarchy".
+  Future<OrgUnitAdminNode> createOrgUnit({
+    required String operatorId,
+    required String parentOrgUnitId,
+    required String unitType,
+    required String label,
+    required String name,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
   Future<OrgUnitAdminNode> moveOrgUnit({
     required String operatorId,
     required String orgUnitId,
@@ -496,6 +508,45 @@ class HttpRolesHierarchySessionsAdminGateway
         'operator_id': operatorId,
         'admin_reason': adminReason,
       },
+    );
+  }
+
+  @override
+  Future<OrgUnitAdminNode> createOrgUnit({
+    required String operatorId,
+    required String parentOrgUnitId,
+    required String unitType,
+    required String label,
+    required String name,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'createOrgUnit');
+    _requireAdminReason(adminReason, 'createOrgUnit');
+    final body = await _send(
+      method: 'POST',
+      path: orgUnitsPath,
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'parent_org_unit_id': parentOrgUnitId,
+        'unit_type': unitType,
+        'label': label,
+        'name': name,
+        'admin_reason': adminReason,
+      },
+    );
+    final orgUnit = body['org_unit'];
+    if (orgUnit != null) {
+      return _orgUnitFromJson(_asMap(orgUnit));
+    }
+    return OrgUnitAdminNode(
+      orgUnitId: _firstStringField(body, const <String>['org_unit_id', 'id']),
+      name: name,
+      operatorId: operatorId,
+      parentOrgUnitId: parentOrgUnitId,
     );
   }
 

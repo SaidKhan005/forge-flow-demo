@@ -237,6 +237,96 @@ void main() {
       );
     });
 
+    testWidgets('add child org unit affordance writes audited create', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            idempotencyKeyFactory: () => 'idem-add-child-org-unit',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+
+      final addFinder = find.byKey(
+        const Key('admin_rhs_org_unit_add_child_$kDemoDinerOrgUnitRoot'),
+      );
+      expect(addFinder, findsOneWidget);
+      await tester.tap(addFinder);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_rhs_add_child_org_unit_dialog')),
+        findsOneWidget,
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin_rhs_add_org_unit_name')),
+        'North district',
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin_rhs_add_org_unit_reason')),
+        'operator requested hierarchy setup',
+      );
+      await tester.tap(find.byKey(const Key('admin_rhs_add_org_unit_submit')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('North district'), findsOneWidget);
+      final event = gateway.capturedAuditEvents.single;
+      expect(event.action, equals('team.org_unit.create'));
+      expect(event.actorKind, equals('forge_admin'));
+      expect(event.actorUserId, equals('demo-super-admin'));
+      expect(event.adminReason, equals('operator requested hierarchy setup'));
+      expect(event.payload['label'], equals('north_district'));
+    });
+
+    testWidgets('add child org unit dialog blocks empty admin_reason', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const Key('admin_rhs_org_unit_add_child_$kDemoDinerOrgUnitRoot'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_rhs_add_org_unit_name')),
+        'North district',
+      );
+      await tester.tap(find.byKey(const Key('admin_rhs_add_org_unit_submit')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_rhs_add_child_org_unit_dialog')),
+        findsOneWidget,
+      );
+      expect(find.text('Add a reason before continuing.'), findsOneWidget);
+      expect(gateway.capturedAuditEvents, isEmpty);
+    });
+
     testWidgets('reusable sessions panel renders one row per session', (
       tester,
     ) async {
@@ -347,6 +437,14 @@ void main() {
       expect(
         find.byKey(
           const Key('admin_rhs_role_delete_role-custom-floor-captain'),
+        ),
+        findsNothing,
+      );
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(
+          const Key('admin_rhs_org_unit_add_child_$kDemoDinerOrgUnitRoot'),
         ),
         findsNothing,
       );
