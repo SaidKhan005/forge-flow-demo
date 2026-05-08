@@ -1,0 +1,49 @@
+{
+  "results": {
+    "timesheets": [
+      {
+        "id": 904001,
+        "user_id": 8021,
+        "jobcode_id": 5001,
+        "start": "2026-05-05T03:30:00Z",
+        "end": "2026-05-05T07:00:00Z",
+        "duration": 12600,
+        "date": "2026-05-04",
+        "tz": -4,
+        "tz_str": "-04:00",
+        "type": "regular",
+        "location": "Toronto Bistro Late Service",
+        "on_the_clock": false,
+        "locked": 0,
+        "notes": "Vancouver location's late-night close. Restaurant-local 20:30 → 24:00 PDT on 2026-05-04 business date; vendor user lived in Toronto so vendor `tz_str` reads -04:00.",
+        "customfields": {},
+        "attached_files": [],
+        "created": "2026-05-05T03:30:00Z",
+        "last_modified": "2026-05-05T07:00:30Z"
+      }
+    ],
+    "supplemental_data": {
+      "users": {
+        "8021": {
+          "id": 8021,
+          "first_name": "Casey",
+          "last_name": "Server",
+          "active": true,
+          "pay_rate": "19.50",
+          "pay_interval": "hour",
+          "tz": -4,
+          "tz_str": "-04:00",
+          "last_modified": "2026-04-15T00:00:00Z"
+        }
+      },
+      "jobcodes": {
+        "5001": {
+          "id": 5001,
+          "name": "server",
+          "active": true
+        }
+      }
+    },
+    "more": false
+  }
+}

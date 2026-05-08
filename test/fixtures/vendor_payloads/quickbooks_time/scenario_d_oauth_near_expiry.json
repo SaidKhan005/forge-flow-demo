@@ -1,0 +1,16 @@
+{
+  "transport": "oauth_token_response",
+  "endpoint": "POST https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+  "issued_at": "2026-05-08T18:55:00Z",
+  "response_body": {
+    "access_token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJxYnQtbmVhci1leHBpcnktZml4dHVyZSJ9.placeholder",
+    "refresh_token": "AB11000000000000000000000000000000000000refresh-near-expiry",
+    "expires_in": 300,
+    "x_refresh_token_expires_in": 360,
+    "token_type": "bearer",
+    "scope": "com.intuit.quickbooks.payroll.time.access openid profile",
+    "realm_id": "9341452500000001"
+  },
+  "expected_outcome": "refresh_path_triggers",
+  "notes": "expires_in = 300s and x_refresh_token_expires_in = 360s puts both tokens inside the 24h proactive-refresh window; oauth_refresh_cron must rotate."
+}
