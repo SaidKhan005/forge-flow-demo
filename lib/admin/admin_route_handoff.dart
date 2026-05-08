@@ -2,22 +2,57 @@ import 'package:flutter/widgets.dart';
 
 @immutable
 class AdminSupportLogFilterIntent {
-  const AdminSupportLogFilterIntent({this.operatorId, this.locationId});
+  const AdminSupportLogFilterIntent({
+    this.operatorId,
+    this.locationId,
+    this.hierarchyScope,
+  });
+
+  factory AdminSupportLogFilterIntent.fromHierarchyScope(
+    AdminHierarchyScopeIntent scope,
+  ) {
+    return AdminSupportLogFilterIntent(
+      operatorId: scope.operatorId,
+      locationId: scope.locationId,
+      hierarchyScope: scope,
+    );
+  }
 
   final String? operatorId;
   final String? locationId;
+  final AdminHierarchyScopeIntent? hierarchyScope;
 
-  String get cacheKey => '${operatorId ?? ''}|${locationId ?? ''}';
+  String? get effectiveOperatorId => hierarchyScope?.operatorId ?? operatorId;
+  String? get effectiveLocationId => hierarchyScope?.locationId ?? locationId;
+
+  AdminHierarchyScopeIntent? get effectiveHierarchyScope {
+    final scope = hierarchyScope;
+    if (scope != null) return scope;
+    final scopedOperatorId = operatorId;
+    if (scopedOperatorId == null || scopedOperatorId.isEmpty) return null;
+    final scopedLocationId = locationId;
+    if (scopedLocationId == null || scopedLocationId.isEmpty) {
+      return AdminHierarchyScopeIntent.business(operatorId: scopedOperatorId);
+    }
+    return AdminHierarchyScopeIntent.location(
+      operatorId: scopedOperatorId,
+      locationId: scopedLocationId,
+    );
+  }
+
+  String get cacheKey =>
+      hierarchyScope?.cacheKey ?? '${operatorId ?? ''}|${locationId ?? ''}';
 
   @override
   bool operator ==(Object other) {
     return other is AdminSupportLogFilterIntent &&
         other.operatorId == operatorId &&
-        other.locationId == locationId;
+        other.locationId == locationId &&
+        other.hierarchyScope == hierarchyScope;
   }
 
   @override
-  int get hashCode => Object.hash(operatorId, locationId);
+  int get hashCode => Object.hash(operatorId, locationId, hierarchyScope);
 }
 
 enum AdminHierarchyScopeType {

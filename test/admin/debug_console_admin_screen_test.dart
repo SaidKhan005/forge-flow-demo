@@ -28,9 +28,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_human_labels.dart';
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/debug_console_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/debug_console_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/debug_console_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -223,6 +226,164 @@ void main() {
     );
     expect(
       find.byKey(const Key('admin_debug_console_row_req-op-b')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('org-unit scope expands to covered locations client-side', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    const scope = AdminHierarchyScopeIntent.orgUnit(
+      operatorId: 'op-scope',
+      orgUnitId: 'ou-region',
+      operatorName: 'Scope Group',
+      orgUnitName: 'Region',
+      hierarchyPath: <String>['Canada'],
+    );
+    final gateway = InMemoryDebugConsoleAdminGateway(
+      seed: <RequestLogEntry>[
+        seedEntry(
+          id: 'req-covered-a',
+          operatorId: 'op-scope',
+          locationId: 'loc-covered-a',
+        ),
+        seedEntry(
+          id: 'req-covered-child',
+          operatorId: 'op-scope',
+          locationId: 'loc-covered-child',
+        ),
+        seedEntry(
+          id: 'req-outside',
+          operatorId: 'op-scope',
+          locationId: 'loc-outside',
+        ),
+      ],
+      now: () => DateTime.utc(2026, 5, 3, 12),
+    );
+    final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+      orgUnitsByOperator: const <String, List<OrgUnitAdminNode>>{
+        'op-scope': <OrgUnitAdminNode>[
+          OrgUnitAdminNode(
+            orgUnitId: 'ou-root',
+            name: 'Scope Group',
+            operatorId: 'op-scope',
+          ),
+          OrgUnitAdminNode(
+            orgUnitId: 'ou-region',
+            name: 'Region',
+            operatorId: 'op-scope',
+            parentOrgUnitId: 'ou-root',
+          ),
+          OrgUnitAdminNode(
+            orgUnitId: 'ou-district',
+            name: 'District',
+            operatorId: 'op-scope',
+            parentOrgUnitId: 'ou-region',
+          ),
+          OrgUnitAdminNode(
+            orgUnitId: 'ou-other',
+            name: 'Other',
+            operatorId: 'op-scope',
+            parentOrgUnitId: 'ou-root',
+          ),
+        ],
+      },
+      locationsByOperator: const <String, List<HierarchyLocationLeaf>>{
+        'op-scope': <HierarchyLocationLeaf>[
+          HierarchyLocationLeaf(
+            locationId: 'loc-covered-a',
+            name: 'Covered A',
+            operatorId: 'op-scope',
+            orgUnitId: 'ou-region',
+          ),
+          HierarchyLocationLeaf(
+            locationId: 'loc-covered-child',
+            name: 'Covered Child',
+            operatorId: 'op-scope',
+            orgUnitId: 'ou-district',
+          ),
+          HierarchyLocationLeaf(
+            locationId: 'loc-outside',
+            name: 'Outside',
+            operatorId: 'op-scope',
+            orgUnitId: 'ou-other',
+          ),
+        ],
+      },
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        DebugConsoleAdminScreen(
+          gateway: gateway,
+          hierarchyGateway: hierarchyGateway,
+          hierarchyScope: scope,
+          initialFilter: const RequestLogFilter(operatorId: 'op-scope'),
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_debug_console_scope_banner')),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Org unit: Scope Group / Canada / Region'),
+      findsOneWidget,
+    );
+    expect(find.text('Covered locations: 2'), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_debug_console_row_req-covered-a')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_debug_console_row_req-covered-child')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_debug_console_row_req-outside')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('org-unit scope without hierarchy data shows unsupported copy', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryDebugConsoleAdminGateway(
+      seed: <RequestLogEntry>[
+        seedEntry(id: 'req-business-row', operatorId: 'op-scope'),
+      ],
+      now: () => DateTime.utc(2026, 5, 3, 12),
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        DebugConsoleAdminScreen(
+          gateway: gateway,
+          hierarchyScope: const AdminHierarchyScopeIntent.orgUnit(
+            operatorId: 'op-scope',
+            orgUnitId: 'ou-region',
+            orgUnitName: 'Region',
+          ),
+          initialFilter: const RequestLogFilter(operatorId: 'op-scope'),
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining(
+        'Org-unit support logs need the hierarchy location list',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_debug_console_row_req-business-row')),
       findsNothing,
     );
   });

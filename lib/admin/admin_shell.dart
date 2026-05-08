@@ -67,11 +67,16 @@ class _AdminShellState extends State<AdminShell> {
 
   void _selectIntent(AdminRouteIntent intent) {
     final nextRouteId = _routeIdOrFallback(intent.routeId);
+    final explicitHierarchyScope = intent.effectiveHierarchyScope;
     final nextSupportLogFilter = nextRouteId == kAdminDebugConsoleRouteId
-        ? intent.supportLogFilter
+        ? intent.supportLogFilter ??
+              (explicitHierarchyScope == null
+                  ? null
+                  : AdminSupportLogFilterIntent.fromHierarchyScope(
+                      explicitHierarchyScope,
+                    ))
         : null;
-    final nextHierarchyScope =
-        intent.effectiveHierarchyScope ?? _hierarchyScope;
+    final nextHierarchyScope = explicitHierarchyScope ?? _hierarchyScope;
     final nextOperatorLocationScope =
         nextHierarchyScope?.toOperatorLocationScope() ??
         intent.operatorLocationScope ??
