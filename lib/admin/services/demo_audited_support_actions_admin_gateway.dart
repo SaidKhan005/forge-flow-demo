@@ -493,11 +493,211 @@ class InMemoryAuditedSupportActionsAdminGateway
     return result;
   }
 
+  // ─── CODE_OPS_DEBT Theme B#1 — single-admin PII erasure ─────────
+  // The walkthrough now exercises the single-admin flow with a 24h
+  // grace window. The demo gateway records each erasure under
+  // `_singleAdminErasures` keyed by (operatorId, userId) and emits
+  // an `audit_logs`-shaped row tagged with the new
+  // `users.pii_erasure_requested|reversed|applied` actions.
+
+  final Map<String, _SingleAdminErasure> _singleAdminErasures =
+      <String, _SingleAdminErasure>{};
+  static const Duration _demoGracePeriod = Duration(hours: 24);
+
+  String _erasureKey(String operatorId, String targetUserId) =>
+      '$operatorId::$targetUserId';
+
+  @override
+  Future<UserPiiErasureRequestSummary> requestPiiErasure({
+    required String operatorId,
+    required String targetUserId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'requestPiiErasure');
+    _ensureAdminReason(adminReason, 'requestPiiErasure');
+    final cached = _idempotentResults[idempotencyKey];
+    if (cached is UserPiiErasureRequestSummary) return cached;
+    _requireMember(operatorId, targetUserId);
+
+    final requestedAt = _clock();
+    final gracePeriodEndsAt = requestedAt.add(_demoGracePeriod);
+    final erasureId = 'pii-erasure-'
+        '${_singleAdminErasures.length + 1}-'
+        '${requestedAt.microsecondsSinceEpoch}';
+    _singleAdminErasures[_erasureKey(operatorId, targetUserId)] =
+        _SingleAdminErasure(
+      erasureId: erasureId,
+      operatorId: operatorId,
+      targetUserId: targetUserId,
+      requestedByUserId: actorUserId,
+      requestedAt: requestedAt,
+      gracePeriodEndsAt: gracePeriodEndsAt,
+      state: 'pending',
+    );
+    _appendAuditRow(
+      operatorId: operatorId,
+      action: SupportActionsAuditAction.erasureRequested,
+      actorUserId: actorUserId,
+      actorDisplayName: 'F&F admin',
+      actorEmail: '$actorUserId@forgeflow.test',
+      actorKind: AuditActorKind.forgeAdmin,
+      targetKind: 'user',
+      targetId: targetUserId,
+      payload: <String, Object?>{
+        'erasure_id': erasureId,
+        'grace_period_ends_at':
+            gracePeriodEndsAt.toUtc().toIso8601String(),
+      },
+      adminReason: adminReason,
+    );
+    final result = UserPiiErasureRequestSummary(
+      erasureId: erasureId,
+      gracePeriodEndsAt: gracePeriodEndsAt,
+    );
+    _idempotentResults[idempotencyKey] = result;
+    return result;
+  }
+
+  @override
+  Future<UserPiiErasureReverseSummary> reversePiiErasure({
+    required String operatorId,
+    required String targetUserId,
+    required String erasureId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reversalReason,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'reversePiiErasure');
+    final cached = _idempotentResults[idempotencyKey];
+    if (cached is UserPiiErasureReverseSummary) return cached;
+    final entry =
+        _singleAdminErasures[_erasureKey(operatorId, targetUserId)];
+    if (entry == null || entry.erasureId != erasureId) {
+      throw AuditedSupportActionsGatewayError(
+        statusCode: 404,
+        errorCode: 'erasure_not_found',
+        message: 'erasure $erasureId not found for user $targetUserId',
+      );
+    }
+    if (entry.state != 'pending' ||
+        !_clock().isBefore(entry.gracePeriodEndsAt)) {
+      const result = UserPiiErasureReverseSummary(
+        reversed: false,
+        graceExpired: true,
+      );
+      _idempotentResults[idempotencyKey] = result;
+      return result;
+    }
+    _singleAdminErasures[_erasureKey(operatorId, targetUserId)] =
+        entry.copyWith(
+      state: 'reversed',
+      reversedAt: _clock(),
+      reversedByUserId: actorUserId,
+      reversalReason: reversalReason,
+    );
+    _appendAuditRow(
+      operatorId: operatorId,
+      action: SupportActionsAuditAction.erasureRequested,
+      actorUserId: actorUserId,
+      actorDisplayName: 'F&F admin',
+      actorEmail: '$actorUserId@forgeflow.test',
+      actorKind: AuditActorKind.forgeAdmin,
+      targetKind: 'user',
+      targetId: targetUserId,
+      payload: <String, Object?>{
+        'erasure_id': erasureId,
+        if (reversalReason != null) 'reversal_reason': reversalReason,
+      },
+      adminReason: reversalReason ?? 'admin reversed pii erasure',
+    );
+    const result = UserPiiErasureReverseSummary(
+      reversed: true,
+      graceExpired: false,
+    );
+    _idempotentResults[idempotencyKey] = result;
+    return result;
+  }
+
+  @override
+  Future<UserPiiErasureStatusSummary?> getPiiErasureStatus({
+    required String operatorId,
+    required String targetUserId,
+  }) async {
+    final entry =
+        _singleAdminErasures[_erasureKey(operatorId, targetUserId)];
+    if (entry == null) return null;
+    return UserPiiErasureStatusSummary(
+      erasureId: entry.erasureId,
+      state: entry.state,
+      requestedAt: entry.requestedAt,
+      gracePeriodEndsAt: entry.gracePeriodEndsAt,
+      appliedAt: entry.appliedAt,
+      reversedAt: entry.reversedAt,
+      reversedByUserId: entry.reversedByUserId,
+      reversalReason: entry.reversalReason,
+    );
+  }
+
   @visibleForTesting
   void clearForTesting() {
     _adminActionLog.clear();
     _idempotentResults.clear();
     _pendingErasures.clear();
+    _singleAdminErasures.clear();
+  }
+}
+
+class _SingleAdminErasure {
+  const _SingleAdminErasure({
+    required this.erasureId,
+    required this.operatorId,
+    required this.targetUserId,
+    required this.requestedByUserId,
+    required this.requestedAt,
+    required this.gracePeriodEndsAt,
+    required this.state,
+    this.appliedAt,
+    this.reversedAt,
+    this.reversedByUserId,
+    this.reversalReason,
+  });
+
+  final String erasureId;
+  final String operatorId;
+  final String targetUserId;
+  final String requestedByUserId;
+  final DateTime requestedAt;
+  final DateTime gracePeriodEndsAt;
+  final String state;
+  final DateTime? appliedAt;
+  final DateTime? reversedAt;
+  final String? reversedByUserId;
+  final String? reversalReason;
+
+  _SingleAdminErasure copyWith({
+    String? state,
+    DateTime? appliedAt,
+    DateTime? reversedAt,
+    String? reversedByUserId,
+    String? reversalReason,
+  }) {
+    return _SingleAdminErasure(
+      erasureId: erasureId,
+      operatorId: operatorId,
+      targetUserId: targetUserId,
+      requestedByUserId: requestedByUserId,
+      requestedAt: requestedAt,
+      gracePeriodEndsAt: gracePeriodEndsAt,
+      state: state ?? this.state,
+      appliedAt: appliedAt ?? this.appliedAt,
+      reversedAt: reversedAt ?? this.reversedAt,
+      reversedByUserId: reversedByUserId ?? this.reversedByUserId,
+      reversalReason: reversalReason ?? this.reversalReason,
+    );
   }
 }
 

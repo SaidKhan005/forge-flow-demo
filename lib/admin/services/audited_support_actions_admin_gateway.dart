@@ -329,6 +329,67 @@ class AdminActionLogRow {
   final String adminReason;
 }
 
+/// CODE_OPS_DEBT Theme B#1 — single-admin erasure outcome. Replaces
+/// the legacy paired-approval flow at the launch decision (2026-05-08
+/// operator decision register). The proxy returns `erasureId` +
+/// `gracePeriodEndsAt` on the 202 from `POST .../erase-pii`; reversal
+/// inside the grace window goes through `reversePiiErasure`.
+@immutable
+class UserPiiErasureRequestSummary {
+  const UserPiiErasureRequestSummary({
+    required this.erasureId,
+    required this.gracePeriodEndsAt,
+  });
+
+  final String erasureId;
+  final DateTime gracePeriodEndsAt;
+}
+
+/// CODE_OPS_DEBT Theme B#1 — outcome of `reversePiiErasure`. The
+/// proxy returns 200 on success; 410 when the grace window has
+/// expired (which the gateway translates to [graceExpired] = true).
+@immutable
+class UserPiiErasureReverseSummary {
+  const UserPiiErasureReverseSummary({
+    required this.reversed,
+    required this.graceExpired,
+  });
+
+  final bool reversed;
+  final bool graceExpired;
+}
+
+/// Status row returned by `getPiiErasureStatus`. Mirrors the proxy's
+/// JSON shape — `state` is one of `'pending'`, `'applied'`, or
+/// `'reversed'`. The screen renders the countdown chip from
+/// [gracePeriodEndsAt] when [state] = `'pending'`.
+@immutable
+class UserPiiErasureStatusSummary {
+  const UserPiiErasureStatusSummary({
+    required this.erasureId,
+    required this.state,
+    required this.requestedAt,
+    required this.gracePeriodEndsAt,
+    this.appliedAt,
+    this.reversedAt,
+    this.reversedByUserId,
+    this.reversalReason,
+  });
+
+  final String erasureId;
+  final String state;
+  final DateTime requestedAt;
+  final DateTime gracePeriodEndsAt;
+  final DateTime? appliedAt;
+  final DateTime? reversedAt;
+  final String? reversedByUserId;
+  final String? reversalReason;
+
+  bool get isPending => state == 'pending';
+  bool get isApplied => state == 'applied';
+  bool get isReversed => state == 'reversed';
+}
+
 /// Paired-approval result returned by `issuePairedApprovalErasure`.
 /// `pendingSecondApproval == true` means the gateway captured the
 /// first admin's request and is awaiting the second admin's
@@ -445,6 +506,42 @@ abstract class AuditedSupportActionsAdminGateway {
     required String adminReason,
     String? confirmRequestId,
   });
+
+  /// CODE_OPS_DEBT Theme B#1 — single-admin PII erasure with 24h
+  /// grace-window reverse. The proxy returns 202 with the
+  /// [UserPiiErasureRequestSummary]; the screen renders a countdown
+  /// chip based on [gracePeriodEndsAt] and offers a "Reverse" action
+  /// while the chip is non-zero.
+  Future<UserPiiErasureRequestSummary> requestPiiErasure({
+    required String operatorId,
+    required String targetUserId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
+  /// CODE_OPS_DEBT Theme B#1 — reverses a pending erasure within its
+  /// 24h grace window. Returns [UserPiiErasureReverseSummary.reversed]
+  /// on success; the proxy 410 (grace expired or already terminal)
+  /// flips [graceExpired] = true so the screen can re-render the
+  /// status panel without surfacing the reverse affordance again.
+  Future<UserPiiErasureReverseSummary> reversePiiErasure({
+    required String operatorId,
+    required String targetUserId,
+    required String erasureId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reversalReason,
+  });
+
+  /// CODE_OPS_DEBT Theme B#1 — read latest erasure status for a user.
+  /// Returns null when no erasure has ever been issued.
+  Future<UserPiiErasureStatusSummary?> getPiiErasureStatus({
+    required String operatorId,
+    required String targetUserId,
+  });
 }
 
 class HttpAuditedSupportActionsAdminGateway
@@ -470,6 +567,9 @@ class HttpAuditedSupportActionsAdminGateway
   static const String mfaResetPathSuffix = '/mfa/reset';
   static const String passwordResetPathSuffix = '/password/reset';
   static const String erasurePathSuffix = '/erasure';
+  // CODE_OPS_DEBT Theme B#1 — single-admin PII erasure routes.
+  static const String piiErasurePathSuffix = '/erase-pii';
+  static const String piiErasureReversePathSuffix = '/erase-pii/reverse';
 
   @override
   Future<AuditLogPage> listAuditLog({
@@ -640,6 +740,135 @@ class HttpAuditedSupportActionsAdminGateway
       },
     );
     return _pairedApprovalFromJson(_asMap(body['erasure']));
+  }
+
+  @override
+  Future<UserPiiErasureRequestSummary> requestPiiErasure({
+    required String operatorId,
+    required String targetUserId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'requestPiiErasure');
+    _requireAdminReason(adminReason, 'requestPiiErasure');
+    final body = await _send(
+      method: 'POST',
+      path:
+          '$mfaResetPathPrefix${Uri.encodeComponent(targetUserId)}'
+          '$piiErasurePathSuffix',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'admin_reason': adminReason,
+      },
+    );
+    final erasureId = body['erasure_id'];
+    final graceEndsAtRaw = body['grace_period_ends_at'];
+    if (erasureId is! String ||
+        erasureId.isEmpty ||
+        graceEndsAtRaw is! String ||
+        graceEndsAtRaw.isEmpty) {
+      throw AuditedSupportActionsGatewayError(
+        statusCode: 502,
+        errorCode: 'malformed_pii_erasure_response',
+        message:
+            'admin proxy returned a PII erasure response without '
+            'erasure_id / grace_period_ends_at',
+      );
+    }
+    return UserPiiErasureRequestSummary(
+      erasureId: erasureId,
+      gracePeriodEndsAt: DateTime.parse(graceEndsAtRaw).toUtc(),
+    );
+  }
+
+  @override
+  Future<UserPiiErasureReverseSummary> reversePiiErasure({
+    required String operatorId,
+    required String targetUserId,
+    required String erasureId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reversalReason,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'reversePiiErasure');
+    try {
+      await _send(
+        method: 'POST',
+        path:
+            '$mfaResetPathPrefix${Uri.encodeComponent(targetUserId)}'
+            '$piiErasureReversePathSuffix',
+        idempotencyKey: idempotencyKey,
+        jsonBody: <String, Object?>{
+          'operator_id': operatorId,
+          'erasure_id': erasureId,
+          if (reversalReason != null && reversalReason.isNotEmpty)
+            'reversal_reason': reversalReason,
+        },
+      );
+      return const UserPiiErasureReverseSummary(
+        reversed: true,
+        graceExpired: false,
+      );
+    } on AuditedSupportActionsGatewayError catch (error) {
+      if (error.statusCode == 410 ||
+          error.errorCode == 'grace_window_expired') {
+        return const UserPiiErasureReverseSummary(
+          reversed: false,
+          graceExpired: true,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<UserPiiErasureStatusSummary?> getPiiErasureStatus({
+    required String operatorId,
+    required String targetUserId,
+  }) async {
+    final body = await _send(
+      method: 'GET',
+      path:
+          '$mfaResetPathPrefix${Uri.encodeComponent(targetUserId)}'
+          '$piiErasurePathSuffix',
+      queryParameters: <String, String>{'operator_id': operatorId},
+    );
+    final raw = body['erasure'];
+    if (raw == null) return null;
+    final map = (raw as Map).cast<String, Object?>();
+    final erasureId = map['erasure_id'];
+    final state = map['state'];
+    final requestedAtRaw = map['requested_at'];
+    final graceEndsAtRaw = map['grace_period_ends_at'];
+    if (erasureId is! String ||
+        state is! String ||
+        requestedAtRaw is! String ||
+        graceEndsAtRaw is! String) {
+      throw AuditedSupportActionsGatewayError(
+        statusCode: 502,
+        errorCode: 'malformed_pii_erasure_status',
+        message:
+            'admin proxy returned a malformed PII erasure status row',
+      );
+    }
+    return UserPiiErasureStatusSummary(
+      erasureId: erasureId,
+      state: state,
+      requestedAt: DateTime.parse(requestedAtRaw).toUtc(),
+      gracePeriodEndsAt: DateTime.parse(graceEndsAtRaw).toUtc(),
+      appliedAt: map['applied_at'] is String
+          ? DateTime.parse(map['applied_at'] as String).toUtc()
+          : null,
+      reversedAt: map['reversed_at'] is String
+          ? DateTime.parse(map['reversed_at'] as String).toUtc()
+          : null,
+      reversedByUserId: map['reversed_by_user_id'] as String?,
+      reversalReason: map['reversal_reason'] as String?,
+    );
   }
 
   void _requireEditable(bool actorIsForgeAdmin, String operation) {

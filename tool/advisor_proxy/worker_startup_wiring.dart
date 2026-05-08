@@ -31,6 +31,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/pg_cron_notif
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/services/auth/user_pii_erasure_service.dart';
 import 'package:forge_and_flow/services/realtime/outbox_tripwire_poller.dart';
 import 'package:forge_and_flow/services/rollups/rollup_models.dart';
 import 'package:forge_and_flow/services/rollups/rollup_worker.dart';
@@ -54,6 +55,15 @@ const String kAuditAnchorTickChannel = 'audit_anchor_tick';
 const String kRollupsTickChannel = 'rollups_tick';
 const String kEmailOutboxTickChannel = 'forge_email_outbox_tick';
 const String kMobilePushOutboxChannel = 'mobile_push_outbox';
+
+/// CODE_OPS_DEBT Theme B#1 — grace-window apply tick. Cron job
+/// `forge_pii_erasure_grace_expired_tick` (registered by migration
+/// `202605082000_user_pii_erasure_requests.sql`) emits this
+/// `pg_notify` once per minute; the consumer scans for pending rows
+/// whose grace window has expired and applies the NULL-out on
+/// `public.users` PII columns inside a per-row tenant transaction.
+const String kPiiErasureGraceTickChannel =
+    'pii_erasure_grace_expired_tick';
 
 /// Result of the startup hard-fail check. The caller treats a
 /// non-null [exitCode] as a config-level startup failure (78) and
@@ -152,6 +162,12 @@ typedef MobilePushTickHandler = Future<void> Function();
 /// records invocations.
 typedef EmailOutboxTickHandler = Future<void> Function();
 
+/// CODE_OPS_DEBT Theme B#1 — hook signature for the PII erasure
+/// grace-expired apply tick. Production wraps
+/// `UserPiiErasureService.applyDuePending`; tests substitute a
+/// closure that records invocations.
+typedef PiiErasureGraceTickHandler = Future<void> Function();
+
 /// Bundle the startup wiring returns to the proxy entry point so it
 /// can register a SIGTERM hook that drains every consumer.
 class WorkerStartupHandle {
@@ -219,6 +235,11 @@ WorkerStartupHandle wireProductionWorkers({
   required EmailOutboxTickHandler emailTickHandler,
   required MobilePushTickHandler mobilePushHandler,
   required RollupTickHandler rollupTickHandler,
+  // CODE_OPS_DEBT Theme B#1 — optional grace-window tick handler.
+  // Defaults to a no-op so existing wiring tests do not need to
+  // pass the handler through every call site; production binds it
+  // to UserPiiErasureService.applyDuePending.
+  PiiErasureGraceTickHandler? piiErasureGraceTickHandler,
   PgCronNotifyConsumerLogger? consumerLogger,
   void Function(String channel, Object error, StackTrace stack)? onTickError,
   PgCronNotifyConsumer Function({
@@ -253,6 +274,14 @@ WorkerStartupHandle wireProductionWorkers({
   final rollupsConsumer = build(kRollupsTickChannel);
   final emailOutboxConsumer = build(kEmailOutboxTickChannel);
   final mobilePushConsumer = build(kMobilePushOutboxChannel);
+  // CODE_OPS_DEBT Theme B#1 — opt-in PII erasure tick consumer. The
+  // consumer is built only when the handler is supplied so existing
+  // tests + scaffolds that do not wire the service do not open a
+  // second LISTEN connection.
+  PgCronNotifyConsumer? piiErasureConsumer;
+  if (piiErasureGraceTickHandler != null) {
+    piiErasureConsumer = build(kPiiErasureGraceTickChannel);
+  }
 
   // audit_anchor_tick — single concurrent sweep guard. The sweep
   // already serializes via `pg_advisory_xact_lock`, but skipping a
@@ -313,6 +342,30 @@ WorkerStartupHandle wireProductionWorkers({
       }),
     );
   });
+
+  // CODE_OPS_DEBT Theme B#1 — single concurrent apply guard. The
+  // handler walks all due rows; skipping a second tick that fires
+  // while the first is still running keeps the proxy from queueing
+  // pending sweeps if a clock skew or DB hiccup re-fires the cron.
+  if (piiErasureConsumer != null && piiErasureGraceTickHandler != null) {
+    final handler = piiErasureGraceTickHandler;
+    bool piiErasureSweepInFlight = false;
+    piiErasureConsumer.ticks.listen((tick) {
+      if (piiErasureSweepInFlight) return;
+      piiErasureSweepInFlight = true;
+      unawaited(
+        Future<void>(() async {
+          try {
+            await handler();
+          } catch (error, stack) {
+            onTickError?.call(tick.channel, error, stack);
+          } finally {
+            piiErasureSweepInFlight = false;
+          }
+        }),
+      );
+    });
+  }
 
   // The wrapper parameters are kept on the signature even when the
   // body does not consume them directly: production wiring passes
@@ -415,6 +468,23 @@ MobilePushTickHandler buildProductionMobilePushTickHandler({
         );
       }
     }
+  };
+}
+
+/// CODE_OPS_DEBT Theme B#1 — build the production PII-erasure tick
+/// handler. Wraps [UserPiiErasureService.applyDuePending] so the
+/// consumer can fire-and-forget without dropping exceptions on the
+/// floor. The [batchSize] caps the per-tick scan so a backlog after a
+/// proxy outage does not block the LISTEN loop.
+PiiErasureGraceTickHandler buildProductionPiiErasureGraceTickHandler({
+  required UserPiiErasureService service,
+  int batchSize = 100,
+}) {
+  if (batchSize <= 0) {
+    throw ArgumentError.value(batchSize, 'batchSize', 'must be positive');
+  }
+  return () async {
+    await service.applyDuePending(batchSize: batchSize);
   };
 }
 

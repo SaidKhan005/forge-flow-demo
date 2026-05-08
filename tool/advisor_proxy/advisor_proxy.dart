@@ -66,6 +66,7 @@ import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_reset_confirm_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_reset_request_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
+import 'package:forge_and_flow/services/auth/user_pii_erasure_service.dart';
 import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
@@ -8191,6 +8192,11 @@ Future<void> routeRequest(
   MagicLinkRedeemGateway? magicLinkRedeemGateway,
   ProxyAuthIdempotencyCache? authIdempotencyCache,
   MfaOperationsGateway? mfaOperationsGateway,
+  // CODE_OPS_DEBT Theme B#1 — single-admin PII erasure with 24h
+  // grace-window reverse. Optional: when null, the new `/erase-pii*`
+  // routes return 503 so existing tests do not need to plumb the
+  // service through every routeRequest call site.
+  UserPiiErasureService? userPiiErasureService,
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
   MobilePushTokenGateway? mobilePushTokenGateway,
   MobilePushSelfTestGateway? mobilePushSelfTestGateway,
@@ -10955,6 +10961,190 @@ Future<void> routeRequest(
                 },
               );
               _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            // CODE_OPS_DEBT Theme B#1 — single-admin PII erasure
+            // routes. Three shapes (POST request, POST reverse, GET
+            // status) all live under the user-action prefix; we
+            // dispatch them BEFORE _userActionFromPath so the
+            // 3-segment path (`<id>/erase-pii/reverse`) does not
+            // false-404 against the standard 2-segment parser.
+            final piiErasurePath =
+                _piiErasurePathFromAdminAuthUsersPrefix(authOperationPath);
+            if (piiErasurePath != null) {
+              final piiService = userPiiErasureService;
+              if (piiService == null) {
+                _writeJson(response, 503, <String, Object?>{
+                  'error': 'pii_erasure_not_configured',
+                  'message':
+                      'route requires a UserPiiErasureService to be installed',
+                });
+                return;
+              }
+              if (!await requirePermission(
+                PermissionKeys.adminUsersErasePii,
+              )) {
+                return;
+              }
+              if (request.method == 'GET') {
+                final status = await piiService.statusFor(
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  targetUserId: piiErasurePath.userId,
+                );
+                if (status == null) {
+                  _writeJson(response, 200, <String, Object?>{
+                    'erasure': null,
+                  });
+                  return;
+                }
+                _writeJson(response, 200, <String, Object?>{
+                  'erasure': <String, Object?>{
+                    'erasure_id': status.erasureId,
+                    'requested_at':
+                        status.requestedAt.toUtc().toIso8601String(),
+                    'requested_by_user_id': status.requestedByUserId,
+                    'grace_period_ends_at': status
+                        .gracePeriodEndsAt
+                        .toUtc()
+                        .toIso8601String(),
+                    'applied_at':
+                        status.appliedAt?.toUtc().toIso8601String(),
+                    'reversed_at':
+                        status.reversedAt?.toUtc().toIso8601String(),
+                    'reversed_by_user_id': status.reversedByUserId,
+                    'reversal_reason': status.reversalReason,
+                    'state': status.isApplied
+                        ? 'applied'
+                        : status.isReversed
+                            ? 'reversed'
+                            : 'pending',
+                  },
+                });
+                return;
+              }
+              if (request.method == 'POST' &&
+                  piiErasurePath.action == 'request') {
+                final idempotencyKey = readIdempotencyKeyOrFail();
+                if (idempotencyKey == null) return;
+                final routeKey =
+                    '$adminAuthUsersPrefix${piiErasurePath.userId}/erase-pii';
+                final cached = await authOpsCache.runOrReplay(
+                  route: routeKey,
+                  key: idempotencyKey,
+                  compute: () async {
+                    // Restaurant-local business date approximation —
+                    // we use UTC here since the proxy does not resolve
+                    // the operator's IANA tz at this layer; the
+                    // business_timing_profiles read happens elsewhere
+                    // when we need the locked posture. The column is
+                    // denormalized for partition routing only.
+                    final nowUtc = clock().toUtc();
+                    final businessDate =
+                        '${nowUtc.year.toString().padLeft(4, '0')}-'
+                        '${nowUtc.month.toString().padLeft(2, '0')}-'
+                        '${nowUtc.day.toString().padLeft(2, '0')}';
+                    final result =
+                        await piiService.requestErasure(
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      targetUserId: piiErasurePath.userId,
+                      requestedByUserId: scope.userId,
+                      businessDate: businessDate,
+                    );
+                    if (result == null) {
+                      return CachedProxyResponse(
+                        statusCode: 404,
+                        body: <String, Object?>{
+                          'error': 'user_not_found',
+                          'message':
+                              'no user with the requested id in this operator',
+                        },
+                      );
+                    }
+                    return CachedProxyResponse(
+                      statusCode: 202,
+                      body: <String, Object?>{
+                        'erasure_id': result.erasureId,
+                        'grace_period_ends_at': result
+                            .gracePeriodEndsAt
+                            .toUtc()
+                            .toIso8601String(),
+                      },
+                    );
+                  },
+                );
+                _writeJson(response, cached.statusCode, cached.body);
+                return;
+              }
+              if (request.method == 'POST' &&
+                  piiErasurePath.action == 'reverse') {
+                final idempotencyKey = readIdempotencyKeyOrFail();
+                if (idempotencyKey == null) return;
+                final erasureId = _nonBlankString(body['erasure_id']);
+                if (erasureId == null) {
+                  _writeJson(response, 400, <String, Object?>{
+                    'error': 'missing_erasure_id',
+                    'message':
+                        'request body must include erasure_id',
+                  });
+                  return;
+                }
+                final routeKey = '$adminAuthUsersPrefix'
+                    '${piiErasurePath.userId}/erase-pii/reverse';
+                final cached = await authOpsCache.runOrReplay(
+                  route: routeKey,
+                  key: idempotencyKey,
+                  compute: () async {
+                    final result =
+                        await piiService.reverseErasure(
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      targetUserId: piiErasurePath.userId,
+                      erasureId: erasureId,
+                      reversedByUserId: scope.userId,
+                      reversalReason:
+                          _nonBlankString(body['reversal_reason']) ??
+                              _nonBlankString(body['admin_reason']),
+                    );
+                    if (result.notFound) {
+                      return CachedProxyResponse(
+                        statusCode: 404,
+                        body: <String, Object?>{
+                          'error': 'erasure_not_found',
+                          'message':
+                              'no erasure row with the requested id',
+                        },
+                      );
+                    }
+                    if (result.graceExpired) {
+                      return CachedProxyResponse(
+                        statusCode: 410,
+                        body: <String, Object?>{
+                          'error': 'grace_window_expired',
+                          'message':
+                              'erasure grace window has expired or row '
+                              'is already terminal',
+                        },
+                      );
+                    }
+                    return CachedProxyResponse(
+                      statusCode: 200,
+                      body: <String, Object?>{
+                        'reversed': true,
+                      },
+                    );
+                  },
+                );
+                _writeJson(response, cached.statusCode, cached.body);
+                return;
+              }
+              _writeJson(response, 405, <String, Object?>{
+                'error': 'method_not_allowed',
+                'method': request.method,
+                'path': path,
+              });
               return;
             }
 
@@ -16419,6 +16609,12 @@ bool _isAdminAuthOperation(String path, String method) {
   if (method == 'PATCH' && authOperationPath.startsWith(adminAuthUsersPrefix)) {
     return true;
   }
+  // CODE_OPS_DEBT Theme B#1 — GET .../erase-pii for status read.
+  if (method == 'GET' &&
+      authOperationPath.startsWith(adminAuthUsersPrefix) &&
+      _piiErasurePathFromAdminAuthUsersPrefix(authOperationPath) != null) {
+    return true;
+  }
   if (method == 'GET' && authOperationPath == adminAuthSessionsPath) {
     return true;
   }
@@ -16984,6 +17180,42 @@ _UserAction? _userActionFromPath(String path) {
     userId: Uri.decodeComponent(parts[0]),
     action: Uri.decodeComponent(parts[1]),
   );
+}
+
+/// CODE_OPS_DEBT Theme B#1 — splits the `/v1/admin/auth/users/<id>/
+/// erase-pii[/reverse]` path families. Returns null when the path is
+/// not one of the three erase-pii shapes; otherwise returns the user
+/// id + the sub-action (`'request'` for the bare `/erase-pii`,
+/// `'reverse'` for `/erase-pii/reverse`).
+_PiiErasurePath? _piiErasurePathFromAdminAuthUsersPrefix(String path) {
+  if (!path.startsWith(adminAuthUsersPrefix)) return null;
+  final rest = path.substring(adminAuthUsersPrefix.length);
+  final parts = rest.split('/');
+  if (parts.length == 2 &&
+      parts[0].isNotEmpty &&
+      parts[1] == 'erase-pii') {
+    return _PiiErasurePath(
+      userId: Uri.decodeComponent(parts[0]),
+      action: 'request',
+    );
+  }
+  if (parts.length == 3 &&
+      parts[0].isNotEmpty &&
+      parts[1] == 'erase-pii' &&
+      parts[2] == 'reverse') {
+    return _PiiErasurePath(
+      userId: Uri.decodeComponent(parts[0]),
+      action: 'reverse',
+    );
+  }
+  return null;
+}
+
+class _PiiErasurePath {
+  const _PiiErasurePath({required this.userId, required this.action});
+
+  final String userId;
+  final String action;
 }
 
 String? _sessionRevokeIdFromPath(String path) {
