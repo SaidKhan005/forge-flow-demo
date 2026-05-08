@@ -1,0 +1,33 @@
+{
+  "_fixture_envelope": {
+    "description": "OAuth token-refresh response shape per developers.7shifts.com/reference/oauth. The credentials_state block describes the existing access token's near-expiry condition that triggers the framework's oauth_refresh_cron call to POST /v2/oauth/token with grant_type=refresh_token.",
+    "expected_outcome": "refresh_path_triggers",
+    "trigger_path": "lib/services/integration/oauth_refresh_cron.dart scans vendor_credentials WHERE token_expires_at < now() + 24h",
+    "credentials_state_before_refresh": {
+      "vendor_id": "seven_shifts",
+      "access_token": "7s_access_old_aaaaaaaaaaaaaaaaaaaaa",
+      "refresh_token": "7s_refresh_old_bbbbbbbbbbbbbbbbbbbb",
+      "token_expires_at": "2026-05-09T05:00:00Z",
+      "now_at_refresh": "2026-05-08T22:00:00Z",
+      "ttl_remaining_seconds": 25200
+    },
+    "request": {
+      "method": "POST",
+      "url": "https://api.7shifts.com/v2/oauth/token",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "grant_type": "refresh_token",
+        "refresh_token": "7s_refresh_old_bbbbbbbbbbbbbbbbbbbb",
+        "client_id": "ff_client_id_placeholder",
+        "client_secret": "ff_client_secret_placeholder"
+      }
+    }
+  },
+  "access_token": "7s_access_new_cccccccccccccccccccc",
+  "token_type": "bearer",
+  "expires_in": 3600,
+  "refresh_token": "7s_refresh_new_dddddddddddddddddddd",
+  "scope": "time_punches.read schedules.read users.read roles.read payroll_periods.read webhooks.write companies.read locations.read reports.read"
+}
