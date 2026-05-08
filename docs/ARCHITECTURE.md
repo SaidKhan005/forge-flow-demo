@@ -1046,6 +1046,13 @@ Key pieces, one at a time:
 - **Why it matters:** Operator/location hierarchies can be queried cleanly without awkward string parsing
 - **How this helps long term:** Supports deeper org/location hierarchy without redesigning schema.
 
+Hierarchy-scoped settings use this same business -> org-unit -> location tree.
+Business-level values inherit downward, org-unit values override their
+ancestors, and location values override everything above them. Any admin,
+operator, proxy, mobile, or migration work that exposes settings must preserve
+that rule and show which scope produced the effective value. Integrations remain
+location-editable because vendor credentials are location-bound.
+
 
 ### Important Execution Patterns
 

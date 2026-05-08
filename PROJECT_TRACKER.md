@@ -20,11 +20,32 @@ slices live in `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 7. `docs/PERFORMANCE_FRAMEWORK.md` · `docs/UX_ADJUSTMENT_FRAMEWORK.md` ·
    `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — applied per slice when relevant.
 
+Feature implementation work also uses
+`docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` whenever a
+slice edits or adds product functionality, route/schema behavior, runtime
+behavior, settings, permissions, or any feature with hidden plumbing risk.
+
 `docs/archive/**` is history; ignore unless explicitly named. Authority is
 normative in `CLAUDE.md`.
 
 Prefer `.mcp.json` servers for orientation: `forgeflow_docs`,
 `forgeflow_sqlite_schema`, `graphify`.
+
+## Hard Product Rule - Hierarchy-Scoped Settings
+
+Every setting that can affect a business account resolves through the operator
+hierarchy. A value may be set at the business/operator level and inherited by
+all descendants. The same setting may also be set at any org-unit or location
+level. The lowest configured scope wins; missing lower scopes inherit from the
+nearest ancestor.
+
+All admin, operator web, proxy, migration, and mobile surfaces that expose
+settings must support that rule or explicitly document why a capability is
+backend-only, gated, incomplete, or intentionally unsurfaced. The UI must show
+the selected scope, the inherited source, and the effective value before any
+mutation. Integrations are the known exception: they still prompt for hierarchy
+context, but edits are location-level because vendor connections are bound to a
+specific location.
 
 ## Open Work — V1 launch path
 
@@ -65,6 +86,7 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 | `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |
 | `9.8` inbound vendor T&Cs (code lane) | code-ready, awaiting counsel | `phase_9_8/*` |
 | `business-timing-live` full hierarchy + settings lanes | future | `phase_business_timing_live/*` |
+| `admin-hierarchy-settings-overhaul` | planned | `docs/_execution/admin_hierarchy_settings_overhaul_plan_2026-05-08.md` |
 | Doc 1 item 7 — physical connected-device E2E | simulated proof documented; physical/emulator proof pending | new sprint `8.connected-device-e2e-smoke`; needs physical device |
 | Doc 1 item 9 — push delivery proof | preflight documented; needs staging apply + device | `8.push-notification-connected-device-proof` |
 | Group / region / company rollup truth | future | follows server rollup snapshots |

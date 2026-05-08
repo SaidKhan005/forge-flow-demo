@@ -33,6 +33,9 @@ Read only what the slice needs:
   work.
 - `docs/UX_ADJUSTMENT_FRAMEWORK.md` for UX polish, copy, navigation, button,
   modal, filter, tooltip, browser-tab, and no-regression admin-console polish.
+- `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` for broad
+  feature work, settings work, route/schema changes, runtime-exposed behavior,
+  or any implementation where hidden plumbing may matter.
 
 Avoid archived docs unless explicitly named. Keep `PROJECT_TRACKER.md` and
 `CLAUDE.md` pointer-only; put detail in phase docs, contracts, runbooks, or

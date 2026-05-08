@@ -27,6 +27,7 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 8. AI infrastructure is general-purpose — `LLMProvider`, `EmbeddingProvider`, `RerankProvider`, `DataSourceProvider`, `IntegrationProvider` are not advisor-specific; Phase 12 reuses the plumbing.
 9. AI cost metered by class — `usage_caps` two-slot key + 5 cost-discipline levers keep margin 75–95%.
 10. Every backend phase ships operator-facing UX before phase close. Phase docs include a `Frontend Exposure` section. UX-exposing slices include a demo-mode walkthrough; Codex returns `FOLLOW-UP NEEDED` if missing.
+11. Hierarchy-scoped settings are mandatory. Business/operator values inherit downward through org units to locations; lower configured scopes override higher scopes. Every settings, roles, timing, pricing, accuracy, security, support, and future configuration surface must show selected scope, inherited source, and effective value, or document why the capability is backend-only/gated/incomplete. Integrations are location-editable only because vendor connections are location-bound.
 
 ## Workflow
 
@@ -35,6 +36,7 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 - Between batches: master runs `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md` to audit, lean docs, archive, emit next prompts.
 - After `db/migrations/*.sql` changes: `tool/migration_drift_scanner.dart --fix --strict-docs` then `tool/migration_cutoff_lint.dart`.
 - Runtime acceptance (advisory pattern, not CI-enforced — reviewer judgment): `docs/contracts/slice_runtime_acceptance_contract.md`; browser slices use `runbooks/browser_use_codex_acceptance_workflow.md` (Codex-driven, out-of-repo — no harness binary lives here).
+- Feature lens audit: use `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` before broad feature work, settings work, route/schema changes, runtime-exposed behavior, or any implementation where hidden plumbing may matter.
 - Main chat is read-only across worktrees when worktrees are running. Tracker/memory/coordination edits on master OK.
 - Don't broaden scope. Don't update trackers during implementation unless asked. Report `Links updated: yes/no` if docs move.
 

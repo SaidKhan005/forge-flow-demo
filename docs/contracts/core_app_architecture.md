@@ -422,6 +422,31 @@ vendor → mobile flow goes through server-side Postgres + the proxy.
 
 ---
 
+## Hierarchy-scoped settings
+
+Every configurable setting resolves against the operator hierarchy in this
+order:
+
+`business/operator default -> org-unit ancestors from root to leaf -> location`
+
+The lowest configured scope wins. Missing lower scopes inherit from the nearest
+ancestor. This applies to roles, timing, timezone, data accuracy, polling and
+pricing, security policy, support filters, and future settings surfaces unless
+a narrower contract explicitly says otherwise.
+
+All UI that exposes a setting must show the selected scope, the inherited source
+when a value is inherited, and the effective value before a mutation. Mutating
+routes must accept explicit scope input, enforce role checks at that scope, and
+write auditable changes. Backend-only, gated, incomplete, or intentionally
+unsurfaced capabilities must be documented instead of represented by fake UI.
+
+Integrations are the exception to edit scope: the UI may prompt for hierarchy
+context to help the user find the right place, but vendor connection edits are
+location-level because OAuth state and external credentials are bound to one
+operator location.
+
+---
+
 ## Accuracy seams (Data Accuracy)
 
 The architecture exposes sanctioned accuracy settings that affect how source
