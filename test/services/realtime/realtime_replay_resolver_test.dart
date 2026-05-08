@@ -290,6 +290,67 @@ void main() {
       );
 
       test(
+        'pubsubBacklog wins over the in-process backlog when supplied (N5)',
+        () async {
+          // Two static backlogs; the resolver MUST query the pubsub
+          // one when both are wired (production cross-pod replay path).
+          // The local-fallback backlog is left wired so a future
+          // resolver bug that drops the pubsub override silently falls
+          // back to the in-process ring instead of an empty answer —
+          // and this test catches that drift by asserting the local
+          // backlog is never consulted while the pubsub backlog is.
+          final localBacklog = _RecordingBacklog();
+          final pubsubBacklog = _StaticBacklog(
+            fixed: <RealtimeEvent>[
+              _event('p1', DateTime.utc(2026, 5, 5, 12, 0, 1)),
+              _event('p2', DateTime.utc(2026, 5, 5, 12, 0, 2)),
+            ],
+          );
+          final resolver = RealtimeReplayResolver(
+            backlog: localBacklog,
+            pubsubBacklog: pubsubBacklog,
+          );
+
+          final result = await resolver.resolveMissedSince(
+            operatorId: _opA,
+            topic: _topic,
+            lastEventId: 'cursor',
+            backlogWindow: kRealtimeReplayBacklogWindow,
+          );
+
+          expect(result.map((e) => e.eventId).toList(), <String>['p1', 'p2']);
+          expect(
+            localBacklog.invocations,
+            isEmpty,
+            reason: 'pubsub override wins; local fallback is not consulted',
+          );
+          expect(pubsubBacklog.invocations, hasLength(1));
+        },
+      );
+
+      test(
+        'pubsubBacklog null falls back to the in-process backlog (N5)',
+        () async {
+          final localBacklog = _StaticBacklog(
+            fixed: <RealtimeEvent>[
+              _event('l1', DateTime.utc(2026, 5, 5, 12, 0, 1)),
+            ],
+          );
+          final resolver = RealtimeReplayResolver(backlog: localBacklog);
+
+          final result = await resolver.resolveMissedSince(
+            operatorId: _opA,
+            topic: _topic,
+            lastEventId: 'cursor',
+            backlogWindow: kRealtimeReplayBacklogWindow,
+          );
+
+          expect(result.map((e) => e.eventId).toList(), <String>['l1']);
+          expect(localBacklog.invocations, hasLength(1));
+        },
+      );
+
+      test(
         'cross-operator isolation: opA query never sees opB events',
         () async {
           final publisher = InProcessRealtimePublisher(ringBufferCapacity: 8);

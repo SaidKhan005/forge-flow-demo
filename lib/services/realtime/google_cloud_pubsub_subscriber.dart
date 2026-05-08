@@ -99,10 +99,10 @@ class PubsubSubscriptionName {
     final suffix = (r.nextInt(0xFFFF) | 0x1000).toRadixString(16);
     final composed =
         'forge-realtime-$sanitizedRevision-$sanitizedHostname-$suffix';
-    // Pub/Sub max length 255 — truncate in the middle (preserve prefix
-    // + suffix) if the composed name overflows.
+    // Pub/Sub max length 255 — preserve the random suffix on overflow
+    // so the name stays unique even after truncation.
     final clamped = composed.length > 255
-        ? '${composed.substring(0, 251)}-${suffix}'
+        ? '${composed.substring(0, 250 - suffix.length)}-$suffix'
         : composed;
     return PubsubSubscriptionName._(clamped);
   }
@@ -467,6 +467,19 @@ class GoogleCloudPubsubSubscriber implements RealtimeReplayBacklog {
       }
     }
     return null;
+  }
+
+  /// Topics for which this pod has captured at least one event for the
+  /// given operator. Mirrors `InProcessRealtimePublisher.topicsForOperator`
+  /// so the proxy's connection-wide replay closure can fan its per-topic
+  /// queries the same way regardless of which backlog is wired.
+  List<String> topicsForOperator(String operatorId) {
+    final topics = <String>[];
+    for (final key in _ringBuffers.keys) {
+      if (key.operatorId == operatorId) topics.add(key.topic);
+    }
+    topics.sort();
+    return List<String>.unmodifiable(topics);
   }
 
   /// Visible for tests.
