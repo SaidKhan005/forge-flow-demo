@@ -107,7 +107,43 @@ void main() {
     expect(find.byKey(const Key('admin_operator_row_op-1')), findsOneWidget);
     expect(find.byKey(const Key('admin_operator_row_op-2')), findsOneWidget);
     expect(find.byKey(const Key('admin_operator_manage_op-1')), findsNothing);
-    expect(find.byKey(const Key('admin_operator_manage_op-2')), findsOneWidget);
+    expect(find.byKey(const Key('admin_operator_manage_op-2')), findsNothing);
+    expect(find.text('Click to manage'), findsNothing);
+    expect(
+      find.byKey(const Key('admin_business_setup_tile_account_profile')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_business_setup_tile_data_accuracy')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_business_setup_tile_polling_pricing')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_business_setup_tile_people_access_roles')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const Key('admin_business_setup_tile_security_audit_sessions'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_business_setup_tile_support_logs')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_business_setup_tile_integrations')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_business_setup_tile_timing')),
+      findsOneWidget,
+    );
+    expect(find.text('Support workspace'), findsNothing);
     // The selected operator's name shows in both the list row and the
     // detail card; the unselected operator's name only in the list.
     expect(find.text('Alpha Cafe'), findsWidgets);
@@ -139,71 +175,85 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const Key('admin_operator_support_logs_op-support')),
+    final supportLogsTile = find.byKey(
+      const Key('admin_business_setup_tile_support_logs'),
     );
+    await tester.ensureVisible(supportLogsTile);
+    await tester.pumpAndSettle();
+    await tester.tap(supportLogsTile);
     await tester.pumpAndSettle();
     expect(supportLogRequests, hasLength(1));
     expect(supportLogRequests.single, <String?>['op-support', null]);
 
-    final locationLogs = find.byKey(
-      const Key('admin_location_support_logs_loc-support'),
+    final locationRow = find.byKey(
+      const Key('admin_hierarchy_location_loc-support'),
     );
-    await tester.ensureVisible(locationLogs);
+    await tester.ensureVisible(locationRow);
     await tester.pumpAndSettle();
-    await tester.tap(locationLogs);
+    await tester.tap(locationRow);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(supportLogsTile);
+    await tester.pumpAndSettle();
+    await tester.tap(supportLogsTile);
     await tester.pumpAndSettle();
     expect(supportLogRequests, hasLength(2));
     expect(supportLogRequests.last, <String?>['op-support', 'loc-support']);
   });
 
-  testWidgets(
-    'support workspace actions preserve business and location scope',
-    (tester) async {
-      final scopes = <AdminOperatorLocationScopeIntent>[];
-      final gateway = InMemoryOperatorLocationAdminGateway(
-        seed: <OperatorAdminBundle>[
-          seedBundle(
-            operatorId: 'op-workspace',
-            primaryLocationId: 'loc-workspace',
-            businessName: 'Workspace Cafe',
-          ),
-        ],
-      );
-      await tester.pumpWidget(
-        wrap(
-          OperatorLocationAdminScreen(
-            gateway: gateway,
-            onOpenSupportOperatorView: scopes.add,
-          ),
+  testWidgets('setup tiles preserve business and location hierarchy scope', (
+    tester,
+  ) async {
+    final scopes = <AdminHierarchyScopeIntent>[];
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[
+        seedBundle(
+          operatorId: 'op-workspace',
+          primaryLocationId: 'loc-workspace',
+          businessName: 'Workspace Cafe',
         ),
-      );
-      await tester.pumpAndSettle();
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(
+        OperatorLocationAdminScreen(
+          gateway: gateway,
+          onOpenPeopleAccessRolesScope: scopes.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const Key('admin_operator_support_view_op-workspace')),
-      );
-      await tester.pumpAndSettle();
-      expect(scopes, hasLength(1));
-      expect(scopes.single.operatorId, 'op-workspace');
-      expect(scopes.single.locationId, 'loc-workspace');
-      expect(scopes.single.operatorName, 'Workspace Cafe');
-      expect(scopes.single.locationName, 'HQ');
+    final peopleTile = find.byKey(
+      const Key('admin_business_setup_tile_people_access_roles'),
+    );
+    await tester.ensureVisible(peopleTile);
+    await tester.pumpAndSettle();
+    await tester.tap(peopleTile);
+    await tester.pumpAndSettle();
+    expect(scopes, hasLength(1));
+    expect(scopes.single.operatorId, 'op-workspace');
+    expect(scopes.single.scopeType, AdminHierarchyScopeType.business);
+    expect(scopes.single.locationId, isNull);
+    expect(scopes.single.operatorName, 'Workspace Cafe');
 
-      final locationSupportView = find.byKey(
-        const Key('admin_location_support_view_loc-workspace'),
-      );
-      await tester.ensureVisible(locationSupportView);
-      await tester.pumpAndSettle();
-      await tester.tap(locationSupportView);
-      await tester.pumpAndSettle();
-      expect(scopes, hasLength(2));
-      expect(scopes.last.operatorId, 'op-workspace');
-      expect(scopes.last.locationId, 'loc-workspace');
-      expect(scopes.last.operatorName, 'Workspace Cafe');
-      expect(scopes.last.locationName, 'HQ');
-    },
-  );
+    final locationRow = find.byKey(
+      const Key('admin_hierarchy_location_loc-workspace'),
+    );
+    await tester.ensureVisible(locationRow);
+    await tester.pumpAndSettle();
+    await tester.tap(locationRow);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(peopleTile);
+    await tester.pumpAndSettle();
+    await tester.tap(peopleTile);
+    await tester.pumpAndSettle();
+    expect(scopes, hasLength(2));
+    expect(scopes.last.operatorId, 'op-workspace');
+    expect(scopes.last.scopeType, AdminHierarchyScopeType.location);
+    expect(scopes.last.locationId, 'loc-workspace');
+    expect(scopes.last.operatorName, 'Workspace Cafe');
+    expect(scopes.last.locationName, 'HQ');
+  });
 
   testWidgets('location Timing action opens a scoped non-destructive dialog', (
     tester,
@@ -222,19 +272,27 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final timingAction = find.byKey(
-      const Key('admin_location_timing_loc-timing'),
+    final locationRow = find.byKey(
+      const Key('admin_hierarchy_location_loc-timing'),
     );
-    await tester.ensureVisible(timingAction);
+    await tester.ensureVisible(locationRow);
     await tester.pumpAndSettle();
-    await tester.tap(timingAction);
+    await tester.tap(locationRow);
+    await tester.pumpAndSettle();
+
+    final timingTile = find.byKey(
+      const Key('admin_business_setup_tile_timing'),
+    );
+    await tester.ensureVisible(timingTile);
+    await tester.pumpAndSettle();
+    await tester.tap(timingTile);
     await tester.pumpAndSettle();
 
     expect(
       find.byKey(const Key('admin_location_timing_dialog')),
       findsOneWidget,
     );
-    expect(find.text('Timing Cafe / HQ'), findsOneWidget);
+    expect(find.text('Timing Cafe / HQ'), findsWidgets);
     expect(find.text('America/Toronto'), findsOneWidget);
     expect(find.text('04:00'), findsOneWidget);
     expect(find.textContaining('No timing change was written'), findsOneWidget);
@@ -267,12 +325,20 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final timingAction = find.byKey(
-        const Key('admin_location_timing_loc-timing-readonly'),
+      final locationRow = find.byKey(
+        const Key('admin_hierarchy_location_loc-timing-readonly'),
       );
-      await tester.ensureVisible(timingAction);
+      await tester.ensureVisible(locationRow);
       await tester.pumpAndSettle();
-      await tester.tap(timingAction);
+      await tester.tap(locationRow);
+      await tester.pumpAndSettle();
+
+      final timingTile = find.byKey(
+        const Key('admin_business_setup_tile_timing'),
+      );
+      await tester.ensureVisible(timingTile);
+      await tester.pumpAndSettle();
+      await tester.tap(timingTile);
       await tester.pumpAndSettle();
 
       expect(
@@ -651,7 +717,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final removeButton = tester.widget<OutlinedButton>(
+    final removeButton = tester.widget<IconButton>(
       find.byKey(const Key('admin_location_remove_loc-x')),
     );
     expect(removeButton.onPressed, isNull);
@@ -668,16 +734,24 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final integrationsButton = find.byKey(
-      const Key('admin_location_vendor_connections_loc-seed-1'),
+    final locationRow = find.byKey(
+      const Key('admin_hierarchy_location_loc-seed-1'),
     );
-    await tester.ensureVisible(integrationsButton);
+    await tester.ensureVisible(locationRow);
+    await tester.pumpAndSettle();
+    await tester.tap(locationRow);
     await tester.pumpAndSettle();
 
-    expect(integrationsButton, findsOneWidget);
+    final integrationsTile = find.byKey(
+      const Key('admin_business_setup_tile_integrations'),
+    );
+    await tester.ensureVisible(integrationsTile);
+    await tester.pumpAndSettle();
+
+    expect(integrationsTile, findsOneWidget);
     expect(find.text('Integrations'), findsOneWidget);
 
-    await tester.tap(integrationsButton);
+    await tester.tap(integrationsTile);
     await tester.pumpAndSettle();
 
     expect(
@@ -722,7 +796,7 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const Key('admin_location_vendor_connections_loc-seed-1')),
+      find.byKey(const Key('admin_business_setup_tile_integrations')),
       findsOneWidget,
     );
   });

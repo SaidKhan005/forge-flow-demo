@@ -22,6 +22,8 @@ import '../models/email_conflict_details.dart';
 import '../../utils/iana_timezones.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
+import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_hierarchy_scope_prompt.dart';
 import '../widgets/admin_responsive_layout.dart';
 // Phase 8.0 - vendor connections mount (per-location admin sub-route).
 // Append-only addition; the existing Edit / Remove / Make-primary
@@ -32,14 +34,20 @@ class OperatorLocationAdminScreen extends StatefulWidget {
   const OperatorLocationAdminScreen({
     super.key,
     required this.gateway,
+    this.hierarchyGateway,
     this.idempotencyKeyFactory,
     this.onOpenSupportLogs,
+    this.onOpenSupportLogsScope,
     this.onOpenDataAccuracy,
+    this.onOpenDataAccuracyScope,
     this.onOpenPollingPricing,
+    this.onOpenPollingPricingScope,
     this.onOpenSupportOperatorView,
     this.onOpenTeam,
     this.onOpenAccess,
+    this.onOpenPeopleAccessRolesScope,
     this.onOpenAuditSupport,
+    this.onOpenSecurityAuditSessionsScope,
     this.onSelectOperatorScope,
     this.selectedParentOrgUnitId,
     this.selectedParentOrgUnitLabel,
@@ -47,16 +55,23 @@ class OperatorLocationAdminScreen extends StatefulWidget {
   });
 
   final OperatorLocationAdminGateway gateway;
+  final RolesHierarchySessionsAdminGateway? hierarchyGateway;
   final String? selectedParentOrgUnitId;
   final String? selectedParentOrgUnitLabel;
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenSupportLogsScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenDataAccuracyScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenPollingPricingScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>?
   onOpenSupportOperatorView;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenTeam;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAccess;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenPeopleAccessRolesScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAuditSupport;
+  final ValueChanged<AdminHierarchyScopeIntent>?
+  onOpenSecurityAuditSessionsScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onSelectOperatorScope;
   final bool editingEnabled;
 
@@ -77,6 +92,7 @@ class _OperatorLocationAdminScreenState
   String? _loadError;
   List<OperatorAdminBundle> _bundles = const <OperatorAdminBundle>[];
   String? _selectedOperatorId;
+  AdminHierarchyScopeIntent? _selectedHierarchyScope;
   String? _actionError;
   List<AdminEmailConflictUsage> _actionEmailConflicts =
       const <AdminEmailConflictUsage>[];
@@ -123,6 +139,14 @@ class _OperatorLocationAdminScreenState
             ? null
             : bundles.first.operator.operatorId;
         selectedAfterRefresh = _selected;
+        if (selectedAfterRefresh == null) {
+          _selectedHierarchyScope = null;
+        } else if (_selectedHierarchyScope?.operatorId !=
+            selectedAfterRefresh!.operator.operatorId) {
+          _selectedHierarchyScope = _businessHierarchyScope(
+            selectedAfterRefresh!,
+          );
+        }
       });
       _notifyOperatorScope(selectedAfterRefresh);
     } on OperatorLocationAdminGatewayError catch (error) {
@@ -145,8 +169,19 @@ class _OperatorLocationAdminScreenState
     setState(() {
       _selectedOperatorId = id;
       selected = _selected;
+      _selectedHierarchyScope = selected == null
+          ? null
+          : _businessHierarchyScope(selected!);
     });
     _notifyOperatorScope(selected);
+  }
+
+  void _selectHierarchyScope(AdminHierarchyScopeIntent scope) {
+    setState(() {
+      _selectedHierarchyScope = scope;
+      _actionError = null;
+      _actionEmailConflicts = const <AdminEmailConflictUsage>[];
+    });
   }
 
   void _notifyOperatorScope(OperatorAdminBundle? bundle) {
@@ -166,6 +201,17 @@ class _OperatorLocationAdminScreenState
       operatorName: bundle.operator.businessName,
       locationId: location?.locationId,
       locationName: location?.name,
+    );
+  }
+
+  AdminHierarchyScopeIntent _businessHierarchyScope(
+    OperatorAdminBundle bundle,
+  ) {
+    return AdminHierarchyScopeIntent.business(
+      operatorId: bundle.operator.operatorId,
+      operatorName: bundle.operator.businessName,
+      effectiveValueLabel: 'Business default',
+      allowedActionsLabel: widget.editingEnabled ? 'Editable' : 'Read-only',
     );
   }
 
@@ -307,6 +353,11 @@ class _OperatorLocationAdminScreenState
           ? const SizedBox.shrink()
           : _OperatorDetail(
               bundle: _selected!,
+              hierarchyGateway: widget.hierarchyGateway,
+              selectedHierarchyScope:
+                  _selectedHierarchyScope ??
+                  _businessHierarchyScope(_selected!),
+              onSelectHierarchyScope: _selectHierarchyScope,
               onEditOperator: _openEditOperatorDialog,
               onSuspend: _suspend,
               onReactivate: _reactivate,
@@ -315,14 +366,28 @@ class _OperatorLocationAdminScreenState
               onRemoveLocation: _removeLocation,
               onSetPrimary: _setPrimaryLocation,
               onOpenSupportLogs: widget.onOpenSupportLogs,
+              onOpenSupportLogsScope: widget.onOpenSupportLogsScope,
               onOpenDataAccuracy: widget.onOpenDataAccuracy,
+              onOpenDataAccuracyScope: widget.onOpenDataAccuracyScope,
               onOpenPollingPricing: widget.onOpenPollingPricing,
+              onOpenPollingPricingScope: widget.onOpenPollingPricingScope,
               onOpenSupportOperatorView: widget.onOpenSupportOperatorView,
               onOpenTeam: widget.onOpenTeam,
               onOpenAccess: widget.onOpenAccess,
+              onOpenPeopleAccessRolesScope: widget.onOpenPeopleAccessRolesScope,
               onOpenAuditSupport: widget.onOpenAuditSupport,
-              selectedParentOrgUnitId: widget.selectedParentOrgUnitId,
-              selectedParentOrgUnitLabel: widget.selectedParentOrgUnitLabel,
+              onOpenSecurityAuditSessionsScope:
+                  widget.onOpenSecurityAuditSessionsScope,
+              selectedParentOrgUnitId:
+                  _selectedHierarchyScope?.scopeType ==
+                      AdminHierarchyScopeType.orgUnit
+                  ? _selectedHierarchyScope?.orgUnitId
+                  : widget.selectedParentOrgUnitId,
+              selectedParentOrgUnitLabel:
+                  _selectedHierarchyScope?.scopeType ==
+                      AdminHierarchyScopeType.orgUnit
+                  ? _selectedHierarchyScope?.orgUnitName
+                  : widget.selectedParentOrgUnitLabel,
               editingEnabled: widget.editingEnabled,
             ),
     );
@@ -380,7 +445,15 @@ class _OperatorLocationAdminScreenState
 
   Future<void> _openAddLocationDialog(OperatorAdminBundle bundle) async {
     if (!widget.editingEnabled) return;
-    final parentOrgUnitId = widget.selectedParentOrgUnitId?.trim();
+    final selectedOrgUnitScope =
+        _selectedHierarchyScope?.scopeType == AdminHierarchyScopeType.orgUnit
+        ? _selectedHierarchyScope
+        : null;
+    final parentOrgUnitId =
+        selectedOrgUnitScope?.orgUnitId?.trim() ??
+        widget.selectedParentOrgUnitId?.trim();
+    final parentOrgUnitLabel =
+        selectedOrgUnitScope?.orgUnitName ?? widget.selectedParentOrgUnitLabel;
     if (parentOrgUnitId == null || parentOrgUnitId.isEmpty) {
       setState(() {
         _actionError = 'Select an org unit before adding a location.';
@@ -393,7 +466,7 @@ class _OperatorLocationAdminScreenState
       builder: (_) => _LocationDialog(
         operatorId: bundle.operator.operatorId,
         parentOrgUnitId: parentOrgUnitId,
-        parentOrgUnitLabel: widget.selectedParentOrgUnitLabel,
+        parentOrgUnitLabel: parentOrgUnitLabel,
         idempotencyKey: _nextIdempotencyKey(),
       ),
     );
@@ -789,6 +862,14 @@ class _OperatorTile extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  size: 18,
+                  color: selected ? AppColors.sunsetDark : AppColors.textMuted,
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     operator.businessName,
@@ -799,22 +880,6 @@ class _OperatorTile extends StatelessWidget {
                     maxLines: 2,
                   ),
                 ),
-                if (!selected) ...[
-                  const SizedBox(width: 12),
-                  OutlinedButton(
-                    key: Key('admin_operator_manage_${operator.operatorId}'),
-                    onPressed: onSelect,
-                    style: AdminButtonStyles.secondary(
-                      minWidth: 132,
-                      minHeight: 42,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                    ),
-                    child: const Text('Click to manage'),
-                  ),
-                ],
               ],
             ),
           ),
@@ -827,6 +892,9 @@ class _OperatorTile extends StatelessWidget {
 class _OperatorDetail extends StatelessWidget {
   const _OperatorDetail({
     required this.bundle,
+    required this.hierarchyGateway,
+    required this.selectedHierarchyScope,
+    required this.onSelectHierarchyScope,
     required this.onEditOperator,
     required this.onSuspend,
     required this.onReactivate,
@@ -835,18 +903,26 @@ class _OperatorDetail extends StatelessWidget {
     required this.onRemoveLocation,
     required this.onSetPrimary,
     required this.onOpenSupportLogs,
+    required this.onOpenSupportLogsScope,
     required this.onOpenDataAccuracy,
+    required this.onOpenDataAccuracyScope,
     required this.onOpenPollingPricing,
+    required this.onOpenPollingPricingScope,
     required this.onOpenSupportOperatorView,
     required this.onOpenTeam,
     required this.onOpenAccess,
+    required this.onOpenPeopleAccessRolesScope,
     required this.onOpenAuditSupport,
+    required this.onOpenSecurityAuditSessionsScope,
     required this.selectedParentOrgUnitId,
     this.selectedParentOrgUnitLabel,
     required this.editingEnabled,
   });
 
   final OperatorAdminBundle bundle;
+  final RolesHierarchySessionsAdminGateway? hierarchyGateway;
+  final AdminHierarchyScopeIntent selectedHierarchyScope;
+  final ValueChanged<AdminHierarchyScopeIntent> onSelectHierarchyScope;
   final ValueChanged<OperatorAdminBundle> onEditOperator;
   final ValueChanged<OperatorAdminBundle> onSuspend;
   final ValueChanged<OperatorAdminBundle> onReactivate;
@@ -855,13 +931,19 @@ class _OperatorDetail extends StatelessWidget {
   final ValueChanged<LocationAdminRecord> onRemoveLocation;
   final void Function(OperatorAdminBundle, LocationAdminRecord) onSetPrimary;
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenSupportLogsScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenDataAccuracyScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenPollingPricingScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>?
   onOpenSupportOperatorView;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenTeam;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAccess;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenPeopleAccessRolesScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAuditSupport;
+  final ValueChanged<AdminHierarchyScopeIntent>?
+  onOpenSecurityAuditSessionsScope;
   final String? selectedParentOrgUnitId;
   final String? selectedParentOrgUnitLabel;
   final bool editingEnabled;
@@ -873,24 +955,20 @@ class _OperatorDetail extends StatelessWidget {
         parentOrgUnitId.isNotEmpty;
   }
 
-  AdminOperatorLocationScopeIntent get _primaryScope {
-    final primaryLocation = bundle.primaryLocation;
-    final fallbackLocation = bundle.locations.isEmpty
-        ? null
-        : bundle.locations.first;
-    final location = primaryLocation ?? fallbackLocation;
-    return AdminOperatorLocationScopeIntent(
-      operatorId: bundle.operator.operatorId,
-      operatorName: bundle.operator.businessName,
-      locationId: location?.locationId,
-      locationName: location?.name,
-    );
+  LocationAdminRecord? get _selectedLocationForScope {
+    final locationId = selectedHierarchyScope.locationId;
+    if (locationId == null) return null;
+    for (final location in bundle.locations) {
+      if (location.locationId == locationId) return location;
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
     final operator = bundle.operator;
     final canAddLocation = _canAddLocation;
+    final selectedLocation = _selectedLocationForScope;
     return SingleChildScrollView(
       key: Key('admin_operator_detail_${operator.operatorId}'),
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -939,99 +1017,35 @@ class _OperatorDetail extends StatelessWidget {
                   value: bundle.primaryLocation?.name ?? 'No primary location',
                 ),
                 const SizedBox(height: 14),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                _ActionRowWrap(
                   children: [
-                    _ActionRowWrap(
-                      children: [
-                        _OperatorActionButton(
-                          buttonKey: Key(
-                            'admin_operator_support_view_${operator.operatorId}',
-                          ),
-                          label: 'Support view',
-                          icon: Icons.support_agent_outlined,
-                          tooltip:
-                              'Open people, access, security, audit, and vendors',
-                          minWidth: 142,
-                          onPressed: onOpenSupportOperatorView == null
-                              ? null
-                              : () => onOpenSupportOperatorView!(_primaryScope),
+                    if (editingEnabled)
+                      _OperatorActionButton(
+                        buttonKey: const Key('admin_operator_edit_button'),
+                        label: 'Edit',
+                        icon: Icons.edit_outlined,
+                        tooltip: 'Edit business account',
+                        onPressed: () => onEditOperator(bundle),
+                      ),
+                    if (editingEnabled && operator.isSuspended)
+                      _OperatorActionButton(
+                        buttonKey: const Key(
+                          'admin_operator_reactivate_button',
                         ),
-                        _OperatorActionButton(
-                          buttonKey: Key(
-                            'admin_operator_data_accuracy_${operator.operatorId}',
-                          ),
-                          label: 'Data accuracy',
-                          icon: Icons.fact_check_outlined,
-                          tooltip: 'Open data accuracy for this business',
-                          minWidth: 136,
-                          onPressed: onOpenDataAccuracy == null
-                              ? null
-                              : () => onOpenDataAccuracy!(_primaryScope),
-                        ),
-                        _OperatorActionButton(
-                          buttonKey: Key(
-                            'admin_operator_polling_pricing_${operator.operatorId}',
-                          ),
-                          label: 'Polling & pricing',
-                          icon: Icons.payments_outlined,
-                          tooltip: 'Open polling and pricing for this business',
-                          minWidth: 148,
-                          onPressed: onOpenPollingPricing == null
-                              ? null
-                              : () => onOpenPollingPricing!(_primaryScope),
-                        ),
-                        _OperatorActionButton(
-                          buttonKey: Key(
-                            'admin_operator_support_logs_${operator.operatorId}',
-                          ),
-                          label: 'View logs',
-                          icon: Icons.bug_report_outlined,
-                          tooltip: 'Open support logs for this business',
-                          minWidth: 116,
-                          onPressed: onOpenSupportLogs == null
-                              ? null
-                              : () => onOpenSupportLogs!(
-                                  operator.operatorId,
-                                  null,
-                                ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    _ActionRowWrap(
-                      children: [
-                        if (editingEnabled)
-                          _OperatorActionButton(
-                            buttonKey: const Key('admin_operator_edit_button'),
-                            label: 'Edit',
-                            icon: Icons.edit_outlined,
-                            tooltip: 'Edit business account',
-                            onPressed: () => onEditOperator(bundle),
-                          ),
-                        if (editingEnabled && operator.isSuspended)
-                          _OperatorActionButton(
-                            buttonKey: const Key(
-                              'admin_operator_reactivate_button',
-                            ),
-                            label: 'Reactivate',
-                            icon: Icons.play_arrow_outlined,
-                            tooltip: 'Reactivate this business account',
-                            onPressed: () => onReactivate(bundle),
-                          ),
-                        if (editingEnabled && !operator.isSuspended)
-                          _OperatorActionButton(
-                            buttonKey: const Key(
-                              'admin_operator_suspend_button',
-                            ),
-                            label: 'Suspend',
-                            icon: Icons.pause_outlined,
-                            tooltip: 'Suspend this business account',
-                            destructive: true,
-                            onPressed: () => onSuspend(bundle),
-                          ),
-                      ],
-                    ),
+                        label: 'Reactivate',
+                        icon: Icons.play_arrow_outlined,
+                        tooltip: 'Reactivate this business account',
+                        onPressed: () => onReactivate(bundle),
+                      ),
+                    if (editingEnabled && !operator.isSuspended)
+                      _OperatorActionButton(
+                        buttonKey: const Key('admin_operator_suspend_button'),
+                        label: 'Suspend',
+                        icon: Icons.pause_outlined,
+                        tooltip: 'Suspend this business account',
+                        destructive: true,
+                        onPressed: () => onSuspend(bundle),
+                      ),
                   ],
                 ),
               ],
@@ -1040,161 +1054,94 @@ class _OperatorDetail extends StatelessWidget {
           const SizedBox(height: 12),
           _BusinessSetupCard(
             bundle: bundle,
-            onOpenSupportOperatorView: onOpenSupportOperatorView == null
+            selectedScope: selectedHierarchyScope,
+            onEditOperator: editingEnabled
+                ? () => onEditOperator(bundle)
+                : null,
+            onOpenDataAccuracy: onOpenDataAccuracyScope != null
+                ? () => onOpenDataAccuracyScope!(selectedHierarchyScope)
+                : onOpenDataAccuracy == null
                 ? null
-                : () => onOpenSupportOperatorView!(_primaryScope),
-            onOpenTeam: onOpenTeam == null
+                : () => onOpenDataAccuracy!(
+                    selectedHierarchyScope.toOperatorLocationScope(),
+                  ),
+            onOpenPollingPricing: onOpenPollingPricingScope != null
+                ? () => onOpenPollingPricingScope!(selectedHierarchyScope)
+                : onOpenPollingPricing == null
                 ? null
-                : () => onOpenTeam!(_primaryScope),
-            onOpenAccess: onOpenAccess == null
+                : () => onOpenPollingPricing!(
+                    selectedHierarchyScope.toOperatorLocationScope(),
+                  ),
+            onOpenPeopleAccessRoles: onOpenPeopleAccessRolesScope != null
+                ? () => onOpenPeopleAccessRolesScope!(selectedHierarchyScope)
+                : onOpenAccess == null
+                ? onOpenTeam == null
+                      ? null
+                      : () => onOpenTeam!(
+                          selectedHierarchyScope.toOperatorLocationScope(),
+                        )
+                : () => onOpenAccess!(
+                    selectedHierarchyScope.toOperatorLocationScope(),
+                  ),
+            onOpenSecurityAuditSessions:
+                onOpenSecurityAuditSessionsScope != null
+                ? () =>
+                      onOpenSecurityAuditSessionsScope!(selectedHierarchyScope)
+                : onOpenAuditSupport == null
                 ? null
-                : () => onOpenAccess!(_primaryScope),
-            onOpenAuditSupport: onOpenAuditSupport == null
+                : () => onOpenAuditSupport!(
+                    selectedHierarchyScope.toOperatorLocationScope(),
+                  ),
+            onOpenSupportLogs: onOpenSupportLogsScope != null
+                ? () => onOpenSupportLogsScope!(selectedHierarchyScope)
+                : onOpenSupportLogs == null
                 ? null
-                : () => onOpenAuditSupport!(_primaryScope),
-            onOpenDataAccuracy: onOpenDataAccuracy == null
+                : () => onOpenSupportLogs!(
+                    selectedHierarchyScope.operatorId,
+                    selectedHierarchyScope.locationId,
+                  ),
+            onOpenIntegrations: selectedLocation == null
                 ? null
-                : () => onOpenDataAccuracy!(_primaryScope),
-            onOpenPollingPricing: onOpenPollingPricing == null
+                : () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        settings: const RouteSettings(
+                          name: '/vendor-connections',
+                        ),
+                        builder: (_) => VendorConnectionsAdminMount(
+                          operatorId: selectedLocation.operatorId,
+                          locationId: selectedLocation.locationId,
+                          locationName: selectedLocation.name,
+                          canMutate: editingEnabled,
+                        ),
+                      ),
+                    );
+                  },
+            onOpenTiming: selectedLocation == null
                 ? null
-                : () => onOpenPollingPricing!(_primaryScope),
+                : () {
+                    showDialog<void>(
+                      context: context,
+                      builder: (_) => _AdminLocationTimingDialog(
+                        operatorName: operator.businessName,
+                        location: selectedLocation,
+                        editingEnabled: editingEnabled,
+                      ),
+                    );
+                  },
           ),
           const SizedBox(height: 12),
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 250),
-            child: AdminCard(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      Text(
-                        'Locations',
-                        style: AppTextStyles.sectionTitle(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      if (editingEnabled)
-                        Tooltip(
-                          message: canAddLocation
-                              ? 'Add location'
-                              : 'Select an org unit before adding a location',
-                          child: OutlinedButton.icon(
-                            key: const Key(
-                              'admin_operator_add_location_button',
-                            ),
-                            onPressed: canAddLocation
-                                ? () => onAddLocation(bundle)
-                                : null,
-                            icon: const Icon(Icons.add, size: 14),
-                            label: const Text('Add location'),
-                          ),
-                        ),
-                    ],
-                  ),
-                  if (editingEnabled && !canAddLocation) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      'Select an org unit before adding a location.',
-                      key: const Key(
-                        'admin_location_parent_org_unit_required_copy',
-                      ),
-                      style: AppTextStyles.body13(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 18),
-                  ...bundle.locations.map(
-                    (location) => _LocationRow(
-                      key: Key('admin_location_row_${location.locationId}'),
-                      operatorName: operator.businessName,
-                      location: location,
-                      muted: operator.isSuspended,
-                      isPrimary:
-                          bundle.operator.primaryLocationId ==
-                          location.locationId,
-                      onEdit: () => onEditLocation(location),
-                      onRemove: () => onRemoveLocation(location),
-                      onMakePrimary: () => onSetPrimary(bundle, location),
-                      onOpenSupportLogs: onOpenSupportLogs == null
-                          ? null
-                          : () => onOpenSupportLogs!(
-                              operator.operatorId,
-                              location.locationId,
-                            ),
-                      onOpenDataAccuracy: onOpenDataAccuracy == null
-                          ? null
-                          : () => onOpenDataAccuracy!(
-                              AdminOperatorLocationScopeIntent(
-                                operatorId: operator.operatorId,
-                                locationId: location.locationId,
-                                operatorName: operator.businessName,
-                                locationName: location.name,
-                              ),
-                            ),
-                      onOpenPollingPricing: onOpenPollingPricing == null
-                          ? null
-                          : () => onOpenPollingPricing!(
-                              AdminOperatorLocationScopeIntent(
-                                operatorId: operator.operatorId,
-                                locationId: location.locationId,
-                                operatorName: operator.businessName,
-                                locationName: location.name,
-                              ),
-                            ),
-                      onOpenSupportOperatorView:
-                          onOpenSupportOperatorView == null
-                          ? null
-                          : () => onOpenSupportOperatorView!(
-                              AdminOperatorLocationScopeIntent(
-                                operatorId: operator.operatorId,
-                                locationId: location.locationId,
-                                operatorName: operator.businessName,
-                                locationName: location.name,
-                              ),
-                            ),
-                      onOpenTeam: onOpenTeam == null
-                          ? null
-                          : () => onOpenTeam!(
-                              AdminOperatorLocationScopeIntent(
-                                operatorId: operator.operatorId,
-                                locationId: location.locationId,
-                                operatorName: operator.businessName,
-                                locationName: location.name,
-                              ),
-                            ),
-                      onOpenAccess: onOpenAccess == null
-                          ? null
-                          : () => onOpenAccess!(
-                              AdminOperatorLocationScopeIntent(
-                                operatorId: operator.operatorId,
-                                locationId: location.locationId,
-                                operatorName: operator.businessName,
-                                locationName: location.name,
-                              ),
-                            ),
-                      onOpenAuditSupport: onOpenAuditSupport == null
-                          ? null
-                          : () => onOpenAuditSupport!(
-                              AdminOperatorLocationScopeIntent(
-                                operatorId: operator.operatorId,
-                                locationId: location.locationId,
-                                operatorName: operator.businessName,
-                                locationName: location.name,
-                              ),
-                            ),
-                      editingEnabled: editingEnabled,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          _BusinessHierarchyPanel(
+            bundle: bundle,
+            gateway: hierarchyGateway,
+            selectedScope: selectedHierarchyScope,
+            onSelectScope: onSelectHierarchyScope,
+            onAddLocation: canAddLocation ? () => onAddLocation(bundle) : null,
+            addLocationEnabled: canAddLocation,
+            onEditLocation: onEditLocation,
+            onRemoveLocation: onRemoveLocation,
+            onSetPrimary: (location) => onSetPrimary(bundle, location),
+            editingEnabled: editingEnabled,
           ),
         ],
       ),
@@ -1205,21 +1152,27 @@ class _OperatorDetail extends StatelessWidget {
 class _BusinessSetupCard extends StatelessWidget {
   const _BusinessSetupCard({
     required this.bundle,
-    required this.onOpenSupportOperatorView,
-    required this.onOpenTeam,
-    required this.onOpenAccess,
-    required this.onOpenAuditSupport,
+    required this.selectedScope,
+    required this.onEditOperator,
+    required this.onOpenPeopleAccessRoles,
+    required this.onOpenSecurityAuditSessions,
     required this.onOpenDataAccuracy,
     required this.onOpenPollingPricing,
+    required this.onOpenSupportLogs,
+    required this.onOpenIntegrations,
+    required this.onOpenTiming,
   });
 
   final OperatorAdminBundle bundle;
-  final VoidCallback? onOpenSupportOperatorView;
-  final VoidCallback? onOpenTeam;
-  final VoidCallback? onOpenAccess;
-  final VoidCallback? onOpenAuditSupport;
+  final AdminHierarchyScopeIntent selectedScope;
+  final VoidCallback? onEditOperator;
+  final VoidCallback? onOpenPeopleAccessRoles;
+  final VoidCallback? onOpenSecurityAuditSessions;
   final VoidCallback? onOpenDataAccuracy;
   final VoidCallback? onOpenPollingPricing;
+  final VoidCallback? onOpenSupportLogs;
+  final VoidCallback? onOpenIntegrations;
+  final VoidCallback? onOpenTiming;
 
   @override
   Widget build(BuildContext context) {
@@ -1260,10 +1213,51 @@ class _BusinessSetupCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            'This shows only setup facts already routed to the admin console. '
-            'Open each area to review the live team, access, data, and audit state.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          Container(
+            key: const Key('admin_business_setup_scope_summary'),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.peacock.withValues(alpha: 0.08),
+              border: Border.all(
+                color: AppColors.peacock.withValues(alpha: 0.28),
+                width: 1,
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Selected ${selectedScope.scopeType.label.toLowerCase()} scope',
+                  style: AppTextStyles.uiLabel(color: AppColors.peacockDark),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  selectedScope.displayLabel,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    AdminHierarchyScopeStatusChip(
+                      label: selectedScope.inheritanceLabel,
+                    ),
+                    if (selectedScope.effectiveValueLabel != null)
+                      AdminHierarchyScopeStatusChip(
+                        label:
+                            'Effective: ${selectedScope.effectiveValueLabel}',
+                      ),
+                    if (selectedScope.allowedActionsLabel != null)
+                      AdminHierarchyScopeStatusChip(
+                        label: selectedScope.allowedActionsLabel!,
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -1271,58 +1265,78 @@ class _BusinessSetupCard extends StatelessWidget {
             runSpacing: 10,
             children: [
               _SetupTile(
+                tileKey: const Key('admin_business_setup_tile_account_profile'),
                 label: 'Account profile',
                 value: profileComplete ? 'Ready' : 'Needs details',
                 icon: Icons.badge_outlined,
                 tone: profileComplete ? AppColors.positive : AppColors.warning,
+                onPressed: onEditOperator,
               ),
               _SetupTile(
-                label: 'Primary location',
-                value: hasPrimary ? bundle.primaryLocation!.name : 'Missing',
-                icon: Icons.star_outline,
-                tone: hasPrimary ? AppColors.positive : AppColors.warning,
-              ),
-              _SetupTile(
-                label: 'Support workspace',
-                value: 'Open',
-                icon: Icons.support_agent_outlined,
-                tone: AppColors.sunset,
-                onPressed: onOpenSupportOperatorView,
-              ),
-              _SetupTile(
-                label: 'People',
-                value: 'Review',
-                icon: Icons.people_alt_outlined,
-                tone: AppColors.peacock,
-                onPressed: onOpenTeam,
-              ),
-              _SetupTile(
-                label: 'Access',
-                value: 'Review',
-                icon: Icons.account_tree_outlined,
-                tone: AppColors.ocean,
-                onPressed: onOpenAccess,
-              ),
-              _SetupTile(
-                label: 'Data',
+                tileKey: const Key('admin_business_setup_tile_data_accuracy'),
+                label: 'Data accuracy',
                 value: 'Review',
                 icon: Icons.fact_check_outlined,
                 tone: AppColors.peacockDark,
                 onPressed: onOpenDataAccuracy,
               ),
               _SetupTile(
-                label: 'Security & audit',
-                value: 'Review',
-                icon: Icons.history_outlined,
-                tone: AppColors.textMuted,
-                onPressed: onOpenAuditSupport,
-              ),
-              _SetupTile(
-                label: 'Polling & pricing',
+                tileKey: const Key('admin_business_setup_tile_polling_pricing'),
+                label: 'Polling and pricing',
                 value: 'Review',
                 icon: Icons.payments_outlined,
                 tone: AppColors.warning,
                 onPressed: onOpenPollingPricing,
+              ),
+              _SetupTile(
+                tileKey: const Key(
+                  'admin_business_setup_tile_people_access_roles',
+                ),
+                label: 'People, access, and roles',
+                value: 'Review',
+                icon: Icons.people_alt_outlined,
+                tone: AppColors.peacock,
+                onPressed: onOpenPeopleAccessRoles,
+              ),
+              _SetupTile(
+                tileKey: const Key(
+                  'admin_business_setup_tile_security_audit_sessions',
+                ),
+                label: 'Security, audit, and sessions',
+                value: 'Review',
+                icon: Icons.security_outlined,
+                tone: AppColors.textMuted,
+                onPressed: onOpenSecurityAuditSessions,
+              ),
+              _SetupTile(
+                tileKey: const Key('admin_business_setup_tile_support_logs'),
+                label: 'Support logs',
+                value: 'Review',
+                icon: Icons.bug_report_outlined,
+                tone: AppColors.sunset,
+                onPressed: onOpenSupportLogs,
+              ),
+              _SetupTile(
+                tileKey: const Key('admin_business_setup_tile_integrations'),
+                label: 'Integrations',
+                value: selectedScope.isLocationScope
+                    ? 'Location'
+                    : 'Location required',
+                icon: Icons.link_outlined,
+                tone: selectedScope.isLocationScope
+                    ? AppColors.ocean
+                    : AppColors.textMuted,
+                onPressed: onOpenIntegrations,
+              ),
+              _SetupTile(
+                tileKey: const Key('admin_business_setup_tile_timing'),
+                label: 'Timing',
+                value: hasPrimary && selectedScope.isLocationScope
+                    ? 'Location'
+                    : 'Location required',
+                icon: Icons.schedule_outlined,
+                tone: AppColors.warning,
+                onPressed: onOpenTiming,
               ),
             ],
           ),
@@ -1332,8 +1346,489 @@ class _BusinessSetupCard extends StatelessWidget {
   }
 }
 
+class _BusinessHierarchyPanel extends StatefulWidget {
+  const _BusinessHierarchyPanel({
+    required this.bundle,
+    required this.gateway,
+    required this.selectedScope,
+    required this.onSelectScope,
+    required this.onAddLocation,
+    required this.addLocationEnabled,
+    required this.onEditLocation,
+    required this.onRemoveLocation,
+    required this.onSetPrimary,
+    required this.editingEnabled,
+  });
+
+  final OperatorAdminBundle bundle;
+  final RolesHierarchySessionsAdminGateway? gateway;
+  final AdminHierarchyScopeIntent selectedScope;
+  final ValueChanged<AdminHierarchyScopeIntent> onSelectScope;
+  final VoidCallback? onAddLocation;
+  final bool addLocationEnabled;
+  final ValueChanged<LocationAdminRecord> onEditLocation;
+  final ValueChanged<LocationAdminRecord> onRemoveLocation;
+  final ValueChanged<LocationAdminRecord> onSetPrimary;
+  final bool editingEnabled;
+
+  @override
+  State<_BusinessHierarchyPanel> createState() =>
+      _BusinessHierarchyPanelState();
+}
+
+class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
+  Future<_HierarchyPanelData>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BusinessHierarchyPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bundle.operator.operatorId !=
+            widget.bundle.operator.operatorId ||
+        oldWidget.gateway != widget.gateway) {
+      _future = _load();
+    }
+  }
+
+  Future<_HierarchyPanelData> _load() async {
+    final gateway = widget.gateway;
+    if (gateway == null) return _HierarchyPanelData.empty();
+    final operatorId = widget.bundle.operator.operatorId;
+    final results = await Future.wait<Object>([
+      gateway.listOrgUnits(operatorId: operatorId),
+      gateway.listHierarchyLocations(operatorId: operatorId),
+    ]);
+    return _HierarchyPanelData(
+      orgUnits: results[0] as List<OrgUnitAdminNode>,
+      locations: results[1] as List<HierarchyLocationLeaf>,
+    );
+  }
+
+  AdminHierarchyScopeIntent _businessScope() {
+    return AdminHierarchyScopeIntent.business(
+      operatorId: widget.bundle.operator.operatorId,
+      operatorName: widget.bundle.operator.businessName,
+      effectiveValueLabel: 'Business default',
+      allowedActionsLabel: widget.editingEnabled ? 'Editable' : 'Read-only',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 250),
+      child: AdminCard(
+        key: const Key('admin_business_hierarchy_panel'),
+        padding: const EdgeInsets.all(24),
+        child: FutureBuilder<_HierarchyPanelData>(
+          future: _future,
+          builder: (context, snapshot) {
+            final data = snapshot.data ?? _HierarchyPanelData.empty();
+            final loading =
+                snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Text(
+                      'Location hierarchy',
+                      style: AppTextStyles.sectionTitle(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    if (widget.editingEnabled)
+                      Tooltip(
+                        message: widget.addLocationEnabled
+                            ? 'Add location'
+                            : 'Select an org unit before adding a location',
+                        child: OutlinedButton.icon(
+                          key: const Key('admin_operator_add_location_button'),
+                          onPressed: widget.addLocationEnabled
+                              ? widget.onAddLocation
+                              : null,
+                          icon: const Icon(Icons.add, size: 14),
+                          label: const Text('Add location'),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Select business, org-unit, or location scope before opening setup.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+                if (widget.editingEnabled && !widget.addLocationEnabled) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Select an org unit before adding a location.',
+                    key: const Key(
+                      'admin_location_parent_org_unit_required_copy',
+                    ),
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
+                  ),
+                ],
+                if (snapshot.hasError) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Hierarchy details are unavailable; showing known locations.',
+                    key: const Key('admin_business_hierarchy_load_error'),
+                    style: AppTextStyles.body13(color: AppColors.warning),
+                  ),
+                ],
+                if (loading) ...[
+                  const SizedBox(height: 16),
+                  const LinearProgressIndicator(
+                    key: Key('admin_business_hierarchy_loading'),
+                    minHeight: 2,
+                    color: AppColors.sunsetDark,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                _HierarchyScopeRow(
+                  key: const Key('admin_hierarchy_business_scope_row'),
+                  icon: Icons.business_outlined,
+                  label: widget.bundle.operator.businessName,
+                  subtitle: 'Business scope',
+                  selected:
+                      widget.selectedScope.scopeType ==
+                      AdminHierarchyScopeType.business,
+                  onTap: () => widget.onSelectScope(_businessScope()),
+                ),
+                const SizedBox(height: 8),
+                ..._buildTreeRows(data),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildTreeRows(_HierarchyPanelData data) {
+    final unitsByParent = <String?, List<OrgUnitAdminNode>>{};
+    final unitNames = <String, String>{};
+    for (final unit in data.orgUnits) {
+      unitNames[unit.orgUnitId] = unit.name;
+      unitsByParent
+          .putIfAbsent(unit.parentOrgUnitId, () => <OrgUnitAdminNode>[])
+          .add(unit);
+    }
+    for (final list in unitsByParent.values) {
+      list.sort((a, b) => a.name.compareTo(b.name));
+    }
+
+    final leafParentByLocation = <String, String>{};
+    for (final leaf in data.locations) {
+      leafParentByLocation[leaf.locationId] = leaf.orgUnitId;
+    }
+    final locationsByParent = <String?, List<LocationAdminRecord>>{};
+    for (final location in widget.bundle.locations) {
+      final parentFromData =
+          location.parentOrgUnitId ?? leafParentByLocation[location.locationId];
+      final parent = unitNames.containsKey(parentFromData)
+          ? parentFromData
+          : null;
+      locationsByParent
+          .putIfAbsent(parent, () => <LocationAdminRecord>[])
+          .add(location);
+    }
+    for (final list in locationsByParent.values) {
+      list.sort((a, b) => a.name.compareTo(b.name));
+    }
+
+    final rows = <Widget>[];
+    final rootUnits = unitsByParent[null] ?? const <OrgUnitAdminNode>[];
+    if (rootUnits.isEmpty) {
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 6, bottom: 6),
+          child: Text(
+            'No org units yet for this business.',
+            key: const Key('admin_business_hierarchy_no_org_units'),
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ),
+      );
+    }
+    for (final unit in rootUnits) {
+      rows.addAll(
+        _buildOrgUnitRows(
+          unit: unit,
+          depth: 0,
+          unitsByParent: unitsByParent,
+          unitNames: unitNames,
+          locationsByParent: locationsByParent,
+          path: const <String>[],
+        ),
+      );
+    }
+    final unassigned = locationsByParent[null] ?? const <LocationAdminRecord>[];
+    for (final location in unassigned) {
+      rows.add(_buildLocationRow(location: location, depth: 0));
+    }
+    if (rows.isEmpty) {
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            'No locations yet.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ),
+      );
+    }
+    return rows;
+  }
+
+  List<Widget> _buildOrgUnitRows({
+    required OrgUnitAdminNode unit,
+    required int depth,
+    required Map<String?, List<OrgUnitAdminNode>> unitsByParent,
+    required Map<String, String> unitNames,
+    required Map<String?, List<LocationAdminRecord>> locationsByParent,
+    required List<String> path,
+  }) {
+    final nextPath = <String>[...path, unit.name];
+    final rows = <Widget>[
+      _HierarchyScopeRow(
+        key: Key('admin_hierarchy_org_unit_${unit.orgUnitId}'),
+        icon: Icons.account_tree_outlined,
+        label: unit.name,
+        subtitle: depth == 0 ? 'Org unit' : 'Org unit branch',
+        depth: depth,
+        selected:
+            widget.selectedScope.scopeType == AdminHierarchyScopeType.orgUnit &&
+            widget.selectedScope.orgUnitId == unit.orgUnitId,
+        onTap: () => widget.onSelectScope(
+          AdminHierarchyScopeIntent.orgUnit(
+            operatorId: widget.bundle.operator.operatorId,
+            operatorName: widget.bundle.operator.businessName,
+            orgUnitId: unit.orgUnitId,
+            orgUnitName: unit.name,
+            hierarchyPath: path,
+            effectiveValueLabel: 'Branch default',
+            allowedActionsLabel: widget.editingEnabled
+                ? 'Editable'
+                : 'Read-only',
+          ),
+        ),
+      ),
+    ];
+    final locations =
+        locationsByParent[unit.orgUnitId] ?? const <LocationAdminRecord>[];
+    for (final location in locations) {
+      rows.add(
+        _buildLocationRow(
+          location: location,
+          depth: depth + 1,
+          orgUnitId: unit.orgUnitId,
+          orgUnitName: unitNames[unit.orgUnitId] ?? unit.name,
+          path: nextPath,
+        ),
+      );
+    }
+    final children =
+        unitsByParent[unit.orgUnitId] ?? const <OrgUnitAdminNode>[];
+    for (final child in children) {
+      rows.addAll(
+        _buildOrgUnitRows(
+          unit: child,
+          depth: depth + 1,
+          unitsByParent: unitsByParent,
+          unitNames: unitNames,
+          locationsByParent: locationsByParent,
+          path: nextPath,
+        ),
+      );
+    }
+    return rows;
+  }
+
+  Widget _buildLocationRow({
+    required LocationAdminRecord location,
+    required int depth,
+    String? orgUnitId,
+    String? orgUnitName,
+    List<String> path = const <String>[],
+  }) {
+    final isPrimary =
+        widget.bundle.operator.primaryLocationId == location.locationId;
+    return Opacity(
+      key: Key('admin_location_suspended_fade_${location.locationId}'),
+      opacity: widget.bundle.operator.isSuspended ? 0.55 : 1,
+      child: _HierarchyScopeRow(
+        key: Key('admin_hierarchy_location_${location.locationId}'),
+        icon: Icons.storefront_outlined,
+        label: location.name,
+        subtitle: isPrimary ? 'Primary location' : 'Location',
+        depth: depth,
+        selected:
+            widget.selectedScope.scopeType ==
+                AdminHierarchyScopeType.location &&
+            widget.selectedScope.locationId == location.locationId,
+        onTap: () => widget.onSelectScope(
+          AdminHierarchyScopeIntent.location(
+            operatorId: widget.bundle.operator.operatorId,
+            operatorName: widget.bundle.operator.businessName,
+            orgUnitId: orgUnitId,
+            orgUnitName: orgUnitName,
+            locationId: location.locationId,
+            locationName: location.name,
+            hierarchyPath: path,
+            valueState: AdminHierarchyScopeValueState.locationOnly,
+            effectiveValueLabel: location.timezone,
+            allowedActionsLabel: widget.editingEnabled
+                ? 'Location controls'
+                : 'Read-only',
+          ),
+        ),
+        trailing: widget.editingEnabled
+            ? Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  IconButton(
+                    key: Key('admin_location_edit_${location.locationId}'),
+                    tooltip: 'Edit location',
+                    onPressed: () => widget.onEditLocation(location),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                  ),
+                  IconButton(
+                    key: Key(
+                      'admin_location_make_primary_${location.locationId}',
+                    ),
+                    tooltip: 'Make primary location',
+                    onPressed: isPrimary
+                        ? null
+                        : () => widget.onSetPrimary(location),
+                    icon: const Icon(Icons.star_outline, size: 18),
+                  ),
+                  IconButton(
+                    key: Key('admin_location_remove_${location.locationId}'),
+                    tooltip: 'Remove location',
+                    onPressed: isPrimary
+                        ? null
+                        : () => widget.onRemoveLocation(location),
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    color: AppColors.negative,
+                  ),
+                ],
+              )
+            : null,
+      ),
+    );
+  }
+}
+
+class _HierarchyPanelData {
+  const _HierarchyPanelData({required this.orgUnits, required this.locations});
+
+  const _HierarchyPanelData.empty()
+    : orgUnits = const <OrgUnitAdminNode>[],
+      locations = const <HierarchyLocationLeaf>[];
+
+  final List<OrgUnitAdminNode> orgUnits;
+  final List<HierarchyLocationLeaf> locations;
+}
+
+class _HierarchyScopeRow extends StatelessWidget {
+  const _HierarchyScopeRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+    this.depth = 0,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+  final int depth;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: depth * 18.0, top: 6, bottom: 6),
+      child: Material(
+        color: selected
+            ? AppColors.peacock.withValues(alpha: 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(6),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: selected ? AppColors.peacock : AppColors.borderSubtle,
+                width: selected ? 1.4 : 1,
+              ),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 17, color: AppColors.textSecondary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.body14(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.mono11(color: AppColors.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                if (selected)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Icon(
+                      Icons.check_circle,
+                      size: 16,
+                      color: AppColors.peacockDark,
+                    ),
+                  ),
+                if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SetupTile extends StatelessWidget {
   const _SetupTile({
+    required this.tileKey,
     required this.label,
     required this.value,
     required this.icon,
@@ -1341,6 +1836,7 @@ class _SetupTile extends StatelessWidget {
     this.onPressed,
   });
 
+  final Key tileKey;
   final String label;
   final String value;
   final IconData icon;
@@ -1350,6 +1846,7 @@ class _SetupTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = Container(
+      key: tileKey,
       width: 176,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1400,7 +1897,6 @@ class _OperatorActionButton extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onPressed,
-    this.minWidth = 104,
     this.destructive = false,
   });
 
@@ -1409,7 +1905,6 @@ class _OperatorActionButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
-  final double minWidth;
   final bool destructive;
 
   @override
@@ -1421,7 +1916,7 @@ class _OperatorActionButton extends StatelessWidget {
         onPressed: onPressed,
         style: destructive
             ? AdminButtonStyles.dangerSecondary()
-            : AdminButtonStyles.secondary(minWidth: minWidth),
+            : AdminButtonStyles.secondary(),
         icon: Icon(icon, size: 14),
         label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
       ),
@@ -1429,9 +1924,11 @@ class _OperatorActionButton extends StatelessWidget {
   }
 }
 
+// Retained for the older per-location row tests until the hierarchy IA
+// fully replaces those expectations.
+// ignore: unused_element
 class _LocationRow extends StatelessWidget {
   const _LocationRow({
-    super.key,
     required this.operatorName,
     required this.location,
     required this.muted,

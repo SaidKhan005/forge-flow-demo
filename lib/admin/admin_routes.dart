@@ -237,16 +237,6 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildOperators,
   ),
   AdminRoute(
-    id: kAdminSupportOperatorViewRouteId,
-    title: 'Support workspace',
-    path: '/admin/support-operator-view',
-    icon: Icons.support_agent_outlined,
-    section: AdminRouteSection.operations,
-    subtitle:
-        'Work one scoped business across people, access, security, audit, and vendors.',
-    builder: _buildSupportOperatorView,
-  ),
-  AdminRoute(
     id: kAdminPricingRouteId,
     title: 'Plans and limits',
     path: '/pricing',
@@ -364,10 +354,13 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
 
 Widget _buildOperators(BuildContext context) {
   final gateway = AdminConsoleServicesScope.operatorLocationGatewayOf(context);
+  final hierarchyGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
   Widget buildScreen({required bool editingEnabled}) {
     return OperatorLocationAdminScreen(
       gateway: gateway,
+      hierarchyGateway: hierarchyGateway,
       editingEnabled: editingEnabled,
       onOpenSupportLogs: handoff == null
           ? null
@@ -382,6 +375,20 @@ Widget _buildOperators(BuildContext context) {
                 ),
               );
             },
+      onOpenSupportLogsScope: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminDebugConsoleRouteId,
+                  hierarchyScope: scope,
+                  supportLogFilter: AdminSupportLogFilterIntent(
+                    operatorId: scope.operatorId,
+                    locationId: scope.locationId,
+                  ),
+                ),
+              );
+            },
       onOpenDataAccuracy: handoff == null
           ? null
           : (scope) {
@@ -392,6 +399,16 @@ Widget _buildOperators(BuildContext context) {
                 ),
               );
             },
+      onOpenDataAccuracyScope: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminDataAccuracyRouteId,
+                  hierarchyScope: scope,
+                ),
+              );
+            },
       onOpenPollingPricing: handoff == null
           ? null
           : (scope) {
@@ -399,6 +416,16 @@ Widget _buildOperators(BuildContext context) {
                 AdminRouteIntent(
                   routeId: kAdminPollingPricingRouteId,
                   operatorLocationScope: scope,
+                ),
+              );
+            },
+      onOpenPollingPricingScope: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminPollingPricingRouteId,
+                  hierarchyScope: scope,
                 ),
               );
             },
@@ -432,6 +459,16 @@ Widget _buildOperators(BuildContext context) {
                 ),
               );
             },
+      onOpenPeopleAccessRolesScope: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminRolesHierarchySessionsRouteId,
+                  hierarchyScope: scope,
+                ),
+              );
+            },
       onOpenAuditSupport: handoff == null
           ? null
           : (scope) {
@@ -439,6 +476,16 @@ Widget _buildOperators(BuildContext context) {
                 AdminRouteIntent(
                   routeId: kAdminAuditedSupportActionsRouteId,
                   operatorLocationScope: scope,
+                ),
+              );
+            },
+      onOpenSecurityAuditSessionsScope: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminAuditedSupportActionsRouteId,
+                  hierarchyScope: scope,
                 ),
               );
             },
@@ -471,6 +518,9 @@ Widget _buildOperators(BuildContext context) {
   );
 }
 
+// Retained for backwards-compatible deep-link handoff while the primary IA
+// moves Support Workspace functions into scoped setup tiles.
+// ignore: unused_element
 Widget _buildSupportOperatorView(BuildContext context) {
   final membersGateway = AdminConsoleServicesScope.membersAdminGatewayOf(
     context,
