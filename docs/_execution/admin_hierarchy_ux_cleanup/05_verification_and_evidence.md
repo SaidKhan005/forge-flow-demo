@@ -26,11 +26,12 @@ Add or update tests as slices land:
 - business/org-unit/location scope expansion
 - all businesses collapsed default state
 - descendant location filtering
-- location-only mutation gating
+- scoped business/org-unit/location mutations
 - hierarchy move controls
-- actor name + role log rendering
+- hierarchy suspend/delete controls
+- actor name + role + email log rendering
 - polling calculator math and override behavior
-- connected service live status grouping
+- connected service API reachability status and unlock state
 - plain-English launch/system/knowledge labels
 
 ## Browser Use Acceptance
@@ -51,7 +52,8 @@ Screens to inspect:
 - Per-location Vendor Integrations
 - Timing
 - System Health
-- AI Metrics or System Metrics
+- AI Metrics
+- Plans and Limits
 - Launch Controls
 - Knowledge Base
 
@@ -75,13 +77,13 @@ Only run mutations on local/demo or approved preview data.
 
 | Surface | Safe mutation checks |
 |---|---|
-| Business Accounts | Create business in demo/local, edit profile, add child org unit, add location, edit location, set primary, move location, move org unit if implemented. |
-| Covers and Wage Data Accuracy | Location-only covers source edit, wage source edit, walk-in handling edit, service-period edit, audit row display. |
-| Polling Setup | Location tier assignment, calculator value, manual override, change request status update, audit row display. |
+| Business Accounts | Create business in demo/local, edit profile, add child org unit, add location, edit location, set primary, move location, move org unit, suspend/delete location, suspend/delete org unit. |
+| Covers and Wage Data Accuracy | Business/org-unit/location covers source edit, wage source edit, walk-in handling edit, service-period edit, inherited value override, audit row display. |
+| Polling Setup | Business/org-unit/location tier assignment, calculator value, manual override, default Regular tier behavior, change request status update, audit row display. |
 | People/Access/Roles | Invite, role grant override, seeded role edit when allowed, custom role create/delete, member status changes. |
 | Security/Audit/Sessions | Password reset initiation, reset MFA only with fresh permission, force logout non-current session, export audit when allowed. |
-| Connected Services | Rotate key with one-time reveal, vendor connect/test/disconnect in demo/local, live status refresh. |
-| Support Logs | Filter requests by business/org-unit/location, including multi-location org-unit branches, search, live tail toggle, unavailable tab messaging. |
+| Connected Services | Rotate key with one-time reveal, vendor connect/test/disconnect in demo/local, API reachability status refresh, unlock-state verification. |
+| Support Logs | Filter requests, Relationship help, and Account help by business/org-unit/location, including multi-location org-unit branches, search, live tail toggle. |
 | Launch Controls | Toggle non-destructive flag in demo/local; high-impact flag requires typed confirmation. |
 
 ## Performance Framework
@@ -135,6 +137,7 @@ docs/_execution/admin_hierarchy_ux_cleanup/evidence/2026-05-08/
   ux/
   final_audit.json
   final_audit.md
+  full_surface_inventory_results.json
 ```
 
 `final_audit.json` should include:
@@ -147,6 +150,7 @@ docs/_execution/admin_hierarchy_ux_cleanup/evidence/2026-05-08/
 - tests run
 - Browser Use pages checked
 - safe mutations run
+- full surface inventory status
 - skipped checks with reason
 - residual product decisions
 
@@ -157,15 +161,18 @@ docs/_execution/admin_hierarchy_ux_cleanup/evidence/2026-05-08/
 - Selected hierarchy row controls setup function scope.
 - No selected hierarchy row defaults to business scope.
 - All setup screens with filters use shared split/tab scope layout.
-- Data Accuracy is renamed and reorganized.
-- Polling is renamed and has calculator-first cost handling.
+- Data Accuracy is renamed, reorganized, and editable at business, org-unit,
+  and location scope with inherited/effective values.
+- Polling is renamed and has calculator-first cost handling plus editable
+  business/org-unit/location scoped assignments.
 - People/Access/Roles remove visible members stat and humanize permissions.
-- Actors in log screens show name and role where backend data exists.
-- Actor display policy is explicit where backend data does not provide a name,
-  role, or email.
-- Connected Services separates POS, Labor, Reservation and reflects live or
-  explicitly pending-live status.
+- Actors in log screens show name, role, and email.
+- Connected Services separates POS, Labor, Reservation and uses API reachability
+  for live status and unlock state.
+- Relationship help and Account help are wired.
+- System Metrics is moved to AI Metrics.
 - System/Launch/Knowledge surfaces avoid raw code language in primary UI.
+- Plans and Limits follows shared hierarchy behavior.
 - All safe/approved mutations work and are audit-logged.
 - Performance and UX framework evidence is attached.
-- Remaining product decisions are documented and not hidden as completed work.
+- Every route in `06_full_surface_inventory.md` has evidence.

@@ -9,9 +9,15 @@ Worktree: `.codex_worktrees/admin-ux-implementation-lens-plan`
 ## Purpose
 
 This plan translates the post-overhaul UX review into an implementation-ready
-slice plan. It uses `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md`
-as the audit frame and supersedes the popup-first scope behavior described in
-the earlier admin hierarchy settings overhaul docs.
+end-to-end slice plan. It uses
+`docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` as the audit
+frame and supersedes the popup-first scope behavior described in the earlier
+admin hierarchy settings overhaul docs.
+
+This is not a UX-only plan. Every slice must account for the whole path:
+Flutter UI, route handoff, shared hierarchy state, backend/proxy routes, schema
+or resolver changes, permissions, audit logging, tests, Browser Use evidence,
+performance evidence, and final rollout audit.
 
 The new product rule is:
 
@@ -32,6 +38,7 @@ The new product rule is:
 | [03_code_gap_matrix.md](03_code_gap_matrix.md) | File-level gap matrix with required actions by admin surface and backend seam. |
 | [04_execution_slices.md](04_execution_slices.md) | Sequenced implementation slices, branch/worktree ownership, tests, and merge rules. |
 | [05_verification_and_evidence.md](05_verification_and_evidence.md) | Targeted tests, Browser Use pass, performance/UX framework runs, evidence artifacts, and final audit checklist. |
+| [06_full_surface_inventory.md](06_full_surface_inventory.md) | Route-by-route inventory so every admin screen and hidden handoff is covered. |
 
 ## Authority Read
 
@@ -54,7 +61,7 @@ schema. The remaining work is not a skin-deep cleanup. Several surfaces still
 use a scope popup, many tables remain location-only, and some backend contracts
 are intentionally incomplete.
 
-The largest blockers are:
+The largest confirmed implementation commitments are:
 
 - Business setup tiles still call `showDialog(AdminHierarchyScopePrompt)` before
   routing.
@@ -64,15 +71,24 @@ The largest blockers are:
 - Data Accuracy and Polling still build scope choices from rows only, not from
   the full hierarchy tree.
 - Data Accuracy and Polling writes are still per location in schema, gateways,
-  and repositories.
+  and repositories. They must become editable at business, org-unit, and
+  location scope now, with real effective-value resolution and audit history.
 - The HTTP roles/hierarchy gateway still throws 501 for org-unit move.
-- Business Accounts hierarchy UI can create child org units but does not expose
-  location move or org-unit move controls.
+- Business Accounts hierarchy UI can create child org units but must expose both
+  location move and org-unit move controls.
+- Admins need suspend and delete actions for locations and hierarchy levels.
 - Audit rows in Data Accuracy/Polling only have actor id/kind, not display name
-  and role. The security audit projection has display fields, but some backend
-  projections synthesize generic names rather than joining canonical identity.
-- Connected Services shows a static "Documented" catalog instead of live
-  category health.
+  role, and email. The security audit projection has display fields, but some
+  backend projections synthesize generic names rather than joining canonical
+  identity.
+- Connected Services shows a static "Documented" catalog instead of using API
+  reachability as the live status and unlock source.
+- Relationship help and Account help are not wired enough for the target Support
+  Logs surface and must be implemented now.
+- System Metrics is AI telemetry and should move to the AI section as
+  `AI Metrics`.
+- Global admin surfaces must follow the same hierarchy behavior instead of
+  staying detached from selected business/org-unit/location context.
 - Several admin surfaces still expose code IDs, hashes, permission keys, or raw
   control names in primary UI.
 
@@ -84,3 +100,8 @@ After Slice 0, parallel worktrees are allowed only when write ownership is
 disjoint. Commit each slice after targeted tests pass. Push and open PRs per
 Forge & Flow workflow. Auto-merge only after checks pass or after the operator
 explicitly accepts the remaining check risk.
+
+No slice may close by only changing copy or visual layout when the requested
+behavior needs backend, schema, resolver, permission, or evidence work. The
+final audit must prove every route in `06_full_surface_inventory.md` matches
+the clarified product rules.

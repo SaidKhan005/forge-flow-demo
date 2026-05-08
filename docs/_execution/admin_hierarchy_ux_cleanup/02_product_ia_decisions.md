@@ -8,6 +8,35 @@ The admin should not be asked to choose scope in a popup after clicking a setup
 tile. Instead, the selected business hierarchy row is the current scope. If no
 row is selected, the current scope is the selected business.
 
+## Clarified Decisions
+
+These decisions are locked for implementation:
+
+- Business/org-unit/location scope is editable now for Data Accuracy and
+  Polling Setup. This requires real backend/schema/resolver work, not a
+  read-only rollup.
+- Admins can move both locations and org units.
+- Admins can suspend and delete locations and hierarchy levels, with guarded
+  confirmations and audit reasons.
+- Opening a setup screen with no hierarchy row selected defaults to selected
+  business scope. If no business is selected, all businesses show collapsed.
+- The setup scope popup is removed for Business Setup functions.
+- The Polling Setup calculator should use the most practical implementation
+  inputs, such as vendor, estimated calls per day, selected scope size, API cost
+  per call, monthly estimate, and margin. Manual entry remains an override.
+- Poll-only vendors default to the Regular/Standard tier until changed.
+- Connected Services live status means the vendor/API is reachable.
+- Vendor unlock state uses the same API-reachable logic.
+- Logs show full actor identity: name, role, and email.
+- Relationship help and Account help are wired now.
+- System Metrics moves to the AI section and is renamed `AI Metrics`.
+- System Health, AI Metrics, Launch Controls, Knowledge Base, Plans and Limits,
+  Connected Services, and Support Logs follow the same hierarchy behavior.
+- Raw IDs, permission keys, hashes, and control names are hidden by default and
+  exposed only in advanced details.
+- The setup button grouping is confirmed as Profile, Operations, People, and
+  Safety/support.
+
 ## Target Interaction Model
 
 ### Business Accounts
@@ -73,6 +102,9 @@ Behavior:
 - Rename `Data accuracy` to `Covers and Wage Data Accuracy`.
 - It is not a per-location-only mental model. It opens with the shared hierarchy
   selector.
+- Business, org-unit, and location scopes are editable. The implementation must
+  add scoped storage or scoped override rows, effective-value resolution,
+  conflict handling, and audit history for each write.
 - Remove the top stat/header widget.
 - Remove daypart subtitle copy that explains lunch/dinner/late night.
 - Add vendor filter for the vendors whose covers or wage data affect the rows.
@@ -91,8 +123,10 @@ Behavior:
 - Add a polling cost calculator. Direct key-in can remain as an override, but
   the main path should estimate cost from understandable inputs.
 - Add a vendor filter for vendors that require polling.
-- Clarify whether poll-only vendors default to the Regular/Standard tier when
-  no assignment exists.
+- Poll-only vendors default to the Regular/Standard tier when no assignment
+  exists.
+- Business, org-unit, and location scopes are editable. The implementation must
+  add scoped assignment/effective-value resolution and audit history.
 
 ### People, Access, Roles
 
@@ -107,28 +141,25 @@ Behavior:
 
 - Group actions by intent: account recovery, session control, data protection,
   audit/export.
-- Audit actors show name and role across all log surfaces.
+- Audit actors show name, role, and email across all log surfaces.
 - Support logs explain Requests, Relationship help, and Account help.
-- If Relationship help or Account help are not wired, label them honestly as not
-  available yet and describe where the current workflow lives.
+- Relationship help and Account help are wired now.
 - Decide whether the older Support Workspace remains as a hidden route. It
   should not silently fall back to Business Accounts when a handoff targets it.
 
 ### Connected Services
 
 - Divide vendor integrations into POS, Labor, and Reservation.
-- Show live status and health source, not only static `Documented` rows.
+- Show live status based on API reachability, not only static `Documented` rows.
 - Service keys show plaintext only once after rotation, then stay hidden.
 - Service access and shared services need short plain-English descriptions.
-- Unlocking integrations when live must be tied to vendor lifecycle state and
-  health, not hard-coded copy.
+- Unlocking integrations when live must be tied to API reachability.
 
 ### System Health, Metrics, Launch Controls, Knowledge Base
 
 - System Health explains Advisor data, App service, and Ecosystem checks.
 - Service checks need a plain-English definition.
-- System Metrics should move to AI as `AI Metrics` if the surface is only AI
-  cost/model/usage telemetry.
+- System Metrics moves to AI as `AI Metrics`.
 - System Health and System Metrics should keep the central run button and avoid
   middle stat widgets that duplicate the dialog.
 - Launch controls should avoid control IDs in primary UI and use plain-English
@@ -136,17 +167,20 @@ Behavior:
 - Knowledge Base should hide hashes, source file names, and index language from
   primary UI unless expanded for support diagnostics.
 - Relationship review needs clearer states and next actions.
+- Plans and Limits follows the same hierarchy selector model and keeps raw quota
+  IDs or plan internals behind advanced details.
 
-## Product Decision Backlog
+## Implementation Design Backlog
 
-| Decision | Needed before |
+These are not product blockers, but the implementation slices must choose and
+document them before merging.
+
+| Design choice | Needed before |
 |---|---|
-| Are business/org-unit Data Accuracy edits in scope now, or do we ship read-only rollups first? | Data Accuracy scoped mutation slice |
-| Are business/org-unit Polling Setup edits in scope now, or do we ship read-only rollups first? | Polling scoped mutation slice |
-| What exact calculator inputs are authoritative for vendor API cost? | Polling Setup calculator writes |
-| What source owns Connected Services live health? | Connected Services live status slice |
-| Should the hidden Support Workspace route be removed or explicitly registered? | Shared routing seam |
-| Should audit actor names/emails be denormalized, joined at read time, or kept privacy-preserving? | Cross-log actor display |
-| Should System Metrics move under AI as AI Metrics? | System nav rename/move slice |
-| What is the MVP for Relationship help and Account help in Support logs? | Support logs tab cleanup slice |
+| Exact database shape for scoped Data Accuracy overrides and inheritance. | Data Accuracy scoped mutation slice |
+| Exact database shape for scoped Polling assignments and inheritance. | Polling scoped mutation slice |
+| Exact calculator fields and rounding for vendor API cost. | Polling Setup calculator writes |
+| Whether the hidden Support Workspace route is removed or explicitly registered. | Shared routing seam |
+| Whether actor identity is denormalized into audit rows or joined at read time. | Cross-log actor display |
+| Relationship help and Account help table/API names and permissions. | Support logs tab cleanup slice |
 | Should org-unit labels be auto-generated from display names? | Hierarchy management UX slice |

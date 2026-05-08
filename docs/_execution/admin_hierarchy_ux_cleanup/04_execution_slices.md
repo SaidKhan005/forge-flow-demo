@@ -11,9 +11,15 @@ Each slice closes with:
 - targeted tests for touched files
 - Flutter analyze where UI code changed
 - Browser Use check when UI changes are visible
+- schema/proxy/gateway tests when behavior crosses the backend boundary
+- permission and audit tests when a mutation is added or changed
 - commit on the slice branch
 - push and PR
 - review and merge gate
+
+This is an end-to-end implementation plan. A slice is incomplete if it only
+changes Flutter layout while leaving required schema, proxy, gateway, permission,
+audit, or evidence work undone.
 
 ## Slice 0 - Shared Hierarchy Workspace Seam
 
@@ -93,6 +99,8 @@ Work:
 - Implement HTTP `moveOrgUnit`.
 - Add Business Accounts controls for moving locations between org units.
 - Add Business Accounts controls for moving org units when backend support lands.
+- Add suspend and delete actions for locations and org units available to
+  admins, with confirmation, reason capture, permissions, and audit events.
 - Keep confirmations and admin reasons for move actions.
 - Hide technical ltree label entry behind auto-generated labels or advanced
   details.
@@ -103,6 +111,7 @@ Tests:
 - HTTP gateway test no longer expects 501.
 - Business Accounts widget tests for location move and org-unit move.
 - Regression test for preventing self/descendant org-unit moves.
+- Suspend/delete gateway/proxy tests and audit event tests.
 
 ## Slice 3 - Shared Scope Pane For Setup Screens
 
@@ -132,8 +141,7 @@ Tests:
 
 ## Slice 4 - Covers And Wage Data Accuracy
 
-Goal: implement the requested Data Accuracy UX without pretending scoped writes
-exist.
+Goal: implement editable scoped Covers and Wage Data Accuracy end to end.
 
 Ownership:
 
@@ -151,20 +159,20 @@ Work:
 - Reorganize content into Covers, Wage, Logs.
 - Move Walk-ins into Covers.
 - Use hierarchy pane for business/org-unit/location filtering.
-- For business/org-unit scopes, show rollups and disable writes unless scoped
-  schema is approved.
-- Show actor name and role in logs.
+- Add schema/migration support for business/org-unit/location scoped overrides.
+- Add effective-value resolver with lowest configured scope winning.
+- Add conflict handling when child scopes override parent values.
+- Add proxy/gateway mutation support for business/org-unit/location writes.
+- Show actor name, role, and email in logs.
 
 Tests:
 
 - Widget tests for rename, removed stats, vendor filter, sorting, and block
   organization.
-- Safe mutation tests for location-only covers/wage/walk-in edits.
-- Audit actor display tests.
-
-Decision gate:
-
-- Scoped business/org-unit edits require schema/resolver approval.
+- Safe mutation tests for business, org-unit, and location covers/wage/walk-in
+  edits.
+- Migration/resolver tests for inherited and overridden values.
+- Permission and audit actor display tests.
 
 ## Slice 5 - Polling Setup
 
@@ -184,20 +192,23 @@ Work:
 - Rewrite About widget.
 - Rename Standard display to Regular where product wants that label.
 - Add poll-only vendor filter.
-- Add cost calculator with manual override.
+- Add cost calculator with vendor, estimated calls per day, selected scope size,
+  API cost per call, monthly estimate, margin, and manual override.
 - Explain default tier behavior when no assignment exists.
-- Keep business/org-unit edits read-only unless scoped schema is approved.
+- Add schema/migration support for business/org-unit/location scoped polling
+  assignments.
+- Add effective-value resolver with default Regular/Standard tier when no
+  assignment exists.
+- Add proxy/gateway mutation support for business/org-unit/location writes.
 
 Tests:
 
 - Widget tests for rename, vendor filter, calculator math, manual override,
   and default tier label.
 - Gateway/proxy tests for cost-basis body shape if API changes.
-- Safe mutation tests for location tier assignment and change request handling.
-
-Decision gate:
-
-- Calculator inputs and whether to persist calculated or overridden cost.
+- Safe mutation tests for business, org-unit, and location tier assignment and
+  change request handling.
+- Migration/resolver tests for inherited, overridden, and default Regular values.
 
 ## Slice 6 - People, Access, Roles
 
@@ -237,11 +248,11 @@ Ownership:
 Work:
 
 - Group security actions by intent.
-- Audit all log screens for actor name + role.
-- Decide and implement actor identity policy: denormalized actor display fields,
-  read-time identity joins, or deliberate generic labels.
+- Audit all log screens for actor name, role, and email.
+- Implement actor identity policy through denormalized actor display fields or
+  read-time identity joins.
 - Clarify Support Logs tab names and explanations.
-- Wire or intentionally disable Relationship help and Account help.
+- Wire Relationship help and Account help now.
 - Align filter styling with shared workspace.
 - Keep client-side `location_ids` org-unit expansion bounded, or add a native
   support-log hierarchy filter.
@@ -250,7 +261,7 @@ Tests:
 
 - Security action grouping widget tests.
 - Actor display tests across audit/support/data/polling logs.
-- Support Logs unavailable-state tests for unwired tabs.
+- Support Logs request, relationship help, and account help route/gateway tests.
 - Support Logs org-unit filter tests for multi-location branches.
 
 ## Slice 8 - Connected Services And Vendor Integrations
@@ -269,21 +280,17 @@ Work:
 
 - Add descriptions for Service Access and Shared Services.
 - Group vendor catalog by POS, Labor, Reservation.
-- Replace static `Documented` status with live status or explicit pending-live
-  state.
+- Replace static `Documented` status with API-reachable status.
 - Keep new key plaintext one-time reveal only.
 - Remove scope prompt from vendor setup path.
-- Tie integration unlock state to vendor lifecycle and health.
+- Tie integration unlock state to API reachability.
 
 Tests:
 
 - Connected Services grouping and status tests.
 - One-time reveal tests still pass.
 - Vendor setup no-popup scope tests.
-
-Decision gate:
-
-- Source of truth and refresh cadence for live vendor health.
+- API reachability success/failure tests and unlock-state tests.
 
 ## Slice 9 - System, Launch, Knowledge Polish
 
@@ -301,21 +308,22 @@ Work:
 
 - System Health: define Advisor data, App service, Ecosystem, and service
   checks in plain English.
-- System Metrics: move/rename to AI Metrics if confirmed.
+- System Metrics: move/rename to `AI Metrics` under AI.
+- Plans and Limits: apply hierarchy behavior and hide raw plan/quota internals
+  behind advanced details.
 - Keep big central run buttons; remove duplicate middle widgets where present.
 - Launch Controls: hide raw control IDs from primary UI.
 - Knowledge Base: hide source files/hashes from primary UI.
 - Relationship Review: simplify states and next actions.
+- Apply shared hierarchy behavior to System Health, AI Metrics, Plans and
+  Limits, Launch Controls, Knowledge Base, Connected Services, and Support Logs.
 
 Tests:
 
-- Route/nav tests for System Metrics/AI Metrics decision.
+- Route/nav tests for `AI Metrics`.
+- Hierarchy behavior tests for all global admin routes.
 - Plain-English label snapshots/widget assertions.
 - Browser Use pass for Health, Metrics, Launch Controls, Knowledge Base.
-
-Decision gate:
-
-- Whether System Metrics belongs under AI.
 
 ## Slice 10 - Cross-Surface QA And Final Audit
 
@@ -334,6 +342,7 @@ Work:
 - Run performance framework.
 - Run UX framework.
 - Run mobile/web/admin E2E framework where applicable.
+- Verify every row in `06_full_surface_inventory.md`.
 - Produce final audit JSON/evidence bundle.
 
 Merge gate:
