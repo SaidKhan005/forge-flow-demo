@@ -1,0 +1,269 @@
+# Demo Mode Contract
+
+**Status:** Locked. Audited end-to-end 2026-05-07.
+**Authority:** CLAUDE.md → Hard Promise #2 ("Demo mode persists post-launch — `kDemoMode` is a writer-side switch; same tables, same reads, same UI either way").
+**Scope:** Mobile (Forge & Flow + Barrio flavors), Admin Console, Operator Web Console.
+
+This contract codifies the writer-side-switch architecture, lists the
+two intentional reader-side carve-outs, and defines the rules for
+adding new demo-aware code.
+
+---
+
+## Why writer-side?
+
+If demo and prod fork at READ time, every screen becomes two screens to
+maintain — and the reader-side branch becomes the place where data
+shape, formulas, and UX silently drift. A single accidental
+`if (kDemoMode) ...` in a widget can hide a regression in production
+behind a passing demo walkthrough.
+
+Writer-side keeps the contract tight: demo is a different SOURCE of
+data into the SAME tables, read by the SAME repositories, rendered by
+the SAME widgets. The only things that may differ are seed values and
+labels.
+
+---
+
+## Architecture (mobile)
+
+```
+                    ┌────────────────────────────────────────┐
+                    │  Build-time switch                     │
+                    │  --dart-define=kDemoMode=true|false    │
+                    └────────────┬───────────────────────────┘
+                                 │
+            ┌────────────────────┼─────────────────────────┐
+            │                    │                         │
+            ▼                    ▼                         ▼
+   ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────┐
+   │ Carve-out #1     │  │ Carve-out #2     │  │ Writer selection     │
+   │ login_screen     │  │ app_data_status  │  │ (no kDemoMode read   │
+   │ → adds "Use      │  │ → label = DEMO   │  │  in screens/widgets) │
+   │  demo operator"  │  │   (vs CURRENT).  │  │                      │
+   │  button.         │  │  Same data shape,│  │                      │
+   │ Same auth path.  │  │  same freshness  │  │                      │
+   │                  │  │  math.           │  │                      │
+   └──────────────────┘  └──────────────────┘  └──────────┬───────────┘
+                                                          │
+                                                          ▼
+                                       ┌──────────────────────────────┐
+                                       │ DataSourceProvider<T>        │
+                                       │ (lib/domain/services/...)    │
+                                       └──────────┬───────────────────┘
+                                                  │
+                              ┌───────────────────┼─────────────────────┐
+                              │ kDemoMode=true    │  kDemoMode=false    │
+                              ▼                   ▼                     ▼
+                    ┌──────────────────┐  ┌────────────────────────┐  ┌──────────────────────┐
+                    │ MockReplay       │  │ Phase 8 vendor sinks   │  │ HttpSyncProxyClient  │
+                    │ DataSource       │  │ (toast_pos, 7shifts,   │  │ (server-truth pull)  │
+                    │ Provider         │  │  square, clover, …)    │  │                      │
+                    │                  │  │                        │  │                      │
+                    │ Writes via       │  │ Write via              │  │ Writes via           │
+                    │ _seedDemoData    │  │ *_postgres_sink.dart   │  │ standard repository  │
+                    │ FromReplay       │  │ (Postgres) +           │  │ APIs                 │
+                    │ → SQLite seed.   │  │ mirror to mobile       │  │                      │
+                    └────────┬─────────┘  │ SQLite via the sync    │  └──────────┬───────────┘
+                             │            │ runtime.               │             │
+                             │            └───────────┬────────────┘             │
+                             │                        │                          │
+                             └────────────────────────┴──────────────────────────┘
+                                                  │
+                                                  ▼
+                          ┌──────────────────────────────────────────────────┐
+                          │ STANDARD SQLite TABLES (no demo_* tables exist)  │
+                          │  • restaurant_locations                          │
+                          │  • shift_records, week_records                   │
+                          │  • open_shift_snapshots                          │
+                          │  • target_cycles, target_profile_versions        │
+                          │  • active_target_profiles                        │
+                          │  • import_runs, raw_import_records               │
+                          │  • baseline_selected_records                     │
+                          │  • restaurant_timing_configs                     │
+                          │ Demo rows: restaurant_id = 'demo_restaurant_001' │
+                          └──────────────────────┬───────────────────────────┘
+                                                 │
+                                                 ▼
+                          ┌──────────────────────────────────────────────────┐
+                          │ Repositories / services / widgets                │
+                          │ Read by restaurant_id; NO kDemoMode branch.      │
+                          │  • SqliteShiftRecordRepository                   │
+                          │  • SqliteWeekRecordRepository                    │
+                          │  • SqliteOpenShiftSnapshotRepository             │
+                          │  • TargetCycleService, ShiftService, etc.        │
+                          └──────────────────────────────────────────────────┘
+```
+
+### Demo session entry
+
+The mobile demo flow does NOT add a parallel auth path. The login
+screen carve-out (#1 below) is a one-tap convenience that pre-fills
+the credential fields and submits via the same
+`AuthSessionNotifier.signInWithEmailPassword` call the regular form
+uses.
+
+In flavors that use the `requireAuth: false` shell variant (Barrio
+demo embedding F&F), the same shell runs without an
+`AuthSessionUnauthenticated` precondition, but the data path is still
+SQLite-via-the-same-repositories. There is no demo-only widget that
+would behave differently from a production widget.
+
+### Demo writes (closing a shift in demo)
+
+When a manager closes a shift in demo:
+1. `ShiftService` builds a `ClosedShiftInput` with
+   `restaurantId = 'demo_restaurant_001'`.
+2. `TargetSnapshotBuilder` reads the active profile via
+   `SqliteRestaurantScopeRepository.getActiveRestaurantId()`.
+3. `ShiftFactBuilder` produces a `ShiftRecord`.
+4. `SqliteShiftRecordRepository.upsertClosedShift(...)` writes to the
+   same `shift_records` table production uses.
+
+There is no `if (kDemoMode) ...` along this path. The only
+demo-specific aspect is the `restaurant_id` value, which is just a
+fixture id.
+
+---
+
+## Architecture (web flavors)
+
+The Operator Web Console (`lib/main_operator_web.dart`) and Admin
+Console (`lib/main_admin.dart`) follow the same pattern at the gateway
+boundary:
+
+- `--dart-define=OPERATOR_WEB_DEMO_AUTH=true` /
+  `--dart-define=ADMIN_DEMO_AUTH=true` selects the demo
+  `AuthSource` and falls back to in-memory `Demo*Gateway` impls.
+- Live wiring (Firebase + HTTP gateways) is the production path. Demo
+  wiring is a SOURCE swap, not a reader-side branch.
+- `tool/release_build_demo_flag_lint.dart` enforces that release
+  builds NEVER ship `ADMIN_DEMO_AUTH=true` /
+  `OPERATOR_WEB_DEMO_AUTH=true`. Both `main_*.dart` files also
+  `assert(!kDebugMode || !demoFlag)` at startup as belt-and-suspenders.
+
+---
+
+## Intentional reader-side carve-outs
+
+Two compile-time `kDemoMode` reads exist in the operator-app (mobile)
+codebase. Both are documented inline with `// kDemoMode carve-out:`
+comments and listed here so future audits don't re-flag them.
+
+### Carve-out #1: Login screen "Use demo operator" button
+
+- **Location:** `lib/screens/auth/login_screen.dart:17-19`
+  (`_demoOperatorSignInEnabled` const).
+- **What it does:** Renders an additional `OutlinedButton` below the
+  regular "Sign in" button when the binary was built with
+  `--dart-define=kDemoMode=true` or
+  `--dart-define=FORGE_FLOW_DEMO_MODE=true`. Tapping it pre-fills
+  `demo.operator@forgeflow.test` / `forge-flow-demo` and calls
+  `_submit()`.
+- **Why exempt:** The button is strictly additive. Production builds
+  hide it via the `showDemoOperatorSignIn` constructor default. The
+  sign-in path the button drives is identical to the regular form
+  (same `AuthSessionNotifier.signInWithEmailPassword` call). Removing
+  the button breaks the walkthrough flow without delivering any
+  reader-side simplification — the data path that follows the
+  successful sign-in is already production code.
+- **What would replace it:** Nothing planned. The button stays.
+
+### Carve-out #2: App data status badge label
+
+- **Location:** `lib/services/app_data_status_service.dart:16,136`
+  (`_demoMode` const + the `_demoMode && hasOpenState` branch).
+- **What it does:** Returns `AppDataStatus.demo()` (label `DEMO`)
+  instead of `AppDataStatus.current()` (label `CURRENT`) when the
+  binary was built with `--dart-define=kDemoMode=true` AND the
+  evaluator finds an open shift snapshot. All other status branches
+  (`noData`, `firstSyncPending`, `backfillPending`,
+  `backfillFailed`, `historicalOnly`, `failedImport`, `stale`) are
+  returned identically in demo and prod.
+- **Why exempt:** Label-only branch. The data shape, the freshness
+  math, and every other status code path are unchanged. The badge
+  exists so an operator (or a screenshot taker) can see at a glance
+  that they are looking at fixture data rather than live data.
+- **Relationship to runtime demo state:** The deeper "is this
+  (operator, location, category) currently in demo mode" answer lives
+  in `lib/services/integration/demo_mode_state.dart` (the Postgres
+  `demo_mode_state.is_demo` column, flipped by `DemoModeFlipPolicy`
+  after the first vendor backfill). Widgets that need to render a
+  "demo mode active" banner per (operator, location, category) should
+  read THAT surface, not this compile-time flag. The compile-time
+  flag is purely a build-mode signal for the badge label.
+- **What would replace it:** A future slice could route the badge
+  label through `DemoModeStateGateway.readOrCreateDefault(...)`
+  instead of the compile-time flag, in which case the carve-out would
+  collapse. No such slice is currently scheduled.
+
+---
+
+## Forbidden patterns
+
+The following are violations of HP #2. Code review and (where
+listed) CI lints reject them.
+
+1. **No `demo_*` SQLite or Postgres tables.** Use existing tables
+   with `restaurant_id = 'demo_restaurant_001'` (mobile) or the
+   per-(operator, location, category) `demo_mode_state` row (Postgres).
+2. **No `if (kDemoMode) ...` in screens, widgets, or services.**
+   Reader paths must be branch-free with respect to demo/prod. New
+   carve-outs require an explicit operator decision and an addition to
+   this contract.
+3. **No parallel demo-only repository or DAO.** Demo data must round-
+   trip through the same repository APIs production uses.
+4. **No release builds with demo auth.** `ADMIN_DEMO_AUTH=true` and
+   `OPERATOR_WEB_DEMO_AUTH=true` are forbidden in release artifacts;
+   see `tool/release_build_demo_flag_lint.dart` and the startup
+   `assert()` in `lib/main_admin.dart` / `lib/main_operator_web.dart`.
+
+---
+
+## Acceptable patterns
+
+These are NOT violations even though they reference `kDemoMode`:
+
+- **Doc comments** referencing `kDemoMode` to explain wiring
+  (e.g. `lib/dev/demo_fixture_data.dart` header comment, the
+  `// kDemoMode only` comment in `lib/data/app_defaults.dart`).
+- **Demo-only writers** under `lib/dev/`, `lib/services/mock_replay_data_source_provider.dart`,
+  and the SQLite seed helpers — these are the writer side of the
+  switch.
+- **Demo gateway impls** under `lib/admin/services/demo_*` and
+  `lib/operator_web/services/demo_*` — these are the in-memory
+  fixtures the web flavors fall back to when no live HTTP gateway is
+  wired.
+- **Postgres `demo_mode_state` table + `DemoModeFlipPolicy`** — this
+  is the runtime per-(operator, location, category) demo flag the
+  Phase 8 vendor sinks flip on first-backfill commit. It is itself a
+  shared Postgres table, not a `demo_*` parallel table.
+
+---
+
+## Test coverage
+
+- `test/persistence_scope_alignment_test.dart` (groups B, C, E, G)
+  asserts seeded demo rows live in the standard `restaurant_locations`,
+  `shift_records`, `week_records`, `import_runs`, `raw_import_records`
+  tables under `restaurant_id = 'demo_restaurant_001'`.
+- `test/integration/demo_mode_state_test.dart` covers
+  `DemoModeFlipPolicy` semantics (default `is_demo = true`, flip on
+  connected + first backfill commit, no auto-revert on disconnect).
+- `test/integration/demo_mode_writer_side_test.dart` (added 2026-05-07
+  alongside this contract) asserts there are NO `demo_*` SQLite
+  tables — the demo writer path uses standard table names only.
+
+---
+
+## Maintenance
+
+- Adding a new carve-out requires:
+  1. Operator sign-off (this contract docs the rationale).
+  2. An inline `// kDemoMode carve-out: <reason>` comment at the
+     site.
+  3. An entry under "Intentional reader-side carve-outs" above.
+  4. A line in CLAUDE.md → Demo Mode listing the new carve-out.
+- Removing a carve-out only needs the inverse: drop the comment,
+  remove the contract entry, drop the CLAUDE.md line. The branch
+  itself is deleted from the source code.

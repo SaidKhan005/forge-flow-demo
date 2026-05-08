@@ -13,6 +13,23 @@ import 'shift_service.dart';
 class AppDataStatusService {
   AppDataStatusService._();
   static final AppDataStatusService instance = AppDataStatusService._();
+
+  // kDemoMode carve-out: the data-status badge labels current-state
+  // data as `DEMO` instead of `CURRENT` when the binary was built with
+  // `--dart-define=kDemoMode=true`. The underlying read path is
+  // identical — same SQLite tables (`shift_records`, `week_records`,
+  // `import_runs`, `open_shift_snapshots`), same repositories, same
+  // `evaluate()` logic. This is a label-only branch so the operator can
+  // see at a glance that they are looking at fixture data; the data
+  // shape and freshness math are unchanged. The deeper "is this
+  // operator/location/category in demo mode" runtime answer lives in
+  // `lib/services/integration/demo_mode_state.dart` — Phase 8 flips
+  // `demo_mode_state.is_demo` per (operator, location, category) when
+  // the first vendor backfill commits, and that surface is the one to
+  // read for "should I render the demo banner" decisions in widgets
+  // (rather than this compile-time flag, which only governs the badge
+  // label). Documented in `docs/contracts/demo_mode_contract.md` and
+  // CLAUDE.md → Demo Mode.
   static const bool _demoMode = bool.fromEnvironment('kDemoMode');
 
   /// Stale threshold: current-state data older than this is considered stale.
