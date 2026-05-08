@@ -126,5 +126,17 @@ void main() {
         );
       });
     }
+
+    test('operator web shell permits Flutter web font fetches', () {
+      final content = File('web/operator/index.html').readAsStringSync();
+      expect(
+        content,
+        contains('font-src \'self\' data: https://fonts.gstatic.com;'),
+      );
+      expect(
+        content,
+        contains('connect-src \'self\' https://fonts.gstatic.com'),
+      );
+    });
   });
 }
