@@ -68,8 +68,13 @@ void main() {
           action: 'auth.user.signed_in',
           payload: const <String, Object?>{'method': 'password'},
         );
-        expect(exec.statements, hasLength(1));
-        final sql = exec.statements.single;
+        // The 2026-05-08 P1 hardening adds a `current_setting`
+        // tenant-context probe before the insert. The probe is the
+        // first recorded statement when the executor reports no
+        // tenant (the default for this fake); the insert is the
+        // second. Tests use the helper getters to assert the INSERT
+        // shape regardless of probe layout.
+        final sql = exec.insertStatement;
         expect(sql, contains('insert into public.audit_logs'));
         // Hard rule from migration 202604280005: prev_row_hash + row_hash
         // are populated by `public.audit_logs_set_chain()` in a BEFORE
@@ -79,8 +84,8 @@ void main() {
         // of the SQL surface AND the parameter map.
         expect(sql, isNot(contains('prev_row_hash')));
         expect(sql, isNot(contains('row_hash')));
-        expect(exec.parameters.single.containsKey('prev_row_hash'), isFalse);
-        expect(exec.parameters.single.containsKey('row_hash'), isFalse);
+        expect(exec.insertParameters.containsKey('prev_row_hash'), isFalse);
+        expect(exec.insertParameters.containsKey('row_hash'), isFalse);
       },
     );
 
@@ -111,8 +116,12 @@ void main() {
           actorPrincipalId: 'sp:$_spId',
           action: 'admin.service_principal.issue_token',
         );
-        expect(exec.statements, hasLength(2));
-        for (final sql in exec.statements) {
+        // The 2026-05-08 P1 hardening adds a `current_setting`
+        // tenant-context probe before each insert; assert against the
+        // recorded INSERTs only.
+        final inserts = exec.allInsertStatements;
+        expect(inserts, hasLength(2));
+        for (final sql in inserts) {
           expect(
             sql,
             contains('actor_kind'),
@@ -125,8 +134,9 @@ void main() {
             reason: 'actor_kind is bound, never concatenated',
           );
         }
-        expect(exec.parameters[0]['actor_kind'], equals('user'));
-        expect(exec.parameters[1]['actor_kind'], equals('service'));
+        final insertParams = exec.allInsertParameters;
+        expect(insertParams[0]['actor_kind'], equals('user'));
+        expect(insertParams[1]['actor_kind'], equals('service'));
       },
     );
 
@@ -146,14 +156,14 @@ void main() {
           actorUserId: _userA,
           action: 'auth.user.signed_in',
         );
-        final sql = exec.statements.single;
+        final sql = exec.insertStatement;
         // The repo must bind operator_id parametrically; the auth-event
         // boundary opens the wrapper transaction with SET LOCAL
         // app.operator_id, and the audit_logs RLS policy folds against
         // that GUC + the row's operator_id column. Concatenated SQL
         // would defeat the binding and the policy fold.
         expect(sql, contains('@operator_id::uuid'));
-        expect(exec.parameters.single['operator_id'], equals(_opA));
+        expect(exec.insertParameters['operator_id'], equals(_opA));
         // The repo MUST NOT emit its own SET LOCAL — it relies on the
         // caller's transaction.
         expect(
@@ -162,6 +172,92 @@ void main() {
           reason: 'audit_logs.writeRow runs inside caller\'s tx; SET '
               'LOCAL is the caller\'s responsibility',
         );
+      },
+    );
+
+    test(
+      '2026-05-08 P1 hardening: when caller\'s transaction has '
+      'SET LOCAL app.operator_id matching the supplied operator_id '
+      'parameter, the insert proceeds normally',
+      () async {
+        final exec = _RecordingExecutor(tenantOperatorId: _opA);
+        const repo = AuditLogsRepository();
+        await repo.writeRow(
+          exec,
+          operatorId: _opA,
+          locationId: _locA,
+          occurredAt: DateTime.utc(2026, 4, 30, 12),
+          actorKind: 'user',
+          actorUserId: _userA,
+          action: 'auth.user.signed_in',
+        );
+        // The probe ran (1 statement) and the insert ran (1 statement).
+        expect(exec.allInsertStatements, hasLength(1));
+        expect(
+          exec.statements
+              .where((s) => s.contains("current_setting('app.operator_id'")),
+          hasLength(1),
+        );
+        expect(exec.insertParameters['operator_id'], equals(_opA));
+      },
+    );
+
+    test(
+      '2026-05-08 P1 hardening: when caller\'s transaction has '
+      'SET LOCAL app.operator_id that DISAGREES with the supplied '
+      'operator_id parameter, writeRow throws AuditLogsTenantMismatchError '
+      'BEFORE binding any insert SQL — closes the primary-defense '
+      'bypass that would otherwise let a forged operator_id reach '
+      'the audit chain',
+      () async {
+        final exec = _RecordingExecutor(tenantOperatorId: _opA);
+        const repo = AuditLogsRepository();
+        const otherOperator = '44444444-4444-4444-4444-444444444444';
+        await expectLater(
+          repo.writeRow(
+            exec,
+            operatorId: otherOperator,
+            locationId: _locA,
+            occurredAt: DateTime.utc(2026, 4, 30, 12),
+            actorKind: 'user',
+            actorUserId: _userA,
+            action: 'auth.user.signed_in',
+          ),
+          throwsA(isA<AuditLogsTenantMismatchError>()),
+        );
+        // No INSERT SQL was ever issued — the writer aborted at the
+        // probe step.
+        expect(
+          exec.statements
+              .where((s) => s.contains('insert into public.audit_logs')),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      '2026-05-08 P1 hardening: when the executor\'s tenant context '
+      'is unset (the runAsSystem admin path — no SET LOCAL of '
+      'app.operator_id), the writer accepts the supplied operator_id '
+      'so the F&F admin / system-event paths still land their rows. '
+      'Admin paths gate via forge_admin BYPASSRLS + the '
+      'app.bypass_rls_audit marker on the same transaction',
+      () async {
+        // Default _RecordingExecutor returns no rows for the probe,
+        // simulating the system path where the GUC is unset.
+        final exec = _RecordingExecutor();
+        const repo = AuditLogsRepository();
+        await repo.writeRow(
+          exec,
+          operatorId: _opA,
+          locationId: _locA,
+          occurredAt: DateTime.utc(2026, 4, 30, 12),
+          actorKind: 'service',
+          actorPrincipalId: 'sp:$_spId',
+          action: 'admin.system_op',
+        );
+        expect(exec.allInsertStatements, hasLength(1));
+        expect(exec.insertParameters['operator_id'], equals(_opA));
       },
     );
   });
@@ -270,9 +366,48 @@ void main() {
 /// `AuditLogsRepository.writeRow` SQL ends with `returning id`, but
 /// the repo discards the returned rows for the unit-test slice — we
 /// only need the bind shape.
+///
+/// 2026-05-08 P1 hardening: the writer now reads
+/// `current_setting('app.operator_id', true)` before each insert;
+/// when [tenantOperatorId] is non-null the fake responds with that
+/// value (simulating a tenant-scoped transaction), otherwise it
+/// returns no rows (simulating the system / no-tenant path).
 class _RecordingExecutor implements PostgresExecutor {
+  _RecordingExecutor({this.tenantOperatorId});
+
+  final String? tenantOperatorId;
+
   final List<String> statements = <String>[];
   final List<PostgresParameters> parameters = <PostgresParameters>[];
+
+  String get insertStatement => statements.firstWhere(
+        (s) => s.contains('insert into public.audit_logs'),
+        orElse: () => throw StateError('no audit_logs INSERT recorded'),
+      );
+
+  PostgresParameters get insertParameters {
+    final idx = statements.indexWhere(
+      (s) => s.contains('insert into public.audit_logs'),
+    );
+    if (idx < 0) {
+      throw StateError('no audit_logs INSERT recorded');
+    }
+    return parameters[idx];
+  }
+
+  List<String> get allInsertStatements => statements
+      .where((s) => s.contains('insert into public.audit_logs'))
+      .toList(growable: false);
+
+  List<PostgresParameters> get allInsertParameters {
+    final result = <PostgresParameters>[];
+    for (var i = 0; i < statements.length; i++) {
+      if (statements[i].contains('insert into public.audit_logs')) {
+        result.add(parameters[i]);
+      }
+    }
+    return result;
+  }
 
   @override
   Future<List<PostgresRow>> query(
@@ -281,6 +416,13 @@ class _RecordingExecutor implements PostgresExecutor {
   }) async {
     statements.add(sql);
     this.parameters.add(parameters);
+    if (sql.contains("current_setting('app.operator_id'")) {
+      final tenant = tenantOperatorId;
+      if (tenant == null) return const <PostgresRow>[];
+      return <PostgresRow>[
+        <String, Object?>{'operator_id': tenant},
+      ];
+    }
     return const <PostgresRow>[];
   }
 

@@ -50,13 +50,18 @@ void main() {
           action: 'auth.user.signed_in',
           payload: const <String, Object?>{'method': 'password'},
         );
-        expect(exec.statements, hasLength(1));
+        // The 2026-05-08 P1 hardening adds a `current_setting` SELECT
+        // before the insert (defense-in-depth tenant cross-check). The
+        // insert is the second statement when the tenant context is
+        // unset (system path) — exec returns no rows, so the writer
+        // accepts the parameter. Tests assert the INSERT shape via
+        // `exec.insertStatement` to stay decoupled from the read.
         expect(
-          exec.statements.single,
+          exec.insertStatement,
           contains('insert into public.audit_logs'),
         );
-        expect(exec.statements.single, isNot(contains('prev_row_hash')));
-        expect(exec.statements.single, isNot(contains('row_hash')));
+        expect(exec.insertStatement, isNot(contains('prev_row_hash')));
+        expect(exec.insertStatement, isNot(contains('row_hash')));
       },
     );
 
@@ -84,7 +89,7 @@ void main() {
           actorUserId: _userA,
           action: 'auth.user.signed_in',
         );
-        final params = exec.parameters.single;
+        final params = exec.insertParameters;
         expect(params['chain_date'], equals('2026-05-01'));
         expect(
           (params['occurred_at']! as DateTime).toUtc(),
@@ -110,7 +115,7 @@ void main() {
           targetId: _userA,
           action: 'auth.password_changed',
         );
-        final params = exec.parameters.single;
+        final params = exec.insertParameters;
         expect(params['actor_kind'], equals('user'));
         expect(params['actor_user_id'], equals(_userA));
         expect(params['actor_principal_id'], isNull);
@@ -138,7 +143,7 @@ void main() {
           action: 'admin.service_principal.issue_token',
           payload: const <String, Object?>{'service_principal_id': _spId},
         );
-        final params = exec.parameters.single;
+        final params = exec.insertParameters;
         expect(params['actor_kind'], equals('service'));
         expect(params['actor_user_id'], isNull);
         expect(params['actor_principal_id'], equals('sp:$_spId'));
@@ -204,8 +209,32 @@ void main() {
 }
 
 class _RecordingExecutor implements PostgresExecutor {
+  _RecordingExecutor({this.tenantOperatorId});
+
+  /// When non-null, the recording executor responds to the
+  /// `current_setting('app.operator_id', true)` probe with this
+  /// value, simulating a tenant-scoped transaction whose
+  /// `SET LOCAL app.operator_id` is set. When null (the default),
+  /// the probe returns no rows — the system / no-tenant path.
+  final String? tenantOperatorId;
+
   final List<String> statements = <String>[];
   final List<PostgresParameters> parameters = <PostgresParameters>[];
+
+  String get insertStatement => statements.firstWhere(
+        (s) => s.contains('insert into public.audit_logs'),
+        orElse: () => throw StateError('no audit_logs INSERT recorded'),
+      );
+
+  PostgresParameters get insertParameters {
+    final idx = statements.indexWhere(
+      (s) => s.contains('insert into public.audit_logs'),
+    );
+    if (idx < 0) {
+      throw StateError('no audit_logs INSERT recorded');
+    }
+    return parameters[idx];
+  }
 
   @override
   Future<List<PostgresRow>> query(
@@ -214,6 +243,13 @@ class _RecordingExecutor implements PostgresExecutor {
   }) async {
     statements.add(sql);
     this.parameters.add(parameters);
+    if (sql.contains("current_setting('app.operator_id'")) {
+      final tenant = tenantOperatorId;
+      if (tenant == null) return const <PostgresRow>[];
+      return <PostgresRow>[
+        <String, Object?>{'operator_id': tenant},
+      ];
+    }
     return const <PostgresRow>[];
   }
 
