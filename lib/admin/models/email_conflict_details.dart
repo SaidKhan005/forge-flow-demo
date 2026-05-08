@@ -9,6 +9,8 @@ class AdminEmailConflictUsage {
     this.operatorName,
     this.locationId,
     this.locationName,
+    this.orgUnitId,
+    this.orgUnitName,
     this.status,
     this.roleLabel,
     this.source,
@@ -21,6 +23,8 @@ class AdminEmailConflictUsage {
   final String? operatorName;
   final String? locationId;
   final String? locationName;
+  final String? orgUnitId;
+  final String? orgUnitName;
   final String? status;
   final String? roleLabel;
   final String? source;
@@ -41,6 +45,7 @@ class AdminEmailConflictUsage {
   String get scopeLabel {
     final parts = <String>[
       if (operatorName != null && operatorName!.isNotEmpty) operatorName!,
+      if (orgUnitName != null && orgUnitName!.isNotEmpty) orgUnitName!,
       if (locationName != null && locationName!.isNotEmpty) locationName!,
     ];
     if (parts.isNotEmpty) return parts.join(' / ');
@@ -90,6 +95,9 @@ class AdminEmailConflictUsage {
           _string(json['location_id']) ?? _string(json['primary_location_id']),
       locationName:
           _string(json['location_name']) ?? _string(json['location_label']),
+      orgUnitId: _string(json['org_unit_id']),
+      orgUnitName:
+          _string(json['org_unit_name']) ?? _string(json['org_unit_label']),
       status: _string(json['status']),
       roleLabel: _string(json['role_label']) ?? _string(json['role_key']),
       source: _string(json['source']),

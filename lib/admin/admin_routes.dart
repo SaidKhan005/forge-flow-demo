@@ -334,11 +334,12 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminMembersRouteId,
-    title: 'People',
+    title: 'People, access & roles',
     path: '/admin/members',
     icon: Icons.people_alt_outlined,
     section: AdminRouteSection.operations,
-    subtitle: 'Review members, invites, and roster actions for one business.',
+    subtitle:
+        'Review members, invites, role grants, and role policy for one business.',
     builder: _buildMembers,
   ),
   AdminRoute(
@@ -937,12 +938,15 @@ bool _samePickerResult(OperatorPickerResult? a, OperatorPickerResult? b) {
 
 Widget _buildMembers(BuildContext context) {
   final gateway = AdminConsoleServicesScope.membersAdminGatewayOf(context);
+  final rolesGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
   final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
     context,
   );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
   final initialPicked = _pickerResultFromScope(handoff?.operatorLocationScope);
+  final initialScope = handoff?.effectiveHierarchyScope;
   void rememberPickedOperator(OperatorPickerResult result) {
     handoff?.onSelectRoute(
       AdminRouteIntent(
@@ -978,10 +982,13 @@ Widget _buildMembers(BuildContext context) {
     // Test path: default to live edit affordances.
     return _MembersAdminRouteShell(
       gateway: gateway,
+      rolesGateway: rolesGateway,
       actorUserId: 'demo-super-admin',
       editingEnabled: true,
+      canEditSeededRoles: false,
       adminUid: null,
       initialPicked: initialPicked,
+      initialScope: initialScope,
       openPicker: openPicker,
       onOperatorPicked: rememberPickedOperator,
       onOpenAccess: handoff == null ? null : openScopedAccess,
@@ -996,10 +1003,13 @@ Widget _buildMembers(BuildContext context) {
       final canEdit = session != null && session.roles.contains('super_admin');
       return _MembersAdminRouteShell(
         gateway: gateway,
+        rolesGateway: rolesGateway,
         actorUserId: session?.uid ?? 'unknown',
         editingEnabled: canEdit,
+        canEditSeededRoles: _isAdminMfaFresh(session),
         adminUid: session?.uid,
         initialPicked: initialPicked,
+        initialScope: initialScope,
         openPicker: openPicker,
         onOperatorPicked: rememberPickedOperator,
         onOpenAccess: handoff == null ? null : openScopedAccess,
@@ -1011,20 +1021,26 @@ Widget _buildMembers(BuildContext context) {
 class _MembersAdminRouteShell extends StatefulWidget {
   const _MembersAdminRouteShell({
     required this.gateway,
+    required this.rolesGateway,
     required this.actorUserId,
     required this.editingEnabled,
+    required this.canEditSeededRoles,
     required this.adminUid,
     required this.initialPicked,
+    required this.initialScope,
     required this.openPicker,
     required this.onOperatorPicked,
     required this.onOpenAccess,
   });
 
   final MembersAdminGateway gateway;
+  final RolesHierarchySessionsAdminGateway rolesGateway;
   final String actorUserId;
   final bool editingEnabled;
+  final bool canEditSeededRoles;
   final String? adminUid;
   final OperatorPickerResult? initialPicked;
+  final AdminHierarchyScopeIntent? initialScope;
   final Future<OperatorPickerResult?> Function(
     BuildContext context,
     String? adminUid,
@@ -1132,9 +1148,12 @@ class _MembersAdminRouteShellState extends State<_MembersAdminRouteShell> {
     return MembersAdminScreen(
       key: ValueKey<String>('members-${picked.operatorId}'),
       gateway: widget.gateway,
+      rolesGateway: widget.rolesGateway,
       actorUserId: widget.actorUserId,
       pickedOperator: picked,
       editingEnabled: widget.editingEnabled,
+      canEditSeededRoles: widget.canEditSeededRoles,
+      initialScope: widget.initialScope,
       onChangeOperator: _openPicker,
       onOpenAccess: widget.onOpenAccess == null
           ? null

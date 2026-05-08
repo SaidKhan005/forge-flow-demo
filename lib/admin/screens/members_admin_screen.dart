@@ -32,11 +32,14 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
+import '../admin_route_handoff.dart';
 import '../models/email_conflict_details.dart';
 import '../services/members_admin_gateway.dart';
+import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'invite_member_admin_dialog.dart';
 import 'operator_picker_screen.dart';
+import 'roles_hierarchy_sessions_admin_screen.dart';
 
 class MembersAdminScreen extends StatefulWidget {
   const MembersAdminScreen({
@@ -48,6 +51,9 @@ class MembersAdminScreen extends StatefulWidget {
     this.idempotencyKeyFactory,
     this.onChangeOperator,
     this.onOpenAccess,
+    this.rolesGateway,
+    this.canEditSeededRoles = false,
+    this.initialScope,
   });
 
   final MembersAdminGateway gateway;
@@ -78,6 +84,9 @@ class MembersAdminScreen extends StatefulWidget {
   /// Opens the scoped role policy / hierarchy / sessions surface for
   /// the same business. This keeps role work reachable from Team.
   final VoidCallback? onOpenAccess;
+  final RolesHierarchySessionsAdminGateway? rolesGateway;
+  final bool canEditSeededRoles;
+  final AdminHierarchyScopeIntent? initialScope;
 
   @override
   State<MembersAdminScreen> createState() => _MembersAdminScreenState();
@@ -91,6 +100,10 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       const <AdminEmailConflictUsage>[];
   List<MemberAdminRow> _members = const <MemberAdminRow>[];
   List<MemberInviteRow> _invites = const <MemberInviteRow>[];
+  List<RoleAdminRow> _roles = const <RoleAdminRow>[];
+  List<OrgUnitAdminNode> _orgUnits = const <OrgUnitAdminNode>[];
+  List<HierarchyLocationLeaf> _hierarchyLocations =
+      const <HierarchyLocationLeaf>[];
   Timer? _searchDebounce;
   int _refreshGeneration = 0;
 
@@ -130,7 +143,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       _loadError = null;
     });
     try {
-      final results = await Future.wait<Object>([
+      final rolesGateway = widget.rolesGateway;
+      final reads = <Future<Object>>[
         widget.gateway.listMembers(
           operatorId: widget.pickedOperator.operatorId,
           status: _statusFilter,
@@ -145,15 +159,37 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           locationId: _locationFilter,
           contextLocationId: widget.pickedOperator.locationId,
         ),
-      ]);
+        if (rolesGateway != null) ...<Future<Object>>[
+          rolesGateway.listRoles(operatorId: widget.pickedOperator.operatorId),
+          rolesGateway.listOrgUnits(
+            operatorId: widget.pickedOperator.operatorId,
+          ),
+          rolesGateway.listHierarchyLocations(
+            operatorId: widget.pickedOperator.operatorId,
+          ),
+        ],
+      ];
+      final results = await Future.wait<Object>(reads);
       if (generation != _refreshGeneration) return;
       final members = results[0] as List<MemberAdminRow>;
       final invites = results[1] as List<MemberInviteRow>;
+      final roles = rolesGateway == null
+          ? const <RoleAdminRow>[]
+          : results[2] as List<RoleAdminRow>;
+      final orgUnits = rolesGateway == null
+          ? const <OrgUnitAdminNode>[]
+          : results[3] as List<OrgUnitAdminNode>;
+      final hierarchyLocations = rolesGateway == null
+          ? const <HierarchyLocationLeaf>[]
+          : results[4] as List<HierarchyLocationLeaf>;
       final visibleMembers = _applyLocalFilters(members);
       if (!mounted) return;
       setState(() {
         _members = visibleMembers;
         _invites = invites;
+        _roles = roles;
+        _orgUnits = orgUnits;
+        _hierarchyLocations = hierarchyLocations;
         _loading = false;
       });
     } on MembersAdminGatewayError catch (error) {
@@ -428,6 +464,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       builder: (_) => _OverrideRoleDialog(
         currentRoleKey: row.roleKey,
         targetDisplayName: row.displayName,
+        accessScopes: _availableAccessScopes,
+        initialScope: _initialGrantScope(row),
       ),
     );
     if (result == null) return;
@@ -440,10 +478,102 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         actorUserId: widget.actorUserId,
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: result.adminReason,
+        scopeType: result.scope.scopeType,
+        primaryLocationId: result.scope.locationId,
+        orgUnitId: result.scope.orgUnitId,
       ),
       successHint:
           'Reassigned ${row.displayName} to ${memberRoleLabel(result.roleKey)}',
     );
+  }
+
+  Future<void> _onEditSeededRole(RoleAdminRow row) async {
+    if (!widget.canEditSeededRoles) return;
+    final rolesGateway = widget.rolesGateway;
+    if (rolesGateway == null) return;
+    final result = await showDialog<EditSeededRoleResult>(
+      context: context,
+      builder: (_) => EditSeededRoleDialog(initial: row),
+    );
+    if (result == null) return;
+    await _runAndRefresh(() async {
+      await rolesGateway.editSeededRole(
+        operatorId: widget.pickedOperator.operatorId,
+        roleId: row.roleId,
+        permissionKeys: result.permissionKeys,
+        idempotencyKey: _nextIdempotencyKey('roles-edit-seeded'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: result.adminReason,
+      );
+    }, successHint: 'Updated ${roleAdminDisplayLabel(row)}');
+  }
+
+  Future<void> _onCreateCustomRole() async {
+    final rolesGateway = widget.rolesGateway;
+    if (rolesGateway == null) return;
+    final result = await showDialog<CustomRoleDraft>(
+      context: context,
+      builder: (_) => CreateCustomRoleDialog(
+        existingRoleKeys: <String>{for (final r in _roles) r.roleKey},
+      ),
+    );
+    if (result == null) return;
+    await _runAndRefresh(() async {
+      await rolesGateway.createCustomRole(
+        operatorId: widget.pickedOperator.operatorId,
+        roleKey: result.roleKey,
+        displayName: result.displayName,
+        description: result.description,
+        permissionKeys: result.permissionKeys,
+        idempotencyKey: _nextIdempotencyKey('roles-create-custom'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: result.adminReason,
+      );
+    }, successHint: 'Created ${result.displayName}');
+  }
+
+  Future<void> _onDeleteCustomRole(RoleAdminRow row) async {
+    final rolesGateway = widget.rolesGateway;
+    if (rolesGateway == null) return;
+    final reason = await _promptAdminReason(
+      'Delete ${roleAdminDisplayLabel(row)}',
+    );
+    if (reason == null) return;
+    await _runAndRefresh(
+      () => rolesGateway.deleteCustomRole(
+        operatorId: widget.pickedOperator.operatorId,
+        roleId: row.roleId,
+        idempotencyKey: _nextIdempotencyKey('roles-delete-custom'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: reason,
+      ),
+      successHint: 'Deleted ${roleAdminDisplayLabel(row)}',
+    );
+  }
+
+  MemberAccessScopeRef? _initialGrantScope(MemberAdminRow row) {
+    final grant = row.grants.isEmpty ? null : row.grants.first;
+    if (grant == null) {
+      return MemberAccessScopeRef(
+        scopeType: 'location',
+        id: 'location:${row.primaryLocationId}',
+        label: 'Location / ${row.primaryLocationName}',
+        locationId: row.primaryLocationId,
+      );
+    }
+    final scopeId = switch (grant.scopeType) {
+      'operator_wide' => 'operator_wide:${widget.pickedOperator.operatorId}',
+      'org_unit' => 'org_unit:${grant.orgUnitId ?? row.orgUnitId ?? ''}',
+      'location' => 'location:${grant.locationId ?? row.primaryLocationId}',
+      _ => 'location:${row.primaryLocationId}',
+    };
+    for (final scope in _availableAccessScopes) {
+      if (scope.id == scopeId) return scope;
+    }
+    return null;
   }
 
   Future<void> _onInvite() async {
@@ -472,6 +602,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           operatorName: widget.pickedOperator.operatorBusinessName,
           locationId: i.primaryLocationId,
           locationName: i.primaryLocationName,
+          orgUnitId: i.orgUnitId,
+          orgUnitName: i.orgUnitName,
           status: 'Pending invite',
           roleLabel: memberRoleLabel(i.roleKey),
           source: 'pending_invite',
@@ -482,6 +614,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       builder: (_) => InviteMemberAdminDialog(
         operatorBusinessName: widget.pickedOperator.operatorBusinessName,
         locations: _availableLocations,
+        accessScopes: _availableAccessScopes,
         existingEmails: existing,
         existingEmailUsages: existingUsages,
         onReviewExistingEmail: _showEmailUsage,
@@ -495,6 +628,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         displayName: draft.displayName,
         roleKey: draft.roleKey,
         primaryLocationId: draft.primaryLocationId,
+        scopeType: draft.scopeType,
+        orgUnitId: draft.orgUnitId,
         idempotencyKey: _nextIdempotencyKey('member-invite'),
         actorUserId: widget.actorUserId,
         actorIsForgeAdmin: widget.editingEnabled,
@@ -524,10 +659,18 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
 
   List<MemberLocationRef> get _availableLocations {
     final byId = <String, MemberLocationRef>{};
-    byId[widget.pickedOperator.locationId] = MemberLocationRef(
-      locationId: widget.pickedOperator.locationId,
-      name: widget.pickedOperator.locationName,
-    );
+    if (widget.pickedOperator.locationId.isNotEmpty) {
+      byId[widget.pickedOperator.locationId] = MemberLocationRef(
+        locationId: widget.pickedOperator.locationId,
+        name: widget.pickedOperator.locationName,
+      );
+    }
+    for (final loc in _hierarchyLocations) {
+      byId.putIfAbsent(
+        loc.locationId,
+        () => MemberLocationRef(locationId: loc.locationId, name: loc.name),
+      );
+    }
     for (final m in _members) {
       byId.putIfAbsent(
         m.primaryLocationId,
@@ -547,6 +690,31 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       );
     }
     return byId.values.toList(growable: false);
+  }
+
+  List<MemberAccessScopeRef> get _availableAccessScopes {
+    final scopes = <MemberAccessScopeRef>[
+      MemberAccessScopeRef(
+        scopeType: 'operator_wide',
+        id: 'operator_wide:${widget.pickedOperator.operatorId}',
+        label: 'Business / ${widget.pickedOperator.operatorBusinessName}',
+      ),
+      for (final orgUnit in _orgUnits)
+        MemberAccessScopeRef(
+          scopeType: 'org_unit',
+          id: 'org_unit:${orgUnit.orgUnitId}',
+          label: 'Org unit / ${orgUnit.name}',
+          orgUnitId: orgUnit.orgUnitId,
+        ),
+      for (final location in _availableLocations)
+        MemberAccessScopeRef(
+          scopeType: 'location',
+          id: 'location:${location.locationId}',
+          label: location.name,
+          locationId: location.locationId,
+        ),
+    ];
+    return scopes;
   }
 
   @override
@@ -578,6 +746,12 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
                 onShowConflict: _showEmailUsage,
                 onChangeOperator: widget.onChangeOperator,
               ),
+            _PeopleAccessScopeCard(
+              pickedOperator: widget.pickedOperator,
+              initialScope: widget.initialScope,
+              accessScopes: _availableAccessScopes,
+            ),
+            const SizedBox(height: 12),
             _MembersFilterBar(
               statusFilter: _statusFilter,
               roleFilter: _roleFilter,
@@ -697,6 +871,17 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           ),
           const SizedBox(height: 16),
           _InvitesPanel(invites: _invites),
+          if (widget.rolesGateway != null) ...<Widget>[
+            const SizedBox(height: 16),
+            RolePolicyAdminPanel(
+              roles: _roles,
+              editingEnabled: widget.editingEnabled,
+              canEditSeededRoles: widget.canEditSeededRoles,
+              onEditSeeded: _onEditSeededRole,
+              onCreateCustom: _onCreateCustomRole,
+              onDeleteCustom: _onDeleteCustomRole,
+            ),
+          ],
         ],
       ),
     );
@@ -742,6 +927,97 @@ class _MembersSummaryStrip extends StatelessWidget {
           tone: AppColors.sunset,
         ),
       ],
+    );
+  }
+}
+
+class _PeopleAccessScopeCard extends StatelessWidget {
+  const _PeopleAccessScopeCard({
+    required this.pickedOperator,
+    required this.accessScopes,
+    this.initialScope,
+  });
+
+  final OperatorPickerResult pickedOperator;
+  final List<MemberAccessScopeRef> accessScopes;
+  final AdminHierarchyScopeIntent? initialScope;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = initialScope;
+    return AdminCard(
+      key: const Key('admin_people_access_scope_card'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: <Widget>[
+          const Icon(
+            Icons.account_tree_outlined,
+            size: 18,
+            color: AppColors.sunsetDark,
+          ),
+          Text(
+            'People, access, and roles',
+            style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
+          ),
+          _ScopePill(
+            icon: Icons.business_outlined,
+            label: pickedOperator.operatorBusinessName,
+          ),
+          if (scope != null) ...<Widget>[
+            _ScopePill(icon: Icons.tune_outlined, label: scope.displayLabel),
+            _ScopePill(
+              icon: Icons.call_split_outlined,
+              label: scope.inheritanceLabel,
+            ),
+            if (scope.allowedActionsLabel != null)
+              _ScopePill(
+                icon: Icons.rule_outlined,
+                label: scope.allowedActionsLabel!,
+              ),
+          ],
+          _ScopePill(
+            icon: Icons.lock_open_outlined,
+            label: '${accessScopes.length} grant scopes',
+          ),
+          Text(
+            'Invites and role grants can target business, org-unit, or location scopes.',
+            style: AppTextStyles.mono11(color: AppColors.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScopePill extends StatelessWidget {
+  const _ScopePill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 13, color: AppColors.textMuted),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: AppTextStyles.mono11(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1140,6 +1416,16 @@ class _MemberRowTile extends StatelessWidget {
                 ),
               ],
             ),
+            if (row.grants.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: <Widget>[
+                  for (final grant in row.grants) _GrantScopeChip(grant: grant),
+                ],
+              ),
+            ],
             if (editingEnabled) ...[
               const SizedBox(height: 10),
               Wrap(spacing: 6, runSpacing: 6, children: _buildActionButtons()),
@@ -1223,12 +1509,47 @@ class _MemberRowTile extends StatelessWidget {
       buttons.add(
         _RowAction(
           keyValue: 'admin_members_action_override_role_${row.userId}',
-          label: 'Override role grant',
+          label: 'Grant role',
           onPressed: () => onOverrideRoleGrant(row),
         ),
       );
     }
     return buttons;
+  }
+}
+
+class _GrantScopeChip extends StatelessWidget {
+  const _GrantScopeChip({required this.grant});
+
+  final MemberRoleGrantRow grant;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        '${grant.roleDisplayLabel} / ${_grantScopeLabel(grant)}',
+        style: AppTextStyles.mono11(color: AppColors.textSecondary),
+      ),
+    );
+  }
+}
+
+String _grantScopeLabel(MemberRoleGrantRow grant) {
+  switch (grant.scopeType) {
+    case 'operator_wide':
+      return 'Business';
+    case 'org_unit':
+      return grant.orgUnitName ?? grant.orgUnitId ?? 'Org unit';
+    case 'location':
+      return grant.locationName ?? grant.locationId ?? 'Location';
+    default:
+      return grant.scopeType;
   }
 }
 
@@ -1372,7 +1693,8 @@ class _InvitesPanel extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      memberRoleLabel(invite.roleKey),
+                      '${memberRoleLabel(invite.roleKey)} / '
+                      '${_inviteScopeLabel(invite)}',
                       style: AppTextStyles.mono11(color: AppColors.textMuted),
                     ),
                   ],
@@ -1733,20 +2055,44 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
 }
 
 class _OverrideRoleResult {
-  const _OverrideRoleResult({required this.roleKey, required this.adminReason});
+  const _OverrideRoleResult({
+    required this.roleKey,
+    required this.scope,
+    required this.adminReason,
+  });
 
   final String roleKey;
+  final MemberAccessScopeRef scope;
   final String adminReason;
+}
+
+String _inviteScopeLabel(MemberInviteRow invite) {
+  switch (invite.scopeType) {
+    case 'operator_wide':
+      return 'Business';
+    case 'org_unit':
+      return invite.orgUnitName ?? invite.orgUnitId ?? 'Org unit';
+    case 'location':
+      return invite.primaryLocationName.isNotEmpty
+          ? invite.primaryLocationName
+          : 'Location';
+    default:
+      return invite.scopeType;
+  }
 }
 
 class _OverrideRoleDialog extends StatefulWidget {
   const _OverrideRoleDialog({
     required this.currentRoleKey,
     required this.targetDisplayName,
+    required this.accessScopes,
+    this.initialScope,
   });
 
   final String currentRoleKey;
   final String targetDisplayName;
+  final List<MemberAccessScopeRef> accessScopes;
+  final MemberAccessScopeRef? initialScope;
 
   @override
   State<_OverrideRoleDialog> createState() => _OverrideRoleDialogState();
@@ -1754,6 +2100,9 @@ class _OverrideRoleDialog extends StatefulWidget {
 
 class _OverrideRoleDialogState extends State<_OverrideRoleDialog> {
   late String _selectedRole = widget.currentRoleKey;
+  late String? _selectedScopeId =
+      widget.initialScope?.id ??
+      (widget.accessScopes.isEmpty ? null : widget.accessScopes.first.id);
   final _reasonController = TextEditingController();
   bool _violated = false;
 
@@ -1765,13 +2114,27 @@ class _OverrideRoleDialogState extends State<_OverrideRoleDialog> {
 
   void _onSubmit() {
     final reason = _reasonController.text.trim();
-    if (reason.isEmpty) {
+    final scope = _selectedScope;
+    if (reason.isEmpty || scope == null) {
       setState(() => _violated = true);
       return;
     }
-    Navigator.of(
-      context,
-    ).pop(_OverrideRoleResult(roleKey: _selectedRole, adminReason: reason));
+    Navigator.of(context).pop(
+      _OverrideRoleResult(
+        roleKey: _selectedRole,
+        scope: scope,
+        adminReason: reason,
+      ),
+    );
+  }
+
+  MemberAccessScopeRef? get _selectedScope {
+    final selected = _selectedScopeId;
+    if (selected == null) return null;
+    for (final scope in widget.accessScopes) {
+      if (scope.id == selected) return scope;
+    }
+    return null;
   }
 
   @override
@@ -1815,6 +2178,27 @@ class _OverrideRoleDialogState extends State<_OverrideRoleDialog> {
                 if (v == null) return;
                 setState(() => _selectedRole = v);
               },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: const Key('admin_members_override_role_scope'),
+              initialValue: _selectedScopeId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: 'Grant scope',
+                border: const OutlineInputBorder(),
+                errorText: _violated && _selectedScope == null
+                    ? 'Choose a scope for this role grant.'
+                    : null,
+              ),
+              items: <DropdownMenuItem<String>>[
+                for (final scope in widget.accessScopes)
+                  DropdownMenuItem<String>(
+                    value: scope.id,
+                    child: Text(scope.label),
+                  ),
+              ],
+              onChanged: (v) => setState(() => _selectedScopeId = v),
             ),
             const SizedBox(height: 12),
             TextField(

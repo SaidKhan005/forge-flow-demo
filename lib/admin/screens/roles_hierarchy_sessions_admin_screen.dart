@@ -290,9 +290,9 @@ class _RolesHierarchySessionsAdminScreenState
 
   Future<void> _onEditSeededRole(RoleAdminRow row) async {
     if (!widget.canEditSeededRoles) return;
-    final result = await showDialog<_EditSeededRoleResult>(
+    final result = await showDialog<EditSeededRoleResult>(
       context: context,
-      builder: (_) => _EditSeededRoleDialog(initial: row),
+      builder: (_) => EditSeededRoleDialog(initial: row),
     );
     if (result == null) return;
     await _runAndRefresh(
@@ -311,9 +311,9 @@ class _RolesHierarchySessionsAdminScreenState
   }
 
   Future<void> _onCreateCustomRole() async {
-    final result = await showDialog<_CustomRoleDraft>(
+    final result = await showDialog<CustomRoleDraft>(
       context: context,
-      builder: (_) => _CreateCustomRoleDialog(
+      builder: (_) => CreateCustomRoleDialog(
         existingRoleKeys: <String>{for (final r in _roles) r.roleKey},
       ),
     );
@@ -515,7 +515,7 @@ class _RolesHierarchySessionsAdminScreenState
           error: _rolesLoadError,
           loadingKey: const Key('admin_rhs_loading'),
           errorKey: const Key('admin_rhs_load_error'),
-          child: _RolesTab(
+          child: RolePolicyAdminPanel(
             roles: _roles,
             editingEnabled: widget.editingEnabled,
             canEditSeededRoles: widget.canEditSeededRoles,
@@ -663,8 +663,9 @@ class _ScopeChip extends StatelessWidget {
 // Roles tab
 // ---------------------------------------------------------------------
 
-class _RolesTab extends StatelessWidget {
-  const _RolesTab({
+class RolePolicyAdminPanel extends StatelessWidget {
+  const RolePolicyAdminPanel({
+    super.key,
     required this.roles,
     required this.editingEnabled,
     required this.canEditSeededRoles,
@@ -1677,8 +1678,8 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
 // Roles tab dialogs
 // ---------------------------------------------------------------------
 
-class _EditSeededRoleResult {
-  const _EditSeededRoleResult({
+class EditSeededRoleResult {
+  const EditSeededRoleResult({
     required this.permissionKeys,
     required this.adminReason,
   });
@@ -1687,16 +1688,16 @@ class _EditSeededRoleResult {
   final String adminReason;
 }
 
-class _EditSeededRoleDialog extends StatefulWidget {
-  const _EditSeededRoleDialog({required this.initial});
+class EditSeededRoleDialog extends StatefulWidget {
+  const EditSeededRoleDialog({super.key, required this.initial});
 
   final RoleAdminRow initial;
 
   @override
-  State<_EditSeededRoleDialog> createState() => _EditSeededRoleDialogState();
+  State<EditSeededRoleDialog> createState() => _EditSeededRoleDialogState();
 }
 
-class _EditSeededRoleDialogState extends State<_EditSeededRoleDialog> {
+class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
   late final _permissionsController = TextEditingController(
     text: widget.initial.permissionKeys.join('\n'),
   );
@@ -1723,7 +1724,7 @@ class _EditSeededRoleDialogState extends State<_EditSeededRoleDialog> {
         .toList(growable: false);
     Navigator.of(
       context,
-    ).pop(_EditSeededRoleResult(permissionKeys: keys, adminReason: reason));
+    ).pop(EditSeededRoleResult(permissionKeys: keys, adminReason: reason));
   }
 
   @override
@@ -1788,8 +1789,8 @@ class _EditSeededRoleDialogState extends State<_EditSeededRoleDialog> {
   }
 }
 
-class _CustomRoleDraft {
-  const _CustomRoleDraft({
+class CustomRoleDraft {
+  const CustomRoleDraft({
     required this.roleKey,
     required this.displayName,
     required this.description,
@@ -1804,17 +1805,16 @@ class _CustomRoleDraft {
   final String adminReason;
 }
 
-class _CreateCustomRoleDialog extends StatefulWidget {
-  const _CreateCustomRoleDialog({required this.existingRoleKeys});
+class CreateCustomRoleDialog extends StatefulWidget {
+  const CreateCustomRoleDialog({super.key, required this.existingRoleKeys});
 
   final Set<String> existingRoleKeys;
 
   @override
-  State<_CreateCustomRoleDialog> createState() =>
-      _CreateCustomRoleDialogState();
+  State<CreateCustomRoleDialog> createState() => _CreateCustomRoleDialogState();
 }
 
-class _CreateCustomRoleDialogState extends State<_CreateCustomRoleDialog> {
+class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
   final _displayNameController = TextEditingController();
   final _roleKeyController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -1860,7 +1860,7 @@ class _CreateCustomRoleDialogState extends State<_CreateCustomRoleDialog> {
         .where((s) => s.isNotEmpty)
         .toList(growable: false);
     Navigator.of(context).pop(
-      _CustomRoleDraft(
+      CustomRoleDraft(
         roleKey: roleKey,
         displayName: displayName,
         description: _descriptionController.text.trim(),
