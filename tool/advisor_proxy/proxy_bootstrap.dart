@@ -680,8 +680,8 @@ ProxyProductionBindings buildProxyProductionBindings(
   // waiting for the next mobile poll.
   final operatorBusinessTimingWriteGateway =
       RepositoryOperatorBusinessTimingWriteGateway(
-    repository: BusinessTimingProfilesRepository(tenantWrapper),
-  );
+        repository: BusinessTimingProfilesRepository(tenantWrapper),
+      );
   final operatorBusinessTimingAuditSink = ProductionOperatorWriteAuditSink(
     tenantWrapper: tenantWrapper,
     onError: (error, stackTrace) {
@@ -696,8 +696,7 @@ ProxyProductionBindings buildProxyProductionBindings(
       );
     },
   );
-  final timingMutationListener =
-      _LoggingBusinessTimingMutationListener();
+  final timingMutationListener = _LoggingBusinessTimingMutationListener();
   final operatorWriteRouter = OperatorWriteRouter(
     accountGateway: RepositoryOperatorAccountWriteGateway(
       repository: OperatorAccountRepository(tenantWrapper),
@@ -1215,9 +1214,9 @@ class _ProductionWageRoleRowsAuditSink implements WageRoleRowsAuditSink {
     required TenantTransactionWrapper tenantWrapper,
     required AuditLogsRepository auditLogsRepository,
     void Function(Object error, StackTrace stackTrace)? onError,
-  })  : _tenantWrapper = tenantWrapper,
-        _auditLogsRepository = auditLogsRepository,
-        _onError = onError;
+  }) : _tenantWrapper = tenantWrapper,
+       _auditLogsRepository = auditLogsRepository,
+       _onError = onError;
 
   final TenantTransactionWrapper _tenantWrapper;
   final AuditLogsRepository _auditLogsRepository;
@@ -1307,14 +1306,13 @@ class _ProductionWageRoleRowsAuditSink implements WageRoleRowsAuditSink {
           locationId: locationId,
           occurredAt: occurredAt,
           actorKind: auditActorKind,
-          actorUserId:
-              auditActorKind == 'user' && actorUserId.isNotEmpty
-                  ? actorUserId
-                  : null,
+          actorUserId: auditActorKind == 'user' && actorUserId.isNotEmpty
+              ? actorUserId
+              : null,
           actorPrincipalId:
               auditActorKind == 'service' && actorUserId.isNotEmpty
-                  ? actorUserId
-                  : null,
+              ? actorUserId
+              : null,
           targetKind: 'wage_role_row',
           targetId: targetId,
           action: action,
@@ -6367,6 +6365,7 @@ class RepositoryDebugConsoleAdminProxyGateway
     required String adminReason,
     String? operatorId,
     String? locationId,
+    List<String>? locationIds,
     String? usageClass,
     String? status,
     int? timeWindowSeconds,
@@ -6380,6 +6379,9 @@ class RepositoryDebugConsoleAdminProxyGateway
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,
+          'location_ids': locationIds == null || locationIds.isEmpty
+              ? null
+              : locationIds,
           'usage_class': usageClass,
           'status': status,
           'time_window_seconds': timeWindowSeconds,
@@ -6671,6 +6673,10 @@ from (
 ) projected
 where (@operator_id::uuid is null or projected.operator_id::uuid = @operator_id::uuid)
   and (@location_id::uuid is null or projected.location_id::uuid = @location_id::uuid)
+  and (
+    @location_ids::text[] is null
+    or projected.location_id = any(@location_ids::text[])
+  )
   and (@usage_class::text is null or projected.usage_class = @usage_class)
   and (@status::text is null or projected.status = @status)
   and (

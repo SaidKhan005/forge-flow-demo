@@ -182,11 +182,18 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       final hierarchyLocations = rolesGateway == null
           ? const <HierarchyLocationLeaf>[]
           : results[4] as List<HierarchyLocationLeaf>;
-      final visibleMembers = _applyLocalFilters(members);
+      final visibleMembers = _applyLocalFilters(
+        members,
+        hierarchyLocations: hierarchyLocations,
+      );
+      final visibleInvites = _applyInviteScope(
+        invites,
+        hierarchyLocations: hierarchyLocations,
+      );
       if (!mounted) return;
       setState(() {
         _members = visibleMembers;
-        _invites = invites;
+        _invites = visibleInvites;
         _roles = roles;
         _orgUnits = orgUnits;
         _hierarchyLocations = hierarchyLocations;
@@ -232,12 +239,19 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     _refresh();
   }
 
-  List<MemberAdminRow> _applyLocalFilters(List<MemberAdminRow> rows) {
+  List<MemberAdminRow> _applyLocalFilters(
+    List<MemberAdminRow> rows, {
+    required List<HierarchyLocationLeaf> hierarchyLocations,
+  }) {
     final query = _searchQuery.trim().toLowerCase();
     final roleFilter = _roleFilter;
     final locationFilter = _locationFilter;
+    final scopeLocationIds = _locationIdsForHierarchyScope(hierarchyLocations);
     return rows
         .where((row) {
+          if (!_memberMatchesHierarchyScope(row, scopeLocationIds)) {
+            return false;
+          }
           if (_statusFilter != null && row.status != _statusFilter) {
             return false;
           }
@@ -261,6 +275,63 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           return true;
         })
         .toList(growable: false);
+  }
+
+  List<MemberInviteRow> _applyInviteScope(
+    List<MemberInviteRow> rows, {
+    required List<HierarchyLocationLeaf> hierarchyLocations,
+  }) {
+    final scopeLocationIds = _locationIdsForHierarchyScope(hierarchyLocations);
+    return rows
+        .where(
+          (invite) => _inviteMatchesHierarchyScope(invite, scopeLocationIds),
+        )
+        .toList(growable: false);
+  }
+
+  Set<String> _locationIdsForHierarchyScope(
+    List<HierarchyLocationLeaf> hierarchyLocations,
+  ) {
+    final scope = widget.initialScope;
+    if (scope == null || !scope.isOrgUnitScope) return const <String>{};
+    final orgUnitId = scope.orgUnitId;
+    if (orgUnitId == null || orgUnitId.isEmpty) return const <String>{};
+    return <String>{
+      for (final location in hierarchyLocations)
+        if (location.orgUnitId == orgUnitId) location.locationId,
+    };
+  }
+
+  bool _memberMatchesHierarchyScope(
+    MemberAdminRow row,
+    Set<String> scopeLocationIds,
+  ) {
+    final scope = widget.initialScope;
+    if (scope == null || scope.isBusinessScope) return true;
+    if (scope.isLocationScope) {
+      final locationId = scope.locationId;
+      return row.primaryLocationId == locationId ||
+          row.grants.any((grant) => grant.locationId == locationId);
+    }
+    final orgUnitId = scope.orgUnitId;
+    return row.orgUnitId == orgUnitId ||
+        row.grants.any((grant) => grant.orgUnitId == orgUnitId) ||
+        scopeLocationIds.contains(row.primaryLocationId) ||
+        row.grants.any((grant) => scopeLocationIds.contains(grant.locationId));
+  }
+
+  bool _inviteMatchesHierarchyScope(
+    MemberInviteRow invite,
+    Set<String> scopeLocationIds,
+  ) {
+    final scope = widget.initialScope;
+    if (scope == null || scope.isBusinessScope) return true;
+    if (scope.isLocationScope) {
+      return invite.primaryLocationId == scope.locationId;
+    }
+    final orgUnitId = scope.orgUnitId;
+    return invite.orgUnitId == orgUnitId ||
+        scopeLocationIds.contains(invite.primaryLocationId);
   }
 
   bool _roleMatches(String rowRoleKey, String filterRoleKey) {
@@ -576,6 +647,21 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     return null;
   }
 
+  MemberAccessScopeRef? _initialInviteScope() {
+    final scope = widget.initialScope;
+    if (scope == null) return null;
+    final scopeId = switch (scope.scopeType) {
+      AdminHierarchyScopeType.business =>
+        'operator_wide:${widget.pickedOperator.operatorId}',
+      AdminHierarchyScopeType.orgUnit => 'org_unit:${scope.orgUnitId ?? ''}',
+      AdminHierarchyScopeType.location => 'location:${scope.locationId ?? ''}',
+    };
+    for (final ref in _availableAccessScopes) {
+      if (ref.id == scopeId) return ref;
+    }
+    return null;
+  }
+
   Future<void> _onInvite() async {
     if (!widget.editingEnabled) return;
     final existing = <String>{
@@ -615,6 +701,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         operatorBusinessName: widget.pickedOperator.operatorBusinessName,
         locations: _availableLocations,
         accessScopes: _availableAccessScopes,
+        initialScope: _initialInviteScope(),
         existingEmails: existing,
         existingEmailUsages: existingUsages,
         onReviewExistingEmail: _showEmailUsage,
@@ -731,7 +818,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
               title: 'People, access, and roles',
               subtitle:
                   '${widget.pickedOperator.operatorBusinessName}: members, '
-                  'invites, and support actions. Changes require a reason.',
+                  'invites, role grants, and access scopes. Changes require a reason.',
               trailing: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),
@@ -1482,27 +1569,6 @@ class _MemberRowTile extends StatelessWidget {
         ),
       );
     } else {
-      buttons.add(
-        _RowAction(
-          keyValue: 'admin_members_action_reset_password_${row.userId}',
-          label: 'Reset password',
-          onPressed: () => onResetPassword(row),
-        ),
-      );
-      buttons.add(
-        _RowAction(
-          keyValue: 'admin_members_action_reset_mfa_${row.userId}',
-          label: 'Reset MFA',
-          onPressed: () => onResetMfa(row),
-        ),
-      );
-      buttons.add(
-        _RowAction(
-          keyValue: 'admin_members_action_force_logout_${row.userId}',
-          label: 'Force logout',
-          onPressed: () => onForceLogout(row),
-        ),
-      );
       // Admin-only action. Operator self-service (11W.1) routes role
       // changes through the normal `team.roles.assign` workflow; the
       // override path lives only on the admin surface.

@@ -60,19 +60,26 @@ class AdminHierarchyScopePrompt extends StatelessWidget {
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 14),
-          if (scopes.isEmpty)
-            const _EmptyScopeState()
-          else
-            ...scopes.map(
-              (scope) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _ScopeOption(
-                  scope: scope,
-                  selected: scope == selectedScope,
-                  onTap: () => onScopeSelected(scope),
-                ),
-              ),
+          Flexible(
+            child: SingleChildScrollView(
+              child: scopes.isEmpty
+                  ? const _EmptyScopeState()
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final scope in scopes)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _ScopeOption(
+                              scope: scope,
+                              selected: scope == selectedScope,
+                              onTap: () => onScopeSelected(scope),
+                            ),
+                          ),
+                      ],
+                    ),
             ),
+          ),
           if (onCancel != null) ...[
             const SizedBox(height: 8),
             Align(

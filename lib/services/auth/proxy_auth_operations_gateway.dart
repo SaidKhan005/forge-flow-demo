@@ -560,6 +560,7 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       'unit_type': command.unitType,
       'label': command.label,
       'name': command.name,
+      if (command.adminReason != null) 'admin_reason': command.adminReason,
     });
     _expectStatus(response, 201);
     final orgUnitId = _readNonBlankString(response.body['org_unit_id']);
@@ -618,9 +619,7 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     }
     return AuthTeamActiveSessionsListed(
       sessions: List<AuthTeamActiveSessionSummary>.unmodifiable(
-        rawSessions.map(
-          (raw) => _teamSessionFromJson(response, raw),
-        ),
+        rawSessions.map((raw) => _teamSessionFromJson(response, raw)),
       ),
     );
   }
@@ -778,10 +777,7 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     final session = _authSessionFromJson(response, raw);
     final targetUserId = _readNonBlankString(json['user_id']);
     if (targetUserId == null) {
-      throw _malformed(
-        response,
-        'team session payload missing user_id',
-      );
+      throw _malformed(response, 'team session payload missing user_id');
     }
     return AuthTeamActiveSessionSummary(
       session: session,

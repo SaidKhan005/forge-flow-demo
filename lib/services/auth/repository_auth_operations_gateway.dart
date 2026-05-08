@@ -854,6 +854,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         'org_unit_id': orgUnitId,
         'parent_org_unit_id': command.parentOrgUnitId,
         'unit_type': unitType,
+        if (command.adminReason != null) 'admin_reason': command.adminReason,
       },
     );
     return TeamOrgUnitCreated(orgUnitId: orgUnitId);

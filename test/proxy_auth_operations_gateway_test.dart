@@ -634,6 +634,7 @@ void main() {
           unitType: 'region',
           label: 'east',
           name: 'East Region',
+          adminReason: 'admin hierarchy setup',
         ),
       );
       final moved = await gateway.moveLocationToOrgUnit(
@@ -659,6 +660,7 @@ void main() {
           'unit_type': 'region',
           'label': 'east',
           'name': 'East Region',
+          'admin_reason': 'admin hierarchy setup',
         }),
       );
       expect(
@@ -735,8 +737,7 @@ void main() {
               <String, Object?>{
                 'session_id': 'session-1',
                 'created_at': DateTime.utc(2026, 5, 5).toIso8601String(),
-                'last_seen_at': DateTime.utc(2026, 5, 5, 14)
-                    .toIso8601String(),
+                'last_seen_at': DateTime.utc(2026, 5, 5, 14).toIso8601String(),
                 'device_label': 'Forge & Flow on iPhone',
                 'user_id': 'u-jordan',
                 'display_name': 'Jordan Lee',
@@ -762,18 +763,9 @@ void main() {
 
       expect(listed.sessions, hasLength(1));
       expect(listed.sessions.single.targetUserId, equals('u-jordan'));
-      expect(
-        listed.sessions.single.targetDisplayName,
-        equals('Jordan Lee'),
-      );
-      expect(
-        listed.sessions.single.session.sessionId,
-        equals('session-1'),
-      );
-      expect(
-        fake.gets.single.url.path,
-        equals('/v1/auth/team/sessions'),
-      );
+      expect(listed.sessions.single.targetDisplayName, equals('Jordan Lee'));
+      expect(listed.sessions.single.session.sessionId, equals('session-1'));
+      expect(fake.gets.single.url.path, equals('/v1/auth/team/sessions'));
     });
 
     test('revokeSession POSTs the existing session/revoke route', () async {

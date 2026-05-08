@@ -311,31 +311,6 @@ class _RolesHierarchySessionsAdminScreenState
 
   // --- Hierarchy tab actions --------------------------------------------
 
-  Future<void> _onMoveOrgUnit(OrgUnitAdminNode node) async {
-    final candidates = <OrgUnitAdminNode?>[
-      null,
-      ..._orgUnits.where((u) => u.orgUnitId != node.orgUnitId),
-    ];
-    final result = await showDialog<_MoveOrgUnitResult>(
-      context: context,
-      builder: (_) => _MoveOrgUnitDialog(node: node, candidates: candidates),
-    );
-    if (result == null) return;
-    await _runAndRefresh(
-      () => widget.gateway.moveOrgUnit(
-        operatorId: widget.pickedOperator.operatorId,
-        orgUnitId: node.orgUnitId,
-        newParentOrgUnitId: result.newParentOrgUnitId,
-        idempotencyKey: _nextIdempotencyKey('hierarchy-move-org-unit'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: result.adminReason,
-      ),
-      refresh: _refreshHierarchy,
-      successHint: 'Moved ${node.name}',
-    );
-  }
-
   Future<void> _onMoveLocation(HierarchyLocationLeaf leaf) async {
     final candidates = _orgUnits.toList(growable: false);
     if (candidates.isEmpty) return;
@@ -356,6 +331,34 @@ class _RolesHierarchySessionsAdminScreenState
       ),
       refresh: _refreshHierarchy,
       successHint: 'Moved ${leaf.name}',
+    );
+  }
+
+  Future<void> _onAddChildOrgUnit(OrgUnitAdminNode parent) async {
+    final existingNames = <String>{
+      for (final unit in _orgUnits)
+        if (unit.parentOrgUnitId == parent.orgUnitId) unit.name.toLowerCase(),
+    };
+    final result = await showDialog<_AddOrgUnitResult>(
+      context: context,
+      builder: (_) =>
+          _AddChildOrgUnitDialog(parent: parent, existingNames: existingNames),
+    );
+    if (result == null) return;
+    await _runAndRefresh(
+      () => widget.gateway.createOrgUnit(
+        operatorId: widget.pickedOperator.operatorId,
+        parentOrgUnitId: parent.orgUnitId,
+        unitType: result.unitType,
+        label: result.label,
+        name: result.name,
+        idempotencyKey: _nextIdempotencyKey('hierarchy-create-org-unit'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: result.adminReason,
+      ),
+      refresh: _refreshHierarchy,
+      successHint: 'Added ${result.name}',
     );
   }
 
@@ -454,7 +457,7 @@ class _RolesHierarchySessionsAdminScreenState
             orgUnits: _orgUnits,
             locations: _locations,
             editingEnabled: widget.editingEnabled,
-            onMoveOrgUnit: _onMoveOrgUnit,
+            onAddChildOrgUnit: _onAddChildOrgUnit,
             onMoveLocation: _onMoveLocation,
           ),
         ),
@@ -1004,19 +1007,22 @@ class _PermissionExplainerCard extends StatelessWidget {
 // Hierarchy tab
 // ---------------------------------------------------------------------
 
+const String _orgUnitMoveGatedCopy =
+    'Org-unit moves are gated until schema, proxy, and audit support ships.';
+
 class _HierarchyTab extends StatelessWidget {
   const _HierarchyTab({
     required this.orgUnits,
     required this.locations,
     required this.editingEnabled,
-    required this.onMoveOrgUnit,
+    required this.onAddChildOrgUnit,
     required this.onMoveLocation,
   });
 
   final List<OrgUnitAdminNode> orgUnits;
   final List<HierarchyLocationLeaf> locations;
   final bool editingEnabled;
-  final ValueChanged<OrgUnitAdminNode> onMoveOrgUnit;
+  final ValueChanged<OrgUnitAdminNode> onAddChildOrgUnit;
   final ValueChanged<HierarchyLocationLeaf> onMoveLocation;
 
   @override
@@ -1087,7 +1093,11 @@ class _HierarchyTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Move actions are audit-logged with your name and reason.',
+                  'Location moves are audit-logged with your name and reason. '
+                  'Use Add child to create a new region, district, or '
+                  'location group under an existing unit. '
+                  'Org-unit moves are gated until schema, proxy, and audit '
+                  'support ships.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 8),
@@ -1104,7 +1114,7 @@ class _HierarchyTab extends StatelessWidget {
                       locationsByOrgUnit: locationsByOrgUnit,
                       depth: 0,
                       editingEnabled: editingEnabled,
-                      onMoveOrgUnit: onMoveOrgUnit,
+                      onAddChildOrgUnit: onAddChildOrgUnit,
                       onMoveLocation: onMoveLocation,
                     ),
               ],
@@ -1123,7 +1133,7 @@ class _OrgUnitNodeRow extends StatelessWidget {
     required this.locationsByOrgUnit,
     required this.depth,
     required this.editingEnabled,
-    required this.onMoveOrgUnit,
+    required this.onAddChildOrgUnit,
     required this.onMoveLocation,
   });
 
@@ -1132,7 +1142,7 @@ class _OrgUnitNodeRow extends StatelessWidget {
   final Map<String, List<HierarchyLocationLeaf>> locationsByOrgUnit;
   final int depth;
   final bool editingEnabled;
-  final ValueChanged<OrgUnitAdminNode> onMoveOrgUnit;
+  final ValueChanged<OrgUnitAdminNode> onAddChildOrgUnit;
   final ValueChanged<HierarchyLocationLeaf> onMoveLocation;
 
   @override
@@ -1169,13 +1179,29 @@ class _OrgUnitNodeRow extends StatelessWidget {
                     ).copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
-                if (editingEnabled && !isRoot)
-                  OutlinedButton(
-                    key: Key('admin_rhs_org_unit_move_${node.orgUnitId}'),
-                    onPressed: () => onMoveOrgUnit(node),
-                    style: AdminButtonStyles.secondary(),
-                    child: const Text('Move'),
+                if (editingEnabled && !isRoot) ...<Widget>[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      _orgUnitMoveGatedCopy,
+                      key: Key(
+                        'admin_rhs_org_unit_move_gated_${node.orgUnitId}',
+                      ),
+                      textAlign: TextAlign.right,
+                      style: AppTextStyles.mono11(color: AppColors.textMuted),
+                    ),
                   ),
+                ],
+                if (editingEnabled) ...<Widget>[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    key: Key('admin_rhs_org_unit_add_child_${node.orgUnitId}'),
+                    onPressed: () => onAddChildOrgUnit(node),
+                    style: AdminButtonStyles.secondary(),
+                    icon: const Icon(Icons.add, size: 14),
+                    label: const Text('Add child'),
+                  ),
+                ],
               ],
             ),
             for (final loc in ownLocations)
@@ -1215,7 +1241,7 @@ class _OrgUnitNodeRow extends StatelessWidget {
                 locationsByOrgUnit: locationsByOrgUnit,
                 depth: depth + 1,
                 editingEnabled: editingEnabled,
-                onMoveOrgUnit: onMoveOrgUnit,
+                onAddChildOrgUnit: onAddChildOrgUnit,
                 onMoveLocation: onMoveLocation,
               ),
           ],
@@ -2043,93 +2069,153 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
 // Hierarchy tab dialogs
 // ---------------------------------------------------------------------
 
-class _MoveOrgUnitResult {
-  const _MoveOrgUnitResult({
-    required this.newParentOrgUnitId,
+class _AddOrgUnitResult {
+  const _AddOrgUnitResult({
+    required this.unitType,
+    required this.label,
+    required this.name,
     required this.adminReason,
   });
 
-  final String? newParentOrgUnitId;
+  final String unitType;
+  final String label;
+  final String name;
   final String adminReason;
 }
 
-class _MoveOrgUnitDialog extends StatefulWidget {
-  const _MoveOrgUnitDialog({required this.node, required this.candidates});
+class _AddChildOrgUnitDialog extends StatefulWidget {
+  const _AddChildOrgUnitDialog({
+    required this.parent,
+    required this.existingNames,
+  });
 
-  final OrgUnitAdminNode node;
-  final List<OrgUnitAdminNode?> candidates;
+  final OrgUnitAdminNode parent;
+  final Set<String> existingNames;
 
   @override
-  State<_MoveOrgUnitDialog> createState() => _MoveOrgUnitDialogState();
+  State<_AddChildOrgUnitDialog> createState() => _AddChildOrgUnitDialogState();
 }
 
-class _MoveOrgUnitDialogState extends State<_MoveOrgUnitDialog> {
-  late String? _selectedParentId = widget.node.parentOrgUnitId;
+class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
+  String _unitType = 'region';
+  final _nameController = TextEditingController();
+  final _labelController = TextEditingController();
   final _reasonController = TextEditingController();
-  bool _violated = false;
+  String? _nameError;
+  String? _reasonError;
 
   @override
   void dispose() {
+    _nameController.dispose();
+    _labelController.dispose();
     _reasonController.dispose();
     super.dispose();
   }
 
   void _onSubmit() {
+    final name = _nameController.text.trim();
     final reason = _reasonController.text.trim();
-    if (reason.isEmpty) {
-      setState(() => _violated = true);
-      return;
-    }
+    setState(() {
+      _nameError = name.isEmpty
+          ? HierarchyValidationCopy.orgUnitNameEmpty
+          : widget.existingNames.contains(name.toLowerCase())
+          ? HierarchyValidationCopy.orgUnitNameDuplicate
+          : null;
+      _reasonError = reason.isEmpty ? 'Add a reason before continuing.' : null;
+    });
+    if (_nameError != null || _reasonError != null) return;
+    final rawLabel = _labelController.text.trim();
+    final label = rawLabel.isEmpty ? _sanitiseLabel(name) : rawLabel;
     Navigator.of(context).pop(
-      _MoveOrgUnitResult(
-        newParentOrgUnitId: _selectedParentId,
+      _AddOrgUnitResult(
+        unitType: _unitType,
+        label: label,
+        name: name,
         adminReason: reason,
       ),
     );
   }
 
+  static String _sanitiseLabel(String name) {
+    final collapsed = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+    return collapsed.replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      key: const Key('admin_rhs_move_org_unit_dialog'),
+      key: const Key('admin_rhs_add_child_org_unit_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Move ${widget.node.name}',
+        'Add child org unit',
         style: AdminButtonStyles.dialogTitleStyle,
       ),
       content: SizedBox(
-        width: 480,
+        width: 500,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            DropdownButtonFormField<String?>(
-              key: const Key('admin_rhs_move_org_unit_parent'),
-              initialValue: _selectedParentId,
+            Text(
+              'Under ${widget.parent.name}',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: const Key('admin_rhs_add_org_unit_type'),
+              initialValue: _unitType,
               isExpanded: true,
               decoration: const InputDecoration(
-                labelText: 'New parent',
+                labelText: 'Unit type',
                 border: OutlineInputBorder(),
               ),
-              items: <DropdownMenuItem<String?>>[
-                for (final candidate in widget.candidates)
-                  DropdownMenuItem<String?>(
-                    value: candidate?.orgUnitId,
-                    child: Text(candidate?.name ?? 'Top level'),
-                  ),
+              items: const <DropdownMenuItem<String>>[
+                DropdownMenuItem<String>(
+                  value: 'region',
+                  child: Text('Region'),
+                ),
+                DropdownMenuItem<String>(
+                  value: 'district',
+                  child: Text('District'),
+                ),
+                DropdownMenuItem<String>(
+                  value: 'location_group',
+                  child: Text('Location group'),
+                ),
               ],
-              onChanged: (v) => setState(() => _selectedParentId = v),
+              onChanged: (value) {
+                if (value != null) setState(() => _unitType = value);
+              },
             ),
             const SizedBox(height: 12),
             TextField(
-              key: const Key('admin_rhs_move_org_unit_reason'),
+              key: const Key('admin_rhs_add_org_unit_name'),
+              controller: _nameController,
+              decoration: InputDecoration(
+                labelText: 'Display name',
+                border: const OutlineInputBorder(),
+                errorText: _nameError,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_rhs_add_org_unit_label'),
+              controller: _labelController,
+              decoration: const InputDecoration(
+                labelText: 'Label (a-z, 0-9, underscore)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_rhs_add_org_unit_reason'),
               controller: _reasonController,
               minLines: 1,
               maxLines: 3,
               decoration: InputDecoration(
                 labelText: 'Reason',
                 border: const OutlineInputBorder(),
-                errorText: _violated ? 'Add a reason before continuing.' : null,
+                errorText: _reasonError,
               ),
             ),
           ],
@@ -2137,14 +2223,15 @@ class _MoveOrgUnitDialogState extends State<_MoveOrgUnitDialog> {
       ),
       actions: <Widget>[
         TextButton(
+          key: const Key('admin_rhs_add_org_unit_cancel'),
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
         FilledButton(
-          key: const Key('admin_rhs_move_org_unit_submit'),
+          key: const Key('admin_rhs_add_org_unit_submit'),
           style: AdminButtonStyles.primary,
           onPressed: _onSubmit,
-          child: const Text('Move'),
+          child: const Text('Add'),
         ),
       ],
     );

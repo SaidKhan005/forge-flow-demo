@@ -230,7 +230,7 @@ void main() {
     );
   });
 
-  testWidgets('org-unit scope expands to covered locations client-side', (
+  testWidgets('org-unit scope expands to covered support-log locations', (
     tester,
   ) async {
     setLargeViewport(tester);
