@@ -395,6 +395,54 @@ void main() {
       find.byKey(const Key('admin_location_timing_save_disabled')),
       findsOneWidget,
     );
+    expect(find.text('Timezone source'), findsOneWidget);
+    expect(find.text('Set at this scope'), findsWidgets);
+    expect(find.text('Inherited from business'), findsWidgets);
+    expect(
+      find.byKey(const Key('admin_timing_service_periods_panel')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('business Timing action shows inherited timing provenance', (
+    tester,
+  ) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[
+        seedBundle(
+          operatorId: 'op-business-timing',
+          primaryLocationId: 'loc-business-timing',
+          businessName: 'Business Timing Cafe',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
+
+    final timingTile = find.byKey(
+      const Key('admin_business_setup_tile_timing'),
+    );
+    await tester.ensureVisible(timingTile);
+    await tester.pumpAndSettle();
+    await tester.tap(timingTile);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_location_timing_dialog')),
+      findsOneWidget,
+    );
+    expect(find.text('Showing timing for business scope'), findsOneWidget);
+    expect(find.text('Effective timezone'), findsOneWidget);
+    expect(find.text('America/Toronto'), findsOneWidget);
+    expect(find.text('Business day starts'), findsOneWidget);
+    expect(find.text('04:00'), findsOneWidget);
+    expect(find.text('Week starts'), findsOneWidget);
+    expect(find.text('Monday'), findsOneWidget);
+    expect(find.text('Effective service periods'), findsOneWidget);
+    expect(find.text('Lunch'), findsOneWidget);
+    expect(find.text('Set at this scope'), findsWidgets);
   });
 
   testWidgets(

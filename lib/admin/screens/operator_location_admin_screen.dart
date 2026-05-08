@@ -14,12 +14,16 @@
 
 import 'package:flutter/material.dart';
 
+import '../../domain/models/business_timing_profile.dart';
+import '../../domain/models/restaurant_timing_config.dart';
+import '../../domain/models/service_period_definition.dart';
+import '../../domain/services/business_timing_profile_resolver.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/iana_timezones.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../models/email_conflict_details.dart';
-import '../../utils/iana_timezones.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
@@ -969,6 +973,10 @@ class _OperatorDetail extends StatelessWidget {
     final operator = bundle.operator;
     final canAddLocation = _canAddLocation;
     final selectedLocation = _selectedLocationForScope;
+    final timingLocation =
+        selectedLocation ??
+        bundle.primaryLocation ??
+        (bundle.locations.isEmpty ? null : bundle.locations.first);
     return SingleChildScrollView(
       key: Key('admin_operator_detail_${operator.operatorId}'),
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1118,13 +1126,24 @@ class _OperatorDetail extends StatelessWidget {
                     );
                   },
             onOpenTiming: selectedLocation == null
-                ? null
+                ? () {
+                    showDialog<void>(
+                      context: context,
+                      builder: (_) => _AdminLocationTimingDialog(
+                        operatorName: operator.businessName,
+                        selectedScope: selectedHierarchyScope,
+                        timingLocation: timingLocation,
+                        editingEnabled: editingEnabled,
+                      ),
+                    );
+                  }
                 : () {
                     showDialog<void>(
                       context: context,
                       builder: (_) => _AdminLocationTimingDialog(
                         operatorName: operator.businessName,
-                        location: selectedLocation,
+                        selectedScope: selectedHierarchyScope,
+                        timingLocation: timingLocation,
                         editingEnabled: editingEnabled,
                       ),
                     );
@@ -1331,9 +1350,13 @@ class _BusinessSetupCard extends StatelessWidget {
               _SetupTile(
                 tileKey: const Key('admin_business_setup_tile_timing'),
                 label: 'Timing',
-                value: hasPrimary && selectedScope.isLocationScope
+                value: !hasPrimary
+                    ? 'Needs timezone'
+                    : selectedScope.isLocationScope
                     ? 'Location'
-                    : 'Location required',
+                    : selectedScope.isBusinessScope
+                    ? 'Business default'
+                    : 'Inherited',
                 icon: Icons.schedule_outlined,
                 tone: AppColors.warning,
                 onPressed: onOpenTiming,
@@ -2152,7 +2175,14 @@ class _LocationActionWrap extends StatelessWidget {
                   context: context,
                   builder: (_) => _AdminLocationTimingDialog(
                     operatorName: operatorName,
-                    location: location,
+                    selectedScope: AdminHierarchyScopeIntent.location(
+                      operatorId: location.operatorId,
+                      locationId: location.locationId,
+                      operatorName: operatorName,
+                      orgUnitId: location.parentOrgUnitId,
+                      locationName: location.name,
+                    ),
+                    timingLocation: location,
                     editingEnabled: editingEnabled,
                   ),
                 );
@@ -2252,18 +2282,24 @@ class _ActionRowWrap extends StatelessWidget {
 class _AdminLocationTimingDialog extends StatelessWidget {
   const _AdminLocationTimingDialog({
     required this.operatorName,
-    required this.location,
+    required this.selectedScope,
+    required this.timingLocation,
     required this.editingEnabled,
   });
 
   final String operatorName;
-  final LocationAdminRecord location;
+  final AdminHierarchyScopeIntent selectedScope;
+  final LocationAdminRecord? timingLocation;
   final bool editingEnabled;
 
   @override
   Widget build(BuildContext context) {
-    final rolloverHour = location.businessDayRolloverHour ?? 0;
-    final startsAt = '${rolloverHour.toString().padLeft(2, '0')}:00';
+    final resolution = _AdminTimingResolution.forScope(
+      operatorName: operatorName,
+      selectedScope: selectedScope,
+      timingLocation: timingLocation,
+    );
+    final effective = resolution.effective;
     return AlertDialog(
       key: const Key('admin_location_timing_dialog'),
       backgroundColor: AppColors.backgroundSurface,
@@ -2278,46 +2314,80 @@ class _AdminLocationTimingDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _TimingDialogRow(
-                label: 'Scope',
-                value: '$operatorName / ${location.name}',
+              AdminHierarchyScopeBanner(
+                scope: resolution.bannerScope,
+                surfaceName: 'timing',
+                onChangeScope: () {},
               ),
-              _TimingDialogRow(label: 'Timezone', value: location.timezone),
-              _TimingDialogRow(label: 'Business day starts', value: startsAt),
+              const SizedBox(height: 10),
+              _TimingDialogRow(label: 'Scope', value: resolution.scopeLabel),
+              if (effective == null) ...[
+                Text(
+                  'Timing cannot resolve without at least one location timezone. Add a location with an IANA timezone before reviewing effective timing.',
+                  key: const Key('admin_timing_unavailable_copy'),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ] else ...[
+                _TimingDialogRow(
+                  label: 'Effective timezone',
+                  value: effective.businessTimezone,
+                ),
+                _TimingDialogRow(
+                  label: 'Timezone source',
+                  value: resolution.timezoneSource,
+                ),
+                _TimingDialogRow(
+                  label: 'Business day starts',
+                  value: effective.businessDayStartLocalTime,
+                ),
+                _TimingDialogRow(
+                  label: 'Day-start source',
+                  value: resolution.dayStartSource,
+                ),
+                _TimingDialogRow(
+                  label: 'Week starts',
+                  value: _weekdayLabel(effective.weekStartDay),
+                ),
+                _TimingDialogRow(
+                  label: 'Shift close authority',
+                  value: _shiftCloseAuthorityLabel(
+                    effective.shiftCloseAuthority,
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                decoration: BoxDecoration(
-                  color: AppColors.cardGlow,
-                  border: Border.all(color: AppColors.borderSubtle, width: 1),
-                  borderRadius: BorderRadius.circular(6),
+              if (effective != null)
+                Container(
+                  key: const Key('admin_timing_service_periods_panel'),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardGlow,
+                    border: Border.all(color: AppColors.borderSubtle, width: 1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Effective service periods',
+                        style: AppTextStyles.mono11(
+                          color: AppColors.sunsetDark,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      for (final period
+                          in effective.servicePeriodDefinitions.toList()..sort(
+                            (a, b) => a.sortOrder.compareTo(b.sortOrder),
+                          ))
+                        _TimingPeriodLine(
+                          name: period.label,
+                          range:
+                              '${period.startLocalTime} - ${period.endLocalTime}',
+                          source: resolution.servicePeriodSource,
+                        ),
+                    ],
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Effective service periods',
-                      style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-                    ),
-                    const SizedBox(height: 8),
-                    const _TimingPeriodLine(
-                      name: 'Lunch',
-                      range: '11:00 - 15:00',
-                      source: 'Inherited demo',
-                    ),
-                    const _TimingPeriodLine(
-                      name: 'Dinner',
-                      range: '17:00 - 22:00',
-                      source: 'Inherited demo',
-                    ),
-                    const _TimingPeriodLine(
-                      name: 'Late night',
-                      range: '22:00 - 01:00',
-                      source: 'Inherited demo',
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(height: 12),
               Text(
                 editingEnabled
@@ -2370,6 +2440,200 @@ class _AdminLocationTimingDialog extends StatelessWidget {
       ],
     );
   }
+}
+
+class _AdminTimingResolution {
+  const _AdminTimingResolution({
+    required this.bannerScope,
+    required this.scopeLabel,
+    required this.effective,
+    required this.timezoneSource,
+    required this.dayStartSource,
+    required this.servicePeriodSource,
+  });
+
+  final AdminHierarchyScopeIntent bannerScope;
+  final String scopeLabel;
+  final EffectiveBusinessTimingProfile? effective;
+  final String timezoneSource;
+  final String dayStartSource;
+  final String servicePeriodSource;
+
+  static _AdminTimingResolution forScope({
+    required String operatorName,
+    required AdminHierarchyScopeIntent selectedScope,
+    required LocationAdminRecord? timingLocation,
+  }) {
+    final effectiveScope = _timingBannerScope(selectedScope);
+    final scopeLabel = selectedScope.isLocationScope && timingLocation != null
+        ? '$operatorName / ${timingLocation.name}'
+        : selectedScope.displayLabel;
+    if (timingLocation == null) {
+      return _AdminTimingResolution(
+        bannerScope: effectiveScope,
+        scopeLabel: scopeLabel,
+        effective: null,
+        timezoneSource: 'Unavailable',
+        dayStartSource: 'Unavailable',
+        servicePeriodSource: 'Unavailable',
+      );
+    }
+
+    final businessProfile = BusinessTimingProfile(
+      profileId: 'admin-${selectedScope.operatorId}-business-default',
+      scope: BusinessTimingScope.operatorDefault,
+      scopeId: selectedScope.operatorId,
+      businessTimezone: timingLocation.timezone,
+      businessDayStartLocalTime: _rolloverToLocalTime(
+        timingLocation.businessDayRolloverHour,
+      ),
+      weekStartDay: DateTime.monday,
+      servicePeriodDefinitions: _defaultAdminTimingServicePeriods,
+      shiftCloseAuthority: ShiftCloseAuthority.appLocalCutoffFallback,
+      localCloseFallback: _rolloverToLocalTime(
+        timingLocation.businessDayRolloverHour,
+      ),
+    );
+    final candidates = <BusinessTimingProfile>[businessProfile];
+
+    if (selectedScope.isOrgUnitScope) {
+      candidates.add(
+        BusinessTimingProfile(
+          profileId: 'admin-${selectedScope.orgUnitId}-org-unit',
+          scope: BusinessTimingScope.orgUnit,
+          scopeId: selectedScope.orgUnitId ?? selectedScope.operatorId,
+        ),
+      );
+    }
+    if (selectedScope.isLocationScope) {
+      candidates.add(
+        BusinessTimingProfile(
+          profileId: 'admin-${timingLocation.locationId}-location',
+          scope: BusinessTimingScope.location,
+          scopeId: timingLocation.locationId,
+          businessTimezone: timingLocation.timezone,
+          businessDayStartLocalTime: _rolloverToLocalTime(
+            timingLocation.businessDayRolloverHour,
+          ),
+        ),
+      );
+    }
+
+    final effective = BusinessTimingProfileResolver.resolve(candidates);
+    return _AdminTimingResolution(
+      bannerScope: effectiveScope,
+      scopeLabel: scopeLabel,
+      effective: effective,
+      timezoneSource: selectedScope.isOrgUnitScope
+          ? 'Inherited from business'
+          : 'Set at this scope',
+      dayStartSource: selectedScope.isOrgUnitScope
+          ? 'Inherited from business'
+          : 'Set at this scope',
+      servicePeriodSource: selectedScope.isBusinessScope
+          ? 'Set at this scope'
+          : 'Inherited from business',
+    );
+  }
+
+  static AdminHierarchyScopeIntent _timingBannerScope(
+    AdminHierarchyScopeIntent scope,
+  ) {
+    switch (scope.scopeType) {
+      case AdminHierarchyScopeType.business:
+        return AdminHierarchyScopeIntent.business(
+          operatorId: scope.operatorId,
+          operatorName: scope.operatorName,
+          valueState: AdminHierarchyScopeValueState.setAtScope,
+          effectiveValueLabel: 'Business timing default',
+          allowedActionsLabel: 'Read-only until write route exists',
+        );
+      case AdminHierarchyScopeType.orgUnit:
+        return AdminHierarchyScopeIntent.orgUnit(
+          operatorId: scope.operatorId,
+          orgUnitId: scope.orgUnitId!,
+          operatorName: scope.operatorName,
+          orgUnitName: scope.orgUnitName,
+          hierarchyPath: scope.hierarchyPath,
+          valueState: AdminHierarchyScopeValueState.inheritedFromBusiness,
+          inheritedFromLabel: 'business',
+          effectiveValueLabel: 'Inherited timing',
+          allowedActionsLabel: 'Read-only until write route exists',
+        );
+      case AdminHierarchyScopeType.location:
+        return AdminHierarchyScopeIntent.location(
+          operatorId: scope.operatorId,
+          locationId: scope.locationId!,
+          operatorName: scope.operatorName,
+          orgUnitId: scope.orgUnitId,
+          orgUnitName: scope.orgUnitName,
+          locationName: scope.locationName,
+          hierarchyPath: scope.hierarchyPath,
+          valueState: AdminHierarchyScopeValueState.locationOnly,
+          effectiveValueLabel: 'Location timezone and day start',
+          allowedActionsLabel: 'Read-only until write route exists',
+        );
+    }
+  }
+}
+
+const List<ServicePeriodDefinition> _defaultAdminTimingServicePeriods =
+    <ServicePeriodDefinition>[
+      ServicePeriodDefinition(
+        id: 'lunch',
+        label: 'Lunch',
+        shortLabel: 'L',
+        sortOrder: 10,
+        startLocalTime: '11:00',
+        endLocalTime: '15:00',
+        rollsPastMidnight: false,
+        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'dinner',
+        label: 'Dinner',
+        shortLabel: 'D',
+        sortOrder: 20,
+        startLocalTime: '17:00',
+        endLocalTime: '22:00',
+        rollsPastMidnight: false,
+        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'late_night',
+        label: 'Late night',
+        shortLabel: 'LN',
+        sortOrder: 30,
+        startLocalTime: '22:00',
+        endLocalTime: '01:00',
+        rollsPastMidnight: true,
+        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+      ),
+    ];
+
+String _rolloverToLocalTime(int? rolloverHour) {
+  final normalized = rolloverHour == null ? 0 : rolloverHour.clamp(0, 23);
+  return '${normalized.toString().padLeft(2, '0')}:00';
+}
+
+String _weekdayLabel(int weekStartDay) {
+  return switch (weekStartDay) {
+    DateTime.monday => 'Monday',
+    DateTime.tuesday => 'Tuesday',
+    DateTime.wednesday => 'Wednesday',
+    DateTime.thursday => 'Thursday',
+    DateTime.friday => 'Friday',
+    DateTime.saturday => 'Saturday',
+    DateTime.sunday => 'Sunday',
+    _ => 'Unknown',
+  };
+}
+
+String _shiftCloseAuthorityLabel(ShiftCloseAuthority authority) {
+  return switch (authority) {
+    ShiftCloseAuthority.vendorFinalization => 'Vendor finalization',
+    ShiftCloseAuthority.appLocalCutoffFallback => 'App local cutoff fallback',
+  };
 }
 
 class _TimingDialogRow extends StatelessWidget {
