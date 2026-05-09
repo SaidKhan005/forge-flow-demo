@@ -102,7 +102,7 @@ void main() {
   });
 
   testWidgets(
-    'business scope shows hierarchy prompt and location-required copy',
+    'business scope shows selected context and location-required copy',
     (tester) async {
       await tester.pumpWidget(
         wrap(
@@ -125,8 +125,12 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('admin_hierarchy_scope_prompt')),
+        find.byKey(const Key('admin_vendor_connections_selected_scope')),
         findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_hierarchy_scope_prompt')),
+        findsNothing,
       );
       expect(
         find.byKey(const Key('admin_vendor_connections_location_required')),
@@ -144,36 +148,26 @@ void main() {
     },
   );
 
-  testWidgets('selecting a location scope enables the shared vendor widget', (
+  testWidgets('location scope enables the shared vendor widget', (
     tester,
   ) async {
-    AdminHierarchyScopeIntent? selected;
     await tester.pumpWidget(
       wrap(
         VendorConnectionsAdminMount(
           operatorId: 'op-1',
-          selectedScope: businessScope,
+          selectedScope: locationScope,
           scopeOptions: const <AdminHierarchyScopeIntent>[
             businessScope,
             orgUnitScope,
             locationScope,
           ],
-          onScopeSelected: (scope) => selected = scope,
           gateway: InMemoryVendorConnectionsGateway(),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    final locationOption = find.byKey(
-      Key('admin_hierarchy_scope_option_${locationScope.cacheKey}'),
-    );
-    await tester.ensureVisible(locationOption);
-    await tester.pumpAndSettle();
-    await tester.tap(locationOption);
-    await tester.pumpAndSettle();
-
-    expect(selected, locationScope);
+    expect(find.byKey(const Key('admin_hierarchy_scope_prompt')), findsNothing);
     expect(
       find.byKey(const Key('admin_vendor_connections_location_required')),
       findsNothing,
@@ -183,9 +177,9 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text('Showing vendor integrations for location scope'),
+      find.byKey(const Key('admin_vendor_connections_selected_scope')),
       findsOneWidget,
     );
-    expect(find.text('Location only'), findsOneWidget);
+    expect(find.text('Selected location scope'), findsOneWidget);
   });
 }

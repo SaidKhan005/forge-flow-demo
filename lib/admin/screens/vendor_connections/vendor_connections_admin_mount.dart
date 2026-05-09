@@ -15,7 +15,6 @@ import '../../../integrations/ui/vendor_connections/vendor_connections_widget.da
 import '../../../theme/app_theme.dart';
 import '../../admin_route_handoff.dart';
 import '../../widgets/admin_business_accounts_back_button.dart';
-import '../../widgets/admin_hierarchy_scope_prompt.dart';
 import '../../widgets/admin_responsive_layout.dart';
 
 /// F&F Ops Console host shell for the shared Vendor Connections
@@ -47,9 +46,9 @@ class VendorConnectionsAdminMount extends StatefulWidget {
   /// location-only.
   final AdminHierarchyScopeIntent? selectedScope;
 
-  /// Scope choices for the shared hierarchy prompt. Business/org-unit choices
-  /// render read-only location-required copy; selecting a location mounts the
-  /// editable per-location vendor surface.
+  /// Legacy scope choices retained for constructor compatibility. Slice 0 stops
+  /// rendering a local scope prompt; the shared business hierarchy workspace is
+  /// now the source of scope changes.
   final List<AdminHierarchyScopeIntent> scopeOptions;
 
   final ValueChanged<AdminHierarchyScopeIntent>? onScopeSelected;
@@ -74,11 +73,8 @@ class VendorConnectionsAdminMount extends StatefulWidget {
 
 class _VendorConnectionsAdminMountState
     extends State<VendorConnectionsAdminMount> {
-  AdminHierarchyScopeIntent? _localScope;
-  bool _showScopePrompt = false;
-
   AdminHierarchyScopeIntent? get _activeScope {
-    return _localScope ?? widget.selectedScope ?? _legacyLocationScope;
+    return widget.selectedScope ?? _legacyLocationScope;
   }
 
   AdminHierarchyScopeIntent? get _legacyLocationScope {
@@ -94,17 +90,7 @@ class _VendorConnectionsAdminMountState
   }
 
   bool get _hasHierarchyContext {
-    return widget.selectedScope != null ||
-        widget.scopeOptions.isNotEmpty ||
-        _localScope != null;
-  }
-
-  void _selectScope(AdminHierarchyScopeIntent scope) {
-    setState(() {
-      _localScope = scope;
-      _showScopePrompt = false;
-    });
-    widget.onScopeSelected?.call(scope);
+    return widget.selectedScope != null || widget.scopeOptions.isNotEmpty;
   }
 
   @override
@@ -155,18 +141,12 @@ class _VendorConnectionsAdminMountState
       return content;
     }
 
-    final scopeOptions = widget.scopeOptions.isEmpty && scope != null
-        ? <AdminHierarchyScopeIntent>[scope]
-        : widget.scopeOptions;
-    final showPrompt = _showScopePrompt || !(scope?.isLocationScope ?? false);
-    final contextMaxHeight = showPrompt ? 340.0 : 160.0;
-
     return ColoredBox(
       color: AppColors.backgroundDeep,
       child: Column(
         children: <Widget>[
           ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: contextMaxHeight),
+            constraints: const BoxConstraints(maxHeight: 160),
             child: SingleChildScrollView(
               key: const Key('admin_vendor_connections_scope_context'),
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -177,28 +157,7 @@ class _VendorConnectionsAdminMountState
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       if (scope != null)
-                        AdminHierarchyScopeBanner(
-                          scope: scope,
-                          surfaceName: 'vendor integrations',
-                          onChangeScope: () {
-                            setState(() => _showScopePrompt = true);
-                          },
-                        ),
-                      if (showPrompt)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: AdminHierarchyScopePrompt(
-                            surfaceName: 'vendor integrations',
-                            selectedScope: scope,
-                            scopes: scopeOptions,
-                            onScopeSelected: _selectScope,
-                            onCancel: _showScopePrompt
-                                ? () {
-                                    setState(() => _showScopePrompt = false);
-                                  }
-                                : null,
-                          ),
-                        ),
+                        _VendorConnectionsScopeContext(scope: scope),
                     ],
                   ),
                 ),
@@ -237,6 +196,65 @@ class _VendorConnectionsAdminMountState
                   )
                 : null,
           );
+  }
+}
+
+class _VendorConnectionsScopeContext extends StatelessWidget {
+  const _VendorConnectionsScopeContext({required this.scope});
+
+  final AdminHierarchyScopeIntent scope;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_vendor_connections_selected_scope'),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.peacock.withValues(alpha: 0.08),
+        border: Border.all(
+          color: AppColors.peacock.withValues(alpha: 0.28),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.account_tree_outlined,
+            size: 18,
+            color: AppColors.peacockDark,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Selected ${scope.scopeType.label.toLowerCase()} scope',
+                  style: AppTextStyles.uiLabel(color: AppColors.peacockDark),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  scope.displayLabel,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+                if (!scope.isLocationScope) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Select a location in Business accounts to configure vendor integrations.',
+                    style: AppTextStyles.body12(color: AppColors.textSecondary),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

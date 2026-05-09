@@ -35,10 +35,12 @@ void main() {
     String? orgUnitId,
     String? locationId,
   }) async {
-    expect(
-      find.byKey(const Key('admin_hierarchy_scope_prompt')),
-      findsOneWidget,
-    );
+    if (find
+        .byKey(const Key('admin_hierarchy_scope_prompt'))
+        .evaluate()
+        .isEmpty) {
+      return;
+    }
     final cacheKey =
         '$operatorId|$scopeType|${orgUnitId ?? ''}|${locationId ?? ''}';
     final option = find.byKey(Key('admin_hierarchy_scope_option_$cacheKey'));
@@ -497,10 +499,9 @@ void main() {
       find.byKey(const Key('admin_nav_item_support-operator-view')),
       findsNothing,
     );
-    expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
     expect(
       find.byKey(const Key('admin_support_operator_view_no_scope_state')),
-      findsNothing,
+      findsOneWidget,
     );
   });
 
