@@ -215,7 +215,7 @@ IntegrationBundle _bundleFromJson(Map<String, Object?> body) {
     ],
     vendorConnectors: <VendorConnectorStatus>[
       for (final entry in vendor)
-        _statusFromJson((entry as Map).cast<String, Object?>()),
+        _vendorStatusFromJson((entry as Map).cast<String, Object?>()),
     ],
     fxRateSource: fx == null
         ? const VendorConnectorStatus(
@@ -243,6 +243,70 @@ VendorConnectorStatus _statusFromJson(Map<String, Object?> json) {
     statusLabel: json['status_label']! as String,
     detailMessage: (json['detail_message'] as String?) ?? '',
   );
+}
+
+VendorConnectorStatus _vendorStatusFromJson(Map<String, Object?> json) {
+  return _normalizeVendorConnectorStatus(_statusFromJson(json));
+}
+
+VendorConnectorStatus _normalizeVendorConnectorStatus(
+  VendorConnectorStatus status,
+) {
+  final normalizedLabel = _apiReachabilityStatusLabel(status.statusLabel);
+  return VendorConnectorStatus(
+    id: status.id,
+    displayName: status.displayName,
+    statusLabel: normalizedLabel,
+    detailMessage: _apiReachabilityDetail(
+      rawStatusLabel: status.statusLabel,
+      normalizedStatusLabel: normalizedLabel,
+      detailMessage: status.detailMessage,
+    ),
+  );
+}
+
+String _apiReachabilityStatusLabel(String statusLabel) {
+  switch (statusLabel.trim().toLowerCase()) {
+    case 'api reachable':
+    case 'reachable':
+    case 'ready to connect':
+    case 'live':
+      return 'API reachable';
+    case 'api pending':
+    case 'pending':
+    case 'documented':
+    case 'sandbox verified':
+      return 'API pending';
+    default:
+      return statusLabel;
+  }
+}
+
+String _apiReachabilityDetail({
+  required String rawStatusLabel,
+  required String normalizedStatusLabel,
+  required String detailMessage,
+}) {
+  final detail = detailMessage.trim();
+  final rawMatches = rawStatusLabel.trim() == normalizedStatusLabel;
+  final alreadyExplainsReachability = detail.toLowerCase().contains(
+    'api reachability',
+  );
+  if (rawMatches || alreadyExplainsReachability) {
+    return detail;
+  }
+  final prefix = normalizedStatusLabel == 'API reachable'
+      ? 'API reachable.'
+      : normalizedStatusLabel == 'API pending'
+      ? 'API reachability pending.'
+      : '';
+  if (prefix.isEmpty) return detail;
+  if (detail.isEmpty) {
+    return normalizedStatusLabel == 'API reachable'
+        ? 'API reachable for live setup.'
+        : 'API reachability pending until production access is verified.';
+  }
+  return '$prefix $detail';
 }
 
 /// In-memory gateway used by the demo walkthrough and widget tests.
@@ -302,7 +366,9 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
     }
     return IntegrationBundle(
       providerKeys: List<ProviderKeyRow>.unmodifiable(keys),
-      vendorConnectors: _vendorConnectors,
+      vendorConnectors: List<VendorConnectorStatus>.unmodifiable(
+        _vendorConnectors.map(_normalizeVendorConnectorStatus),
+      ),
       fxRateSource: _fxRateSource,
       emailProvider: _emailProvider,
     );

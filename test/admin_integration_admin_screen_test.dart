@@ -98,9 +98,35 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('selected location Integrations tile'),
+      find.textContaining('model, embedding, database, and email providers'),
       findsOneWidget,
     );
+    expect(
+      find.textContaining('can reach the vendor API for live setup'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('per-location vendor connections'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Vendor integrations'), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_integrations_vendor_group_pos')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_integrations_vendor_group_labor')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_integrations_vendor_group_reservation')),
+      findsOneWidget,
+    );
+    expect(find.text('POS'), findsOneWidget);
+    expect(find.text('Labor'), findsOneWidget);
+    expect(find.text('Reservation'), findsOneWidget);
+    expect(find.text('API pending'), findsWidgets);
+    expect(find.text('Documented'), findsNothing);
   });
 
   testWidgets('rotate flow: confirm → plaintext → reveal modal → close', (

@@ -67,6 +67,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        expect(find.text('API access reachable'), findsOneWidget);
 
         await tester.tap(
           find.byKey(const Key('vendor_connections_picker_continue')),
@@ -277,7 +278,7 @@ class _ApiKeyTestGateway implements VendorConnectionsGateway {
     return InMemoryVendorConnectionsGateway.vendorCatalog
         .where((entry) => entry.category == category)
         .map((entry) {
-      // Promote Toast to production-credentialed so the picker's
+      // Promote Aloha to production-credentialed so the picker's
       // lifecycle gate lets the dialog open under test. Other vendors
       // stay on their declared lifecycle so the picker chrome stays
       // honest.
