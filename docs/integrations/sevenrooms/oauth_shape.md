@@ -84,6 +84,42 @@ this row.
 
 ---
 
+## Refresh handling (broker delegation)
+
+The cross-tenant OAuth refresh worker
+(`tool/oauth_refresh_worker/main.dart`) does NOT carry a refresh
+closure for SevenRooms. Rotation is owned by the production transport
+class
+(`lib/integrations/reservation/sevenrooms_reservation_production_api_client.dart`)
+which mints fresh bearers via `POST /2_2/auth` and persists them
+through `SevenRoomsBrokerCredentialStore.persistIssuedBearerToken`
+inside `lib/integrations/reservation/sevenrooms_credential_bridge.dart`.
+
+Cadence: the transport's refresh tick runs at hour:05 each hour
+(transport-layer cron — same offset as the framework's
+`oauth_refresh_cron`, but driven from inside the SevenRooms transport
+rather than the broker, so the worker doesn't double-rotate).
+
+Behavior at runtime:
+
+- When the worker claims a near-expiry SevenRooms row, it
+  log-and-skips with the structured reason
+  `sevenrooms_transport_cron_hour05` (see
+  `kVendorsWithoutRefreshClosureReason` in
+  `tool/oauth_refresh_worker/main.dart`). No failure-count increment
+  on the row, no auto-disable.
+- The transport-layer cron handles the actual rotation; the bridge
+  re-encrypts the new bearer and writes it through `withTenant` so
+  the row's ciphertext, `token_expires_at`, and metadata stay in
+  lockstep with every other vendor.
+
+If a future slice consolidates rotation behind the broker, the
+closure factory lands in
+`lib/integrations/_common/production_oauth_refresh_closures.dart` and
+this section flips to "wired."
+
+---
+
 ## Per-location vs operator-wide grant
 
 `perLocation`.

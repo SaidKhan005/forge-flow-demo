@@ -81,6 +81,35 @@ Extra Agendrix permissions the adapter does **not** request:
 
 ---
 
+## Refresh handling (broker delegation status)
+
+The cross-tenant OAuth refresh worker
+(`tool/oauth_refresh_worker/main.dart`) does NOT currently carry a
+refresh closure for Agendrix. Agendrix IS OAuth sliding-refresh per
+the adapter declaration (`capabilityProfile.authMode = oauth`); the
+prior audit framing of "static API key" was incorrect. The closure is
+absent because the closure factory in
+`lib/integrations/_common/production_oauth_refresh_closures.dart` has
+not been wired yet — there is no parallel rotation stack.
+
+Behavior at runtime:
+
+- When the worker claims a near-expiry Agendrix row, the row is
+  log-and-skipped with the structured reason
+  `agendrix_oauth_sliding_refresh_not_yet_wired` (see
+  `kVendorsWithoutRefreshClosureReason` in
+  `tool/oauth_refresh_worker/main.dart`). No failure-count increment.
+- The reactive 401 path goes through the adapter's retry-after-refresh
+  flow inside the production transport — same pattern as every
+  OAuth-using adapter — but proactive cross-tenant refresh is not
+  active until the closure factory ships.
+
+When the closure factory lands, the registry entry moves from the
+no-closure reason map into `buildProductionRefreshClosures` and this
+section flips to "wired."
+
+---
+
 ## Per-location vs operator-wide grant
 
 `operatorWide`

@@ -250,10 +250,13 @@ void main() {
         env: fullEnv,
         httpClient: _NoopHttpClient(),
       );
-      expect(result.wiredVendorIds, hasLength(11),
+      expect(result.wiredVendorIds, hasLength(10),
           reason:
               'every Phase 8 OAuth-using vendor (per the worker closure file) '
-              'must be wired when its app-credential env vars are present');
+              'must be wired when its app-credential env vars are present. '
+              'Humanity is intentionally excluded — adapter declares keyPaste '
+              'and v1 has no broker-driven refresh path '
+              '(see kVendorsWithoutRefreshClosureReason).');
       expect(result.disabledVendorIds, isEmpty);
       expect(
         result.wiredVendorIds,
@@ -268,10 +271,16 @@ void main() {
           'seven_shifts',
           'quickbooks_time',
           'libro',
-          'humanity',
         ]),
       );
-      expect(worker.kVendorsWithoutRefreshClosure, hasLength(6));
+      expect(
+        result.wiredVendorIds.contains('humanity'),
+        isFalse,
+        reason:
+            'Humanity must NOT be wired — the adapter declares keyPaste '
+            'and the v1 connect-time bearer has no broker refresh path',
+      );
+      expect(worker.kVendorsWithoutRefreshClosure, hasLength(7));
       expect(
         worker.kVendorsWithoutRefreshClosure,
         containsAll(<String>[
@@ -281,8 +290,21 @@ void main() {
           'agendrix',
           'adp',
           'opentable',
+          'humanity',
         ]),
       );
+      // Every entry on the no-closure set carries a documented
+      // delegation reason so the boot log + per-row skip log can
+      // surface a stable, queryable label.
+      for (final vendorId in worker.kVendorsWithoutRefreshClosure) {
+        expect(
+          worker.kVendorsWithoutRefreshClosureReason[vendorId],
+          isNotNull,
+          reason:
+              '$vendorId must declare a delegation reason in '
+              'kVendorsWithoutRefreshClosureReason',
+        );
+      }
     });
 
     test(

@@ -28,6 +28,8 @@ import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dar
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
 
+import '../../../tool/oauth_refresh_worker/main.dart' as worker;
+
 VendorCredentialBundle _bundle({
   String accessToken = 'old-bearer',
   String? refreshToken = 'refresh-1',
@@ -886,4 +888,122 @@ void main() {
       );
     });
   });
+
+  // ─── Closure registry / no-closure delegation ───────────────────────
+  //
+  // Phase 5 pressure-preview findings (P1) called out four mismatches
+  // in the vendor closure registry:
+  //
+  //   * ADP — adapter declares `oauth`; rotation actually happens via
+  //     ADP partner-ops mTLS out-of-band. No broker closure was wired.
+  //   * OpenTable — adapter declares `oauth`; rotation happens
+  //     INTERNALLY via `OpenTableTransport.refresh` (the production-api
+  //     -client's transport class owns the rotation). No broker closure
+  //     was wired.
+  //   * SevenRooms — adapter declares `oauthOrKeyPaste`; rotation
+  //     happens via a transport-layer cron at hour:05. No broker
+  //     closure was wired.
+  //   * Humanity — adapter declares `keyPaste`; a closure existed in
+  //     the worker registry but the adapter doesn't drive a
+  //     broker-refresh path. Inverse mismatch.
+  //
+  // Resolution per the slice: ADP, OpenTable, SevenRooms, and Humanity
+  // each land on `kVendorsWithoutRefreshClosureReason` with a
+  // documented delegation reason. Agendrix likewise gets a reason
+  // entry to reflect that its OAuth sliding-refresh closure factory is
+  // not yet wired (no parallel stack — re-wire when the closure
+  // factory ships).
+  group('closure registry: documented delegation surfaces', () {
+    test(
+      'ADP / OpenTable / SevenRooms / Humanity each carry a documented '
+      'delegation reason and are NOT in the production registry',
+      () {
+        final result = worker.buildProductionRefreshClosures(
+          env: const <String, String>{},
+          httpClient: _NoopRegistryHttpClient(),
+        );
+        const expectedDelegations = <String, String>{
+          'adp': 'adp_partner_ops_mtls_out_of_band',
+          'opentable': 'opentable_transport_internal_refresh',
+          'sevenrooms': 'sevenrooms_transport_cron_hour05',
+          'humanity': 'humanity_keypaste_password_grant_no_broker_refresh',
+          'agendrix': 'agendrix_oauth_sliding_refresh_not_yet_wired',
+          'tock': 'tock_static_api_key',
+          'push_operations': 'push_operations_partner_issued_bearer',
+        };
+        for (final entry in expectedDelegations.entries) {
+          expect(
+            worker.kVendorsWithoutRefreshClosureReason[entry.key],
+            equals(entry.value),
+            reason:
+                '${entry.key} must declare reason "${entry.value}" so the '
+                'boot log + per-row skip log surface a stable, '
+                'queryable label',
+          );
+          expect(
+            result.registry.containsKey(entry.key),
+            isFalse,
+            reason:
+                '${entry.key} must NOT be in the production registry — '
+                'rotation is delegated to the surface named by the reason',
+          );
+          expect(
+            worker.kVendorsWithoutRefreshClosure.contains(entry.key),
+            isTrue,
+            reason: '${entry.key} must be in kVendorsWithoutRefreshClosure',
+          );
+        }
+      },
+    );
+
+    test(
+      'Humanity factory remains exported for future re-wiring even '
+      'though the registry no longer mounts it',
+      () {
+        // The factory is still importable + invocable so the closure-
+        // shape unit tests (above) keep coverage. If Humanity ships an
+        // OAuth v2 program the registry can re-wire without an API
+        // change.
+        final closure = makeHumanityOauthRefreshClosure(
+          httpClient: _NoopRegistryHttpClient(),
+          clientId: 'cid',
+          clientSecret: 'csec',
+        );
+        expect(closure, isNotNull);
+        // But Humanity is decisively excluded from the wired registry.
+        final result = worker.buildProductionRefreshClosures(
+          env: const <String, String>{
+            // Even with secrets present, Humanity must NOT register —
+            // the registry no longer reads HUMANITY_CLIENT_ID /
+            // HUMANITY_CLIENT_SECRET.
+            'HUMANITY_CLIENT_ID': 'hum-id',
+            'HUMANITY_CLIENT_SECRET': 'hum-secret',
+          },
+          httpClient: _NoopRegistryHttpClient(),
+        );
+        expect(result.registry.containsKey('humanity'), isFalse);
+        expect(result.disabledVendorIds.containsKey('humanity'), isFalse,
+            reason:
+                'Humanity must not appear on the disabled-missing-secrets '
+                'list — it is unconditionally excluded, not gated');
+      },
+    );
+  });
+}
+
+/// Minimal [http.Client] stub for registry-shape tests. The closure
+/// factories construct closures (deferred network calls) at build
+/// time; the stubbed Client is never actually invoked.
+class _NoopRegistryHttpClient implements http.Client {
+  @override
+  void close() {}
+
+  @override
+  noSuchMethod(Invocation invocation) {
+    throw StateError(
+      '_NoopRegistryHttpClient.${invocation.memberName} called; closure '
+      'builders should not perform live HTTP requests during registry-shape '
+      'tests',
+    );
+  }
 }
