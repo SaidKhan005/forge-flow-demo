@@ -100,32 +100,50 @@ expiring rows; no adapter change required.
 
 ## Refresh handling (broker delegation)
 
-The OAuth refresh worker (`tool/oauth_refresh_worker/main.dart`) does
-NOT carry a refresh closure for ADP. ADP IS OAuth, but production
-rotation of the partner-issued client credentials is performed by ADP
-partner-ops on a vendor-driven cadence (mTLS partner-cert rotation +
-periodic re-issue of the refresh-token-bearing OAuth client). F&F's
-broker has no programmatic surface to drive that rotation.
+**Status (2026-05-09)**: wired (broker-driven via
+`makeAdpOauthRefreshClosure` in
+`lib/integrations/_common/production_oauth_refresh_closures.dart`).
 
-Behavior at runtime:
+PR #455 (2026-05-08) initially placed ADP on
+`kVendorsWithoutRefreshClosureReason` with reason
+`adp_partner_ops_mtls_out_of_band`, on the theory that all rotation
+was driven by ADP partner-ops on a vendor cadence. The 2026-05-09
+re-investigation found that conflated two SEPARATE rotation surfaces:
 
-- ADP credentials live in `vendor_credentials` like every other
-  vendor's. The proxy reads them through `VendorCredentialBroker` for
-  every outbound request and the access token is used until it
-  expires.
-- When the worker claims a near-expiry ADP row, the row is
-  log-and-skipped with the structured reason
-  `adp_partner_ops_mtls_out_of_band` (see
-  `kVendorsWithoutRefreshClosureReason` in
-  `tool/oauth_refresh_worker/main.dart`). No failure-count increment.
-- When the cached token expires and ADP partner-ops has not yet
-  re-issued a fresh refresh token, the next outbound request returns
-  401 → the adapter surfaces it as a connection error → the operator
-  is prompted to "Please reconnect ADP and sign in again."
+1. **Partner-issued mTLS client certificate** — ADP partner-ops rotates
+   the cert on a vendor-driven cadence. The cert lives in the worker's
+   `http.Client` `SecurityContext` (Cloud Run-injected via
+   `ADP_MTLS_CERT_PATH` / `ADP_MTLS_KEY_PATH`); F&F has no
+   programmatic refresh path for the cert itself.
+2. **OAuth `refresh_token`** — standard `grant_type=refresh_token`
+   against `/auth/oauth/v2/token` using the per-tenant
+   `client_id` / `client_secret` (HTTP Basic). The transport's
+   `AdpLaborProductionApiClient.refresh(refreshToken:, module:)`
+   already implements this; the persisted credential row carries the
+   refresh token + per-tenant client credentials. This rotation IS
+   programmatic and IS reachable from the worker's vantage point.
 
-If ADP later ships a self-service rotation surface, this section flips
-to "wired" and the closure factory lands in
-`lib/integrations/_common/production_oauth_refresh_closures.dart`.
+Behavior at runtime (post-2026-05-09):
+
+- The cross-tenant OAuth refresh worker claims near-expiry ADP rows
+  and calls `makeAdpOauthRefreshClosure` for each. The closure POSTs
+  `grant_type=refresh_token` against `/auth/oauth/v2/token` with HTTP
+  Basic auth (`client_id` / `client_secret` from `metadata`) and an
+  `x-adp-module` header (read from `connectionMetadata.module`,
+  falling back to `metadata.module`, then to the documented default
+  `workforce_now`).
+- ADP rotates the refresh token on every refresh; the new
+  refresh_token threads back through `TokenRefreshResult.refreshToken`
+  so the broker re-encrypts and persists it.
+- mTLS continues to land on the worker's `http.Client` at boot; the
+  closure itself is mTLS-agnostic. Partner-cert rotation remains a
+  partner-ops out-of-band concern (covered in
+  `partnership_status.md`).
+
+If a future ADP partner-program change requires a different refresh
+shape (e.g., assertion-based grants), the closure factory in
+`production_oauth_refresh_closures.dart` is the single point of
+update.
 
 ---
 

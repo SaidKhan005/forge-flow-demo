@@ -91,32 +91,48 @@ expiring rows; no adapter change required.
 
 ## Refresh handling (broker delegation)
 
-The OAuth refresh worker (`tool/oauth_refresh_worker/main.dart`) does
-NOT carry a refresh closure for OpenTable. Rotation lives INSIDE the
-production transport class
-`OpenTableReservationProductionApiClient.refresh(...)` in
-`lib/integrations/reservation/opentable_reservation_production_api_client.dart`,
-which reads the per-tenant `client_id` / `client_secret` from
-`OpenTableCredentialStore` and POSTs the `refresh_token` grant
-directly. Duplicating that path in the broker would split rotation
-responsibility across two surfaces.
+**Status (2026-05-09)**: wired (broker-driven via
+`makeOpenTableOauthRefreshClosure` in
+`lib/integrations/_common/production_oauth_refresh_closures.dart`).
 
-Behavior at runtime:
+PR #455 (2026-05-08) initially placed OpenTable on
+`kVendorsWithoutRefreshClosureReason` with reason
+`opentable_transport_internal_refresh`, on the theory that
+`OpenTableReservationProductionApiClient.refresh(refreshToken:)` owned
+rotation internally. The 2026-05-09 re-investigation found that:
 
-- The transport's `refresh(...)` method is invoked by the adapter on
-  the reactive 401 path (and by any future internal scheduling
-  surface inside the production client).
-- When the cross-tenant OAuth refresh worker claims a near-expiry
-  OpenTable row, it log-and-skips with the structured reason
-  `opentable_transport_internal_refresh` (see
-  `kVendorsWithoutRefreshClosureReason` in
-  `tool/oauth_refresh_worker/main.dart`). No failure-count increment
-  on the row, no auto-disable.
+- The transport HAS a `refresh(refreshToken:)` method, but no code in
+  the codebase drives it automatically. There is no scheduling / cron
+  / on-401 retry loop anywhere that calls it (`grep -r
+  '_transport.refresh\|transport.refresh' lib/integrations/reservation`
+  returns no results).
+- The "transport-internal refresh" was an aspirational description
+  (`oauth_shape.md` "Refresh semantics" + production-api-client
+  doc-comment), not an actual implementation.
 
-If a future slice consolidates all rotation behind the broker, the
-closure factory lands in
-`lib/integrations/_common/production_oauth_refresh_closures.dart` and
-this section flips to "wired."
+The OAuth shape itself is standard: `grant_type=refresh_token` against
+`/api/v2/oauth/token` using the per-tenant `client_id` /
+`client_secret` from `metadata`. Wiring the closure makes the broker
+the single rotation owner — same pattern as Square / Clover / 7shifts /
+QuickBooks Time. The transport's `refresh()` method stays on the
+abstract class for the reactive 401 path (a future `8R.OT.live.sandbox`
+slice may wire that in the adapter).
+
+Behavior at runtime (post-2026-05-09):
+
+- The cross-tenant OAuth refresh worker claims near-expiry OpenTable
+  rows and calls `makeOpenTableOauthRefreshClosure` for each. The
+  closure POSTs `grant_type=refresh_token` against
+  `/api/v2/oauth/token` with form-encoded `client_id` /
+  `client_secret` / `refresh_token`.
+- OpenTable rotates the refresh token on every refresh per the
+  industry-standard reservation-vendor pattern; the new refresh_token
+  threads back through `TokenRefreshResult.refreshToken` so the broker
+  re-encrypts and persists it.
+- The transport's `refresh()` remains for any future reactive 401
+  retry loop the adapter chooses to wire; the broker-driven path is
+  proactive (near-expiry sweep) and the transport-driven path would be
+  reactive (on observed 401). They are not in conflict.
 
 ---
 

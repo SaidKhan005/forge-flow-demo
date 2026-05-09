@@ -86,37 +86,84 @@ this row.
 
 ## Refresh handling (broker delegation)
 
-The cross-tenant OAuth refresh worker
-(`tool/oauth_refresh_worker/main.dart`) does NOT carry a refresh
-closure for SevenRooms. Rotation is owned by the production transport
-class
-(`lib/integrations/reservation/sevenrooms_reservation_production_api_client.dart`)
-which mints fresh bearers via `POST /2_2/auth` and persists them
-through `SevenRoomsBrokerCredentialStore.persistIssuedBearerToken`
-inside `lib/integrations/reservation/sevenrooms_credential_bridge.dart`.
+**Status (2026-05-09)**: NOT wired — architectural gap. The 2026-05-09
+re-investigation verified that the surface is genuinely unreachable
+from the broker today and refined the no-closure reason from
+`sevenrooms_transport_cron_hour05` to
+`sevenrooms_client_secret_not_persisted` to reflect the actual gap.
 
-Cadence: the transport's refresh tick runs at hour:05 each hour
-(transport-layer cron — same offset as the framework's
-`oauth_refresh_cron`, but driven from inside the SevenRooms transport
-rather than the broker, so the worker doesn't double-rotate).
+### Why the broker cannot drive SevenRooms refresh today
 
-Behavior at runtime:
+SevenRooms uses the `client_credentials` grant — there is no rotating
+`refresh_token`. To mint a fresh bearer, the broker must POST
+`{client_id, client_secret, venue_id, grant_type: client_credentials}`
+to `/2_2/auth`. Of those three fields:
 
-- When the worker claims a near-expiry SevenRooms row, it
-  log-and-skips with the structured reason
-  `sevenrooms_transport_cron_hour05` (see
+- `client_id` — persisted on `vendor_credentials.metadata.client_id`
+  by `SevenRoomsBrokerCredentialStore.persistIssuedBearerToken` in
+  `lib/integrations/reservation/sevenrooms_credential_bridge.dart:67-71`.
+- `venue_id` — persisted on `connector_connection.metadata.venue_id`
+  per `kSevenRoomsConnectionMetadataVenueId`.
+- `client_secret` — **NOT persisted anywhere**. The connect-time
+  `SevenRoomsAuthClient.authenticate(clientId:, clientSecret:,
+  venueId:)` consumes the secret to mint the initial bearer
+  (`lib/integrations/reservation/sevenrooms_reservation_production_api_client.dart:367-419`),
+  but `persistIssuedBearerToken` (line 410) writes only the bearer +
+  `client_id`; the `client_secret` falls out of memory and is never
+  ciphertext-stored.
+
+Without `client_secret` on the credential row, the worker has no way
+to call `/2_2/auth`. PR #455's "transport-layer cron at hour:05" claim
+is also inaccurate: there is no cron, scheduler, or in-process
+refresh loop anywhere in the codebase that calls
+`SevenRoomsAuthClient.authenticate(...)` after connect-time (verified
+2026-05-09 via `grep -r 'sevenrooms.*scheduler\|authenticate.*scheduler\|hour:05'`
+returning only doc fixtures + this file). The "transport cron" was an
+aspirational description in `Refresh semantics` below; no code
+implements it.
+
+### Behavior at runtime
+
+- When the cross-tenant OAuth refresh worker claims a near-expiry
+  SevenRooms row, it log-and-skips with the structured reason
+  `sevenrooms_client_secret_not_persisted` (see
   `kVendorsWithoutRefreshClosureReason` in
-  `tool/oauth_refresh_worker/main.dart`). No failure-count increment
-  on the row, no auto-disable.
-- The transport-layer cron handles the actual rotation; the bridge
-  re-encrypts the new bearer and writes it through `withTenant` so
-  the row's ciphertext, `token_expires_at`, and metadata stay in
-  lockstep with every other vendor.
+  `tool/oauth_refresh_worker/main.dart`). No failure-count increment.
+- When the bearer expires before the operator reconnects, the next
+  outbound SevenRooms call returns 401 → adapter surfaces a connection
+  error → operator is prompted to reconnect (paste credentials again
+  through the keypaste flow).
 
-If a future slice consolidates rotation behind the broker, the
-closure factory lands in
-`lib/integrations/_common/production_oauth_refresh_closures.dart` and
-this section flips to "wired."
+### Follow-up slice spec (architectural change required to wire)
+
+To bring SevenRooms into the broker-driven registry, a follow-up slice
+must:
+
+1. Modify `SevenRoomsBrokerCredentialStore.persistIssuedBearerToken`
+   to accept and persist `clientSecret` ciphertext into
+   `vendor_credentials.metadata.client_secret` (the `metadata` JSONB
+   already round-trips through pgcrypto via the same envelope key the
+   bearer uses).
+2. Modify the SevenRooms connect-flow to thread `clientSecret` through
+   to the persist call (it currently passes through
+   `authClient.authenticate(...)` and is dropped).
+3. Modify `connector_connection.metadata` writers to ensure `venue_id`
+   is reliably set for legacy rows.
+4. Add `makeSevenRoomsOauthExchangeClosure` to
+   `lib/integrations/_common/production_oauth_refresh_closures.dart`
+   that POSTs the four-field body to `/2_2/auth` and threads the new
+   bearer + lifetime back via `TokenRefreshResult` (no `refreshToken`
+   field — `client_credentials` returns no rotating refresh token).
+5. Migrate existing SevenRooms rows: persist a one-shot reconnect
+   prompt operator-facing so each operator pastes credentials once to
+   populate the new `client_secret` ciphertext column. Without the
+   migration, existing rows continue to skip until the operator
+   reconnects.
+
+The follow-up slice is OUT OF SCOPE for the 2026-05-09 wiring PR; the
+current PR keeps SevenRooms on `kVendorsWithoutRefreshClosureReason`
+with the refined reason so a deploy review can match the row to the
+documented architectural gap.
 
 ---
 

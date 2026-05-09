@@ -22,30 +22,59 @@
 //
 //   POS:         Toast, Square, Clover, Lightspeed LSK, Aloha NCR Voyix,
 //                Oracle MICROS Simphony, Revel
-//   Labor:       7shifts, QuickBooks Time, Libro, Humanity
-//   Reservation: (none — OpenTable's bridge mints its bearer inside the
-//                transport; SevenRooms / Tock are handled outside the
-//                refresh-closure surface)
+//   Labor:       7shifts, QuickBooks Time, Libro, Humanity, ADP
+//   Reservation: OpenTable
 //
 // Vendors that do NOT need a refresh closure (their bridges do not
 // accept an `oauthRefresh` / `oauthExchange` constructor parameter and
-// either use static API keys or have the transport handle OAuth
-// internally):
+// either use static API keys or have a structural gap that prevents
+// broker-driven refresh):
 //
-//   * SevenRooms        — bridge persists tokens minted by the
-//                          transport's `/2_2/auth` call; no broker-side
-//                          refresh.
+//   * SevenRooms        — `client_credentials` re-exchange would require
+//                          `client_id + client_secret + venue_id`, but
+//                          the bridge persists only `client_id`; the
+//                          `client_secret` is dropped after the connect-
+//                          time `authenticate(...)` call. Wiring requires
+//                          an architectural change (persist
+//                          `client_secret` ciphertext on the credential
+//                          row + connect-flow update). See the no-closure
+//                          reason `sevenrooms_client_secret_not_persisted`
+//                          and the 2026-05-09 re-investigation note in
+//                          `docs/integrations/sevenrooms/oauth_shape.md`.
 //   * Tock              — static API key on `metadata.api_key`.
 //   * Push Operations   — partner-issued bearer; no refresh path.
-//   * Agendrix          — static API key + connection metadata
-//                          (`company_id`).
-//   * ADP               — bridge supplies `clientId` / `clientSecret`;
-//                          transport runs its own
-//                          `client_credentials` exchange at request
-//                          time + handles mTLS outside the broker.
-//   * OpenTable         — bridge surfaces only `clientId` /
-//                          `clientSecret` accessors; transport's own
-//                          `refresh()` method handles the rotation.
+//   * Agendrix          — OAuth sliding-refresh per adapter declaration;
+//                          closure factory not yet wired (re-investigated
+//                          2026-05-09 — out of scope for this PR).
+//
+// 2026-05-09 RE-INVESTIGATION (this file's `makeAdpOauthRefreshClosure`
+// + `makeOpenTableOauthRefreshClosure`): PR #455 chose option 2b for ADP
+// / OpenTable / SevenRooms (deliberate "no closure" entries with
+// structured reasons). On re-verification ADP and OpenTable both expose
+// a programmatic OAuth `grant_type=refresh_token` surface using
+// per-tenant `client_id` / `client_secret` from `metadata` — these are
+// genuinely wireable using the same direct-HTTP closure pattern as
+// Toast / Square / Clover / etc. SevenRooms remains unwired because the
+// re-exchange shape (`client_credentials` with `client_id +
+// client_secret + venue_id`) requires `client_secret` to be persisted on
+// the credential row, which the existing
+// `SevenRoomsBrokerCredentialStore.persistIssuedBearerToken` path drops
+// after the connect-time `authenticate(...)` call.
+//
+// ADP-specific notes:
+//   * The transport's `_tokenRequest` adds an `x-adp-module` header
+//     keyed off the operator's selected module (`workforce_now` /
+//     `workforce_manager`). The closure reads that from
+//     `connectionMetadata.module` first (the connect path writes it
+//     there via `AdpConnectionRow.toMetadata`), falling back to
+//     `metadata.module`, and finally to `workforce_now` per the
+//     documented default in `docs/phases/phase_8/vendor_master_list.md`.
+//   * mTLS: ADP partner production additionally requires mTLS at the
+//     OAuth boundary. The mTLS material is wired into the worker's
+//     `http.Client` at boot (via Cloud Run-injected cert/key); the
+//     closure itself is mTLS-agnostic. The partner-cert rotation is a
+//     SEPARATE concern from `refresh_token` rotation — partner-ops
+//     rotates the cert; the closure handles the OAuth refresh.
 //
 // CLAUDE.md alignment:
 //   * HP #4 (per-operator isolation) — the closures are pure HTTP; the
@@ -895,6 +924,222 @@ Future<TokenRefreshResult> Function(VendorCredentialBundle)
     );
     final newRefresh = json['refresh_token'];
     final expiresAt = _readExpiresInToInstant(json, clock: clock);
+    return TokenRefreshResult(
+      accessToken: accessToken,
+      refreshToken:
+          newRefresh is String && newRefresh.isNotEmpty ? newRefresh : null,
+      expiresAt: expiresAt,
+    );
+  };
+}
+
+// ─── ADP — POST /auth/oauth/v2/token (refresh_token) ─────────────────
+//
+// 2026-05-09 RE-INVESTIGATION: PR #455 documented ADP as "partner-ops
+// mTLS rotation out-of-band, no programmatic refresh surface." On
+// re-verification this conflated two separate rotation surfaces:
+//
+//   1. Partner-issued mTLS client certificate — rotated by ADP partner-
+//      ops on a vendor-driven cadence; the cert lives in the worker's
+//      `http.Client` `SecurityContext` (wired at Cloud Run boot via
+//      `ADP_MTLS_CERT_PATH` / `ADP_MTLS_KEY_PATH`); the closure does not
+//      touch this surface.
+//   2. OAuth `refresh_token` — standard `grant_type=refresh_token`
+//      against `/auth/oauth/v2/token` using the per-tenant
+//      `client_id` / `client_secret` (HTTP Basic). The transport's
+//      `AdpLaborProductionApiClient.refresh(refreshToken:, module:)`
+//      already implements this, and the persisted credential row carries
+//      the refresh token + per-tenant client credentials.
+//
+// This closure mirrors the transport's `_tokenRequest` path but POSTs
+// directly so the broker stays the single rotation owner (matches the
+// Square / Clover / 7shifts / QuickBooks Time pattern). The mTLS
+// `http.Client` is the same one the transport uses; production wires
+// the SecurityContext at Cloud Run boot.
+
+const String kAdpVendorIdForRefresh = 'adp';
+final Uri kAdpDefaultOauthBaseUri = Uri.parse('https://accounts.adp.com');
+const String kAdpOauthTokenPath = '/auth/oauth/v2/token';
+
+/// Metadata key carrying the operator's selected ADP module
+/// (`workforce_now` / `workforce_manager`). Written by
+/// `AdpConnectionRow.toMetadata()` into both `vendor_credentials.metadata`
+/// and `connector_connection.metadata` at connect time.
+const String kAdpMetadataModule = 'module';
+
+/// Default ADP module when the bundle metadata does not name one. ADP
+/// Workforce Now is the documented majority deployment per
+/// `docs/phases/phase_8/vendor_master_list.md` "Module Disambiguation
+/// Flags"; the fallback keeps the refresh tick from failing closed when
+/// a legacy row's metadata is missing the module key.
+const String kAdpDefaultModule = 'workforce_now';
+
+/// Production refresh closure for the ADP labor credential bridge.
+///
+/// ADP uses a per-tenant `client_id` / `client_secret` pair (HTTP Basic
+/// against the `/auth/oauth/v2/token` endpoint) plus a per-tenant
+/// `refresh_token`. The `x-adp-module` header is required so ADP routes
+/// the call against the right product surface (Workforce Now /
+/// Workforce Manager); the module is read from
+/// `bundle.connectionMetadata['module']` first (where the connect path
+/// writes it), falling back to `bundle.metadata['module']`, finally to
+/// the documented default ([kAdpDefaultModule]).
+///
+/// Note: production mTLS lands on the injected [http.Client] (see the
+/// SecurityContext wiring in the worker bootstrap). The closure itself
+/// is mTLS-agnostic.
+Future<TokenRefreshResult> Function(VendorCredentialBundle)
+    makeAdpOauthRefreshClosure({
+  required http.Client httpClient,
+  Uri? oauthBaseUri,
+  DateTime Function()? clock,
+}) {
+  final base = oauthBaseUri ?? kAdpDefaultOauthBaseUri;
+  return (VendorCredentialBundle current) async {
+    final clientId = _requireMetadataString(
+      current,
+      current.clientId,
+      kBundleMetadataClientId,
+      kAdpVendorIdForRefresh,
+    );
+    final clientSecret = _requireMetadataString(
+      current,
+      current.clientSecret,
+      kBundleMetadataClientSecret,
+      kAdpVendorIdForRefresh,
+    );
+    final refreshToken =
+        _requireRefreshToken(current, kAdpVendorIdForRefresh);
+    final module = _readAdpModule(current);
+    final response = await _postForm(
+      httpClient: httpClient,
+      uri: base.resolve(kAdpOauthTokenPath),
+      form: <String, String>{
+        'grant_type': 'refresh_token',
+        'refresh_token': refreshToken,
+      },
+      extraHeaders: <String, String>{
+        'authorization': _basicAuthHeader(clientId, clientSecret),
+        'x-adp-module': module,
+      },
+      vendorId: kAdpVendorIdForRefresh,
+    );
+    _ensureSuccess(response, kAdpVendorIdForRefresh);
+    final json = _parseJsonObject(response, kAdpVendorIdForRefresh);
+    final accessToken = _readNonEmptyString(
+      json,
+      'access_token',
+      kAdpVendorIdForRefresh,
+      statusCode: response.statusCode,
+      body: response.body,
+    );
+    final newRefresh = json['refresh_token'];
+    final expiresAt = _readExpiresInToInstant(json, clock: clock);
+    return TokenRefreshResult(
+      accessToken: accessToken,
+      // ADP rotates the refresh token on every refresh per the
+      // documented "rotating refresh token" shape; persist the new one
+      // when present so the next tick has a fresh token to spend.
+      refreshToken:
+          newRefresh is String && newRefresh.isNotEmpty ? newRefresh : null,
+      expiresAt: expiresAt,
+    );
+  };
+}
+
+/// Read the ADP module from the bundle's connection metadata first
+/// (where `AdpConnectionRow.toMetadata` writes it during connect),
+/// falling back to vendor-credentials metadata, finally to the
+/// documented default. The fallback chain mirrors the
+/// `connector_connection.metadata` precedence the broker bundle exposes.
+String _readAdpModule(VendorCredentialBundle current) {
+  final connection = current.connectionMetadata[kAdpMetadataModule];
+  if (connection is String && connection.isNotEmpty) return connection;
+  final credential = current.metadata[kAdpMetadataModule];
+  if (credential is String && credential.isNotEmpty) return credential;
+  return kAdpDefaultModule;
+}
+
+// ─── OpenTable — POST /api/v2/oauth/token (refresh_token) ────────────
+//
+// 2026-05-09 RE-INVESTIGATION: PR #455 documented OpenTable as
+// "transport-internal refresh — `OpenTableTransport.refresh` owns the
+// rotation." On re-verification:
+//
+//   * The transport HAS a `refresh(refreshToken:)` method, but no code
+//     in the codebase drives it automatically. There is no
+//     scheduling / cron / on-401 retry loop anywhere that calls it.
+//   * The "transport-internal refresh" was an aspirational description
+//     (`oauth_shape.md` "Refresh handling" + production-api-client
+//     doc-comment), not an actual implementation.
+//
+// The OAuth shape itself is standard: `grant_type=refresh_token`
+// against `/api/v2/oauth/token` using the per-tenant `client_id` /
+// `client_secret` from `metadata`. This closure mirrors the transport's
+// `_runOAuthTokenCall` shape so the broker becomes the single rotation
+// owner — same pattern as Square / Clover / 7shifts / QuickBooks Time.
+
+const String kOpenTableVendorIdForRefresh = 'opentable';
+final Uri kOpenTableDefaultOauthBaseUriForRefresh =
+    Uri.parse('https://oauth-pii.opentable.com');
+const String kOpenTableOauthTokenPathForRefresh = '/api/v2/oauth/token';
+
+/// Production refresh closure for the OpenTable reservation credential
+/// bridge.
+///
+/// OpenTable rotates the refresh token on every refresh per
+/// `docs/integrations/opentable/oauth_shape.md` ("rotating refresh
+/// tokens, 90 days") — the new refresh_token threads back through
+/// [TokenRefreshResult.refreshToken] so the broker re-encrypts and
+/// persists it on the row.
+Future<TokenRefreshResult> Function(VendorCredentialBundle)
+    makeOpenTableOauthRefreshClosure({
+  required http.Client httpClient,
+  Uri? oauthBaseUri,
+  DateTime Function()? clock,
+}) {
+  final base = oauthBaseUri ?? kOpenTableDefaultOauthBaseUriForRefresh;
+  return (VendorCredentialBundle current) async {
+    final clientId = _requireMetadataString(
+      current,
+      current.clientId,
+      kBundleMetadataClientId,
+      kOpenTableVendorIdForRefresh,
+    );
+    final clientSecret = _requireMetadataString(
+      current,
+      current.clientSecret,
+      kBundleMetadataClientSecret,
+      kOpenTableVendorIdForRefresh,
+    );
+    final refreshToken =
+        _requireRefreshToken(current, kOpenTableVendorIdForRefresh);
+    final response = await _postForm(
+      httpClient: httpClient,
+      uri: base.resolve(kOpenTableOauthTokenPathForRefresh),
+      form: <String, String>{
+        'grant_type': 'refresh_token',
+        'refresh_token': refreshToken,
+        'client_id': clientId,
+        'client_secret': clientSecret,
+      },
+      vendorId: kOpenTableVendorIdForRefresh,
+    );
+    _ensureSuccess(response, kOpenTableVendorIdForRefresh);
+    final json = _parseJsonObject(response, kOpenTableVendorIdForRefresh);
+    final accessToken = _readNonEmptyString(
+      json,
+      'access_token',
+      kOpenTableVendorIdForRefresh,
+      statusCode: response.statusCode,
+      body: response.body,
+    );
+    final newRefresh = json['refresh_token'];
+    // OpenTable's transport `_resolveTokenExpiry` accepts either an
+    // `expires_at` ISO-8601 string or an `expires_in` seconds count;
+    // mirror that two-source resolution here.
+    final expiresAt = _readExpiresAtInstant(json, 'expires_at') ??
+        _readExpiresInToInstant(json, clock: clock);
     return TokenRefreshResult(
       accessToken: accessToken,
       refreshToken:
