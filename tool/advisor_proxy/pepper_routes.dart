@@ -25,6 +25,8 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:forge_and_flow/services/auth/kms_pepper_store.dart';
 
@@ -74,10 +76,24 @@ class PepperRouter {
     try {
       await _handle(request, path);
     } catch (error, stack) {
+      // P0 fix (2026-05-09 webhook signature triage Section 4 — leak
+      // site #6): no internal exception details (KMS error text /
+      // pepper-id hashes / SDK stack frames) in the response body.
+      final errorId = _generateErrorId();
+      _logSink(
+        LogSeverity.error,
+        'pepper_route_error',
+        <String, Object?>{
+          'error_id': errorId,
+          'path': path,
+          'error': error.toString(),
+          'stack_first_frame': _firstFrame(stack),
+        },
+      );
       _writeJson(request.response, 500, <String, Object?>{
         'error': 'pepper_route_error',
-        'message': error.toString(),
-        'stack_first_frame': _firstFrame(stack),
+        'error_id': errorId,
+        'message': 'internal_server_error',
       });
     }
     return true;
@@ -213,6 +229,23 @@ class PepperRouter {
     final s = stack.toString();
     final newline = s.indexOf('\n');
     return newline < 0 ? s : s.substring(0, newline);
+  }
+
+  /// P0 fix (2026-05-09 webhook signature triage): per-failure
+  /// correlation id surfaced in the response body. The full exception
+  /// text + stack stays in the structured log keyed on this id.
+  static final Random _errorIdRandom = Random.secure();
+
+  static String _generateErrorId() {
+    final bytes = Uint8List(16);
+    for (var i = 0; i < bytes.length; i++) {
+      bytes[i] = _errorIdRandom.nextInt(256);
+    }
+    final hex = StringBuffer();
+    for (final b in bytes) {
+      hex.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return hex.toString();
   }
 }
 

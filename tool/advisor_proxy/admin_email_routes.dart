@@ -37,12 +37,15 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:forge_and_flow/services/email/email_provider.dart';
 import 'package:forge_and_flow/services/email/email_template_renderer.dart';
 import 'package:forge_and_flow/services/email/sendgrid_email_provider.dart';
 import 'package:http/http.dart' as http;
+
+import 'log.dart';
 
 const String adminIntegrationsEmailTestPath =
     '/v1/admin/integrations/email/test';
@@ -196,10 +199,24 @@ class AdminEmailRouter {
         'status_code': error.statusCode,
         'message': error.message,
       });
-    } catch (error) {
+    } catch (error, stack) {
+      // P0 fix (2026-05-09 webhook signature triage Section 4 — leak
+      // site #7): no internal exception details in the response body.
+      final errorId = _generateErrorId();
+      log(
+        LogSeverity.error,
+        'email_test_unhandled_error',
+        fields: <String, Object?>{
+          'error_id': errorId,
+          'recipient_present': recipient.isNotEmpty,
+          'error': error.toString(),
+          'stack_first_frame': _firstStackFrame(stack),
+        },
+      );
       _writeJson(response, 500, <String, Object?>{
         'error': 'email_test_unhandled_error',
-        'message': error.toString(),
+        'error_id': errorId,
+        'message': 'internal_server_error',
       });
     }
     return true;
@@ -294,6 +311,29 @@ class AdminEmailRouter {
   /// Public clock seam for tests that need to assert
   /// `accepted_at` envelope timestamps.
   DateTime now() => _now();
+
+  /// P0 fix (2026-05-09 webhook signature triage): per-failure
+  /// correlation id surfaced in the response body. The full exception
+  /// text + stack stays in the structured log keyed on this id.
+  static final Random _errorIdRandom = Random.secure();
+
+  static String _generateErrorId() {
+    final bytes = Uint8List(16);
+    for (var i = 0; i < bytes.length; i++) {
+      bytes[i] = _errorIdRandom.nextInt(256);
+    }
+    final hex = StringBuffer();
+    for (final b in bytes) {
+      hex.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return hex.toString();
+  }
+
+  static String _firstStackFrame(StackTrace stack) {
+    final s = stack.toString();
+    final newline = s.indexOf('\n');
+    return newline < 0 ? s : s.substring(0, newline);
+  }
 }
 
 /// Production wiring for the email router. Reads sender + recipient
