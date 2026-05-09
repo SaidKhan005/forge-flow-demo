@@ -19,6 +19,16 @@ Earlier closeouts: `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md
 and the 2026-05-07 closeout addendum at the bottom of this file.
 Origin: 2026-05-02 deep audit.
 
+## P0 — Webhook signature ordering (2026-05-09 security triage)
+
+Forged-signature webhook POSTs to `/v1/webhooks/{vendor}/{operator}/{location}`
+trigger a Postgres SELECT (`vendor_credentials` lookup for the signing secret)
+BEFORE any HMAC verification, then leak the raw `Exception.toString()` +
+first stack frame in the response body via the
+`tool/advisor_proxy/admin_integrations_routes.dart:248` catch-all. Confirmed
+schema-info disclosure + DOS amplification on connection pool. Fix slice
+proposal + 9-leak-site inventory: `docs/_execution/2026-05-09_security_finding_webhook_signature_ordering.md`.
+
 ## P0 — Production1 Migration Apply Gap
 
 **28 migrations pending Production1 apply** (chronological). The queue now
