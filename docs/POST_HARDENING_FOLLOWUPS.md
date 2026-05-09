@@ -489,3 +489,29 @@ list real projection.
 Operations work remaining (P0 above, plus Cloud Run env + partner
 portal redirect URI registration) gates each vendor's `*.live.sandbox`
 slice firing; engineering closure is unblocked.
+
+## Pressure-preview-v1 sprint findings (2026-05-09)
+
+The `pressure.preview.v1` sprint (Phases 1-3, PRs #428-#452) drove
+verbatim vendor payload corpora through every infrastructure layer
+against the preview proxy and recorded findings to feed the Phase 6
+Postgres test backfill that closes the P2 coverage gap above.
+
+Top-line severity counts: **1 P0** (schema-info leak via webhook
+signature-verifier ordering bug — separate triage branch
+`claude/8.gap-1.missing-webhook-signature-verifiers`), **5 P1**
+(Square/LSK silent timestamp coercion; Humanity time-off-as-shift;
+ADP/OpenTable/SevenRooms missing OAuth refresh closures; Humanity
+inverse closure mismatch; preview-env Postgres pool exhaustion),
+**6 P2** (auth-mode doc mismatches × 4; preview-env vendor-capability
+registry gap × 6 vendors; preview-env schema gaps), **~25 P3** (vendor
+partner-portal sourcing-gap escalation list).
+
+Phase 6 first-wave order: `connector_backfill_job_repository.dart` (extend
+existing test with Phase 3B contracts), `provider_credentials_repository.dart`
+(extend with Phase 3C contracts), `weekly_plan_snapshot_repository.dart`
+(new test grounded in Phase 1 fixtures), `business_timing_profiles_repository.dart`
+(new test pinning rollover-hour + IANA contract every adapter depends on).
+
+Full findings: `docs/_execution/2026-05-08_pressure_preview_findings.md`.
+
