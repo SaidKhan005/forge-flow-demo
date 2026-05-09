@@ -327,7 +327,55 @@ Repos NOT listed here already have `*_test.dart` covering them (per `find test -
 
 ## 8. Emulator E2E Notes (Phase 4 — user-driven)
 
-TBD — user fills after Phase 4 click-path runs. Capture: which screens broke under realistic vendor data, where labels lied, where loading states never resolved, where copy/UX needs tightening.
+### Scaffold
+
+Phase 4 scaffold lives at `integration_test/phase_4_emulator/`. It uses
+the `flutter integration_test` driver and runs against a connected
+Android emulator (or iOS simulator). CI is billing-blocked at the time
+of authoring; this lane is operator-driven, anytime.
+
+Operator run command (all scenarios):
+
+```bash
+flutter pub get
+flutter test integration_test/phase_4_emulator/click_path_runner.dart \
+  --flavor forgeflow \
+  --dart-define=kDemoMode=true
+```
+
+The harness (`_harness.dart`) refuses to run against a non-demo binary
+— Phase 4 is a demo-mode walkthrough only (HP #2 + the "Frontend
+Exposure" rule).
+
+### Scenarios
+
+| # | File | Path | Substituted? |
+|---|---|---|---|
+| 1 | `scenario_01_dashboard_load.dart` | Cold boot -> AppShell -> Shift dashboard renders, demo banner mounted, no overflow. | Partial — login-tap path requires `FORGE_FLOW_USE_FIREBASE_AUTH=true` (offline emulator can't reach Firebase). Covered by widget-level `find.byKey(login_demo_operator_button)` in `test/widget_test.dart`. |
+| 2 | `scenario_02_settings_traversal.dart` | Dashboard -> Settings icon -> traverse Account / Setup / Data tabs; assert the two `kDemoMode` carve-out sections render. | Partial — prompt named 10 sub-sections; mobile asserts the surfaces post-W3.A (Account, Active sessions, Setup, Data + the two demo carve-outs). Team / Permissions / MFA-recovery moved to Operator Web. |
+| 3 | `scenario_03_weekly_plan_review.dart` | Dashboard -> Plan tab (ScheduleBuilder) -> Benchmark tab (BaselineTracker) -> back to Shift. | Partial — "switch week -> review locked snapshot" lives in operator-web week-detail; mobile Benchmark surface is BaselineTracker. |
+| 4 | `scenario_04_variance_review.dart` | Dashboard -> Variance tab renders demo facts. | Yes — the prompt's hierarchy-scoped UX trio (Selected scope / Inherited from / Effective value) is rendered exclusively in `lib/operator_web/screens/` + `lib/admin/screens/` per HP #11 + W3.A. Zero matches in `lib/screens/`. Substituted with Variance tab render against demo facts. |
+| 5 | `scenario_05_shift_detail.dart` | Whole-day dashboard sticky-section headers (SHIFT OUTPUTS / SHIFT INPUTS / FOH PRODUCTIVITY) or recognized empty state. | Partial — there is no separate "shift detail" screen on mobile; ShiftDashboard IS the whole-day authoritative view per CLAUDE.md Architecture Guardrails. |
+
+### Surgical production-code touches
+
+None. The integration_test scaffold uses `find.byType(...)` against
+existing public widget classes (`AppShell`, `ShiftDashboard`,
+`VarianceReport`, `ScheduleBuilder`, `BaselineTracker`,
+`SettingsScreen`, `DemoModeBanner`) and existing `Key`s
+(e.g. `login_demo_operator_button` in `lib/screens/auth/login_screen.dart`,
+already present pre-Phase-4). No new `Key`s added; no
+`kDemoMode`-gated reader paths added; HP #2 is intact.
+
+### PR
+
+PR: TBD (filled by Codex when the PR opens).
+
+### Per-run findings
+
+TBD — user fills after Phase 4 click-path runs. Capture: which screens
+broke under realistic vendor data, where labels lied, where loading
+states never resolved, where copy/UX needs tightening.
 
 ---
 

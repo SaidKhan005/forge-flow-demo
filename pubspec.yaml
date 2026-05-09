@@ -90,6 +90,14 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
+  # Pressure-preview Phase 4 — flutter integration_test driver for the
+  # operator-facing emulator click-path under
+  # `integration_test/phase_4_emulator/`. Demo-mode walkthrough only
+  # (HP #2 + HP #10). Runs against a connected Android emulator; never
+  # gates CI (CI is billing-blocked at the time of authoring).
+  integration_test:
+    sdk: flutter
+
   # Phase 10a.0 — virtualized clock for the realtime back-off /
   # poll-tick tests. Bundled transitively by flutter_test; promoted to
   # a direct dev dep so depend_on_referenced_packages stays clean.
