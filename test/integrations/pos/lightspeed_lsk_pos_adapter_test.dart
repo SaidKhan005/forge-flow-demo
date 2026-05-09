@@ -544,6 +544,113 @@ void main() {
         lessThan(const Duration(hours: 24)),
       );
     });
+
+    // Phase 5 P1 #1 regression — strict-Z timestamp parser. LSK
+    // `field_mapping.md` declares `vendor_timestamp_policy.lightspeed_lsk
+    // .asUtc` ("explicit-Z required, refuse otherwise"); pre-fix the
+    // adapter silently coerced offset-less timestamps against the host's
+    // local timezone. Fixture: `test/fixtures/vendor_payloads/
+    // lightspeed_lsk/scenario_e_ambiguous_timestamp.json`.
+    test(
+        'strict-Z parser: scenario_e ambiguous timestamp is dropped '
+        '(no canonical fact written, no host-local coerce)', () async {
+      final raw = jsonDecode(File(
+              'test/fixtures/vendor_payloads/lightspeed_lsk/scenario_e_ambiguous_timestamp.json')
+          .readAsStringSync()) as Map<String, Object?>;
+      // The harness fixture mirrors the vendor payload directly — copy
+      // it as-is into the salesPages stream.
+      orders.salesPages = <LightspeedLskSalesPage>[
+        LightspeedLskSalesPage(
+          sales: <Map<String, Object?>>[Map<String, Object?>.from(raw)],
+          nextPageToken: null,
+        ),
+      ];
+
+      final hook = _RecordingSanityHook();
+      final result = await adapter.backfill(
+        BackfillCommand(
+          operatorId: _opId,
+          locationId: _locId,
+          actorUserId: _userId,
+          vendorId: 'lightspeed_lsk',
+          windowStart: nowFixed.subtract(const Duration(days: 60)),
+          windowEnd: nowFixed,
+          sanityHook: hook.call,
+        ),
+      );
+
+      expect(result.recordsWritten, 0,
+          reason: 'ambiguous timestamps must refuse, not coerce');
+      expect(gateway.salesWrites, isEmpty);
+      // The adapter drops the row before the sanity-hook call site.
+      expect(hook.calls, isEmpty);
+    });
+
+    test(
+        'strict-Z parser: Z-suffixed timestamps still parse '
+        '(happy-path five-record batch writes all 5)', () async {
+      orders.salesPages = <LightspeedLskSalesPage>[
+        LightspeedLskSalesPage(
+          sales: lightspeedLskFiveRecordBatch(),
+          nextPageToken: null,
+        ),
+      ];
+      final hook = _RecordingSanityHook();
+      final result = await adapter.backfill(
+        BackfillCommand(
+          operatorId: _opId,
+          locationId: _locId,
+          actorUserId: _userId,
+          vendorId: 'lightspeed_lsk',
+          windowStart: nowFixed.subtract(const Duration(days: 60)),
+          windowEnd: nowFixed,
+          sanityHook: hook.call,
+        ),
+      );
+      expect(result.recordsWritten, 5,
+          reason: 'Z-suffixed timestamps must still parse cleanly');
+      expect(gateway.salesWrites.length, 5);
+    });
+
+    test(
+        'strict-Z parser: explicit ±HH:MM offset still parses '
+        '(synthesized +05:00 fixture writes the canonical fact)',
+        () async {
+      // 2026-05-04T22:45:00+05:00 → 2026-05-04T17:45:00Z
+      // 2026-05-04T23:42:00+05:00 → 2026-05-04T18:42:00Z
+      final saleWithOffset = <String, Object?>{
+        'accountFiscId': 'A65315.offset',
+        'timeOfOpening': '2026-05-04T22:45:00+05:00',
+        'timeClosed': '2026-05-04T23:42:00+05:00',
+        'nbCovers': 2.0,
+        'payments': <Map<String, Object?>>[
+          <String, Object?>{'netAmountWithTax': '50.00'},
+        ],
+        'salesLines': const <Map<String, Object?>>[],
+        'staff': const <Map<String, Object?>>[],
+      };
+      orders.salesPages = <LightspeedLskSalesPage>[
+        LightspeedLskSalesPage(
+          sales: <Map<String, Object?>>[saleWithOffset],
+          nextPageToken: null,
+        ),
+      ];
+      final hook = _RecordingSanityHook();
+      final result = await adapter.backfill(
+        BackfillCommand(
+          operatorId: _opId,
+          locationId: _locId,
+          actorUserId: _userId,
+          vendorId: 'lightspeed_lsk',
+          windowStart: nowFixed.subtract(const Duration(days: 60)),
+          windowEnd: nowFixed,
+          sanityHook: hook.call,
+        ),
+      );
+      expect(result.recordsWritten, 1,
+          reason: 'explicit offset is sufficient — strict parser accepts');
+      expect(gateway.salesWrites.length, 1);
+    });
   });
 
   group('LightspeedLskWebhookSignatureVerifier', () {
