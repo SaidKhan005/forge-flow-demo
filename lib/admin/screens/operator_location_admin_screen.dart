@@ -273,18 +273,9 @@ class _OperatorLocationAdminScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AdminPageHeader(
-              title: 'Business accounts',
-              subtitle:
-                  'Start with the business, then move into setup, locations, team, access, audit, and data controls.',
-              trailing: widget.editingEnabled
-                  ? FilledButton.icon(
-                      key: const Key('admin_operators_new_button'),
-                      onPressed: _openOnboardingDialog,
-                      style: AdminButtonStyles.primary,
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text('New business'),
-                    )
+            _BusinessAccountsHeader(
+              onNewBusiness: widget.editingEnabled
+                  ? _openOnboardingDialog
                   : null,
             ),
             const SizedBox(height: 14),
@@ -555,6 +546,64 @@ class _OperatorLocationAdminScreenState
       selected = _selected;
     });
     _notifyOperatorScope(selected);
+  }
+}
+
+class _BusinessAccountsHeader extends StatelessWidget {
+  const _BusinessAccountsHeader({required this.onNewBusiness});
+
+  final VoidCallback? onNewBusiness;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = Text(
+      'Business accounts',
+      style: AppTextStyles.pageTitle(color: AppColors.textPrimary),
+    );
+    final action = onNewBusiness == null
+        ? null
+        : FilledButton.icon(
+            key: const Key('admin_operators_new_button'),
+            onPressed: onNewBusiness,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.sunset,
+              foregroundColor: AppColors.backgroundSurface,
+              disabledBackgroundColor: AppColors.sunset.withValues(alpha: 0.45),
+              disabledForegroundColor: AppColors.backgroundSurface.withValues(
+                alpha: 0.78,
+              ),
+              minimumSize: const Size(168, 52),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
+              ),
+              textStyle: AppTextStyles.body14(
+                color: AppColors.backgroundSurface,
+              ).copyWith(fontWeight: FontWeight.w700),
+            ),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('New business'),
+          );
+    if (action == null) return title;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 560) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [title, const SizedBox(height: 10), action],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(child: title),
+            const SizedBox(width: 12),
+            action,
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -998,6 +1047,7 @@ class _OperatorDetail extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AdminCard(
+            key: const Key('admin_operator_profile_card'),
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1044,9 +1094,9 @@ class _OperatorDetail extends StatelessWidget {
                     if (editingEnabled)
                       _OperatorActionButton(
                         buttonKey: const Key('admin_operator_edit_button'),
-                        label: 'Edit',
-                        icon: Icons.edit_outlined,
-                        tooltip: 'Edit business account',
+                        label: 'Account profile',
+                        icon: Icons.badge_outlined,
+                        tooltip: 'Edit account profile',
                         onPressed: () => onEditOperator(bundle),
                       ),
                     if (editingEnabled && operator.isSuspended)
@@ -1093,10 +1143,6 @@ class _OperatorDetail extends StatelessWidget {
             bundle: bundle,
             selectedScope: selectedHierarchyScope,
             onSelectScope: onSelectHierarchyScope,
-            editingEnabled: editingEnabled,
-            onEditOperator: editingEnabled
-                ? () => onEditOperator(bundle)
-                : null,
             onOpenDataAccuracy:
                 onOpenDataAccuracyScope ??
                 (onOpenDataAccuracy == null
@@ -1188,8 +1234,6 @@ class _BusinessSetupCard extends StatelessWidget {
     required this.bundle,
     required this.selectedScope,
     required this.onSelectScope,
-    required this.editingEnabled,
-    required this.onEditOperator,
     required this.onOpenPeopleAccessRoles,
     required this.onOpenSecurityAuditSessions,
     required this.onOpenDataAccuracy,
@@ -1202,8 +1246,6 @@ class _BusinessSetupCard extends StatelessWidget {
   final OperatorAdminBundle bundle;
   final AdminHierarchyScopeIntent selectedScope;
   final ValueChanged<AdminHierarchyScopeIntent> onSelectScope;
-  final bool editingEnabled;
-  final VoidCallback? onEditOperator;
   final ValueChanged<AdminHierarchyScopeIntent>? onOpenPeopleAccessRoles;
   final ValueChanged<AdminHierarchyScopeIntent>? onOpenSecurityAuditSessions;
   final ValueChanged<AdminHierarchyScopeIntent>? onOpenDataAccuracy;
@@ -1227,12 +1269,9 @@ class _BusinessSetupCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final operator = bundle.operator;
-    final profileComplete =
-        operator.businessName.trim().isNotEmpty &&
-        operator.ownerEmail.trim().isNotEmpty &&
-        operator.subscriptionTier.trim().isNotEmpty &&
-        operator.preferredCurrency.trim().isNotEmpty;
-    final hasPrimary = bundle.primaryLocation != null;
+    const operationsTone = AppColors.peacockDark;
+    const peopleTone = AppColors.ocean;
+    const safetyTone = AppColors.sunsetDark;
     return AdminCard(
       key: Key('admin_business_setup_${operator.operatorId}'),
       padding: const EdgeInsets.all(20),
@@ -1287,118 +1326,110 @@ class _BusinessSetupCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.body14(color: AppColors.textPrimary),
                 ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    AdminHierarchyScopeStatusChip(
-                      label: selectedScope.inheritanceLabel,
-                    ),
-                    if (selectedScope.effectiveValueLabel != null)
-                      AdminHierarchyScopeStatusChip(
-                        label:
-                            'Effective: ${selectedScope.effectiveValueLabel}',
-                      ),
-                    if (selectedScope.allowedActionsLabel != null)
-                      AdminHierarchyScopeStatusChip(
-                        label: selectedScope.allowedActionsLabel!,
-                      ),
-                  ],
-                ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
+          const SizedBox(height: 16),
+          _SetupTileGroup(
+            groupKey: const Key('admin_business_setup_group_operations'),
+            label: 'Operations',
+            tone: operationsTone,
             children: [
               _SetupTile(
-                tileKey: const Key('admin_business_setup_tile_account_profile'),
-                label: 'Account profile',
-                value: profileComplete ? 'Ready' : 'Needs details',
-                icon: Icons.badge_outlined,
-                tone: profileComplete ? AppColors.positive : AppColors.warning,
-                onPressed: onEditOperator == null
-                    ? null
-                    : () => onEditOperator!(),
+                tileKey: const Key('admin_business_setup_tile_integrations'),
+                label: 'Integrations',
+                scopeLabel: _scopeLabel(locationRequired: true),
+                icon: Icons.link_outlined,
+                tone: operationsTone,
+                onPressed: _scopedTileHandler(onOpenIntegrations),
               ),
               _SetupTile(
                 tileKey: const Key('admin_business_setup_tile_data_accuracy'),
-                label: 'Data accuracy',
-                value: 'Review',
+                label: 'Covers and Wage Data Accuracy',
+                scopeLabel: _scopeLabel(),
                 icon: Icons.fact_check_outlined,
-                tone: AppColors.peacockDark,
+                tone: operationsTone,
                 onPressed: _scopedTileHandler(onOpenDataAccuracy),
               ),
               _SetupTile(
                 tileKey: const Key('admin_business_setup_tile_polling_pricing'),
-                label: 'Polling and pricing',
-                value: 'Review',
+                label: 'Polling setup',
+                scopeLabel: _scopeLabel(),
                 icon: Icons.payments_outlined,
-                tone: AppColors.warning,
+                tone: operationsTone,
                 onPressed: _scopedTileHandler(onOpenPollingPricing),
               ),
+              _SetupTile(
+                tileKey: const Key('admin_business_setup_tile_timing'),
+                label: 'Timing',
+                scopeLabel: _scopeLabel(),
+                icon: Icons.schedule_outlined,
+                tone: operationsTone,
+                onPressed: _scopedTileHandler(onOpenTiming),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SetupTileGroup(
+            groupKey: const Key('admin_business_setup_group_people'),
+            label: 'People',
+            tone: peopleTone,
+            children: [
               _SetupTile(
                 tileKey: const Key(
                   'admin_business_setup_tile_people_access_roles',
                 ),
                 label: 'People, access, and roles',
-                value: 'Review',
+                scopeLabel: _scopeLabel(),
                 icon: Icons.people_alt_outlined,
-                tone: AppColors.peacock,
+                tone: peopleTone,
                 onPressed: _scopedTileHandler(onOpenPeopleAccessRoles),
               ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SetupTileGroup(
+            groupKey: const Key('admin_business_setup_group_safety_support'),
+            label: 'Safety/Support',
+            tone: safetyTone,
+            children: [
               _SetupTile(
                 tileKey: const Key(
                   'admin_business_setup_tile_security_audit_sessions',
                 ),
                 label: 'Security, audit, and sessions',
-                value: 'Review',
+                scopeLabel: _scopeLabel(),
                 icon: Icons.security_outlined,
-                tone: AppColors.textMuted,
+                tone: safetyTone,
                 onPressed: _scopedTileHandler(onOpenSecurityAuditSessions),
               ),
               _SetupTile(
                 tileKey: const Key('admin_business_setup_tile_support_logs'),
                 label: 'Support logs',
-                value: 'Review',
-                icon: Icons.bug_report_outlined,
-                tone: AppColors.sunset,
+                scopeLabel: _scopeLabel(),
+                icon: Icons.support_agent_outlined,
+                tone: safetyTone,
                 onPressed: _scopedTileHandler(onOpenSupportLogs),
-              ),
-              _SetupTile(
-                tileKey: const Key('admin_business_setup_tile_integrations'),
-                label: 'Integrations',
-                value: selectedScope.isLocationScope
-                    ? 'Location'
-                    : 'Location required',
-                icon: Icons.link_outlined,
-                tone: selectedScope.isLocationScope
-                    ? AppColors.ocean
-                    : AppColors.textMuted,
-                onPressed: _scopedTileHandler(onOpenIntegrations),
-              ),
-              _SetupTile(
-                tileKey: const Key('admin_business_setup_tile_timing'),
-                label: 'Timing',
-                value: !hasPrimary
-                    ? 'Needs timezone'
-                    : selectedScope.isLocationScope
-                    ? 'Location'
-                    : selectedScope.isBusinessScope
-                    ? 'Business default'
-                    : 'Inherited',
-                icon: Icons.schedule_outlined,
-                tone: AppColors.warning,
-                onPressed: _scopedTileHandler(onOpenTiming),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  String _scopeLabel({bool locationRequired = false}) {
+    if (locationRequired && !selectedScope.isLocationScope) {
+      return 'Select a location';
+    }
+    switch (selectedScope.scopeType) {
+      case AdminHierarchyScopeType.business:
+        return 'Business scope';
+      case AdminHierarchyScopeType.orgUnit:
+        return 'Org unit scope';
+      case AdminHierarchyScopeType.location:
+        return 'Location scope';
+    }
   }
 }
 
@@ -2130,11 +2161,38 @@ class _HierarchyScopeRow extends StatelessWidget {
   }
 }
 
+class _SetupTileGroup extends StatelessWidget {
+  const _SetupTileGroup({
+    required this.groupKey,
+    required this.label,
+    required this.tone,
+    required this.children,
+  });
+
+  final Key groupKey;
+  final String label;
+  final Color tone;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      key: groupKey,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: AppTextStyles.uiLabel(color: tone)),
+        const SizedBox(height: 8),
+        Wrap(spacing: 10, runSpacing: 10, children: children),
+      ],
+    );
+  }
+}
+
 class _SetupTile extends StatelessWidget {
   const _SetupTile({
     required this.tileKey,
     required this.label,
-    required this.value,
+    required this.scopeLabel,
     required this.icon,
     required this.tone,
     this.onPressed,
@@ -2142,54 +2200,90 @@ class _SetupTile extends StatelessWidget {
 
   final Key tileKey;
   final String label;
-  final String value;
+  final String scopeLabel;
   final IconData icon;
   final Color tone;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final content = Container(
+    final enabled = onPressed != null;
+    return MouseRegion(
+      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       key: tileKey,
-      width: 176,
-      height: 112,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: tone.withValues(alpha: 0.08),
-        border: Border.all(color: tone.withValues(alpha: 0.28), width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: tone),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.mono11(color: AppColors.textMuted),
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: '$label, $scopeLabel',
+        child: SizedBox(
+          width: 232,
+          height: 120,
+          child: Material(
+            color: enabled
+                ? tone.withValues(alpha: 0.1)
+                : AppColors.backgroundMid.withValues(alpha: 0.65),
+            shape: RoundedRectangleBorder(
+              side: BorderSide(
+                color: enabled
+                    ? tone.withValues(alpha: 0.5)
+                    : AppColors.borderSubtle,
+                width: enabled ? 1.2 : 1,
+              ),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onPressed,
+              hoverColor: tone.withValues(alpha: 0.08),
+              splashColor: tone.withValues(alpha: 0.12),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          icon,
+                          size: 18,
+                          color: enabled ? tone : AppColors.textMuted,
+                        ),
+                        const Spacer(),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 18,
+                          color: enabled ? tone : AppColors.textMuted,
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    Text(
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.body14(
+                        color: enabled
+                            ? AppColors.textPrimary
+                            : AppColors.textMuted,
+                      ).copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      scopeLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.body12(
+                        color: enabled
+                            ? AppColors.textSecondary
+                            : AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.body14(
-              color: AppColors.textPrimary,
-            ).copyWith(fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-    );
-    if (onPressed == null) return content;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: onPressed,
-        child: content,
+        ),
       ),
     );
   }
