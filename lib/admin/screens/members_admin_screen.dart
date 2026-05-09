@@ -877,10 +877,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
               onClearFilters: _clearFilters,
             ),
             const SizedBox(height: 12),
-            if (!_loading && _loadError == null) ...<Widget>[
-              _MembersSummaryStrip(members: _members, invites: _invites),
-              const SizedBox(height: 12),
-            ],
             Expanded(child: _buildBody()),
           ],
         ),
@@ -983,49 +979,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   }
 }
 
-class _MembersSummaryStrip extends StatelessWidget {
-  const _MembersSummaryStrip({required this.members, required this.invites});
-
-  final List<MemberAdminRow> members;
-  final List<MemberInviteRow> invites;
-
-  @override
-  Widget build(BuildContext context) {
-    final active = members
-        .where((member) => member.status == MemberStatus.active)
-        .length;
-    final mfaOff = members.where((member) => !member.mfaEnrolled).length;
-    return AdminStatStrip(
-      items: <AdminStatItem>[
-        AdminStatItem(
-          label: 'Visible members',
-          value: members.length.toString(),
-          icon: Icons.people_alt_outlined,
-          tone: AppColors.peacock,
-        ),
-        AdminStatItem(
-          label: 'Active',
-          value: active.toString(),
-          icon: Icons.check_circle_outline,
-          tone: AppColors.positive,
-        ),
-        AdminStatItem(
-          label: 'MFA off',
-          value: mfaOff.toString(),
-          icon: Icons.gpp_maybe_outlined,
-          tone: mfaOff == 0 ? AppColors.positive : AppColors.warning,
-        ),
-        AdminStatItem(
-          label: 'Pending invites',
-          value: invites.length.toString(),
-          icon: Icons.mail_outline,
-          tone: AppColors.sunset,
-        ),
-      ],
-    );
-  }
-}
-
 class _PeopleAccessScopeCard extends StatelessWidget {
   const _PeopleAccessScopeCard({
     required this.pickedOperator,
@@ -1040,6 +993,9 @@ class _PeopleAccessScopeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scope = initialScope;
+    final scopeLabel = _selectedScopeLabel(scope);
+    final scopeDisplay =
+        scope?.displayLabel ?? pickedOperator.operatorBusinessName;
     return AdminCard(
       key: const Key('admin_people_access_scope_card'),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -1061,18 +1017,8 @@ class _PeopleAccessScopeCard extends StatelessWidget {
             icon: Icons.business_outlined,
             label: pickedOperator.operatorBusinessName,
           ),
-          if (scope != null) ...<Widget>[
-            _ScopePill(icon: Icons.tune_outlined, label: scope.displayLabel),
-            _ScopePill(
-              icon: Icons.call_split_outlined,
-              label: scope.inheritanceLabel,
-            ),
-            if (scope.allowedActionsLabel != null)
-              _ScopePill(
-                icon: Icons.rule_outlined,
-                label: scope.allowedActionsLabel!,
-              ),
-          ],
+          _ScopePill(icon: Icons.tune_outlined, label: scopeLabel),
+          _ScopePill(icon: Icons.account_tree_outlined, label: scopeDisplay),
           _ScopePill(
             icon: Icons.lock_open_outlined,
             label: '${accessScopes.length} grant scopes',
@@ -1084,6 +1030,17 @@ class _PeopleAccessScopeCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+String _selectedScopeLabel(AdminHierarchyScopeIntent? scope) {
+  switch (scope?.scopeType ?? AdminHierarchyScopeType.business) {
+    case AdminHierarchyScopeType.business:
+      return 'Selected business scope';
+    case AdminHierarchyScopeType.orgUnit:
+      return 'Selected org unit scope';
+    case AdminHierarchyScopeType.location:
+      return 'Selected location scope';
   }
 }
 
@@ -1208,18 +1165,22 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Filters',
+                  'People filters',
                   style: AppTextStyles.sectionTitle(
                     color: AppColors.textPrimary,
                   ),
                 ),
               ),
               if (activeFilters.isNotEmpty)
-                TextButton.icon(
+                OutlinedButton.icon(
                   key: const Key('admin_members_clear_filters'),
                   onPressed: widget.onClearFilters,
-                  icon: const Icon(Icons.close, size: 14),
-                  label: Text('Clear ${activeFilters.length}'),
+                  style: AdminButtonStyles.secondary(
+                    minWidth: 120,
+                    minHeight: 40,
+                  ),
+                  icon: const Icon(Icons.filter_alt_off_outlined, size: 16),
+                  label: const Text('Clear filters'),
                 ),
             ],
           ),
@@ -1243,7 +1204,7 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                   items: <DropdownMenuItem<MemberStatus?>>[
                     const DropdownMenuItem<MemberStatus?>(
                       value: null,
-                      child: Text('Any'),
+                      child: Text('All statuses'),
                     ),
                     for (final s in MemberStatus.values)
                       DropdownMenuItem<MemberStatus?>(
@@ -1268,7 +1229,7 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                   items: <DropdownMenuItem<String?>>[
                     const DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('Any'),
+                      child: Text('All roles'),
                     ),
                     for (final role in kSeededRoleKeysForAdmin)
                       DropdownMenuItem<String?>(
@@ -1293,7 +1254,7 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                   items: <DropdownMenuItem<String?>>[
                     const DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('Any'),
+                      child: Text('All locations'),
                     ),
                     for (final loc in widget.locations)
                       DropdownMenuItem<String?>(
@@ -1316,7 +1277,10 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                     border: OutlineInputBorder(),
                   ),
                   items: const <DropdownMenuItem<bool?>>[
-                    DropdownMenuItem<bool?>(value: null, child: Text('Any')),
+                    DropdownMenuItem<bool?>(
+                      value: null,
+                      child: Text('All MFA states'),
+                    ),
                     DropdownMenuItem<bool?>(
                       value: true,
                       child: Text('Enrolled'),

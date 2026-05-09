@@ -13,6 +13,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/invite_member_admin_dialog.dart';
 import 'package:forge_and_flow/admin/screens/members_admin_screen.dart';
 import 'package:forge_and_flow/admin/screens/operator_picker_screen.dart';
@@ -90,6 +91,12 @@ void main() {
         find.byKey(const Key('admin_members_filter_search')),
         findsOneWidget,
       );
+      expect(find.text('People filters'), findsOneWidget);
+      expect(find.text('All statuses'), findsOneWidget);
+      expect(find.text('All roles'), findsOneWidget);
+      expect(find.text('All locations'), findsOneWidget);
+      expect(find.text('All MFA states'), findsOneWidget);
+      expect(find.text('Visible members'), findsNothing);
 
       // Demo Diner has 4 seeded members.
       expect(
@@ -916,11 +923,40 @@ void main() {
         find.byKey(const Key('admin_people_access_scope_card')),
         findsOneWidget,
       );
+      expect(find.text('Selected business scope'), findsOneWidget);
       expect(find.byKey(const Key('admin_rhs_roles_tab')), findsOneWidget);
       expect(
         find.byKey(const Key('admin_rhs_permission_explainer')),
         findsOneWidget,
       );
+    });
+
+    testWidgets('preserves selected hierarchy scope context', (tester) async {
+      wideViewport(tester);
+      final gateway = InMemoryMembersAdminGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            initialScope: const AdminHierarchyScopeIntent.orgUnit(
+              operatorId: kDemoDinerOperatorId,
+              orgUnitId: kDemoDinerOrgUnitEast,
+              operatorName: 'Demo Diner Co.',
+              orgUnitName: 'East Region',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Selected org unit scope'), findsOneWidget);
+      expect(find.text('Demo Diner Co. / East Region'), findsOneWidget);
     });
   });
 

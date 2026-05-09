@@ -11,12 +11,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/operator_picker_screen.dart';
 import 'package:forge_and_flow/admin/screens/roles_hierarchy_sessions_admin_screen.dart'
     show
         ActiveSessionsAdminPanel,
         RolesHierarchySessionsAdminScreen,
-        kMfaRequiredTooltip;
+        kMfaRequiredTooltip,
+        permissionHumanLabel;
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
@@ -76,6 +78,32 @@ void main() {
       expect(find.byKey(const Key('admin_rhs_tab_hierarchy')), findsOneWidget);
       expect(find.byKey(const Key('admin_rhs_tab_sessions')), findsNothing);
       expect(find.byKey(const Key('admin_rhs_roles_tab')), findsOneWidget);
+      expect(find.text('Scope context'), findsOneWidget);
+      expect(find.text('Selected location scope'), findsOneWidget);
+    });
+
+    testWidgets('renders provided hierarchy scope context', (tester) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            initialScope: const AdminHierarchyScopeIntent.orgUnit(
+              operatorId: kDemoDinerOperatorId,
+              orgUnitId: kDemoDinerOrgUnitEast,
+              operatorName: 'Demo Diner Co.',
+              orgUnitName: 'East Region',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Selected org unit scope'), findsOneWidget);
+      expect(find.text('Demo Diner Co. / East Region'), findsOneWidget);
     });
 
     testWidgets('loads only the selected tab until another tab is opened', (
@@ -356,6 +384,12 @@ void main() {
         ),
         findsOneWidget,
       );
+      expect(find.text('People and devices signed in'), findsOneWidget);
+      expect(find.text("Dana Owner's device"), findsWidgets);
+      expect(find.text('Device: '), findsWidgets);
+      expect(find.text('Place: '), findsWidgets);
+      expect(find.text('Last active: '), findsWidgets);
+      expect(find.text('Sign out device'), findsWidgets);
     });
   });
 
@@ -643,6 +677,35 @@ void main() {
   });
 
   group('Permission Explainer + MFA marker (parity § Roles)', () {
+    testWidgets('Permission chips render human labels and hide raw keys', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        permissionHumanLabel('team.users.view'),
+        equals('View team users'),
+      );
+      expect(find.text('View team users'), findsWidgets);
+      expect(find.text('team.users.view'), findsNothing);
+
+      final tooltip = tester.widget<Tooltip>(
+        find.byKey(const Key('admin_rhs_perm_tooltip_team.users.view')).first,
+      );
+      expect(tooltip.message, equals('Raw key: team.users.view'));
+    });
+
     testWidgets(
       'Permission Explainer renders all 9 catalog categories in the locked order',
       (tester) async {
@@ -711,7 +774,13 @@ void main() {
           const Key('admin_rhs_perm_mfa_tooltip_admin.roles.edit_seeded'),
         ),
       );
-      expect(tooltip.message, equals(kMfaRequiredTooltip));
+      expect(
+        tooltip.message,
+        equals(
+          'Raw key: admin.roles.edit_seeded\n'
+          '$kMfaRequiredTooltip',
+        ),
+      );
       // No emoji-only signal: the chip carries the literal "MFA"
       // text plus a Lock icon, not just an emoji.
       expect(find.text('MFA'), findsWidgets);
