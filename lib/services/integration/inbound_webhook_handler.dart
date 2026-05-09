@@ -41,6 +41,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
+import 'inbound_webhook_signing_secret_cache.dart';
 import 'integration_adapter_common.dart';
 import 'labor_adapter.dart';
 import 'pos_adapter.dart';
@@ -324,7 +325,9 @@ class InboundWebhookHandler {
     required this.bindingExtractor,
     VendorTimestampSanity? sanityChecker,
     DateTime Function()? now,
+    SigningSecretCache? signingSecretCache,
   })  : sanityChecker = sanityChecker ?? const VendorTimestampSanity(),
+        _signingSecretCache = signingSecretCache,
         _now = now ?? DateTime.now;
 
   final InboundWebhookGateway gateway;
@@ -335,6 +338,14 @@ class InboundWebhookHandler {
   final WebhookBindingExtractor bindingExtractor;
   final VendorTimestampSanity sanityChecker;
   final DateTime Function() _now;
+
+  /// Optional per-(operator, location, vendor) signing-secret cache.
+  /// When non-null, the dispatch path routes the
+  /// [InboundWebhookGateway.lookupSigningSecret] call through the
+  /// cache so a webhook flood does not amplify into N pgcrypto
+  /// decrypt round-trips. When null, behavior is unchanged from the
+  /// pre-cache implementation (every dispatch hits the gateway).
+  final SigningSecretCache? _signingSecretCache;
 
   /// Dispatch one inbound webhook. The route handler hands us the
   /// raw body bytes (preserved for HMAC verification — JSON
@@ -386,11 +397,31 @@ class InboundWebhookHandler {
         message: 'no signature verifier registered for vendor',
       );
     }
-    final signingSecret = await gateway.lookupSigningSecret(
-      operatorId: operatorId,
-      locationId: locationId,
-      vendorId: vendorId,
-    );
+    // P0 fix: route through the optional [_signingSecretCache] so a
+    // webhook flood does not amplify into N pgcrypto-decrypt
+    // round-trips. The cache only memoizes successful (non-null)
+    // lookups; null returns always re-fetch so a just-provisioned
+    // secret lights up immediately on the next delivery and the
+    // fail-closed 403 reflects current truth. When the cache is null
+    // (legacy / test wiring) the gateway is called directly and the
+    // ordering is identical to the pre-cache implementation.
+    final cache = _signingSecretCache;
+    final String? signingSecret = cache == null
+        ? await gateway.lookupSigningSecret(
+            operatorId: operatorId,
+            locationId: locationId,
+            vendorId: vendorId,
+          )
+        : await cache.getOrFetch(
+            operatorId: operatorId,
+            locationId: locationId,
+            vendorId: vendorId,
+            loader: () => gateway.lookupSigningSecret(
+              operatorId: operatorId,
+              locationId: locationId,
+              vendorId: vendorId,
+            ),
+          );
     if (signingSecret == null) {
       return const WebhookDispatchResult(
         outcome: WebhookOutcome.signatureInvalid,

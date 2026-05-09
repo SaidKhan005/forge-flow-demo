@@ -81,6 +81,7 @@ import 'admin_integrations_routes.dart' show
     IntegrationRoutesGateway;
 import 'advisor_proxy.dart';
 import 'integration_oauth_state_store.dart';
+import 'log.dart';
 
 /// Lifecycle status the callback writes onto its 302 redirect URL so
 /// the operator UI can render the right state.
@@ -346,10 +347,23 @@ class IntegrationOAuthRoutes {
       });
       return true;
     } catch (error, stack) {
+      // P0 fix (2026-05-09 webhook signature triage Section 4 — leak
+      // site #2): no internal exception details in the response body.
+      final errorId = _generateErrorId();
+      log(
+        LogSeverity.error,
+        'integration_oauth_route_error',
+        fields: <String, Object?>{
+          'error_id': errorId,
+          'path': path,
+          'error': error.toString(),
+          'stack_first_frame': _firstStackFrame(stack),
+        },
+      );
       _writeJson(request.response, 500, <String, Object?>{
         'error': 'integration_oauth_route_error',
-        'message': error.toString(),
-        'stack_first_frame': _firstStackFrame(stack),
+        'error_id': errorId,
+        'message': 'internal_server_error',
       });
       return true;
     }
@@ -419,10 +433,25 @@ class IntegrationOAuthRoutes {
         module: module,
       );
     } catch (error, stack) {
+      // P0 fix (2026-05-09 webhook signature triage Section 4 — leak
+      // site #3): no internal exception details in the response body.
+      final errorId = _generateErrorId();
+      log(
+        LogSeverity.error,
+        'state_token_persist_failed',
+        fields: <String, Object?>{
+          'error_id': errorId,
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'vendor_id': vendorId,
+          'error': error.toString(),
+          'stack_first_frame': _firstStackFrame(stack),
+        },
+      );
       _writeJson(request.response, 500, <String, Object?>{
         'error': 'state_token_persist_failed',
-        'message': error.toString(),
-        'stack_first_frame': _firstStackFrame(stack),
+        'error_id': errorId,
+        'message': 'internal_server_error',
       });
       return;
     }
@@ -780,10 +809,27 @@ class IntegrationOAuthRoutes {
         apiKey: apiKey,
         apiSecret: apiSecret,
       );
-    } catch (error) {
+    } catch (error, stack) {
+      // P0 fix (2026-05-09 webhook signature triage Section 4 — leak
+      // site #4): vendor SDK exceptions can carry response bodies +
+      // headers. Sanitize the response and log the breadcrumb.
+      final errorId = _generateErrorId();
+      log(
+        LogSeverity.error,
+        'api_key_validation_failed',
+        fields: <String, Object?>{
+          'error_id': errorId,
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'vendor_id': vendorId,
+          'error': error.toString(),
+          'stack_first_frame': _firstStackFrame(stack),
+        },
+      );
       _writeJson(request.response, 502, <String, Object?>{
         'error': 'api_key_validation_failed',
-        'message': error.toString(),
+        'error_id': errorId,
+        'message': 'internal_server_error',
       });
       return;
     }
@@ -806,10 +852,27 @@ class IntegrationOAuthRoutes {
         username: apiSecret,
         module: module,
       );
-    } catch (error) {
+    } catch (error, stack) {
+      // P0 fix (2026-05-09 webhook signature triage Section 4 — leak
+      // site #5): persist failures can carry Postgres error text
+      // (relation/column names, SQLSTATE). Sanitize the response.
+      final errorId = _generateErrorId();
+      log(
+        LogSeverity.error,
+        'connect_persist_failed',
+        fields: <String, Object?>{
+          'error_id': errorId,
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'vendor_id': vendorId,
+          'error': error.toString(),
+          'stack_first_frame': _firstStackFrame(stack),
+        },
+      );
       _writeJson(request.response, 500, <String, Object?>{
         'error': 'connect_persist_failed',
-        'message': error.toString(),
+        'error_id': errorId,
+        'message': 'internal_server_error',
       });
       return;
     }
@@ -1234,6 +1297,22 @@ class IntegrationOAuthRoutes {
   static String _firstStackFrame(StackTrace stack) {
     final frames = stack.toString().split('\n');
     return frames.isEmpty ? '' : frames.first.trim();
+  }
+
+  /// P0 fix (2026-05-09 webhook signature triage): per-failure
+  /// correlation id surfaced in the response body so the full
+  /// exception text + stack stays in the structured log keyed on
+  /// this id.
+  String _generateErrorId() {
+    final bytes = Uint8List(16);
+    for (var i = 0; i < bytes.length; i++) {
+      bytes[i] = _secureRandom.nextInt(256);
+    }
+    final hex = StringBuffer();
+    for (final b in bytes) {
+      hex.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return hex.toString();
   }
 }
 

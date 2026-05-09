@@ -32,6 +32,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -45,6 +46,7 @@ import 'advisor_proxy.dart'
         AdminIdempotencyKeyConflict,
         AdminRequestIdempotencyEntry,
         AdminRequestIdempotencyStore;
+import 'log.dart';
 
 /// Inbound idempotency / routing surface for the proxy. Production
 /// wires a Postgres-backed gateway; tests pass a fake.
@@ -239,14 +241,31 @@ class Phase80IntegrationRoutes {
       await _handleAdmin(request);
       return true;
     } catch (error, stack) {
-      // Defensive: the marked-region call site does not catch our
-      // throws, so any uncaught exception here would propagate to
-      // the listener loop. Return a 500 with the error stringified
-      // so the main loop's structured log captures the right field.
+      // P0 fix (2026-05-09 webhook signature triage Section 4 — leak
+      // site #1): never echo `error.toString()` or stack frames into
+      // the response body. Postgres exceptions like
+      // `relation "public.vendor_credentials" does not exist (42P01)`
+      // expose internal schema names + SQLSTATE codes to anyone who
+      // can drive a 500 (e.g., an unauthenticated webhook target
+      // before the DB is ready). Generate a per-failure error_id,
+      // log the full breadcrumb to the structured logger, and
+      // return a sanitized body that operators can correlate via
+      // `error_id` instead.
+      final errorId = _generateErrorId();
+      log(
+        LogSeverity.error,
+        'phase_8_0_route_error',
+        fields: <String, Object?>{
+          'error_id': errorId,
+          'path': path,
+          'error': error.toString(),
+          'stack_first_frame': _firstStackFrame(stack),
+        },
+      );
       _writeJson(request.response, 500, <String, Object?>{
         'error': 'phase_8_0_route_error',
-        'message': error.toString(),
-        'stack_first_frame': _firstStackFrame(stack),
+        'error_id': errorId,
+        'message': 'internal_server_error',
       });
       return true;
     }
@@ -550,14 +569,47 @@ class Phase80IntegrationRoutes {
       headers[name.toLowerCase()] = values.join(',');
     });
 
-    final result = await webhookHandler.dispatch(
-      operatorId: operatorId,
-      locationId: locationId,
-      vendorId: vendorId,
-      rawBody: rawBody,
-      payload: payload,
-      headers: headers,
-    );
+    // P0 fix (2026-05-09 webhook signature triage Section 5.D):
+    // wrap [webhookHandler.dispatch] in its own try/catch so any
+    // uncaught exception (DB outage, decrypt failure, malformed
+    // pgcrypto envelope) lands in a sanitized 500 in the same shape
+    // as [WebhookOutcome.adapterError] instead of falling through to
+    // [tryHandle]'s catch-all and exposing the underlying error
+    // message in the response body. The structured log keeps the
+    // full exception text correlated by `error_id`.
+    WebhookDispatchResult result;
+    try {
+      result = await webhookHandler.dispatch(
+        operatorId: operatorId,
+        locationId: locationId,
+        vendorId: vendorId,
+        rawBody: rawBody,
+        payload: payload,
+        headers: headers,
+      );
+    } catch (error, stack) {
+      final errorId = _generateErrorId();
+      log(
+        LogSeverity.error,
+        'phase_8_0_webhook_dispatch_error',
+        fields: <String, Object?>{
+          'error_id': errorId,
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'vendor_id': vendorId,
+          'error': error.toString(),
+          'stack_first_frame': _firstStackFrame(stack),
+        },
+      );
+      _writeJson(request.response, 500, <String, Object?>{
+        'outcome': WebhookOutcome.adapterError.name,
+        'error': 'webhook_dispatch_error',
+        'error_id': errorId,
+        'message': 'internal_server_error',
+        'records_written': 0,
+      });
+      return;
+    }
     _writeJson(request.response, result.statusCode, result.toJson());
   }
 
@@ -1012,5 +1064,29 @@ class Phase80IntegrationRoutes {
   static String _firstStackFrame(StackTrace stack) {
     final frames = stack.toString().split('\n');
     return frames.isEmpty ? '' : frames.first.trim();
+  }
+
+  /// P0 fix (2026-05-09 webhook signature triage): per-failure
+  /// correlation id surfaced in the response body. The full exception
+  /// text + stack stays in the structured log keyed on this id so
+  /// operators can correlate without leaking internal details to the
+  /// vendor / webhook caller.
+  ///
+  /// Format is a 16-byte hex string — no `package:uuid` dependency
+  /// added (the proxy already pulls `dart:math`'s `Random.secure()`
+  /// for the OAuth state token at
+  /// `integration_oauth_routes.dart:_generateStateToken`).
+  static final Random _errorIdRandom = Random.secure();
+
+  static String _generateErrorId() {
+    final bytes = Uint8List(16);
+    for (var i = 0; i < bytes.length; i++) {
+      bytes[i] = _errorIdRandom.nextInt(256);
+    }
+    final hex = StringBuffer();
+    for (final b in bytes) {
+      hex.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return hex.toString();
   }
 }

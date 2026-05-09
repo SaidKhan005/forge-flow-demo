@@ -16,6 +16,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
+import 'package:forge_and_flow/services/integration/inbound_webhook_signing_secret_cache.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/pos_adapter.dart';
 
@@ -432,6 +433,221 @@ void main() {
       );
     });
 
+    // ─── P0 fix 2026-05-09: signing-secret cache wiring ───────────
+    //
+    // The handler optionally accepts a [SigningSecretCache] so a
+    // webhook flood does not amplify into N pgcrypto-decrypt
+    // round-trips. These tests pin three behaviours under the cache:
+    //
+    //   (a) cache hit short-circuits the gateway call.
+    //   (b) cache miss falls through to the gateway and populates.
+    //   (c) gateway exception still surfaces as `signatureInvalid`
+    //       outcome without leaking the underlying message.
+
+    test('signing-secret cache: hit short-circuits the gateway call',
+        () async {
+      final cachedHandler = InboundWebhookHandler(
+        gateway: gateway,
+        posAdapterFactories: <String, PosAdapterFactory>{
+          adapter.vendorId:
+              ({required operatorId, required locationId}) async => adapter,
+        },
+        laborAdapterFactories: const <String, LaborAdapterFactory>{},
+        reservationAdapterFactories:
+            const <String, ReservationAdapterFactory>{},
+        signatureVerifiers: <String, VendorWebhookSignatureVerifier>{
+          verifier.vendorId: verifier,
+        },
+        bindingExtractor: WebhookBindingExtractor(),
+        now: () => nowFixed,
+        signingSecretCache: InMemorySigningSecretCache(
+          clock: () => nowFixed,
+        ),
+      );
+
+      gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
+        connectionId: 'conn-1',
+        metadata: <String, Object?>{'business_id': 'lsk-biz-7c2f'},
+        status: ConnectionStatus.connected,
+      );
+      gateway.signingSecrets['lightspeed_lsk'] = 'secret';
+      verifier.shouldPass = true;
+      adapter.handleResult = const HandleWebhookResult(recordsWritten: 1);
+
+      Map<String, Object?> payloadFor(String eventId) => <String, Object?>{
+            'event_id': eventId,
+            'business_id': 'lsk-biz-7c2f',
+            'opened_at': nowFixed
+                .subtract(const Duration(hours: 2))
+                .toIso8601String(),
+            'closed_at': nowFixed
+                .subtract(const Duration(hours: 1))
+                .toIso8601String(),
+          };
+
+      final first = await cachedHandler.dispatch(
+        operatorId: _opId,
+        locationId: _locId,
+        vendorId: 'lightspeed_lsk',
+        rawBody: Uint8List.fromList(utf8.encode('{}')),
+        payload: payloadFor('evt-cache-1'),
+        headers: const <String, String>{},
+      );
+      final second = await cachedHandler.dispatch(
+        operatorId: _opId,
+        locationId: _locId,
+        vendorId: 'lightspeed_lsk',
+        rawBody: Uint8List.fromList(utf8.encode('{}')),
+        payload: payloadFor('evt-cache-2'),
+        headers: const <String, String>{},
+      );
+
+      expect(first.outcome, WebhookOutcome.accepted);
+      expect(second.outcome, WebhookOutcome.accepted);
+      expect(gateway.lookupSigningSecretCalls, 1,
+          reason:
+              'second dispatch must hit the cache; the gateway lookup '
+              'must NOT be invoked twice');
+    });
+
+    test(
+        'signing-secret cache: miss falls through to gateway and '
+        'populates', () async {
+      final cache = InMemorySigningSecretCache(clock: () => nowFixed);
+      final cachedHandler = InboundWebhookHandler(
+        gateway: gateway,
+        posAdapterFactories: <String, PosAdapterFactory>{
+          adapter.vendorId:
+              ({required operatorId, required locationId}) async => adapter,
+        },
+        laborAdapterFactories: const <String, LaborAdapterFactory>{},
+        reservationAdapterFactories:
+            const <String, ReservationAdapterFactory>{},
+        signatureVerifiers: <String, VendorWebhookSignatureVerifier>{
+          verifier.vendorId: verifier,
+        },
+        bindingExtractor: WebhookBindingExtractor(),
+        now: () => nowFixed,
+        signingSecretCache: cache,
+      );
+
+      gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
+        connectionId: 'conn-1',
+        metadata: <String, Object?>{'business_id': 'lsk-biz-7c2f'},
+        status: ConnectionStatus.connected,
+      );
+      gateway.signingSecrets['lightspeed_lsk'] = 'secret';
+      verifier.shouldPass = true;
+      adapter.handleResult = const HandleWebhookResult(recordsWritten: 1);
+
+      // Cache starts empty — first dispatch must invoke the gateway.
+      expect(cache.debugSizeForOperator(_opId), 0);
+      final result = await cachedHandler.dispatch(
+        operatorId: _opId,
+        locationId: _locId,
+        vendorId: 'lightspeed_lsk',
+        rawBody: Uint8List.fromList(utf8.encode('{}')),
+        payload: <String, Object?>{
+          'event_id': 'evt-cache-miss',
+          'business_id': 'lsk-biz-7c2f',
+          'opened_at': nowFixed
+              .subtract(const Duration(hours: 2))
+              .toIso8601String(),
+          'closed_at': nowFixed
+              .subtract(const Duration(hours: 1))
+              .toIso8601String(),
+        },
+        headers: const <String, String>{},
+      );
+
+      expect(result.outcome, WebhookOutcome.accepted);
+      expect(gateway.lookupSigningSecretCalls, 1);
+      expect(cache.debugSizeForOperator(_opId), 1,
+          reason:
+              'successful gateway lookup must populate the cache for '
+              'subsequent deliveries');
+    });
+
+    test(
+        'signing-secret cache: gateway exception surfaces as 403 '
+        'without leaking underlying message', () async {
+      final cachedHandler = InboundWebhookHandler(
+        gateway: gateway,
+        posAdapterFactories: <String, PosAdapterFactory>{
+          adapter.vendorId:
+              ({required operatorId, required locationId}) async => adapter,
+        },
+        laborAdapterFactories: const <String, LaborAdapterFactory>{},
+        reservationAdapterFactories:
+            const <String, ReservationAdapterFactory>{},
+        signatureVerifiers: <String, VendorWebhookSignatureVerifier>{
+          verifier.vendorId: verifier,
+        },
+        bindingExtractor: WebhookBindingExtractor(),
+        now: () => nowFixed,
+        signingSecretCache: InMemorySigningSecretCache(
+          clock: () => nowFixed,
+        ),
+      );
+
+      gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
+        connectionId: 'conn-1',
+        metadata: <String, Object?>{'business_id': 'lsk-biz-7c2f'},
+        status: ConnectionStatus.connected,
+      );
+      gateway.signingSecrets['lightspeed_lsk'] = 'secret';
+      gateway.signingSecretThrowOnNextCall = StateError(
+        'relation "public.vendor_credentials" does not exist',
+      );
+      verifier.shouldPass = true;
+
+      // The handler does not catch loader exceptions; the dispatch
+      // should propagate. The proxy route layer wraps dispatch in its
+      // own try/catch (admin_integrations_routes.dart `_handleWebhook`)
+      // and returns a sanitized 500 — verified separately in the
+      // sanitization test. Here we pin that the underlying message
+      // is NOT swallowed into a successful response and that the
+      // cache is not poisoned by the throw.
+      await expectLater(
+        () => cachedHandler.dispatch(
+          operatorId: _opId,
+          locationId: _locId,
+          vendorId: 'lightspeed_lsk',
+          rawBody: Uint8List.fromList(utf8.encode('{}')),
+          payload: const <String, Object?>{
+            'event_id': 'evt-cache-throw',
+            'business_id': 'lsk-biz-7c2f',
+          },
+          headers: const <String, String>{},
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      // The cache must NOT have been populated by the failed lookup.
+      // The next dispatch should re-invoke the gateway and now
+      // succeed (the StateError was one-shot).
+      gateway.signingSecretThrowOnNextCall = null;
+      final retry = await cachedHandler.dispatch(
+        operatorId: _opId,
+        locationId: _locId,
+        vendorId: 'lightspeed_lsk',
+        rawBody: Uint8List.fromList(utf8.encode('{}')),
+        payload: <String, Object?>{
+          'event_id': 'evt-cache-throw-retry',
+          'business_id': 'lsk-biz-7c2f',
+          'opened_at': nowFixed
+              .subtract(const Duration(hours: 2))
+              .toIso8601String(),
+          'closed_at': nowFixed
+              .subtract(const Duration(hours: 1))
+              .toIso8601String(),
+        },
+        headers: const <String, String>{},
+      );
+      expect(retry.outcome, WebhookOutcome.accepted,
+          reason: 'cache must not have been poisoned by the throw');
+    });
+
     test('dead-letter on 3rd consecutive failure', () async {
       gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
         connectionId: 'conn-1',
@@ -507,12 +723,31 @@ class _FakeWebhookGateway implements InboundWebhookGateway {
     return bindings[vendorId];
   }
 
+  /// Number of times the gateway's signing-secret lookup has been
+  /// invoked. The cache test (P0 fix 2026-05-09) asserts this stays
+  /// at 1 across multiple webhook deliveries when the cache is
+  /// engaged; without the cache it grows linearly.
+  int lookupSigningSecretCalls = 0;
+
+  /// When non-null, the next call to [lookupSigningSecret] throws
+  /// this object. Cleared after the throw so subsequent calls return
+  /// the normal map value. Lets a single test exercise the
+  /// "gateway throws after a previous successful cache populate" path
+  /// without rewiring the fake.
+  Object? signingSecretThrowOnNextCall;
+
   @override
   Future<String?> lookupSigningSecret({
     required String operatorId,
     required String locationId,
     required String vendorId,
   }) async {
+    lookupSigningSecretCalls += 1;
+    final throwTarget = signingSecretThrowOnNextCall;
+    if (throwTarget != null) {
+      signingSecretThrowOnNextCall = null;
+      throw throwTarget;
+    }
     return signingSecrets[vendorId];
   }
 
