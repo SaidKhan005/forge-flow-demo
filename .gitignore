@@ -116,3 +116,9 @@ Selling.md
 
 # Project-scoped MCP server registration (machine-specific absolute paths)
 .mcp.json
+
+# Pressure preview v1 — per-run findings JSONL and summary artifacts.
+# These are local diagnostic outputs; PR bodies carry the human-readable
+# summary, the JSONL stays untracked.
+test/integration/pressure/*_findings.jsonl
+test/integration/pressure/*_summary.md
