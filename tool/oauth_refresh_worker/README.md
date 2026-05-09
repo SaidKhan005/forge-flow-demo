@@ -97,10 +97,26 @@ For each near-expiry row claimed via `FOR UPDATE SKIP LOCKED`:
 1. The worker looks up the vendor's refresh closure in the registry
    the bootstrap composed at boot. Vendors WITHOUT a closure
    (`sevenrooms`, `tock`, `push_operations`, `agendrix`, `adp`,
-   `opentable` per `kVendorsWithoutRefreshClosure`) are SKIPPED with
-   a single trace-style log line (no failure-count increment): their
-   bridges either use static API keys or have the transport handle
-   refresh internally.
+   `opentable`, `humanity` per `kVendorsWithoutRefreshClosureReason`)
+   are SKIPPED with a single structured trace log line carrying the
+   documented delegation reason (no failure-count increment):
+   * `adp` — `adp_partner_ops_mtls_out_of_band` (rotation handled by
+     ADP partner-ops on a vendor-driven cadence; F&F surfaces
+     near-expiry as a connection error).
+   * `opentable` — `opentable_transport_internal_refresh`
+     (`OpenTableTransport.refresh` owns the rotation through the
+     production-api-client's credential store).
+   * `sevenrooms` — `sevenrooms_transport_cron_hour05`
+     (transport-layer cron at hour:05 mints the bearer; bridge
+     persists via `persistIssuedBearerToken`).
+   * `humanity` — `humanity_keypaste_password_grant_no_broker_refresh`
+     (adapter declares `keyPaste`; v1 connect-time bearer is
+     refreshed by reconnect, not by the broker).
+   * `tock`, `push_operations` — static API key / partner-issued
+     bearer.
+   * `agendrix` — OAuth sliding-refresh per the adapter declaration,
+     but the closure factory is not yet wired in
+     `lib/integrations/_common/production_oauth_refresh_closures.dart`.
 2. The closure is invoked through
    `VendorCredentialBroker.refreshAccessToken(...)`. The broker:
    * acquires a per-`(operator, location, vendor)` Future lock so

@@ -75,6 +75,26 @@ Extra Simphony permissions the adapter doesn't request:
 
 ---
 
+## Refresh handling (broker delegation)
+
+The cross-tenant OAuth refresh worker
+(`tool/oauth_refresh_worker/main.dart`) DOES carry a closure for
+Oracle MICROS Simphony — `oracle_micros_simphony` is in the
+unconditionally-wired set in `buildProductionRefreshClosures` because
+the `client_credentials` exchange uses per-tenant
+`metadata.client_id` + `metadata.client_secret` (no app-wide secrets
+to gate on). The closure factory is
+`makeOracleMicrosSimphonyOauthExchangeClosure` in
+`lib/integrations/_common/production_oauth_refresh_closures.dart`.
+
+Phase 5 audit reconciliation: an earlier audit framed Simphony as
+mTLS. That was incorrect; Simphony Gen2 uses OAuth `client_credentials`
+per the vendor's authenticate doc. The audit reconciliation is
+recorded in
+`docs/contracts/hardening_rls_and_repository_pattern_contract.md`.
+
+---
+
 ## Per-location vs operator-wide grant
 
 `perLocation`

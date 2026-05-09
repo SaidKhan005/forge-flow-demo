@@ -98,6 +98,37 @@ expiring rows; no adapter change required.
 
 ---
 
+## Refresh handling (broker delegation)
+
+The OAuth refresh worker (`tool/oauth_refresh_worker/main.dart`) does
+NOT carry a refresh closure for ADP. ADP IS OAuth, but production
+rotation of the partner-issued client credentials is performed by ADP
+partner-ops on a vendor-driven cadence (mTLS partner-cert rotation +
+periodic re-issue of the refresh-token-bearing OAuth client). F&F's
+broker has no programmatic surface to drive that rotation.
+
+Behavior at runtime:
+
+- ADP credentials live in `vendor_credentials` like every other
+  vendor's. The proxy reads them through `VendorCredentialBroker` for
+  every outbound request and the access token is used until it
+  expires.
+- When the worker claims a near-expiry ADP row, the row is
+  log-and-skipped with the structured reason
+  `adp_partner_ops_mtls_out_of_band` (see
+  `kVendorsWithoutRefreshClosureReason` in
+  `tool/oauth_refresh_worker/main.dart`). No failure-count increment.
+- When the cached token expires and ADP partner-ops has not yet
+  re-issued a fresh refresh token, the next outbound request returns
+  401 → the adapter surfaces it as a connection error → the operator
+  is prompted to "Please reconnect ADP and sign in again."
+
+If ADP later ships a self-service rotation surface, this section flips
+to "wired" and the closure factory lands in
+`lib/integrations/_common/production_oauth_refresh_closures.dart`.
+
+---
+
 ## Per-location vs operator-wide grant
 
 `operatorWide`

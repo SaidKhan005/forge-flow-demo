@@ -89,6 +89,37 @@ expiring rows; no adapter change required.
 
 ---
 
+## Refresh handling (broker delegation)
+
+The OAuth refresh worker (`tool/oauth_refresh_worker/main.dart`) does
+NOT carry a refresh closure for OpenTable. Rotation lives INSIDE the
+production transport class
+`OpenTableReservationProductionApiClient.refresh(...)` in
+`lib/integrations/reservation/opentable_reservation_production_api_client.dart`,
+which reads the per-tenant `client_id` / `client_secret` from
+`OpenTableCredentialStore` and POSTs the `refresh_token` grant
+directly. Duplicating that path in the broker would split rotation
+responsibility across two surfaces.
+
+Behavior at runtime:
+
+- The transport's `refresh(...)` method is invoked by the adapter on
+  the reactive 401 path (and by any future internal scheduling
+  surface inside the production client).
+- When the cross-tenant OAuth refresh worker claims a near-expiry
+  OpenTable row, it log-and-skips with the structured reason
+  `opentable_transport_internal_refresh` (see
+  `kVendorsWithoutRefreshClosureReason` in
+  `tool/oauth_refresh_worker/main.dart`). No failure-count increment
+  on the row, no auto-disable.
+
+If a future slice consolidates all rotation behind the broker, the
+closure factory lands in
+`lib/integrations/_common/production_oauth_refresh_closures.dart` and
+this section flips to "wired."
+
+---
+
 ## Per-location vs operator-wide grant
 
 `perLocation`
