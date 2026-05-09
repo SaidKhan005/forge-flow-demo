@@ -253,6 +253,18 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildOperators,
   ),
   AdminRoute(
+    id: kAdminSupportOperatorViewRouteId,
+    title: 'Support workspace',
+    path: '/admin/support-operator-view',
+    icon: Icons.support_agent_outlined,
+    section: AdminRouteSection.operations,
+    subtitle:
+        'Work across people, access, security, audit, and vendors for the selected business.',
+    builder: _buildSupportOperatorView,
+    visibleInNav: false,
+    navAnchorRouteId: kAdminOperatorsRouteId,
+  ),
+  AdminRoute(
     id: kAdminPricingRouteId,
     title: 'Plans and limits',
     path: '/pricing',
