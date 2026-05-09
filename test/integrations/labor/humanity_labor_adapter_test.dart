@@ -30,6 +30,7 @@
 // All fixtures cite their doc URL + retrieval date at the top of
 // `humanity_punches_fixture.dart`.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -683,6 +684,94 @@ void main() {
           reason: 'pollOnly vendors do not ship a webhook signature '
               'verifier; the file existing would contradict the '
               'capability profile');
+    });
+  });
+
+  // Phase 5 P1 #2 regression — Humanity time-off rows must NOT be
+  // canonicalized as 24h shifts. Pre-fix the adapter accepted any row
+  // with `in_time` / `out_time` populated, so a `type=time_off` row
+  // (e.g. an 8h vacation day modeled as a midnight-to-midnight pair)
+  // landed on the labor fact table as a 24h shift and inflated
+  // labor-cost projections. Fixture:
+  // `test/fixtures/vendor_payloads/humanity/happy_path_time_off_request.json`.
+  group('HumanityShiftDto.tryFromMap time_off filter (P1 #2)', () {
+    test('happy_path_time_off_request fixture: time_off row returns null',
+        () {
+      final raw = File(
+        'test/fixtures/vendor_payloads/humanity/happy_path_time_off_request.json',
+      ).readAsStringSync();
+      final payload = jsonDecode(raw) as Map<String, Object?>;
+      final data = payload['data'] as List<Object?>;
+      final shiftRow =
+          (data.firstWhere((r) => (r as Map)['type'] == 'shift')) as Map;
+      final timeOffRow =
+          (data.firstWhere((r) => (r as Map)['type'] == 'time_off')) as Map;
+
+      final shiftDto = HumanityShiftDto.tryFromMap(
+        Map<String, Object?>.from(shiftRow),
+      );
+      final timeOffDto = HumanityShiftDto.tryFromMap(
+        Map<String, Object?>.from(timeOffRow),
+      );
+
+      expect(shiftDto, isNotNull,
+          reason: 'regular shift row must still parse to a non-null DTO');
+      expect(timeOffDto, isNull,
+          reason: 'type=time_off row must be dropped at the boundary');
+    });
+
+    test('synthesized type=timeoff (no underscore) also returns null', () {
+      final dto = HumanityShiftDto.tryFromMap(<String, Object?>{
+        'id': '9999',
+        'employee_id': 'EMP-999',
+        'position_name': 'Server',
+        'in_time': '2026-05-11T00:00:00Z',
+        'out_time': '2026-05-12T00:00:00Z',
+        'updated': '2026-05-04T09:15:00Z',
+        'type': 'timeoff',
+      });
+      expect(dto, isNull);
+    });
+
+    test('case-insensitive: TIME_OFF returns null', () {
+      final dto = HumanityShiftDto.tryFromMap(<String, Object?>{
+        'id': '9998',
+        'employee_id': 'EMP-998',
+        'position_name': 'Server',
+        'in_time': '2026-05-11T00:00:00Z',
+        'out_time': '2026-05-12T00:00:00Z',
+        'updated': '2026-05-04T09:15:00Z',
+        'type': 'TIME_OFF',
+      });
+      expect(dto, isNull);
+    });
+
+    test('regular shift (type=shift) still parses to a non-null DTO', () {
+      final dto = HumanityShiftDto.tryFromMap(<String, Object?>{
+        'id': '5001',
+        'employee_id': 'EMP-100',
+        'position_name': 'Cook',
+        'in_time': '2026-05-10T16:00:00Z',
+        'out_time': '2026-05-10T22:00:00Z',
+        'updated': '2026-05-04T09:15:00Z',
+        'type': 'shift',
+      });
+      expect(dto, isNotNull);
+      expect(dto!.id, '5001');
+      expect(dto.positionName, 'Cook');
+    });
+
+    test('missing type field defaults to shift (parses to non-null DTO)', () {
+      final dto = HumanityShiftDto.tryFromMap(<String, Object?>{
+        'id': '5002',
+        'employee_id': 'EMP-101',
+        'position_name': 'Server',
+        'in_time': '2026-05-10T16:00:00Z',
+        'out_time': '2026-05-10T22:00:00Z',
+        'updated': '2026-05-04T09:15:00Z',
+      });
+      expect(dto, isNotNull,
+          reason: 'absent `type` field must not block normal-shift parse');
     });
   });
 }

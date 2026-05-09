@@ -30,6 +30,7 @@
 //       verifier files: zero KMS / parse_warnings / advisory_lock /
 //       SIGTERM / DLQ tile / raw_payload sibling code.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -468,6 +469,125 @@ void main() {
       // as forecast_fallback (NOT a vendor field path).
       expect(documented_per_square_2024_01_18['covers'],
           contains('forecast_fallback'));
+    });
+
+    // Phase 5 P1 #1 regression — strict-Z timestamp parser. Square
+    // `field_mapping.md` declares "explicit-Z required, refuse otherwise"
+    // for `created_at` / `updated_at` / `closed_at`; pre-fix the adapter
+    // silently coerced offset-less timestamps against the host's local
+    // timezone. Fixture: `test/fixtures/vendor_payloads/square/
+    // scenario_e_ambiguous_timestamp.json`.
+    test(
+        '12a. strict-Z parser: scenario_e ambiguous timestamp is dropped '
+        '(no canonical fact written, no host-local coerce)', () async {
+      final raw = jsonDecode(File(
+              'test/fixtures/vendor_payloads/square/scenario_e_ambiguous_timestamp.json')
+          .readAsStringSync()) as Map<String, Object?>;
+      final order = ((raw['data'] as Map)['object'] as Map)['order']
+          as Map<String, Object?>;
+
+      apiClient.searchPages
+        ..clear()
+        ..add(SquareSearchOrdersResponse(
+          orders: <Map<String, Object?>>[
+            Map<String, Object?>.from(order),
+          ],
+          cursor: null,
+        ));
+
+      final hook = _RecordingSanityHook();
+      final result = await adapter.backfill(
+        BackfillCommand(
+          operatorId: 'op_001',
+          locationId: 'loc_001',
+          actorUserId: 'user_001',
+          vendorId: 'square',
+          windowStart: fixedNow.subtract(const Duration(days: 60)),
+          windowEnd: fixedNow,
+          sanityHook: hook.call,
+        ),
+      );
+
+      expect(result.recordsWritten, 0,
+          reason: 'ambiguous timestamps must refuse, not coerce');
+      expect(factWriter.writes, isEmpty);
+      // Sanity hook never reached because the adapter dropped the row
+      // BEFORE the canonical-fact projection completed.
+      expect(hook.calls, isEmpty);
+    });
+
+    test(
+        '12b. strict-Z parser: Z-suffixed timestamps still parse '
+        '(happy-path fixture writes the canonical fact)', () async {
+      // Reuse the seed fixture (all timestamps end in `Z`).
+      final hook = _RecordingSanityHook();
+      final result = await adapter.backfill(
+        BackfillCommand(
+          operatorId: 'op_001',
+          locationId: 'loc_001',
+          actorUserId: 'user_001',
+          vendorId: 'square',
+          windowStart: fixedNow.subtract(const Duration(days: 60)),
+          windowEnd: fixedNow,
+          sanityHook: hook.call,
+        ),
+      );
+      expect(result.recordsWritten, 3,
+          reason: 'Z-suffixed timestamps must still parse cleanly');
+      expect(factWriter.writes.length, 3);
+      // Pin one parsed instant against its UTC equivalent — proves we
+      // did not mangle the well-formed input on the way through.
+      final first = factWriter.writes.firstWhere(
+          (f) => f.vendorEntityId == 'sq_ord_001');
+      expect(first.openedAt, DateTime.utc(2026, 5, 3, 17, 30, 0));
+      expect(first.closedAt, DateTime.utc(2026, 5, 3, 18, 45, 0));
+    });
+
+    test(
+        '12c. strict-Z parser: explicit ±HH:MM offset still parses '
+        '(synthesized +05:00 fixture writes the canonical fact)',
+        () async {
+      // 2026-05-03T22:30:00+05:00 → 2026-05-03T17:30:00Z
+      // 2026-05-03T23:45:00+05:00 → 2026-05-03T18:45:00Z
+      final orderWithOffset = <String, Object?>{
+        'id': 'sq_ord_offset_001',
+        'location_id': 'L_RESTAURANT_A',
+        'created_at': '2026-05-03T22:30:00+05:00',
+        'updated_at': '2026-05-03T23:45:00+05:00',
+        'closed_at': '2026-05-03T23:45:00+05:00',
+        'total_money': <String, Object?>{
+          'amount': 1234,
+          'currency': 'CAD',
+        },
+        'state': 'COMPLETED',
+      };
+
+      apiClient.searchPages
+        ..clear()
+        ..add(SquareSearchOrdersResponse(
+          orders: <Map<String, Object?>>[orderWithOffset],
+          cursor: null,
+        ));
+
+      final hook = _RecordingSanityHook();
+      final result = await adapter.backfill(
+        BackfillCommand(
+          operatorId: 'op_001',
+          locationId: 'loc_001',
+          actorUserId: 'user_001',
+          vendorId: 'square',
+          windowStart: fixedNow.subtract(const Duration(days: 60)),
+          windowEnd: fixedNow,
+          sanityHook: hook.call,
+        ),
+      );
+      expect(result.recordsWritten, 1,
+          reason: 'explicit offset is sufficient — strict parser accepts');
+      expect(factWriter.writes.length, 1);
+      final fact = factWriter.writes.single;
+      // Verify the offset was honored, not interpreted as local time.
+      expect(fact.openedAt, DateTime.utc(2026, 5, 3, 17, 30, 0));
+      expect(fact.closedAt, DateTime.utc(2026, 5, 3, 18, 45, 0));
     });
 
     test(

@@ -811,11 +811,11 @@ class LightspeedLskPosAdapter implements PosAdapter {
 
     if (entityId is! String || entityId.isEmpty) return null;
     if (openedRaw is! String) return null;
-    final openedAt = DateTime.tryParse(openedRaw)?.toUtc();
+    final openedAt = _parseStrictUtcInstant(openedRaw);
     if (openedAt == null) return null;
 
     final closedAt = closedRaw is String
-        ? DateTime.tryParse(closedRaw)?.toUtc() ?? openedAt
+        ? _parseStrictUtcInstant(closedRaw) ?? openedAt
         : openedAt;
 
     int covers = 0;
@@ -880,4 +880,25 @@ class _CanonicalSale {
         'opened_at': openedAtUtc.toIso8601String(),
         'closed_at': closedAtUtc.toIso8601String(),
       };
+}
+
+/// Strict UTC ISO-8601 parser. Refuses to coerce ambiguous (offset-less)
+/// timestamps against the host's local timezone — the documented
+/// Lightspeed K-Series timestamp policy in
+/// `docs/integrations/lightspeed_lsk/field_mapping.md` is "explicit-Z
+/// required, refuse otherwise" (mirrors
+/// `vendor_timestamp_policy.lightspeed_lsk.asUtc`). Returns `null` when:
+///
+///   - input is `null` or empty;
+///   - input lacks both a trailing `Z` (case-insensitive) and an explicit
+///     `±HH:MM` / `±HHMM` offset;
+///   - `DateTime.tryParse` itself rejects the shape.
+///
+/// Callers in `_projectCanonicalRecord` already drop rows on `null`.
+DateTime? _parseStrictUtcInstant(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  final hasZ = raw.endsWith('Z') || raw.endsWith('z');
+  final offsetMatch = RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(raw);
+  if (!hasZ && !offsetMatch) return null;
+  return DateTime.tryParse(raw)?.toUtc();
 }

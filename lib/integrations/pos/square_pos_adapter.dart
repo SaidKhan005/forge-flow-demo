@@ -750,13 +750,13 @@ class SquarePosAdapter implements PosAdapter {
     if (id == null || id.isEmpty) return null;
     if (createdAtRaw == null || updatedAtRaw == null) return null;
 
-    final createdAt = DateTime.tryParse(createdAtRaw)?.toUtc();
-    final updatedAt = DateTime.tryParse(updatedAtRaw)?.toUtc();
+    final createdAt = _parseStrictUtcInstant(createdAtRaw);
+    final updatedAt = _parseStrictUtcInstant(updatedAtRaw);
     if (createdAt == null || updatedAt == null) return null;
 
     final closedAt = closedAtRaw == null
         ? null
-        : DateTime.tryParse(closedAtRaw)?.toUtc();
+        : _parseStrictUtcInstant(closedAtRaw);
 
     final amountCents = (totalMoney is Map) ? totalMoney['amount'] : null;
     final cents = amountCents is int
@@ -805,4 +805,23 @@ class SquarePosAdapter implements PosAdapter {
 String _defaultOauthStateMinter() {
   final ts = DateTime.now().toUtc().microsecondsSinceEpoch;
   return 'sq_state_$ts';
+}
+
+/// Strict UTC ISO-8601 parser. Refuses to coerce ambiguous (offset-less)
+/// timestamps against the host's local timezone — the documented Square
+/// timestamp policy in `docs/integrations/square/field_mapping.md` is
+/// "explicit-Z required, refuse otherwise". Returns `null` when:
+///
+///   - input is `null` or empty;
+///   - input lacks both a trailing `Z` (case-insensitive) and an explicit
+///     `±HH:MM` / `±HHMM` offset;
+///   - `DateTime.tryParse` itself rejects the shape.
+///
+/// Callers in `_orderToCanonicalFact` already drop rows on `null`.
+DateTime? _parseStrictUtcInstant(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  final hasZ = raw.endsWith('Z') || raw.endsWith('z');
+  final offsetMatch = RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(raw);
+  if (!hasZ && !offsetMatch) return null;
+  return DateTime.tryParse(raw)?.toUtc();
 }

@@ -152,6 +152,7 @@ Notes:
 - **Description**: `DateTime.tryParse(naiveTimestamp).toUtc()` silently coerces offset-less timestamps against the host's local timezone. Operators in non-UTC zones get rows bucketed onto the wrong `business_date`. The documented `field_mapping.md` policy is "explicit-Z required, refuse otherwise" — both adapters violate this.
 - **Evidence**: PR #448. `scenario_e_ambiguous_timestamp.json` for both vendors. Square also flagged in `wrong_reject_reason` divergence (the test fixture expects an `ambiguous_timestamp` reject reason but the adapter accepts and writes a wrong-business-date row).
 - **Proposed fix**: In each adapter, replace the `DateTime.tryParse(...)?.toUtc()` chain with a strict parser that returns `null` on missing `Z` or `+HH:MM` offset. Add a unit test pinning the refusal. Two-file change.
+- **Status (2026-05-09)**: fixed in PR #<this PR>; strict-Z parser in both adapters with regression tests.
 
 ### P1 — Humanity time-off rows accepted as 24h shifts
 
@@ -159,6 +160,7 @@ Notes:
 - **Description**: Humanity payloads include `type=time_off` rows in the same shift-list response as actual shifts. The adapter does not branch on `type`, so a `time_off` row gets canonicalized as a 24-hour shift and inflates labor-cost projections.
 - **Evidence**: PR #448. `happy_path_time_off_request.json` per the Humanity README's "PHASE 2 FLAG" annotation, and the Phase 2A confirmation.
 - **Proposed fix**: In `tryFromMap`, return `null` when `type == 'time_off'`. One-liner. Add a unit test pinning the skip.
+- **Status (2026-05-09)**: fixed in PR #<this PR>; HumanityShiftDto.tryFromMap returns null on type=time_off with regression test.
 
 ### P1 — Closure-registry mismatches: ADP / OpenTable / SevenRooms have `oauth`-flavored authMode but no refresh closure
 
