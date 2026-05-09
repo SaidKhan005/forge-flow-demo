@@ -292,7 +292,7 @@ void main() {
 
   group('buildProductionRefreshClosures', () {
     test(
-      'registers all 10 closures when every optional credential set '
+      'registers all 12 closures when every optional credential set '
       'is present (Humanity is intentionally omitted — keyPaste path)',
       () {
         final env = <String, String>{
@@ -325,10 +325,12 @@ void main() {
         expect(
           result.wiredVendorIds,
           equals(<String>[
+            'adp',
             'aloha_ncr_voyix',
             'clover',
             'libro',
             'lightspeed_lsk',
+            'opentable',
             'oracle_micros_simphony',
             'quickbooks_time',
             'revel',
@@ -337,10 +339,12 @@ void main() {
             'toast',
           ]),
           reason:
-              'all 10 production OAuth refresh factories must register '
+              'all 12 production OAuth refresh factories must register '
               'when their app-credential env names are non-blank; Humanity '
               'is excluded because the adapter declares keyPaste and v1 '
-              'has no broker-driven refresh path',
+              'has no broker-driven refresh path. ADP and OpenTable wire '
+              'unconditionally (per-tenant client credentials live on '
+              'bundle metadata) per the 2026-05-09 re-investigation.',
         );
         expect(result.disabledVendorIds, isEmpty);
         // The seven unsupported vendors (including Humanity) stay
@@ -364,25 +368,38 @@ void main() {
     );
 
     test(
-      'kVendorsWithoutRefreshClosureReason covers ADP / OpenTable / '
-      'SevenRooms / Humanity / Agendrix with documented delegation '
-      'surfaces',
+      'kVendorsWithoutRefreshClosureReason covers SevenRooms / Humanity '
+      '/ Agendrix / Tock / Push Operations with documented delegation '
+      'surfaces (ADP / OpenTable wired per 2026-05-09 re-investigation)',
       () {
-        // ADP — partner-ops mTLS rotation out-of-band.
+        // ADP and OpenTable are NO LONGER on this map — the 2026-05-09
+        // re-investigation found both expose a programmatic OAuth
+        // `grant_type=refresh_token` surface using per-tenant client
+        // credentials, and both moved into the wired registry.
         expect(
-          kVendorsWithoutRefreshClosureReason['adp'],
-          equals('adp_partner_ops_mtls_out_of_band'),
+          kVendorsWithoutRefreshClosureReason.containsKey('adp'),
+          isFalse,
+          reason:
+              'ADP wires through makeAdpOauthRefreshClosure as of '
+              '2026-05-09 — the partner-ops mTLS rotation is a SEPARATE '
+              'surface from `grant_type=refresh_token` and lives on the '
+              'transport SecurityContext, not the broker.',
         );
-        // OpenTable — transport-internal refresh
-        // (`OpenTableTransport.refresh`).
         expect(
-          kVendorsWithoutRefreshClosureReason['opentable'],
-          equals('opentable_transport_internal_refresh'),
+          kVendorsWithoutRefreshClosureReason.containsKey('opentable'),
+          isFalse,
+          reason:
+              'OpenTable wires through makeOpenTableOauthRefreshClosure '
+              'as of 2026-05-09 — the transport `refresh()` exists but '
+              'has no driver, so the broker becomes the single rotation '
+              'owner.',
         );
-        // SevenRooms — transport-layer cron at hour:05.
+
+        // SevenRooms — `client_secret` not persisted; architectural
+        // gap. Re-wiring requires bridge change + connect-flow update.
         expect(
           kVendorsWithoutRefreshClosureReason['sevenrooms'],
-          equals('sevenrooms_transport_cron_hour05'),
+          equals('sevenrooms_client_secret_not_persisted'),
         );
         // Humanity — keyPaste password-grant; no broker refresh.
         expect(
@@ -412,38 +429,30 @@ void main() {
               'set must mirror reason-map keys so the boot log + per-row '
               'skip log surface a reason for every skipped vendor',
         );
+        // After the re-investigation the map shrinks to 5 entries:
+        // sevenrooms, humanity, agendrix, tock, push_operations.
+        expect(kVendorsWithoutRefreshClosureReason.keys.toList()..sort(),
+            equals(<String>[
+              'agendrix',
+              'humanity',
+              'push_operations',
+              'sevenrooms',
+              'tock',
+            ]));
       },
     );
 
     test(
-      'tick: claimed row for an unsupported vendor (ADP / OpenTable / '
-      'SevenRooms / Humanity) is logged-and-skipped, broker untouched, '
-      'no failure-count increment',
+      'tick: claimed row for an unsupported vendor (SevenRooms / '
+      'Humanity) is logged-and-skipped, broker untouched, no '
+      'failure-count increment (ADP / OpenTable wired post-2026-05-09)',
       () async {
-        // The four headline mismatches from the Phase 5 findings:
-        // ADP (mTLS partner-ops), OpenTable (transport-internal),
-        // SevenRooms (transport-cron), Humanity (keyPaste). All four
-        // must traverse the no-closure skip path with no broker call,
-        // no failure count, no auto-disable.
+        // After the 2026-05-09 re-investigation, ADP and OpenTable wire
+        // into the broker registry; the remaining no-closure vendors
+        // are SevenRooms (architectural gap — `client_secret` not
+        // persisted) and Humanity (keyPaste). Both must still traverse
+        // the skip path.
         final gateway = _FakeGateway()
-          ..addClaimable(
-            ClaimedCredentialRow(
-              credentialId: _credIdA,
-              operatorId: _opIdA,
-              locationId: _locIdA,
-              vendorId: 'adp',
-              consecutiveFailuresBefore: 0,
-            ),
-          )
-          ..addClaimable(
-            ClaimedCredentialRow(
-              credentialId: _credIdB,
-              operatorId: _opIdA,
-              locationId: _locIdA,
-              vendorId: 'opentable',
-              consecutiveFailuresBefore: 0,
-            ),
-          )
           ..addClaimable(
             ClaimedCredentialRow(
               credentialId: '55555555-5555-4555-8555-555555555555',
@@ -473,13 +482,13 @@ void main() {
           horizon: const Duration(minutes: 5),
         );
 
-        expect(result.candidatesScanned, 4);
+        expect(result.candidatesScanned, 2);
         expect(
           result.skippedNoCloser,
-          4,
+          2,
           reason:
-              'ADP / OpenTable / SevenRooms / Humanity must all hit the '
-              'no-closure skip path; the broker must NOT be invoked',
+              'SevenRooms / Humanity must hit the no-closure skip path; '
+              'the broker must NOT be invoked',
         );
         expect(result.refreshFailures, 0);
         expect(result.refreshSuccesses, 0);
@@ -487,23 +496,25 @@ void main() {
         expect(broker.refreshCalls, 0);
         expect(gateway.recordedFailures, isEmpty);
         expect(gateway.autoDisabledRows, isEmpty);
-        // Each vendor's reason is documented in the reason map so the
-        // per-row skip log can surface a stable, queryable label.
-        expect(
-          kVendorsWithoutRefreshClosureReason['adp'],
-          equals('adp_partner_ops_mtls_out_of_band'),
-        );
-        expect(
-          kVendorsWithoutRefreshClosureReason['opentable'],
-          equals('opentable_transport_internal_refresh'),
-        );
+        // Each remaining vendor's reason is documented in the reason
+        // map so the per-row skip log can surface a stable, queryable
+        // label.
         expect(
           kVendorsWithoutRefreshClosureReason['sevenrooms'],
-          equals('sevenrooms_transport_cron_hour05'),
+          equals('sevenrooms_client_secret_not_persisted'),
         );
         expect(
           kVendorsWithoutRefreshClosureReason['humanity'],
           equals('humanity_keypaste_password_grant_no_broker_refresh'),
+        );
+        // Sanity: ADP and OpenTable are no longer on the no-closure map.
+        expect(
+          kVendorsWithoutRefreshClosureReason.containsKey('adp'),
+          isFalse,
+        );
+        expect(
+          kVendorsWithoutRefreshClosureReason.containsKey('opentable'),
+          isFalse,
         );
       },
     );
@@ -511,9 +522,10 @@ void main() {
     test(
       'unconditionally-wired vendors register without any env',
       () {
-        // Toast / Lightspeed LSK / Oracle MICROS Simphony / Revel pull
-        // credentials from bundle metadata at refresh time, so they
-        // wire without any boot-env app credentials.
+        // Toast / Lightspeed LSK / Oracle MICROS Simphony / Revel /
+        // ADP / OpenTable pull credentials from bundle metadata at
+        // refresh time, so they wire without any boot-env app
+        // credentials.
         final result = buildProductionRefreshClosures(
           env: const <String, String>{},
           httpClient: _StubHttpClient(),
@@ -525,6 +537,8 @@ void main() {
             'lightspeed_lsk',
             'oracle_micros_simphony',
             'revel',
+            'adp',
+            'opentable',
           ]),
         );
         expect(

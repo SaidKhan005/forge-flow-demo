@@ -21,18 +21,18 @@
 //   2. For each claimed row: looks up the per-vendor production
 //      OAuth refresh closure (Toast / Square / Clover / Lightspeed
 //      LSK / Aloha NCR Voyix / Oracle MICROS Simphony / Revel /
-//      7shifts / QuickBooks Time / Libro per
+//      7shifts / QuickBooks Time / Libro / ADP / OpenTable per
 //      `lib/integrations/_common/production_oauth_refresh_closures.dart`).
 //      Vendors WITHOUT a closure (SevenRooms, Tock, Push Operations,
-//      Agendrix, ADP, OpenTable, Humanity per
-//      [kVendorsWithoutRefreshClosureReason]) are SKIPPED with a
-//      structured trace log carrying the per-vendor delegation
-//      reason: their rotation lives elsewhere — vendor partner-ops
-//      mTLS (ADP), transport-internal refresh (OpenTable), transport
-//      cron at hour:05 (SevenRooms), static API keys (Tock, Push
-//      Operations), keyPaste connect-time bearer (Humanity), or an
-//      OAuth sliding-refresh whose closure factory isn't wired yet
-//      (Agendrix).
+//      Agendrix, Humanity per [kVendorsWithoutRefreshClosureReason])
+//      are SKIPPED with a structured trace log carrying the per-vendor
+//      delegation reason: their rotation lives elsewhere — static API
+//      keys (Tock, Push Operations), keyPaste connect-time bearer
+//      (Humanity), an OAuth sliding-refresh whose closure factory
+//      isn't wired yet (Agendrix), or `client_credentials` re-exchange
+//      that requires `client_secret` ciphertext on the credential row
+//      which the bridge does not currently persist (SevenRooms — see
+//      reason `sevenrooms_client_secret_not_persisted`).
 //   3. Calls `VendorCredentialBroker.refreshAccessToken(...)` with
 //      the resolved closure. The broker:
 //        * acquires a per-(operator, location, vendor) Future lock
@@ -95,12 +95,13 @@
 //
 // Vendor coverage matches
 // `lib/integrations/_common/production_oauth_refresh_closures.dart`:
-//   POS:   toast, square, clover, lightspeed_lsk, aloha_ncr_voyix,
-//          oracle_micros_simphony, revel
-//   Labor: 7shifts, quickbooks_time, libro
+//   POS:        toast, square, clover, lightspeed_lsk, aloha_ncr_voyix,
+//               oracle_micros_simphony, revel
+//   Labor:      7shifts, quickbooks_time, libro, adp
+//   Reservation: opentable
 //   No closure (skipped, with documented reason in
 //   [kVendorsWithoutRefreshClosureReason]): sevenrooms, tock,
-//          push_operations, agendrix, adp, opentable, humanity
+//          push_operations, agendrix, humanity
 //
 // CLAUDE.md alignment:
 //   * HP #1 — pure transport swap. The worker reads `vendor_credentials`
@@ -400,14 +401,9 @@ typedef RefreshClosureRegistry = Map<String, RefreshClosure>;
 ///
 /// Categories of "no closure":
 ///   * Static API key vendors — no OAuth at all (Tock).
-///   * Transport-internal rotation — the vendor's transport class owns
-///     the refresh path; the broker has no business duplicating it
-///     (OpenTable's `OpenTableTransport.refresh`, SevenRooms's
-///     transport-layer cron at hour:05, Push Operations partner-issued
-///     bearer).
-///   * Vendor partner-ops out-of-band rotation — credentials are
-///     rotated by vendor partner-ops on a vendor-driven cadence; F&F
-///     has no programmatic refresh surface (ADP mTLS partner-ops).
+///   * Static partner-issued bearer — no refresh path documented; the
+///     bearer is provisioned out-of-band and re-issued by vendor
+///     partner-ops (Push Operations).
 ///   * KeyPaste connection path — `capabilityProfile.authMode =
 ///     keyPaste` with no broker-driven refresh (Humanity v1 issues a
 ///     bearer via legacy password grant at connect time; the v1
@@ -417,6 +413,27 @@ typedef RefreshClosureRegistry = Map<String, RefreshClosure>;
 ///     not implemented in
 ///     `lib/integrations/_common/production_oauth_refresh_closures.dart`
 ///     (Agendrix sliding-refresh).
+///   * Architectural gap (`client_secret` not persisted) — the
+///     `client_credentials` re-exchange shape requires the per-tenant
+///     `client_secret` on the credential row, but the existing connect
+///     path drops `client_secret` after minting the initial bearer
+///     (SevenRooms). Re-wiring requires persisting `client_secret`
+///     ciphertext + a connect-flow update; out of scope for this PR.
+///
+/// 2026-05-09 RE-INVESTIGATION: PR #455 placed ADP, OpenTable, and
+/// SevenRooms on this map under the categories
+/// `adp_partner_ops_mtls_out_of_band`,
+/// `opentable_transport_internal_refresh`, and
+/// `sevenrooms_transport_cron_hour05`. On re-verification ADP and
+/// OpenTable both expose a programmatic OAuth `grant_type=refresh_token`
+/// surface using per-tenant `client_id` / `client_secret` from
+/// `metadata` — both moved into [buildProductionRefreshClosures] this
+/// PR. SevenRooms remains here under
+/// `sevenrooms_client_secret_not_persisted` because the bridge's
+/// `persistIssuedBearerToken` only writes `client_id` to metadata; the
+/// `client_secret` is dropped after the connect-time `authenticate()`
+/// call, so the broker has no way to call `POST /2_2/auth` to mint a
+/// fresh bearer without an architectural change.
 ///
 /// The reason string is exposed in the boot-time registry log and in
 /// every per-row skip event so a deploy review can verify intent and
@@ -425,9 +442,7 @@ const Map<String, String> kVendorsWithoutRefreshClosureReason =
     <String, String>{
   'tock': 'tock_static_api_key',
   'push_operations': 'push_operations_partner_issued_bearer',
-  'opentable': 'opentable_transport_internal_refresh',
-  'sevenrooms': 'sevenrooms_transport_cron_hour05',
-  'adp': 'adp_partner_ops_mtls_out_of_band',
+  'sevenrooms': 'sevenrooms_client_secret_not_persisted',
   'humanity': 'humanity_keypaste_password_grant_no_broker_refresh',
   'agendrix': 'agendrix_oauth_sliding_refresh_not_yet_wired',
 };
@@ -540,13 +555,18 @@ class ProductionRefreshClosureBuildResult {
 /// rotation surface lives elsewhere. They land in
 /// [kVendorsWithoutRefreshClosure] / [kVendorsWithoutRefreshClosureReason]:
 ///
-///   * SevenRooms — transport-layer cron at hour:05.
+///   * SevenRooms — `client_credentials` re-exchange requires
+///     `client_id + client_secret + venue_id`, but the bridge persists
+///     only `client_id`; the `client_secret` is dropped after the
+///     connect-time `authenticate()` call. Re-wiring is an
+///     architectural change (persist `client_secret` ciphertext on the
+///     credential row + connect-flow update) that's out of scope for
+///     this PR — see `docs/integrations/sevenrooms/oauth_shape.md` for
+///     the follow-up spec.
 ///   * Tock — static API key on `metadata.api_key`.
 ///   * Push Operations — partner-issued bearer.
 ///   * Agendrix — OAuth sliding-refresh per adapter declaration but no
 ///     closure factory wired yet.
-///   * ADP — partner-ops mTLS rotation out-of-band.
-///   * OpenTable — `OpenTableTransport.refresh` owns the rotation.
 ///   * Humanity — keyPaste (legacy `password` grant) at connect time;
 ///     no broker refresh path. Inverse of the Phase 5 mismatch (the
 ///     adapter's keyPaste is the source of truth; v2 OAuth-program
@@ -561,6 +581,21 @@ ProductionRefreshClosureBuildResult buildProductionRefreshClosures({
   // ─── Toast ─ no app-wide secrets; per-tenant client_id / client_secret
   // live on bundle metadata.
   registry['toast'] = makeToastOauthRefreshClosure(httpClient: httpClient);
+
+  // ─── ADP ─ no app-wide secrets; per-tenant client_id / client_secret
+  // live on bundle metadata. Module flows from connector_connection.metadata
+  // (per AdpConnectionRow.toMetadata) with metadata + a documented default
+  // as fallbacks. Production mTLS lands on the injected `httpClient` at
+  // boot — the closure itself is mTLS-agnostic.
+  registry['adp'] = makeAdpOauthRefreshClosure(httpClient: httpClient);
+
+  // ─── OpenTable ─ no app-wide secrets; per-tenant client_id /
+  // client_secret live on bundle metadata. The transport's `refresh()`
+  // method exists but nothing drives it automatically — wiring through
+  // the broker makes the rotation surface single-owner (matches the
+  // Square / Clover pattern).
+  registry['opentable'] =
+      makeOpenTableOauthRefreshClosure(httpClient: httpClient);
 
   // ─── Aloha NCR Voyix ─ binder gates on hasAlohaNcrVoyixCredentials.
   // The closure itself reads client_id / client_secret /
