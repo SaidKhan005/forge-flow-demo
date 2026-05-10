@@ -1,0 +1,44 @@
+{
+  "elements": [
+    {
+      "createdTime": 1777747500000,
+      "currency": "USD",
+      "employee": {
+        "id": "CLV-EMP-9KX2J3RPQ"
+      },
+      "id": "CLV-ORDER-7HXJ-2026-05-02-001",
+      "lineItems": {
+        "elements": [
+          {
+            "id": "CLV-LI-001",
+            "name": "Burger - House",
+            "price": 1850
+          },
+          {
+            "id": "CLV-LI-002",
+            "name": "Fries - Regular",
+            "price": 650
+          }
+        ]
+      },
+      "manualTransaction": false,
+      "merchant": {
+        "id": "CLV-MERCH-CCD13C7B"
+      },
+      "modifiedTime": 1777750980000,
+      "payments": {
+        "elements": [
+          {
+            "amount": 3140,
+            "id": "CLV-PMT-7HXJ-001",
+            "result": "SUCCESS"
+          }
+        ]
+      },
+      "state": "paid",
+      "taxRemoved": false,
+      "total": 3140
+    }
+  ],
+  "href": "https://api.clover.com/v3/merchants/CLV-MERCH-CCD13C7B/orders?offset=0&limit=100"
+}

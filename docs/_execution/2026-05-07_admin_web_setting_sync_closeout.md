@@ -78,7 +78,7 @@ rollup acceptance.
 | 1 | Frontend listener for `redirect_uri` payload on `mfa_freshness_required` 403 | **closed** — admin shell + operator-web 401-handlers consume the redirect, sign out, and route back through Firebase Auth | [#392](https://github.com/SaidKhan005/forge-flow-demo/pull/392) |
 | 2 | Visible grace-window countdown chip during 24h PII-erasure grace window | **closed** — `_GraceWindowChip` + reverse-erasure affordance, 1-min Timer.periodic, deterministic widget tests | [#389](https://github.com/SaidKhan005/forge-flow-demo/pull/389) |
 | 3 | Restaurant-local IANA-tz `business_date` for PII erasure | **closed** — `PiiBusinessDateResolver` with shared `IanaTimezoneConverter`; UTC fallback preserved as known-safe | [#390](https://github.com/SaidKhan005/forge-flow-demo/pull/390) |
-| 4 | Theme H#8 first-backfill status null shape | **deferred** — naturally closes via the Phase 8 framework finishing push touching `fetchFirstBackfillStatus`; not in this scope | n/a |
+| 4 | Theme H#8 first-backfill status null shape | **transferred** to `docs/phases/phase_8/phase_8_spine_bridge_plan.md` § "Deferred from CODE_HEALTH remediation" → "`fetchFirstBackfillStatus` null-shape conflation" (closes when the Phase 8 framework lane next touches the route) | n/a |
 
 ## Build-rot repair landed in the same wave
 

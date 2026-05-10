@@ -1,0 +1,61 @@
+{
+  "results": {
+    "timesheets": [
+      {
+        "id": 901002,
+        "user_id": 8002,
+        "jobcode_id": 5002,
+        "start": "2026-05-04T10:00:00Z",
+        "end": "2026-05-04T18:15:00Z",
+        "duration": 29700,
+        "date": "2026-05-04",
+        "tz": -7,
+        "tz_str": "-07:00",
+        "type": "regular",
+        "location": "Main Kitchen",
+        "on_the_clock": false,
+        "locked": 0,
+        "notes": "Admin-corrected clock-out from 18:00 to 18:15 (employee forgot to punch out).",
+        "customfields": {},
+        "attached_files": [],
+        "created": "2026-05-04T10:00:01Z",
+        "last_modified": "2026-05-05T08:15:42Z"
+      }
+    ],
+    "supplemental_data": {
+      "users": {
+        "8002": {
+          "id": 8002,
+          "first_name": "Lee",
+          "last_name": "Cook",
+          "group_id": 201,
+          "active": true,
+          "employee_number": 4102,
+          "salaried": false,
+          "exempt": false,
+          "username": "lee.cook",
+          "email": "lee@example.com",
+          "pay_rate": "21.00",
+          "pay_interval": "hour",
+          "last_modified": "2026-05-01T12:00:00Z",
+          "created": "2025-08-01T00:00:00Z"
+        }
+      },
+      "jobcodes": {
+        "5002": {
+          "id": 5002,
+          "parent_id": 0,
+          "assigned_to_all": false,
+          "billable": false,
+          "active": true,
+          "type": "regular",
+          "name": "cook",
+          "short_code": "CK",
+          "last_modified": "2026-04-01T00:00:00Z",
+          "created": "2025-08-01T00:00:00Z"
+        }
+      }
+    },
+    "more": false
+  }
+}

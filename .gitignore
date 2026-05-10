@@ -96,6 +96,12 @@ docs/internal/barrio/barrio_legado_business_plan.pdf
 # Graphify generated output
 graphify-out/
 
+# Phase 2 pressure-harness generated artifacts (regenerated on every run)
+test/integration/pressure/p2a_adapter_findings.jsonl
+test/integration/pressure/p2b_*.jsonl
+test/integration/pressure/p2c_*.jsonl
+test/integration/pressure/p2d_*.jsonl
+
 # Kotlin compiler sessions
 android/.kotlin/
 
@@ -116,3 +122,12 @@ Selling.md
 
 # Project-scoped MCP server registration (machine-specific absolute paths)
 .mcp.json
+
+# Pressure preview v1 — per-run findings JSONL and summary artifacts.
+# These are local diagnostic outputs; PR bodies carry the human-readable
+# summary, the JSONL stays untracked.
+test/integration/pressure/*_findings.jsonl
+test/integration/pressure/*_summary.md
+test/load/pressure/*_findings.jsonl
+test/load/pressure/*_summary.md
+test/load/pressure/*_raw.jsonl

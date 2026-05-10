@@ -1,0 +1,30 @@
+{
+  "_envelope": {
+    "transport": "webhook",
+    "method": "POST",
+    "path": "/v1/webhooks/op_test_001/loc_test_001/revel",
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Revel-Signature": "ab3def012345678901234567890abcdef0123456",
+      "X-Revel-Event-Type": "order.finalized",
+      "X-Revel-Event-Id": "evt_malformed_8843001",
+      "X-Revel-Message-Id": "msg_malformed-0001",
+      "X-Revel-Instance": "demo-instance",
+      "X-Revel-Establishment-Id": "4421"
+    },
+    "_assertion": "Reject — RevelPosAdapter._canonicalize returns null because (a) `order.id` is missing, (b) `order.created_date` is the wrong shape (epoch number, not ISO 8601), and (c) `order.final_total` cannot parse to num. handleWebhook returns HandleWebhookResult(recordsWritten: 0); framework drops with a connector_sync_log row, no fact write."
+  },
+  "order": {
+    "local_id": "A-MAL-0001",
+    "created_date": 1746210660,
+    "updated_date": "not-a-real-timestamp",
+    "final_total": "abc.def",
+    "number_of_people": "three",
+    "closed": "yes",
+    "establishment_id": "four-thousand-four-twenty-one",
+    "instance_name": "demo-instance",
+    "extra_unexpected_field": {
+      "nested": ["arbitrary", null, 42, {"deep": "garbage"}]
+    }
+  }
+}

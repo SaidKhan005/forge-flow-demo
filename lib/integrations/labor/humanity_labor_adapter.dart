@@ -191,6 +191,17 @@ class HumanityShiftDto {
   /// cut 2; the adapter either writes a clean canonical fact or
   /// refuses).
   static HumanityShiftDto? tryFromMap(Map<String, Object?> map) {
+    // Humanity v1 surfaces time-off as a parallel record type with
+    // `type=time_off` on the same `/shifts` response. Pre-Phase-5 the
+    // adapter accepted these as 24h shifts, inflating labor-cost
+    // projections (P1 finding #2 in the Phase 5 consolidation, fixture
+    // `happy_path_time_off_request.json`). Drop them at the boundary.
+    final typeRaw = map['type'];
+    if (typeRaw is String) {
+      final type = typeRaw.toLowerCase();
+      if (type == 'time_off' || type == 'timeoff') return null;
+    }
+
     final id = map['id'];
     if (id == null) return null;
     final entityId = id.toString();

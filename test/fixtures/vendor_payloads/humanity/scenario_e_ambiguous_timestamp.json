@@ -1,0 +1,28 @@
+{
+  "_scenario": "E — ambiguous timestamp (must reject, not best-effort)",
+  "_endpoint": "GET /v1.0/shifts",
+  "_transport": "poll",
+  "_note": "Humanity v1's documented response shape always carries the trailing `Z` (UTC). This fixture captures a documented-shape regression: the vendor unexpectedly returns timestamps WITHOUT timezone information. Per humanityTimestampPolicy.asUtc (humanity_labor_adapter.dart lines 140-149), the framework's contract is that future API changes that drop `Z` MUST NOT silently default to local — the adapter rejects via tryFromMap returning null on DateTime.tryParse() of a naive timestamp (see lines 205-208).",
+  "data": [
+    {
+      "id": "9500",
+      "employee_id": "EMP-500",
+      "position_name": "Server",
+      "in_time": "2026-05-01 16:00:00",
+      "out_time": "2026-05-01 22:00:00",
+      "updated": "2026-05-01 22:05:00",
+      "status": "approved"
+    },
+    {
+      "id": "9501",
+      "employee_id": "EMP-501",
+      "position_name": "Cook",
+      "in_time": "2026-03-08T02:30:00",
+      "out_time": "2026-03-08T10:30:00",
+      "updated": "2026-03-08T10:31:00",
+      "status": "approved"
+    }
+  ],
+  "next_cursor": null,
+  "last_modified_seen": "2026-05-01T22:05:00Z"
+}

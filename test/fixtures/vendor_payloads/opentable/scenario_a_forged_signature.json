@@ -1,0 +1,23 @@
+{
+  "_fixture_meta": {
+    "scenario": "A — forged signature",
+    "outcome": "reject",
+    "expected_failure": "WebhookSignatureMismatch",
+    "raw_body": "{\"reservation\":{\"id\":\"OT-RES-2026050806\",\"restaurant_id\":\"rid-9876\",\"reserved_at\":\"2026-05-12T19:30:00Z\",\"modified_at\":\"2026-05-08T11:00:00Z\",\"party_size\":4,\"status\":\"booked\"}}",
+    "headers": {
+      "X-OpenTable-Signature": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      "X-OpenTable-Timestamp": "1746702000",
+      "Content-Type": "application/json"
+    },
+    "signing_secret": "ot-signing-secret-test",
+    "expected_signature_under_real_secret": "(adapter computes Hmac-SHA256(secret, raw_body) hex lowercase; the supplied 64-hex digest above is fabricated and does not match)"
+  },
+  "reservation": {
+    "id": "OT-RES-2026050806",
+    "restaurant_id": "rid-9876",
+    "reserved_at": "2026-05-12T19:30:00Z",
+    "modified_at": "2026-05-08T11:00:00Z",
+    "party_size": 4,
+    "status": "booked"
+  }
+}

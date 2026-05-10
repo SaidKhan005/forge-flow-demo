@@ -1,0 +1,48 @@
+{
+  "nextPageToken": null,
+  "sales": [
+    {
+      "accountFiscId": "A65315.21",
+      "accountReference": "Sp4rSe1NoCoVeRs2dE3fGw==",
+      "cancelled": false,
+      "deviceId": 75125,
+      "deviceName": "ipad9",
+      "dineIn": false,
+      "payments": [
+        {
+          "code": "CASH",
+          "currency": "GBP",
+          "description": "Cash",
+          "fiscDate": "2023-07-27T13:18:45.221Z",
+          "fiscId": "T72691.13",
+          "netAmountWithTax": "8.50",
+          "paymentMethodId": 141948669132824,
+          "tip": "0.00",
+          "type": "NORMAL",
+          "uuid": "SpAr_NoCv8qlec77xnk=="
+        }
+      ],
+      "receiptId": "R65315.17",
+      "salesLines": [
+        {
+          "currency": "GBP",
+          "id": "S65315.37",
+          "menuListPrice": "8.50",
+          "name": "Coffee + Pastry",
+          "quantity": "1.000",
+          "sku": "910",
+          "taxAmount": "1.4167",
+          "taxCode": "VAT20",
+          "taxRatePercentage": "20.00",
+          "timeOfSale": "2023-07-27T13:17:55.000Z",
+          "totalDiscountAmount": "0.00",
+          "totalNetAmountWithTax": "8.50",
+          "totalNetAmountWithoutTax": "7.08"
+        }
+      ],
+      "timeClosed": "2023-07-27T13:18:50.000Z",
+      "timeOfOpening": "2023-07-27T13:15:10.000Z",
+      "type": "SALE"
+    }
+  ]
+}

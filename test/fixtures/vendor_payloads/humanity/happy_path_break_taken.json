@@ -1,0 +1,27 @@
+{
+  "_endpoint": "GET /v1.0/timeclocks?last_modified=2026-05-01T00:00:00Z",
+  "_transport": "poll",
+  "_note": "Adjacent /timeclocks surface — same row shape as /shifts for the canonical fact write per api_consumed.md. Includes break punches (in/out via separate timeclock rows) representing a meal break taken mid-shift. Adapter currently writes the parent shift only; break rows remain on the canonical raw_payload.",
+  "data": [
+    {
+      "id": "TC-9201",
+      "employee_id": "EMP-100",
+      "position_name": "Server",
+      "in_time": "2026-05-01T16:00:00Z",
+      "out_time": "2026-05-01T22:00:00Z",
+      "updated": "2026-05-01T22:01:00Z",
+      "type": "shift",
+      "breaks": [
+        {
+          "id": "BRK-1",
+          "type": "meal_unpaid",
+          "start_time": "2026-05-01T18:30:00Z",
+          "end_time": "2026-05-01T19:00:00Z",
+          "duration_minutes": 30
+        }
+      ]
+    }
+  ],
+  "next_cursor": null,
+  "last_modified_seen": "2026-05-01T22:01:00Z"
+}

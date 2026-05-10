@@ -1,0 +1,42 @@
+{
+  "_fixture_envelope": {
+    "description": "Operator's F&F location is bound to America/Vancouver (Pacific). The 7shifts company carries a Toronto location with location.timezone='America/Toronto'. Punch UTC instants are unambiguous; the resolver must select America/Vancouver (the F&F location-bound IANA) when computing business_date for canonical facts, NOT the vendor's nested location.timezone value.",
+    "expected_outcome": "accept",
+    "expected_behavior": "Adapter persists UTC instants verbatim. Downstream `iana_timezone_converter.toBusinessDate` resolves business_date against the F&F location's IANA (America/Vancouver) so the punch's business_date = 2026-04-15 (UTC 02:30 = Pacific 19:30 prior day; UTC 07:30 = Pacific 00:30 next day → wraps midnight in Vancouver). Adapter does NOT branch on the vendor's location.timezone field.",
+    "ff_location_iana": "America/Vancouver",
+    "vendor_location_iana": "America/Toronto"
+  },
+  "event_type": "time_punch.edited",
+  "event_id": "evt_7s_cross_tz_001",
+  "company_id": 4242,
+  "time_punch": {
+    "id": 712050,
+    "user_id": 99007,
+    "shift_id": 887850,
+    "location_id": 5502,
+    "department_id": 6601,
+    "role": {
+      "id": 401,
+      "name": "Server"
+    },
+    "location": {
+      "id": 5502,
+      "name": "Toronto — King West",
+      "timezone": "America/Toronto"
+    },
+    "clocked_in": "2026-04-16T02:30:00Z",
+    "clocked_out": "2026-04-16T07:30:00Z",
+    "approved": true,
+    "modified": "2026-04-16T07:31:00Z",
+    "hourly_wage": 18.50,
+    "tips": 64.00,
+    "breaks": [
+      {
+        "id": 31010,
+        "in": "2026-04-16T05:00:00Z",
+        "out": "2026-04-16T05:15:00Z",
+        "paid": true
+      }
+    ]
+  }
+}

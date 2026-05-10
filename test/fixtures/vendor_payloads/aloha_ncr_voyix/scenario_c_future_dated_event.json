@@ -1,0 +1,16 @@
+{
+  "_scenario": "C — future-dated event",
+  "_expected_outcome": "reject",
+  "_adapter_assertion": "sanity hook fires; sanity_log row written; no canonical fact upsert.",
+  "_note": "All canonical timestamps are 73 years in the future. The framework's sanity hook (timestamp guard) drops the event and writes a sanity_log row before the sink touches Postgres.",
+  "eventId": "evt-chk-2099-01-01-303",
+  "eventType": "aloha.check.modified",
+  "siteId": "site-aloha-001",
+  "checkId": "chk-2099-01-01-303",
+  "openedAt": "2099-01-01T00:00:00.000Z",
+  "closedAt": "2099-01-01T01:00:00.000Z",
+  "modifiedAt": "2099-01-01T01:00:00.000Z",
+  "numberOfGuests": 6,
+  "totalAmount": 200.00,
+  "voided": false
+}

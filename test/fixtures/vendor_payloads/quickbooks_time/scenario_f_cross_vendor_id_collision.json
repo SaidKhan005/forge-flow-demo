@@ -1,0 +1,44 @@
+{
+  "collision_pair": {
+    "this_vendor": {
+      "vendor_id": "quickbooks_time",
+      "vendor_event_id": "901001",
+      "idempotency_key_namespaced": "quickbooks_time:operator-A:901001"
+    },
+    "colliding_vendor": {
+      "vendor_id": "seven_shifts",
+      "vendor_event_id": "901001",
+      "idempotency_key_namespaced": "seven_shifts:operator-A:901001"
+    }
+  },
+  "this_vendor_payload": {
+    "results": {
+      "timesheets": [
+        {
+          "id": 901001,
+          "user_id": 8001,
+          "jobcode_id": 5001,
+          "start": "2026-05-04T11:00:00Z",
+          "end": "2026-05-04T19:30:00Z",
+          "duration": 30600,
+          "date": "2026-05-04",
+          "tz": -7,
+          "tz_str": "-07:00",
+          "type": "regular",
+          "location": "Patio Bar",
+          "on_the_clock": false,
+          "locked": 0,
+          "notes": "QBT punch — id 901001",
+          "customfields": {},
+          "attached_files": [],
+          "created": "2026-05-04T11:00:03Z",
+          "last_modified": "2026-05-04T19:31:12Z"
+        }
+      ],
+      "more": false
+    }
+  },
+  "expected_outcome": "no_shadow_write",
+  "expected_assertion": "Two canonical fact rows written: (vendor_id='quickbooks_time', vendor_entity_id='901001') and (vendor_id='seven_shifts', vendor_entity_id='901001'). Adapter idempotency UNIQUE is `(vendor_id, operator_id, vendor_entity_id, vendor_modified_at)` — vendor_id partitions the namespace so a colliding integer id from a different labor vendor does not overwrite the QBT row.",
+  "notes": "QuickBooks Time `timesheets[].id` is a small monotonic integer (per vendor doc). Other labor vendors (7shifts, ADP, Humanity, Push Operations, Agendrix) use the same numeric-id shape, so collisions are inevitable in any operator running two labor vendors during a migration window. The framework's idempotency namespace prefixes by `vendor_id`, which is the primary defense."
+}

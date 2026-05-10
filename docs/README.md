@@ -1,8 +1,8 @@
 # Docs Layout
 
-Updated: 2026-05-03
+Updated: 2026-05-08
 
-This repo keeps docs in four main buckets:
+This repo keeps docs in five main buckets:
 
 ## 1. Root authority docs
 
@@ -12,10 +12,22 @@ These stay at the top level because they are the fastest-entry authority docs:
 - `docs/ARCHITECTURE.md`
 - `docs/DATA_ALIGNMENT_TRACKER.md`
 - `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
-- `docs/PERFORMANCE_FRAMEWORK.md`
-- `docs/UX_ADJUSTMENT_FRAMEWORK.md`
 
-## 2. Contracts
+## 2. Frameworks
+
+`docs/frameworks/`
+
+Repeatable execution frameworks for cross-cutting work that applies across
+phases and surfaces.
+
+Current active frameworks:
+
+- `docs/frameworks/deployFramework.md`
+- `docs/frameworks/PERFORMANCE_FRAMEWORK.md`
+- `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md`
+- `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
+
+## 3. Contracts
 
 `docs/contracts/`
 
@@ -30,7 +42,7 @@ Current examples:
 - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
 - `docs/contracts/proxy_health_contract.md`
 
-## 3. Live phase docs
+## 4. Live phase docs
 
 `docs/phases/`
 
@@ -52,7 +64,7 @@ Current live groups:
 - `docs/phases/phase_11a/`
 - `docs/phases/phase_11b/`
 
-## 4. Archive
+## 5. Archive
 
 `docs/archive/`
 
@@ -75,6 +87,8 @@ Common archive areas:
 If a doc is:
 
 - an active architecture rule -> put it in `docs/contracts/`
+- a repeatable cross-surface execution framework -> put it in
+  `docs/frameworks/`
 - an active planning lane doc -> put it in `docs/phases/<lane>/`
 - completed and no longer part of the live working spine -> move it to
   `docs/archive/`

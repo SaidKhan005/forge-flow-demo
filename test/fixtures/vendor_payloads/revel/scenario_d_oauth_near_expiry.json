@@ -1,0 +1,43 @@
+{
+  "_envelope": {
+    "transport": "oauth_refresh",
+    "method": "POST",
+    "url": "https://authentication.revelup.com/oauth/token",
+    "form_body": "grant_type=client_credentials&client_id=op_test_001_revel_client&client_secret=REDACTED&audience=https%3A%2F%2Fapi.revelsystems.com",
+    "_assertion": "OAuth refresh path triggers — `vendor_credentials.token_expires_at` is inside the 24h horizon (`kRefreshExpiryHorizon`), so pg_cron job `proxy.refresh_expiring_inbound_vendor_tokens` selects this row. RevelOAuthRefresher.refresh re-exchanges client_credentials; new access token persists with new expires_at; consecutive_refresh_failures resets to 0. Per docs/integrations/revel/oauth_shape.md, Revel's client_credentials flow does NOT issue a refresh token, so refresh is a fresh exchange of the stored client_id/client_secret pair (no rolling refresh-token rotation)."
+  },
+  "stored_credential_state_before_refresh": {
+    "vendor_id": "revel",
+    "operator_id": "op_test_001",
+    "location_id": "loc_test_001",
+    "auth_mode": "oauth",
+    "grant_type": "client_credentials",
+    "audience": "https://api.revelsystems.com",
+    "access_token_ciphertext_b64": "REDACTED_OLD_ACCESS_TOKEN_CIPHERTEXT",
+    "refresh_token_ciphertext_b64": "n/a — Revel client_credentials does not issue a refresh token",
+    "token_expires_at": "2026-05-08T19:55:00Z",
+    "now_for_test": "2026-05-08T19:00:00Z",
+    "horizon_check": "token_expires_at < now() + interval '24 hours' => TRUE => row selected",
+    "consecutive_refresh_failures": 0
+  },
+  "expected_oauth_response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "access_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6InJldmVsLWtleS0xIn0.eyJpc3MiOiJodHRwczovL2F1dGhlbnRpY2F0aW9uLnJldmVsdXAuY29tLyIsImF1ZCI6Imh0dHBzOi8vYXBpLnJldmVsc3lzdGVtcy5jb20iLCJpYXQiOjE3NDYyMDgwMDAsImV4cCI6MTc0NjI5NDQwMH0.REDACTED_SIGNATURE",
+      "expires_in": 86400,
+      "token_type": "Bearer",
+      "scope": "external_integrations.read webhooks.write webhooks.read message_log.read"
+    }
+  },
+  "stored_credential_state_after_refresh": {
+    "vendor_id": "revel",
+    "operator_id": "op_test_001",
+    "location_id": "loc_test_001",
+    "access_token_ciphertext_b64": "REDACTED_NEW_ACCESS_TOKEN_CIPHERTEXT",
+    "token_expires_at": "2026-05-09T19:00:00Z",
+    "consecutive_refresh_failures": 0
+  }
+}

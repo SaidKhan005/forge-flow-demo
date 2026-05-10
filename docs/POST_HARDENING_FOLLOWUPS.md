@@ -1,13 +1,33 @@
 # Post-Hardening Follow-ups
 
-Updated: 2026-05-07 (Phase 8 plug-and-play V1 closeout — resolved
-operator-self-service / backfill-factory / OAuth-refresh-closures /
+Updated: 2026-05-08 (post-audit remediation wave landed: 9 lanes
+merged across PRs [#417](https://github.com/SaidKhan005/forge-flow-demo/pull/417)–
+[#426](https://github.com/SaidKhan005/forge-flow-demo/pull/426). 4 of
+5 P1 audit-addition items closed; the AI-frozen `advisor_proxy.dart`
+placeholder strings remain on the freeze-thaw checklist. P2
+broader-bare-catch pattern partially closed for 3 files (`tool/advisor_proxy/advisor_proxy.dart`'s
+16 sites still open). 2026-05-08 multi-agent deep-dive sweep added 7
+new findings in the "Audit additions — 2026-05-08" section;
+postgres-repo coverage line corrected from "18 of 29 / 10 covered"
+to actual "27 of 47 / 20 covered"; admin hierarchy lane excluded —
+separate team). Prior update 2026-05-07 (Phase 8 plug-and-play V1 closeout —
+resolved operator-self-service / backfill-factory / OAuth-refresh-closures /
 location-integrations-list / test-connection / api-key paste / route
 alignment / binder split / analyzer sweep gaps archived to
 `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-07_phase_8_plug_and_play.md`).
 Earlier closeouts: `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`
 and the 2026-05-07 closeout addendum at the bottom of this file.
 Origin: 2026-05-02 deep audit.
+
+## P0 — Webhook signature ordering (2026-05-09 security triage)
+
+Forged-signature webhook POSTs to `/v1/webhooks/{vendor}/{operator}/{location}`
+trigger a Postgres SELECT (`vendor_credentials` lookup for the signing secret)
+BEFORE any HMAC verification, then leak the raw `Exception.toString()` +
+first stack frame in the response body via the
+`tool/advisor_proxy/admin_integrations_routes.dart:248` catch-all. Confirmed
+schema-info disclosure + DOS amplification on connection pool. Fix slice
+proposal + 9-leak-site inventory: `docs/_execution/2026-05-09_security_finding_webhook_signature_ordering.md`.
 
 ## P0 — Production1 Migration Apply Gap
 
@@ -103,7 +123,7 @@ follow-up:
 | `lib/admin/services/operator_location_admin_gateway.dart` | 311 | 1 (added L4) | partial; gateway tests landed PR #53 |
 | `lib/admin/services/pricing_tier_admin_gateway.dart` | 311 | 1 (added L4) | partial; gateway tests landed PR #53 |
 | `lib/admin/services/integration_admin_gateway.dart` | 311 | 1 (added L4) | partial; gateway tests landed PR #53 |
-| 18 of 29 postgres repositories | varies | 10 covered (L2 + L4 batch 2) | partial; chip away during routine slices |
+| 27 of 47 postgres repositories | varies | 20 covered (43%) | partial; chip away during routine slices. Audit recount 2026-05-08 — prior tracker line said "18 of 29 / 10 covered"; current census is 47 repos / 20 with `*_test.dart`. Highest-LOC uncovered: `weekly_plan_snapshot_repository.dart` (1038), `business_timing_profiles_repository.dart` (947), `target_cycle_repository.dart` (775), `corpus_repository.dart` (738), `forecast_context_repository.dart` (690), `graph_repository.dart` (684), `active_target_profile_repository.dart` (675), `auth_events_audit_repository.dart` (633), `selected_star_shift_repository.dart` (616), `user_pii_erasure_repository.dart` (656). |
 
 ## P3 — Verified-keep API surfaces (verified 2026-05-06, Wave B4)
 
@@ -161,9 +181,11 @@ bucketing`). No runtime failure today; contract decay if left.
   bootstrap (`_ensureTzInitialized`) plus service-period bucketing
   (`_servicePeriodSlivers`). Action: move timezone init into a
   service-layer initializer.
-- `lib/screens/settings/settings_wage_authority_section.dart:48,64,67`
-  — widget calls `SqliteWageRoleRowRepository.instance` directly.
-  Action: route through a service that owns the SQLite call.
+- `lib/screens/settings/settings_wage_authority_section.dart:52,57,73,76`
+  — widget calls `SqliteRestaurantScopeRepository.instance` and
+  `SqliteWageRoleRowRepository.instance` directly (`getActiveRestaurantId`
+  at `:52`, `getRows` at `:57`, `upsertRow` at `:73`, `deleteRow` at
+  `:76`). Action: route through a service that owns the SQLite calls.
 
 ### P2 — No common worker base
 
@@ -244,6 +266,222 @@ Test parcels for MFA, postgres repo batch 1/batch 2, and the Phase 11b
 retrieval assumption are archived to
 `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`.
 
+## Audit additions — 2026-05-08 deep-dive sweep
+
+A multi-agent audit on 2026-05-08 covered: time/RLS/Postgres-import
+guardrails, demo-mode purity, widget-architecture guardrails,
+placeholder/silent-error patterns, Phase 8 vendor closeout reality,
+postgres-repo test coverage, worker abstraction, idempotency-pattern
+coverage, and `OperatorScopedRepository<T>` primary-defense coverage.
+Admin hierarchy lane was excluded (separate team).
+
+Findings below are NEW or refine prior items. Confirmed-clean lanes
+(time guardrails, raw `package:postgres` import lint, RLS wrapper
+function presence, all 17 Phase 8 vendor adapters at literal
+`lifecycle: VendorLifecycle.documented`) are not re-listed.
+
+### P1 — `audit_logs_repository.dart` bypasses `OperatorScopedRepository` ✅ FIXED 2026-05-08 ([#424](https://github.com/SaidKhan005/forge-flow-demo/pull/424))
+
+`lib/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart`
+was a stateless writer that took `operatorId` as a caller-supplied
+parameter — primary-defense bypass for the operator-scoped
+`audit_logs` table.
+
+Resolution: chose **Option B (defense-in-depth)** rather than
+extending `OperatorScopedRepository`, because the writer's
+atomic-with-business-write contract requires it to run inside the
+caller's transaction (extending the base would have forced its own
+`withTenant` wrapper and broken the same-commit-boundary semantics).
+`writeRow` now reads `current_setting('app.operator_id', true)` from
+the executor BEFORE binding any insert SQL and throws
+`AuditLogsTenantMismatchError` when the parameter disagrees with the
+GUC. When the GUC is unset (the `runAsSystem` admin path, where
+`forge_admin BYPASSRLS` is the gate), the parameter is accepted —
+preserving `auth_events_audit_repository.insertSystemEvent` and
+`invited_user_activation_repository` paths that already use
+`withSystem`. Verified all 10 caller sites already pass the matching
+operator id; signature unchanged. Coverage:
+`test/infrastructure/persistence/postgres/repositories/audit_logs_repository_test.dart`
+(happy path, mismatch throws before insert, GUC-unset accepts param).
+
+### P1 — 4 admin integration routes missing idempotency guard ✅ FIXED 2026-05-08
+
+`tool/advisor_proxy/admin_integrations_routes.dart` writes did not
+extract `Idempotency-Key` or consult the cross-tenant
+`admin_request_idempotency` ledger despite the file header claiming
+they did. Affected (now fixed):
+
+- `POST /v1/admin/integrations/oauth/{vendor}/start`
+- `POST /v1/admin/integrations/{vendor}/connect-key`
+- `POST /v1/admin/integrations/{vendor}/test-connection`
+- `POST /v1/admin/integrations/{vendor}/disconnect`
+
+Resolution: `Phase80IntegrationRoutes` now accepts an optional
+`AdminRequestIdempotencyStore` (wired in production via
+`phase_8_production_binder.dart` from `productionBindings
+.adminRequestIdempotencyStore`). Each of the 4 write routes now:
+missing key → 400 `missing_idempotency_key`; duplicate key →
+cached replay; new key → reserve → run → cache. Body-hash mismatch
+on the same key → 409 `idempotency_key_conflict`. Coverage:
+`test/tool/advisor_proxy/admin_integrations_idempotency_test.dart`.
+
+### P1 — `advisor_proxy.dart:9105-9106` hardcoded prompt placeholders ⏸️ DEFERRED (AI freeze)
+
+Moved to phase_11b plan freeze-thaw checklist (2026-05-08). See
+`docs/phases/phase_11b/phase_11b_advisor_ux_plan.md` "Freeze-thaw
+pre-conditions (must close before unfreezing 11b)".
+
+### P1 — Demo-mode banner promised by architecture but never wired ✅ FIXED 2026-05-08 ([#426](https://github.com/SaidKhan005/forge-flow-demo/pull/426) — slice `8.demo-mode-banner`)
+
+`lib/services/integration/demo_mode_state.dart:12-15` (the file header)
+explicitly promises: *"Operator-app UX: the demo-mode banner reads
+runtime state from this surface, not from a config flag. Once the
+operator's first vendor connection backfills successfully, the banner
+clears without a redeploy."*
+
+Reality: zero widgets in `lib/screens/` or `lib/widgets/` read `isDemo`
+or `is_demo` at runtime. The Postgres `demo_mode_state` row + the
+`DemoModeFlipPolicy` flip path are fully wired on the **write** side
+(every Phase 8 vendor sink calls `flipToLive(...)` after first
+backfill commit), but the **read** side ends at the gateway interface.
+No UI consumes it.
+
+Operator impact: an onboarded operator who hasn't connected a POS yet
+has no on-screen indication they're looking at demo data. The
+build-time `kDemoMode` badge (Carve-out #2) is irrelevant in a
+production build, so the runtime "you're in demo" signal is invisible
+to a real operator.
+
+Action — slice `8.demo-mode-banner`:
+- New `DemoModeBanner` widget (`lib/widgets/` or
+  `lib/integrations/ui/`). Subscribes to active (operator, location,
+  category) and reads `DemoModeStateGateway.readOrCreateDefault(...)`
+  for each of the three categories (POS, Labor, Reservation).
+- Renders one banner per category that's still `is_demo = true`
+  (e.g. "Demo POS data — connect a POS to go live") with a CTA that
+  deep-links to the vendor-connections screen.
+- Auto-clears via the realtime spine when `DemoModeFlipPolicy` flips
+  the row (Phase 10a infrastructure already broadcasts the change).
+- AppShell mount point so it appears across the operator app, not just
+  one screen.
+- Walkthrough doc per HP #10.
+
+This is a runtime-state read, not a `kDemoMode` carve-out; no contract
+change needed.
+
+Resolution: shipped via PR #426 with `lib/widgets/demo_mode_banner.dart`,
+`lib/state/demo_mode_state_notifier.dart`, AppShell mount in
+`lib/forge_flow_app.dart` (banner stack above the IndexedStack tab
+body), `Provider<SyncProxyClient?>` exposure in
+`lib/forge_flow_bootstrap.dart`, walkthrough at
+`docs/_walkthroughs/8.demo-mode-banner.md`, and 5 widget tests at
+`test/widgets/demo_mode_banner_test.dart`. Two follow-ups punted:
+(1) mobile-side vendor-connections route doesn't exist yet, so the
+banner is informational-only; (2) the realtime invalidation path
+uses a permissive `integrations.*` / `first_backfill.*` topic-prefix
+match — tightening to a dedicated `demo_mode_state.flipped` topic
+when the proxy starts publishing it would remove the redundant proxy
+round-trip on unrelated integrations events.
+
+### P1 — Two new widget→repo direct-call violations ✅ FIXED 2026-05-08 ([#419](https://github.com/SaidKhan005/forge-flow-demo/pull/419))
+
+Both violate the CLAUDE.md "Architecture Guardrails" rule that widgets
+do not own source-truth or service-period bucketing.
+
+- `lib/screens/notifications_screen.dart:12,36-37` — widget imports
+  `SqliteRestaurantScopeRepository` and calls
+  `SqliteRestaurantScopeRepository.instance.getActiveRestaurantId()`
+  inline.
+- `lib/screens/schedule/schedule_forecast_notifier.dart:19,210-211` —
+  notifier (widget-tree `ChangeNotifier`) does the same.
+
+Action: route both through a service that owns the SQLite call. Same
+shape as the known `settings_wage_authority_section.dart` violation in
+the P2 list above.
+
+Resolution: created `lib/services/restaurant_scope_service.dart` (thin
+singleton wrapper with `overrideRepositoryForTest` / `resetForTest`
+seams matching the `AppNotificationService` pattern). Updated both
+widget files to use `RestaurantScopeService.instance.getActiveRestaurantId()`
+and dropped the direct `SqliteRestaurantScopeRepository` imports.
+Coverage: `test/services/restaurant_scope_service_test.dart`. The
+P2 `settings_wage_authority_section.dart` follow-up uses the same
+shape — defer to a separate slice.
+
+### P2 — Undocumented `kDemoMode` reader-side carve-out ✅ FIXED 2026-05-08 ([#417](https://github.com/SaidKhan005/forge-flow-demo/pull/417) — option 1, blessed as Carve-out #3)
+
+`lib/screens/settings_screen.dart:31,374,383` adds a third reader-side
+`kDemoMode` branch (Data reset + Demo date sections gated on
+`_kDemoMode`). The file has a local comment at lines 27-30 explaining
+the design, but CLAUDE.md and `docs/contracts/demo_mode_contract.md`
+list only two carve-outs (login button + data-status badge) — this one
+is undocumented.
+
+Action: pick one of:
+1. Add this as Carve-out #3 in CLAUDE.md "Demo Mode" section and the
+   contract doc, with the same `// kDemoMode carve-out: <reason>`
+   marker the contract requires.
+2. Refactor the two demo sections to render unconditionally and
+   no-op when `DemoScope.restaurantId` is not the active scope.
+
+HP #2 strict reading: option 2 is preferred; option 1 acknowledges the
+existing UX intent.
+
+### P2 — `audit_logs_repository.dart:368` style bare catches in advisor proxy ✅ PARTIAL ([#420](https://github.com/SaidKhan005/forge-flow-demo/pull/420) — 3 of 4 files closed; advisor_proxy 16 sites still open)
+
+11 bare catches converted via PR #420 across `auth_session_notifier.dart`,
+`tenant_transaction.dart`, and `package_postgres_executor.dart`.
+
+**Still open:** the 16 bare catches in `tool/advisor_proxy/advisor_proxy.dart`.
+Moved to `docs/phases/proxy_split/proxy_split_plan.md` "Pre-Split
+Cleanup" (2026-05-08) — the monolith is too risky for a one-shot
+agent and the split phase is the natural home.
+
+### P3 — `docs/_execution/` retirement window opens 2026-05-12
+
+**`docs/_execution/` retirement window opens 2026-05-12.** The bulk of
+the 2026-05-03/-04/-05/-06 closeouts cross the 7-day-since-phase-close
+threshold (per CLAUDE.md "Phase Doc Hygiene") on 2026-05-12. Sweep
+candidates: ~25-30 files including the Phase 8 / 8R / 8.S / 10a / 11A
+foundation / 11W proofs. Action: review each file, confirm the
+underlying phase is closed, retire to `docs/archive/_execution/` or
+`docs/archive/phases/` as appropriate.
+
+### P3 — `lib/admin/admin_routes.dart` placeholder route flags
+
+Lines `7, 90, 118, 147, 151, 166` track `.placeholder` boolean and
+skip route-surface rendering when true. These mark Phase 11A
+not-yet-shipped routes. No bug today; they correctly degrade. Flag
+for clearing as Phase 11A.8/.9/.10 land.
+
+### Confirmed-clean (re-verified 2026-05-08)
+
+- All 17 Phase 8 vendor adapters carry literal
+  `lifecycle: VendorLifecycle.documented` in their
+  `@IntegrationAdapter()` annotation. OAuth refresh closures wired
+  for the 11 OAuth vendors; the 6 non-OAuth (ADP/mTLS, Tock/static
+  key, Push/bearer, OpenTable/internal, SevenRooms/transport,
+  Agendrix/static key) intentionally have no closure. Test coverage:
+  4-6 unit tests per vendor.
+- No operator-scoped Postgres fact table uses
+  `TIMESTAMP WITHOUT TIME ZONE`.
+- No `package:postgres` imports outside
+  `lib/infrastructure/persistence/postgres/` or `tool/advisor_proxy/`.
+- All RLS policies (post-`202604280001`) route through the four
+  wrapper functions `app_current_operator()`,
+  `app_current_location()`, `app_current_actor_user()`,
+  `app_acting_as_operator()` (all `STABLE LEAKPROOF PARALLEL SAFE`).
+- `tool/rls_policy_lint.dart` exists (251 LOC) with allowlist; the
+  prior contract note implying it was missing is stale.
+- `proxy_requests.idempotency_key` UNIQUE constraint present at
+  `db/migrations/202604250005_advisor_cloud_foundation.sql:198`.
+- No new `demo_*` SQLite or Postgres tables (only the documented
+  `demo_mode_state` Postgres table).
+- Operator-web `UnsupportedError` calls in
+  `firebase_operator_web_auth_source.dart` /
+  `operator_web_auth_source.dart` are intentional (password reset
+  flows are handled by Firebase action links by design), NOT gaps.
+
 ## Closeout — Phase 8 plug-and-play V1 onboarding (2026-05-07)
 
 End-to-end V1 plug-and-play onboarding for all 17 vendors landed via
@@ -261,3 +499,29 @@ list real projection.
 Operations work remaining (P0 above, plus Cloud Run env + partner
 portal redirect URI registration) gates each vendor's `*.live.sandbox`
 slice firing; engineering closure is unblocked.
+
+## Pressure-preview-v1 sprint findings (2026-05-09)
+
+The `pressure.preview.v1` sprint (Phases 1-3, PRs #428-#452) drove
+verbatim vendor payload corpora through every infrastructure layer
+against the preview proxy and recorded findings to feed the Phase 6
+Postgres test backfill that closes the P2 coverage gap above.
+
+Top-line severity counts: **1 P0** (schema-info leak via webhook
+signature-verifier ordering bug — separate triage branch
+`claude/8.gap-1.missing-webhook-signature-verifiers`), **5 P1**
+(Square/LSK silent timestamp coercion; Humanity time-off-as-shift;
+ADP/OpenTable/SevenRooms missing OAuth refresh closures; Humanity
+inverse closure mismatch; preview-env Postgres pool exhaustion),
+**6 P2** (auth-mode doc mismatches × 4; preview-env vendor-capability
+registry gap × 6 vendors; preview-env schema gaps), **~25 P3** (vendor
+partner-portal sourcing-gap escalation list).
+
+Phase 6 first-wave order: `connector_backfill_job_repository.dart` (extend
+existing test with Phase 3B contracts), `provider_credentials_repository.dart`
+(extend with Phase 3C contracts), `weekly_plan_snapshot_repository.dart`
+(new test grounded in Phase 1 fixtures), `business_timing_profiles_repository.dart`
+(new test pinning rollover-hour + IANA contract every adapter depends on).
+
+Full findings: `docs/_execution/2026-05-08_pressure_preview_findings.md`.
+

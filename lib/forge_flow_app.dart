@@ -28,6 +28,7 @@ import 'state/app_refresh_coordinator.dart';
 import 'state/app_runtime_invalidation_bus.dart';
 import 'state/auth_session_notifier.dart';
 import 'state/demand_forecast_context_notifier.dart';
+import 'state/demo_mode_state_notifier.dart';
 import 'state/last_synced_timestamps_notifier.dart';
 import 'state/permission_context.dart';
 import 'state/realtime_event_bus.dart';
@@ -46,6 +47,8 @@ import 'screens/auth/auth_gate.dart';
 import 'screens/notifications_screen.dart';
 import 'services/realtime/realtime_event.dart';
 import 'services/realtime/realtime_subscription.dart';
+import 'services/sync/sync_proxy_client.dart';
+import 'widgets/demo_mode_banner.dart';
 import 'widgets/peer_edit_toast.dart';
 import 'screens/schedule_builder.dart';
 import 'screens/settings_screen.dart';
@@ -466,6 +469,16 @@ class ForgeFlowScope extends StatelessWidget {
             return notifier;
           },
         ),
+        // 8.demo-mode-banner — runtime per-(operator, location, category)
+        // demo-mode notifier. The AppShell-mounted [DemoModeBanner]
+        // watches this so the banner reflects the live `demo_mode_state`
+        // rows pulled via the proxy. Bound to the active scope from
+        // inside the AppShell (auth session + RestaurantScopeNotifier);
+        // bound to the proxy `SyncProxyClient` so a refresh round-trips
+        // through `/v1/operators/{op}/locations/{loc}/demo_mode_states`.
+        ChangeNotifierProvider<DemoModeStateNotifier>(
+          create: (_) => DemoModeStateNotifier(),
+        ),
         // Phase 7.55p.4a+4b — central refresh / invalidation policy.
         // ProxyProvider2: when EITHER ActiveTargetProfileNotifier changes
         // OR the runtime invalidation bus fires, the coordinator refreshes
@@ -580,6 +593,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   BoundaryMonitorSupervisor? _boundarySupervisor;
   RestaurantScopeNotifier? _scopeListenedFor;
 
+  // 8.demo-mode-banner — bookkeeping for the runtime demo-mode
+  // notifier. The notifier instance lives in [ForgeFlowScope]; the
+  // shell binds the active [SyncProxyClient] + (operator, location)
+  // scope and listens to scope/auth changes so the banner refreshes
+  // whenever the operator switches scope or the auth session flips.
+  AuthSessionNotifier? _demoModeAuthListenedTo;
+  RestaurantScopeNotifier? _demoModeScopeListenedTo;
+  String? _demoModeBoundScopeKey;
+
   @override
   void initState() {
     super.initState();
@@ -595,6 +617,98 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _bindBusinessScopeRealtimeBus();
+    _bindDemoModeNotifier();
+  }
+
+  /// 8.demo-mode-banner — bind the runtime demo-mode notifier to the
+  /// active [SyncProxyClient] (so it can pull
+  /// `demo_mode_state` rows via the proxy) and to the live
+  /// (operator, location) scope. Re-evaluates whenever the auth
+  /// session or restaurant scope changes; the notifier itself
+  /// debounces same-scope rebinds and only fires a refresh when the
+  /// scope actually flips. Demo / no-Firebase shells have a null
+  /// client; the notifier stays silent and the banner stays hidden.
+  void _bindDemoModeNotifier() {
+    final notifier = _resolveDemoModeNotifier();
+    if (notifier == null) return;
+    notifier.bindClient(_resolveSyncProxyClient());
+
+    // Watch the auth notifier so login/logout/operator flips push a
+    // new scope into the demo notifier.
+    AuthSessionNotifier? authNotifier;
+    try {
+      authNotifier = Provider.of<AuthSessionNotifier>(context, listen: false);
+    } on ProviderNotFoundException {
+      authNotifier = null;
+    }
+    if (!identical(authNotifier, _demoModeAuthListenedTo)) {
+      _demoModeAuthListenedTo?.removeListener(_syncDemoModeScope);
+      _demoModeAuthListenedTo = authNotifier;
+      _demoModeAuthListenedTo?.addListener(_syncDemoModeScope);
+    }
+
+    // Watch the restaurant scope so a business-scope drawer flip pushes
+    // the new (operator, location) into the demo notifier even when
+    // the auth session itself does not change.
+    RestaurantScopeNotifier? scopeNotifier;
+    try {
+      scopeNotifier =
+          Provider.of<RestaurantScopeNotifier>(context, listen: false);
+    } on ProviderNotFoundException {
+      scopeNotifier = null;
+    }
+    if (!identical(scopeNotifier, _demoModeScopeListenedTo)) {
+      _demoModeScopeListenedTo?.removeListener(_syncDemoModeScope);
+      _demoModeScopeListenedTo = scopeNotifier;
+      _demoModeScopeListenedTo?.addListener(_syncDemoModeScope);
+    }
+    _syncDemoModeScope();
+  }
+
+  /// Resolves the bootstrap-provided [SyncProxyClient] from the
+  /// surrounding Provider tree. Null when no proxy is wired (demo /
+  /// widget tests / no-Firebase shells).
+  SyncProxyClient? _resolveSyncProxyClient() {
+    try {
+      return Provider.of<SyncProxyClient?>(context, listen: false);
+    } on ProviderNotFoundException {
+      return null;
+    }
+  }
+
+  /// Resolves the [DemoModeStateNotifier] from the surrounding
+  /// Provider tree. Returns null when the shell mounts under a tree
+  /// that did not include [ForgeFlowScope] (e.g. some widget tests).
+  DemoModeStateNotifier? _resolveDemoModeNotifier() {
+    try {
+      return Provider.of<DemoModeStateNotifier>(context, listen: false);
+    } on ProviderNotFoundException {
+      return null;
+    }
+  }
+
+  /// Compute the live (operator, location) scope and push it into the
+  /// demo notifier. Called on auth changes, on restaurant-scope
+  /// changes, and from `_bindDemoModeNotifier`.
+  void _syncDemoModeScope() {
+    if (!mounted) return;
+    final notifier = _resolveDemoModeNotifier();
+    if (notifier == null) return;
+    final session = _demoModeAuthListenedTo?.session;
+    final scope = _demoModeScopeListenedTo?.activeScope;
+    final operatorId = scope?.operatorId ?? session?.operatorId ?? '';
+    final locationId = scope?.locationId ?? session?.locationId ?? '';
+    if (operatorId.isEmpty || locationId.isEmpty) {
+      _demoModeBoundScopeKey = null;
+      notifier.clear();
+      return;
+    }
+    final key = '$operatorId:$locationId';
+    if (key == _demoModeBoundScopeKey) return;
+    _demoModeBoundScopeKey = key;
+    unawaited(
+      notifier.setScope(operatorId: operatorId, locationId: locationId),
+    );
   }
 
   void _bindBusinessScopeRealtimeBus() {
@@ -734,10 +848,39 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   void _handleBusinessScopeRealtimeEvent(RealtimeEvent event) {
-    if (!isBusinessScopeInvalidationEvent(event)) return;
     final session = _resolveAuthSession();
+    if (session != null && event.operatorId == session.operatorId) {
+      // 8.demo-mode-banner — integrations / first-backfill activity
+      // can flip a `demo_mode_state` row; trigger a refresh whenever
+      // we see a relevant topic for the active operator. Topic check
+      // is intentionally permissive: any `integrations.*` or
+      // `first_backfill.*` frame may have flipped the row, so we ask
+      // the notifier to re-pull and let it diff. Same-scope same-rows
+      // notifies still fire `notifyListeners`, but the banner is
+      // cheap to rebuild.
+      if (_isDemoModeInvalidationEvent(event)) {
+        unawaited(_resolveDemoModeNotifier()?.refresh() ?? Future.value());
+      }
+    }
+    if (!isBusinessScopeInvalidationEvent(event)) return;
     if (session == null || event.operatorId != session.operatorId) return;
     _loadBusinessScopesIfNeeded(session, force: true);
+  }
+
+  /// 8.demo-mode-banner — heuristic that flags a [RealtimeEvent] as
+  /// possibly affecting the per-(operator, location, category)
+  /// demo-mode state. The proxy does not yet broadcast a dedicated
+  /// `integrations.demo_mode_flip` topic; the next-best signal is any
+  /// integrations / first-backfill notification, which is the only
+  /// path that can flip the row. False positives are harmless — they
+  /// trigger an extra proxy round-trip; false negatives leave the
+  /// banner stale until the next foreground / scope change refresh.
+  static bool _isDemoModeInvalidationEvent(RealtimeEvent event) {
+    final topic = event.topic;
+    return topic.startsWith('integrations.') ||
+        topic.startsWith('first_backfill.') ||
+        topic.startsWith('integration.') ||
+        topic == 'demo_mode_state.flipped';
   }
 
   AuthSession? _resolveAuthSession() {
@@ -957,6 +1100,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _businessScopeSearchController.dispose();
     _scopeListenedFor?.removeListener(_syncSupervisorToScope);
     _scopeListenedFor = null;
+    // 8.demo-mode-banner — release the auth/scope listeners the demo
+    // notifier was wired through. The notifier itself lives in
+    // [ForgeFlowScope] and is disposed by the Provider when the app
+    // tree tears down.
+    _demoModeAuthListenedTo?.removeListener(_syncDemoModeScope);
+    _demoModeAuthListenedTo = null;
+    _demoModeScopeListenedTo?.removeListener(_syncDemoModeScope);
+    _demoModeScopeListenedTo = null;
+    _demoModeBoundScopeKey = null;
     _boundarySupervisor?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -987,6 +1139,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed && _hasBeenBackgrounded) {
       _hasBeenBackgrounded = false;
       context.read<AppRefreshCoordinator>().refreshCurrentStateSurfaces();
+      // 8.demo-mode-banner — re-pull the demo-mode rows on real
+      // foreground resume. Catches any flip that happened while the
+      // app was backgrounded (e.g. the connect flow happened on
+      // operator web in another tab) without waiting on the
+      // realtime spine to redeliver.
+      unawaited(_resolveDemoModeNotifier()?.refresh() ?? Future.value());
       // Re-seed and restart boundary monitors after resume refresh.
       // The re-seed picks up the current business date so the monitors
       // do not detect a "change" that the resume path already handled.
@@ -1292,14 +1450,28 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         backgroundColor: AppColors.backgroundDeep,
         appBar: widget.embeddedInBarrio ? embeddedAppBar : standaloneAppBar,
         drawer: _buildBusinessScopeDrawer(context),
+        // 8.demo-mode-banner — runtime per-(operator, location, category)
+        // demo banner mounted directly above the tab body, beneath the
+        // app bar. Renders one slim row per category whose
+        // `demo_mode_state.is_demo` is still `true`; auto-clears once
+        // every row flips after the operator's first vendor backfill
+        // commits (HP #2 — runtime-state read, no kDemoMode branch).
         body: SafeArea(
           top: !widget.embeddedInBarrio,
-          child: IndexedStack(
-            index: _selectedIndex,
-            children: List<Widget>.generate(
-              4,
-              (index) => _buildTab(index, revision),
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
+            children: <Widget>[
+              const DemoModeBanner(),
+              Expanded(
+                child: IndexedStack(
+                  index: _selectedIndex,
+                  children: List<Widget>.generate(
+                    4,
+                    (index) => _buildTab(index, revision),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         bottomNavigationBar: _AppBottomNav(

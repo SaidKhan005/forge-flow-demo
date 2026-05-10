@@ -1,0 +1,20 @@
+{
+  "_scenario": "A — forged signature",
+  "_expected_outcome": "reject",
+  "_adapter_assertion": "AlohaNcrVoyixWebhookSignatureVerifier.verify returns false; framework returns 403; no DB write.",
+  "_signature_header": "ncr-webhook-signature: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+  "_timestamp_header": "ncr-webhook-timestamp: 1746388500",
+  "_note": "Body is well-formed and would otherwise be accepted; the signature has been replaced with a base64 string that does NOT match HMAC-SHA256(rawBody, signing_secret). Constant-time compare via `constantTimeBytesEquals` rejects.",
+  "body": {
+    "eventId": "evt-chk-2026-05-04-301",
+    "eventType": "aloha.check.modified",
+    "siteId": "site-aloha-001",
+    "checkId": "chk-2026-05-04-301",
+    "openedAt": "2026-05-04T18:30:00.000Z",
+    "closedAt": "2026-05-04T19:55:00.000Z",
+    "modifiedAt": "2026-05-04T19:55:00.000Z",
+    "numberOfGuests": 4,
+    "totalAmount": 87.20,
+    "voided": false
+  }
+}

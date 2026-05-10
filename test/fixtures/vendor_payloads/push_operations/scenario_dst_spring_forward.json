@@ -1,0 +1,29 @@
+{
+  "shifts": [
+    {
+      "id": 800601,
+      "employee_id": 5550,
+      "position_id": 311,
+      "position_name": "Server",
+      "start_at": "2026-03-08T07:00:00.000Z",
+      "end_at": "2026-03-08T15:00:00.000Z",
+      "published": true,
+      "published_at": "2026-03-01T11:00:00.000Z",
+      "updated_at": "2026-03-01T11:00:00.000Z"
+    },
+    {
+      "id": 800602,
+      "employee_id": 5551,
+      "position_id": 327,
+      "position_name": "Line Cook",
+      "start_at": "2026-03-08T08:30:00.000Z",
+      "end_at": "2026-03-08T16:30:00.000Z",
+      "published": true,
+      "published_at": "2026-03-01T11:00:00.000Z",
+      "updated_at": "2026-03-01T11:00:00.000Z"
+    }
+  ],
+  "page": 1,
+  "limit": 100,
+  "total": 2
+}

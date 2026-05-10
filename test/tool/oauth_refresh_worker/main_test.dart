@@ -292,8 +292,8 @@ void main() {
 
   group('buildProductionRefreshClosures', () {
     test(
-      'registers all 11 closures when every optional credential set '
-      'is present',
+      'registers all 12 closures when every optional credential set '
+      'is present (Humanity is intentionally omitted — keyPaste path)',
       () {
         final env = <String, String>{
           // Aloha NCR Voyix bundle (binder-style 4 secrets gate).
@@ -304,12 +304,11 @@ void main() {
               'aloha-app-key',
           OAuthRefreshWorkerVendorEnvNames.alohaNcrVoyixOrganizationId:
               'aloha-org-id',
-          // Square / Clover / Humanity / QBT / 7shifts / Libro pairs.
+          // Square / Clover / QBT / 7shifts / Libro pairs (Humanity
+          // intentionally omitted — its closure no longer wires).
           OAuthRefreshWorkerVendorEnvNames.squareClientId: 'sq-id',
           OAuthRefreshWorkerVendorEnvNames.squareClientSecret: 'sq-secret',
           OAuthRefreshWorkerVendorEnvNames.cloverAppId: 'clover-app-id',
-          OAuthRefreshWorkerVendorEnvNames.humanityClientId: 'hum-id',
-          OAuthRefreshWorkerVendorEnvNames.humanityClientSecret: 'hum-secret',
           OAuthRefreshWorkerVendorEnvNames.quickBooksTimeClientId: 'qbt-id',
           OAuthRefreshWorkerVendorEnvNames.quickBooksTimeClientSecret:
               'qbt-secret',
@@ -326,11 +325,12 @@ void main() {
         expect(
           result.wiredVendorIds,
           equals(<String>[
+            'adp',
             'aloha_ncr_voyix',
             'clover',
-            'humanity',
             'libro',
             'lightspeed_lsk',
+            'opentable',
             'oracle_micros_simphony',
             'quickbooks_time',
             'revel',
@@ -339,27 +339,193 @@ void main() {
             'toast',
           ]),
           reason:
-              'all 11 production OAuth refresh factories must register '
-              'when their app-credential env names are non-blank',
+              'all 12 production OAuth refresh factories must register '
+              'when their app-credential env names are non-blank; Humanity '
+              'is excluded because the adapter declares keyPaste and v1 '
+              'has no broker-driven refresh path. ADP and OpenTable wire '
+              'unconditionally (per-tenant client credentials live on '
+              'bundle metadata) per the 2026-05-09 re-investigation.',
         );
         expect(result.disabledVendorIds, isEmpty);
-        // The six unsupported vendors stay outside the registry.
+        // The seven unsupported vendors (including Humanity) stay
+        // outside the registry; each carries a documented delegation
+        // reason in [kVendorsWithoutRefreshClosureReason].
         for (final id in kVendorsWithoutRefreshClosure) {
           expect(
             result.registry.containsKey(id),
             isFalse,
             reason: '$id is unsupported and must not be in the registry',
           );
+          expect(
+            kVendorsWithoutRefreshClosureReason[id],
+            isNotNull,
+            reason:
+                '$id must declare a delegation reason in '
+                'kVendorsWithoutRefreshClosureReason',
+          );
         }
+      },
+    );
+
+    test(
+      'kVendorsWithoutRefreshClosureReason covers SevenRooms / Humanity '
+      '/ Agendrix / Tock / Push Operations with documented delegation '
+      'surfaces (ADP / OpenTable wired per 2026-05-09 re-investigation)',
+      () {
+        // ADP and OpenTable are NO LONGER on this map — the 2026-05-09
+        // re-investigation found both expose a programmatic OAuth
+        // `grant_type=refresh_token` surface using per-tenant client
+        // credentials, and both moved into the wired registry.
+        expect(
+          kVendorsWithoutRefreshClosureReason.containsKey('adp'),
+          isFalse,
+          reason:
+              'ADP wires through makeAdpOauthRefreshClosure as of '
+              '2026-05-09 — the partner-ops mTLS rotation is a SEPARATE '
+              'surface from `grant_type=refresh_token` and lives on the '
+              'transport SecurityContext, not the broker.',
+        );
+        expect(
+          kVendorsWithoutRefreshClosureReason.containsKey('opentable'),
+          isFalse,
+          reason:
+              'OpenTable wires through makeOpenTableOauthRefreshClosure '
+              'as of 2026-05-09 — the transport `refresh()` exists but '
+              'has no driver, so the broker becomes the single rotation '
+              'owner.',
+        );
+
+        // SevenRooms — `client_secret` not persisted; architectural
+        // gap. Re-wiring requires bridge change + connect-flow update.
+        expect(
+          kVendorsWithoutRefreshClosureReason['sevenrooms'],
+          equals('sevenrooms_client_secret_not_persisted'),
+        );
+        // Humanity — keyPaste password-grant; no broker refresh.
+        expect(
+          kVendorsWithoutRefreshClosureReason['humanity'],
+          equals('humanity_keypaste_password_grant_no_broker_refresh'),
+        );
+        // Agendrix — closure factory not yet wired.
+        expect(
+          kVendorsWithoutRefreshClosureReason['agendrix'],
+          equals('agendrix_oauth_sliding_refresh_not_yet_wired'),
+        );
+        // Tock — static API key.
+        expect(
+          kVendorsWithoutRefreshClosureReason['tock'],
+          equals('tock_static_api_key'),
+        );
+        // Push Operations — partner-issued bearer.
+        expect(
+          kVendorsWithoutRefreshClosureReason['push_operations'],
+          equals('push_operations_partner_issued_bearer'),
+        );
+        // Set membership stays in lockstep with the reason map.
+        expect(
+          kVendorsWithoutRefreshClosure,
+          equals(kVendorsWithoutRefreshClosureReason.keys.toSet()),
+          reason:
+              'set must mirror reason-map keys so the boot log + per-row '
+              'skip log surface a reason for every skipped vendor',
+        );
+        // After the re-investigation the map shrinks to 5 entries:
+        // sevenrooms, humanity, agendrix, tock, push_operations.
+        expect(kVendorsWithoutRefreshClosureReason.keys.toList()..sort(),
+            equals(<String>[
+              'agendrix',
+              'humanity',
+              'push_operations',
+              'sevenrooms',
+              'tock',
+            ]));
+      },
+    );
+
+    test(
+      'tick: claimed row for an unsupported vendor (SevenRooms / '
+      'Humanity) is logged-and-skipped, broker untouched, no '
+      'failure-count increment (ADP / OpenTable wired post-2026-05-09)',
+      () async {
+        // After the 2026-05-09 re-investigation, ADP and OpenTable wire
+        // into the broker registry; the remaining no-closure vendors
+        // are SevenRooms (architectural gap — `client_secret` not
+        // persisted) and Humanity (keyPaste). Both must still traverse
+        // the skip path.
+        final gateway = _FakeGateway()
+          ..addClaimable(
+            ClaimedCredentialRow(
+              credentialId: '55555555-5555-4555-8555-555555555555',
+              operatorId: _opIdA,
+              locationId: _locIdA,
+              vendorId: 'sevenrooms',
+              consecutiveFailuresBefore: 0,
+            ),
+          )
+          ..addClaimable(
+            ClaimedCredentialRow(
+              credentialId: '66666666-6666-4666-8666-666666666666',
+              operatorId: _opIdA,
+              locationId: _locIdA,
+              vendorId: 'humanity',
+              consecutiveFailuresBefore: 0,
+            ),
+          );
+        final broker = _RecordingBroker();
+
+        final result = await runWorkerTick(
+          gateway: gateway,
+          broker: broker,
+          refreshClosures: const <String, RefreshClosure>{},
+          maxRowsPerTick: 50,
+          maxConsecutiveFailures: 3,
+          horizon: const Duration(minutes: 5),
+        );
+
+        expect(result.candidatesScanned, 2);
+        expect(
+          result.skippedNoCloser,
+          2,
+          reason:
+              'SevenRooms / Humanity must hit the no-closure skip path; '
+              'the broker must NOT be invoked',
+        );
+        expect(result.refreshFailures, 0);
+        expect(result.refreshSuccesses, 0);
+        expect(result.autoDisabled, 0);
+        expect(broker.refreshCalls, 0);
+        expect(gateway.recordedFailures, isEmpty);
+        expect(gateway.autoDisabledRows, isEmpty);
+        // Each remaining vendor's reason is documented in the reason
+        // map so the per-row skip log can surface a stable, queryable
+        // label.
+        expect(
+          kVendorsWithoutRefreshClosureReason['sevenrooms'],
+          equals('sevenrooms_client_secret_not_persisted'),
+        );
+        expect(
+          kVendorsWithoutRefreshClosureReason['humanity'],
+          equals('humanity_keypaste_password_grant_no_broker_refresh'),
+        );
+        // Sanity: ADP and OpenTable are no longer on the no-closure map.
+        expect(
+          kVendorsWithoutRefreshClosureReason.containsKey('adp'),
+          isFalse,
+        );
+        expect(
+          kVendorsWithoutRefreshClosureReason.containsKey('opentable'),
+          isFalse,
+        );
       },
     );
 
     test(
       'unconditionally-wired vendors register without any env',
       () {
-        // Toast / Lightspeed LSK / Oracle MICROS Simphony / Revel pull
-        // credentials from bundle metadata at refresh time, so they
-        // wire without any boot-env app credentials.
+        // Toast / Lightspeed LSK / Oracle MICROS Simphony / Revel /
+        // ADP / OpenTable pull credentials from bundle metadata at
+        // refresh time, so they wire without any boot-env app
+        // credentials.
         final result = buildProductionRefreshClosures(
           env: const <String, String>{},
           httpClient: _StubHttpClient(),
@@ -371,6 +537,8 @@ void main() {
             'lightspeed_lsk',
             'oracle_micros_simphony',
             'revel',
+            'adp',
+            'opentable',
           ]),
         );
         expect(
@@ -379,7 +547,6 @@ void main() {
             'aloha_ncr_voyix',
             'square',
             'clover',
-            'humanity',
             'quickbooks_time',
             'seven_shifts',
             'libro',
@@ -387,7 +554,15 @@ void main() {
           reason:
               'every gated vendor must land on the disabled list when '
               'its app-credential env names are absent — same warn-disable '
-              'shape as the binder',
+              'shape as the binder. Humanity is no longer gated here — '
+              'it lives on kVendorsWithoutRefreshClosureReason instead.',
+        );
+        expect(
+          result.disabledVendorIds.containsKey('humanity'),
+          isFalse,
+          reason:
+              'Humanity must NOT appear on the disabled-missing-secrets '
+              'list — it is intentionally never wired regardless of env',
         );
       },
     );

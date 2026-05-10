@@ -10,15 +10,17 @@
 //   4. Malformed JSON — closure throws [VendorRefreshFailed] with a
 //      parse diagnostic so the failure is actionable.
 //
-// Closures covered (11 total):
+// Closures covered (13 total):
 //   POS:    Toast, Square, Clover, Lightspeed LSK, Aloha NCR Voyix,
 //           Oracle MICROS Simphony, Revel
-//   Labor:  7shifts, QuickBooks Time, Humanity
-//   Resv.:  Libro
+//   Labor:  7shifts, QuickBooks Time, Humanity, ADP
+//   Resv.:  Libro, OpenTable
 //
 // Vendors NOT covered here (their bridges do not accept an OAuth
 // refresh closure — handled in the file's doc comment):
-//   SevenRooms, Tock, Push Operations, Agendrix, ADP, OpenTable.
+//   SevenRooms (architectural gap — `client_secret` not persisted),
+//   Tock (static API key), Push Operations (partner-issued bearer),
+//   Agendrix (closure factory not yet wired).
 
 import 'dart:convert';
 
@@ -27,6 +29,8 @@ import 'package:forge_and_flow/integrations/_common/production_oauth_refresh_clo
 import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
+
+import '../../../tool/oauth_refresh_worker/main.dart' as worker;
 
 VendorCredentialBundle _bundle({
   String accessToken = 'old-bearer',
@@ -886,4 +890,415 @@ void main() {
       );
     });
   });
+
+  // ─── ADP — makeAdpOauthRefreshClosure ────────────────────────────────
+  //
+  // 2026-05-09: wired post-re-investigation. The closure POSTs
+  // `grant_type=refresh_token` against `/auth/oauth/v2/token` with
+  // HTTP Basic auth carrying the per-tenant `client_id` /
+  // `client_secret`, and sets `x-adp-module` from the bundle's
+  // connection metadata.
+  group('ADP — makeAdpOauthRefreshClosure', () {
+    test('happy refresh sends Basic auth + x-adp-module + refresh_token',
+        () async {
+      late http.Request seen;
+      final closure = makeAdpOauthRefreshClosure(
+        httpClient: _capturedClient(
+          response: http.Response(
+            jsonEncode(<String, Object?>{
+              'access_token': 'adp-access-2',
+              'refresh_token': 'adp-refresh-2',
+              'expires_in': 3600,
+            }),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json',
+            },
+          ),
+          onRequest: (request) => seen = request,
+        ),
+        oauthBaseUri: Uri.parse('https://accounts.adp.com'),
+        clock: () => DateTime.utc(2026, 5, 6, 12),
+      );
+      final result = await closure(_bundle(
+        connectionMetadata: const <String, Object?>{
+          'module': 'workforce_manager',
+        },
+      ));
+      expect(result.accessToken, 'adp-access-2');
+      expect(result.refreshToken, 'adp-refresh-2');
+      expect(result.expiresAt, DateTime.utc(2026, 5, 6, 13));
+      expect(seen.method, 'POST');
+      expect(seen.url.host, 'accounts.adp.com');
+      expect(seen.url.path, '/auth/oauth/v2/token');
+      expect(seen.body, contains('grant_type=refresh_token'));
+      expect(seen.body, contains('refresh_token=refresh-1'));
+      expect(seen.headers['authorization'], startsWith('Basic '));
+      expect(seen.headers['x-adp-module'], 'workforce_manager');
+    });
+
+    test('falls back to vendor_credentials.metadata.module then default',
+        () async {
+      // No connection metadata module → fall back to credential
+      // metadata.module.
+      late http.Request seen;
+      final closure = makeAdpOauthRefreshClosure(
+        httpClient: _capturedClient(
+          response: http.Response(
+            jsonEncode(<String, Object?>{
+              'access_token': 'adp-a',
+              'expires_in': 3600,
+            }),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json',
+            },
+          ),
+          onRequest: (request) => seen = request,
+        ),
+        clock: () => DateTime.utc(2026, 5, 6, 12),
+      );
+      await closure(_bundle(
+        metadata: const <String, Object?>{'module': 'workforce_now'},
+      ));
+      expect(seen.headers['x-adp-module'], 'workforce_now');
+
+      // No metadata at all → default workforce_now per
+      // vendor_master_list.md.
+      late http.Request seen2;
+      final closure2 = makeAdpOauthRefreshClosure(
+        httpClient: _capturedClient(
+          response: http.Response(
+            jsonEncode(<String, Object?>{
+              'access_token': 'adp-b',
+              'expires_in': 3600,
+            }),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json',
+            },
+          ),
+          onRequest: (request) => seen2 = request,
+        ),
+      );
+      await closure2(_bundle());
+      expect(seen2.headers['x-adp-module'], 'workforce_now');
+    });
+
+    test('401 / 5xx / malformed', () async {
+      final c401 = makeAdpOauthRefreshClosure(
+        httpClient: _staticClient(
+          http.Response('{"error":"invalid_grant"}', 401),
+        ),
+      );
+      await expectLater(
+        () => c401(_bundle()),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('vendor=adp'), contains('auth_rejected')),
+        )),
+      );
+      final c5xx = makeAdpOauthRefreshClosure(
+        httpClient: _staticClient(http.Response('boom', 502)),
+      );
+      await expectLater(
+        () => c5xx(_bundle()),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          contains('vendor_5xx'),
+        )),
+      );
+      final cBad = makeAdpOauthRefreshClosure(
+        httpClient: _staticClient(http.Response('not-json', 200)),
+      );
+      await expectLater(
+        () => cBad(_bundle()),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          contains('malformed_json'),
+        )),
+      );
+    });
+
+    test('missing refresh_token surfaces actionable failure', () async {
+      final closure = makeAdpOauthRefreshClosure(
+        httpClient: _staticClient(http.Response('{}', 200)),
+      );
+      await expectLater(
+        () => closure(_bundle(refreshToken: null)),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          contains('missing_refresh_token'),
+        )),
+      );
+    });
+
+    test('missing client_id surfaces actionable failure', () async {
+      final closure = makeAdpOauthRefreshClosure(
+        httpClient: _staticClient(http.Response('{}', 200)),
+      );
+      await expectLater(
+        () => closure(_bundle(clientId: null)),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          contains('missing_credential'),
+        )),
+      );
+    });
+  });
+
+  // ─── OpenTable — makeOpenTableOauthRefreshClosure ────────────────────
+  //
+  // 2026-05-09: wired post-re-investigation. The closure POSTs
+  // `grant_type=refresh_token` against `/api/v2/oauth/token` with form-
+  // encoded `client_id` / `client_secret` / `refresh_token`. OpenTable
+  // rotates the refresh token on every refresh.
+  group('OpenTable — makeOpenTableOauthRefreshClosure', () {
+    test('happy refresh sends form fields + parses rotated refresh_token',
+        () async {
+      late http.Request seen;
+      final closure = makeOpenTableOauthRefreshClosure(
+        httpClient: _capturedClient(
+          response: http.Response(
+            jsonEncode(<String, Object?>{
+              'access_token': 'ot-access-2',
+              'refresh_token': 'ot-refresh-2',
+              'expires_in': 3600,
+            }),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json',
+            },
+          ),
+          onRequest: (request) => seen = request,
+        ),
+        oauthBaseUri: Uri.parse('https://oauth-pii.opentable.com'),
+        clock: () => DateTime.utc(2026, 5, 6, 12),
+      );
+      final result = await closure(_bundle());
+      expect(result.accessToken, 'ot-access-2');
+      expect(result.refreshToken, 'ot-refresh-2');
+      expect(result.expiresAt, DateTime.utc(2026, 5, 6, 13));
+      expect(seen.method, 'POST');
+      expect(seen.url.host, 'oauth-pii.opentable.com');
+      expect(seen.url.path, '/api/v2/oauth/token');
+      expect(seen.body, contains('grant_type=refresh_token'));
+      expect(seen.body, contains('refresh_token=refresh-1'));
+      expect(seen.body, contains('client_id=client-id'));
+      expect(seen.body, contains('client_secret=client-secret'));
+    });
+
+    test('expires_at ISO-8601 wins over expires_in when present', () async {
+      final closure = makeOpenTableOauthRefreshClosure(
+        httpClient: _staticClient(
+          http.Response(
+            jsonEncode(<String, Object?>{
+              'access_token': 'ot-a',
+              'refresh_token': 'ot-r',
+              'expires_at': '2026-05-06T14:00:00Z',
+              'expires_in': 3600,
+            }),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json',
+            },
+          ),
+        ),
+        clock: () => DateTime.utc(2026, 5, 6, 12),
+      );
+      final result = await closure(_bundle());
+      expect(result.expiresAt, DateTime.utc(2026, 5, 6, 14));
+    });
+
+    test('401 / 5xx / malformed', () async {
+      final c401 = makeOpenTableOauthRefreshClosure(
+        httpClient: _staticClient(
+          http.Response('{"error":"invalid_grant"}', 401),
+        ),
+      );
+      await expectLater(
+        () => c401(_bundle()),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('vendor=opentable'), contains('auth_rejected')),
+        )),
+      );
+      final c5xx = makeOpenTableOauthRefreshClosure(
+        httpClient: _staticClient(http.Response('boom', 502)),
+      );
+      await expectLater(
+        () => c5xx(_bundle()),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          contains('vendor_5xx'),
+        )),
+      );
+      final cBad = makeOpenTableOauthRefreshClosure(
+        httpClient: _staticClient(http.Response('not-json', 200)),
+      );
+      await expectLater(
+        () => cBad(_bundle()),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          contains('malformed_json'),
+        )),
+      );
+    });
+
+    test('missing refresh_token surfaces actionable failure', () async {
+      final closure = makeOpenTableOauthRefreshClosure(
+        httpClient: _staticClient(http.Response('{}', 200)),
+      );
+      await expectLater(
+        () => closure(_bundle(refreshToken: null)),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          contains('missing_refresh_token'),
+        )),
+      );
+    });
+  });
+
+  // ─── Closure registry / no-closure delegation ───────────────────────
+  //
+  // Phase 5 pressure-preview findings (P1) called out four mismatches
+  // in the vendor closure registry. PR #455 resolved them by placing
+  // ADP / OpenTable / SevenRooms / Humanity on
+  // `kVendorsWithoutRefreshClosureReason` with documented delegation
+  // surfaces.
+  //
+  // 2026-05-09 RE-INVESTIGATION (this PR): on re-verification ADP and
+  // OpenTable both expose a programmatic OAuth `grant_type=refresh_token`
+  // surface using per-tenant `client_id` / `client_secret` from
+  // `metadata` — both moved into the wired registry via
+  // `makeAdpOauthRefreshClosure` / `makeOpenTableOauthRefreshClosure`.
+  // SevenRooms remains unwired with a refined reason
+  // (`sevenrooms_client_secret_not_persisted`) because the bridge drops
+  // `client_secret` after the connect-time `authenticate()` call, so the
+  // broker has no way to call `POST /2_2/auth` to mint a fresh bearer
+  // without an architectural change. Humanity stays on the map for the
+  // keyPaste reason; Agendrix / Tock / Push Operations stay too.
+  group('closure registry: documented delegation surfaces', () {
+    test(
+      'SevenRooms / Humanity / Agendrix / Tock / Push Operations each '
+      'carry a documented delegation reason and are NOT in the '
+      'production registry (ADP / OpenTable wired post-2026-05-09)',
+      () {
+        final result = worker.buildProductionRefreshClosures(
+          env: const <String, String>{},
+          httpClient: _NoopRegistryHttpClient(),
+        );
+        const expectedDelegations = <String, String>{
+          'sevenrooms': 'sevenrooms_client_secret_not_persisted',
+          'humanity': 'humanity_keypaste_password_grant_no_broker_refresh',
+          'agendrix': 'agendrix_oauth_sliding_refresh_not_yet_wired',
+          'tock': 'tock_static_api_key',
+          'push_operations': 'push_operations_partner_issued_bearer',
+        };
+        for (final entry in expectedDelegations.entries) {
+          expect(
+            worker.kVendorsWithoutRefreshClosureReason[entry.key],
+            equals(entry.value),
+            reason:
+                '${entry.key} must declare reason "${entry.value}" so the '
+                'boot log + per-row skip log surface a stable, '
+                'queryable label',
+          );
+          expect(
+            result.registry.containsKey(entry.key),
+            isFalse,
+            reason:
+                '${entry.key} must NOT be in the production registry — '
+                'rotation is delegated to the surface named by the reason',
+          );
+          expect(
+            worker.kVendorsWithoutRefreshClosure.contains(entry.key),
+            isTrue,
+            reason: '${entry.key} must be in kVendorsWithoutRefreshClosure',
+          );
+        }
+        // ADP and OpenTable are decisively wired post-2026-05-09.
+        expect(
+          result.registry.containsKey('adp'),
+          isTrue,
+          reason: 'ADP wires via makeAdpOauthRefreshClosure (per-tenant '
+              'client_id/client_secret in metadata + refresh_token)',
+        );
+        expect(
+          result.registry.containsKey('opentable'),
+          isTrue,
+          reason: 'OpenTable wires via makeOpenTableOauthRefreshClosure '
+              '(per-tenant client_id/client_secret in metadata + '
+              'refresh_token)',
+        );
+        expect(
+          worker.kVendorsWithoutRefreshClosureReason.containsKey('adp'),
+          isFalse,
+        );
+        expect(
+          worker.kVendorsWithoutRefreshClosureReason.containsKey('opentable'),
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'Humanity factory remains exported for future re-wiring even '
+      'though the registry no longer mounts it',
+      () {
+        // The factory is still importable + invocable so the closure-
+        // shape unit tests (above) keep coverage. If Humanity ships an
+        // OAuth v2 program the registry can re-wire without an API
+        // change.
+        final closure = makeHumanityOauthRefreshClosure(
+          httpClient: _NoopRegistryHttpClient(),
+          clientId: 'cid',
+          clientSecret: 'csec',
+        );
+        expect(closure, isNotNull);
+        // But Humanity is decisively excluded from the wired registry.
+        final result = worker.buildProductionRefreshClosures(
+          env: const <String, String>{
+            // Even with secrets present, Humanity must NOT register —
+            // the registry no longer reads HUMANITY_CLIENT_ID /
+            // HUMANITY_CLIENT_SECRET.
+            'HUMANITY_CLIENT_ID': 'hum-id',
+            'HUMANITY_CLIENT_SECRET': 'hum-secret',
+          },
+          httpClient: _NoopRegistryHttpClient(),
+        );
+        expect(result.registry.containsKey('humanity'), isFalse);
+        expect(result.disabledVendorIds.containsKey('humanity'), isFalse,
+            reason:
+                'Humanity must not appear on the disabled-missing-secrets '
+                'list — it is unconditionally excluded, not gated');
+      },
+    );
+  });
+}
+
+/// Minimal [http.Client] stub for registry-shape tests. The closure
+/// factories construct closures (deferred network calls) at build
+/// time; the stubbed Client is never actually invoked.
+class _NoopRegistryHttpClient implements http.Client {
+  @override
+  void close() {}
+
+  @override
+  noSuchMethod(Invocation invocation) {
+    throw StateError(
+      '_NoopRegistryHttpClient.${invocation.memberName} called; closure '
+      'builders should not perform live HTTP requests during registry-shape '
+      'tests',
+    );
+  }
 }

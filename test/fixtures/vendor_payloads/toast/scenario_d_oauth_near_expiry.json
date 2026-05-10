@@ -1,0 +1,55 @@
+{
+  "_event_envelope": {
+    "eventGuid": "evt-near-expiry-9e4d2f1a-7c5b-4e9d-89a3-2f4b6c8d0e2a",
+    "eventType": "orders.modified",
+    "headers": {
+      "toast-signature": "<<HMAC_SHA256_BASE64_OF_BODY_USING_TEST_HMAC_SECRET>>",
+      "toast-webhook-timestamp": "1778020200"
+    }
+  },
+  "_test_credential_state": {
+    "vendor_id": "toast",
+    "operator_id": "op_pressure_demo_001",
+    "location_id": "loc_pressure_demo_001",
+    "client_id": "<<TEST_CLIENT_ID>>",
+    "client_secret_ref": "<<TEST_CLIENT_SECRET_KMS_REF>>",
+    "current_access_token": "<<TEST_BEARER_NEAR_EXPIRY>>",
+    "token_expires_at": "2026-05-04T22:55:00.000Z",
+    "now_at_receive": "2026-05-04T22:50:00.000Z",
+    "expected_refresh_grant": {
+      "endpoint": "POST /authentication/v1/authentication/login",
+      "body": {
+        "clientId": "<<TEST_CLIENT_ID>>",
+        "clientSecret": "<<TEST_CLIENT_SECRET>>",
+        "userAccessType": "TOAST_MACHINE_CLIENT"
+      },
+      "expected_response": {
+        "token": {
+          "accessToken": "<<TEST_BEARER_REFRESHED>>",
+          "expiresIn": 86400,
+          "tokenType": "Bearer"
+        },
+        "status": "SUCCESS"
+      }
+    }
+  },
+  "businessDate": 20260504,
+  "closedDate": "2026-05-04T22:30:00.000Z",
+  "deleted": false,
+  "diningOption": {
+    "entityType": "DiningOption",
+    "guid": "00000000-0000-4000-a000-000000000201"
+  },
+  "entityType": "Order",
+  "guid": "9e4d2f1a-7c5b-4e9d-89a3-2f4b6c8d0e2a",
+  "modifiedDate": "2026-05-04T22:30:00.000Z",
+  "numberOfGuests": 2,
+  "openedDate": "2026-05-04T22:00:00.000Z",
+  "paymentStatus": "PAID",
+  "restaurant": {
+    "entityType": "Restaurant",
+    "guid": "3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011"
+  },
+  "totalAmount": 41.5,
+  "voided": false
+}

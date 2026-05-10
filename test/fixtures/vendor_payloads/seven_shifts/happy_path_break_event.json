@@ -1,0 +1,36 @@
+{
+  "event_type": "time_punch.edited",
+  "event_id": "evt_7s_20260504_004",
+  "company_id": 4242,
+  "time_punch": {
+    "id": 712005,
+    "user_id": 99002,
+    "shift_id": 887702,
+    "location_id": 5501,
+    "department_id": 6602,
+    "role": {
+      "id": 402,
+      "name": "Bartender"
+    },
+    "clocked_in": "2026-05-04T16:00:00Z",
+    "clocked_out": "2026-05-04T22:30:00Z",
+    "approved": true,
+    "modified": "2026-05-04T22:31:05Z",
+    "hourly_wage": 16.00,
+    "tips": 78.20,
+    "breaks": [
+      {
+        "id": 31002,
+        "in": "2026-05-04T18:00:00Z",
+        "out": "2026-05-04T18:30:00Z",
+        "paid": false
+      },
+      {
+        "id": 31003,
+        "in": "2026-05-04T20:45:00Z",
+        "out": "2026-05-04T20:55:00Z",
+        "paid": true
+      }
+    ]
+  }
+}

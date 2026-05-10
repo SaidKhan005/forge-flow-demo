@@ -1,10 +1,10 @@
 # Phase 9.8 — Inbound-Vendor T&Cs Draft
 
-Updated: 2026-05-03
-Status: Engineering / product draft pending legal review
+Updated: 2026-05-08
+Status: Operator-authored draft. The copy below is what the founder seeds into `tos_versions` for V1 launch.
 Owner: Phase 9.8 lane (parallel to email-provider slice)
 
-This is a **product draft for legal review** — copy and click-through flow for the inbound-vendor T&Cs operators agree to before connecting any POS / Reservation / Scheduling vendor. **Final version requires lawyer signoff before V1 launch.**
+This is the **operator-authored copy and click-through flow** for the inbound-vendor T&Cs operators agree to before connecting any POS / Reservation / Scheduling vendor. Forge & Flow is operator-self-served on terms — the founder authors the language and accepts it themselves; there is no external legal-review gate. Cross-ref: `docs/contracts/operator_self_served_tos_contract.md`.
 
 ## Why this exists
 
@@ -16,7 +16,7 @@ Per Hard Promise #6 (advisor speaks in recommendations) and `cutover.2` non-nego
 - Data retention + deletion rights.
 - Legal binding via clickwrap acceptance.
 
-The version below is the **product draft** — content + flow shape — for legal counsel to revise into final binding language.
+The version below is the operator-authored content + flow shape that ships as the V1 inbound-vendor T&C body. Future revisions follow the same operator-self-served pattern.
 
 ## Click-through flow
 
@@ -179,7 +179,7 @@ When a T&Cs version is superseded:
 
 ## Acceptance Criteria for the Phase 9.8 inbound-vendor-T&Cs slice
 
-- T&Cs draft above reviewed by counsel; final binding copy committed to repo.
+- T&Cs draft above finalized by the operator/founder and committed to repo as the V1 binding copy (no external legal-review gate; see `docs/contracts/operator_self_served_tos_contract.md`).
 - `tos_versions` + `tos_acceptances` schemas migrated.
 - Onboarding-welcome screen (Phase 11W.0) gates app-entry on universal acceptance.
 - Per-vendor click-through screen (Phase 8 vendor-connections widget) gates each first-connect on vendor-specific acceptance.

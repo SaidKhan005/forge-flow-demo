@@ -1,0 +1,18 @@
+{
+  "shifts": [
+    {
+      "id": 800501,
+      "employee_id": 5544,
+      "position_id": 311,
+      "position_name": "Server",
+      "start_at": "2026-01-01T02:30:00",
+      "end_at": "2026-01-01T10:30:00",
+      "published": true,
+      "published_at": "2025-12-28T11:00:00",
+      "updated_at": "2025-12-28T11:00:00"
+    }
+  ],
+  "page": 1,
+  "limit": 100,
+  "total": 1
+}

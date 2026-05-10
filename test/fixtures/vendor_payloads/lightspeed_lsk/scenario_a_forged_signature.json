@@ -1,0 +1,25 @@
+{
+  "_pressure_envelope": {
+    "headers": {
+      "content-type": "application/json",
+      "x-lightspeed-signature": "0000000000000000000000000000000000000000000000000000000000000000",
+      "x-lightspeed-timestamp": "1690488248"
+    },
+    "note": "Headers carried alongside the payload. The signature is 64 hex zeros — a forgery; HMAC-SHA256 over the raw body with any real signing secret will not produce all zeros. The verifier MUST reject before any canonical write.",
+    "signing_secret_hint": "fixture-only-secret-not-used-for-signing-this-fixture"
+  },
+  "accountFiscId": "A65315.17",
+  "business_id": "lsk-biz-7c2f",
+  "event": "order.DELIVERED",
+  "nbCovers": 2.0,
+  "payments": [
+    {
+      "code": "CASH",
+      "currency": "GBP",
+      "netAmountWithTax": "11.00",
+      "paymentMethodId": 141948669132824
+    }
+  ],
+  "timeClosed": "2023-07-27T20:04:08.734Z",
+  "timeOfOpening": "2023-07-27T19:58:48.224Z"
+}

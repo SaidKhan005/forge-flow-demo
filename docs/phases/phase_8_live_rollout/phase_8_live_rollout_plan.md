@@ -154,6 +154,86 @@ Lifecycle column flips as slices land:
 - `sandbox_verified` → `production_credentialed` after `*.live.prod` ACCEPT.
 - `production_credentialed` → `live_with_operators` auto on first operator connect.
 
+## Per-vendor follow-ups absorbed from sink fanout (2026-05-08)
+
+Twelve `8.spine-bridge-sink-fanout.*` lanes intentionally left their
+adapter side untouched per slice prompt scope. Each bullet below is a
+bounded fix the matching `*.live.sandbox` slice picks up alongside its
+sandbox verification — diff documented vs observed payloads first;
+adopt the live shape if the sandbox confirms it; never rebuild the
+slice. Source (now archived):
+[`docs/archive/sink_follow_up.md`](../../archive/sink_follow_up.md).
+
+- **`8.AL.live.sandbox` (Aloha NCR Voyix)** — flip
+  `AlohaNcrVoyixPosAdapter._canonicalize` to tri-state covers (null
+  when Aloha omits `numberOfGuests`) and align
+  `VendorCapabilityProfile.coversFieldExposed` with reality. Sink
+  already tolerates `covers = null`.
+- **`8.SQ.live.sandbox` (Square)** — teach
+  `SquarePosAdapter._orderToCanonicalFact` to project `covers_source`
+  as `reservation_plus_walkin` / `manual_fallback` when the
+  surrounding signal warrants, instead of always emitting
+  `forecast_fallback`. Sink hard-NULLs `covers` per Square Order
+  schema and threads adapter `covers_source` through unchanged.
+- **`8.TS.live.sandbox` (Toast)** — thread
+  `wipeCredentialsPreserveWatermark` through `ToastPosAdapter.disconnect`
+  so credential ciphertexts blank in `vendor_credentials` on
+  operator-initiated disconnect (sink helper exists; adapter currently
+  reports `credentialsWiped: true` without invoking it).
+- **`8.CL.live.sandbox` (Clover)** — AND the sink's unconditional
+  `webhookUnregistered: true` with the
+  `CloverWebhookRegistry.unregister` result so a failed
+  `DELETE /v3/apps/{aId}/webhooks/{id}` surfaces to the operator
+  instead of being silently masked.
+- **`8.RV.live.sandbox` (Revel Systems)** — add a connect → backfill
+  → poll → disconnect smoke against the real `RevelPostgresSink` to
+  exercise `upsertConnection` end-to-end (the Wave B test suite only
+  exercises canonical-fact + watermark + demo-flip + readAccessToken
+  paths against an in-memory fake gateway).
+- **`8.LSK.live.sandbox` (Lightspeed K-Series)** — add a
+  webhook-flavored smoke that walks `InboundWebhookHandler.dispatch`
+  → signature verifier → `gateway.writeSalesFact` to pin the webhook
+  lane against the same `cover_facts` idempotency UNIQUE on a real
+  arrival (current test suite only smokes `pollIncremental`).
+- **`8R.TC.live.sandbox` (Tock)** — diff observed sandbox payloads
+  against `documentedPerTockReservation20260504`; if Tock actually
+  emits `arrived_at` / `seated_at` / `left_at` / `canceled_at`, adopt
+  in the adapter and switch the sink's `seated_at` / `cancelled_at`
+  columns from `null`-literal to bound parameters (rename the
+  parameter keys so the banned-grep stays satisfied).
+- **`8R.SR.live.sandbox` (SevenRooms)** — widen
+  `SevenRoomsReservationGateway.updateWatermark` and `appendSyncLog`
+  to accept the `(operator_id, location_id)` tenant tuple directly
+  (matching Libro's shape) so the sink's per-write `connector_connection`
+  lookup + RLS-bypass round-trip drops out.
+- **`8.S.HM.live.sandbox` (Humanity TCP)** — widen
+  `HumanityWatermarkRow` / `HumanityGateway.writeWatermark` to carry
+  `connection_id` end-to-end and drop the per-write
+  `connector_connection.connection_id` SELECT in
+  `HumanityPostgresSink.writeWatermark`.
+- **`8.S.PU.live.sandbox` (Push Operations)** — wage-class promotion
+  path: when Push Operations exposes a documented pay-rate join (or a
+  V2 lift moves to `perEmployeeWithRates`), update the per-file
+  banned-grep ledger and the Test G hours-only invariant in the same
+  PR. Silent re-introduction of `pay_rate` / `labor_dollars` tokens
+  would slip past today's V1 `hoursOnly` guard.
+- **`8.S.AG.live.sandbox` (Agendrix)** — retire the sink-side
+  `employee_id` → `employee_source_id` translation by teaching the
+  Agendrix adapter to emit `employee_source_id` directly (and lift to
+  `perEmployeeWithRates` if a future Agendrix release exposes
+  per-shift pay).
+- **`8.S.ADP.live.sandbox` (ADP Workforce Now / Manager)** — emit
+  explicit `hours_worked` on `AdpCanonicalTimePunchFact` once the
+  live ADP payload confirms whether ADP exposes a precomputed
+  duration on `time_event`; until then the sink's
+  `(shift_end - shift_start)` derivation with `0` fallback for open
+  punches stays the single source.
+
+Watermark / dispatcher wiring follow-ups from the same fanout (TC
+unified-dispatcher resource constant, PU dispatcher route, SR
+dispatcher route, LSK adapter-side tenant threading, etc.) close as
+the next sync-worker pass touches them; not tracked per vendor here.
+
 ## Slice prompt template (use for every `*.live.*` slice)
 
 ```text

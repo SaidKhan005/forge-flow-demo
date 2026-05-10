@@ -1,0 +1,30 @@
+{
+  "_collision_setup": {
+    "operator_id": "op_alpha_001",
+    "location_id": "loc_alpha_yvr_001",
+    "shared_string_value": "te_412901",
+    "agendrix_row_namespace": {
+      "vendor_id": "agendrix",
+      "field": "time_entries[].id (Agendrix time entry id)"
+    },
+    "foreign_row_namespace": {
+      "vendor_id": "seven_shifts",
+      "field": "time_punches[].id (7shifts time punch id)",
+      "note": "Same opaque-string value, different vendor namespace; per field_mapping.md the adapter MUST treat user_id and entity_id as within-vendor namespaces."
+    }
+  },
+  "time_entries": [
+    {
+      "id": "te_412901",
+      "user_id": "usr_98231",
+      "position": {
+        "id": "pos_foh_server",
+        "name": "Server"
+      },
+      "start_time": "2026-05-02T15:00:00.000Z",
+      "end_time": "2026-05-02T22:30:00.000Z",
+      "updated_at": "2026-05-02T22:32:14.000Z"
+    }
+  ],
+  "next_cursor": ""
+}

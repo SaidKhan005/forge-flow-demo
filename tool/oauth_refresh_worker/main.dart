@@ -21,13 +21,18 @@
 //   2. For each claimed row: looks up the per-vendor production
 //      OAuth refresh closure (Toast / Square / Clover / Lightspeed
 //      LSK / Aloha NCR Voyix / Oracle MICROS Simphony / Revel /
-//      7shifts / QuickBooks Time / Libro / Humanity per
+//      7shifts / QuickBooks Time / Libro / ADP / OpenTable per
 //      `lib/integrations/_common/production_oauth_refresh_closures.dart`).
 //      Vendors WITHOUT a closure (SevenRooms, Tock, Push Operations,
-//      Agendrix, ADP, OpenTable per the closure file's documented
-//      coverage list) are SKIPPED with a single trace log: their
-//      bridges either use static API keys or have the transport
-//      handle refresh internally.
+//      Agendrix, Humanity per [kVendorsWithoutRefreshClosureReason])
+//      are SKIPPED with a structured trace log carrying the per-vendor
+//      delegation reason: their rotation lives elsewhere — static API
+//      keys (Tock, Push Operations), keyPaste connect-time bearer
+//      (Humanity), an OAuth sliding-refresh whose closure factory
+//      isn't wired yet (Agendrix), or `client_credentials` re-exchange
+//      that requires `client_secret` ciphertext on the credential row
+//      which the bridge does not currently persist (SevenRooms — see
+//      reason `sevenrooms_client_secret_not_persisted`).
 //   3. Calls `VendorCredentialBroker.refreshAccessToken(...)` with
 //      the resolved closure. The broker:
 //        * acquires a per-(operator, location, vendor) Future lock
@@ -90,11 +95,13 @@
 //
 // Vendor coverage matches
 // `lib/integrations/_common/production_oauth_refresh_closures.dart`:
-//   POS:   toast, square, clover, lightspeed_lsk, aloha_ncr_voyix,
-//          oracle_micros_simphony, revel
-//   Labor: 7shifts, quickbooks_time, libro, humanity
-//   No closure (skipped): sevenrooms, tock, push_operations,
-//          agendrix, adp, opentable
+//   POS:        toast, square, clover, lightspeed_lsk, aloha_ncr_voyix,
+//               oracle_micros_simphony, revel
+//   Labor:      7shifts, quickbooks_time, libro, adp
+//   Reservation: opentable
+//   No closure (skipped, with documented reason in
+//   [kVendorsWithoutRefreshClosureReason]): sevenrooms, tock,
+//          push_operations, agendrix, humanity
 //
 // CLAUDE.md alignment:
 //   * HP #1 — pure transport swap. The worker reads `vendor_credentials`
@@ -387,20 +394,64 @@ typedef RefreshClosure =
 /// Tests inject a fake map.
 typedef RefreshClosureRegistry = Map<String, RefreshClosure>;
 
-/// Vendor ids that intentionally do NOT have a refresh closure. Their
-/// bridges either use static API keys (Tock, Agendrix) or the
-/// transport handles refresh internally (SevenRooms, ADP, OpenTable,
-/// Push Operations). The worker logs and skips these rows with one
-/// trace per skip; no failure counter increment. This list mirrors
-/// the documented coverage in
-/// `lib/integrations/_common/production_oauth_refresh_closures.dart`.
-const Set<String> kVendorsWithoutRefreshClosure = <String>{
-  'sevenrooms',
-  'tock',
-  'push_operations',
-  'agendrix',
-  'adp',
-  'opentable',
+/// Vendor ids that intentionally do NOT have a broker-side refresh
+/// closure, paired with a structured reason explaining where rotation
+/// actually happens. The worker logs and skips these rows with one
+/// trace per skip carrying the reason; no failure counter increment.
+///
+/// Categories of "no closure":
+///   * Static API key vendors — no OAuth at all (Tock).
+///   * Static partner-issued bearer — no refresh path documented; the
+///     bearer is provisioned out-of-band and re-issued by vendor
+///     partner-ops (Push Operations).
+///   * KeyPaste connection path — `capabilityProfile.authMode =
+///     keyPaste` with no broker-driven refresh (Humanity v1 issues a
+///     bearer via legacy password grant at connect time; the v1
+///     credential lifetime is managed by reconnect, not refresh).
+///   * Adapter-only declaration with no closure factory wired yet —
+///     refresh is conceptually OAuth-driven but the closure factory is
+///     not implemented in
+///     `lib/integrations/_common/production_oauth_refresh_closures.dart`
+///     (Agendrix sliding-refresh).
+///   * Architectural gap (`client_secret` not persisted) — the
+///     `client_credentials` re-exchange shape requires the per-tenant
+///     `client_secret` on the credential row, but the existing connect
+///     path drops `client_secret` after minting the initial bearer
+///     (SevenRooms). Re-wiring requires persisting `client_secret`
+///     ciphertext + a connect-flow update; out of scope for this PR.
+///
+/// 2026-05-09 RE-INVESTIGATION: PR #455 placed ADP, OpenTable, and
+/// SevenRooms on this map under the categories
+/// `adp_partner_ops_mtls_out_of_band`,
+/// `opentable_transport_internal_refresh`, and
+/// `sevenrooms_transport_cron_hour05`. On re-verification ADP and
+/// OpenTable both expose a programmatic OAuth `grant_type=refresh_token`
+/// surface using per-tenant `client_id` / `client_secret` from
+/// `metadata` — both moved into [buildProductionRefreshClosures] this
+/// PR. SevenRooms remains here under
+/// `sevenrooms_client_secret_not_persisted` because the bridge's
+/// `persistIssuedBearerToken` only writes `client_id` to metadata; the
+/// `client_secret` is dropped after the connect-time `authenticate()`
+/// call, so the broker has no way to call `POST /2_2/auth` to mint a
+/// fresh bearer without an architectural change.
+///
+/// The reason string is exposed in the boot-time registry log and in
+/// every per-row skip event so a deploy review can verify intent and
+/// audits can match the row to the documented delegation surface.
+const Map<String, String> kVendorsWithoutRefreshClosureReason =
+    <String, String>{
+  'tock': 'tock_static_api_key',
+  'push_operations': 'push_operations_partner_issued_bearer',
+  'sevenrooms': 'sevenrooms_client_secret_not_persisted',
+  'humanity': 'humanity_keypaste_password_grant_no_broker_refresh',
+  'agendrix': 'agendrix_oauth_sliding_refresh_not_yet_wired',
+};
+
+/// Vendor ids that intentionally do NOT have a refresh closure. Backed
+/// by [kVendorsWithoutRefreshClosureReason] so the set + reason map
+/// stay in lockstep.
+final Set<String> kVendorsWithoutRefreshClosure = <String>{
+  ...kVendorsWithoutRefreshClosureReason.keys,
 };
 
 // ─── Vendor app-credential env loader ───────────────────────────────
@@ -437,6 +488,14 @@ abstract class OAuthRefreshWorkerVendorEnvNames {
   static const String cloverAppId = 'CLOVER_APP_ID';
 
   // ─ Humanity ─
+  //
+  // Retained for backward compatibility with existing callers
+  // (`tool/pressure/p3c_oauth_refresh_storm.dart`,
+  // `test/load/pressure/p3c_oauth_refresh_storm_runner_test.dart`).
+  // Humanity is no longer wired in `buildProductionRefreshClosures` —
+  // it lives on `kVendorsWithoutRefreshClosureReason` because the
+  // adapter declares `keyPaste` and v1 has no broker-driven refresh
+  // path. See `docs/integrations/humanity/oauth_shape.md`.
   static const String humanityClientId = 'HUMANITY_CLIENT_ID';
   static const String humanityClientSecret = 'HUMANITY_CLIENT_SECRET';
 
@@ -482,20 +541,36 @@ class ProductionRefreshClosureBuildResult {
   final Map<String, String> disabledVendorIds;
 }
 
-/// Wire the 11 production OAuth refresh closure factories in
+/// Wire the production OAuth refresh closure factories in
 /// `lib/integrations/_common/production_oauth_refresh_closures.dart`
 /// into a [RefreshClosureRegistry] keyed by `vendor_credentials.vendor_id`.
 ///
 /// Vendors gated on optional ProxyConfig-style app credentials (Aloha
-/// NCR Voyix / Square / Clover / Humanity / QuickBooks Time / 7shifts /
-/// Libro) are skipped when their env vars are missing — the worker
-/// then logs-and-skips any claimed row for those vendors at run time
+/// NCR Voyix / Square / Clover / QuickBooks Time / 7shifts / Libro)
+/// are skipped when their env vars are missing — the worker then
+/// logs-and-skips any claimed row for those vendors at run time
 /// (same warn-disable pattern as the binder).
 ///
-/// Vendors NOT in this builder (SevenRooms / Tock / Push Operations /
-/// Agendrix / ADP / OpenTable) deliberately have no closure — their
-/// bridges either use static API keys or have the transport handle
-/// refresh internally. They land in [kVendorsWithoutRefreshClosure].
+/// Vendors NOT in this builder deliberately have no closure — their
+/// rotation surface lives elsewhere. They land in
+/// [kVendorsWithoutRefreshClosure] / [kVendorsWithoutRefreshClosureReason]:
+///
+///   * SevenRooms — `client_credentials` re-exchange requires
+///     `client_id + client_secret + venue_id`, but the bridge persists
+///     only `client_id`; the `client_secret` is dropped after the
+///     connect-time `authenticate()` call. Re-wiring is an
+///     architectural change (persist `client_secret` ciphertext on the
+///     credential row + connect-flow update) that's out of scope for
+///     this PR — see `docs/integrations/sevenrooms/oauth_shape.md` for
+///     the follow-up spec.
+///   * Tock — static API key on `metadata.api_key`.
+///   * Push Operations — partner-issued bearer.
+///   * Agendrix — OAuth sliding-refresh per adapter declaration but no
+///     closure factory wired yet.
+///   * Humanity — keyPaste (legacy `password` grant) at connect time;
+///     no broker refresh path. Inverse of the Phase 5 mismatch (the
+///     adapter's keyPaste is the source of truth; v2 OAuth-program
+///     re-wiring is future work).
 ProductionRefreshClosureBuildResult buildProductionRefreshClosures({
   required Map<String, String> env,
   required http.Client httpClient,
@@ -506,6 +581,21 @@ ProductionRefreshClosureBuildResult buildProductionRefreshClosures({
   // ─── Toast ─ no app-wide secrets; per-tenant client_id / client_secret
   // live on bundle metadata.
   registry['toast'] = makeToastOauthRefreshClosure(httpClient: httpClient);
+
+  // ─── ADP ─ no app-wide secrets; per-tenant client_id / client_secret
+  // live on bundle metadata. Module flows from connector_connection.metadata
+  // (per AdpConnectionRow.toMetadata) with metadata + a documented default
+  // as fallbacks. Production mTLS lands on the injected `httpClient` at
+  // boot — the closure itself is mTLS-agnostic.
+  registry['adp'] = makeAdpOauthRefreshClosure(httpClient: httpClient);
+
+  // ─── OpenTable ─ no app-wide secrets; per-tenant client_id /
+  // client_secret live on bundle metadata. The transport's `refresh()`
+  // method exists but nothing drives it automatically — wiring through
+  // the broker makes the rotation surface single-owner (matches the
+  // Square / Clover pattern).
+  registry['opentable'] =
+      makeOpenTableOauthRefreshClosure(httpClient: httpClient);
 
   // ─── Aloha NCR Voyix ─ binder gates on hasAlohaNcrVoyixCredentials.
   // The closure itself reads client_id / client_secret /
@@ -601,18 +691,21 @@ ProductionRefreshClosureBuildResult buildProductionRefreshClosures({
     disabled['quickbooks_time'] = 'intuit_oauth_credentials_missing';
   }
 
-  // ─── Humanity ─ app-wide client_id / client_secret.
-  if (_hasNonBlank(env, OAuthRefreshWorkerVendorEnvNames.humanityClientId) &&
-      _hasNonBlank(
-          env, OAuthRefreshWorkerVendorEnvNames.humanityClientSecret)) {
-    registry['humanity'] = makeHumanityOauthRefreshClosure(
-      httpClient: httpClient,
-      clientId: env[OAuthRefreshWorkerVendorEnvNames.humanityClientId]!,
-      clientSecret: env[OAuthRefreshWorkerVendorEnvNames.humanityClientSecret]!,
-    );
-  } else {
-    disabled['humanity'] = 'humanity_oauth_credentials_missing';
-  }
+  // ─── Humanity ─ DO NOT WIRE.
+  //
+  // The Humanity labor adapter declares
+  // `capabilityProfile.authMode = VendorAuthMode.keyPaste` because the
+  // v1 connect flow uses legacy username / password (mints a session
+  // bearer via the `password` grant). The worker has no programmatic
+  // refresh path for keyPaste vendors — operators must reconnect when
+  // the bearer expires. Listed in [kVendorsWithoutRefreshClosureReason]
+  // so claimed rows are logged-and-skipped with the documented reason.
+  //
+  // The factory `makeHumanityOauthRefreshClosure` stays exported for
+  // future re-wiring if Humanity ships their `oauthOrKeyPaste` v2
+  // partnership program; the existing closure unit tests
+  // (`test/integrations/_common/production_oauth_refresh_closures_test.dart`)
+  // continue to exercise the factory.
 
   // ─── Libro ─ app-wide client_id / client_secret.
   if (_hasNonBlank(env, OAuthRefreshWorkerVendorEnvNames.libroClientId) &&
@@ -1052,16 +1145,20 @@ Future<WorkerTickResult> runWorkerTick({
     if (shouldStop?.call() ?? false) break;
     final closure = refreshClosures[row.vendorId];
     if (closure == null) {
-      // Vendors without a refresh closure use static API keys or
-      // handle refresh inside the transport. Log once per skip; no
-      // failure-count increment.
+      // Vendors without a refresh closure delegate rotation elsewhere
+      // (vendor partner-ops mTLS / transport-internal / transport cron
+      // / static API key / keyPaste). Log once per skip with the
+      // documented reason; no failure-count increment.
       skippedNoCloser += 1;
+      final reason = kVendorsWithoutRefreshClosureReason[row.vendorId] ??
+          'unknown_no_closure';
       // ignore: avoid_print — Cloud Run captures stdout into Cloud
       // Logging; structured JSON keeps the log query stable.
       stdoutSink.writeln(jsonEncode(<String, Object?>{
         'event': 'oauth_refresh_skipped_no_closer',
         'vendor_id': row.vendorId,
         'credential_id': row.credentialId,
+        'reason': reason,
       }));
       continue;
     }
@@ -1387,8 +1484,14 @@ Future<int> runCli(
       '${jsonEncode(<String, Object?>{
         'wired': closureBuild.wiredVendorIds,
         'disabled_missing_secrets': closureBuild.disabledVendorIds,
-        'unsupported_no_closure': kVendorsWithoutRefreshClosure.toList()
-          ..sort(),
+        // Surface the per-vendor reason so a deploy review can verify
+        // each "no closure" entry maps to the documented delegation
+        // surface (vendor partner-ops mTLS / transport-internal /
+        // transport cron / static API key / keyPaste / not-yet-wired).
+        'unsupported_no_closure': Map<String, String>.fromEntries(
+          (kVendorsWithoutRefreshClosureReason.entries.toList()
+            ..sort((a, b) => a.key.compareTo(b.key))),
+        ),
       })}',
     );
   }

@@ -1,0 +1,28 @@
+{
+  "transport": "webhook",
+  "method": "POST",
+  "path": "/v1/webhooks/tock/{operatorId}/{locationId}",
+  "headers": {
+    "content-type": "application/json",
+    "x-tock-signature": "<computed-by-test-harness-over-raw-body>",
+    "x-tock-webhook-timestamp": "1778688060"
+  },
+  "body": {
+    "id": "res_b2c4d6f8-1357-4f9a-bcde-2468ace02468",
+    "businessId": "bus_3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011",
+    "createdTimestamp": "2026-05-08T17:30:00.000Z",
+    "lastUpdatedTimestamp": "not-a-real-timestamp",
+    "serviceDateTimestamp": "2026-05-09T01:00:00.000Z",
+    "partySize": "four",
+    "status": "EXPECTED"
+  },
+  "_meta": {
+    "expected_outcome": "reject",
+    "expected_failure_reasons": [
+      "lastUpdatedTimestamp is not ISO-8601 (DateTime.parse throws FormatException)",
+      "partySize is a String, not int (canonicalization assigns String to canonicalFact['party_size'] which downstream sink schema rejects)"
+    ],
+    "parser_under_test": "lib/integrations/reservation/tock_reservation_adapter.dart::_canonicalize",
+    "notes": "Per docs/integrations/tock/field_mapping.md the documented types for these two fields are ISO-8601 UTC and int respectively. The adapter MUST reject this payload at parse time (or the sink MUST reject at upsert time) — assertion is no DB write."
+  }
+}

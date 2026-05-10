@@ -1,0 +1,35 @@
+{
+  "_event_envelope": {
+    "eventGuid": "evt-7f3e8c91-9b5a-4d2c-8e7f-1a4b3c5d6e7f",
+    "eventType": "orders.modified",
+    "headers": {
+      "toast-signature": "<<HMAC_SHA256_BASE64_OF_BODY_USING_TEST_HMAC_SECRET>>",
+      "toast-webhook-timestamp": "1778014800"
+    }
+  },
+  "businessDate": 20260504,
+  "closedDate": "2026-05-04T20:50:00.000Z",
+  "deleted": false,
+  "diningOption": {
+    "entityType": "DiningOption",
+    "guid": "00000000-0000-4000-a000-000000000202"
+  },
+  "entityType": "Order",
+  "guid": "7f3e8c91-9b5a-4d2c-8e7f-1a4b3c5d6e7f",
+  "modifiedDate": "2026-05-04T20:50:00.000Z",
+  "numberOfGuests": null,
+  "openedDate": "2026-05-04T20:35:00.000Z",
+  "paidDate": "2026-05-04T20:49:30.000Z",
+  "paymentStatus": "PAID",
+  "restaurant": {
+    "entityType": "Restaurant",
+    "guid": "3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011"
+  },
+  "server": null,
+  "source": "Online Ordering",
+  "totalAmount": 24.5,
+  "totalAmountWithoutTaxAndDiscounts": 22.5,
+  "totalDiscountAmount": 0.0,
+  "totalTaxAmount": 2.0,
+  "voided": false
+}

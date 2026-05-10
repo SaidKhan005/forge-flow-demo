@@ -1,0 +1,17 @@
+{
+  "_endpoint": "GET /v1.0/shifts?last_modified=2026-05-01T00:00:00Z",
+  "_transport": "poll",
+  "_note": "Sparse path — shift row missing position_name / position. HumanityShiftDto.tryFromMap returns null per lines 215-217 (posRaw is! String || posRaw.isEmpty), so the adapter drops the row at the boundary. The wage-source pipeline then routes through wage_source=app_fallback because Humanity exposes only role-level wage rates, not per-employee, per docs/integrations/humanity/field_mapping.md `Forbidden fields` section.",
+  "data": [
+    {
+      "id": "9300",
+      "employee_id": "EMP-300",
+      "in_time": "2026-05-01T16:00:00Z",
+      "out_time": "2026-05-01T22:00:00Z",
+      "updated": "2026-05-01T22:05:00Z",
+      "status": "approved"
+    }
+  ],
+  "next_cursor": null,
+  "last_modified_seen": "2026-05-01T22:05:00Z"
+}

@@ -1,0 +1,22 @@
+{
+  "_pressure_envelope": {
+    "endpoint": "POST /oauth/token",
+    "grant_type": "refresh_token",
+    "note": "OAuth token-exchange response shape per Lightspeed K-Series authorization-overview docs. The adapter's oauth_refresh_cron runs at 5 min past the hour and refreshes any token whose token_expires_at < now + 24h. expires_in = 1500 seconds (25 minutes) is the documented access-token TTL — within the 24h refresh horizon, so the cron will refresh it.",
+    "refresh_request": {
+      "body_form_encoded": "grant_type=refresh_token&refresh_token=<placeholder-old-refresh-token>",
+      "headers": {
+        "authorization": "Basic <base64(client_id:client_secret)>",
+        "content-type": "application/x-www-form-urlencoded"
+      }
+    }
+  },
+  "access_token": "placeholder.access.token.eyJhbGciOiJSUzI1NiIs",
+  "expires_in": 1500,
+  "not-before-policy": 0,
+  "refresh_expires_in": 3456000,
+  "refresh_token": "placeholder.refresh.token.eyJhbGciOiJIUzUxMiIs",
+  "scope": "orders-api financial-api offline_access",
+  "session_state": "26a01a6c-9603-4596-a48d-86bbcaa54ef8",
+  "token_type": "Bearer"
+}

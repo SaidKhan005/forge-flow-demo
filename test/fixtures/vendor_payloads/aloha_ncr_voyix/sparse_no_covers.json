@@ -1,0 +1,12 @@
+{
+  "eventId": "evt-chk-2026-05-04-201",
+  "eventType": "aloha.check.modified",
+  "siteId": "site-aloha-001",
+  "checkId": "chk-2026-05-04-201",
+  "openedAt": "2026-05-04T11:30:00.000Z",
+  "closedAt": "2026-05-04T11:42:00.000Z",
+  "modifiedAt": "2026-05-04T11:42:00.000Z",
+  "numberOfGuests": null,
+  "totalAmount": 12.95,
+  "voided": false
+}

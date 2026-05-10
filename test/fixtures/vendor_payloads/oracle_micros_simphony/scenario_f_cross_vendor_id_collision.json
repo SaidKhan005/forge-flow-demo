@@ -1,0 +1,28 @@
+{
+  "expected_outcome": "namespace_isolated",
+  "items": [
+    {
+      "header": {
+        "chkNum": 412901,
+        "cmplOrClsdUTC": "2026-05-02T23:32:14.000Z",
+        "guestCount": 5,
+        "lastUpdatedUTC": "2026-05-02T23:32:14.000Z",
+        "locRef": "001-PIE-NYC",
+        "opnUTC": "2026-05-02T22:45:00.000Z",
+        "subTtlCents": 12485
+      }
+    }
+  ],
+  "nextCursor": "",
+  "vendor_id_collision_context": {
+    "_note": "Toast also uses an integer order id; Toast's id space happens to overlap with Simphony's chkNum space. The canonical UNIQUE on (vendor_id, operator_id, vendor_entity_id, vendor_modified_at) namespaces by vendor_id, so the collision cannot reach the canonical write. The framework's idempotency_key shape ('vendor_id:operator_id:vendor_entity_id') prevents shadow-write across vendors.",
+    "colliding_vendor_id": "toast",
+    "colliding_vendor_entity_id": "412901",
+    "this_vendor_id": "oracle_micros_simphony",
+    "this_vendor_entity_id": "412901",
+    "expected_canonical_keys": [
+      "oracle_micros_simphony:op_demo_001:412901:2026-05-02T23:32:14Z",
+      "toast:op_demo_001:412901:<toast_modified_at>"
+    ]
+  }
+}

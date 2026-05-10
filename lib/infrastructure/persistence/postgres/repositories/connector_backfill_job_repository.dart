@@ -170,6 +170,40 @@ class ConnectorBackfillJobRepository extends OperatorScopedRepository {
     required String workerId,
     String? actorUserId,
     Duration claimStaleAfter = defaultClaimStaleAfter,
+  }) async {
+    final details = await claimNextWithPriorClaim(
+      operatorId: operatorId,
+      locationId: locationId,
+      workerId: workerId,
+      actorUserId: actorUserId,
+      claimStaleAfter: claimStaleAfter,
+    );
+    return details?.job;
+  }
+
+  /// Same SQL contract as [claimNext] (the same SKIP LOCKED CTE +
+  /// stale-recovery predicate; no logic change), but the returned
+  /// [BackfillClaimDetails] also exposes the row's `worker_id` and
+  /// `attempt_count` AS THEY STOOD BEFORE the claim's UPDATE
+  /// overwrote them. The dispatch-layer audit emitter
+  /// (`AuditEmittingBackfillJobStore`) uses these to record the
+  /// `backfill_job.reclaimed` event with the prior pod's identifier
+  /// captured in `payload_jsonb` — without this surface the prior
+  /// `worker_id` is lost the moment pod B's claim lands (the strongest
+  /// CONTRACT GAP from PR #457's repo tests).
+  ///
+  /// Returns null when no claimable row exists. When the claim lands
+  /// against a `pending` row that has never been claimed,
+  /// [BackfillClaimDetails.priorWorkerId] is null and
+  /// [BackfillClaimDetails.priorAttemptCount] is the row's
+  /// attempt_count BEFORE this claim's increment (typically 0 for a
+  /// fresh row).
+  Future<BackfillClaimDetails?> claimNextWithPriorClaim({
+    required String operatorId,
+    required String locationId,
+    required String workerId,
+    String? actorUserId,
+    Duration claimStaleAfter = defaultClaimStaleAfter,
   }) {
     _requireNonBlank('workerId', workerId);
     if (claimStaleAfter <= Duration.zero) {
@@ -184,10 +218,11 @@ class ConnectorBackfillJobRepository extends OperatorScopedRepository {
       locationId: locationId,
       userId: actorUserId,
     );
-    return withTenant<FirstConnectionBackfillJob?>(ctx, (exec) async {
+    return withTenant<BackfillClaimDetails?>(ctx, (exec) async {
       final rows = await exec.query(
         'with claimed as ('
-        '  select job_id '
+        '  select job_id, worker_id as prior_worker_id, '
+        '    attempt_count as prior_attempt_count '
         '  from public.connector_backfill_jobs '
         '  where operator_id = @operator_id::uuid '
         '    and location_id = @location_id::uuid '
@@ -212,7 +247,9 @@ class ConnectorBackfillJobRepository extends OperatorScopedRepository {
         '      updated_by = @actor_user_id '
         '  from claimed '
         '  where jobs.job_id = claimed.job_id '
-        '  returning $_selectColumns'
+        '  returning $_selectColumns, '
+        '    claimed.prior_worker_id as prior_worker_id, '
+        '    claimed.prior_attempt_count as prior_attempt_count'
         ') '
         'select * from updated',
         parameters: <String, Object?>{
@@ -224,7 +261,13 @@ class ConnectorBackfillJobRepository extends OperatorScopedRepository {
         },
       );
       if (rows.isEmpty) return null;
-      return FirstConnectionBackfillJob.fromRow(rows.single);
+      final row = rows.single;
+      return BackfillClaimDetails(
+        job: FirstConnectionBackfillJob.fromRow(row),
+        priorWorkerId: row['prior_worker_id'] as String?,
+        priorAttemptCount:
+            (row['prior_attempt_count'] as num?)?.toInt() ?? 0,
+      );
     });
   }
 
@@ -442,4 +485,36 @@ class ConnectorBackfillJobRepository extends OperatorScopedRepository {
       throw ArgumentError.value(value, name, 'must be non-blank');
     }
   }
+}
+
+/// Result of [ConnectorBackfillJobRepository.claimNextWithPriorClaim] —
+/// carries the post-claim [FirstConnectionBackfillJob] AND the row's
+/// pre-claim `worker_id` / `attempt_count`. The pre-claim values are
+/// surfaced solely so the dispatch-layer audit emitter can record the
+/// `backfill_job.reclaimed` event with the prior pod's identifier
+/// captured in payload_jsonb — without this surface the prior worker_id
+/// is irrecoverable the moment the claim's UPDATE overwrites the row
+/// (the CONTRACT GAP PR #457 surfaced).
+class BackfillClaimDetails {
+  const BackfillClaimDetails({
+    required this.job,
+    required this.priorWorkerId,
+    required this.priorAttemptCount,
+  });
+
+  final FirstConnectionBackfillJob job;
+
+  /// `worker_id` value stored on the row BEFORE this claim landed.
+  /// Null when the row was claimed for the first time (a `pending`
+  /// row with no prior claim history). Non-null on a re-claim — that
+  /// is the production signal "pod A's claim went stale and pod B
+  /// inherited the row" and the value the audit row must capture.
+  final String? priorWorkerId;
+
+  /// `attempt_count` value BEFORE this claim's increment.
+  /// `job.attemptCount == priorAttemptCount + 1` after a successful
+  /// claim. Used as a defense-in-depth check so the audit row's
+  /// `prior_claim_count` / `new_claim_count` cannot drift from the
+  /// row state.
+  final int priorAttemptCount;
 }

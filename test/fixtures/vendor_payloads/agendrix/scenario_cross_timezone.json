@@ -1,0 +1,23 @@
+{
+  "_location_context": {
+    "operator_id": "op_alpha_001",
+    "location_id": "loc_alpha_yvr_001",
+    "iana_timezone": "America/Vancouver",
+    "company_zone_per_agendrix_settings": "America/Toronto",
+    "note": "Operator's Agendrix company is Toronto-headquartered (per oauth_shape.md grant_scope = operatorWide), but THIS bound location is in Vancouver. Server-issued timestamps are still UTC (explicit Z) per agendrix.asUtc policy."
+  },
+  "time_entries": [
+    {
+      "id": "te_614001",
+      "user_id": "usr_98231",
+      "position": {
+        "id": "pos_foh_server",
+        "name": "Server"
+      },
+      "start_time": "2026-04-15T03:00:00.000Z",
+      "end_time": "2026-04-15T11:00:00.000Z",
+      "updated_at": "2026-04-15T11:02:33.000Z"
+    }
+  ],
+  "next_cursor": ""
+}

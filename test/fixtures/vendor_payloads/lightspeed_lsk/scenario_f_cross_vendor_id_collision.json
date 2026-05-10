@@ -1,0 +1,25 @@
+{
+  "_pressure_envelope": {
+    "collision_note": "The Lightspeed K-Series accountFiscId `A65315.17` is reused as a Toast `guid` — same string id, two different vendors. The framework's idempotency UNIQUE on (vendor_id, operator_id, vendor_entity_id, vendor_modified_at) namespaces by vendor_id so the LSK row and Toast row coexist as two distinct canonical facts.",
+    "headers": {
+      "content-type": "application/json",
+      "x-lightspeed-signature": "<computed-at-test-time-over-raw-body>",
+      "x-lightspeed-timestamp": "<computed-at-test-time>"
+    },
+    "vendor_id_for_idempotency": "lightspeed_lsk"
+  },
+  "accountFiscId": "A65315.17",
+  "business_id": "lsk-biz-7c2f",
+  "event": "order.DELIVERED",
+  "nbCovers": 2.0,
+  "payments": [
+    {
+      "code": "CASH",
+      "currency": "GBP",
+      "netAmountWithTax": "11.00",
+      "paymentMethodId": 141948669132824
+    }
+  ],
+  "timeClosed": "2023-07-27T20:04:08.734Z",
+  "timeOfOpening": "2023-07-27T19:58:48.224Z"
+}

@@ -1,0 +1,25 @@
+{
+  "_pressure_envelope": {
+    "headers": {
+      "content-type": "application/json",
+      "x-lightspeed-signature": "<computed-at-test-time-over-raw-body>",
+      "x-lightspeed-timestamp": "<computed-at-test-time>"
+    },
+    "note": "timeOfOpening and timeClosed are 24h+1 in the future. Signature is valid (computed at test time); sanity rule `opened_in_future` MUST drop before any canonical write.",
+    "reference_now_utc": "2026-05-08T12:00:00Z"
+  },
+  "accountFiscId": "A65315.future",
+  "business_id": "lsk-biz-7c2f",
+  "event": "order.DELIVERED",
+  "nbCovers": 1.0,
+  "payments": [
+    {
+      "code": "CASH",
+      "currency": "GBP",
+      "netAmountWithTax": "12.00",
+      "paymentMethodId": 141948669132824
+    }
+  ],
+  "timeClosed": "2026-05-09T13:30:00.000Z",
+  "timeOfOpening": "2026-05-09T13:00:00.000Z"
+}

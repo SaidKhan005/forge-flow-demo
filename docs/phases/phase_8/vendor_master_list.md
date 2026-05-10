@@ -290,7 +290,7 @@ These are parallel critical paths to engineering. Lead times measured in weeks-t
 
 | Vendor | Lane | Estimated lead time |
 |---|---|---|
-| Toast | Partner Program (compliance + security + legal review) | 6-12 weeks |
+| Toast | Partner Program (compliance + security + vendor-side paperwork review) | 6-12 weeks |
 | Lightspeed Restaurant K-Series | Standard tier (self-serve) or Partner tier | 1-2 weeks self-serve; 4-8 weeks Partner |
 | Oracle MICROS Simphony | Simphony Partner Integration Program | 8-16 weeks |
 | NCR Voyix (Aloha) | NCR Voyix Developer Program | 8-16 weeks |

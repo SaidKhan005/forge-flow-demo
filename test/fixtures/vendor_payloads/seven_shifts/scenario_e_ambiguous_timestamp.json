@@ -1,0 +1,26 @@
+{
+  "_fixture_envelope": {
+    "description": "Documented time_punch.edited envelope where clocked_in / clocked_out / modified are ISO 8601 strings WITHOUT a trailing `Z` and WITHOUT an explicit offset. 7shifts v2 is documented to always include an explicit `Z` per the developer reference; an ambiguous shape is a vendor-side regression and the adapter MUST refuse rather than silently treat as UTC.",
+    "expected_outcome": "reject",
+    "policy_binding": "AmbiguousTimestampConvention.refuse per `sevenShiftsTimestampPolicy` in lib/integrations/labor/seven_shifts_labor_adapter.dart",
+    "expected_failure_mode": "vendor timestamp policy rejects payload at the parse boundary before sink write"
+  },
+  "event_type": "time_punch.edited",
+  "event_id": "evt_7s_ambiguous_e",
+  "company_id": 4242,
+  "time_punch": {
+    "id": 712030,
+    "user_id": 99001,
+    "shift_id": 887701,
+    "location_id": 5501,
+    "department_id": 6601,
+    "role": {
+      "id": 401,
+      "name": "Server"
+    },
+    "clocked_in": "2026-05-07T18:30:00",
+    "clocked_out": "2026-05-07T23:45:00",
+    "approved": true,
+    "modified": "2026-05-08T00:05:00"
+  }
+}

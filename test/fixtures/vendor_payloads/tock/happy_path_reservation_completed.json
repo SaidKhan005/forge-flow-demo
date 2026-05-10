@@ -1,0 +1,9 @@
+{
+  "id": "res_2a8c1e93-4d1f-4f62-a8b7-3c9e0a51f2d6",
+  "businessId": "bus_3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011",
+  "createdTimestamp": "2026-05-06T19:04:33.000Z",
+  "lastUpdatedTimestamp": "2026-05-09T03:48:17.000Z",
+  "serviceDateTimestamp": "2026-05-09T01:00:00.000Z",
+  "partySize": 6,
+  "status": "LEFT"
+}

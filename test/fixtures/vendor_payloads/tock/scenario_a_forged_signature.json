@@ -1,0 +1,26 @@
+{
+  "transport": "webhook",
+  "method": "POST",
+  "path": "/v1/webhooks/tock/{operatorId}/{locationId}",
+  "headers": {
+    "content-type": "application/json",
+    "x-tock-signature": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    "x-tock-webhook-timestamp": "1778688000"
+  },
+  "body": {
+    "id": "res_a1f9c4d8-5e7b-4a31-9c6e-1f2a3b4c5d60",
+    "businessId": "bus_3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011",
+    "createdTimestamp": "2026-05-08T17:00:00.000Z",
+    "lastUpdatedTimestamp": "2026-05-08T17:30:00.000Z",
+    "serviceDateTimestamp": "2026-05-09T01:00:00.000Z",
+    "partySize": 3,
+    "status": "EXPECTED"
+  },
+  "_meta": {
+    "signing_secret_for_test_only": "test-tock-signing-secret-not-real",
+    "expected_outcome": "reject",
+    "expected_failure_reason": "HMAC mismatch on X-Tock-Signature header",
+    "verifier_under_test": "lib/integrations/reservation/tock_webhook_signature_verifier.dart",
+    "notes": "x-tock-signature is a 64-char lowercase-hex string of all-zeros / 0xde 0xad 0xbe 0xef pattern that does NOT match HMAC-SHA256(signing_secret_for_test_only, raw_body). Verifier MUST return WebhookSignatureVerification(valid=false, failureReason='HMAC mismatch...'). No DB write."
+  }
+}

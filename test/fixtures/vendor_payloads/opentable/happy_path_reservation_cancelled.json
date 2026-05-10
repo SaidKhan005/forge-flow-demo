@@ -1,0 +1,10 @@
+{
+  "reservation": {
+    "id": "OT-RES-2026050804",
+    "restaurant_id": "rid-9876",
+    "reserved_at": "2026-05-09T19:00:00Z",
+    "modified_at": "2026-05-08T09:14:00Z",
+    "party_size": 3,
+    "status": "cancelled"
+  }
+}

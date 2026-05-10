@@ -1,0 +1,52 @@
+{
+  "_pressure_test_envelope": {
+    "scenario": "D — OAuth near-expiry (substitute: bearer rotation, no refresh path)",
+    "auth_mode": "keyPaste (partner-issued bearer, static credential)",
+    "refresh_closure_present": false,
+    "substitute_assertion": "bearer_rotation_out_of_band_then_revoke_path"
+  },
+  "before_rotation": {
+    "request": {
+      "method": "GET",
+      "path": "/api/v1/company",
+      "headers": {
+        "Authorization": "Bearer pushop_partner_OLD_aaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    "response_status": 200,
+    "response_body": {
+      "id": 41255,
+      "name": "Demo Restaurant Group",
+      "timezone": "America/Toronto"
+    }
+  },
+  "after_rotation_with_old_bearer": {
+    "request": {
+      "method": "GET",
+      "path": "/api/v1/company",
+      "headers": {
+        "Authorization": "Bearer pushop_partner_OLD_aaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    "response_status": 401,
+    "response_body": {
+      "error": "unauthorized",
+      "message": "Bearer token has been revoked. Re-paste the new partner-issued bearer in the F&F admin connect dialog."
+    }
+  },
+  "after_rotation_with_new_bearer": {
+    "request": {
+      "method": "GET",
+      "path": "/api/v1/company",
+      "headers": {
+        "Authorization": "Bearer pushop_partner_NEW_bbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    "response_status": 200,
+    "response_body": {
+      "id": 41255,
+      "name": "Demo Restaurant Group",
+      "timezone": "America/Toronto"
+    }
+  }
+}

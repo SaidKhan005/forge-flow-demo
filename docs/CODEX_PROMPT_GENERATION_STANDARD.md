@@ -27,11 +27,15 @@ Read only what the slice needs:
 - The active phase doc under `docs/phases/**`.
 - At most one relevant contract under `docs/contracts/**`.
 - `docs/contracts/slice_runtime_acceptance_contract.md` for runtime-exposed
+v  slices.
+- `docs/frameworks/deployFramework.md` for deploy, redeploy, preview,
+  staging, Cloud Run, CORS, auth, database-mode, and rollback work.
+- `docs/frameworks/PERFORMANCE_FRAMEWORK.md` for performance, scale, mobile
   slices (advisory pattern, not CI-enforced).
 - `docs/PERFORMANCE_FRAMEWORK.md` for performance, scale, mobile
   responsiveness, web-console timing, load, polling, health, or bundle-size
   work.
-- `docs/UX_ADJUSTMENT_FRAMEWORK.md` for UX polish, copy, navigation, button,
+- `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md` for UX polish, copy, navigation, button,
   modal, filter, tooltip, browser-tab, and no-regression admin-console polish.
 - `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` for broad
   feature work, settings work, route/schema changes, runtime-exposed behavior,
@@ -144,7 +148,7 @@ in `vendor_adapter_slice_contract.md`:
 
 The slice's walkthrough at `docs/_walkthroughs/<slice-id>.md` MUST
 cover the anchor scenarios from
-`docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md` Walkthrough
+`docs/archive/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md` Walkthrough
 section (forged signature, malformed payload, future-dated event,
 OAuth near-expiry).
 
@@ -163,12 +167,12 @@ not CI-enforced — reviewer judgment).
 
 If a slice is performance-sensitive or asks for performance optimization, the
 prompt must also include the measurement, behavior-preservation, runtime-proof,
-and reporting loop from `docs/PERFORMANCE_FRAMEWORK.md`.
+and reporting loop from `docs/frameworks/PERFORMANCE_FRAMEWORK.md`.
 
 If a slice changes visible UX copy, layout, tab structure, filters, keys,
 tooltips, buttons, modals, browser metadata, or admin/operator console polish,
 the prompt must also include the behavior-preservation, browser-loop, and
-reporting rules from `docs/UX_ADJUSTMENT_FRAMEWORK.md`.
+reporting rules from `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md`.
 
 Minimum acceptance path:
 

@@ -10,7 +10,7 @@ Authority:
 - `docs/contracts/vendor_adapter_slice_contract.md`
 - `docs/contracts/per_vendor_doc_pack_contract.md`
 - `docs/contracts/metric_card_honesty_contract.md`
-- `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
+- `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
 - `docs/phases/phase_8/vendor_master_list.md`
 - `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`
 - `docs/phases/phase_11W/operator_onboarding_flow.md`

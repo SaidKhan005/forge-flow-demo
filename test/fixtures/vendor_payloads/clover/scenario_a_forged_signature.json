@@ -1,0 +1,19 @@
+{
+  "_transport": {
+    "headers": {
+      "x-clover-auth-signature": "<<TEST_HMAC_SECRET>>FORGED+1ABCDEF==",
+      "x-clover-auth-timestamp": "1777750980"
+    },
+    "raw_body_signed_with": "<<TEST_HMAC_SECRET_DIFFERENT_KEY>>"
+  },
+  "appId": "DRKVJT2ZRRRSC",
+  "merchants": {
+    "CLV-MERCH-CCD13C7B": [
+      {
+        "objectId": "O:CLV-ORDER-FORGED-SIG-001",
+        "ts": 1777750980000,
+        "type": "UPDATE"
+      }
+    ]
+  }
+}

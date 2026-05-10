@@ -1,0 +1,31 @@
+{
+  "_fixture_metadata": {
+    "scenario": "A",
+    "outcome": "reject",
+    "reason": "ADP-Signature HMAC mismatch",
+    "headers": {
+      "adp-signature": "ZXhwZWN0ZWQtaG1hYy12YWx1ZS10aGF0LWlzLWFjdHVhbGx5LWZvcmdlZA==",
+      "adp-signature-timestamp": "1778256030",
+      "adp-event-id": "evt-adp-forged-001",
+      "content-type": "application/json"
+    },
+    "raw_body_note": "Raw body bytes match the inner payload below (no JSON re-serialization between proxy and verifier — body bytes signed verbatim)."
+  },
+  "payload": {
+    "event_id": "evt-adp-forged-001",
+    "event_name": "time.timeEvent.modify",
+    "event_action": "submitted",
+    "time_event": {
+      "id": "ADP-TE-FORGED-001",
+      "entry_date_time": "2026-05-04T15:00:00Z",
+      "exit_date_time": "2026-05-04T23:00:00Z",
+      "last_modified_date_time": "2026-05-04T23:00:30Z"
+    },
+    "worker": {
+      "associate_oid": "G3WXX1Y2Z3A4B5C6",
+      "position": {
+        "position_title": "Server"
+      }
+    }
+  }
+}

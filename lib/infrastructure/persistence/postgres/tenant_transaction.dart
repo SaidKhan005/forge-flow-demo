@@ -23,8 +23,36 @@
 // `current_setting('app.bypass_rls_audit', true)` from an audit
 // trigger picks it up.
 
+import 'dart:async';
+
+import '../../../services/observability/log.dart';
 import 'postgres_executor.dart';
 import 'tenant_context.dart';
+
+/// Structured-log helper for rollback failures inside a `finally`
+/// block. The original body error is the one we want to surface to
+/// the caller; a secondary rollback failure would only mask it. We
+/// classify each rollback exception via typed-catch arms (matches
+/// PR #364 pattern: `TimeoutException` → `Exception` → `Object`) so
+/// SREs see when a connection is wedged without losing the original
+/// error to the caller.
+void _logRollbackFailure({
+  required String operation,
+  required String kind,
+  required Object error,
+  StackTrace? stackTrace,
+}) {
+  log(
+    LogSeverity.warning,
+    'tenant_transaction.rollback_failed',
+    fields: <String, Object?>{
+      'operation': operation,
+      'kind': kind,
+      'error': error.toString(),
+      if (stackTrace != null) 'stack_first_frame': firstStackFrame(stackTrace),
+    },
+  );
+}
 
 class TenantTransactionWrapper {
   TenantTransactionWrapper(this._pool);
@@ -78,10 +106,31 @@ class TenantTransactionWrapper {
       if (!finalized) {
         try {
           await tx.rollback();
-        } catch (_) {
+        } on TimeoutException catch (e, st) {
           // Rollback failures are intentionally swallowed: the
           // original error from the body is more useful, and
           // surfacing a secondary rollback failure would mask it.
+          // Structured-log so SREs see when a connection is wedged.
+          _logRollbackFailure(
+            operation: 'runInTenantContext',
+            kind: 'timeout',
+            error: e,
+            stackTrace: st,
+          );
+        } on Exception catch (e, st) {
+          _logRollbackFailure(
+            operation: 'runInTenantContext',
+            kind: 'exception',
+            error: e,
+            stackTrace: st,
+          );
+        } on Object catch (e, st) {
+          _logRollbackFailure(
+            operation: 'runInTenantContext',
+            kind: 'unhandled',
+            error: e,
+            stackTrace: st,
+          );
         }
       }
     }
@@ -124,8 +173,28 @@ class TenantTransactionWrapper {
       if (!finalized) {
         try {
           await tx.rollback();
-        } catch (_) {
+        } on TimeoutException catch (e, st) {
           // See [runInTenantContext]; keep the original error.
+          _logRollbackFailure(
+            operation: 'runInUserContext',
+            kind: 'timeout',
+            error: e,
+            stackTrace: st,
+          );
+        } on Exception catch (e, st) {
+          _logRollbackFailure(
+            operation: 'runInUserContext',
+            kind: 'exception',
+            error: e,
+            stackTrace: st,
+          );
+        } on Object catch (e, st) {
+          _logRollbackFailure(
+            operation: 'runInUserContext',
+            kind: 'unhandled',
+            error: e,
+            stackTrace: st,
+          );
         }
       }
     }
@@ -169,8 +238,28 @@ class TenantTransactionWrapper {
       if (!finalized) {
         try {
           await tx.rollback();
-        } catch (_) {
+        } on TimeoutException catch (e, st) {
           // See [runInTenantContext]; keep the original error.
+          _logRollbackFailure(
+            operation: 'runAsSystem',
+            kind: 'timeout',
+            error: e,
+            stackTrace: st,
+          );
+        } on Exception catch (e, st) {
+          _logRollbackFailure(
+            operation: 'runAsSystem',
+            kind: 'exception',
+            error: e,
+            stackTrace: st,
+          );
+        } on Object catch (e, st) {
+          _logRollbackFailure(
+            operation: 'runAsSystem',
+            kind: 'unhandled',
+            error: e,
+            stackTrace: st,
+          );
         }
       }
     }

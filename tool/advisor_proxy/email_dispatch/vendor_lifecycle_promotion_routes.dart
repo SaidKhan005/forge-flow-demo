@@ -49,8 +49,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
+import '../log.dart';
 import 'vendor_lifecycle_notification_dispatcher.dart';
 
 /// Locked path prefix. Trailing path segment is the vendor id and
@@ -205,10 +207,25 @@ class VendorLifecyclePromotionRouter {
         response: body,
       );
       _writeJson(response, 200, body);
-    } catch (error) {
+    } catch (error, stack) {
+      // P0 fix (2026-05-09 webhook signature triage Section 4 — leak
+      // site #8): no internal exception details (DB / SendGrid / fan-
+      // out repo error text) in the response body.
+      final errorId = _generateErrorId();
+      log(
+        LogSeverity.error,
+        'lifecycle_promotion_unhandled_error',
+        fields: <String, Object?>{
+          'error_id': errorId,
+          'vendor_id': vendorId,
+          'error': error.toString(),
+          'stack_first_frame': _firstStackFrame(stack),
+        },
+      );
       _writeJson(response, 500, <String, Object?>{
         'error': 'lifecycle_promotion_unhandled_error',
-        'message': error.toString(),
+        'error_id': errorId,
+        'message': 'internal_server_error',
       });
     }
     return true;
@@ -249,5 +266,28 @@ class VendorLifecyclePromotionRouter {
     response.headers.contentType = ContentType.json;
     response.write(jsonEncode(body));
     response.close();
+  }
+
+  /// P0 fix (2026-05-09 webhook signature triage): per-failure
+  /// correlation id surfaced in the response body. The full exception
+  /// text + stack stays in the structured log keyed on this id.
+  static final Random _errorIdRandom = Random.secure();
+
+  static String _generateErrorId() {
+    final bytes = Uint8List(16);
+    for (var i = 0; i < bytes.length; i++) {
+      bytes[i] = _errorIdRandom.nextInt(256);
+    }
+    final hex = StringBuffer();
+    for (final b in bytes) {
+      hex.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return hex.toString();
+  }
+
+  static String _firstStackFrame(StackTrace stack) {
+    final s = stack.toString();
+    final newline = s.indexOf('\n');
+    return newline < 0 ? s : s.substring(0, newline);
   }
 }

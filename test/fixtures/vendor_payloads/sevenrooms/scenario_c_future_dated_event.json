@@ -1,0 +1,8 @@
+{
+  "id": "sr-resv-1099",
+  "venue_id": "sr-venue-7c2f",
+  "arrival_time": "2099-12-31T19:00:00-05:00",
+  "party_size": 2,
+  "status": "BOOKED",
+  "last_updated_at": "2099-12-31T17:00:00.000Z"
+}

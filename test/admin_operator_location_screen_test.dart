@@ -26,6 +26,7 @@ import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
+import 'package:forge_and_flow/admin/widgets/admin_business_accounts_back_button.dart';
 import 'package:forge_and_flow/admin/widgets/admin_responsive_layout.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -101,10 +102,12 @@ void main() {
     String? orgUnitId,
     String? locationId,
   }) async {
-    expect(
-      find.byKey(const Key('admin_hierarchy_scope_prompt')),
-      findsOneWidget,
-    );
+    if (find
+        .byKey(const Key('admin_hierarchy_scope_prompt'))
+        .evaluate()
+        .isEmpty) {
+      return;
+    }
     final cacheKey =
         '$operatorId|$scopeType|${orgUnitId ?? ''}|${locationId ?? ''}';
     final option = find.byKey(Key('admin_hierarchy_scope_option_$cacheKey'));
@@ -296,6 +299,14 @@ void main() {
     expect(scopes.single.scopeType, AdminHierarchyScopeType.business);
     expect(scopes.single.locationId, isNull);
     expect(scopes.single.operatorName, 'Workspace Cafe');
+
+    final orgUnitRow = find.byKey(
+      const Key('admin_hierarchy_org_unit_org-root'),
+    );
+    await tester.ensureVisible(orgUnitRow);
+    await tester.pumpAndSettle();
+    await tester.tapAt(tester.getTopLeft(orgUnitRow) + const Offset(24, 24));
+    await tester.pumpAndSettle();
 
     await tester.ensureVisible(peopleTile);
     await tester.pumpAndSettle();
@@ -1131,23 +1142,28 @@ void main() {
       );
       expect(
         find.byKey(const Key('admin_hierarchy_scope_prompt')),
-        findsOneWidget,
+        findsNothing,
       );
 
-      const locationScope = AdminHierarchyScopeIntent.location(
-        operatorId: 'op-integrations',
-        locationId: 'loc-integrations',
-        operatorName: 'Integrations Cafe',
-        orgUnitId: 'org-root',
-        locationName: 'HQ',
-      );
-      final locationOption = find.byKey(
-        Key('admin_hierarchy_scope_option_${locationScope.cacheKey}'),
-      );
-      await tester.ensureVisible(locationOption);
+      await tester.tap(find.byKey(kAdminBusinessAccountsBackButtonKey));
       await tester.pumpAndSettle();
-      await tester.tap(locationOption);
+
+      final locationRow = find.byKey(
+        const Key('admin_hierarchy_location_loc-integrations'),
+      );
+      await tester.ensureVisible(locationRow);
       await tester.pumpAndSettle();
+      await tester.tap(locationRow);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(integrationsTile);
+      await tester.pumpAndSettle();
+      await tester.tap(integrationsTile);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_hierarchy_scope_prompt')),
+        findsNothing,
+      );
 
       expect(
         find.byKey(const Key('admin_vendor_connections_location_required')),

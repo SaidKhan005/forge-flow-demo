@@ -1,0 +1,31 @@
+{
+  "_event_envelope": {
+    "eventGuid": "evt-dst-spring-2f8a1d3e-4c7b-4f9e-91a2-5d8e7c4b3a2f",
+    "eventType": "orders.modified",
+    "headers": {
+      "toast-signature": "<<HMAC_SHA256_BASE64_OF_BODY_USING_TEST_HMAC_SECRET>>",
+      "toast-webhook-timestamp": "1772963400"
+    }
+  },
+  "_test_local_intent": "Order opened at the 'spring-forward gap' instant â€” 2026-03-08T02:30 local would not exist (clock jumps 02:00 EST -> 03:00 EDT). Toast normalizes to UTC, so the wire payload is unambiguous; the trip-wire is the IANA converter when computing business_date.",
+  "_test_location_iana": "America/New_York",
+  "businessDate": 20260308,
+  "closedDate": "2026-03-08T08:00:00.000Z",
+  "deleted": false,
+  "diningOption": {
+    "entityType": "DiningOption",
+    "guid": "00000000-0000-4000-a000-000000000201"
+  },
+  "entityType": "Order",
+  "guid": "2f8a1d3e-4c7b-4f9e-91a2-5d8e7c4b3a2f",
+  "modifiedDate": "2026-03-08T08:00:00.000Z",
+  "numberOfGuests": 4,
+  "openedDate": "2026-03-08T07:30:00.000Z",
+  "paymentStatus": "PAID",
+  "restaurant": {
+    "entityType": "Restaurant",
+    "guid": "3b1f9b5f-7f50-4e7b-90b8-1c9aa39a0011"
+  },
+  "totalAmount": 87.2,
+  "voided": false
+}

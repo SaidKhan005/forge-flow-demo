@@ -1,0 +1,23 @@
+{
+  "_pressure_meta": {
+    "scenario": "E — ambiguous timestamp",
+    "expected_outcome": "reject",
+    "expected_failure": "IanaTimezoneConverterError or framework-level rejection — adapter must NOT silently best-effort the conversion",
+    "ambiguity_source": "DST fall-back hour: 2026-11-01 01:30 in America/Toronto occurs TWICE (once in EDT, once in EST). Libro emits restaurant-local wall-clock with no tz hint per vendor_timestamp_policy['libro']=asLocationLocal. The converter cannot disambiguate without a tz offset.",
+    "policy": "lib/services/integration/vendor_timestamp_policy.dart entry 'libro'=asLocationLocal — adapter projects via IANA. The adapter MUST refuse the timestamp at parse time when the converter signals ambiguity (per docs/integrations/libro/field_mapping.md \"Timestamp shapes\")."
+  },
+  "id": "wh-evt-7c2f-1100",
+  "type": "reservation.confirmed",
+  "venue_id": "venue-toronto-yorkville",
+  "occurred_at": "2026-11-01T01:30:00",
+  "reservation": {
+    "id": "lbr-evt-7c2f-ambiguous",
+    "venue_id": "venue-toronto-yorkville",
+    "size": 4,
+    "status": "confirmed",
+    "reservation_at": "2026-11-01T01:30:00",
+    "created_at": "2026-11-01T00:30:00",
+    "confirmed_at": "2026-11-01T01:30:00",
+    "updated_at": "2026-11-01T01:30:00"
+  }
+}

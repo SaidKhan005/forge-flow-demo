@@ -1,6 +1,19 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-07
+Updated: 2026-05-08 (post-audit remediation wave: 9 lanes merged
+across PRs #417–#426 — 4 of 5 P1 audit-addition items closed +
+P2 partial bare-catch fix + Carve-out #3 blessed + closed-phase
+plan archive + vendor doc path updates + phase_9 folder triage +
+hardening_rls contract drift + RestaurantScopeService extraction +
+8.demo-mode-banner slice. The AI-frozen `advisor_proxy.dart`
+placeholder strings remain on the freeze-thaw checklist. **CI is
+currently blocked on a GitHub Actions billing/spending limit** —
+all jobs since #425 stopped before starting; no test runs against
+master have completed for this remediation wave. Verification
+deferred to next CI green run. Earlier 2026-05-08: multi-agent
+deep-dive audit recorded 7 new findings in
+`docs/POST_HARDENING_FOLLOWUPS.md` "Audit additions — 2026-05-08"
+section; admin hierarchy lane excluded). Prior: 2026-05-07.
 Owner: You · Execution: We think, Claude codes
 
 Routing map only. This file shows **only what is left**. Completed phases /
@@ -17,8 +30,10 @@ slices live in `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
    `docs/phases/phase_9/phase_9_scalability_decisions_2026-04-27.md`,
    `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md`.
 6. `docs/CODEX_PROMPT_GENERATION_STANDARD.md` — prompt shape, parallel-lane rules.
-7. `docs/PERFORMANCE_FRAMEWORK.md` · `docs/UX_ADJUSTMENT_FRAMEWORK.md` ·
-   `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — applied per slice when relevant.
+7. `docs/frameworks/deployFramework.md` ·
+   `docs/frameworks/PERFORMANCE_FRAMEWORK.md` ·
+   `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md` ·
+   `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — applied per slice when relevant.
 
 Feature implementation work also uses
 `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` whenever a
@@ -60,7 +75,7 @@ Detail + resume guide: `docs/_execution/2026-05-06_v1_operator_punchlist_executi
 |---|---|---|
 | Firebase Auth action-domain switch (`auth.feflow.org` → `forge-flow-production1.web.app`, set `callbackUri`, run 4 validation checks) | You / Cloud | `cutover.0` preflight |
 | Decide + apply 2 remaining Production1 migrations (first-connect-backfill jobs + 11W.7 operator account fields). 18 of 20 already staging-verified; full queue in `docs/POST_HARDENING_FOLLOWUPS.md` P0 | You + runbook | First-connect on prod, operator-web Account writes on prod |
-| Inbound-vendor T&Cs to counsel | You / Legal | `cutover.2` |
+| Seed operator-authored T&C content into `tos_versions` (universal + per-vendor scopes) at deploy time. Operator self-authors per `docs/contracts/operator_self_served_tos_contract.md`; no external legal-review gate. | You / Eng | `cutover.2` |
 | Sandbox creds for trio: Lightspeed K-Series · Libro · QuickBooks Time | You / Vendors | `*.live.sandbox` slices for trio |
 
 ### 2. Cutover sequence (gate-driven, not date-driven)
@@ -72,7 +87,7 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 | `cutover.0` preflight | not started | Read-only smoke on Production1; harness ready (V1.G). Needs Firebase Auth switch + 2 pending migrations applied |
 | `cutover.1` corpus load | not started | Voyage embeddings + Anthropic Contextual Retrieval; cost approval gate |
 | `cutover.0b` Tier-M perf gate | not started | Launch-blocking; needs `cutover.1` corpus first |
-| `cutover.2` first operator onboarding | not started | Vanessa on production1; needs lawyer-signed T&Cs |
+| `cutover.2` first operator onboarding | not started | Vanessa on production1; needs operator-authored T&C content seeded in `tos_versions` |
 | `cutover.3` traffic switch | not started | DNS / env-var flip |
 | `cutover.4` 7-day stability watch | not started | Non-negotiable before V1 declaration |
 | `cutover.5` post-launch hardening | not started | After V1 declaration |
@@ -84,7 +99,7 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 | `11A.8` Support audit | not started | `phase_11A_operations_console/*` |
 | `11A.9` Cross-operator reads | not started | `phase_11A_operations_console/*` |
 | `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |
-| `9.8` inbound vendor T&Cs (code lane) | code-ready, awaiting counsel | `phase_9_8/*` |
+| `9.8` inbound vendor T&Cs (code lane) | code-ready; operator-self-served content seeding pending | `phase_9_8/*` |
 | `business-timing-live` full hierarchy + settings lanes | future | `phase_business_timing_live/*` |
 | `admin-hierarchy-settings-overhaul` | planned | `docs/_execution/admin_hierarchy_settings_overhaul_plan_2026-05-08.md` |
 | Doc 1 item 7 — physical connected-device E2E | simulated proof documented; physical/emulator proof pending | new sprint `8.connected-device-e2e-smoke`; needs physical device |
@@ -168,7 +183,7 @@ arrive.
   slices use Codex-driven Browser Use evidence per
   `runbooks/browser_use_codex_acceptance_workflow.md` (out-of-repo automation,
   not a binary in this tree) and full E2E uses
-  `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`.
+  `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`.
 - Before staging console perf claims:
   `dart run tool/perf_gate/staging_console_probe.dart --run
   --admin-url=<url> --proxy-url=<url>` and attach JSON.
@@ -180,6 +195,14 @@ arrive.
 
 ## Notes
 
+- **2026-05-08 — GitHub Actions billing block.** Recent CI runs show
+  "The job was not started because recent account payments have failed
+  or your spending limit needs to be increased." All 3 master CI jobs
+  (postgres-tests, repo-lints, analyze-and-test) plus the
+  Apple-platform-verification workflow stop in <15s without starting.
+  This blocks automated validation of the remediation wave merged
+  2026-05-08 (PRs #417–#426). Action: resolve the GitHub billing /
+  spending-limit issue, then re-run CI on master.
 - Mobile architecture (canonical-fact dicts → operator-scoped Postgres
   `shift_records` → mobile SQLite via proxy sync) bound by
   `integration_spine_architecture_contract.md`.
@@ -197,6 +220,22 @@ arrive.
   billing setup, provider call, or product decision.
 
 ## Recently archived (see `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`)
+
+2026-05-08 post-audit remediation wave (PRs #417–#426 merged):
+
+- 2026-05-08 audit closeout (#417) — Carve-out #3 blessed, 5 closed-phase plan docs retired to `docs/archive/phases/`, audit findings recorded.
+- POST_HARDENING wage-authority line drift fix + 2026-05-12 _execution sweep reminder (#418).
+- Lane A — `audit_logs_repository` defense-in-depth GUC probe (#424); chose Option B over base-class extension to preserve atomic-with-business-write contract.
+- Lane B — 4 admin integration write routes wired to `admin_request_idempotency` (#425).
+- Lane C — `RestaurantScopeService` extraction; `notifications_screen` + `schedule_forecast_notifier` no longer import SQLite repo directly (#419).
+- Lane D — typed catch arms in `auth_session_notifier` + `tenant_transaction` + `package_postgres_executor` (PR #364 pattern; advisor_proxy 16 sites still open) (#420).
+- Lane E — `8.demo-mode-banner` slice: runtime per-(O, L, C) banner, AppShell mount, walkthrough, 5 widget tests (#426).
+- Lane G — `hardening_rls_and_repository_pattern_contract.md` drift fixes (lint state past-tense, 4 wrapper function names corrected) (#421); subsequently revised post-Lane-A merge to reflect the sanctioned defense-in-depth exception.
+- Lane H — 9 vendor docs in `docs/integrations/<vendor>/` updated to point at archived phase plan paths (#422).
+- Lane I — `docs/phases/phase_9/` folder triage: 1 of 11 moved (the closed `admin_console_mfa_challenge_parity_plan.md`); 10 kept with documented reason (durable authority refs / evergreen runbooks / not-yet-shipped specs) (#423).
+
+CI did NOT validate this wave — GitHub Actions billing block still
+in effect at merge time. Re-run CI once billing is resolved.
 
 2026-05-07 closeout pass moved the following accepted/closed phase rows out
 of the active board:

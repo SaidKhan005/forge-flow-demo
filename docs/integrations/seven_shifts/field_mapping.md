@@ -16,7 +16,7 @@ fixture` test in
 `test/integrations/labor/seven_shifts_labor_adapter_test.dart`.
 
 Two rows are **load-bearing for the Phase 7.58 Primary Driver audit**
-per `docs/phases/phase_8S/phase_8S_scheduling_connector_plan.md`
+per `docs/archive/phases/phase_8S/phase_8S_scheduling_connector_plan.md`
 (8.S.7S row): `is_approved` (per-punch `approved` boolean) and
 `payroll_period_closed_at` (`payroll_period.closed` event +
 `/payroll_periods` poll). The `8.S.7S.live.sandbox` slice diffs each

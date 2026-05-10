@@ -1,0 +1,16 @@
+{
+  "_scenario": "E — ambiguous timestamp",
+  "_expected_outcome": "reject (refuse-by-default)",
+  "_adapter_assertion": "iana_timezone_converter refuses naked timestamps; vendor_timestamp_policy.aloha_ncr_voyix.asUtc requires the trailing 'Z'; canonicalizer rejects with TimestampPolicyViolation; no fact write.",
+  "_note": "Per `field_mapping.md`, NCR Voyix Aloha-module timestamps are documented as ISO 8601 UTC with the trailing 'Z'. This adversarial fixture strips the 'Z' from every timestamp, leaving the timezone unspecified. The framework's refuse-by-default protection MUST reject — this is exactly the case where 'best-effort' would silently misclassify a business date by a full calendar day.",
+  "eventId": "evt-chk-2026-03-08-305",
+  "eventType": "aloha.check.modified",
+  "siteId": "site-aloha-001",
+  "checkId": "chk-2026-03-08-305",
+  "openedAt": "2026-03-08T02:30:00.000",
+  "closedAt": "2026-03-08T03:15:00.000",
+  "modifiedAt": "2026-03-08T03:15:00.000",
+  "numberOfGuests": 2,
+  "totalAmount": 47.30,
+  "voided": false
+}

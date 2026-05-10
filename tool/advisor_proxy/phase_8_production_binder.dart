@@ -75,6 +75,7 @@ import 'package:forge_and_flow/integrations/_common/admin_actor_resolver_bridge.
 import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dart';
 import 'package:forge_and_flow/services/integration/canonical_fact_post_commit_projector.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
+import 'package:forge_and_flow/services/integration/inbound_webhook_signing_secret_cache.dart';
 import 'package:forge_and_flow/services/integration/per_tenant_location_config_resolver.dart';
 import 'package:forge_and_flow/services/integration/projecting_canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/repository_inbound_webhook_gateway.dart';
@@ -99,6 +100,25 @@ export 'phase_8_vendor_integration_factories.dart'
 /// handshake used elsewhere in the runtime
 /// (`services/app_data_status_service.dart`).
 const bool _kDemoMode = bool.fromEnvironment('kDemoMode');
+
+/// Env var that disables the inbound-webhook signing-secret cache at
+/// boot. Set to "true" / "1" / "yes" to fall back to the pre-cache
+/// dispatch behaviour (every webhook hits Postgres + pgcrypto). The
+/// rollout plan in the 2026-05-09 webhook-signature triage Section
+/// 5.7 uses this to revert without a redeploy if the cache misbehaves
+/// in production. Default (unset / any other value) leaves the cache
+/// enabled.
+const String kInboundWebhookSigningSecretCacheDisableEnvName =
+    'PHASE_8_DISABLE_SIGNING_SECRET_CACHE';
+
+bool _isSigningSecretCacheDisabled() {
+  final raw = Platform
+      .environment[kInboundWebhookSigningSecretCacheDisableEnvName]
+      ?.trim()
+      .toLowerCase();
+  if (raw == null || raw.isEmpty) return false;
+  return raw == 'true' || raw == '1' || raw == 'yes' || raw == 'y';
+}
 
 bool _alreadyBound = false;
 
@@ -242,6 +262,34 @@ Future<void> bindPhase8IntegrationsForProduction(
   final projectingSinks = factories.projectingSinksByVendor;
 
   // Step 5 — InboundWebhookHandler.
+  //
+  // P0 fix (2026-05-09 webhook signature triage Section 5.E):
+  // construct an in-memory [SigningSecretCache] so a webhook flood
+  // does not amplify into N pgcrypto-decrypt round-trips against
+  // `vendor_credentials.webhook_signing_secret_ciphertext`. The cache
+  // is gated by [kInboundWebhookSigningSecretCacheDisableEnvName]
+  // ("PHASE_8_DISABLE_SIGNING_SECRET_CACHE") so the rollout per
+  // triage Section 5.7 can disable it without redeploying. Setting
+  // the env to "true" / "1" / "yes" disables the cache; the handler
+  // then falls back to the pre-cache behaviour (every dispatch hits
+  // the gateway).
+  final signingSecretCacheDisabled = _isSigningSecretCacheDisabled();
+  final signingSecretCache = signingSecretCacheDisabled
+      ? null
+      : InMemorySigningSecretCache();
+  log(
+    LogSeverity.info,
+    'startup.phase_8_signing_secret_cache',
+    fields: <String, Object?>{
+      'disabled': signingSecretCacheDisabled,
+      'ttl_seconds': signingSecretCacheDisabled
+          ? null
+          : kSigningSecretCacheDefaultTtl.inSeconds,
+      'per_operator_cap': signingSecretCacheDisabled
+          ? null
+          : kSigningSecretCachePerOperatorCap,
+    },
+  );
   final webhookHandler = InboundWebhookHandler(
     gateway: inboundWebhookGateway,
     posAdapterFactories: posAdapterFactories,
@@ -249,6 +297,7 @@ Future<void> bindPhase8IntegrationsForProduction(
     reservationAdapterFactories: reservationAdapterFactories,
     signatureVerifiers: signatureVerifiers,
     bindingExtractor: WebhookBindingExtractor(),
+    signingSecretCache: signingSecretCache,
   );
 
   // Step 6 — Adapt the tool-side admin actor types into the lib-side
@@ -279,6 +328,8 @@ Future<void> bindPhase8IntegrationsForProduction(
     firstBackfillEnqueueGateway:
         productionBindings.firstConnectionBackfillEnqueueGateway,
     integrationCategoryResolver: productionBindings.integrationCategoryResolver,
+    adminRequestIdempotencyStore:
+        productionBindings.adminRequestIdempotencyStore,
   );
   Phase80IntegrationRoutes.globalBindings = bindings;
   _alreadyBound = true;
@@ -339,6 +390,7 @@ class _Phase8BindingsHolder
     required this.webhookHandler,
     required this.firstBackfillEnqueueGateway,
     required this.integrationCategoryResolver,
+    required this.adminRequestIdempotencyStore,
   });
 
   @override
@@ -351,6 +403,8 @@ class _Phase8BindingsHolder
   final FirstConnectionBackfillEnqueueGateway firstBackfillEnqueueGateway;
   @override
   final IntegrationCategoryResolver? integrationCategoryResolver;
+  @override
+  final AdminRequestIdempotencyStore? adminRequestIdempotencyStore;
 }
 
 // ─── tool/lib seam adapters ────────────────────────────────────────────

@@ -7,8 +7,12 @@ Done items live in `docs/archive/_execution/2026-05-05_v1_launch_punchlist_done_
 Status legend: `[ ]` open · `[~]` in progress · `[-]` deferred post-V1.
 
 Owner shorthand: **You** = operator/founder action · **Eng** =
-Codex/Claude slice · **Legal** = external counsel · **Cloud** =
-GCP/Azure/Firebase provisioning.
+Codex/Claude slice · **Cloud** = GCP/Azure/Firebase provisioning.
+
+Forge & Flow is operator-self-served on T&Cs: the founder authors and
+accepts the inbound-vendor terms themselves; there is no external
+legal-review gate (see
+`docs/contracts/operator_self_served_tos_contract.md`).
 
 ---
 
@@ -46,11 +50,17 @@ Production1 runtime is live. Detail + resume guide:
       explicit operator decision. Runbook:
       `runbooks/phase_9_production1_migration_apply_runbook.md`.
       _Effort: 1–2 hrs after decision._
-- [ ] **Escalate inbound-vendor T&Cs to counsel.** Draft is in
-      `docs/phases/phase_9_8/`. Suggested deadlines: first pass
-      2026-05-10, final 2026-05-13. Without signed T&Cs there is no
-      `tos_acceptances` row → `cutover.2` cannot run.
-      _Effort: 3–7 days external. Blocks: cutover.2._
+- [ ] **Seed operator-authored T&C content into `tos_versions`.**
+      Operator self-authors the inbound-vendor terms and the founder
+      accepts them through the standard `tos_accept_screen.dart`
+      clickwrap. Source draft + per-vendor scope copy already lives in
+      `docs/phases/phase_9_8/`. Land the universal-scope row + the
+      per-vendor rows for the trio (Lightspeed K-Series, Libro,
+      QuickBooks Time) before `cutover.2` runs so the first
+      `tos_acceptances` row can be captured. Contract:
+      `docs/contracts/operator_self_served_tos_contract.md`.
+      _Effort: 1–2 hrs operator authoring + small seeding slice.
+      Blocks: cutover.2._
 - [ ] **Provision sandbox credentials for the live trio:** Lightspeed
       K-Series (developer.lightspeedhq.com), Libro (test account),
       QuickBooks Time (Intuit sandbox). Store each in GCP Secret
@@ -72,8 +82,11 @@ remains:
       sink lane left an `adapter-side` follow-up to land inside its
       `*.live.sandbox` slice (tri-state covers, covers_source projection,
       hours_worked propagation, watermark resource alignment, etc.).
-      Index: `docs/sink_follow_up.md`. These don't gate V1; they fold
-      into the matching sandbox slice.
+      Folded 2026-05-08 into
+      `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`
+      § "Per-vendor follow-ups absorbed from sink fanout"; archive at
+      `docs/archive/sink_follow_up.md`. These don't gate V1; each lives
+      with the matching sandbox slice.
 
 ---
 
@@ -81,21 +94,29 @@ remains:
 
 Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 
-- [ ] **`cutover.0` — Pre-flight readiness.** Read-only smoke tests on
-      Production1 (schemas, firewall, DNS, RLS isolation, secrets).
-      Harness: `tool/cutover/preflight_smoke.dart` (V1.G shipped).
-      Requires Production1 provisioning + Firebase Auth switch + 2
-      pending migrations applied.
-- [ ] **`cutover.1` — Corpus load to production.** Voyage embeddings +
-      Anthropic Contextual Retrieval. Cost approval gate (you must
-      sign off on spend before execution).
-- [ ] **`cutover.0b` — Tier-M perf gate.** Requires `cutover.1` corpus
-      artifacts. Launch-blocking.
-      `dart run tool/perf_gate/staging_console_probe.dart --run
-      --enforce-budgets`.
+**AI-paused for V1 (decided 2026-05-08):** `cutover.1` (corpus load)
+and `cutover.0b` (Tier-M perf gate) are entirely advisor-side and
+SKIPPED for V1. They resume when the AI advisor unfreezes (§ 6 below).
+V1 cutover sequence reduces to: `cutover.0` → `cutover.2` →
+`cutover.3` → `cutover.4`.
+
+- [~] **`cutover.0` — Pre-flight readiness.** Ran 2026-05-08 against
+      production1. Schema/RLS/pgvector/extensions green. AGE/audit/rollup
+      red but **expected** (downstream of "no advisor corpus loaded";
+      clears when AI unfreezes; not V1-blocking). Result:
+      `docs/_execution/2026-05-08_cutover_0_preflight_result.json`.
+      Harness: `tool/cutover/preflight_smoke.dart`.
+- [-] **`cutover.1` — Corpus load to production.** **SKIPPED for V1** —
+      Voyage embeddings + Anthropic Contextual Retrieval + AGE projection
+      are all advisor-side. None of it touches Shift/Plan/Variance/
+      Benchmark/vendor/push/auth. Resumes when AI unfreezes.
+- [-] **`cutover.0b` — Tier-M perf gate.** **SKIPPED for V1** — tests
+      AI query latency against the cutover.1 corpus. Without corpus, can't
+      run; without advisor, gate is moot. Resumes when AI unfreezes.
 - [ ] **`cutover.2` — First operator onboarding.** Vanessa created on
-      production1. T&C-acceptance row captured. RLS isolation verified
-      live. Tier caps seeded. Requires lawyer-signed T&Cs.
+      production1. T&C-acceptance row captured (operator-self-served per
+      `docs/contracts/operator_self_served_tos_contract.md` — no lawyer
+      gate). RLS isolation verified live. Tier caps seeded.
 - [ ] **`cutover.3` — Traffic switch to production.** DNS / env-var flip.
 - [ ] **`cutover.4` — 7-day stability watch.** Non-negotiable minimum
       before V1 launch declaration.
@@ -151,16 +172,42 @@ credentials and paste them through the existing connect/rotation flow.
 
 ## 4 · Phase work in scope (queued, not launch-blocking by themselves)
 
-- [ ] **`8.spine-bridge-live` connected-device + push proof.** Code
-      components landed (see V1 closure dispatch + first-connect
-      backfill). Awaiting (a) device + (b) staging apply of mobile push
-      migration + (c) operator-blocked sandbox creds. **Push specifically:**
-      operator-driven runbook now landed at `runbooks/firebase_console_push_apply_runbook.md`
-      — ~15 minute total operator time across Firebase Console + Apple
-      Developer + Cloud Run consoles to bring push live. All code,
-      mobile runtime, proxy dispatcher, IAM-aware service-account auth,
-      and per-flavor Firebase config files (`google-services.json` +
-      `GoogleService-Info.plist`) are already on master.
+- [ ] **`8.spine-bridge-live` connected-device + push proof.**
+      **Push setup complete on `forge-flow-production1` (Android-only) 2026-05-08.**
+      Prod proxy rev `forge-flow-production1-proxy-00004-g6q` serving
+      100% traffic with `MOBILE_PUSH_TOKEN_ENVELOPE_KEY` env var; SA
+      `forge-flow-production1-admin@forge-flow-production1.iam.gserviceaccount.com`
+      has `roles/firebasecloudmessaging.admin`; FCM HTTP v1 API enabled;
+      all 4 Firebase apps registered (Forge Flow + Barrio × Android + iOS).
+      **iOS push deferred** — no Apple Developer account / Apple device
+      currently. iOS configs stay in repo as no-ops; Android-only for V1.
+      **Staging push setup blocked** by an unrelated pre-existing
+      data-drift on staging Postgres: 4 `kms_real_provider_*` feature_flags
+      rows are missing, causing any new staging proxy revision to fail
+      startup contract check. Staging IAM is granted, env var would land
+      cleanly the moment the schema-contract issue is resolved (separate
+      bug; not push-related). **Fix landed 2026-05-08:** new migration
+      `db/migrations/202605081300_seed_kms_rollout_flags_default_disabled.sql`
+      idempotently re-seeds the four rows at the system-wide sentinel
+      scope with `enabled = false`. Staging unblock requires applying
+      this single migration to the staging Postgres instance via the
+      Phase 9 migration apply runbook
+      (`runbooks/phase_9_production1_migration_apply_runbook.md` — same
+      shape used for staging). Concretely, from a host that can reach
+      the staging Cloud SQL instance:
+      `gcloud sql connect forge-flow-staging-db --user=ff_migrator
+      --database=postgres < db/migrations/202605081300_seed_kms_rollout_flags_default_disabled.sql`
+      (or paste the file's contents into a `psql` session connected
+      with the migrator role). The migration is wrapped in `BEGIN; …
+      COMMIT;` and is fully idempotent — re-running it after a partial
+      apply or in production is a no-op. Once applied, redeploy the
+      staging proxy and the `admin_schema_contract` check will pass.
+      **Live device proof remains operator-blocked:** install ForgeFlow
+      Android build → first prod operator signs in → app registers FCM
+      token → first push event fires. Operationally chained behind the
+      lawyer T&C signing → first prod operator creation → device install
+      sequence in `cutover.2`.
+      Detail / runbook: `runbooks/firebase_console_push_apply_runbook.md`.
 - [-] **Doc 1 remaining — closed 2026-05-08 except operator-blocked gates:**
       - Item 6 — admin/web setting sync inventory: **closed** (closeout doc + PRs #391, #393, #398).
       - Item 7 — connected-device E2E: **closed (emulator simulation)** Pixel 5 / Android 14, screens at `.claude/screenshots_doc1_emu/`.

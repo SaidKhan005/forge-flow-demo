@@ -1,0 +1,63 @@
+{
+  "event_id": "73a51c20-9f08-4d6e-b3a4-e9c8d7245af9",
+  "merchant_id": "M_TEST_MERCHANT_001",
+  "type": "order.updated",
+  "created_at": "2026-05-08T20:01:30Z",
+  "location_id": "L_RESTAURANT_A",
+  "data": {
+    "type": "order",
+    "id": "CAISENsparseNoCoversA",
+    "object": {
+      "order": {
+        "id": "CAISENsparseNoCoversA",
+        "location_id": "L_RESTAURANT_A",
+        "line_items": [
+          {
+            "uid": "li-1",
+            "name": "House Burger",
+            "quantity": "1",
+            "total_money": {
+              "amount": 1850,
+              "currency": "CAD"
+            }
+          }
+        ],
+        "taxes": [],
+        "discounts": [],
+        "service_charges": [],
+        "fulfillments": [],
+        "total_money": {
+          "amount": 1850,
+          "currency": "CAD"
+        },
+        "total_tax_money": {
+          "amount": 0,
+          "currency": "CAD"
+        },
+        "total_discount_money": {
+          "amount": 0,
+          "currency": "CAD"
+        },
+        "net_amounts": {
+          "total_money": {
+            "amount": 1850,
+            "currency": "CAD"
+          },
+          "tax_money": {
+            "amount": 0,
+            "currency": "CAD"
+          },
+          "discount_money": {
+            "amount": 0,
+            "currency": "CAD"
+          }
+        },
+        "created_at": "2026-05-08T19:55:00Z",
+        "updated_at": "2026-05-08T20:01:00Z",
+        "closed_at": "2026-05-08T20:01:00Z",
+        "state": "COMPLETED",
+        "version": 2
+      }
+    }
+  }
+}

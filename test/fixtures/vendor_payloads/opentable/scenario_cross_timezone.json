@@ -1,0 +1,49 @@
+{
+  "_fixture_meta": {
+    "scenario": "Cross-timezone (Toronto/Pacific)",
+    "outcome": "accept; resolver disambiguates business_date by location IANA, not by UTC date",
+    "two_locations": {
+      "location_a": {
+        "operator_id": "op_test_001",
+        "location_id": "loc_toronto_001",
+        "iana_timezone": "America/Toronto"
+      },
+      "location_b": {
+        "operator_id": "op_test_001",
+        "location_id": "loc_vancouver_001",
+        "iana_timezone": "America/Vancouver"
+      }
+    },
+    "test_intent": [
+      "Same UTC instant 2026-05-09T03:30:00Z arrives for both locations.",
+      "For America/Toronto (UTC-4 EDT in May), the local time is 2026-05-08 23:30 — business_date should be 2026-05-08 (assuming midnight cutover).",
+      "For America/Vancouver (UTC-7 PDT in May), the local time is 2026-05-08 20:30 — business_date should also be 2026-05-08.",
+      "Late-night sample 2026-05-09T07:30:00Z: Toronto local 03:30 (next-day depending on cutover); Vancouver local 00:30 (next-day) — resolver MUST not collapse to the UTC date.",
+      "The resolver MUST consult per-location IANA tz, NOT a global default."
+    ]
+  },
+  "toronto_reservation": {
+    "id": "OT-RES-2026050810-YYZ",
+    "restaurant_id": "rid-yyz-1234",
+    "reserved_at": "2026-05-09T03:30:00Z",
+    "modified_at": "2026-05-09T03:35:00Z",
+    "party_size": 2,
+    "status": "completed"
+  },
+  "vancouver_reservation": {
+    "id": "OT-RES-2026050810-YVR",
+    "restaurant_id": "rid-yvr-5678",
+    "reserved_at": "2026-05-09T03:30:00Z",
+    "modified_at": "2026-05-09T03:35:00Z",
+    "party_size": 4,
+    "status": "completed"
+  },
+  "vancouver_late_night_reservation": {
+    "id": "OT-RES-2026050811-YVR",
+    "restaurant_id": "rid-yvr-5678",
+    "reserved_at": "2026-05-09T07:30:00Z",
+    "modified_at": "2026-05-09T07:35:00Z",
+    "party_size": 3,
+    "status": "completed"
+  }
+}

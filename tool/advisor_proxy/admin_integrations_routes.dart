@@ -12,8 +12,13 @@
 //   * GET  /v1/admin/integrations/{vendor}/logs
 //   * POST /v1/webhooks/{vendor}/{operator_id}/{location_id}
 //
-// All admin writes are idempotent via the existing `proxy_requests`
-// table (HARD-H), keyed on the `Idempotency-Key` request header.
+// All admin writes are idempotent via the cross-tenant
+// `admin_request_idempotency` ledger (HARD-H), keyed on the
+// `Idempotency-Key` request header. The four POST routes below
+// (oauth/start, connect-key, test-connection, disconnect) require
+// the header — missing → 400 `missing_idempotency_key`. A duplicate
+// key replays the prior response; a fresh key reserves, runs, and
+// caches.
 // Permission gate: every /v1/admin/integrations/* and /v1/webhooks/*
 // route requires `integrations.configure`. `location_manager` is
 // denied at the role-permission layer; the gate translates that into
@@ -27,12 +32,21 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart'
     as integration;
+
+import 'advisor_proxy.dart'
+    show
+        AdminIdempotencyKeyConflict,
+        AdminRequestIdempotencyEntry,
+        AdminRequestIdempotencyStore;
+import 'log.dart';
 
 /// Inbound idempotency / routing surface for the proxy. Production
 /// wires a Postgres-backed gateway; tests pass a fake.
@@ -158,6 +172,14 @@ abstract class Phase80IntegrationRoutesBindingsHolder {
   FirstConnectionBackfillEnqueueGateway? get firstBackfillEnqueueGateway =>
       null;
   IntegrationCategoryResolver? get integrationCategoryResolver => null;
+
+  /// HARD-H — cross-tenant idempotency ledger. The four admin write
+  /// routes (oauth/start, connect-key, test-connection, disconnect)
+  /// require an `Idempotency-Key` header and replay the cached
+  /// response on a duplicate key. Null in tests that do not exercise
+  /// the idempotency seam; production wires the Postgres-backed
+  /// store via `proxy_bootstrap.PostgresAdminRequestIdempotencyStore`.
+  AdminRequestIdempotencyStore? get adminRequestIdempotencyStore => null;
 }
 
 /// Phase 8.0 router. Top-level entry point is [tryHandle].
@@ -168,6 +190,7 @@ class Phase80IntegrationRoutes {
     required this.webhookHandler,
     this.firstBackfillEnqueueGateway,
     this.integrationCategoryResolver,
+    this.adminRequestIdempotencyStore,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
@@ -191,6 +214,7 @@ class Phase80IntegrationRoutes {
       webhookHandler: bindings.webhookHandler,
       firstBackfillEnqueueGateway: bindings.firstBackfillEnqueueGateway,
       integrationCategoryResolver: bindings.integrationCategoryResolver,
+      adminRequestIdempotencyStore: bindings.adminRequestIdempotencyStore,
     );
     return router.tryHandle(request);
   }
@@ -200,8 +224,7 @@ class Phase80IntegrationRoutes {
   final InboundWebhookHandler webhookHandler;
   final FirstConnectionBackfillEnqueueGateway? firstBackfillEnqueueGateway;
   final IntegrationCategoryResolver? integrationCategoryResolver;
-  // Reserved for future per-request log timestamp injection.
-  // ignore: unused_field
+  final AdminRequestIdempotencyStore? adminRequestIdempotencyStore;
   final DateTime Function() _now;
 
   /// Returns `true` when [request] matched and was handled. Returns
@@ -218,14 +241,31 @@ class Phase80IntegrationRoutes {
       await _handleAdmin(request);
       return true;
     } catch (error, stack) {
-      // Defensive: the marked-region call site does not catch our
-      // throws, so any uncaught exception here would propagate to
-      // the listener loop. Return a 500 with the error stringified
-      // so the main loop's structured log captures the right field.
+      // P0 fix (2026-05-09 webhook signature triage Section 4 — leak
+      // site #1): never echo `error.toString()` or stack frames into
+      // the response body. Postgres exceptions like
+      // `relation "public.vendor_credentials" does not exist (42P01)`
+      // expose internal schema names + SQLSTATE codes to anyone who
+      // can drive a 500 (e.g., an unauthenticated webhook target
+      // before the DB is ready). Generate a per-failure error_id,
+      // log the full breadcrumb to the structured logger, and
+      // return a sanitized body that operators can correlate via
+      // `error_id` instead.
+      final errorId = _generateErrorId();
+      log(
+        LogSeverity.error,
+        'phase_8_0_route_error',
+        fields: <String, Object?>{
+          'error_id': errorId,
+          'path': path,
+          'error': error.toString(),
+          'stack_first_frame': _firstStackFrame(stack),
+        },
+      );
       _writeJson(request.response, 500, <String, Object?>{
         'error': 'phase_8_0_route_error',
-        'message': error.toString(),
-        'stack_first_frame': _firstStackFrame(stack),
+        'error_id': errorId,
+        'message': 'internal_server_error',
       });
       return true;
     }
@@ -294,14 +334,23 @@ class Phase80IntegrationRoutes {
       )) {
         return;
       }
-      final result = await gateway.startOAuth(
-        operatorId: operatorId,
-        locationId: locationId,
+      if (!_requireIdempotencyKey(request)) return;
+      await _runIdempotent(
+        request: request,
+        requestType: 'admin.integrations.oauth_start',
         actorUserId: actor.userId,
-        vendorId: vendorId,
-        module: _stringField(body, 'module'),
+        body: body,
+        compute: () async {
+          final result = await gateway.startOAuth(
+            operatorId: operatorId,
+            locationId: locationId,
+            actorUserId: actor.userId,
+            vendorId: vendorId,
+            module: _stringField(body, 'module'),
+          );
+          return (statusCode: 200, payload: result);
+        },
       );
-      _writeJson(request.response, 200, result);
       return;
     }
 
@@ -343,23 +392,32 @@ class Phase80IntegrationRoutes {
         });
         return;
       }
-      final result = await gateway.connectViaKeyPaste(
-        operatorId: operatorId,
-        locationId: locationId,
+      if (!_requireIdempotencyKey(request)) return;
+      await _runIdempotent(
+        request: request,
+        requestType: 'admin.integrations.connect_key',
         actorUserId: actor.userId,
-        vendorId: vendorId,
-        apiKey: apiKey,
-        username: _stringField(body, 'username'),
-        module: _stringField(body, 'module'),
+        body: body,
+        compute: () async {
+          final result = await gateway.connectViaKeyPaste(
+            operatorId: operatorId,
+            locationId: locationId,
+            actorUserId: actor.userId,
+            vendorId: vendorId,
+            apiKey: apiKey,
+            username: _stringField(body, 'username'),
+            module: _stringField(body, 'module'),
+          );
+          final response = await _withFirstBackfillStatus(
+            connectResult: result,
+            vendorId: vendorId,
+            operatorId: operatorId,
+            locationId: locationId,
+            actorUserId: actor.userId,
+          );
+          return (statusCode: 200, payload: response);
+        },
       );
-      final response = await _withFirstBackfillStatus(
-        connectResult: result,
-        vendorId: vendorId,
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actor.userId,
-      );
-      _writeJson(request.response, 200, response);
       return;
     }
 
@@ -378,13 +436,22 @@ class Phase80IntegrationRoutes {
       )) {
         return;
       }
-      final result = await gateway.testConnection(
-        operatorId: operatorId,
-        locationId: locationId,
+      if (!_requireIdempotencyKey(request)) return;
+      await _runIdempotent(
+        request: request,
+        requestType: 'admin.integrations.test_connection',
         actorUserId: actor.userId,
-        vendorId: vendorId,
+        body: body,
+        compute: () async {
+          final result = await gateway.testConnection(
+            operatorId: operatorId,
+            locationId: locationId,
+            actorUserId: actor.userId,
+            vendorId: vendorId,
+          );
+          return (statusCode: 200, payload: result);
+        },
       );
-      _writeJson(request.response, 200, result);
       return;
     }
 
@@ -403,14 +470,23 @@ class Phase80IntegrationRoutes {
       )) {
         return;
       }
-      final result = await gateway.disconnect(
-        operatorId: operatorId,
-        locationId: locationId,
+      if (!_requireIdempotencyKey(request)) return;
+      await _runIdempotent(
+        request: request,
+        requestType: 'admin.integrations.disconnect',
         actorUserId: actor.userId,
-        vendorId: vendorId,
-        reason: _stringField(body, 'reason') ?? 'operator_action',
+        body: body,
+        compute: () async {
+          final result = await gateway.disconnect(
+            operatorId: operatorId,
+            locationId: locationId,
+            actorUserId: actor.userId,
+            vendorId: vendorId,
+            reason: _stringField(body, 'reason') ?? 'operator_action',
+          );
+          return (statusCode: 200, payload: result);
+        },
       );
-      _writeJson(request.response, 200, result);
       return;
     }
 
@@ -493,14 +569,47 @@ class Phase80IntegrationRoutes {
       headers[name.toLowerCase()] = values.join(',');
     });
 
-    final result = await webhookHandler.dispatch(
-      operatorId: operatorId,
-      locationId: locationId,
-      vendorId: vendorId,
-      rawBody: rawBody,
-      payload: payload,
-      headers: headers,
-    );
+    // P0 fix (2026-05-09 webhook signature triage Section 5.D):
+    // wrap [webhookHandler.dispatch] in its own try/catch so any
+    // uncaught exception (DB outage, decrypt failure, malformed
+    // pgcrypto envelope) lands in a sanitized 500 in the same shape
+    // as [WebhookOutcome.adapterError] instead of falling through to
+    // [tryHandle]'s catch-all and exposing the underlying error
+    // message in the response body. The structured log keeps the
+    // full exception text correlated by `error_id`.
+    WebhookDispatchResult result;
+    try {
+      result = await webhookHandler.dispatch(
+        operatorId: operatorId,
+        locationId: locationId,
+        vendorId: vendorId,
+        rawBody: rawBody,
+        payload: payload,
+        headers: headers,
+      );
+    } catch (error, stack) {
+      final errorId = _generateErrorId();
+      log(
+        LogSeverity.error,
+        'phase_8_0_webhook_dispatch_error',
+        fields: <String, Object?>{
+          'error_id': errorId,
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'vendor_id': vendorId,
+          'error': error.toString(),
+          'stack_first_frame': _firstStackFrame(stack),
+        },
+      );
+      _writeJson(request.response, 500, <String, Object?>{
+        'outcome': WebhookOutcome.adapterError.name,
+        'error': 'webhook_dispatch_error',
+        'error_id': errorId,
+        'message': 'internal_server_error',
+        'records_written': 0,
+      });
+      return;
+    }
     _writeJson(request.response, result.statusCode, result.toJson());
   }
 
@@ -537,6 +646,152 @@ class Phase80IntegrationRoutes {
         _testConnectionPattern.hasMatch(path) ||
         _disconnectPattern.hasMatch(path) ||
         _logsPattern.hasMatch(path);
+  }
+
+  /// HARD-H — every admin write route requires an `Idempotency-Key`
+  /// header. Returns `true` when present (caller proceeds); on missing
+  /// or empty, writes a 400 `missing_idempotency_key` and returns
+  /// `false` so the caller can early-return.
+  bool _requireIdempotencyKey(HttpRequest request) {
+    final raw = request.headers.value('Idempotency-Key')?.trim();
+    if (raw == null || raw.isEmpty) {
+      _writeJson(request.response, 400, <String, Object?>{
+        'error': 'missing_idempotency_key',
+        'message': 'Idempotency-Key header is required',
+      });
+      return false;
+    }
+    return true;
+  }
+
+  /// HARD-H — wraps [compute] with the `admin_request_idempotency`
+  /// reserve→run→complete envelope. Mirrors `_runAdminIdempotent` in
+  /// `advisor_proxy.dart`. When [adminRequestIdempotencyStore] is null
+  /// (test bindings that do not exercise the seam), [compute] runs
+  /// without dedup so existing tests stay green.
+  Future<void> _runIdempotent({
+    required HttpRequest request,
+    required String requestType,
+    required String actorUserId,
+    required Map<String, Object?> body,
+    required Future<({int statusCode, Map<String, Object?> payload})>
+    Function() compute,
+  }) async {
+    final response = request.response;
+    final store = adminRequestIdempotencyStore;
+    final idempotencyKey =
+        request.headers.value('Idempotency-Key')?.trim() ?? '';
+
+    if (store == null || idempotencyKey.isEmpty) {
+      final result = await compute();
+      _writeJson(response, result.statusCode, result.payload);
+      return;
+    }
+
+    final now = _now().toUtc();
+    final bodyHash = _hashRequestBody(body);
+
+    AdminRequestIdempotencyEntry? cached;
+    try {
+      cached = await store.lookup(
+        idempotencyKey: idempotencyKey,
+        requestType: requestType,
+        requestBodyHash: bodyHash,
+      );
+    } on AdminIdempotencyKeyConflict catch (conflict) {
+      _writeJson(response, 409, <String, Object?>{
+        'error': 'idempotency_key_conflict',
+        'message': conflict.message,
+      });
+      return;
+    }
+
+    if (cached != null) {
+      if (cached.responseStatus == null || cached.responsePayload == null) {
+        // In-flight — try orphan reclaim (matches L4 contract; same
+        // predicate as `_runAdminIdempotent`).
+        final expiresAt = cached.expiresAt;
+        if (expiresAt != null && expiresAt.isBefore(now)) {
+          final reclaimed = await store.tryReclaimOrphan(
+            idempotencyKey: idempotencyKey,
+          );
+          if (!reclaimed) {
+            _writeJson(response, 409, <String, Object?>{
+              'error': 'idempotency_request_in_flight',
+              'message': 'idempotent request is already in flight',
+            });
+            return;
+          }
+          // Fall through to reserve below.
+        } else {
+          _writeJson(response, 409, <String, Object?>{
+            'error': 'idempotency_request_in_flight',
+            'message': 'idempotent request is already in flight',
+          });
+          return;
+        }
+      } else {
+        _writeJson(response, cached.responseStatus!, cached.responsePayload!);
+        return;
+      }
+    }
+
+    final reserved = await store.reserve(
+      idempotencyKey: idempotencyKey,
+      requestType: requestType,
+      actorUserId: actorUserId,
+      requestBodyHash: bodyHash,
+    );
+    if (!reserved) {
+      AdminRequestIdempotencyEntry? raceCached;
+      try {
+        raceCached = await store.lookup(
+          idempotencyKey: idempotencyKey,
+          requestType: requestType,
+          requestBodyHash: bodyHash,
+        );
+      } on AdminIdempotencyKeyConflict catch (conflict) {
+        _writeJson(response, 409, <String, Object?>{
+          'error': 'idempotency_key_conflict',
+          'message': conflict.message,
+        });
+        return;
+      }
+      if (raceCached != null &&
+          raceCached.responseStatus != null &&
+          raceCached.responsePayload != null) {
+        _writeJson(
+          response,
+          raceCached.responseStatus!,
+          raceCached.responsePayload!,
+        );
+        return;
+      }
+      _writeJson(response, 409, <String, Object?>{
+        'error': 'idempotency_request_in_flight',
+        'message': 'idempotent request is already in flight',
+      });
+      return;
+    }
+
+    final result = await compute();
+    await store.completeReservation(
+      idempotencyKey: idempotencyKey,
+      responseStatus: result.statusCode,
+      responsePayload: result.payload,
+    );
+    _writeJson(response, result.statusCode, result.payload);
+  }
+
+  /// Canonicalize a JSON body so two POSTs with semantically identical
+  /// payloads (different key order, etc.) hash to the same value.
+  /// Mirrors `_hashRequestBody` in `advisor_proxy.dart`.
+  static String _hashRequestBody(Map<String, Object?> body) {
+    final sortedKeys = body.keys.toList()..sort();
+    final canonical = <String, Object?>{
+      for (final key in sortedKeys) key: body[key],
+    };
+    return sha256.convert(utf8.encode(jsonEncode(canonical))).toString();
   }
 
   Future<Map<String, Object?>> _withFirstBackfillStatus({
@@ -809,5 +1064,29 @@ class Phase80IntegrationRoutes {
   static String _firstStackFrame(StackTrace stack) {
     final frames = stack.toString().split('\n');
     return frames.isEmpty ? '' : frames.first.trim();
+  }
+
+  /// P0 fix (2026-05-09 webhook signature triage): per-failure
+  /// correlation id surfaced in the response body. The full exception
+  /// text + stack stays in the structured log keyed on this id so
+  /// operators can correlate without leaking internal details to the
+  /// vendor / webhook caller.
+  ///
+  /// Format is a 16-byte hex string — no `package:uuid` dependency
+  /// added (the proxy already pulls `dart:math`'s `Random.secure()`
+  /// for the OAuth state token at
+  /// `integration_oauth_routes.dart:_generateStateToken`).
+  static final Random _errorIdRandom = Random.secure();
+
+  static String _generateErrorId() {
+    final bytes = Uint8List(16);
+    for (var i = 0; i < bytes.length; i++) {
+      bytes[i] = _errorIdRandom.nextInt(256);
+    }
+    final hex = StringBuffer();
+    for (final b in bytes) {
+      hex.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return hex.toString();
   }
 }

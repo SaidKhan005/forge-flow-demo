@@ -1,0 +1,28 @@
+{
+  "_pressure_meta": {
+    "scenario": "A — forged signature",
+    "expected_outcome": "reject",
+    "header": {
+      "X-Libro-Signature": "t=1746360605,v1=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    },
+    "signing_secret_used": "this-is-not-the-real-secret",
+    "real_signing_secret_for_test": "libro_test_signing_secret_v1",
+    "raw_body_is": "the JSON body below, UTF-8 encoded; HMAC must be computed over `<t>.<rawBody>`",
+    "verifier": "lib/integrations/reservation/libro_webhook_signature_verifier.dart",
+    "expected_failure_reason": "signature mismatch"
+  },
+  "id": "wh-evt-7c2f-700",
+  "type": "reservation.confirmed",
+  "venue_id": "venue-toronto-yorkville",
+  "occurred_at": "2026-05-04T11:30:05",
+  "reservation": {
+    "id": "lbr-evt-7c2f-001",
+    "venue_id": "venue-toronto-yorkville",
+    "size": 4,
+    "status": "confirmed",
+    "reservation_at": "2026-05-04T19:00:00",
+    "created_at": "2026-05-04T11:30:00",
+    "confirmed_at": "2026-05-04T11:30:04",
+    "updated_at": "2026-05-04T11:30:04"
+  }
+}

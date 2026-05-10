@@ -1,0 +1,27 @@
+{
+  "_fixture_meta": {
+    "scenario": "F — cross-vendor ID collision",
+    "outcome": "reject (idempotency-key namespace prevents shadow-write)",
+    "expected_failure": "Namespace defense: vendor_id is part of the idempotency UNIQUE so an id collision across vendors NEVER causes a shadow-write or shadow-read.",
+    "collision_target": "Libro reservation id pattern 'lbr-evt-7c2f-001' (see test/integrations/reservation/fixtures/libro_reservations_fixture.dart)",
+    "binding_keys": {
+      "vendor_id": "opentable",
+      "operator_id": "op_test_001",
+      "vendor_entity_id": "lbr-evt-7c2f-001",
+      "_comment": "Same vendor_entity_id under vendor_id=libro already exists in libro_reservations_fixture.dart for the same operator. Sink uses (vendor_id, operator_id, vendor_entity_id, vendor_modified_at) as the upsert key — adding vendor_id segregates the namespace."
+    },
+    "what_must_NOT_happen": [
+      "OpenTable webhook MUST NOT shadow-update the Libro row.",
+      "OpenTable webhook MUST NOT shadow-read the Libro row's vendor_modified_at and skip its own write as a duplicate.",
+      "The framework's inbound_webhook_idempotency UNIQUE on (vendor_id, operator_id, vendor_event_id) MUST allow this OpenTable event to land alongside any Libro event with the same string id."
+    ]
+  },
+  "reservation": {
+    "id": "lbr-evt-7c2f-001",
+    "restaurant_id": "rid-9876",
+    "reserved_at": "2026-05-13T18:30:00Z",
+    "modified_at": "2026-05-08T13:22:00Z",
+    "party_size": 5,
+    "status": "booked"
+  }
+}

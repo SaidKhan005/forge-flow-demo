@@ -1,0 +1,17 @@
+{
+  "shifts": [
+    {
+      "id": "sh_550881",
+      "user_id": "usr_98231",
+      "position": {
+        "id": "pos_foh_server",
+        "name": "Server"
+      },
+      "start_time": "2026-05-09T15:00:00.000Z",
+      "end_time": "2026-05-09T22:30:00.000Z",
+      "status": "published",
+      "updated_at": "2026-05-08T18:14:02.000Z"
+    }
+  ],
+  "next_cursor": ""
+}

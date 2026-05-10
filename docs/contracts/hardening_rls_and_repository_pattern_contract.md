@@ -27,7 +27,9 @@ the primary defense (RLS is the secondary).
 Handoff between:
 
 - `db/migrations/` — new policy migration on auth tables.
-- `tool/rls_policy_lint.dart` — extend lint to forbid bare `current_setting`.
+- `tool/rls_policy_lint.dart` — exists (~251 LOC); forbids bare
+  `current_setting('app.*')` inside `CREATE POLICY` bodies, with the
+  superseded-migration allowlist at `tool/rls_policy_lint_allowlist.txt`.
 - `tool/postgres_import_lint.dart` — already exists; ensure it covers
   service layer.
 - `lib/infrastructure/persistence/postgres/` — new auth/MFA/rollup
@@ -65,10 +67,16 @@ that calls bare `current_setting('app.operator_id', true)::uuid` or
 1. `DROP POLICY <name> ON <table>;`
 2. `CREATE POLICY <name> ON <table> ... USING (...) WITH CHECK (...);`
    using the wrapper functions from
-   `202604280000_phase_9_0sigma_b_rls_wrappers.sql`:
-   - `app_current_operator()` — replaces `current_setting('app.operator_id', true)::uuid`
-   - `app_current_user()` — replaces `current_setting('app.user_id', true)::uuid`
-   - (others as already defined)
+   `202604280000_phase_9_0sigma_b_rls_wrappers.sql`. The four wrappers
+   defined there (lines ~61-134, all `STABLE LEAKPROOF PARALLEL SAFE`)
+   are:
+   - `app_current_operator()` — reads `app.operator_id`; replaces
+     `current_setting('app.operator_id', true)::uuid`.
+   - `app_current_location()` — reads `app.location_id`.
+   - `app_current_actor_user()` — reads `app.user_id`; replaces
+     `current_setting('app.user_id', true)::uuid`.
+   - `app_acting_as_operator()` — reads `app.acting_as_operator_id`
+     (NULL until F&F internal cross-operator access lands).
 
 Tables affected (verify by inspecting `202604260000`): minimally
 `auth_sessions`, `auth_events_audit`, `mfa_factors`, `mfa_recovery_codes`,
@@ -81,16 +89,25 @@ swapped, not disabled.
 
 ## Required — RLS Lint Extension
 
-`tool/rls_policy_lint.dart` must add a rule:
+`tool/rls_policy_lint.dart` exists (~251 LOC) and is enforced via
+`.github/workflows/ci.yml`. It already implements the rule:
 
-- Scan every `db/migrations/*.sql` file for `CREATE POLICY` blocks.
-- For each policy body (USING / WITH CHECK clauses), forbid any literal
-  match of `current_setting('app.` (case-insensitive).
-- Allowed: calls to `app_current_operator()`, `app_current_user()`,
-  `app_current_location()`, `app_current_actor_kind()`.
-- Error message: `RLS policy must call wrapper function, not bare current_setting (file:line)`.
+- Scans every `db/migrations/*.sql` file for `CREATE POLICY` blocks
+  (anchors on `CREATE POLICY ... ;` so plain prose comments referencing
+  `current_setting('app.<name>', true)` do not produce false positives).
+- For each policy body, forbids any literal match of
+  `current_setting('app.` (case-insensitive).
+- Allowed: calls to `app_current_operator()`, `app_current_location()`,
+  `app_current_actor_user()`, `app_acting_as_operator()`.
+- Files whose policies are definitively superseded by a later
+  wrapper-using rewrite are listed in
+  `tool/rls_policy_lint_allowlist.txt` (one filename per line, `#`
+  comments allowed). The current allowlist supersedes
+  `202604260000_auth_rls_per_tenant_policies.sql` via
+  `202604280001_phase_9_0sigma_b_rewrite_existing_policies.sql`.
+- Diagnostic format: `<file>: policy "<name>" reads bare app.* GUC: <snippet>`.
 
-The lint runs in CI (already wired). Failure blocks the build.
+Failure blocks the build.
 
 ## Required — Repository Extraction
 
@@ -129,8 +146,13 @@ New repositories under `lib/infrastructure/persistence/postgres/`:
 
 Each repository:
 
-- Extends `OperatorScopedRepository<T>` (or system-scope variant for
-  `gdpr_erasure_repository.dart` if inherently cross-tenant).
+- Extends `OperatorScopedRepository` (or system-scope variant for
+  `gdpr_erasure_repository.dart` if inherently cross-tenant). The base
+  class (see `lib/infrastructure/persistence/postgres/operator_scoped_repository.dart`)
+  exposes exactly two execution paths: `withTenant(TenantContext, body)`
+  for the normal path (runs body in a tx with `SET LOCAL
+  app.operator_id / location_id / user_id`) and `withSystem(body, reason:)`
+  for the audited admin-bypass path (`forge_admin BYPASSRLS`).
 - Receives a `TenantTransactionWrapper`.
 - Imports `package:postgres` (allowed in this directory).
 - Exposes only domain-shaped methods; no `Connection` or `Statement`
@@ -140,6 +162,23 @@ Each repository:
 
 Service-layer callers swap raw SQL execution for repository method calls.
 Behavior is preserved — same result for same input.
+
+### Sanctioned exception — `audit_logs_repository.dart` (defense-in-depth probe, PR [#424](https://github.com/SaidKhan005/forge-flow-demo/pull/424))
+
+`lib/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart`
+intentionally does NOT extend `OperatorScopedRepository`. Its
+atomic-with-business-write contract requires that the audit row
+commit in the same transaction as the change it audits — opening its
+own `withTenant` wrapper would break that boundary. Instead, the
+writer cross-checks the caller-supplied `operatorId` parameter
+against `current_setting('app.operator_id', true)` BEFORE binding any
+insert SQL and throws `AuditLogsTenantMismatchError` on disagreement.
+When the GUC is unset (the `runAsSystem` admin path, where
+`forge_admin BYPASSRLS` is the gate and a tenant-scope GUC wouldn't
+make sense), the parameter is accepted as-is — those paths are
+already audited via `app.bypass_rls_audit = 'system:<reason>'` on
+the same transaction. This is the defense-in-depth equivalent of the
+base-class enforcement.
 
 ## Required — Lint Coverage
 
@@ -188,8 +227,10 @@ verification-only acceptance check.
       in any new migration.
 - [ ] All 13 listed service files no longer import `package:postgres`.
 - [ ] New repositories exist under `lib/infrastructure/persistence/postgres/`.
-- [ ] All repositories extend `OperatorScopedRepository<T>` (or named
+- [ ] All repositories extend `OperatorScopedRepository` (or named
       cross-tenant variant) and inject session vars via `SET LOCAL`.
+      Known exception: `audit_logs_repository.dart` (see "Known
+      exception under remediation" above).
 - [ ] `tool/postgres_import_lint.dart` covers `lib/services/`.
 - [ ] Existing RLS isolation sweep test still passes.
 - [ ] `dart analyze --fatal-infos` clean.

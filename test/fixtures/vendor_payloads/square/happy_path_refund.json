@@ -1,0 +1,30 @@
+{
+  "event_id": "9c3df2a1-7b40-4e8f-bc92-a1d8e6f74b03",
+  "merchant_id": "M_TEST_MERCHANT_001",
+  "type": "refund.updated",
+  "created_at": "2026-05-08T19:10:05Z",
+  "location_id": "L_RESTAURANT_A",
+  "data": {
+    "type": "refund",
+    "id": "5O5OvgkcNUhl7JBJ",
+    "object": {
+      "refund": {
+        "id": "5O5OvgkcNUhl7JBJ",
+        "location_id": "L_RESTAURANT_A",
+        "transaction_id": "KnL67ZApjR6YcSZV",
+        "tender_id": "TND_VWZ123",
+        "created_at": "2026-05-08T19:10:00Z",
+        "reason": "Customer requested partial refund",
+        "amount_money": {
+          "amount": 791,
+          "currency": "CAD"
+        },
+        "status": "APPROVED",
+        "processing_fee_money": {
+          "amount": 0,
+          "currency": "CAD"
+        }
+      }
+    }
+  }
+}

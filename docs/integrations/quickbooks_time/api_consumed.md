@@ -55,7 +55,7 @@ diff.
 > `handleWebhook` throws `UnsupportedError` per
 > `docs/contracts/vendor_adapter_slice_contract.md`. See
 > `webhook_signature.md` (single-line N/A). Polling cadence (5 minutes
-> default per `docs/phases/phase_8S/phase_8S_scheduling_connector_plan.md`)
+> default per `docs/archive/phases/phase_8S/phase_8S_scheduling_connector_plan.md`)
 > is the only live-update path.
 
 ---
