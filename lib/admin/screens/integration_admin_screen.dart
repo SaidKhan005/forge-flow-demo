@@ -465,8 +465,8 @@ class _ProviderKeyTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Secure storage ID: ${row!.kmsSecretName}',
-                    style: AppTextStyles.mono8(color: AppColors.textMuted),
+                    'Stored securely. The full key is hidden after rotation.',
+                    style: AppTextStyles.body12(color: AppColors.textMuted),
                   ),
                 ],
               ],
@@ -704,7 +704,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Paste the new key. Only the saved preview and secure storage location are kept.',
+                'Paste the new key. Only the saved preview is shown after rotation.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 12),

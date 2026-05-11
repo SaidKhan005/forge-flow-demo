@@ -127,6 +127,12 @@ void main() {
     expect(find.text('Reservation'), findsOneWidget);
     expect(find.text('API pending'), findsWidgets);
     expect(find.text('Documented'), findsNothing);
+    expect(
+      find.text('Stored securely. The full key is hidden after rotation.'),
+      findsWidgets,
+    );
+    expect(find.textContaining('Secure storage ID:'), findsNothing);
+    expect(find.textContaining('kms://'), findsNothing);
   });
 
   testWidgets('rotate flow: confirm → plaintext → reveal modal → close', (
