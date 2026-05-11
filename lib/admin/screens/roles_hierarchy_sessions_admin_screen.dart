@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
+import '../admin_route_handoff.dart';
 import '../services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
@@ -41,6 +42,7 @@ class RolesHierarchySessionsAdminScreen extends StatefulWidget {
     this.idempotencyKeyFactory,
     this.onChangeOperator,
     this.onBackToBusinessAccounts,
+    this.initialScope,
   });
 
   final RolesHierarchySessionsAdminGateway gateway;
@@ -66,6 +68,7 @@ class RolesHierarchySessionsAdminScreen extends StatefulWidget {
   /// admin can switch operators without leaving the surface.
   final VoidCallback? onChangeOperator;
   final VoidCallback? onBackToBusinessAccounts;
+  final AdminHierarchyScopeIntent? initialScope;
 
   @override
   State<RolesHierarchySessionsAdminScreen> createState() =>
@@ -397,7 +400,10 @@ class _RolesHierarchySessionsAdminScreenState
                 key: const Key('admin_rhs_action_error'),
                 message: _actionError!,
               ),
-            _AccessScopeFilterCard(pickedOperator: widget.pickedOperator),
+            _AccessScopeFilterCard(
+              pickedOperator: widget.pickedOperator,
+              initialScope: widget.initialScope,
+            ),
             const SizedBox(height: 12),
             TabBar(
               key: const Key('admin_rhs_tab_bar'),
@@ -512,12 +518,17 @@ class _TabLoadBody extends StatelessWidget {
 }
 
 class _AccessScopeFilterCard extends StatelessWidget {
-  const _AccessScopeFilterCard({required this.pickedOperator});
+  const _AccessScopeFilterCard({
+    required this.pickedOperator,
+    this.initialScope,
+  });
 
   final OperatorPickerResult pickedOperator;
+  final AdminHierarchyScopeIntent? initialScope;
 
   @override
   Widget build(BuildContext context) {
+    final scope = initialScope ?? _scopeFromPickedOperator(pickedOperator);
     return AdminCard(
       key: const Key('admin_rhs_filter_card'),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -526,9 +537,13 @@ class _AccessScopeFilterCard extends StatelessWidget {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          const Icon(Icons.filter_list, size: 18, color: AppColors.sunsetDark),
+          const Icon(
+            Icons.account_tree_outlined,
+            size: 18,
+            color: AppColors.sunsetDark,
+          ),
           Text(
-            'Filters',
+            'Scope context',
             style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
           ),
           _ScopeChip(
@@ -536,16 +551,60 @@ class _AccessScopeFilterCard extends StatelessWidget {
             label: pickedOperator.operatorBusinessName,
           ),
           _ScopeChip(
-            icon: Icons.location_on_outlined,
-            label: pickedOperator.locationName,
+            icon: Icons.tune_outlined,
+            label: _selectedScopeLabel(scope),
+          ),
+          _ScopeChip(
+            icon: _scopeIcon(scope.scopeType),
+            label: scope.displayLabel,
           ),
           Text(
-            'Role policy, hierarchy, and sessions use the selected business scope.',
+            'Role grants and hierarchy stay anchored to the selected scope.',
             style: AppTextStyles.mono11(color: AppColors.textMuted),
           ),
         ],
       ),
     );
+  }
+}
+
+AdminHierarchyScopeIntent _scopeFromPickedOperator(
+  OperatorPickerResult picked,
+) {
+  if (picked.locationId.trim().isEmpty) {
+    return AdminHierarchyScopeIntent.business(
+      operatorId: picked.operatorId,
+      operatorName: picked.operatorBusinessName,
+    );
+  }
+  return AdminHierarchyScopeIntent.location(
+    operatorId: picked.operatorId,
+    locationId: picked.locationId,
+    operatorName: picked.operatorBusinessName,
+    locationName: picked.locationName,
+    valueState: AdminHierarchyScopeValueState.locationOnly,
+  );
+}
+
+String _selectedScopeLabel(AdminHierarchyScopeIntent scope) {
+  switch (scope.scopeType) {
+    case AdminHierarchyScopeType.business:
+      return 'Selected business scope';
+    case AdminHierarchyScopeType.orgUnit:
+      return 'Selected org unit scope';
+    case AdminHierarchyScopeType.location:
+      return 'Selected location scope';
+  }
+}
+
+IconData _scopeIcon(AdminHierarchyScopeType type) {
+  switch (type) {
+    case AdminHierarchyScopeType.business:
+      return Icons.business_outlined;
+    case AdminHierarchyScopeType.orgUnit:
+      return Icons.account_tree_outlined;
+    case AdminHierarchyScopeType.location:
+      return Icons.location_on_outlined;
   }
 }
 
@@ -625,9 +684,9 @@ class RolePolicyAdminPanel extends StatelessWidget {
                 tone: AppColors.sunset,
               ),
               AdminStatItem(
-                label: 'Permission keys',
+                label: 'Human permissions',
                 value: PermissionKeys.all.length.toString(),
-                icon: Icons.key_outlined,
+                icon: Icons.fact_check_outlined,
                 tone: AppColors.textMuted,
               ),
             ],
@@ -853,11 +912,9 @@ class _RoleRowTile extends StatelessWidget {
 @visibleForTesting
 const String kMfaRequiredTooltip = 'Requires multi-factor authentication.';
 
-/// One permission-key chip. Renders the catalog `key` as a monospace
-/// label; if the key is in [PermissionKeys.requiresMfa], decorates the
-/// chip with a lock icon plus the literal "MFA" text and surfaces the
-/// contract-pinned tooltip on hover. Used by the role row tile and
-/// the Permission Explainer.
+/// One permission chip. Renders a human label first and keeps the raw
+/// catalog key in the tooltip for diagnostics. MFA-required grants keep
+/// the lock icon plus literal "MFA" text from the parity contract.
 class PermissionKeyChip extends StatelessWidget {
   const PermissionKeyChip({super.key, required this.permissionKey});
 
@@ -866,6 +923,9 @@ class PermissionKeyChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mfa = PermissionKeys.requiresMfa.contains(permissionKey);
+    final tooltip = mfa
+        ? 'Raw key: $permissionKey\n$kMfaRequiredTooltip'
+        : 'Raw key: $permissionKey';
     final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -877,8 +937,8 @@ class PermissionKeyChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Text(
-            permissionKey,
-            style: AppTextStyles.mono11(color: AppColors.textSecondary),
+            permissionHumanLabel(permissionKey),
+            style: AppTextStyles.body12(color: AppColors.textSecondary),
           ),
           if (mfa) ...<Widget>[
             const SizedBox(width: 6),
@@ -896,13 +956,198 @@ class PermissionKeyChip extends StatelessWidget {
         ],
       ),
     );
-    if (!mfa) return chip;
     return Tooltip(
-      key: Key('admin_rhs_perm_mfa_tooltip_$permissionKey'),
-      message: kMfaRequiredTooltip,
+      key: Key(
+        mfa
+            ? 'admin_rhs_perm_mfa_tooltip_$permissionKey'
+            : 'admin_rhs_perm_tooltip_$permissionKey',
+      ),
+      message: tooltip,
       child: chip,
     );
   }
+}
+
+@visibleForTesting
+String permissionHumanLabel(String permissionKey) {
+  final parts = permissionKey
+      .split('.')
+      .map((part) => part.trim())
+      .where((part) => part.isNotEmpty)
+      .toList(growable: false);
+  if (parts.length < 2) return _titleCaseToken(permissionKey);
+  final action = parts.last;
+  final resource = _permissionResourceLabel(parts.take(parts.length - 1));
+  final verb = _permissionActionLabel(action);
+  if (verb == 'Access' && parts.first == 'product') {
+    return 'Access $resource';
+  }
+  return '$verb $resource';
+}
+
+String _permissionResourceLabel(Iterable<String> parts) {
+  final normalized = parts.toList(growable: false);
+  if (normalized.isEmpty) return 'permission';
+  if (normalized.length == 2 &&
+      normalized.first == 'product' &&
+      normalized.last == 'forgeflow') {
+    return 'Forge & Flow product';
+  }
+  if (normalized.length == 2 &&
+      normalized.first == 'product' &&
+      normalized.last == 'barrio') {
+    return 'Barrio product';
+  }
+  return normalized.map(_permissionResourceToken).join(' ');
+}
+
+String _permissionResourceToken(String token) {
+  switch (token) {
+    case 'forgeflow':
+      return 'Forge & Flow';
+    case 'barrio':
+      return 'Barrio';
+    case 'admin':
+      return 'admin';
+    case 'team':
+      return 'team';
+    case 'billing':
+      return 'billing';
+    case 'integration':
+      return 'integration';
+    case 'integrations':
+      return 'vendor connections';
+    case 'workflow':
+      return 'workflow';
+    case 'users':
+      return 'users';
+    case 'roles':
+      return 'roles';
+    case 'audit_log':
+      return 'audit log';
+    case 'session':
+      return 'sessions';
+    case 'service_principal':
+      return 'service principal';
+    case 'feature_flag':
+      return 'feature flags';
+    case 'pricing_tier':
+      return 'pricing tiers';
+    case 'payment_method':
+      return 'payment methods';
+    case 'usage_caps':
+      return 'usage caps';
+    case 'target_cycle':
+      return 'target cycles';
+    case 'target_profile':
+      return 'target profiles';
+    case 'weekly_plan':
+      return 'weekly plans';
+    case 'jim_taylor':
+      return 'Jim Taylor';
+    case 'preston_lee':
+      return 'Preston Lee';
+    case 'el_podio':
+      return 'El Podio';
+    case '7shifts':
+      return '7shifts';
+    case 'qbo':
+      return 'QuickBooks';
+    default:
+      return token
+          .split('_')
+          .where((part) => part.isNotEmpty)
+          .map(_titleCaseToken)
+          .join(' ');
+  }
+}
+
+String _permissionActionLabel(String action) {
+  switch (action) {
+    case 'access':
+      return 'Access';
+    case 'view':
+      return 'View';
+    case 'edit':
+      return 'Edit';
+    case 'override':
+      return 'Override';
+    case 'manage':
+      return 'Manage';
+    case 'unlock':
+      return 'Unlock';
+    case 'replace':
+      return 'Replace';
+    case 'create':
+      return 'Create';
+    case 'delete':
+      return 'Delete';
+    case 'assign':
+      return 'Assign';
+    case 'revoke':
+      return 'Revoke';
+    case 'invite':
+      return 'Invite';
+    case 'deactivate':
+      return 'Deactivate';
+    case 'reactivate':
+      return 'Reactivate';
+    case 'soft_delete':
+      return 'Soft delete';
+    case 'erase_pii':
+      return 'Erase PII for';
+    case 'reset_password':
+      return 'Reset password for';
+    case 'reset_mfa':
+      return 'Reset MFA for';
+    case 'reset_mfa_factors':
+      return 'Reset MFA factors for';
+    case 'edit_seeded':
+      return 'Edit seeded';
+    case 'export':
+      return 'Export';
+    case 'force_logout':
+      return 'Force logout';
+    case 'issue_token':
+      return 'Issue token for';
+    case 'read':
+      return 'Read';
+    case 'toggle':
+      return 'Toggle';
+    case 'publish':
+      return 'Publish';
+    case 'connect':
+      return 'Connect';
+    case 'key_rotate':
+      return 'Rotate keys for';
+    case 'configure':
+      return 'Configure';
+    case 'run':
+      return 'Run';
+    case 'approve':
+      return 'Approve';
+    case 'reject':
+      return 'Reject';
+    case 'complete_unit':
+      return 'Complete unit in';
+    case 'tool_invoke':
+      return 'Invoke tools in';
+    default:
+      return _titleCaseToken(action);
+  }
+}
+
+String _titleCaseToken(String token) {
+  final normalized = token.trim().replaceAll(RegExp(r'[_\-]+'), ' ');
+  final words = normalized
+      .split(RegExp(r'\s+'))
+      .where((word) => word.isNotEmpty)
+      .map((word) {
+        if (word.length == 1) return word.toUpperCase();
+        return word.substring(0, 1).toUpperCase() +
+            word.substring(1).toLowerCase();
+      });
+  return words.join(' ');
 }
 
 /// Permission Explainer card. Renders every key in the frozen
@@ -913,10 +1158,8 @@ class PermissionKeyChip extends StatelessWidget {
 /// `workflow.*`.
 ///
 /// MFA-required keys carry the [PermissionKeyChip] MFA marker per
-/// line 110. The chip text is the raw catalog key — descriptions live
-/// in `auth_permission_key_catalog.md` and are NOT paraphrased here
-/// (per the contract's anti-pattern: "A slice that paraphrases the
-/// catalog `description` text in the Permission Explainer").
+/// line 110. The chip text is a human permission label; raw catalog
+/// keys stay available in chip tooltips for support diagnostics.
 class _PermissionExplainerCard extends StatelessWidget {
   const _PermissionExplainerCard();
 
@@ -974,8 +1217,8 @@ class _PermissionExplainerCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'The full set of permission keys roles can grant. Keys with '
-            'a lock marker need multi-factor sign-in.',
+            'Human permissions available to roles. Hover a permission for '
+            'the raw catalog key; a lock marker means multi-factor sign-in.',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 8),
@@ -1394,7 +1637,7 @@ class _ActiveSessionsAdminPanelState extends State<ActiveSessionsAdminPanel> {
       return;
     }
     final reason = await _promptAdminReason(
-      'Force logout ${row.userDisplayName}',
+      'Sign out ${row.userDisplayName} from this device',
     );
     if (reason == null) return;
     await _runAndRefresh(
@@ -1407,7 +1650,7 @@ class _ActiveSessionsAdminPanelState extends State<ActiveSessionsAdminPanel> {
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: reason,
       ),
-      successHint: 'Signed out ${row.userDisplayName}',
+      successHint: 'Signed out ${row.userDisplayName} from that device.',
     );
   }
 
@@ -1429,6 +1672,7 @@ class _ActiveSessionsAdminPanelState extends State<ActiveSessionsAdminPanel> {
           errorKey: const Key('admin_security_sessions_load_error'),
           child: _SessionsTab(
             sessions: _sessions,
+            operatorName: widget.operatorName,
             editingEnabled: widget.editingEnabled,
             actorUserId: widget.actorUserId,
             onForceLogout: _onForceLogoutSession,
@@ -1442,12 +1686,14 @@ class _ActiveSessionsAdminPanelState extends State<ActiveSessionsAdminPanel> {
 class _SessionsTab extends StatelessWidget {
   const _SessionsTab({
     required this.sessions,
+    required this.operatorName,
     required this.editingEnabled,
     required this.actorUserId,
     required this.onForceLogout,
   });
 
   final List<SessionAdminRow> sessions;
+  final String operatorName;
   final bool editingEnabled;
   final String actorUserId;
   final ValueChanged<SessionAdminRow> onForceLogout;
@@ -1459,26 +1705,6 @@ class _SessionsTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          AdminStatStrip(
-            items: <AdminStatItem>[
-              AdminStatItem(
-                label: 'Active sessions',
-                value: sessions.length.toString(),
-                icon: Icons.devices_outlined,
-                tone: AppColors.peacock,
-              ),
-              AdminStatItem(
-                label: 'Other users',
-                value: sessions
-                    .where((row) => row.userId != actorUserId)
-                    .length
-                    .toString(),
-                icon: Icons.logout_outlined,
-                tone: AppColors.warning,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
           AdminCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1487,7 +1713,7 @@ class _SessionsTab extends StatelessWidget {
                   children: <Widget>[
                     Expanded(
                       child: Text(
-                        'Active sessions',
+                        'People and devices signed in',
                         style: AppTextStyles.sectionTitle(
                           color: AppColors.textPrimary,
                         ),
@@ -1502,8 +1728,12 @@ class _SessionsTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Force logout is audit-logged. You cannot sign yourself out '
-                  'from this surface.',
+                  '$operatorName has ${_peopleCount(sessions)} signed-in '
+                  '${_peopleCount(sessions) == 1 ? 'person' : 'people'} '
+                  'across ${sessions.length} active '
+                  '${sessions.length == 1 ? 'device' : 'devices'}. '
+                  'Signing out a device is audit-logged; this surface cannot '
+                  'sign out the admin device you are using.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 8),
@@ -1527,6 +1757,10 @@ class _SessionsTab extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static int _peopleCount(List<SessionAdminRow> sessions) {
+    return sessions.map((row) => row.userId).toSet().length;
   }
 }
 
@@ -1561,7 +1795,7 @@ class _SessionRowTile extends StatelessWidget {
               children: <Widget>[
                 Expanded(
                   child: Text(
-                    row.userDisplayName,
+                    "${row.userDisplayName}'s device",
                     style: AppTextStyles.body14(
                       color: AppColors.textPrimary,
                     ).copyWith(fontWeight: FontWeight.w600),
@@ -1582,7 +1816,7 @@ class _SessionRowTile extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      'Your session',
+                      'This admin device',
                       style: AppTextStyles.mono11(color: AppColors.textMuted),
                     ),
                   ),
@@ -1590,25 +1824,28 @@ class _SessionRowTile extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              row.userEmail,
+              '${row.userDisplayName} (${row.userEmail})',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Wrap(
-              spacing: 14,
-              runSpacing: 4,
+              spacing: 8,
+              runSpacing: 8,
               children: <Widget>[
-                _MetaPill(
+                _SessionFact(
                   icon: Icons.devices_outlined,
-                  label: row.deviceFingerprint,
+                  label: 'Device',
+                  value: row.deviceFingerprint,
                 ),
-                _MetaPill(
+                _SessionFact(
                   icon: Icons.location_city_outlined,
-                  label: row.ipGeoCity,
+                  label: 'Place',
+                  value: row.ipGeoCity,
                 ),
-                _MetaPill(
+                _SessionFact(
                   icon: Icons.schedule_outlined,
-                  label: 'Active ${_formatRelative(row.lastActiveAt)}',
+                  label: 'Last active',
+                  value: _formatRelative(row.lastActiveAt),
                 ),
               ],
             ),
@@ -1618,7 +1855,7 @@ class _SessionRowTile extends StatelessWidget {
                 key: Key('admin_rhs_session_force_logout_${row.sessionId}'),
                 onPressed: isOwn ? null : () => onForceLogout(row),
                 style: AdminButtonStyles.secondary(),
-                child: const Text('Force logout'),
+                child: const Text('Sign out device'),
               ),
             ],
           ],
@@ -1641,24 +1878,41 @@ class _SessionRowTile extends StatelessWidget {
 // Shared bits
 // ---------------------------------------------------------------------
 
-class _MetaPill extends StatelessWidget {
-  const _MetaPill({required this.icon, required this.label});
+class _SessionFact extends StatelessWidget {
+  const _SessionFact({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   final IconData icon;
   final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Icon(icon, size: 14, color: AppColors.textMuted),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-      ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 14, color: AppColors.textMuted),
+          const SizedBox(width: 6),
+          Text(
+            '$label: ',
+            style: AppTextStyles.mono11(color: AppColors.textMuted),
+          ),
+          Text(
+            value,
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
     );
   }
 }
