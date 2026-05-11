@@ -31,8 +31,7 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
     final selected = _picked == null
         ? null
         : widget.entries.firstWhere((entry) => entry.vendorId == _picked);
-    final canContinue =
-        selected != null && _isConnectableLifecycle(selected.lifecycle);
+    final canContinue = selected != null && _isApiReachable(selected.lifecycle);
     return AlertDialog(
       key: const Key('vendor_connections_picker_dialog'),
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -56,8 +55,8 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Vendors marked Coming soon are visible before production '
-              'credentials are live.',
+              'Vendors marked API pending are visible before reachable '
+              'production access has been verified.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 14),
@@ -111,7 +110,7 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
     );
   }
 
-  bool _isConnectableLifecycle(VendorLifecycle lifecycle) {
+  bool _isApiReachable(VendorLifecycle lifecycle) {
     switch (lifecycle) {
       case VendorLifecycle.documented:
       case VendorLifecycle.sandboxVerified:
@@ -125,21 +124,21 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
   String _unavailableReasonFor(VendorLifecycle lifecycle) {
     switch (lifecycle) {
       case VendorLifecycle.documented:
-        return 'The adapter is implemented and documented, but production credentials are not live yet.';
+        return 'The adapter exists, but F&F has not verified reachable production API access yet.';
       case VendorLifecycle.sandboxVerified:
-        return 'Sandbox validation is complete, but production credentials are not live yet.';
+        return 'Sandbox validation is complete, but reachable production API access is still pending.';
       case VendorLifecycle.productionCredentialed:
       case VendorLifecycle.liveWithOperators:
-        return 'This vendor can be connected now.';
+        return 'API access is reachable and this vendor can be connected now.';
     }
   }
 
   String _connectableReasonFor(VendorPickerEntry entry) {
     switch (entry.lifecycle) {
       case VendorLifecycle.productionCredentialed:
-        return '${entry.displayName} has production credentials ready for this connection flow.';
+        return '${entry.displayName} has reachable API access for this connection flow.';
       case VendorLifecycle.liveWithOperators:
-        return '${entry.displayName} is live with at least one operator and can be connected here.';
+        return '${entry.displayName} is already live with at least one operator, so API access is reachable here.';
       case VendorLifecycle.documented:
       case VendorLifecycle.sandboxVerified:
         return _unavailableReasonFor(entry.lifecycle);
@@ -196,9 +195,9 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
   String? _lifecycleTagFor(VendorLifecycle lifecycle) {
     switch (lifecycle) {
       case VendorLifecycle.documented:
-        return 'Coming soon';
+        return 'API pending';
       case VendorLifecycle.sandboxVerified:
-        return 'Sandbox verified';
+        return 'Sandbox API verified';
       case VendorLifecycle.productionCredentialed:
       case VendorLifecycle.liveWithOperators:
         return null;

@@ -486,7 +486,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Aloha (NCR Voyix)'), findsOneWidget);
-      expect(find.text('Coming soon'), findsWidgets);
+      expect(find.text('API pending'), findsWidgets);
 
       await tester.tap(
         find.byKey(
@@ -499,7 +499,7 @@ void main() {
         find.byKey(const Key('vendor_connections_picker_continue')),
       );
       expect(continueButton.onPressed, isNull);
-      expect(find.text('Not ready to connect'), findsOneWidget);
+      expect(find.text('API access pending'), findsOneWidget);
       expect(
         find.byKey(const Key('vendor_connections_picker_selected_panel')),
         findsOneWidget,

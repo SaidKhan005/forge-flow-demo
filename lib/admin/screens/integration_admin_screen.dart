@@ -1,4 +1,4 @@
-﻿// Phase 11A.4 - Integration management admin screen.
+// Phase 11A.4 - Integration management admin screen.
 //
 // F&F internal Integrations surface. Reads the masked-display
 // ledger via [IntegrationAdminGateway] and renders one row per
@@ -263,10 +263,15 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Service access',
+                  'Service Access',
                   style: AppTextStyles.sectionTitle(
                     color: AppColors.textPrimary,
                   ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Platform keys F&F uses to call model, embedding, database, and email providers. Saved rows show only a preview; a new key is revealed once after replacement.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 10),
                 for (final kind in ProviderKeyKind.values)
@@ -293,7 +298,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Status only. Connect, test, and disconnect controls stay on the selected location Integrations tile.',
+                  'Grouped by the operational system each vendor feeds. Status reflects whether F&F can reach the vendor API for live setup; location-level connect, test, and disconnect controls stay on Vendor integrations.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 10),
@@ -308,7 +313,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
                     ),
                   )
                 else
-                  ...bundle.vendorConnectors.map(_StatusRowTile.new),
+                  _VendorCatalogGroups(statuses: bundle.vendorConnectors),
               ],
             ),
           ),
@@ -318,10 +323,15 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Shared services',
+                  'Shared Services',
                   style: AppTextStyles.sectionTitle(
                     color: AppColors.textPrimary,
                   ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Shared platform services used across operators, such as exchange rates and outbound email. These are separate from per-location vendor connections.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 10),
                 _StatusRowTile(bundle.fxRateSource),
@@ -455,8 +465,8 @@ class _ProviderKeyTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Secure storage ID: ${row!.kmsSecretName}',
-                    style: AppTextStyles.mono8(color: AppColors.textMuted),
+                    'Stored securely. The full key is hidden after rotation.',
+                    style: AppTextStyles.body12(color: AppColors.textMuted),
                   ),
                 ],
               ],
@@ -482,6 +492,114 @@ class _ProviderKeyTile extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _VendorCatalogGroups extends StatelessWidget {
+  const _VendorCatalogGroups({required this.statuses});
+
+  final List<VendorConnectorStatus> statuses;
+
+  @override
+  Widget build(BuildContext context) {
+    final children = <Widget>[];
+    for (final group in _VendorCatalogGroup.values) {
+      final rows = statuses
+          .where((status) => _groupForVendor(status.id) == group)
+          .toList(growable: false);
+      if (rows.isEmpty) continue;
+      if (children.isNotEmpty) children.add(const SizedBox(height: 12));
+      children.add(_VendorCatalogGroupBlock(group: group, statuses: rows));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+}
+
+class _VendorCatalogGroupBlock extends StatelessWidget {
+  const _VendorCatalogGroupBlock({required this.group, required this.statuses});
+
+  final _VendorCatalogGroup group;
+  final List<VendorConnectorStatus> statuses;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      key: Key('admin_integrations_vendor_group_${group.keyName}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          group.label,
+          style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          group.description,
+          style: AppTextStyles.body12(color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 8),
+        for (final status in statuses) _StatusRowTile(status),
+      ],
+    );
+  }
+}
+
+enum _VendorCatalogGroup {
+  pos(
+    keyName: 'pos',
+    label: 'POS',
+    description:
+        'Sales, checks, covers, and closed-order timing for the operating spine.',
+  ),
+  labor(
+    keyName: 'labor',
+    label: 'Labor',
+    description:
+        'Schedules, punches, and role data for labor variance and planning.',
+  ),
+  reservation(
+    keyName: 'reservation',
+    label: 'Reservation',
+    description:
+        'Bookings, party sizes, and reservation pacing for demand context.',
+  );
+
+  const _VendorCatalogGroup({
+    required this.keyName,
+    required this.label,
+    required this.description,
+  });
+
+  final String keyName;
+  final String label;
+  final String description;
+}
+
+_VendorCatalogGroup _groupForVendor(String vendorId) {
+  switch (vendorId) {
+    case 'aloha_ncr_voyix':
+    case 'clover':
+    case 'lightspeed_lsk':
+    case 'oracle_micros_simphony':
+    case 'revel':
+    case 'square':
+    case 'toast':
+      return _VendorCatalogGroup.pos;
+    case 'adp':
+    case 'agendrix':
+    case 'humanity':
+    case 'push_operations':
+    case 'quickbooks_time':
+    case 'seven_shifts':
+      return _VendorCatalogGroup.labor;
+    case 'libro':
+    case 'opentable':
+    case 'sevenrooms':
+    case 'tock':
+    default:
+      return _VendorCatalogGroup.reservation;
   }
 }
 
@@ -586,7 +704,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Paste the new key. Only the saved preview and secure storage location are kept.',
+                'Paste the new key. Only the saved preview is shown after rotation.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 12),

@@ -103,6 +103,16 @@ void main() {
         expect(bundle.fxRateSource.id, equals('fx_rate'));
         expect(bundle.emailProvider.id, equals('email'));
         expect(bundle.emailProvider.detailMessage, contains('Phase 9.8'));
+        expect(
+          bundle.vendorConnectors.map((status) => status.statusLabel).toSet(),
+          equals(<String>{'API pending'}),
+        );
+        expect(
+          bundle.vendorConnectors
+              .firstWhere((status) => status.id == 'toast')
+              .detailMessage,
+          startsWith('API reachability pending.'),
+        );
       },
     );
   });
@@ -244,6 +254,70 @@ void main() {
   // rotation POST so the proxy's `admin_request_idempotency` lookup
   // can dedup retries.
   group('HttpIntegrationAdminGateway — Idempotency-Key wiring', () {
+    test(
+      'list normalizes vendor lifecycle labels to API reachability',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final client = _SingleResponseClient(
+          captured: captured,
+          response: _HttpFixture(
+            statusCode: 200,
+            body: <String, Object?>{
+              'provider_keys': const <Object?>[],
+              'vendor_connectors': const <Object?>[
+                <String, Object?>{
+                  'id': 'toast',
+                  'display_name': 'Toast',
+                  'status_label': 'Documented',
+                  'detail_message': 'POS adapter implemented.',
+                },
+                <String, Object?>{
+                  'id': 'lightspeed_lsk',
+                  'display_name': 'Lightspeed Restaurant K-Series',
+                  'status_label': 'Ready to connect',
+                  'detail_message': 'Production credentials available.',
+                },
+              ],
+              'fx_rate_source': <String, Object?>{
+                'id': 'fx_rate',
+                'display_name': 'FX-rate source',
+                'status_label': 'green',
+                'detail_message': 'ECB feed live.',
+              },
+              'email_provider': <String, Object?>{
+                'id': 'email',
+                'display_name': 'Email provider',
+                'status_label': 'placeholder',
+                'detail_message': 'Email provider pending.',
+              },
+            },
+          ),
+        );
+        final gateway = HttpIntegrationAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: client,
+        );
+
+        final bundle = await gateway.list();
+
+        expect(captured.single.method, equals('GET'));
+        expect(captured.single.uri.path, equals('/v1/admin/integrations'));
+        expect(
+          bundle.vendorConnectors.map((status) => status.statusLabel),
+          equals(<String>['API pending', 'API reachable']),
+        );
+        expect(
+          bundle.vendorConnectors.first.detailMessage,
+          startsWith('API reachability pending.'),
+        );
+        expect(
+          bundle.vendorConnectors.last.detailMessage,
+          startsWith('API reachable.'),
+        );
+      },
+    );
+
     test(
       'rotateKey POSTs with Idempotency-Key header on rotate-anthropic',
       () async {

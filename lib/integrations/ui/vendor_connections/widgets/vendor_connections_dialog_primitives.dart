@@ -72,7 +72,9 @@ class _DialogChoiceTile extends StatelessWidget {
                               label: tag,
                               color:
                                   tag == 'Coming soon' ||
-                                      tag == 'Sandbox verified'
+                                      tag == 'Sandbox verified' ||
+                                      tag == 'API pending' ||
+                                      tag == 'Sandbox API verified'
                                   ? AppColors.textMuted
                                   : AppColors.peacockDark,
                             ),

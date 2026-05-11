@@ -206,7 +206,7 @@ class _VendorPickerCard extends StatelessWidget {
   }
 
   Color _tagColor(String tag) {
-    return tag == 'Coming soon' || tag == 'Sandbox verified'
+    return tag == 'API pending' || tag == 'Sandbox API verified'
         ? AppColors.textMuted
         : AppColors.peacockDark;
   }
@@ -249,7 +249,7 @@ class _SelectedVendorPanel extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  canContinue ? 'Ready to continue' : 'Not ready to connect',
+                  canContinue ? 'API access reachable' : 'API access pending',
                   style: AppTextStyles.sectionTitle(color: color),
                 ),
                 const SizedBox(height: 4),
