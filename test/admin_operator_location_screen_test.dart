@@ -136,7 +136,85 @@ void main() {
     expect(find.byKey(const Key('admin_operator_manage_op-2')), findsNothing);
     expect(find.text('Click to manage'), findsNothing);
     expect(
+      find.text(
+        'Start with the business, then move into setup, locations, team, access, audit, and data controls.',
+      ),
+      findsNothing,
+    );
+    final newBusinessSize = tester.getSize(
+      find.byKey(const Key('admin_operators_new_button')),
+    );
+    expect(newBusinessSize.width, greaterThanOrEqualTo(168));
+    expect(newBusinessSize.height, greaterThanOrEqualTo(50));
+    final profileCard = find.byKey(const Key('admin_operator_profile_card'));
+    expect(
+      find.descendant(of: profileCard, matching: find.text('Account profile')),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(const Key('admin_business_setup_tile_account_profile')),
+      findsNothing,
+    );
+    final setupCard = find.byKey(const Key('admin_business_setup_op-1'));
+    expect(
+      find.descendant(
+        of: setupCard,
+        matching: find.text('Selected business scope'),
+      ),
+      findsOneWidget,
+    );
+    for (final noisyLabel in <String>[
+      'Ready',
+      'Needs details',
+      'Review',
+      'Location required',
+      'Business default',
+      'Inherited',
+      'Effective: Business default',
+      'Editable',
+      'Set at this scope',
+    ]) {
+      expect(
+        find.descendant(of: setupCard, matching: find.text(noisyLabel)),
+        findsNothing,
+      );
+    }
+    final operationsGroup = find.byKey(
+      const Key('admin_business_setup_group_operations'),
+    );
+    expect(operationsGroup, findsOneWidget);
+    for (final label in <String>[
+      'Integrations',
+      'Covers and Wage Data Accuracy',
+      'Timing',
+    ]) {
+      expect(
+        find.descendant(of: operationsGroup, matching: find.text(label)),
+        findsOneWidget,
+      );
+    }
+    final peopleGroup = find.byKey(
+      const Key('admin_business_setup_group_people'),
+    );
+    expect(
+      find.descendant(
+        of: peopleGroup,
+        matching: find.text('People, access, and roles'),
+      ),
+      findsOneWidget,
+    );
+    final safetyGroup = find.byKey(
+      const Key('admin_business_setup_group_safety_support'),
+    );
+    expect(
+      find.descendant(
+        of: safetyGroup,
+        matching: find.text('Security, audit, and sessions'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: safetyGroup, matching: find.text('Support logs')),
       findsOneWidget,
     );
     expect(
@@ -352,7 +430,7 @@ void main() {
     expect(scopes.last.locationName, 'HQ');
   });
 
-  testWidgets('Account profile tile edits the business contact email', (
+  testWidgets('Account profile action edits the business contact email', (
     tester,
   ) async {
     final gateway = InMemoryOperatorLocationAdminGateway(
@@ -369,18 +447,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final profileTile = find.byKey(
-      const Key('admin_business_setup_tile_account_profile'),
+    final profileAction = find.descendant(
+      of: find.byKey(const Key('admin_operator_profile_card')),
+      matching: find.byKey(const Key('admin_operator_edit_button')),
     );
-    await tester.ensureVisible(profileTile);
+    await tester.ensureVisible(profileAction);
     await tester.pumpAndSettle();
-    await tester.tap(profileTile);
+    await tester.tap(profileAction);
     await tester.pumpAndSettle();
-    await chooseScopePrompt(
-      tester,
-      operatorId: 'op-profile',
-      scopeType: 'business',
-    );
 
     final dialog = find.byKey(const Key('admin_edit_operator_dialog'));
     expect(dialog, findsOneWidget);
@@ -419,18 +493,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final profileTile = find.byKey(
-      const Key('admin_business_setup_tile_account_profile'),
+    final profileAction = find.descendant(
+      of: find.byKey(const Key('admin_operator_profile_card')),
+      matching: find.byKey(const Key('admin_operator_edit_button')),
     );
-    await tester.ensureVisible(profileTile);
+    await tester.ensureVisible(profileAction);
     await tester.pumpAndSettle();
-    await tester.tap(profileTile);
+    await tester.tap(profileAction);
     await tester.pumpAndSettle();
-    await chooseScopePrompt(
-      tester,
-      operatorId: 'op-profile-conflict',
-      scopeType: 'business',
-    );
     await tester.enterText(
       find.byKey(const Key('admin_edit_owner_email')),
       'taken@business.test',
