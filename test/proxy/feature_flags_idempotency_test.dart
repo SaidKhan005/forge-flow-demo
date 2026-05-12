@@ -735,11 +735,14 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     String? actorUserId,
     String? actorServicePrincipalId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
     String? userAgent,
     String? geoCountry,
     String? requestId,
+    String? adminReason,
   }) async {
     lastExec = exec;
     final raise = insertThrows;

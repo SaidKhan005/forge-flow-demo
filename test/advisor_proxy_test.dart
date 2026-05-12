@@ -5181,7 +5181,9 @@ void main() {
               'POST',
               ctx.baseUri.resolve(adminOperatorsPath),
               authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-onboard-missing-primary',
               body: <String, Object?>{
+                'admin_reason': 'Create operator during support setup',
                 'business_name': 'Cafe',
                 'owner_email': 'a@b.c',
                 'subscription_tier': 'launch',
@@ -5283,6 +5285,84 @@ void main() {
       },
     );
 
+    test('11A.1 POST /v1/admin/operators requires Idempotency-Key', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_admin',
+            operatorId: 'op_admin',
+            locationId: 'loc_admin',
+            roles: <String>['super_admin'],
+          ),
+        );
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(adminOperatorsPath),
+            authorization: 'Bearer fake.token',
+            body: <String, Object?>{
+              'admin_reason': 'Create operator during support setup',
+              'business_name': 'Cafe',
+              'owner_email': 'a@b.c',
+              'subscription_tier': 'launch',
+              'preferred_currency': 'CAD',
+              'admin_user_email': 'admin@b.c',
+              'primary_location': <String, Object?>{
+                'name': 'Main',
+                'timezone': 'America/Toronto',
+                'business_day_rollover_hour': 4,
+              },
+            },
+          );
+          expect(response.statusCode, equals(400));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('missing_idempotency_key'));
+          expect(gateway.lastOnboardCommand, isNull);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      '11A.1 PATCH /v1/admin/locations/{id} requires admin_reason',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve('$adminLocationsPath/loc-1'),
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-location-missing-reason',
+              body: const <String, Object?>{'name': 'Renamed HQ'},
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('missing_admin_reason'));
+            expect(gateway.lastPatchLocationId, isNull);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
     test(
       '11A.1 POST /v1/admin/operators rejects missing primary_location with 400',
       () async {
@@ -5301,7 +5381,9 @@ void main() {
               'POST',
               ctx.baseUri.resolve(adminOperatorsPath),
               authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-onboard-invalid-timezone',
               body: <String, Object?>{
+                'admin_reason': 'Create operator during support setup',
                 'business_name': 'Cafe',
                 'owner_email': 'a@b.c',
                 'subscription_tier': 'launch',
@@ -5338,7 +5420,9 @@ void main() {
               'POST',
               ctx.baseUri.resolve(adminOperatorsPath),
               authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-onboard-missing-primary',
               body: <String, Object?>{
+                'admin_reason': 'Create operator during support setup',
                 'business_name': 'Cafe',
                 'owner_email': 'a@b.c',
                 'subscription_tier': 'launch',
@@ -5395,7 +5479,9 @@ void main() {
               'POST',
               ctx.baseUri.resolve(adminOperatorsPath),
               authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-onboard-success',
               body: <String, Object?>{
+                'admin_reason': 'Create operator during support setup',
                 'business_name': 'Cafe New',
                 'owner_email': 'a@b.c',
                 'subscription_tier': 'launch',
@@ -5420,6 +5506,10 @@ void main() {
             expect(
               gateway.lastOnboardCommand?['preferred_currency'],
               equals('CAD'),
+            );
+            expect(
+              gateway.lastReason,
+              equals('Create operator during support setup'),
             );
           } finally {
             ctx.client.close(force: true);
@@ -5452,9 +5542,14 @@ void main() {
             'POST',
             ctx.baseUri.resolve('$adminOperatorsPath/op-1/suspend'),
             authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-suspend-op-1',
+            body: const <String, Object?>{
+              'admin_reason': 'Billing hold requested by owner',
+            },
           );
           expect(response.statusCode, equals(200));
           expect(gateway.suspendOperatorId, equals('op-1'));
+          expect(gateway.lastReason, equals('Billing hold requested by owner'));
         } finally {
           ctx.client.close(force: true);
           await ctx.server.close(force: true);
@@ -5486,6 +5581,10 @@ void main() {
               'POST',
               ctx.baseUri.resolve('$adminOperatorsPath/op-1/reactivate'),
               authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-reactivate-op-1',
+              body: const <String, Object?>{
+                'admin_reason': 'Billing hold cleared by owner',
+              },
             );
             expect(response.statusCode, equals(200));
             expect(gateway.reactivateOperatorId, equals('op-1'));
@@ -5518,7 +5617,11 @@ void main() {
               'PATCH',
               ctx.baseUri.resolve('$adminOperatorsPath/missing'),
               authorization: 'Bearer fake.token',
-              body: <String, Object?>{'business_name': 'Renamed'},
+              idempotencyKey: 'idem-patch-missing-op',
+              body: <String, Object?>{
+                'admin_reason': 'Correct stale operator details',
+                'business_name': 'Renamed',
+              },
             );
             expect(response.statusCode, equals(404));
             final body = jsonDecode(response.body) as Map<String, Object?>;
@@ -5556,7 +5659,9 @@ void main() {
             'POST',
             ctx.baseUri.resolve(adminLocationsPath),
             authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-add-location',
             body: <String, Object?>{
+              'admin_reason': 'Add location requested by operator',
               'operator_id': 'op-1',
               'parent_org_unit_id': 'org-unit-east',
               'name': 'West Coast',
@@ -5571,6 +5676,10 @@ void main() {
             equals('org-unit-east'),
           );
           expect(gateway.lastAddLocationTimezone, equals('America/Vancouver'));
+          expect(
+            gateway.lastReason,
+            equals('Add location requested by operator'),
+          );
         } finally {
           ctx.client.close(force: true);
           await ctx.server.close(force: true);
@@ -5598,7 +5707,9 @@ void main() {
               'POST',
               ctx.baseUri.resolve(adminLocationsPath),
               authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-add-location-missing-parent',
               body: <String, Object?>{
+                'admin_reason': 'Add location requested by operator',
                 'operator_id': 'op-1',
                 'name': 'West Coast',
                 'timezone': 'America/Vancouver',
@@ -5646,7 +5757,9 @@ void main() {
               'PATCH',
               ctx.baseUri.resolve('$adminLocationsPath/loc-1'),
               authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-patch-location',
               body: <String, Object?>{
+                'admin_reason': 'Correct location profile',
                 'name': 'Renamed HQ',
                 'timezone': 'America/St_Johns',
                 'business_day_rollover_hour': 5,
@@ -5663,6 +5776,7 @@ void main() {
             final body = jsonDecode(response.body) as Map<String, Object?>;
             final location = body['location'] as Map<String, Object?>;
             expect(location['name'], equals('Renamed HQ'));
+            expect(gateway.lastReason, equals('Correct location profile'));
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -5692,7 +5806,11 @@ void main() {
               'PATCH',
               ctx.baseUri.resolve('$adminLocationsPath/missing'),
               authorization: 'Bearer fake.token',
-              body: <String, Object?>{'name': 'Missing'},
+              idempotencyKey: 'idem-patch-location-missing',
+              body: <String, Object?>{
+                'admin_reason': 'Correct location profile',
+                'name': 'Missing',
+              },
             );
             expect(response.statusCode, equals(404));
             final body = jsonDecode(response.body) as Map<String, Object?>;
@@ -5727,7 +5845,11 @@ void main() {
               'DELETE',
               ctx.baseUri.resolve('$adminLocationsPath/loc-1'),
               authorization: 'Bearer fake.token',
-              body: <String, Object?>{'operator_id': 'op-1'},
+              idempotencyKey: 'idem-remove-primary-location',
+              body: <String, Object?>{
+                'admin_reason': 'Remove closed location',
+                'operator_id': 'op-1',
+              },
             );
             expect(response.statusCode, equals(400));
             final body = jsonDecode(response.body) as Map<String, Object?>;
@@ -5761,10 +5883,15 @@ void main() {
               'DELETE',
               ctx.baseUri.resolve('$adminLocationsPath/loc-1'),
               authorization: 'Bearer fake.token',
-              body: <String, Object?>{'operator_id': 'op-1'},
+              idempotencyKey: 'idem-remove-location',
+              body: <String, Object?>{
+                'admin_reason': 'Remove closed location',
+                'operator_id': 'op-1',
+              },
             );
             expect(response.statusCode, equals(200));
             expect(gateway.removeLocationId, equals('loc-1'));
+            expect(gateway.lastReason, equals('Remove closed location'));
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -7169,12 +7296,16 @@ Future<_HttpResponseSnapshot> _httpJson(
   String method,
   Uri uri, {
   String? authorization,
+  String? idempotencyKey,
   Map<String, Object?>? body,
 }) async {
   final request = await client.openUrl(method, uri);
   request.persistentConnection = false;
   if (authorization != null) {
     request.headers.set(HttpHeaders.authorizationHeader, authorization);
+  }
+  if (idempotencyKey != null) {
+    request.headers.set('Idempotency-Key', idempotencyKey);
   }
   if (body != null) {
     request.headers.contentType = ContentType.json;

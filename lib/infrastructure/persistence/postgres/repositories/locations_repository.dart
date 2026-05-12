@@ -133,6 +133,7 @@ class LocationsRepository extends OperatorScopedRepository {
         'business_day_rollover_hour = coalesce(@business_day_rollover_hour, business_day_rollover_hour), '
         'updated_at = now() '
         'where location_id = @location_id::uuid '
+        'and deleted_at is null '
         'returning location_id::text as location_id, '
         'operator_id::text as operator_id, '
         'parent_org_unit_id::text as parent_org_unit_id, '
@@ -165,6 +166,39 @@ class LocationsRepository extends OperatorScopedRepository {
     required String adminReason,
   }) {
     return withSystem<int>((exec) async {
+      final activeTargets = await exec.query(
+        'select source from ('
+        "select 'user_roles' as source "
+        'from user_roles '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        "and scope_type = 'location' "
+        'and revoked_at is null '
+        'and valid_from <= now() '
+        'and (valid_until is null or valid_until > now()) '
+        'union all '
+        "select 'auth_invites' as source "
+        'from auth_invites '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        "and scope_type = 'location' "
+        'and accepted_at is null '
+        'and revoked_at is null '
+        'and expires_at > now()'
+        ') active_targets '
+        'limit 1',
+        parameters: <String, Object?>{
+          'location_id': locationId,
+          'operator_id': operatorId,
+        },
+      );
+      if (activeTargets.isNotEmpty) {
+        throw StateError(
+          'locations soft-delete refused: location $locationId still '
+          'has active user_roles/auth_invites targets; revoke or '
+          'reassign them before deleting',
+        );
+      }
       return exec.execute(
         'update locations '
         'set deleted_at = now(), updated_at = now() '
