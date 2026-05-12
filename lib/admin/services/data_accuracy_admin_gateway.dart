@@ -2193,7 +2193,7 @@ class _PerTierAccumulator {
 TierDefinition kDemoStandardTierDefinition({DateTime? at}) => TierDefinition(
   tierKey: PollingTierKey.standard,
   descriptionMd:
-      'Standard tier - webhook vendors update in real time; '
+      'Regular tier - webhook vendors update in real time; '
       'poll-only vendors update at the vendor minimum cadence.',
   pollingCadencePerVendorSeconds: const <String, int>{
     'oracle_micros_simphony': 300,

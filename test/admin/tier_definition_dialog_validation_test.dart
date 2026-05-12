@@ -1,5 +1,5 @@
 // Phase 8 spine-bridge Lane .C — supplemental coverage for the
-// `tier_definition_edit_dialog` cadence-empty validation. Standard
+// `tier_definition_edit_dialog` cadence-empty validation. Regular
 // and premium tiers ship with cadence presets baked in code per the
 // contract; the dialog must refuse to save those tiers with an empty
 // cadence map (silently turning off polling for every operator
@@ -38,7 +38,7 @@ void main() {
       };
       addTearDown(() => FlutterError.onError = prior);
 
-      // Use the demo standard tier as the seed.
+      // Use the demo regular tier as the seed.
       final initial = kDemoStandardTierDefinition();
       TierDefinitionEditResult? returned;
 
@@ -88,7 +88,7 @@ void main() {
       // tighten without breaking the test.
       expect(
         find.textContaining(
-          'Standard / premium tiers require at least one vendor cadence',
+          'Regular / premium tiers require at least one vendor cadence',
         ),
         findsOneWidget,
         reason: 'dialog must surface the cadence-empty error and refuse '

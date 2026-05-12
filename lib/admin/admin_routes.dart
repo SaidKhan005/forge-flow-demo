@@ -1140,7 +1140,6 @@ Widget _buildDataAccuracy(BuildContext context) {
         scopeLocationIds: selection.locationIds,
         showPageHeader: false,
         showScopeControls: false,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     }
     return StreamBuilder<AdminAuthState>(
@@ -1160,7 +1159,6 @@ Widget _buildDataAccuracy(BuildContext context) {
           scopeLocationIds: selection.locationIds,
           showPageHeader: false,
           showScopeControls: false,
-          onBackToBusinessAccounts: onBackToBusinessAccounts,
         );
       },
     );
@@ -1213,7 +1211,6 @@ Widget _buildPollingPricing(BuildContext context) {
         scopeLocationIds: selection.locationIds,
         showPageHeader: false,
         showScopeControls: false,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     }
     return StreamBuilder<AdminAuthState>(
@@ -1233,7 +1230,6 @@ Widget _buildPollingPricing(BuildContext context) {
           scopeLocationIds: selection.locationIds,
           showPageHeader: false,
           showScopeControls: false,
-          onBackToBusinessAccounts: onBackToBusinessAccounts,
         );
       },
     );
@@ -1697,7 +1693,6 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
         editingEnabled: canEdit,
         canEditSeededRoles: canEditSeededRoles,
         initialScope: selectedScope,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     }
 
@@ -2004,7 +1999,6 @@ Widget _buildAuditedSupportActions(BuildContext context) {
         canIssuePairedErasure: canIssuePairedErasure,
         canExportAuditLog: canExportAuditLog,
         hierarchyScope: selectedScope,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     }
 

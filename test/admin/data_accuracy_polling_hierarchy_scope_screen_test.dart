@@ -103,7 +103,7 @@ void main() {
       expect(find.text('Effective: Business scope'), findsOneWidget);
       expect(find.text('Edit selected scope'), findsWidgets);
       expect(
-        find.textContaining('edits apply to every visible location'),
+        find.textContaining('saves one scoped covers and wage override'),
         findsOneWidget,
       );
       expect(find.text('Toronto Yorkville'), findsOneWidget);
@@ -123,7 +123,7 @@ void main() {
     },
   );
 
-  testWidgets('Covers and Wage scope edit writes every visible location', (
+  testWidgets('Covers and Wage scope edit writes selected hierarchy scope', (
     tester,
   ) async {
     useWideViewport(tester);
@@ -239,7 +239,7 @@ void main() {
       expect(find.text('Effective: Org unit scope'), findsOneWidget);
       expect(find.text('Assign selected scope'), findsWidgets);
       expect(
-        find.textContaining('assignments apply to every visible location'),
+        find.textContaining('saves one scoped polling setup override'),
         findsOneWidget,
       );
       expect(find.text('Toronto Yorkville'), findsOneWidget);
@@ -258,80 +258,84 @@ void main() {
     },
   );
 
-  testWidgets('Polling Setup scope assignment writes every visible location', (
-    tester,
-  ) async {
-    useWideViewport(tester);
-    const orgScope = AdminHierarchyScopeIntent.orgUnit(
-      operatorId: 'op-1',
-      orgUnitId: 'ou-north',
-      operatorName: 'Demo Diner Co.',
-      orgUnitName: 'North Region',
-    );
-    final adminGateway = gateway();
+  testWidgets(
+    'Polling Setup scope assignment writes selected hierarchy scope',
+    (tester) async {
+      useWideViewport(tester);
+      const orgScope = AdminHierarchyScopeIntent.orgUnit(
+        operatorId: 'op-1',
+        orgUnitId: 'ou-north',
+        operatorName: 'Demo Diner Co.',
+        orgUnitName: 'North Region',
+      );
+      final adminGateway = gateway();
 
-    await tester.pumpWidget(
-      wrap(
-        PollingAndPricingAdminScreen(
-          gateway: adminGateway,
-          actorUserId: 'demo-super-admin',
-          initialHierarchyScope: orgScope,
-          scopeLocationIds: const <String>{'loc-1a', 'loc-1b'},
+      await tester.pumpWidget(
+        wrap(
+          PollingAndPricingAdminScreen(
+            gateway: adminGateway,
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: orgScope,
+            scopeLocationIds: const <String>{'loc-1a', 'loc-1b'},
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    final scopeButton = find.byKey(
-      const Key('admin_polling_setup_scope_assign'),
-    );
-    expect(scopeButton, findsOneWidget);
-    await tester.ensureVisible(scopeButton);
-    await tester.tap(scopeButton);
-    await tester.pumpAndSettle();
+      final scopeButton = find.byKey(
+        const Key('admin_polling_setup_scope_assign'),
+      );
+      expect(scopeButton, findsOneWidget);
+      await tester.ensureVisible(scopeButton);
+      await tester.tap(scopeButton);
+      await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const Key('admin_tier_assignment_dialog_tier')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Premium').last);
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('admin_polling_calculator_calls_per_day')),
-      '100',
-    );
-    await tester.enterText(
-      find.byKey(const Key('admin_polling_calculator_cost_per_call')),
-      '0.02',
-    );
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const Key('admin_polling_calculator_use_estimate')),
-    );
-    await tester.pump();
-    expect(find.widgetWithText(TextField, '60.00'), findsOneWidget);
-    await tester.enterText(
-      find.byKey(const Key('admin_tier_assignment_dialog_reason')),
-      'Org-unit polling upgrade',
-    );
-    await tester.tap(
-      find.byKey(const Key('admin_tier_assignment_dialog_submit')),
-    );
-    await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_tier_assignment_dialog_tier')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Premium').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_polling_calculator_calls_per_day')),
+        '100',
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin_polling_calculator_cost_per_call')),
+        '0.02',
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('admin_polling_calculator_use_estimate')),
+      );
+      await tester.pump();
+      expect(find.widgetWithText(TextField, '60.00'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('admin_tier_assignment_dialog_reason')),
+        'Org-unit polling upgrade',
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_tier_assignment_dialog_submit')),
+      );
+      await tester.pumpAndSettle();
 
-    final events = adminGateway.capturedAuditEvents
-        .where(
-          (event) =>
-              event.eventType == 'admin.polling_tier_assignment.scope_assign',
-        )
-        .toList();
-    expect(events, hasLength(1));
-    expect(events.single.locationId, isNull);
-    expect(events.single.diff['scope_type'], equals('org_unit'));
-    expect(events.single.diff['org_unit_id'], equals('ou-north'));
-    expect(events.single.diff['affected_location_count'], equals(2));
-    expect(events.single.diff['vendor_api_cost_estimate_cents_monthly'], 6000);
-  });
+      final events = adminGateway.capturedAuditEvents
+          .where(
+            (event) =>
+                event.eventType == 'admin.polling_tier_assignment.scope_assign',
+          )
+          .toList();
+      expect(events, hasLength(1));
+      expect(events.single.locationId, isNull);
+      expect(events.single.diff['scope_type'], equals('org_unit'));
+      expect(events.single.diff['org_unit_id'], equals('ou-north'));
+      expect(events.single.diff['affected_location_count'], equals(2));
+      expect(
+        events.single.diff['vendor_api_cost_estimate_cents_monthly'],
+        6000,
+      );
+    },
+  );
 
   testWidgets('Polling and pricing location scope keeps assignment action', (
     tester,

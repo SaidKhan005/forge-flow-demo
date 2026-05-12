@@ -85,6 +85,7 @@ class _PollingAndPricingAdminScreenState
   PollingTierKey? _tierFilter;
   String? _marginBandFilter;
   String? _locationCountFilter;
+  String? _vendorFilter;
   String _operatorNameFilter = '';
   late AdminHierarchyScopeIntent? _scope = _decoratedInitialScope;
   AdminHierarchyScopeIntent? _lastHandoffScope;
@@ -215,6 +216,10 @@ class _PollingAndPricingAdminScreenState
               )) {
             return false;
           }
+          final vendor = _vendorFilter;
+          if (vendor != null && !_rowUsesPollingVendor(row, vendor)) {
+            return false;
+          }
           final band = _marginBandFilter;
           if (band != null) {
             // Margin band only meaningful for assigned rows; unassigned
@@ -241,6 +246,16 @@ class _PollingAndPricingAdminScreenState
           return true;
         })
         .toList(growable: false);
+  }
+
+  bool _rowUsesPollingVendor(TierAssignmentAdminRow row, String vendorId) {
+    final tierKey = row.assignment?.tierKey ?? PollingTierKey.standard;
+    final tierDefaults = _definitionFor(tierKey);
+    final cadence = row.assignment?.pollingCadencePerVendorSeconds;
+    final effectiveCadence = cadence == null || cadence.isEmpty
+        ? tierDefaults?.pollingCadencePerVendorSeconds ?? const <String, int>{}
+        : cadence;
+    return effectiveCadence.containsKey(vendorId);
   }
 
   List<TierChangeRequest> get _visibleChangeRequests {
@@ -277,6 +292,7 @@ class _PollingAndPricingAdminScreenState
         _tierFilter != null ||
         _marginBandFilter != null ||
         _locationCountFilter != null ||
+        _vendorFilter != null ||
         _operatorNameFilter.trim().isNotEmpty;
     if (!hasLocalFilter) return _rollup;
     return _buildRollupFromRows(_filteredAssignments);
@@ -627,6 +643,7 @@ class _PollingAndPricingAdminScreenState
             marginBandFilter: _marginBandFilter,
             locationCountFilter: _locationCountFilter,
             operatorNameFilter: _operatorNameFilter,
+            vendorFilter: _vendorFilter,
             onTierFilterChanged: (v) => setState(() => _tierFilter = v),
             onMarginBandFilterChanged: (v) =>
                 setState(() => _marginBandFilter = v),
@@ -634,6 +651,7 @@ class _PollingAndPricingAdminScreenState
                 setState(() => _locationCountFilter = v),
             onOperatorNameFilterChanged: (v) =>
                 setState(() => _operatorNameFilter = v),
+            onVendorFilterChanged: (v) => setState(() => _vendorFilter = v),
           ),
           const SizedBox(height: 16),
           MarginRollupCard(
@@ -793,7 +811,7 @@ class _ScopedPollingActionCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'This updates polling tier, price, cost basis, and notes for $locationCount visible location${locationCount == 1 ? '' : 's'}.',
+                  'This saves one scoped polling setup override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower scope overrides it.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],

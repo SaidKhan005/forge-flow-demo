@@ -485,9 +485,10 @@ void main() {
 
     expect(find.byKey(const Key('admin_debug_console_screen')), findsOneWidget);
     expect(
-      find.text('Operator: 00000000-0000-4000-8000-000000000001'),
+      find.byKey(const Key('admin_debug_console_scope_label')),
       findsOneWidget,
     );
+    expect(find.textContaining('Business:'), findsWidgets);
     expect(
       find.byKey(
         const Key(
@@ -747,9 +748,10 @@ void main() {
 
     expect(find.byKey(const Key('admin_debug_console_screen')), findsOneWidget);
     expect(
-      find.text('Operator: 00000000-0000-4000-8000-000000000001'),
+      find.byKey(const Key('admin_debug_console_scope_label')),
       findsOneWidget,
     );
+    expect(find.textContaining('Business:'), findsWidgets);
     expect(
       find.byKey(const Key('admin_support_operator_view_no_scope_state')),
       findsNothing,

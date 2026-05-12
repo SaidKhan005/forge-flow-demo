@@ -84,14 +84,14 @@ class AdminHierarchySettingsScopePolicy {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
         if (scope.isBusinessScope) {
-          return 'Business scope edits apply to every visible location in this business.';
+          return 'Business scope edits create one override that covered locations inherit until a lower scope overrides it.';
         }
-        return 'Org-unit scope edits apply to every visible location in this branch.';
+        return 'Org-unit scope edits create one override that covered locations inherit until a lower scope overrides it.';
       case AdminHierarchySettingsSurface.pollingPricing:
         if (scope.isBusinessScope) {
-          return 'Business scope assignments apply to every visible location in this business.';
+          return 'Business scope assignments create one polling setup that covered locations inherit until a lower scope overrides it.';
         }
-        return 'Org-unit polling assignments apply to every visible location in this branch.';
+        return 'Org-unit polling assignments create one polling setup that covered locations inherit until a lower scope overrides it.';
     }
   }
 

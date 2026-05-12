@@ -2947,41 +2947,61 @@ class _HierarchyScopeRow extends StatelessWidget {
               ),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Row(
-              children: [
-                Icon(icon, size: 17, color: AppColors.textSecondary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        label,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.body14(
-                          color: AppColors.textPrimary,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final compactActions =
+                    trailing != null && constraints.maxWidth < 320;
+                final labelRow = Row(
+                  children: [
+                    Icon(icon, size: 17, color: AppColors.textSecondary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            label,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.body14(
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.mono11(
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (selected)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 8),
+                        child: Icon(
+                          Icons.check_circle,
+                          size: 16,
+                          color: AppColors.peacockDark,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.mono11(color: AppColors.textMuted),
-                      ),
+                    if (trailing != null && !compactActions) ...[
+                      const SizedBox(width: 8),
+                      trailing!,
                     ],
-                  ),
-                ),
-                if (selected)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 8),
-                    child: Icon(
-                      Icons.check_circle,
-                      size: 16,
-                      color: AppColors.peacockDark,
-                    ),
-                  ),
-                if (trailing != null) ...[const SizedBox(width: 8), trailing!],
-              ],
+                  ],
+                );
+                if (!compactActions) return labelRow;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    labelRow,
+                    const SizedBox(height: 8),
+                    Align(alignment: Alignment.centerRight, child: trailing!),
+                  ],
+                );
+              },
             ),
           ),
         ),
