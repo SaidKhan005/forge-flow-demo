@@ -1,4 +1,4 @@
-﻿// Phase 11A.UX.health (F.1) - Health admin surface (HP #10 cleanup).
+// Phase 11A.UX.health (F.1) - Health admin surface (HP #10 cleanup).
 //
 // Read-only operator-facing view of the proxy `/health` envelope.
 // Three tabs reflect the three D.1 metric tiers:
@@ -339,6 +339,7 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
   }
 
   Widget _envelopeBody(HealthEnvelope envelope) {
+    final showDefinitions = MediaQuery.sizeOf(context).width >= 520;
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -354,6 +355,10 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
             ),
           const _HealthPriorityKey(),
           const SizedBox(height: 12),
+          if (showDefinitions) ...[
+            const _HealthDefinitionsCard(),
+            const SizedBox(height: 12),
+          ],
           _DependenciesStrip(envelope: envelope),
           const SizedBox(height: 12),
           _OverallSeverityChip(envelope: envelope),
@@ -693,6 +698,98 @@ class _PriorityKeyItem extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HealthDefinitionsCard extends StatelessWidget {
+  const _HealthDefinitionsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_health_plain_english_definitions'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = constraints.maxWidth >= 900
+              ? 4
+              : constraints.maxWidth >= 520
+              ? 2
+              : 1;
+          const gap = 10.0;
+          final itemWidth =
+              (constraints.maxWidth - (gap * (columns - 1))) / columns;
+          return Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: <Widget>[
+              _HealthDefinitionItem(
+                width: itemWidth,
+                label: 'Advisor data',
+                description:
+                    'Knowledge, vectors, and rollups the advisor uses to answer accurately.',
+              ),
+              _HealthDefinitionItem(
+                width: itemWidth,
+                label: 'App service',
+                description:
+                    'The backend services that serve admin, advisor, and workflow requests.',
+              ),
+              _HealthDefinitionItem(
+                width: itemWidth,
+                label: 'Ecosystem',
+                description:
+                    'Shared database, search, queues, and scheduled work that keep the app running.',
+              ),
+              _HealthDefinitionItem(
+                width: itemWidth,
+                label: 'Service checks',
+                description:
+                    'Read-only pings that confirm each required service answered successfully.',
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _HealthDefinitionItem extends StatelessWidget {
+  const _HealthDefinitionItem({
+    required this.width,
+    required this.label,
+    required this.description,
+  });
+
+  final double width;
+  final String label;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Text.rich(
+        TextSpan(
+          text: label,
+          style: AppTextStyles.body12(
+            color: AppColors.textPrimary,
+          ).copyWith(fontWeight: FontWeight.w700),
+          children: <InlineSpan>[
+            TextSpan(
+              text: ' - $description',
+              style: AppTextStyles.body12(color: AppColors.textSecondary),
+            ),
+          ],
+        ),
       ),
     );
   }

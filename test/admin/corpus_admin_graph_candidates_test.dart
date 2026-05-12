@@ -205,6 +205,23 @@ void main() {
       find.byKey(const Key('admin_corpus_graph_ambiguous_section')),
       findsOneWidget,
     );
+    expect(find.textContaining('fixture-commit'), findsNothing);
+    expect(find.textContaining('methodology_seed.md'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const Key('admin_corpus_graph_review_advanced')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('fixture-commit'), findsOneWidget);
+
+    final candidateDetails = find.byKey(
+      const Key('admin_corpus_graph_candidate_details_node:fixture:doc'),
+    );
+    await tester.ensureVisible(candidateDetails);
+    await tester.pumpAndSettle();
+    await tester.tap(candidateDetails);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('methodology_seed.md'), findsOneWidget);
   });
 
   testWidgets('low-confidence candidate (< 0.7) renders the warning chip', (

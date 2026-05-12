@@ -95,6 +95,10 @@ void main() {
     // Value chips read the seeded enabled bit.
     expect(find.text('Status: On'), findsOneWidget);
     expect(find.text('Status: Off'), findsOneWidget);
+    expect(find.text('Control ID: advisor_enabled'), findsNothing);
+    await tester.tap(find.byKey(const Key('admin_feature_flag_details_f-std')));
+    await tester.pumpAndSettle();
+    expect(find.text('Control ID: advisor_enabled'), findsOneWidget);
   });
 
   testWidgets('standard flag toggle flips the value and shows the SnackBar', (

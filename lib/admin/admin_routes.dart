@@ -332,7 +332,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminObservabilityRouteId,
-    title: 'AI metrics',
+    title: 'AI Metrics',
     path: '/observability',
     icon: Icons.insights_outlined,
     section: AdminRouteSection.ai,

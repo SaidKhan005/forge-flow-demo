@@ -105,6 +105,18 @@ void main() {
     expect(find.byKey(const Key('admin_corpus_row_v2')), findsOneWidget);
     expect(find.byKey(const Key('admin_corpus_current_v2')), findsOneWidget);
     expect(find.byKey(const Key('admin_corpus_current_v1')), findsNothing);
+    expect(find.textContaining('sha256'), findsNothing);
+    expect(find.textContaining('aaaaaaaaaaaa'), findsNothing);
+
+    final chunkDetails = find.byKey(
+      const Key('admin_corpus_chunk_details_methodology_seed.md#000'),
+    );
+    await tester.ensureVisible(chunkDetails);
+    await tester.pumpAndSettle();
+    await tester.tap(chunkDetails);
+    await tester.pumpAndSettle();
+    expect(find.text('Source hash'), findsOneWidget);
+    expect(find.text('aaaaaaaaaaaa'), findsOneWidget);
   });
 
   testWidgets('defers Graph candidates fetch until the tab is opened', (

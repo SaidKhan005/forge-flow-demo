@@ -28,6 +28,22 @@ void main() {
     home: child,
   );
 
+  Future<void> chooseWorkspaceBusinessScope(WidgetTester tester) async {
+    const operatorId = '00000000-0000-4000-8000-000000000001';
+    final option = find.byKey(Key('admin_setup_scope_business_$operatorId'));
+    await tester.ensureVisible(option);
+    await tester.pumpAndSettle();
+    await tester.tap(option);
+    await tester.pumpAndSettle();
+    if (find
+        .byKey(const Key('admin_setup_workspace_tabs'))
+        .evaluate()
+        .isNotEmpty) {
+      await tester.tap(find.widgetWithText(Tab, 'Plans and limits'));
+      await tester.pumpAndSettle();
+    }
+  }
+
   PricingOperatorBundle seedBundle({
     String operatorId = 'op-seed-1',
     String businessName = 'Seed Cafe',
@@ -91,6 +107,23 @@ void main() {
     expect(find.byKey(const Key('admin_pricing_row_op-2')), findsOneWidget);
     expect(find.text('Alpha Cafe'), findsWidgets);
     expect(find.text('Beta Bistro'), findsWidgets);
+    expect(find.text('advisor_qa'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('admin_pricing_row_op-2')));
+    await tester.pumpAndSettle();
+    expect(find.text('Advisor answers'), findsOneWidget);
+    expect(find.text('cap-op-2_advisor_qa'), findsNothing);
+
+    final capDetails = find.byKey(
+      const Key('admin_pricing_cap_details_cap-op-2_advisor_qa'),
+    );
+    await tester.ensureVisible(capDetails);
+    await tester.pumpAndSettle();
+    await tester.tap(capDetails);
+    await tester.pumpAndSettle();
+    expect(find.text('Use case ID'), findsOneWidget);
+    expect(find.text('advisor_qa'), findsOneWidget);
+    expect(find.text('cap-op-2_advisor_qa'), findsOneWidget);
   });
 
   testWidgets('stacks master/detail panes on compact widths', (tester) async {
@@ -265,6 +298,7 @@ void main() {
 
       await tester.tap(find.byKey(const Key('admin_nav_item_pricing')));
       await tester.pumpAndSettle();
+      await chooseWorkspaceBusinessScope(tester);
 
       expect(find.byKey(const Key('admin_pricing_screen')), findsOneWidget);
       expect(
@@ -303,6 +337,7 @@ void main() {
 
       await tester.tap(find.byKey(const Key('admin_nav_item_pricing')));
       await tester.pumpAndSettle();
+      await chooseWorkspaceBusinessScope(tester);
 
       expect(find.byKey(const Key('admin_pricing_screen')), findsOneWidget);
       expect(

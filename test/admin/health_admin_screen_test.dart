@@ -104,6 +104,27 @@ void main() {
     expect(find.text('Critical'), findsOneWidget);
     expect(find.text('Important'), findsWidgets);
     expect(find.text('Info'), findsWidgets);
+    expect(
+      find.byKey(const Key('admin_health_plain_english_definitions')),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Advisor data', findRichText: true),
+      findsWidgets,
+    );
+    expect(
+      find.textContaining('App service', findRichText: true),
+      findsWidgets,
+    );
+    expect(find.textContaining('Ecosystem', findRichText: true), findsWidgets);
+    expect(find.textContaining('Service checks'), findsWidgets);
+    expect(
+      find.textContaining(
+        'Read-only pings that confirm each required service answered successfully.',
+        findRichText: true,
+      ),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('admin_health_dependencies')), findsOneWidget);
     // All three dependency probes are rendered.
     expect(

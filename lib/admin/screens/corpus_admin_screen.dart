@@ -1,4 +1,4 @@
-﻿// Phase 11A.3a - Corpus admin screen.
+// Phase 11A.3a - Corpus admin screen.
 //
 // Admin-side editor over the `corpus_versions` ledger plus the
 // per-chunk `version_id` / `superseded_at` pointers. Replaces the
@@ -897,9 +897,9 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
           const SizedBox(height: 16),
           _GraphCandidateSection(
             sectionKey: const Key('admin_corpus_graph_extracted_section'),
-            label: 'Source matches',
+            label: 'Ready to approve',
             description:
-                'These relationships were read directly from source content. Review and approve them in bulk when they look right.',
+                'These were found directly in the content. Approve them when the relationship looks right.',
             candidates: diff.extracted,
             isQueuedForApprove: _approveQueue.contains,
             isQueuedForReject: _rejectQueue.contains,
@@ -923,9 +923,9 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
           const SizedBox(height: 16),
           _GraphCandidateSection(
             sectionKey: const Key('admin_corpus_graph_inferred_section'),
-            label: 'Suggested matches',
+            label: 'Review one by one',
             description:
-                'These are suggested relationships. Approve, edit, or reject each one before it goes live.',
+                'These are suggestions. Approve, edit, or reject each one before it goes live.',
             candidates: diff.inferred,
             isQueuedForApprove: _approveQueue.contains,
             isQueuedForReject: _rejectQueue.contains,
@@ -940,9 +940,9 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
           const SizedBox(height: 16),
           _GraphCandidateSection(
             sectionKey: const Key('admin_corpus_graph_ambiguous_section'),
-            label: 'Needs review',
+            label: 'Needs clarification',
             description:
-                'These need a clearer relationship before approval. Edit the suggestion or reject it.',
+                'These cannot be approved as-is. Edit the relationship or reject it.',
             candidates: diff.ambiguous,
             isQueuedForApprove: _approveQueue.contains,
             isQueuedForReject: _rejectQueue.contains,
@@ -1112,15 +1112,21 @@ class _GraphCandidateMetaCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          _DetailRow(label: 'Review scope', value: diff.graphScope),
-          _DetailRow(label: 'Relationship set', value: diff.graphVersion),
-          _DetailRow(label: 'Review engine', value: diff.graphifyVersion),
-          if (diff.graphifySourceCommit != null)
-            _DetailRow(
-              label: 'Source version',
-              value: diff.graphifySourceCommit!,
-            ),
           _DetailRow(label: 'Total suggestions', value: '${diff.totalCount}'),
+          _AdvancedDetails(
+            keyName: 'admin_corpus_graph_review_advanced',
+            title: 'Review details',
+            children: <Widget>[
+              _DetailRow(label: 'Review scope', value: diff.graphScope),
+              _DetailRow(label: 'Relationship set', value: diff.graphVersion),
+              _DetailRow(label: 'Review engine', value: diff.graphifyVersion),
+              if (diff.graphifySourceCommit != null)
+                _DetailRow(
+                  label: 'Source version',
+                  value: diff.graphifySourceCommit!,
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -1309,8 +1315,7 @@ class _GraphCandidateRow extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(
-                '${candidate.fromNodeKey ?? '?'} → '
-                '${candidate.toNodeKey ?? '?'}',
+                'Relationship between two knowledge items',
                 style: AppTextStyles.mono11(color: AppColors.textSecondary),
               ),
             )
@@ -1322,12 +1327,7 @@ class _GraphCandidateRow extends StatelessWidget {
                 style: AppTextStyles.mono11(color: AppColors.textSecondary),
               ),
             ),
-          if (candidate.sourceFile != null)
-            Text(
-              'Source file: ${candidate.sourceFile}'
-              '${candidate.sourceRef != null ? ' (${candidate.sourceRef})' : ''}',
-              style: AppTextStyles.mono8(color: AppColors.textMuted),
-            ),
+          _GraphCandidateDetails(candidate: candidate),
           if (queued) ...[
             const SizedBox(height: 6),
             _StagedDecisionChip(
@@ -1388,6 +1388,44 @@ class _GraphCandidateRow extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _GraphCandidateDetails extends StatelessWidget {
+  const _GraphCandidateDetails({required this.candidate});
+
+  final GraphCandidate candidate;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <Widget>[];
+    if (candidate.kind == GraphCandidateKind.edge) {
+      rows.add(
+        _DetailRow(
+          label: 'From item',
+          value: candidate.fromNodeKey ?? 'Unknown',
+        ),
+      );
+      rows.add(
+        _DetailRow(label: 'To item', value: candidate.toNodeKey ?? 'Unknown'),
+      );
+    }
+    if (candidate.sourceFile != null) {
+      rows.add(
+        _DetailRow(
+          label: 'Source file',
+          value:
+              '${candidate.sourceFile}'
+              '${candidate.sourceRef != null ? ' (${candidate.sourceRef})' : ''}',
+        ),
+      );
+    }
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return _AdvancedDetails(
+      keyName: 'admin_corpus_graph_candidate_details_${candidate.candidateId}',
+      title: 'Source details',
+      children: rows,
     );
   }
 }
@@ -1785,7 +1823,9 @@ class _VersionList extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: Text(
-                                  _shortVersion(v.versionId),
+                                  v.isCurrent
+                                      ? 'Current version'
+                                      : 'Prior version',
                                   style: AppTextStyles.mono14(
                                     color: AppColors.textPrimary,
                                     weight: FontWeight.w600,
@@ -1821,7 +1861,7 @@ class _VersionList extends StatelessWidget {
                           if (v.rollbackOf != null) ...[
                             const SizedBox(height: 2),
                             Text(
-                              'restored from ${_shortVersion(v.rollbackOf!)}',
+                              'Restored from an earlier version',
                               style: AppTextStyles.mono8(
                                 color: AppColors.textMuted,
                               ),
@@ -1895,7 +1935,9 @@ class _VersionDetail extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _shortVersion(version.versionId),
+                  version.isCurrent
+                      ? 'Current knowledge version'
+                      : 'Prior knowledge version',
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 10),
@@ -1915,9 +1957,21 @@ class _VersionDetail extends StatelessWidget {
                 if (version.rollbackOf != null)
                   _DetailRow(
                     label: 'Restored from',
-                    value: _shortVersion(version.rollbackOf!),
+                    value: 'Earlier content version',
                   ),
                 _DetailRow(label: 'Content pieces', value: '${chunks.length}'),
+                _AdvancedDetails(
+                  keyName: 'admin_corpus_version_details_${version.versionId}',
+                  title: 'Version details',
+                  children: <Widget>[
+                    _DetailRow(label: 'Version ID', value: version.versionId),
+                    if (version.rollbackOf != null)
+                      _DetailRow(
+                        label: 'Restored version ID',
+                        value: version.rollbackOf!,
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -1993,7 +2047,7 @@ class _StagedDiffCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Upload preview${fileName != null ? ': $fileName' : ''}',
+            'Upload preview',
             style: AppTextStyles.mono15(
               color: AppColors.textPrimary,
               weight: FontWeight.w700,
@@ -2004,6 +2058,14 @@ class _StagedDiffCard extends StatelessWidget {
             diff.summary,
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
+          if (fileName != null)
+            _AdvancedDetails(
+              keyName: 'admin_corpus_staged_file_details',
+              title: 'Source details',
+              children: <Widget>[
+                _DetailRow(label: 'Uploaded file', value: fileName!),
+              ],
+            ),
           const SizedBox(height: 12),
           _DiffSection(
             label: 'New',
@@ -2155,7 +2217,7 @@ class _ChunkPreviewTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            chunk.chunkId,
+            _chunkTitle(chunk),
             style: AppTextStyles.mono14(
               color: AppColors.textPrimary,
               weight: FontWeight.w600,
@@ -2176,14 +2238,35 @@ class _ChunkPreviewTile extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Risk ${chunk.riskLevel} - about ${chunk.estimatedTokens} tokens - '
-            'sha256 ${chunk.contentSha256.substring(0, math.min(12, chunk.contentSha256.length))}',
+            'Risk ${chunk.riskLevel} - about ${chunk.estimatedTokens} tokens',
             style: AppTextStyles.mono8(color: AppColors.textMuted),
+          ),
+          _AdvancedDetails(
+            keyName: 'admin_corpus_chunk_details_${chunk.chunkId}',
+            title: 'Content details',
+            children: <Widget>[
+              _DetailRow(label: 'Content ID', value: chunk.chunkId),
+              _DetailRow(label: 'Source file', value: chunk.sourcePath),
+              _DetailRow(
+                label: 'Source hash',
+                value: chunk.contentSha256.substring(
+                  0,
+                  math.min(12, chunk.contentSha256.length),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
+}
+
+String _chunkTitle(ChunkPreview chunk) {
+  if (chunk.headingPath.isNotEmpty) return chunk.headingPath.last;
+  final doc = chunk.docId.trim();
+  if (doc.isNotEmpty) return 'Knowledge content';
+  return 'Content piece';
 }
 
 class _CurrentChip extends StatelessWidget {
@@ -2200,6 +2283,41 @@ class _CurrentChip extends StatelessWidget {
       child: Text(
         'Current',
         style: AppTextStyles.mono8(color: AppColors.positive),
+      ),
+    );
+  }
+}
+
+class _AdvancedDetails extends StatelessWidget {
+  const _AdvancedDetails({
+    required this.keyName,
+    required this.title,
+    required this.children,
+  });
+
+  final String keyName;
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    if (children.isEmpty) return const SizedBox.shrink();
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: Material(
+        type: MaterialType.transparency,
+        child: ExpansionTile(
+          key: Key(keyName),
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(top: 4, bottom: 4),
+          title: Text(
+            title,
+            style: AppTextStyles.mono8(
+              color: AppColors.textMuted,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
+          children: children,
+        ),
       ),
     );
   }

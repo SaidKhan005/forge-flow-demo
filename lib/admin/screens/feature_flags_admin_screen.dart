@@ -1,4 +1,4 @@
-﻿// Phase 11A.7 - Feature flags admin screen.
+// Phase 11A.7 - Feature flags admin screen.
 //
 // Replaces the 11A.0 placeholder. F&F internal-only surface that
 // lists every row in the `public.feature_flags` catalog and lets a
@@ -392,11 +392,6 @@ class _FeatureFlagTile extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  'Control ID: ${row.flagName}',
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 4),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
@@ -420,6 +415,7 @@ class _FeatureFlagTile extends StatelessWidget {
                   '${adminHumanDateTime(row.updatedAt)}',
                   style: AppTextStyles.mono8(color: AppColors.textMuted),
                 ),
+                _FeatureFlagDetails(row: row),
               ],
             ),
           ),
@@ -444,6 +440,42 @@ class _FeatureFlagTile extends StatelessWidget {
               child: Text(row.enabled ? 'Disable' : 'Enable'),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _FeatureFlagDetails extends StatelessWidget {
+  const _FeatureFlagDetails({required this.row});
+
+  final FeatureFlagAdminRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: Material(
+        type: MaterialType.transparency,
+        child: ExpansionTile(
+          key: Key('admin_feature_flag_details_${row.flagId}'),
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          title: Text(
+            'Advanced details',
+            style: AppTextStyles.mono8(
+              color: AppColors.textMuted,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
+          children: <Widget>[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Control ID: ${row.flagName}',
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
