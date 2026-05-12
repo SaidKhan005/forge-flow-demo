@@ -506,19 +506,27 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
                     onToggleLiveTail: _toggleLiveTail,
                     onRunRefresh: _refresh,
                   ),
-                  const _StubTab(
-                    key: Key('admin_debug_console_stub_$_kGraphDebugTab'),
+                  _SupportHelpTab(
+                    key: const Key('admin_debug_console_relationship_help_tab'),
                     title: 'Relationship help',
-                    badge: 'Coming soon',
+                    icon: Icons.hub_outlined,
+                    entries: _visibleEntries,
+                    matches: _relationshipHelpMatches,
+                    emptyBody:
+                        'No relationship review requests match the current filters.',
                     body:
-                        'Relationship diagnostics are not wired here yet. Use Corpus > Relationship review for the current review workflow.',
+                        'Review recent relationship and knowledge-base requests for this selected scope.',
                   ),
-                  const _StubTab(
-                    key: Key('admin_debug_console_stub_$_kMfaDiagnosticsTab'),
+                  _SupportHelpTab(
+                    key: const Key('admin_debug_console_account_help_tab'),
                     title: 'Account help',
-                    badge: 'Coming soon',
+                    icon: Icons.manage_accounts_outlined,
+                    entries: _visibleEntries,
+                    matches: _accountHelpMatches,
+                    emptyBody:
+                        'No account support requests match the current filters.',
                     body:
-                        'Account diagnostics are not wired here yet. This tab will cover authenticator apps, pending removal requests, notifications, and account mismatch checks.',
+                        'Review recent sign-in, account, notification, and removal-request activity for this selected scope.',
                   ),
                 ],
               ),
@@ -1613,81 +1621,227 @@ class _FullContentLockedBlock extends StatelessWidget {
   }
 }
 
-class _StubTab extends StatelessWidget {
-  const _StubTab({
+typedef _SupportHelpMatcher = bool Function(RequestLogEntry entry);
+
+bool _relationshipHelpMatches(RequestLogEntry entry) {
+  final haystack = _supportHelpText(entry);
+  return haystack.contains('relationship') ||
+      haystack.contains('graph') ||
+      haystack.contains('corpus') ||
+      haystack.contains('knowledge') ||
+      haystack.contains('review');
+}
+
+bool _accountHelpMatches(RequestLogEntry entry) {
+  final haystack = _supportHelpText(entry);
+  return haystack.contains('account') ||
+      haystack.contains('auth') ||
+      haystack.contains('mfa') ||
+      haystack.contains('session') ||
+      haystack.contains('notification') ||
+      haystack.contains('removal') ||
+      haystack.contains('user');
+}
+
+String _supportHelpText(RequestLogEntry entry) {
+  return <String>[
+    entry.usageClass,
+    for (final value in entry.requestMeta.values) value?.toString() ?? '',
+  ].join(' ').toLowerCase();
+}
+
+class _SupportHelpTab extends StatelessWidget {
+  const _SupportHelpTab({
     super.key,
     required this.title,
-    required this.badge,
+    required this.icon,
+    required this.entries,
+    required this.matches,
+    required this.emptyBody,
     required this.body,
   });
 
   final String title;
-  final String badge;
+  final IconData icon;
+  final List<RequestLogEntry> entries;
+  final _SupportHelpMatcher matches;
+  final String emptyBody;
   final String body;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: AppColors.backgroundSurface,
-            border: Border.all(color: AppColors.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: <Widget>[
-                  const Icon(
-                    Icons.hourglass_empty,
-                    size: 16,
-                    color: AppColors.textMuted,
-                  ),
+    final exactRows = entries.where(matches).toList(growable: false);
+    final rows = exactRows.isEmpty && entries.isNotEmpty ? entries : exactRows;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: AdminCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Icon(icon, size: 18, color: AppColors.sunsetDark),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            title,
+                            style: AppTextStyles.display20(
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            body,
+                            style: AppTextStyles.body13(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _SupportHelpCountPill(count: rows.length),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (rows.isEmpty)
                   Text(
-                    title,
-                    style: AppTextStyles.display20(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  Container(
-                    key: Key(
-                      'admin_debug_console_stub_badge_'
-                      '${title.toLowerCase().replaceAll(' ', '_')}',
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.warning.withValues(alpha: 0.14),
-                      border: Border.all(color: AppColors.warning, width: 1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      badge,
-                      style: AppTextStyles.chipLabel(color: AppColors.warning),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                body,
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-            ],
+                    emptyBody,
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
+                  )
+                else
+                  for (final entry in rows.take(8))
+                    _SupportHelpRequestRow(entry: entry),
+              ],
+            ),
           ),
         ),
       ),
     );
+  }
+}
+
+class _SupportHelpCountPill extends StatelessWidget {
+  const _SupportHelpCountPill({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.peacock.withValues(alpha: 0.12),
+        border: Border.all(color: AppColors.peacockDark, width: 1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '$count request${count == 1 ? '' : 's'}',
+        style: AppTextStyles.chipLabel(color: AppColors.peacockDark),
+      ),
+    );
+  }
+}
+
+class _SupportHelpRequestRow extends StatelessWidget {
+  const _SupportHelpRequestRow({required this.entry});
+
+  final RequestLogEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final route = _friendlyRoute(entry);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(
+            _statusIcon(entry.status),
+            size: 17,
+            color: _statusColor(entry.status),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  route,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${requestLogStatusLabel(entry.status)} - ${entry.latencyMs} ms - ${_timeAgo(entry.startedAt)}',
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _friendlyRoute(RequestLogEntry entry) {
+    final meta = entry.requestMeta;
+    final value =
+        meta['summary'] ??
+        meta['route'] ??
+        meta['path'] ??
+        meta['method'] ??
+        entry.usageClass;
+    final text = value.toString().trim();
+    if (text.isEmpty) return 'Support request';
+    return text;
+  }
+
+  static IconData _statusIcon(RequestLogStatus status) {
+    switch (status) {
+      case RequestLogStatus.success:
+        return Icons.check_circle_outline;
+      case RequestLogStatus.error:
+        return Icons.error_outline;
+      case RequestLogStatus.timeout:
+        return Icons.timer_off_outlined;
+      case RequestLogStatus.unknown:
+        return Icons.help_outline;
+    }
+  }
+
+  static Color _statusColor(RequestLogStatus status) {
+    switch (status) {
+      case RequestLogStatus.success:
+        return AppColors.positive;
+      case RequestLogStatus.error:
+        return AppColors.negative;
+      case RequestLogStatus.timeout:
+        return AppColors.warning;
+      case RequestLogStatus.unknown:
+        return AppColors.textMuted;
+    }
+  }
+
+  static String _timeAgo(DateTime startedAt) {
+    final elapsed = DateTime.now().toUtc().difference(startedAt.toUtc());
+    if (elapsed.inMinutes < 1) return 'just now';
+    if (elapsed.inHours < 1) return '${elapsed.inMinutes} min ago';
+    if (elapsed.inDays < 1) return '${elapsed.inHours} hr ago';
+    return '${elapsed.inDays} d ago';
   }
 }
 

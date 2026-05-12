@@ -48,6 +48,8 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     this.onOpenDataAccuracyScope,
     this.onOpenPollingPricing,
     this.onOpenPollingPricingScope,
+    this.onOpenIntegrationsScope,
+    this.onOpenTimingScope,
     this.onOpenSupportOperatorView,
     this.onOpenTeam,
     this.onOpenAccess,
@@ -72,6 +74,8 @@ class OperatorLocationAdminScreen extends StatefulWidget {
   final ValueChanged<AdminHierarchyScopeIntent>? onOpenDataAccuracyScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
   final ValueChanged<AdminHierarchyScopeIntent>? onOpenPollingPricingScope;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenIntegrationsScope;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenTimingScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>?
   onOpenSupportOperatorView;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenTeam;
@@ -374,6 +378,8 @@ class _OperatorLocationAdminScreenState
               onOpenDataAccuracyScope: widget.onOpenDataAccuracyScope,
               onOpenPollingPricing: widget.onOpenPollingPricing,
               onOpenPollingPricingScope: widget.onOpenPollingPricingScope,
+              onOpenIntegrationsScope: widget.onOpenIntegrationsScope,
+              onOpenTimingScope: widget.onOpenTimingScope,
               onOpenSupportOperatorView: widget.onOpenSupportOperatorView,
               onOpenTeam: widget.onOpenTeam,
               onOpenAccess: widget.onOpenAccess,
@@ -972,6 +978,8 @@ class _OperatorDetail extends StatelessWidget {
     required this.onOpenDataAccuracyScope,
     required this.onOpenPollingPricing,
     required this.onOpenPollingPricingScope,
+    required this.onOpenIntegrationsScope,
+    required this.onOpenTimingScope,
     required this.onOpenSupportOperatorView,
     required this.onOpenTeam,
     required this.onOpenAccess,
@@ -1003,6 +1011,8 @@ class _OperatorDetail extends StatelessWidget {
   final ValueChanged<AdminHierarchyScopeIntent>? onOpenDataAccuracyScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
   final ValueChanged<AdminHierarchyScopeIntent>? onOpenPollingPricingScope;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenIntegrationsScope;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenTimingScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>?
   onOpenSupportOperatorView;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenTeam;
@@ -1179,37 +1189,43 @@ class _OperatorDetail extends StatelessWidget {
                         scope.operatorId,
                         scope.locationId,
                       )),
-            onOpenIntegrations: (scope) {
-              final scopedLocation = _locationForScope(bundle, scope);
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  settings: const RouteSettings(name: '/vendor-connections'),
-                  builder: (_) => VendorConnectionsAdminMount(
-                    operatorId: operator.operatorId,
-                    locationId: scopedLocation?.locationId,
-                    locationName: scopedLocation?.name,
-                    selectedScope: scope,
-                    gateway: vendorConnectionsGateway,
-                    canMutate: editingEnabled,
-                    onBackToBusinessAccounts: () =>
-                        Navigator.of(context).maybePop(),
-                  ),
-                ),
-              );
-            },
-            onOpenTiming: (scope) {
-              final scopedTimingLocation =
-                  _locationForScope(bundle, scope) ?? timingLocation;
-              showDialog<void>(
-                context: context,
-                builder: (_) => _AdminLocationTimingDialog(
-                  operatorName: operator.businessName,
-                  selectedScope: scope,
-                  timingLocation: scopedTimingLocation,
-                  editingEnabled: editingEnabled,
-                ),
-              );
-            },
+            onOpenIntegrations:
+                onOpenIntegrationsScope ??
+                (scope) {
+                  final scopedLocation = _locationForScope(bundle, scope);
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      settings: const RouteSettings(
+                        name: '/vendor-connections',
+                      ),
+                      builder: (_) => VendorConnectionsAdminMount(
+                        operatorId: operator.operatorId,
+                        locationId: scopedLocation?.locationId,
+                        locationName: scopedLocation?.name,
+                        selectedScope: scope,
+                        gateway: vendorConnectionsGateway,
+                        canMutate: editingEnabled,
+                        onBackToBusinessAccounts: () =>
+                            Navigator.of(context).maybePop(),
+                      ),
+                    ),
+                  );
+                },
+            onOpenTiming:
+                onOpenTimingScope ??
+                (scope) {
+                  final scopedTimingLocation =
+                      _locationForScope(bundle, scope) ?? timingLocation;
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => _AdminLocationTimingDialog(
+                      operatorName: operator.businessName,
+                      selectedScope: scope,
+                      timingLocation: scopedTimingLocation,
+                      editingEnabled: editingEnabled,
+                    ),
+                  );
+                },
           ),
         ],
       ),

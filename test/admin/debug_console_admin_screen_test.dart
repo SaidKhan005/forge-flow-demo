@@ -63,6 +63,7 @@ void main() {
     String? idempotencyKey,
     bool fullContentOptInOn = false,
     Map<String, Object?>? fullContent,
+    Map<String, Object?>? requestMeta,
   }) {
     return RequestLogEntry(
       requestId: id,
@@ -73,10 +74,9 @@ void main() {
       status: status,
       startedAt: startedAt ?? DateTime.utc(2026, 5, 3, 11, 30),
       latencyMs: latencyMs,
-      requestMeta: const <String, Object?>{
-        'route': '/v1/test',
-        'method': 'POST',
-      },
+      requestMeta:
+          requestMeta ??
+          const <String, Object?>{'route': '/v1/test', 'method': 'POST'},
       fullContentOptInOn: fullContentOptInOn,
       fullContentPayload: fullContent,
     );
@@ -164,6 +164,7 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
     await pressRefresh(tester);
 
     expect(
@@ -579,6 +580,7 @@ void main() {
         ),
       ),
     );
+    await pressRefresh(tester);
 
     await tester.tap(
       find.byKey(const Key('admin_debug_console_use_case_filter_coach_qa')),
@@ -882,12 +884,27 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Relationship and account help tabs are marked coming soon', (
+  testWidgets('Relationship and account help tabs render live panels', (
     tester,
   ) async {
     setLargeViewport(tester);
     final gateway = InMemoryDebugConsoleAdminGateway(
-      seed: <RequestLogEntry>[],
+      seed: <RequestLogEntry>[
+        seedEntry(
+          id: 'req-relationship',
+          operatorId: 'op-A',
+          usageClass: 'relationship_review',
+          requestMeta: const <String, Object?>{
+            'summary': 'Relationship review',
+          },
+        ),
+        seedEntry(
+          id: 'req-account',
+          operatorId: 'op-A',
+          usageClass: 'account_help',
+          requestMeta: const <String, Object?>{'summary': 'MFA account check'},
+        ),
+      ],
       now: () => DateTime.utc(2026, 5, 3, 12),
     );
     await tester.pumpWidget(
@@ -904,28 +921,24 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('admin_debug_console_stub_graph_debug')),
+      find.byKey(const Key('admin_debug_console_relationship_help_tab')),
       findsOneWidget,
     );
-    expect(find.text('Coming soon'), findsOneWidget);
-    expect(
-      find.textContaining('Use Corpus > Relationship review'),
-      findsOneWidget,
-    );
+    expect(find.text('Coming soon'), findsNothing);
+    expect(find.textContaining('not wired'), findsNothing);
+    expect(find.textContaining('Review recent relationship'), findsOneWidget);
 
     await tester.tap(
       find.byKey(const Key('admin_debug_console_tab_mfa_diagnostics')),
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('admin_debug_console_stub_mfa_diagnostics')),
+      find.byKey(const Key('admin_debug_console_account_help_tab')),
       findsOneWidget,
     );
-    expect(find.text('Coming soon'), findsOneWidget);
-    expect(
-      find.textContaining('Account diagnostics are not wired here yet'),
-      findsOneWidget,
-    );
+    expect(find.text('Coming soon'), findsNothing);
+    expect(find.textContaining('not wired'), findsNothing);
+    expect(find.textContaining('Review recent sign-in'), findsOneWidget);
   });
 
   testWidgets('live-tail polls do not stack when the prior tailRecent has not '

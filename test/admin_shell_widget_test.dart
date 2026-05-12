@@ -336,9 +336,12 @@ void main() {
     await tester.tap(find.byKey(const Key('admin_nav_item_debug')));
     await tester.pumpAndSettle();
 
-    // The live debug console screen renders; the old placeholder is
-    // gone.
-    expect(find.byKey(const Key('admin_debug_console_screen')), findsOneWidget);
+    // The live Support logs route now starts in the shared hierarchy
+    // workspace. The request table appears after a scope is selected.
+    expect(
+      find.byKey(const Key('admin_setup_workspace_scope_pane')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('admin_placeholder_debug')), findsNothing);
     // Regression guard: pre-fix the embedded screen overflowed by
     // ~124 px at the normal shell viewport. The ListView refactor
@@ -466,15 +469,18 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_members_no_operator_state')),
+        find.byKey(const Key('admin_setup_workspace_scope_pane')),
         findsOneWidget,
       );
       expect(
         find.byKey(const Key('admin_operator_picker_screen')),
         findsNothing,
       );
-      expect(find.text('Choose an operator'), findsOneWidget);
-      expect(find.text('Choose operator'), findsOneWidget);
+      expect(find.text('Scope'), findsWidgets);
+      expect(
+        find.text('Choose a business, org unit, or location.'),
+        findsOneWidget,
+      );
     },
   );
 
