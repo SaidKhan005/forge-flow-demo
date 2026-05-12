@@ -56,6 +56,31 @@ void main() {
     );
 
     test(
+      'fan-out uses explicit targetKind/targetId instead of only '
+      'inferring user targets',
+      () async {
+        final pool = _CutoverPool();
+        final repo = AuthEventsAuditRepository(TenantTransactionWrapper(pool));
+        await repo.insertEvent(
+          operatorId: _opA,
+          locationId: _locA,
+          eventType: 'auth.custom_role_updated',
+          actorKind: 'user',
+          actorUserId: _userA,
+          targetKind: 'role',
+          targetId: 'role-123',
+          payload: const <String, Object?>{'role_id': 'role-123'},
+        );
+
+        final auditLogParams = pool.transactions.single.parameters.firstWhere(
+          (params) => params['action'] == 'auth.custom_role_updated',
+        );
+        expect(auditLogParams['target_kind'], equals('role'));
+        expect(auditLogParams['target_id'], equals('role-123'));
+      },
+    );
+
+    test(
       'flag=false (rollback path): insertEvent writes auth_events_audit '
       'ONLY; audit_logs fan-out is skipped',
       () async {

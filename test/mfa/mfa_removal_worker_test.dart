@@ -889,11 +889,14 @@ class _AuditFake extends AuthEventsAuditRepository {
     String? actorUserId,
     String? actorServicePrincipalId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
     String? userAgent,
     String? geoCountry,
     String? requestId,
+    String? adminReason,
   }) async {
     events.add(_AuditEvent(
       eventType: eventType,
@@ -912,6 +915,8 @@ class _AuditFake extends AuthEventsAuditRepository {
     String? actorUserId,
     String? actorServicePrincipalId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
     String? userAgent,
@@ -940,11 +945,14 @@ class _AuditFake extends AuthEventsAuditRepository {
     String? actorUserId,
     String? actorServicePrincipalId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
     String? userAgent,
     String? geoCountry,
     String? requestId,
+    String? adminReason,
   }) async {
     events.add(_AuditEvent(
       eventType: eventType,
@@ -970,6 +978,8 @@ class _ThrowingAuditFake extends _AuditFake {
     String? actorUserId,
     String? actorServicePrincipalId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
     String? userAgent,
@@ -990,11 +1000,14 @@ class _ThrowingAuditFake extends _AuditFake {
     String? actorUserId,
     String? actorServicePrincipalId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
     String? userAgent,
     String? geoCountry,
     String? requestId,
+    String? adminReason,
   }) async {
     throw const _FakeAuditError('audit_insert_failed');
   }

@@ -178,6 +178,69 @@ void main() {
       );
     });
 
+    test(
+      'moveLocationToOrgUnit audits the moved location target metadata',
+      () async {
+        const ownerRoleId = '88888888-8888-8888-8888-888888888888';
+        final pool = _OrgUnitsPool(
+          userRoleRows: <PostgresRow>[
+            <String, Object?>{
+              'user_role_id': '99999999-9999-9999-9999-999999999999',
+              'user_id': _validUserId,
+              'role_id': ownerRoleId,
+              'operator_id': _validOpId,
+              'scope_type': 'operator_wide',
+              'location_id': null,
+              'org_unit_id': null,
+              'effective_location_ids': const <String>[],
+              'valid_from': DateTime.utc(2026, 4, 1),
+              'valid_until': null,
+              'granted_by': _validUserId,
+              'revoked_at': null,
+              'revoked_by': null,
+              'reason': null,
+              'created_at': DateTime.utc(2026, 4, 1),
+              'updated_at': DateTime.utc(2026, 4, 1),
+            },
+          ],
+          rolePermissionsByRole: <String, List<PostgresRow>>{
+            ownerRoleId: <PostgresRow>[
+              <String, Object?>{
+                'role_id': ownerRoleId,
+                'permission_key': 'team.roles.assign',
+                'effect': 'allow',
+                'created_at': DateTime.utc(2026, 4, 1),
+                'updated_at': DateTime.utc(2026, 4, 1),
+              },
+            ],
+          },
+          parentRows: <PostgresRow>[
+            <String, Object?>{'?column?': 1},
+          ],
+        );
+        final gateway = _gatewayWithPool(pool);
+
+        final moved = await gateway.moveLocationToOrgUnit(
+          const TeamLocationOrgUnitMoveCommand(
+            actorUserId: _validUserId,
+            operatorId: _validOpId,
+            locationId: _validLocId,
+            targetLocationId: _validTargetLocationId,
+            parentOrgUnitId: _validParentId,
+          ),
+        );
+
+        expect(moved.moved, isTrue);
+        final auditLogParams = pool.transactions
+            .expand((tx) => tx.parameters)
+            .firstWhere(
+              (params) => params['action'] == 'auth.location_org_unit_moved',
+            );
+        expect(auditLogParams['target_kind'], equals('location'));
+        expect(auditLogParams['target_id'], equals(_validTargetLocationId));
+      },
+    );
+
     test('createOrgUnit allows operator-wide actor whose role carries '
         'team.roles.assign', () async {
       final pool = _OrgUnitsPool(
@@ -241,6 +304,14 @@ void main() {
       expect(
         auditParams['payload'] as String,
         contains('"admin_reason":"admin hierarchy setup"'),
+      );
+      final auditLogParams = pool.transactions
+          .expand((tx) => tx.parameters)
+          .firstWhere((params) => params['action'] == 'auth.org_unit_created');
+      expect(auditLogParams['target_kind'], equals('org_unit'));
+      expect(
+        auditLogParams['target_id'],
+        equals('77777777-7777-7777-7777-777777777777'),
       );
     });
 
