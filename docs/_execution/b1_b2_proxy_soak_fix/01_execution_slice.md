@@ -79,7 +79,7 @@ Before approving merge of `claude/b1-b2-proxy-soak-fix` against master:
 - [ ] Verify `runZonedGuarded` log line shape matches `proxy.root_zone_uncaught` convention
 - [ ] Verify `/health` endpoint payload now contains pool gauges + ring buffer keys gauge
 - [ ] Verify the two former bare-catch sites at advisor_proxy.dart:12392 / 12421 are typed-catch now
-- [ ] Verify Option A (proxy accepts scope-less ff_support/super_admin) does not leak operator-scope into the response for those users
+- [x] Verify Option A (proxy accepts scope-less ff_support/super_admin) does not leak operator-scope into the response for those users — confirmed in the follow-up section below: parser tolerates empty `operator_id` / `location_id` only when caller's roles include `ff_support` or `super_admin`; normal-user empty-scope responses still throw `malformed_response`.
 - [ ] Verify the contract change doesn't break the existing operator-scope path for normal users
 - [ ] Cross-check the slice against CLAUDE.md HP #4 (RLS posture — per-operator isolation must still hold for non-support users)
 - [ ] Cross-check the slice against `docs/contracts/hardening_rls_and_repository_pattern_contract.md`
@@ -89,6 +89,42 @@ Before approving merge of `claude/b1-b2-proxy-soak-fix` against master:
 - Full forensic kit (heap snapshot upload to GCS, glados state-machine tests) — that's the +6-day durable capability extension queued for the code-health wave (A11 in the addendum).
 - Resolving Bug 2 hypothesis S2 (Postgres pool defaults of 4) — only the gauge is added here; raising the env var is a runbook decision deferred to the code-health wave.
 - Resolving Bug 2 hypothesis S3 (unbounded `_ringBuffers` map eviction) — only the gauge is added; actual eviction policy is a follow-up.
+
+## Follow-up: client parser alignment
+
+Audit `docs/_audits/post_codex_wave/pr_476_b1_b2_audit.md` (verdict `material-gaps-send-back`) caught one merge-blocking gap: the B1 proxy contract change accepts scope-less `ff_support` / `super_admin` JWTs and returns 200 with empty-string `operator_id` / `location_id`, but the **client-side response parser** still treated empty scope as `malformed_response` and the notifier mapped that to `AuthLoginFailure(code: 'ledger_unavailable')` — the exact original Bug 1 symptom. Without the client half, the proxy fix didn't deliver the operator-facing fix end-to-end.
+
+**Two sites fixed in `lib/services/auth/proxy_auth_session_ledger_writer.dart`:**
+
+- `_recordFromLoginResponse` (post-fix range still ~373-420): role-aware branch. Empty `operator_id` AND empty `location_id` are now accepted **only when** the caller's roles include `ff_support` or `super_admin`. Returns the empty echo through to the record so downstream code sees the same shape `requireOperatorContext` builds at `tool/advisor_proxy/advisor_proxy.dart:2222-2233`. For every other role the original `malformed_response: 'incomplete scope'` throw still fires.
+- `_validateLoginScopeEcho` (post-fix range still ~422-470): same role-aware branch. Compares with empty-string fallback so a global admin (caller's local `operatorId` / `locationId` are both empty) reads as a clean match rather than `null != ''`.
+
+Roles plumbing: added an optional `roles` field to `AuthSessionLedgerLogin` (defaults to `const <String>[]`, so every existing call site and test is preserved). The notifier (`lib/state/auth_session_notifier.dart:300-307`) now passes `result.session.roles` from the verified-JWT projection. The proxy response payload was not modified — getting roles from the local `AuthSession` is the cleanest path (matches how the soak harness predicate accepts roles as a parameter at `tool/pressure/p4_session_record_predicate.dart:70-73`).
+
+**Three sites must stay in sync** for the global-admin role set:
+
+1. `tool/advisor_proxy/advisor_proxy.dart:2260-2265` — proxy's `_hasGlobalAdminRole`.
+2. `tool/pressure/p4_session_record_predicate.dart:57-60` — soak harness `globalAdminRoles`.
+3. `lib/services/auth/proxy_auth_session_ledger_writer.dart` — new `_globalAdminRoles` constant.
+
+All three currently hold `{'ff_support', 'super_admin'}`. A comment on each cross-references the other two.
+
+**Test coverage added in `test/proxy_auth_session_ledger_writer_test.dart`:**
+
+| # | Case | Outcome |
+|---|---|---|
+| 1 | `ff_support` user, 200 with empty `operator_id` / `location_id` | Parser accepts; returns record with empty scope. |
+| 2 | `super_admin` user, 200 with empty `operator_id` / `location_id` | Same; also exercises `_validateLoginScopeEcho` via `recordLogin`. |
+| 3 | Normal user (roles `['advisor.read']`), 200 with empty scope | Parser still throws `malformed_response: incomplete scope` (regression protection). |
+| 4 | `ff_support` user, 200 with NON-empty `operator_id` / `location_id` (post-impersonation case) | Parser accepts; no regression to the normal tenant-scoped path. The carve-out widens what's accepted; it doesn't narrow it. |
+
+**Verification:**
+
+- `dart analyze` on the four touched files (`lib/services/auth/auth_session_ledger_writer.dart`, `lib/services/auth/proxy_auth_session_ledger_writer.dart`, `lib/state/auth_session_notifier.dart`, `test/proxy_auth_session_ledger_writer_test.dart`): `No issues found!`
+- `flutter test test/proxy_auth_session_ledger_writer_test.dart`: 22/22 pass (was 18 before; +4 new tests).
+- `flutter test test/advisor_proxy_test.dart`: 218/218 pass (no regression to the proxy contract tests).
+- `flutter test test/pressure/p4_session_record_predicate_test.dart`: 12/12 pass.
+- Two pre-existing failures observed in `test/advisor_proxy_bootstrap_test.dart` and `test/auth_live_binding_test.dart` (both fail identically with my changes stashed — confirmed unrelated; they came in via the master merge that brought the B3 email-pipeline slice into this branch).
 
 ## Merge gate
 

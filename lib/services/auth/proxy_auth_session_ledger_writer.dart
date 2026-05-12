@@ -241,7 +241,7 @@ class ProxyAuthSessionLedgerWriter
   @override
   Future<String> recordLogin(AuthSessionLedgerLogin login) async {
     final response = await _postLogin(login);
-    final record = _recordFromLoginResponse(response);
+    final record = _recordFromLoginResponse(response, login: login);
     _validateLoginScopeEcho(response: response, login: login);
     return record.sessionId;
   }
@@ -251,7 +251,7 @@ class ProxyAuthSessionLedgerWriter
     AuthSessionLedgerLogin login,
   ) async {
     final response = await _postLogin(login);
-    return _recordFromLoginResponse(response);
+    return _recordFromLoginResponse(response, login: login);
   }
 
   @override
@@ -371,8 +371,9 @@ class ProxyAuthSessionLedgerWriter
   }
 
   AuthSessionLedgerLoginRecord _recordFromLoginResponse(
-    ProxyHttpJsonResponse response,
-  ) {
+    ProxyHttpJsonResponse response, {
+    required AuthSessionLedgerLogin login,
+  }) {
     final sessionId = _readNonBlankString(response.body['session_id']);
     final userId = _readNonBlankString(response.body['user_id']);
     final operatorId = _readNonBlankString(response.body['operator_id']);
@@ -384,7 +385,25 @@ class ProxyAuthSessionLedgerWriter
         statusCode: response.statusCode,
       );
     }
-    if (userId == null || operatorId == null || locationId == null) {
+    // B1 follow-up — global-admin (ff_support / super_admin) sign-in
+    // contract: the proxy's `requireOperatorContext` accepts scope-less
+    // claims for these roles and returns empty-string `operator_id` /
+    // `location_id`. The client parser must mirror that contract or
+    // every global-admin sign-in trips
+    // `AuthLoginFailure(code: 'ledger_unavailable')` — the exact Bug 1
+    // symptom A1 was tracking. See
+    // `docs/_audits/post_codex_wave/pr_476_b1_b2_audit.md` §1 and
+    // `tool/pressure/p4_session_record_predicate.dart` for the
+    // symmetric harness predicate.
+    final isGlobalAdmin = _isGlobalAdminCaller(login.roles);
+    if (userId == null) {
+      throw ProxyAuthSessionLedgerError(
+        code: 'malformed_response',
+        message: 'proxy /v1/auth/session/login returned incomplete scope',
+        statusCode: response.statusCode,
+      );
+    }
+    if (!isGlobalAdmin && (operatorId == null || locationId == null)) {
       throw ProxyAuthSessionLedgerError(
         code: 'malformed_response',
         message: 'proxy /v1/auth/session/login returned incomplete scope',
@@ -394,8 +413,13 @@ class ProxyAuthSessionLedgerWriter
     return AuthSessionLedgerLoginRecord(
       sessionId: sessionId,
       userId: userId,
-      operatorId: operatorId,
-      locationId: locationId,
+      // Preserve the proxy's empty echo for global admins; downstream
+      // routes that need a concrete tenant call the impersonation
+      // flow (`/v1/admin/auth/sessions`) to pick one. Match
+      // `OperatorContext` shape from `requireOperatorContext`
+      // (`tool/advisor_proxy/advisor_proxy.dart:2222-2233`).
+      operatorId: operatorId ?? '',
+      locationId: locationId ?? '',
     );
   }
 
@@ -406,22 +430,60 @@ class ProxyAuthSessionLedgerWriter
     final userId = _readNonBlankString(response.body['user_id']);
     final operatorId = _readNonBlankString(response.body['operator_id']);
     final locationId = _readNonBlankString(response.body['location_id']);
-    if (userId == null || operatorId == null || locationId == null) {
+    // B1 follow-up — see `_recordFromLoginResponse` for the contract.
+    // Global admins legitimately echo back empty operator/location
+    // because their JWT carried no tenant scope to begin with. The
+    // local AuthSession's `operatorId` / `locationId` are also empty
+    // strings for these users, so the equality check below still
+    // catches a real scope mismatch (e.g. a non-admin's operator id
+    // changing between client request and proxy echo).
+    final isGlobalAdmin = _isGlobalAdminCaller(login.roles);
+    if (userId == null) {
       throw ProxyAuthSessionLedgerError(
         code: 'malformed_response',
         message: 'proxy /v1/auth/session/login returned incomplete scope',
         statusCode: response.statusCode,
       );
     }
+    if (!isGlobalAdmin && (operatorId == null || locationId == null)) {
+      throw ProxyAuthSessionLedgerError(
+        code: 'malformed_response',
+        message: 'proxy /v1/auth/session/login returned incomplete scope',
+        statusCode: response.statusCode,
+      );
+    }
+    // Compare with empty-string fallback so the global-admin case
+    // (both sides empty) reads as a match rather than null != ''.
+    final echoedOperatorId = operatorId ?? '';
+    final echoedLocationId = locationId ?? '';
     if (userId != login.userId ||
-        operatorId != login.operatorId ||
-        locationId != login.locationId) {
+        echoedOperatorId != login.operatorId ||
+        echoedLocationId != login.locationId) {
       throw ProxyAuthSessionLedgerError(
         code: 'scope_mismatch',
         message: 'proxy /v1/auth/session/login returned a different scope',
         statusCode: response.statusCode,
       );
     }
+  }
+
+  /// Roles that signal a global admin identity (platform-wide; no
+  /// per-tenant scope). Mirrors the proxy's `_hasGlobalAdminRole`
+  /// at `tool/advisor_proxy/advisor_proxy.dart:2260-2265` and the
+  /// soak-harness predicate's `globalAdminRoles` constant at
+  /// `tool/pressure/p4_session_record_predicate.dart:57-60`. Three
+  /// sites must stay in sync; if either side widens the set, update
+  /// here too.
+  static const Set<String> _globalAdminRoles = <String>{
+    'ff_support',
+    'super_admin',
+  };
+
+  static bool _isGlobalAdminCaller(List<String> roles) {
+    for (final role in roles) {
+      if (_globalAdminRoles.contains(role)) return true;
+    }
+    return false;
   }
 
   static String? _readNonBlankString(Object? value) {

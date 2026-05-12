@@ -303,6 +303,15 @@ class AuthSessionNotifier extends ChangeNotifier {
             locationId: result.session.locationId,
             tokenHash: hash,
             context: _ledgerContextFactory(),
+            // B1 follow-up — surface the verified-JWT roles so the
+            // proxy writer's response parser can apply the
+            // global-admin (`ff_support` / `super_admin`) carve-out
+            // when the proxy returns empty `operator_id` /
+            // `location_id` for those identities. Without this, the
+            // parser falls back to strict tenant-scoped validation
+            // and global-admin sign-in surfaces
+            // `AuthLoginFailure(code: 'ledger_unavailable')`.
+            roles: result.session.roles,
           ),
         );
       } catch (error) {

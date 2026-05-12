@@ -65,6 +65,7 @@ class AuthSessionLedgerLogin {
     required this.locationId,
     required this.tokenHash,
     this.context = AuthSessionLedgerContext.empty,
+    this.roles = const <String>[],
   });
 
   final String userId;
@@ -72,6 +73,17 @@ class AuthSessionLedgerLogin {
   final String locationId;
   final String tokenHash;
   final AuthSessionLedgerContext context;
+
+  /// Roles projected from the caller's verified JWT claims (e.g.
+  /// `result.session.roles` from the auth notifier). The proxy writer
+  /// uses these to apply the B1 global-admin (`ff_support` /
+  /// `super_admin`) response-shape carve-out — those identities are
+  /// platform-wide and the proxy returns empty `operator_id` /
+  /// `location_id` for them, so the response parser must tolerate
+  /// empty scope only for those roles. Defaults to empty so existing
+  /// callers (tests, dev paths, non-proxy writers) keep the strict
+  /// tenant-scoped shape.
+  final List<String> roles;
 }
 
 /// Result of a successful login ledger write.
