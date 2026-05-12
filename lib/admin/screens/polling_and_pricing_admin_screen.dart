@@ -666,7 +666,7 @@ class _PollingAndPricingAdminScreenState
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  'Showing polling setup from $_singleCoveredLocationName. Other locations under this scope may have local overrides — review each location individually for accuracy.',
+                  'This scope only covers $_singleCoveredLocationName. Adjusting polling setup here is equivalent to a per-location change — there are no other locations under this scope to inherit from.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ),

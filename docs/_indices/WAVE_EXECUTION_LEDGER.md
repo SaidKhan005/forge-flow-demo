@@ -47,11 +47,11 @@ Triggers the `operator` gate: auth-critical, RLS-touching, schema-touching (migr
 
 | Slice | Plan anchor | Owner | Size | Risk | Gate | Dependency | State | PR | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| B1.a | `lane_b_features/03_execution_slices.md` B1.a | Claude | Small | Low | auto | — | audit-pending | #501 | Inheritance notice propagation — planning ambiguity escalated to operator |
-| B1.b | B1.b | Claude | Small | Medium | operator | — | audit-pending | #500 | Admin audit actor fix — escalated to operator (proxy + audit-attribution gate) |
+| B1.a | `lane_b_features/03_execution_slices.md` B1.a | Claude | Small | Low | auto | — | merged | #501 | Inheritance notice propagation; copy follow-up applied by orchestrator (Option 1 per audit) |
+| B1.b | B1.b | Claude | Small | Medium | operator | — | merged | #500 | Admin audit actor fix — operator approved 2026-05-12 |
 | B2.1 | B2.1 | Claude | Medium | Medium | operator | — | assigned | — | Default Role catalog schema + publish endpoint |
 | B2.2 | B2.2 | Claude | Medium | Medium | operator | B2.1 merged | assigned | — | Default Role catalog admin editor |
-| B3 | B3 | Codex | Medium | Medium | operator | — | audit-pending | #502 | Role-key hybrid identifier sweep — escalated to operator (auth-critical) |
+| B3 | B3 | Codex | Medium | Medium | operator | — | merged | #502 | Role-key hybrid identifier sweep — operator approved 2026-05-12; unblocks B7.a |
 | B4 | B4 | Codex | Small | Low | auto | B3 merged | assigned | — | Two-product taxonomy in role editor |
 | B5 | B5 | Codex | Medium | Medium | operator | — | assigned | — | Admin access-control + permission-key completeness |
 | B6 | B6 | Codex | Medium | Medium | operator | B10.1 merged | assigned | — | Benchmark override (hierarchy-inherited) |
@@ -76,7 +76,7 @@ Triggers the `operator` gate: auth-critical, RLS-touching, schema-touching (migr
 | C-5 | C-5 | Codex | Medium | High | operator | B11.1 merged | assigned | — | Mobile pointer rows do deep-link redemption |
 | C-6 | C-6 | Codex | Medium | Medium | auto | B1.a merged | assigned | — | Inheritance Tree shared component consumer |
 | C-7 | C-7 | Codex | Small | Low | auto | B9.2 merged | assigned | — | Adaptive 2FA button (R1 pattern) |
-| C-8 | C-8 | Claude | Medium | Medium | operator | — | audit-pending | #499 | Notification preferences catalog completeness — escalated to operator |
+| C-8 | C-8 | Claude | Medium | Medium | operator | — | merged | #499 | Notification preferences catalog completeness — operator approved 2026-05-12 |
 | C-9 | C-9 | Codex | Medium | Medium | operator | C-8 merged | assigned | — | Mobile in-app inbox renders every catalog event |
 | C-10 | C-10 | Codex | Small | Low | auto | — | assigned | — | Admin parity copy + read-only-mostly tile labels |
 | C-11 | C-11 | Claude | Medium | Medium | operator | C-2 merged | assigned | — | Pressure-test inventory under preview |
@@ -118,3 +118,4 @@ When a PR is rejected/closed without merge:
 |---|---|
 | 2026-05-12 | Initial ledger — 43 slices, all `assigned`. |
 | 2026-05-12 | First wave PRs land. **A6.1 merged** (PR #498 → master `9cdaee1e`). **B1.a / B1.b / C-8 → `audit-pending`** (orchestrator audit clean; awaiting operator approval — see `docs/_audits/post_codex_wave/pr_{499,500,501}_*_audit.md`). B1.a escalates despite `Gate=auto` due to slice-spec planning ambiguity worker correctly surfaced. |
+| 2026-05-12 | **Operator approve-all 21:55Z.** Merged: B3 (#502 `fb806262`), B1.b (#500 `427a5510`), C-8 (#499 `5583d5b9`), B1.a (#501 `a6094e9b`). B1.a copy follow-up (Option 1 — rewrite "Other locations…" → "This scope only covers…") applied by orchestrator-fix-by-default in this same PR. Unblocks Codex's held B7.a branch. |
