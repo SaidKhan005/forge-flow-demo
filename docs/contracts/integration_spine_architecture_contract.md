@@ -12,8 +12,8 @@ Companions:
 - `docs/contracts/metric_card_honesty_contract.md` — renderer chrome
 - `docs/contracts/phase_7_55_time_boundary_contract.md` — UTC + business_date storage
 - `docs/contracts/hardening_rls_and_repository_pattern_contract.md` — RLS + OperatorScopedRepository
-- `docs/_execution/2026-05-04_8_integration_mobile_proof_execution.md` — origin
-- `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md` — gap memo
+- `docs/archive/_execution/2026-05-04_8_integration_mobile_proof_execution.md` — origin
+- `docs/archive/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md` — gap memo
 
 This contract closes the gap between Wave B's "vendor adapter ships at
 lifecycle = `documented`" and Phase 8 / 8R / 8.S engineering-complete
@@ -873,7 +873,7 @@ Same shape as `vendor_adapter_slice_contract.md`:
 - `docs/contracts/metric_card_honesty_contract.md` — renderer chrome
 - `docs/contracts/phase_7_55_time_boundary_contract.md` — UTC + business_date
 - `docs/contracts/hardening_rls_and_repository_pattern_contract.md` — RLS pattern
-- `docs/_execution/2026-05-04_8_integration_mobile_proof_execution.md` — origin proof + SQLite addendum
-- `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md` — gap memo
+- `docs/archive/_execution/2026-05-04_8_integration_mobile_proof_execution.md` — origin proof + SQLite addendum
+- `docs/archive/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md` — gap memo
 - `memory/project_phase_8_engineer_all_17_doctrine.md` — Wave B doctrine
 - `memory/project_v1_lean_cut_2_2026_05_03.md` — banned items list

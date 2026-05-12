@@ -24,7 +24,7 @@ The sprint goal is plain:
 ## Authority
 
 1. `PROJECT_TRACKER.md`
-2. `docs/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md`
+2. `docs/archive/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md`
 3. `docs/contracts/hardening_rls_and_repository_pattern_contract.md`
 4. `docs/contracts/auth_permission_key_catalog.md`
 5. `docs/contracts/slice_runtime_acceptance_contract.md`

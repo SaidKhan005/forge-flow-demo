@@ -27,7 +27,7 @@ BEFORE any HMAC verification, then leak the raw `Exception.toString()` +
 first stack frame in the response body via the
 `tool/advisor_proxy/admin_integrations_routes.dart:248` catch-all. Confirmed
 schema-info disclosure + DOS amplification on connection pool. Fix slice
-proposal + 9-leak-site inventory: `docs/_execution/2026-05-09_security_finding_webhook_signature_ordering.md`.
+proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_finding_webhook_signature_ordering.md`.
 
 ## P0 — Production1 Migration Apply Gap
 
@@ -85,7 +85,7 @@ apply evidence must stay attached to the runbook before any Production1 apply.
 The staging admin smoke surfaced live actions that code cannot complete
 without operator-held secrets and action-time approval. Resolved graph
 candidate packaging and staging audit-anchor remediation are archived in
-`docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`.
+`docs/archive/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`.
 
 - Provider credentials / KMS rollout: use
   `runbooks/admin_provider_credentials_kms_rollout_runbook.md`.
@@ -532,5 +532,5 @@ existing test with Phase 3B contracts), `provider_credentials_repository.dart`
 (new test grounded in Phase 1 fixtures), `business_timing_profiles_repository.dart`
 (new test pinning rollover-hour + IANA contract every adapter depends on).
 
-Full findings: `docs/_execution/2026-05-08_pressure_preview_findings.md`.
+Full findings: `docs/archive/_execution/2026-05-08_pressure_preview_findings.md`.
 
