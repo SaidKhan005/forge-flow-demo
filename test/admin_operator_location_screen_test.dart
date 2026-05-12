@@ -992,6 +992,10 @@ void main() {
       find.byKey(const Key('admin_hierarchy_add_child_org_unit_dialog')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const Key('admin_hierarchy_add_org_unit_label')),
+      findsNothing,
+    );
     await tester.enterText(
       find.byKey(const Key('admin_hierarchy_add_org_unit_name')),
       'North district',
@@ -1011,6 +1015,176 @@ void main() {
     expect(event.actorUserId, equals('demo-super-admin'));
     expect(event.adminReason, equals('operator requested hierarchy setup'));
     expect(event.payload['parent_org_unit_id'], equals('org-root'));
+  });
+
+  testWidgets('business hierarchy manager moves a location with a reason', (
+    tester,
+  ) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[seedBundle()],
+    );
+    final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+      orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+        'op-seed-1': const <OrgUnitAdminNode>[
+          OrgUnitAdminNode(
+            orgUnitId: 'org-root',
+            name: 'Demo Diner Co.',
+            operatorId: 'op-seed-1',
+          ),
+          OrgUnitAdminNode(
+            orgUnitId: 'org-north',
+            name: 'North district',
+            operatorId: 'op-seed-1',
+            parentOrgUnitId: 'org-root',
+          ),
+        ],
+      },
+      locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+        'op-seed-1': const <HierarchyLocationLeaf>[
+          HierarchyLocationLeaf(
+            locationId: 'loc-seed-1',
+            name: 'HQ',
+            operatorId: 'op-seed-1',
+            orgUnitId: 'org-root',
+          ),
+        ],
+      },
+    );
+    await tester.pumpWidget(
+      wrap(
+        OperatorLocationAdminScreen(
+          gateway: gateway,
+          hierarchyGateway: hierarchyGateway,
+          actorUserId: 'demo-super-admin',
+          idempotencyKeyFactory: () => 'idem-business-hierarchy-move-location',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final moveButton = find.byKey(const Key('admin_location_move_loc-seed-1'));
+    await tester.ensureVisible(moveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(moveButton);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_hierarchy_move_location_dialog')),
+      findsOneWidget,
+    );
+    expect(find.text('Demo Diner Co. / North district'), findsWidgets);
+    await tester.enterText(
+      find.byKey(const Key('admin_hierarchy_move_location_reason')),
+      'move hq under the north district',
+    );
+    await tester.tap(
+      find.byKey(const Key('admin_hierarchy_move_location_submit')),
+    );
+    await tester.pumpAndSettle();
+
+    final moved = (await hierarchyGateway.listHierarchyLocations(
+      operatorId: 'op-seed-1',
+    )).single;
+    expect(moved.orgUnitId, equals('org-north'));
+    final event = hierarchyGateway.capturedAuditEvents.single;
+    expect(event.action, equals('team.location.move'));
+    expect(event.actorUserId, equals('demo-super-admin'));
+    expect(event.adminReason, equals('move hq under the north district'));
+    expect(event.payload['org_unit_id'], isA<Map<String, Object?>>());
+  });
+
+  testWidgets('business hierarchy manager moves an org unit with a reason', (
+    tester,
+  ) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[seedBundle()],
+    );
+    final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+      orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+        'op-seed-1': const <OrgUnitAdminNode>[
+          OrgUnitAdminNode(
+            orgUnitId: 'org-root',
+            name: 'Demo Diner Co.',
+            operatorId: 'op-seed-1',
+          ),
+          OrgUnitAdminNode(
+            orgUnitId: 'org-east',
+            name: 'East district',
+            operatorId: 'op-seed-1',
+            parentOrgUnitId: 'org-root',
+          ),
+          OrgUnitAdminNode(
+            orgUnitId: 'org-downtown',
+            name: 'Downtown group',
+            operatorId: 'op-seed-1',
+            parentOrgUnitId: 'org-east',
+          ),
+          OrgUnitAdminNode(
+            orgUnitId: 'org-west',
+            name: 'West district',
+            operatorId: 'op-seed-1',
+            parentOrgUnitId: 'org-root',
+          ),
+        ],
+      },
+      locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+        'op-seed-1': const <HierarchyLocationLeaf>[
+          HierarchyLocationLeaf(
+            locationId: 'loc-seed-1',
+            name: 'HQ',
+            operatorId: 'op-seed-1',
+            orgUnitId: 'org-east',
+          ),
+        ],
+      },
+    );
+    await tester.pumpWidget(
+      wrap(
+        OperatorLocationAdminScreen(
+          gateway: gateway,
+          hierarchyGateway: hierarchyGateway,
+          actorUserId: 'demo-super-admin',
+          idempotencyKeyFactory: () => 'idem-business-hierarchy-move-org-unit',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final rootMoveButton = tester.widget<IconButton>(
+      find.byKey(const Key('admin_hierarchy_org_unit_move_org-root')),
+    );
+    expect(rootMoveButton.onPressed, isNull);
+
+    final moveButton = find.byKey(
+      const Key('admin_hierarchy_org_unit_move_org-east'),
+    );
+    await tester.ensureVisible(moveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(moveButton);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_hierarchy_move_org_unit_dialog')),
+      findsOneWidget,
+    );
+    expect(find.text('Demo Diner Co. / West district'), findsWidgets);
+    await tester.enterText(
+      find.byKey(const Key('admin_hierarchy_move_org_unit_reason')),
+      'rebalance the district reporting line',
+    );
+    await tester.tap(
+      find.byKey(const Key('admin_hierarchy_move_org_unit_submit')),
+    );
+    await tester.pumpAndSettle();
+
+    final moved = (await hierarchyGateway.listOrgUnits(operatorId: 'op-seed-1'))
+        .singleWhere((unit) => unit.orgUnitId == 'org-east');
+    expect(moved.parentOrgUnitId, equals('org-west'));
+    final event = hierarchyGateway.capturedAuditEvents.single;
+    expect(event.action, equals('team.org_unit.move'));
+    expect(event.actorUserId, equals('demo-super-admin'));
+    expect(event.adminReason, equals('rebalance the district reporting line'));
+    expect(event.payload['parent_org_unit_id'], isA<Map<String, Object?>>());
   });
 
   testWidgets('add location dialog submits the selected IANA timezone', (

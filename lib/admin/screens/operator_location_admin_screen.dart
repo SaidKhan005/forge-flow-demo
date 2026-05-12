@@ -1562,6 +1562,220 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     }
   }
 
+  Future<void> _onMoveOrgUnit(OrgUnitAdminNode unit) async {
+    final gateway = widget.gateway;
+    if (!widget.editingEnabled || gateway == null) return;
+    final data = await (_future ?? _load());
+    final blockedIds = <String>{unit.orgUnitId, ..._descendantIds(data, unit)};
+    final candidates = <_HierarchyMoveTarget>[
+      for (final candidate in data.orgUnits)
+        if (!blockedIds.contains(candidate.orgUnitId) &&
+            candidate.orgUnitId != unit.parentOrgUnitId)
+          _HierarchyMoveTarget(
+            id: candidate.orgUnitId,
+            label: _pathLabelForUnit(data, candidate),
+          ),
+    ];
+    if (unit.parentOrgUnitId == null) {
+      _showHierarchySnack('The business root stays at business level.');
+      return;
+    }
+    if (candidates.isEmpty) {
+      _showHierarchySnack('No other org unit is available for this move.');
+      return;
+    }
+    if (!mounted) return;
+    final result = await showDialog<_MoveHierarchyResult>(
+      context: context,
+      builder: (_) => _MoveHierarchyDialog(
+        dialogKey: const Key('admin_hierarchy_move_org_unit_dialog'),
+        targetKey: const Key('admin_hierarchy_move_org_unit_parent'),
+        reasonKey: const Key('admin_hierarchy_move_org_unit_reason'),
+        submitKey: const Key('admin_hierarchy_move_org_unit_submit'),
+        title: 'Move ${unit.name}',
+        targetLabel: 'New parent',
+        candidates: candidates,
+      ),
+    );
+    if (result == null) return;
+    try {
+      final moved = await gateway.moveOrgUnit(
+        operatorId: widget.bundle.operator.operatorId,
+        orgUnitId: unit.orgUnitId,
+        newParentOrgUnitId: result.targetId,
+        idempotencyKey: widget.idempotencyKeyFactory(),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: result.adminReason,
+      );
+      if (!mounted) return;
+      _selectMovedOrgUnit(moved, data);
+      setState(() {
+        _future = _load();
+      });
+      _showHierarchySnack('Moved ${unit.name}');
+    } catch (error) {
+      if (!mounted) return;
+      _showHierarchySnack('Could not move org unit: $error');
+    }
+  }
+
+  Future<void> _onMoveLocation(
+    LocationAdminRecord location, {
+    required String? currentOrgUnitId,
+  }) async {
+    final gateway = widget.gateway;
+    if (!widget.editingEnabled || gateway == null) return;
+    final data = await (_future ?? _load());
+    final candidates = <_HierarchyMoveTarget>[
+      for (final candidate in data.orgUnits)
+        if (candidate.orgUnitId != currentOrgUnitId)
+          _HierarchyMoveTarget(
+            id: candidate.orgUnitId,
+            label: _pathLabelForUnit(data, candidate),
+          ),
+    ];
+    if (candidates.isEmpty) {
+      _showHierarchySnack('No other org unit is available for this move.');
+      return;
+    }
+    if (!mounted) return;
+    final result = await showDialog<_MoveHierarchyResult>(
+      context: context,
+      builder: (_) => _MoveHierarchyDialog(
+        dialogKey: const Key('admin_hierarchy_move_location_dialog'),
+        targetKey: const Key('admin_hierarchy_move_location_parent'),
+        reasonKey: const Key('admin_hierarchy_move_location_reason'),
+        submitKey: const Key('admin_hierarchy_move_location_submit'),
+        title: 'Move ${location.name}',
+        targetLabel: 'New org unit',
+        candidates: candidates,
+      ),
+    );
+    if (result == null) return;
+    try {
+      final moved = await gateway.moveLocation(
+        operatorId: widget.bundle.operator.operatorId,
+        locationId: location.locationId,
+        newOrgUnitId: result.targetId,
+        idempotencyKey: widget.idempotencyKeyFactory(),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: result.adminReason,
+      );
+      if (!mounted) return;
+      _selectMovedLocation(location, moved, data);
+      setState(() {
+        _future = _load();
+      });
+      _showHierarchySnack('Moved ${location.name}');
+    } catch (error) {
+      if (!mounted) return;
+      _showHierarchySnack('Could not move location: $error');
+    }
+  }
+
+  void _showHierarchySnack(String message) {
+    if (Scaffold.maybeOf(context) == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  void _selectMovedOrgUnit(OrgUnitAdminNode moved, _HierarchyPanelData data) {
+    widget.onSelectScope(
+      AdminHierarchyScopeIntent.orgUnit(
+        operatorId: widget.bundle.operator.operatorId,
+        operatorName: widget.bundle.operator.businessName,
+        orgUnitId: moved.orgUnitId,
+        orgUnitName: moved.name,
+        hierarchyPath: _ancestorNamesForUnit(data, moved.parentOrgUnitId),
+        effectiveValueLabel: 'Branch default',
+        allowedActionsLabel: widget.editingEnabled ? 'Editable' : 'Read-only',
+      ),
+    );
+  }
+
+  void _selectMovedLocation(
+    LocationAdminRecord location,
+    HierarchyLocationLeaf moved,
+    _HierarchyPanelData data,
+  ) {
+    final parent = _findOrgUnit(data, moved.orgUnitId);
+    widget.onSelectScope(
+      AdminHierarchyScopeIntent.location(
+        operatorId: widget.bundle.operator.operatorId,
+        operatorName: widget.bundle.operator.businessName,
+        orgUnitId: parent?.orgUnitId,
+        orgUnitName: parent?.name,
+        locationId: location.locationId,
+        locationName: location.name,
+        hierarchyPath: _ancestorNamesForUnit(data, parent?.orgUnitId),
+        valueState: AdminHierarchyScopeValueState.locationOnly,
+        effectiveValueLabel: location.timezone,
+        allowedActionsLabel: widget.editingEnabled
+            ? 'Location controls'
+            : 'Read-only',
+      ),
+    );
+  }
+
+  Set<String> _descendantIds(
+    _HierarchyPanelData data,
+    OrgUnitAdminNode ancestor,
+  ) {
+    final childrenByParent = <String, List<OrgUnitAdminNode>>{};
+    for (final unit in data.orgUnits) {
+      final parentId = unit.parentOrgUnitId;
+      if (parentId == null) continue;
+      childrenByParent.putIfAbsent(parentId, () => <OrgUnitAdminNode>[]).add(
+        unit,
+      );
+    }
+    final result = <String>{};
+    void walk(String parentId) {
+      for (final child
+          in childrenByParent[parentId] ?? const <OrgUnitAdminNode>[]) {
+        if (result.add(child.orgUnitId)) {
+          walk(child.orgUnitId);
+        }
+      }
+    }
+
+    walk(ancestor.orgUnitId);
+    return result;
+  }
+
+  OrgUnitAdminNode? _findOrgUnit(_HierarchyPanelData data, String? orgUnitId) {
+    if (orgUnitId == null) return null;
+    for (final unit in data.orgUnits) {
+      if (unit.orgUnitId == orgUnitId) return unit;
+    }
+    return null;
+  }
+
+  String _pathLabelForUnit(_HierarchyPanelData data, OrgUnitAdminNode unit) {
+    final names = <String>[..._ancestorNamesForUnit(data, unit.parentOrgUnitId)];
+    names.add(unit.name);
+    return names.join(' / ');
+  }
+
+  List<String> _ancestorNamesForUnit(_HierarchyPanelData data, String? unitId) {
+    final byId = <String, OrgUnitAdminNode>{
+      for (final unit in data.orgUnits) unit.orgUnitId: unit,
+    };
+    final names = <String>[];
+    final seen = <String>{};
+    String? cursor = unitId;
+    while (cursor != null && seen.add(cursor)) {
+      final unit = byId[cursor];
+      if (unit == null) break;
+      names.insert(0, unit.name);
+      cursor = unit.parentOrgUnitId;
+    }
+    return names;
+  }
+
   AdminHierarchyScopeIntent _businessScope() {
     return AdminHierarchyScopeIntent.business(
       operatorId: widget.bundle.operator.operatorId,
@@ -1688,7 +1902,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     final locationsByParent = <String?, List<LocationAdminRecord>>{};
     for (final location in widget.bundle.locations) {
       final parentFromData =
-          location.parentOrgUnitId ?? leafParentByLocation[location.locationId];
+          leafParentByLocation[location.locationId] ?? location.parentOrgUnitId;
       final parent = unitNames.containsKey(parentFromData)
           ? parentFromData
           : null;
@@ -1722,13 +1936,20 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           unitsByParent: unitsByParent,
           unitNames: unitNames,
           locationsByParent: locationsByParent,
+          allOrgUnits: data.orgUnits,
           path: const <String>[],
         ),
       );
     }
     final unassigned = locationsByParent[null] ?? const <LocationAdminRecord>[];
     for (final location in unassigned) {
-      rows.add(_buildLocationRow(location: location, depth: 0));
+      rows.add(
+        _buildLocationRow(
+          location: location,
+          depth: 0,
+          orgUnits: data.orgUnits,
+        ),
+      );
     }
     if (rows.isEmpty) {
       rows.add(
@@ -1750,6 +1971,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     required Map<String?, List<OrgUnitAdminNode>> unitsByParent,
     required Map<String, String> unitNames,
     required Map<String?, List<LocationAdminRecord>> locationsByParent,
+    required List<OrgUnitAdminNode> allOrgUnits,
     required List<String> path,
   }) {
     final nextPath = _appendHierarchyPath(path, unit.name);
@@ -1777,13 +1999,29 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           ),
         ),
         trailing: widget.editingEnabled && widget.gateway != null
-            ? OutlinedButton.icon(
-                key: Key(
-                  'admin_hierarchy_org_unit_add_child_${unit.orgUnitId}',
-                ),
-                onPressed: () => _onAddChildOrgUnit(unit),
-                icon: const Icon(Icons.add, size: 14),
-                label: const Text('Add child'),
+            ? Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  OutlinedButton.icon(
+                    key: Key(
+                      'admin_hierarchy_org_unit_add_child_${unit.orgUnitId}',
+                    ),
+                    onPressed: () => _onAddChildOrgUnit(unit),
+                    icon: const Icon(Icons.add, size: 14),
+                    label: const Text('Add child'),
+                  ),
+                  IconButton(
+                    key: Key('admin_hierarchy_org_unit_move_${unit.orgUnitId}'),
+                    tooltip: unit.parentOrgUnitId == null
+                        ? 'Business root stays at business level'
+                        : 'Move org unit',
+                    onPressed: unit.parentOrgUnitId == null
+                        ? null
+                        : () => _onMoveOrgUnit(unit),
+                    icon: const Icon(Icons.drive_file_move_outlined, size: 18),
+                  ),
+                ],
               )
             : null,
       ),
@@ -1797,6 +2035,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           depth: depth + 1,
           orgUnitId: unit.orgUnitId,
           orgUnitName: unitNames[unit.orgUnitId] ?? unit.name,
+          orgUnits: allOrgUnits,
           path: nextPath,
         ),
       );
@@ -1811,6 +2050,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           unitsByParent: unitsByParent,
           unitNames: unitNames,
           locationsByParent: locationsByParent,
+          allOrgUnits: allOrgUnits,
           path: nextPath,
         ),
       );
@@ -1833,6 +2073,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
   Widget _buildLocationRow({
     required LocationAdminRecord location,
     required int depth,
+    required List<OrgUnitAdminNode> orgUnits,
     String? orgUnitId,
     String? orgUnitName,
     List<String> path = const <String>[],
@@ -1873,6 +2114,24 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                 spacing: 6,
                 runSpacing: 6,
                 children: [
+                  IconButton(
+                    key: Key('admin_location_move_${location.locationId}'),
+                    tooltip: 'Move location',
+                    onPressed:
+                        widget.gateway == null ||
+                            orgUnits
+                                .where((unit) => unit.orgUnitId != orgUnitId)
+                                .isEmpty
+                        ? null
+                        : () => _onMoveLocation(
+                            location,
+                            currentOrgUnitId: orgUnitId,
+                          ),
+                    icon: const Icon(
+                      Icons.drive_file_move_outlined,
+                      size: 18,
+                    ),
+                  ),
                   IconButton(
                     key: Key('admin_location_edit_${location.locationId}'),
                     tooltip: 'Edit location',
@@ -1936,24 +2195,20 @@ class _AddChildOrgUnitDialog extends StatefulWidget {
 class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
   String _unitType = 'region';
   final _nameController = TextEditingController();
-  final _labelController = TextEditingController();
   final _reasonController = TextEditingController();
   String? _nameError;
-  String? _labelError;
   String? _reasonError;
 
   @override
   void dispose() {
     _nameController.dispose();
-    _labelController.dispose();
     _reasonController.dispose();
     super.dispose();
   }
 
   void _onSubmit() {
     final name = _nameController.text.trim();
-    final rawLabel = _labelController.text.trim();
-    final label = rawLabel.isEmpty ? _sanitiseLabel(name) : rawLabel;
+    final label = _sanitiseLabel(name);
     final reason = _reasonController.text.trim();
     setState(() {
       _nameError = name.isEmpty
@@ -1961,12 +2216,9 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
           : widget.existingNames.contains(name.toLowerCase())
           ? 'A sibling org unit already uses this name.'
           : null;
-      _labelError = label.isEmpty || !RegExp(r'^[a-z0-9_]+$').hasMatch(label)
-          ? 'Use lowercase letters, numbers, and underscores.'
-          : null;
       _reasonError = reason.isEmpty ? 'Add a reason before continuing.' : null;
     });
-    if (_nameError != null || _labelError != null || _reasonError != null) {
+    if (_nameError != null || _reasonError != null) {
       return;
     }
     Navigator.of(context).pop(
@@ -2042,16 +2294,6 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
             ),
             const SizedBox(height: 12),
             TextField(
-              key: const Key('admin_hierarchy_add_org_unit_label'),
-              controller: _labelController,
-              decoration: InputDecoration(
-                labelText: 'Label (a-z, 0-9, underscore)',
-                border: const OutlineInputBorder(),
-                errorText: _labelError,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
               key: const Key('admin_hierarchy_add_org_unit_reason'),
               controller: _reasonController,
               minLines: 1,
@@ -2076,6 +2318,136 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
           style: AdminButtonStyles.primary,
           onPressed: _onSubmit,
           child: const Text('Add'),
+        ),
+      ],
+    );
+  }
+}
+
+class _HierarchyMoveTarget {
+  const _HierarchyMoveTarget({required this.id, required this.label});
+
+  final String id;
+  final String label;
+}
+
+class _MoveHierarchyResult {
+  const _MoveHierarchyResult({
+    required this.targetId,
+    required this.adminReason,
+  });
+
+  final String targetId;
+  final String adminReason;
+}
+
+class _MoveHierarchyDialog extends StatefulWidget {
+  const _MoveHierarchyDialog({
+    required this.dialogKey,
+    required this.targetKey,
+    required this.reasonKey,
+    required this.submitKey,
+    required this.title,
+    required this.targetLabel,
+    required this.candidates,
+  });
+
+  final Key dialogKey;
+  final Key targetKey;
+  final Key reasonKey;
+  final Key submitKey;
+  final String title;
+  final String targetLabel;
+  final List<_HierarchyMoveTarget> candidates;
+
+  @override
+  State<_MoveHierarchyDialog> createState() => _MoveHierarchyDialogState();
+}
+
+class _MoveHierarchyDialogState extends State<_MoveHierarchyDialog> {
+  late String _selectedTargetId = widget.candidates.first.id;
+  final _reasonController = TextEditingController();
+  bool _missingReason = false;
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  void _onSubmit() {
+    final reason = _reasonController.text.trim();
+    if (reason.isEmpty) {
+      setState(() => _missingReason = true);
+      return;
+    }
+    Navigator.of(context).pop(
+      _MoveHierarchyResult(
+        targetId: _selectedTargetId,
+        adminReason: reason,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: widget.dialogKey,
+      backgroundColor: AppColors.backgroundSurface,
+      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
+      content: SizedBox(
+        width: 500,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            DropdownButtonFormField<String>(
+              key: widget.targetKey,
+              initialValue: _selectedTargetId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: widget.targetLabel,
+                border: const OutlineInputBorder(),
+              ),
+              items: <DropdownMenuItem<String>>[
+                for (final candidate in widget.candidates)
+                  DropdownMenuItem<String>(
+                    value: candidate.id,
+                    child: Text(candidate.label),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => _selectedTargetId = value);
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: widget.reasonKey,
+              controller: _reasonController,
+              minLines: 1,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Reason',
+                border: const OutlineInputBorder(),
+                errorText: _missingReason
+                    ? 'Add a reason before continuing.'
+                    : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: widget.submitKey,
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: const Text('Move'),
         ),
       ],
     );
