@@ -12,20 +12,19 @@
 //   * Read-only mode (`editingEnabled: false`) hides every Rotate
 //     button and renders the read-only banner — exercised by the
 //     `ff_support` walkthrough.
-//   * Admin shell wired with an `ff_support` source lands on the
-//     read-only branch end-to-end.
+//   * Role-derived edit state keeps `ff_support` read-only while
+//     `super_admin` can rotate keys.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:forge_and_flow/admin/admin_app.dart';
 import 'package:forge_and_flow/admin/admin_auth_gate.dart';
-import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/models/integration_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/integration_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/integration_admin_gateway.dart';
 import 'package:forge_and_flow/infrastructure/kms/kms_stub_provider.dart';
+import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -128,11 +127,80 @@ void main() {
     expect(find.text('API pending'), findsWidgets);
     expect(find.text('Documented'), findsNothing);
     expect(
+      find.textContaining('Source: Gateway reachability projection'),
+      findsWidgets,
+    );
+    expect(
+      find.textContaining('Setup: Vendor setup waits for reachable API access'),
+      findsWidgets,
+    );
+    expect(
       find.text('Stored securely. The full key is hidden after rotation.'),
       findsWidgets,
     );
     expect(find.textContaining('Secure storage ID:'), findsNothing);
     expect(find.textContaining('kms://'), findsNothing);
+  });
+
+  testWidgets('groups vendor catalog rows using gateway category semantics', (
+    tester,
+  ) async {
+    final gateway = InMemoryIntegrationAdminGateway(
+      vendorConnectors: const <VendorConnectorStatus>[
+        VendorConnectorStatus(
+          id: 'future_labor_vendor',
+          displayName: 'Future Labor Vendor',
+          statusLabel: 'API reachable',
+          detailMessage: 'Live API probe passed.',
+          category: VendorCategory.labor,
+          apiReachable: true,
+          healthSourceLabel: 'Mocked gateway reachability seam',
+          unlockLabel: 'Vendor setup unlocked',
+        ),
+        VendorConnectorStatus(
+          id: 'future_reservation_vendor',
+          displayName: 'Future Reservation Vendor',
+          statusLabel: 'API pending',
+          detailMessage: 'Waiting on production credentials.',
+          category: VendorCategory.reservation,
+          apiReachable: false,
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(Scaffold(body: IntegrationAdminScreen(gateway: gateway))),
+    );
+    await tester.pumpAndSettle();
+
+    final laborGroup = find.byKey(
+      const Key('admin_integrations_vendor_group_labor'),
+    );
+    final reservationGroup = find.byKey(
+      const Key('admin_integrations_vendor_group_reservation'),
+    );
+
+    expect(laborGroup, findsOneWidget);
+    expect(reservationGroup, findsOneWidget);
+    expect(
+      find.descendant(
+        of: laborGroup,
+        matching: find.text('Future Labor Vendor'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: reservationGroup,
+        matching: find.text('Future Reservation Vendor'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('API reachable'), findsOneWidget);
+    expect(
+      find.textContaining('Mocked gateway reachability seam'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Vendor setup unlocked'), findsOneWidget);
   });
 
   testWidgets('rotate flow: confirm → plaintext → reveal modal → close', (
@@ -287,90 +355,59 @@ void main() {
     );
   });
 
-  testWidgets(
-    'admin shell with ff_support source renders integrations in read-only mode',
-    (tester) async {
-      final gateway = InMemoryIntegrationAdminGateway(
-        seed: <ProviderKeyRow>[seedRow()],
-      );
-      final source = DemoAdminAuthSource(
-        initial: const AdminAuthAuthenticated(
-          AdminAuthSession(
-            uid: 'demo-ff-support',
-            email: 'support@forgeflow.test',
-            displayName: 'Demo F&F Support',
-            roles: <String>['ff_support'],
-          ),
-        ),
-      );
-      addTearDown(source.dispose);
-      await tester.pumpWidget(
-        AdminConsoleServicesScope(
-          integrationGateway: gateway,
-          adminAuthSource: source,
-          child: AdminConsoleApp(authSource: source),
-        ),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('ff_support source renders integrations in read-only mode', (
+    tester,
+  ) async {
+    final gateway = InMemoryIntegrationAdminGateway(
+      seed: <ProviderKeyRow>[seedRow()],
+    );
+    final source = DemoAdminAuthSource.signedInAsSupport();
+    addTearDown(source.dispose);
+    final session = (source.current as AdminAuthAuthenticated).session;
+    final canEdit = session.roles.contains('super_admin');
 
-      final navItem = find.byKey(const Key('admin_nav_item_integrations'));
-      await tester.ensureVisible(navItem);
-      await tester.pumpAndSettle();
-      await tester.tap(navItem);
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      wrap(IntegrationAdminScreen(gateway: gateway, editingEnabled: canEdit)),
+    );
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('admin_integrations_screen')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_integrations_readonly_banner')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_integrations_rotate_anthropic')),
-        findsNothing,
-      );
-    },
-  );
+    expect(find.byKey(const Key('admin_integrations_screen')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_integrations_readonly_banner')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_integrations_rotate_anthropic')),
+      findsNothing,
+    );
+  });
 
-  testWidgets(
-    'admin shell with super_admin source renders integrations with rotate buttons',
-    (tester) async {
-      final gateway = InMemoryIntegrationAdminGateway(
-        seed: <ProviderKeyRow>[seedRow()],
-      );
-      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
-      addTearDown(source.dispose);
-      await tester.pumpWidget(
-        AdminConsoleServicesScope(
-          integrationGateway: gateway,
-          adminAuthSource: source,
-          child: AdminConsoleApp(authSource: source),
-        ),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('super_admin source renders integrations with rotate buttons', (
+    tester,
+  ) async {
+    final gateway = InMemoryIntegrationAdminGateway(
+      seed: <ProviderKeyRow>[seedRow()],
+    );
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+    final session = (source.current as AdminAuthAuthenticated).session;
+    final canEdit = session.roles.contains('super_admin');
 
-      final navItem = find.byKey(const Key('admin_nav_item_integrations'));
-      await tester.ensureVisible(navItem);
-      await tester.pumpAndSettle();
-      await tester.tap(navItem);
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      wrap(IntegrationAdminScreen(gateway: gateway, editingEnabled: canEdit)),
+    );
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('admin_integrations_screen')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_integrations_readonly_banner')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('admin_integrations_rotate_anthropic')),
-        findsOneWidget,
-      );
-    },
-  );
+    expect(find.byKey(const Key('admin_integrations_screen')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_integrations_readonly_banner')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_integrations_rotate_anthropic')),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('forced KMS failure renders the action error banner', (
     tester,

@@ -5811,7 +5811,11 @@ List<Map<String, Object?>> _buildIntegrationVendorConnectorStatuses() {
       <String, Object?>{
         'id': profile.vendorId,
         'display_name': profile.displayName,
-        'status_label': _lifecycleStatusLabel(profile.lifecycle),
+        'category': _integrationCategoryWireKey(profile.category),
+        'api_reachable': _vendorApiReachableForLifecycle(profile.lifecycle),
+        'health_source': 'adapter_lifecycle',
+        'unlock_state': _vendorUnlockStateForLifecycle(profile.lifecycle),
+        'status_label': _apiReachabilityLabelForLifecycle(profile.lifecycle),
         'detail_message': _vendorConnectorDetail(profile),
       },
   ];
@@ -5840,17 +5844,40 @@ String _categoryLabel(integration.IntegrationCategory category) {
   }
 }
 
-String _lifecycleStatusLabel(integration.VendorLifecycle lifecycle) {
+String _integrationCategoryWireKey(integration.IntegrationCategory category) {
+  switch (category) {
+    case integration.IntegrationCategory.pos:
+      return 'pos';
+    case integration.IntegrationCategory.labor:
+      return 'labor';
+    case integration.IntegrationCategory.reservation:
+      return 'reservation';
+  }
+}
+
+bool _vendorApiReachableForLifecycle(integration.VendorLifecycle lifecycle) {
   switch (lifecycle) {
     case integration.VendorLifecycle.documented:
-      return 'Documented';
     case integration.VendorLifecycle.sandboxVerified:
-      return 'Sandbox verified';
+      return false;
     case integration.VendorLifecycle.productionCredentialed:
-      return 'Ready to connect';
     case integration.VendorLifecycle.liveWithOperators:
-      return 'Live';
+      return true;
   }
+}
+
+String _vendorUnlockStateForLifecycle(integration.VendorLifecycle lifecycle) {
+  return _vendorApiReachableForLifecycle(lifecycle)
+      ? 'unlocked'
+      : 'api_pending';
+}
+
+String _apiReachabilityLabelForLifecycle(
+  integration.VendorLifecycle lifecycle,
+) {
+  return _vendorApiReachableForLifecycle(lifecycle)
+      ? 'API reachable'
+      : 'API pending';
 }
 
 String _setupStateLabel(integration.VendorLifecycle lifecycle) {

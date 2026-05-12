@@ -42,6 +42,8 @@ import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/integration_admin_models.dart';
 import '../services/integration_admin_gateway.dart';
+import '../../integrations/ui/vendor_connections/vendor_connections_models.dart'
+    show VendorCategory;
 
 class IntegrationAdminScreen extends StatefulWidget {
   const IntegrationAdminScreen({
@@ -505,7 +507,7 @@ class _VendorCatalogGroups extends StatelessWidget {
     final children = <Widget>[];
     for (final group in _VendorCatalogGroup.values) {
       final rows = statuses
-          .where((status) => _groupForVendor(status.id) == group)
+          .where((status) => _groupForVendor(status) == group)
           .toList(growable: false);
       if (rows.isEmpty) continue;
       if (children.isNotEmpty) children.add(const SizedBox(height: 12));
@@ -577,7 +579,20 @@ enum _VendorCatalogGroup {
   final String description;
 }
 
-_VendorCatalogGroup _groupForVendor(String vendorId) {
+_VendorCatalogGroup _groupForVendor(VendorConnectorStatus status) {
+  switch (status.category) {
+    case VendorCategory.pos:
+      return _VendorCatalogGroup.pos;
+    case VendorCategory.labor:
+      return _VendorCatalogGroup.labor;
+    case VendorCategory.reservation:
+      return _VendorCatalogGroup.reservation;
+    case null:
+      return _fallbackGroupForVendorId(status.id);
+  }
+}
+
+_VendorCatalogGroup _fallbackGroupForVendorId(String vendorId) {
   switch (vendorId) {
     case 'aloha_ncr_voyix':
     case 'clover':
@@ -594,10 +609,6 @@ _VendorCatalogGroup _groupForVendor(String vendorId) {
     case 'quickbooks_time':
     case 'seven_shifts':
       return _VendorCatalogGroup.labor;
-    case 'libro':
-    case 'opentable':
-    case 'sevenrooms':
-    case 'tock':
     default:
       return _VendorCatalogGroup.reservation;
   }
@@ -639,6 +650,14 @@ class _StatusRowTile extends StatelessWidget {
                   status.detailMessage,
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
+                if (status.healthSourceLabel != null ||
+                    status.unlockLabel != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    _semanticsLine(status),
+                    style: AppTextStyles.mono8(color: AppColors.textMuted),
+                  ),
+                ],
               ],
             ),
           ),
@@ -657,6 +676,15 @@ class _StatusRowTile extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _semanticsLine(VendorConnectorStatus status) {
+    final parts = <String>[
+      if (status.healthSourceLabel != null)
+        'Source: ${status.healthSourceLabel}',
+      if (status.unlockLabel != null) 'Setup: ${status.unlockLabel}',
+    ];
+    return parts.join(' - ');
   }
 }
 

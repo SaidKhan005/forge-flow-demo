@@ -148,9 +148,54 @@ void main() {
     },
   );
 
+  testWidgets(
+    'org-unit scope shows location-required state without old scope popup',
+    (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          VendorConnectionsAdminMount(
+            operatorId: 'op-1',
+            selectedScope: orgUnitScope,
+            scopeOptions: const <AdminHierarchyScopeIntent>[
+              businessScope,
+              orgUnitScope,
+              locationScope,
+            ],
+            gateway: InMemoryVendorConnectionsGateway(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_hierarchy_scope_prompt')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_vendor_connections_location_required')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Org unit: Harbour Group / Downtown'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('vendor_connections_section_pos')),
+        findsNothing,
+      );
+    },
+  );
+
   testWidgets('location scope enables the shared vendor widget', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1280, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
     await tester.pumpWidget(
       wrap(
         VendorConnectionsAdminMount(
@@ -181,5 +226,19 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Selected location scope'), findsOneWidget);
+
+    final posTop = tester
+        .getTopLeft(find.byKey(const Key('vendor_connections_section_pos')))
+        .dy;
+    final laborTop = tester
+        .getTopLeft(find.byKey(const Key('vendor_connections_section_labor')))
+        .dy;
+    final reservationTop = tester
+        .getTopLeft(
+          find.byKey(const Key('vendor_connections_section_reservation')),
+        )
+        .dy;
+    expect(posTop, lessThan(laborTop));
+    expect(laborTop, lessThan(reservationTop));
   });
 }

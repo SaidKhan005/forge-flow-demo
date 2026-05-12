@@ -106,7 +106,22 @@ void main() {
       );
       expect(
         vendors.firstWhere((vendor) => vendor['id'] == 'toast')['status_label'],
-        equals('Documented'),
+        equals('API pending'),
+      );
+      final toast = vendors.firstWhere((vendor) => vendor['id'] == 'toast');
+      expect(toast['category'], equals('pos'));
+      expect(toast['api_reachable'], isFalse);
+      expect(toast['health_source'], equals('adapter_lifecycle'));
+      expect(toast['unlock_state'], equals('api_pending'));
+      expect(
+        vendors.firstWhere(
+          (vendor) => vendor['id'] == 'quickbooks_time',
+        )['category'],
+        equals('labor'),
+      );
+      expect(
+        vendors.firstWhere((vendor) => vendor['id'] == 'tock')['category'],
+        equals('reservation'),
       );
       expect(
         vendors.firstWhere(

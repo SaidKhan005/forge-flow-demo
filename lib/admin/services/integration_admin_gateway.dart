@@ -21,6 +21,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../integrations/ui/vendor_connections/vendor_connections_models.dart'
+    show VendorCategory;
 import '../models/integration_admin_models.dart';
 import '../../infrastructure/kms/kms_stub_provider.dart';
 import 'admin_http_timeout.dart';
@@ -237,11 +239,23 @@ IntegrationBundle _bundleFromJson(Map<String, Object?> body) {
 }
 
 VendorConnectorStatus _statusFromJson(Map<String, Object?> json) {
+  final apiReachable =
+      _boolFromJson(json['api_reachable']) ??
+      _boolFromJson(json['apiReachable']);
   return VendorConnectorStatus(
     id: json['id']! as String,
     displayName: json['display_name']! as String,
     statusLabel: json['status_label']! as String,
     detailMessage: (json['detail_message'] as String?) ?? '',
+    category: _categoryFromWire(json['category'] as String?),
+    apiReachable: apiReachable,
+    healthSourceLabel:
+        _cleanString(json['health_source_label']) ??
+        _healthSourceLabelFromWire(json['health_source'] as String?),
+    unlockLabel:
+        _cleanString(json['unlock_label']) ??
+        _unlockLabelFromWire(json['unlock_state'] as String?) ??
+        _unlockLabelFromCanConnect(_boolFromJson(json['can_connect'])),
   );
 }
 
@@ -252,7 +266,14 @@ VendorConnectorStatus _vendorStatusFromJson(Map<String, Object?> json) {
 VendorConnectorStatus _normalizeVendorConnectorStatus(
   VendorConnectorStatus status,
 ) {
-  final normalizedLabel = _apiReachabilityStatusLabel(status.statusLabel);
+  final apiReachable =
+      status.apiReachable ??
+      _apiReachabilityFromStatusLabel(status.statusLabel);
+  final normalizedLabel = _apiReachabilityStatusLabel(
+    status.statusLabel,
+    apiReachable,
+  );
+  final category = status.category ?? _categoryForVendor(status.id);
   return VendorConnectorStatus(
     id: status.id,
     displayName: status.displayName,
@@ -262,10 +283,23 @@ VendorConnectorStatus _normalizeVendorConnectorStatus(
       normalizedStatusLabel: normalizedLabel,
       detailMessage: status.detailMessage,
     ),
+    category: category,
+    apiReachable: apiReachable,
+    healthSourceLabel:
+        status.healthSourceLabel ??
+        _defaultHealthSourceLabel(
+          rawStatusLabel: status.statusLabel,
+          apiReachable: apiReachable,
+        ),
+    unlockLabel:
+        status.unlockLabel ?? _defaultUnlockLabel(apiReachable: apiReachable),
   );
 }
 
-String _apiReachabilityStatusLabel(String statusLabel) {
+String _apiReachabilityStatusLabel(String statusLabel, bool? apiReachable) {
+  if (apiReachable == true) return 'API reachable';
+  if (apiReachable == false) return 'API pending';
+  final trimmed = statusLabel.trim();
   switch (statusLabel.trim().toLowerCase()) {
     case 'api reachable':
     case 'reachable':
@@ -278,7 +312,24 @@ String _apiReachabilityStatusLabel(String statusLabel) {
     case 'sandbox verified':
       return 'API pending';
     default:
-      return statusLabel;
+      return trimmed.isEmpty ? 'API status unknown' : trimmed;
+  }
+}
+
+bool? _apiReachabilityFromStatusLabel(String statusLabel) {
+  switch (statusLabel.trim().toLowerCase()) {
+    case 'api reachable':
+    case 'reachable':
+    case 'ready to connect':
+    case 'live':
+      return true;
+    case 'api pending':
+    case 'pending':
+    case 'documented':
+    case 'sandbox verified':
+      return false;
+    default:
+      return null;
   }
 }
 
@@ -307,6 +358,130 @@ String _apiReachabilityDetail({
         : 'API reachability pending until production access is verified.';
   }
   return '$prefix $detail';
+}
+
+String? _defaultHealthSourceLabel({
+  required String rawStatusLabel,
+  required bool? apiReachable,
+}) {
+  if (apiReachable == null) return null;
+  if (rawStatusLabel.trim().toLowerCase() == 'documented') {
+    return 'Gateway reachability projection from vendor lifecycle';
+  }
+  return 'Gateway API reachability check';
+}
+
+String? _defaultUnlockLabel({required bool? apiReachable}) {
+  if (apiReachable == true) return 'Vendor setup unlocked';
+  if (apiReachable == false) {
+    return 'Vendor setup waits for reachable API access';
+  }
+  return null;
+}
+
+String? _cleanString(Object? value) {
+  if (value is! String) return null;
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+bool? _boolFromJson(Object? value) {
+  if (value is bool) return value;
+  if (value is String) {
+    switch (value.trim().toLowerCase()) {
+      case 'true':
+      case '1':
+      case 'yes':
+        return true;
+      case 'false':
+      case '0':
+      case 'no':
+        return false;
+    }
+  }
+  return null;
+}
+
+VendorCategory? _categoryFromWire(String? value) {
+  switch (value?.trim().toLowerCase()) {
+    case 'pos':
+    case 'point_of_sale':
+    case 'point-of-sale':
+      return VendorCategory.pos;
+    case 'labor':
+    case 'scheduling':
+    case 'scheduling_and_labor':
+    case 'scheduling-and-labor':
+      return VendorCategory.labor;
+    case 'reservation':
+    case 'reservations':
+      return VendorCategory.reservation;
+  }
+  return null;
+}
+
+VendorCategory? _categoryForVendor(String vendorId) {
+  switch (vendorId) {
+    case 'aloha_ncr_voyix':
+    case 'clover':
+    case 'lightspeed_lsk':
+    case 'oracle_micros_simphony':
+    case 'revel':
+    case 'square':
+    case 'toast':
+      return VendorCategory.pos;
+    case 'adp':
+    case 'agendrix':
+    case 'humanity':
+    case 'push_operations':
+    case 'quickbooks_time':
+    case 'seven_shifts':
+      return VendorCategory.labor;
+    case 'libro':
+    case 'opentable':
+    case 'sevenrooms':
+    case 'tock':
+      return VendorCategory.reservation;
+  }
+  return null;
+}
+
+String? _healthSourceLabelFromWire(String? value) {
+  switch (value?.trim().toLowerCase()) {
+    case 'api_probe':
+    case 'live_api_probe':
+    case 'live_probe':
+      return 'Live API reachability check';
+    case 'mock_gateway':
+    case 'mock':
+      return 'Mocked gateway reachability seam';
+    case 'lifecycle':
+    case 'adapter_lifecycle':
+      return 'Gateway reachability projection from vendor lifecycle';
+  }
+  return _cleanString(value);
+}
+
+String? _unlockLabelFromWire(String? value) {
+  switch (value?.trim().toLowerCase()) {
+    case 'unlocked':
+    case 'available':
+    case 'connectable':
+      return 'Vendor setup unlocked';
+    case 'locked':
+    case 'pending':
+    case 'api_pending':
+      return 'Vendor setup waits for reachable API access';
+  }
+  return _cleanString(value);
+}
+
+String? _unlockLabelFromCanConnect(bool? canConnect) {
+  if (canConnect == true) return 'Vendor setup unlocked';
+  if (canConnect == false) {
+    return 'Vendor setup waits for reachable API access';
+  }
+  return null;
 }
 
 /// In-memory gateway used by the demo walkthrough and widget tests.
