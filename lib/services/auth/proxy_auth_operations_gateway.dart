@@ -571,6 +571,35 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<TeamOrgUnitMoved> moveOrgUnit(TeamOrgUnitMoveCommand command) async {
+    final response = await _patch(
+      '$orgUnitsPath/${Uri.encodeComponent(command.orgUnitId)}/parent',
+      <String, Object?>{
+        'parent_org_unit_id': command.parentOrgUnitId,
+        if (command.adminReason != null) 'admin_reason': command.adminReason,
+      },
+    );
+    _expectStatus(response, 200);
+    final rawOrgUnit = response.body['org_unit'];
+    if (rawOrgUnit is Map) {
+      return TeamOrgUnitMoved(orgUnit: _orgUnitFromJson(response, rawOrgUnit));
+    }
+    final orgUnitId = _readNonBlankString(response.body['org_unit_id']);
+    if (orgUnitId == null) {
+      throw _malformed(response, 'org unit move response was incomplete');
+    }
+    return TeamOrgUnitMoved(
+      orgUnit: TeamOrgUnitEntry(
+        orgUnitId: orgUnitId,
+        parentOrgUnitId: command.parentOrgUnitId,
+        unitType: _readNonBlankString(response.body['unit_type']) ?? 'region',
+        path: _readNonBlankString(response.body['path']) ?? '',
+        label: _readNonBlankString(response.body['label']) ?? orgUnitId,
+      ),
+    );
+  }
+
+  @override
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command,
   ) async {

@@ -609,7 +609,15 @@ void main() {
         ),
         patchResponse: const ProxyAuthOperationsResponse(
           statusCode: 200,
-          body: <String, Object?>{'ok': true, 'moved': true},
+          body: <String, Object?>{
+            'ok': true,
+            'moved': true,
+            'org_unit_id': 'unit-east',
+            'parent_org_unit_id': 'unit-2',
+            'unit_type': 'region',
+            'path': 'acme.east',
+            'label': 'East Region',
+          },
         ),
       );
       final gateway = ProxyAuthOperationsGateway(
@@ -637,6 +645,16 @@ void main() {
           adminReason: 'admin hierarchy setup',
         ),
       );
+      final movedOrgUnit = await gateway.moveOrgUnit(
+        const TeamOrgUnitMoveCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          orgUnitId: 'unit-east',
+          parentOrgUnitId: 'unit-2',
+          adminReason: 'admin branch realignment',
+        ),
+      );
       final moved = await gateway.moveLocationToOrgUnit(
         const TeamLocationOrgUnitMoveCommand(
           actorUserId: 'actor',
@@ -650,6 +668,7 @@ void main() {
       expect(listed.orgUnits.single.orgUnitId, equals('unit-1'));
       expect(listed.locations.single.locationId, equals('loc-1'));
       expect(created.orgUnitId, equals('unit-2'));
+      expect(movedOrgUnit.orgUnit.orgUnitId, equals('unit-east'));
       expect(moved.moved, isTrue);
       expect(fake.gets.single.url.path, equals(proxy.adminAuthOrgUnitsPath));
       expect(fake.posts.single.url.path, equals(proxy.adminAuthOrgUnitsPath));
@@ -664,11 +683,22 @@ void main() {
         }),
       );
       expect(
-        fake.patches.single.url.path,
+        fake.patches[0].url.path,
+        equals('/v1/admin/auth/org-units/unit-east/parent'),
+      );
+      expect(
+        fake.patches[0].body,
+        equals(<String, Object?>{
+          'parent_org_unit_id': 'unit-2',
+          'admin_reason': 'admin branch realignment',
+        }),
+      );
+      expect(
+        fake.patches[1].url.path,
         equals('/v1/admin/auth/locations/loc-1/org-unit'),
       );
       expect(
-        fake.patches.single.body,
+        fake.patches[1].body,
         equals(<String, Object?>{'parent_org_unit_id': 'unit-2'}),
       );
     });

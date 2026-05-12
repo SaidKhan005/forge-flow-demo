@@ -159,9 +159,7 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       }
       final id = rows.single['id'];
       if (id is! String || id.isEmpty) {
-        throw StateError(
-          'org_units root insert returned a malformed id',
-        );
+        throw StateError('org_units root insert returned a malformed id');
       }
       return id;
     });
@@ -242,9 +240,7 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       }
       final id = rows.single['id'];
       if (id is! String || id.isEmpty) {
-        throw StateError(
-          'org_units child insert returned a malformed id',
-        );
+        throw StateError('org_units child insert returned a malformed id');
       }
       return id;
     });
@@ -328,27 +324,169 @@ class OrgUnitsRepository extends OperatorScopedRepository {
     });
   }
 
+  Future<OrgUnitRow> moveOrgUnit({
+    required String operatorId,
+    required String locationId,
+    required String orgUnitId,
+    required String parentOrgUnitId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<OrgUnitRow>(ctx, (exec) async {
+      final childRows = await exec.query(
+        'select id::text as id, operator_id::text as operator_id, '
+        'parent_id::text as parent_id, unit_type, path::text as path, '
+        'name, created_at, updated_at, nlevel(path) as depth '
+        'from org_units '
+        'where id = @org_unit_id::uuid',
+        parameters: <String, Object?>{'org_unit_id': orgUnitId},
+      );
+      if (childRows.isEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'unknown_org_unit',
+          message: 'org unit not found in tenant scope',
+          statusCode: 404,
+        );
+      }
+      final child = _rowFromMap(childRows.single);
+      if (child.parentId == null) {
+        throw const OrgUnitMoveRejected(
+          code: 'cannot_move_root_org_unit',
+          message: 'root org unit cannot be moved',
+          statusCode: 400,
+        );
+      }
+
+      final parentRows = await exec.query(
+        'select id::text as id, operator_id::text as operator_id, '
+        'parent_id::text as parent_id, unit_type, path::text as path, '
+        'name, created_at, updated_at, nlevel(path) as depth '
+        'from org_units '
+        'where id = @parent_org_unit_id::uuid',
+        parameters: <String, Object?>{'parent_org_unit_id': parentOrgUnitId},
+      );
+      if (parentRows.isEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'unknown_parent_org_unit',
+          message: 'parent org unit not found in tenant scope',
+          statusCode: 404,
+        );
+      }
+      final parent = _rowFromMap(parentRows.single);
+      if (parent.path == child.path ||
+          parent.path.startsWith('${child.path}.')) {
+        throw const OrgUnitMoveRejected(
+          code: 'org_unit_cycle',
+          message: 'org unit cannot move under itself or a descendant',
+          statusCode: 400,
+        );
+      }
+
+      final childDepth = _intValue(childRows.single['depth']);
+      final parentDepth = _intValue(parentRows.single['depth']);
+      final descendantRows = await exec.query(
+        'select coalesce(max(nlevel(path) - @child_depth), 0) as max_relative '
+        'from org_units '
+        'where path <@ @child_path::ltree',
+        parameters: <String, Object?>{
+          'child_depth': childDepth,
+          'child_path': child.path,
+        },
+      );
+      final maxRelative = descendantRows.isEmpty
+          ? 0
+          : _intValue(descendantRows.single['max_relative']);
+      if (parentDepth + 1 + maxRelative > maxDepth) {
+        throw const OrgUnitMoveRejected(
+          code: 'org_unit_depth_exceeded',
+          message: 'move would exceed the maximum hierarchy depth',
+          statusCode: 400,
+        );
+      }
+
+      final rows = await exec.query(
+        'with moving as ('
+        '  select path as old_path, nlevel(path) as old_depth, '
+        '         subpath(path, nlevel(path) - 1) as own_label '
+        '    from org_units '
+        '   where id = @org_unit_id::uuid'
+        '), parent as ('
+        '  select path as parent_path '
+        '    from org_units '
+        '   where id = @parent_org_unit_id::uuid'
+        '), next_path as ('
+        '  select moving.old_path, moving.old_depth, '
+        '         parent.parent_path || moving.own_label as new_path '
+        '    from moving, parent'
+        ') '
+        'update org_units ou '
+        '   set parent_id = case '
+        '         when ou.id = @org_unit_id::uuid then @parent_org_unit_id::uuid '
+        '         else ou.parent_id '
+        '       end, '
+        '       path = case '
+        '         when ou.id = @org_unit_id::uuid then next_path.new_path '
+        '         else next_path.new_path || subpath(ou.path, next_path.old_depth) '
+        '       end, '
+        '       updated_at = now() '
+        '  from next_path '
+        ' where ou.operator_id = @operator_id::uuid '
+        '   and ou.path <@ next_path.old_path '
+        'returning ou.id::text as id, ou.operator_id::text as operator_id, '
+        '          ou.parent_id::text as parent_id, ou.unit_type, '
+        '          ou.path::text as path, ou.name, ou.created_at, ou.updated_at',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'org_unit_id': orgUnitId,
+          'parent_org_unit_id': parentOrgUnitId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'org_unit_move_failed',
+          message: 'org unit move did not update any rows',
+          statusCode: 409,
+        );
+      }
+      await exec.execute(
+        'update locations loc '
+        '   set org_unit_path = ou.path '
+        '  from org_units ou '
+        ' where loc.operator_id = @operator_id::uuid '
+        '   and ou.operator_id = loc.operator_id '
+        '   and ou.id = loc.parent_org_unit_id '
+        '   and loc.org_unit_path is distinct from ou.path',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      return _rowFromMap(
+        rows.firstWhere(
+          (row) => row['id'] == orgUnitId,
+          orElse: () => rows.first,
+        ),
+      );
+    });
+  }
+
   /// Admin/system path: SELECT every root `corp` row across operators.
   /// Used by the 11A admin console hierarchy panel + backfill
   /// verification. Runs through `withSystem` so `forge_admin`
   /// BYPASSRLS engages — the [adminReason] string is audited.
-  Future<List<OrgUnitRow>> listAllRootsAsAdmin({
-    required String adminReason,
-  }) {
-    return withSystem<List<OrgUnitRow>>(
-      (exec) async {
-        final rows = await exec.query(
-          'select id::text as id, operator_id::text as operator_id, '
-          'parent_id::text as parent_id, unit_type, path::text as path, '
-          'name, created_at, updated_at '
-          'from org_units '
-          'where parent_id is null '
-          'order by operator_id, path',
-        );
-        return rows.map(_rowFromMap).toList(growable: false);
-      },
-      reason: adminReason,
-    );
+  Future<List<OrgUnitRow>> listAllRootsAsAdmin({required String adminReason}) {
+    return withSystem<List<OrgUnitRow>>((exec) async {
+      final rows = await exec.query(
+        'select id::text as id, operator_id::text as operator_id, '
+        'parent_id::text as parent_id, unit_type, path::text as path, '
+        'name, created_at, updated_at '
+        'from org_units '
+        'where parent_id is null '
+        'order by operator_id, path',
+      );
+      return rows.map(_rowFromMap).toList(growable: false);
+    }, reason: adminReason);
   }
 
   /// Admin/system path: SELECT every registered location across
@@ -398,6 +536,12 @@ class OrgUnitsRepository extends OperatorScopedRepository {
     );
   }
 
+  static int _intValue(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.parse(value.toString());
+  }
+
   static OrgLocationRow _locationRowFromMap(Map<String, Object?> row) {
     return OrgLocationRow(
       locationId: row['location_id']! as String,
@@ -409,6 +553,21 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       operatorName: row['operator_name'] as String?,
     );
   }
+}
+
+class OrgUnitMoveRejected implements Exception {
+  const OrgUnitMoveRejected({
+    required this.code,
+    required this.message,
+    required this.statusCode,
+  });
+
+  final String code;
+  final String message;
+  final int statusCode;
+
+  @override
+  String toString() => 'OrgUnitMoveRejected($statusCode/$code): $message';
 }
 
 /// Phase 9.UX.4 — narrow projection of a `locations` row joined with

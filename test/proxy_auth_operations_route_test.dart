@@ -342,6 +342,54 @@ void main() {
     );
 
     test(
+      'PATCH org-unit parent moves the branch and gates on team.roles.assign',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            const targetOrgUnit = '88888888-8888-4888-8888-888888888888';
+            final response = await harness.patchJson(
+              '$adminAuthOrgUnitsPath/$targetOrgUnit/parent',
+              const <String, Object?>{
+                'parent_org_unit_id': '77777777-7777-4777-8777-777777777777',
+                'admin_reason': 'admin branch realignment',
+              },
+              idempotencyKey: 'idem-org-unit-move-1',
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
+            final command = gateway.orgUnitMoves.single;
+            expect(command.actorUserId, equals(_userId));
+            expect(command.operatorId, equals(_operatorId));
+            expect(command.locationId, equals(_locationId));
+            expect(command.orgUnitId, equals(targetOrgUnit));
+            expect(
+              command.parentOrgUnitId,
+              equals('77777777-7777-4777-8777-777777777777'),
+            );
+            expect(command.adminReason, equals('admin branch realignment'));
+            final orgUnit = Map<String, Object?>.from(
+              response.json['org_unit'] as Map,
+            );
+            expect(orgUnit['org_unit_id'], equals(targetOrgUnit));
+            expect(
+              orgUnit['parent_org_unit_id'],
+              equals('77777777-7777-4777-8777-777777777777'),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
       'PATCH location org-unit moves the location and gates on team.roles.assign',
       () async {
         await _withRealHttp(() async {
@@ -2641,6 +2689,7 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
 
   final orgHierarchyLists = <TeamOrgHierarchyListCommand>[];
   final orgUnitCreates = <TeamOrgUnitCreateCommand>[];
+  final orgUnitMoves = <TeamOrgUnitMoveCommand>[];
   final locationOrgUnitMoves = <TeamLocationOrgUnitMoveCommand>[];
 
   @override
@@ -2676,6 +2725,20 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
     orgUnitCreates.add(command);
     return const TeamOrgUnitCreated(
       orgUnitId: '77777777-7777-4777-8777-777777777777',
+    );
+  }
+
+  @override
+  Future<TeamOrgUnitMoved> moveOrgUnit(TeamOrgUnitMoveCommand command) async {
+    orgUnitMoves.add(command);
+    return TeamOrgUnitMoved(
+      orgUnit: TeamOrgUnitEntry(
+        orgUnitId: command.orgUnitId,
+        parentOrgUnitId: command.parentOrgUnitId,
+        unitType: 'region',
+        path: 'acme.east',
+        label: 'East Region',
+      ),
     );
   }
 

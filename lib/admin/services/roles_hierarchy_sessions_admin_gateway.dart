@@ -562,10 +562,28 @@ class HttpRolesHierarchySessionsAdminGateway
   }) async {
     _requireEditable(actorIsForgeAdmin, 'moveOrgUnit');
     _requireAdminReason(adminReason, 'moveOrgUnit');
-    throw const RolesHierarchySessionsGatewayError(
-      statusCode: 501,
-      errorCode: 'org_unit_move_unimplemented',
-      message: 'Org-unit move is not exposed by the admin auth route contract.',
+    final body = await _send(
+      method: 'PATCH',
+      path: '$orgUnitsPath/${Uri.encodeComponent(orgUnitId)}/parent',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'parent_org_unit_id': newParentOrgUnitId,
+        'admin_reason': adminReason,
+      },
+    );
+    final orgUnit = body['org_unit'];
+    if (orgUnit != null) {
+      return _orgUnitFromJson(_asMap(orgUnit));
+    }
+    return OrgUnitAdminNode(
+      orgUnitId: orgUnitId,
+      name:
+          _optionalString(body['name']) ??
+          _optionalString(body['label']) ??
+          orgUnitId,
+      operatorId: operatorId,
+      parentOrgUnitId: newParentOrgUnitId,
     );
   }
 

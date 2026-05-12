@@ -861,6 +861,59 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<TeamOrgUnitMoved> moveOrgUnit(TeamOrgUnitMoveCommand command) async {
+    final repo = _requireOrgUnitsRepository();
+    await _requireOperatorWidePermission(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      requiredPermissionKey: 'team.roles.assign',
+    );
+    final moved = await _moveOrgUnitOrReject(repo, command);
+    await _audit(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      eventType: 'auth.org_unit_moved',
+      payload: <String, Object?>{
+        'org_unit_id': command.orgUnitId,
+        'parent_org_unit_id': command.parentOrgUnitId,
+        if (command.adminReason != null) 'admin_reason': command.adminReason,
+      },
+    );
+    return TeamOrgUnitMoved(
+      orgUnit: TeamOrgUnitEntry(
+        orgUnitId: moved.id,
+        parentOrgUnitId: moved.parentId,
+        unitType: moved.unitType,
+        path: moved.path,
+        label: moved.name,
+      ),
+    );
+  }
+
+  Future<OrgUnitRow> _moveOrgUnitOrReject(
+    OrgUnitsRepository repo,
+    TeamOrgUnitMoveCommand command,
+  ) async {
+    try {
+      return await repo.moveOrgUnit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        orgUnitId: command.orgUnitId,
+        parentOrgUnitId: command.parentOrgUnitId,
+        userId: command.actorUserId,
+      );
+    } on OrgUnitMoveRejected catch (error) {
+      throw AuthOperationRejected(
+        code: error.code,
+        message: error.message,
+        statusCode: error.statusCode,
+      );
+    }
+  }
+
+  @override
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command,
   ) async {

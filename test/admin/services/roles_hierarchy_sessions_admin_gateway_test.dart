@@ -980,12 +980,23 @@ void main() {
     );
 
     test(
-      'moveOrgUnit stays unimplemented when no proxy route exists',
+      'moveOrgUnit PATCH pins /v1/admin/auth/org-units/<id>/parent + parent_org_unit_id',
       () async {
-        var hits = 0;
+        late http.Request captured;
         final mock = http_testing.MockClient((http.Request request) async {
-          hits += 1;
-          return http.Response('', 500);
+          captured = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'org_unit': <String, Object?>{
+                'org_unit_id': 'unit-1',
+                'operator_id': 'op-1',
+                'parent_org_unit_id': 'unit-2',
+                'name': 'East',
+              },
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
         });
         final gateway = HttpRolesHierarchySessionsAdminGateway(
           baseUri: Uri.parse('https://admin.example/'),
@@ -993,25 +1004,37 @@ void main() {
           httpClient: mock,
         );
 
-        await expectLater(
-          gateway.moveOrgUnit(
-            operatorId: 'op-1',
-            orgUnitId: 'unit-1',
-            newParentOrgUnitId: 'unit-2',
-            idempotencyKey: 'idem-move-org-unit-1',
-            actorUserId: 'admin-1',
-            actorIsForgeAdmin: true,
-            adminReason: 'hierarchy realignment',
-          ),
-          throwsA(
-            isA<RolesHierarchySessionsGatewayError>().having(
-              (e) => e.errorCode,
-              'errorCode',
-              equals('org_unit_move_unimplemented'),
-            ),
-          ),
+        final moved = await gateway.moveOrgUnit(
+          operatorId: 'op-1',
+          orgUnitId: 'unit-1',
+          newParentOrgUnitId: 'unit-2',
+          idempotencyKey: 'idem-move-org-unit-1',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'hierarchy realignment',
         );
-        expect(hits, equals(0));
+
+        expect(captured.method, equals('PATCH'));
+        expect(
+          captured.url.path,
+          equals('/v1/admin/auth/org-units/unit-1/parent'),
+        );
+        expect(
+          captured.headers['Idempotency-Key'],
+          equals('idem-move-org-unit-1'),
+        );
+        expect(captured.headers['authorization'], equals('Bearer tok'));
+        final body = jsonDecode(captured.body) as Map<String, Object?>;
+        expect(
+          body,
+          equals(<String, Object?>{
+            'operator_id': 'op-1',
+            'parent_org_unit_id': 'unit-2',
+            'admin_reason': 'hierarchy realignment',
+          }),
+        );
+        expect(moved.orgUnitId, equals('unit-1'));
+        expect(moved.parentOrgUnitId, equals('unit-2'));
       },
     );
 

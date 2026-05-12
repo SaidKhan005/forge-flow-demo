@@ -2216,9 +2216,7 @@ class ProxyRequestGuard {
       // user even though no operator was picked yet. Pass null when the
       // operator id is absent so the context filter is not confused by
       // an empty-string tenant id.
-      bindOperatorIdToLogContext(
-        hasOperatorScope ? operatorId : null,
-      );
+      bindOperatorIdToLogContext(hasOperatorScope ? operatorId : null);
       return OperatorContext(
         userId: claims.userId,
         operatorId: hasOperatorScope ? operatorId : '',
@@ -6997,8 +6995,10 @@ const String authTeamRoleGrantPrefix = '$authTeamRoleGrantsPath/';
 // `team.users.view`, mutations on `team.roles.assign` (per the
 // hierarchy-touches-grants posture from `phase_9_auth_plan.md`).
 const String adminAuthOrgUnitsPath = '/v1/admin/auth/org-units';
+const String adminAuthOrgUnitPrefix = '$adminAuthOrgUnitsPath/';
 const String adminAuthLocationsPrefix = '/v1/admin/auth/locations/';
 const String authTeamOrgUnitsPath = '/v1/auth/team/org-units';
+const String authTeamOrgUnitPrefix = '$authTeamOrgUnitsPath/';
 const String authTeamLocationsPrefix = '/v1/auth/team/locations/';
 const String adminServicePrincipalsPath = '/v1/admin/service-principals';
 const String adminServicePrincipalsPrefix = '$adminServicePrincipalsPath/';
@@ -8647,11 +8647,7 @@ Future<void> routeRequest(
                 runtimeGaugesSnapshot.isNotEmpty)
               'runtime_gauges': runtimeGaugesSnapshot,
           };
-          _writeJson(
-            response,
-            status.ok ? 200 : 503,
-            envelope,
-          );
+          _writeJson(response, status.ok ? 200 : 503, envelope);
           return;
         }
 
@@ -11718,6 +11714,58 @@ Future<void> routeRequest(
                   return CachedProxyResponse(
                     statusCode: 201,
                     body: <String, Object?>{'org_unit_id': created.orgUnitId},
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            if (request.method == 'PATCH' &&
+                authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
+                authOperationPath.endsWith('/parent')) {
+              if (!await requirePermission('team.roles.assign')) return;
+              final targetOrgUnitId = _orgUnitIdFromParentPath(
+                authOperationPath,
+              );
+              final parentOrgUnitId = _nonBlankString(
+                body['parent_org_unit_id'],
+              );
+              final adminReason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['adminReason']);
+              if (targetOrgUnitId == null ||
+                  parentOrgUnitId == null ||
+                  adminReason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_org_unit_move_fields',
+                  'message':
+                      'org unit id in path, parent_org_unit_id, and admin_reason body are required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthOrgUnitPrefix$targetOrgUnitId/parent',
+                key: idempotencyKey,
+                compute: () async {
+                  final moved = await authOperationsGateway.moveOrgUnit(
+                    TeamOrgUnitMoveCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      orgUnitId: targetOrgUnitId,
+                      parentOrgUnitId: parentOrgUnitId,
+                      adminReason: adminReason,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'org_unit': _teamOrgUnitToJson(moved.orgUnit),
+                    },
                   );
                 },
               );
@@ -17042,6 +17090,11 @@ bool _isAdminAuthOperation(String path, String method) {
     return true;
   }
   if (method == 'PATCH' &&
+      authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
+      authOperationPath.endsWith('/parent')) {
+    return true;
+  }
+  if (method == 'PATCH' &&
       authOperationPath.startsWith(adminAuthLocationsPrefix) &&
       authOperationPath.endsWith('/org-unit')) {
     return true;
@@ -17069,11 +17122,25 @@ String _canonicalAuthOperationPath(String path) {
         '${path.substring(authTeamInvitePrefix.length)}';
   }
   if (path == authTeamOrgUnitsPath) return adminAuthOrgUnitsPath;
+  if (path.startsWith(authTeamOrgUnitPrefix)) {
+    return '$adminAuthOrgUnitPrefix'
+        '${path.substring(authTeamOrgUnitPrefix.length)}';
+  }
   if (path.startsWith(authTeamLocationsPrefix)) {
     return '$adminAuthLocationsPrefix'
         '${path.substring(authTeamLocationsPrefix.length)}';
   }
   return path;
+}
+
+String? _orgUnitIdFromParentPath(String path) {
+  if (!path.startsWith(adminAuthOrgUnitPrefix)) return null;
+  final rest = path.substring(adminAuthOrgUnitPrefix.length);
+  final parts = rest.split('/');
+  if (parts.length != 2 || parts[0].isEmpty || parts[1] != 'parent') {
+    return null;
+  }
+  return Uri.decodeComponent(parts[0]);
 }
 
 String? _orgUnitLocationIdFromPath(String path) {

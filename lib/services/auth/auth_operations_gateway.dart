@@ -475,6 +475,30 @@ class TeamOrgUnitCreated {
   final String orgUnitId;
 }
 
+class TeamOrgUnitMoveCommand {
+  const TeamOrgUnitMoveCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.orgUnitId,
+    required this.parentOrgUnitId,
+    this.adminReason,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String orgUnitId;
+  final String parentOrgUnitId;
+  final String? adminReason;
+}
+
+class TeamOrgUnitMoved {
+  const TeamOrgUnitMoved({required this.orgUnit});
+
+  final TeamOrgUnitEntry orgUnit;
+}
+
 class TeamLocationOrgUnitMoveCommand {
   const TeamLocationOrgUnitMoveCommand({
     required this.actorUserId,
@@ -1244,6 +1268,8 @@ abstract class AuthOperationsGateway {
 
   Future<TeamOrgUnitCreated> createOrgUnit(TeamOrgUnitCreateCommand command);
 
+  Future<TeamOrgUnitMoved> moveOrgUnit(TeamOrgUnitMoveCommand command);
+
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command,
   );
@@ -1378,6 +1404,11 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
 
   @override
   Future<TeamOrgUnitCreated> createOrgUnit(TeamOrgUnitCreateCommand command) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamOrgUnitMoved> moveOrgUnit(TeamOrgUnitMoveCommand command) {
     throw StateError(_message);
   }
 
