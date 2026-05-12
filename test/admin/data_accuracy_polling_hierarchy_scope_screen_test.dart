@@ -430,7 +430,7 @@ void main() {
       );
       expect(
         find.textContaining(
-          'Showing covers and wage data accuracy from Calgary Kensington',
+          'This scope only covers Calgary Kensington',
         ),
         findsOneWidget,
       );
@@ -468,7 +468,7 @@ void main() {
       );
       expect(
         find.textContaining(
-          'Showing covers and wage data accuracy from Toronto Yorkville',
+          'This scope only covers Toronto Yorkville',
         ),
         findsOneWidget,
       );
@@ -561,7 +561,7 @@ void main() {
       );
       expect(
         find.textContaining(
-          'Showing polling setup from Calgary Kensington',
+          'This scope only covers Calgary Kensington',
         ),
         findsOneWidget,
       );
@@ -597,7 +597,7 @@ void main() {
       );
       expect(
         find.textContaining(
-          'Showing polling setup from Toronto Yorkville',
+          'This scope only covers Toronto Yorkville',
         ),
         findsOneWidget,
       );

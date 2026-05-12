@@ -499,7 +499,7 @@ class _PerLocationDataAccuracyScreenState
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  'Showing covers and wage data accuracy from $_singleCoveredLocationName. Other locations under this scope may have local overrides — review each location individually for accuracy.',
+                  'This scope only covers $_singleCoveredLocationName. Adjusting data accuracy here is equivalent to a per-location change — there are no other locations under this scope to inherit from.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ),
