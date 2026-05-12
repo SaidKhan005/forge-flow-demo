@@ -1,23 +1,16 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-08 (post-audit remediation wave: 9 lanes merged
-across PRs #417–#426 — 4 of 5 P1 audit-addition items closed +
-P2 partial bare-catch fix + Carve-out #3 blessed + closed-phase
-plan archive + vendor doc path updates + phase_9 folder triage +
-hardening_rls contract drift + RestaurantScopeService extraction +
-8.demo-mode-banner slice. The AI-frozen `advisor_proxy.dart`
-placeholder strings remain on the freeze-thaw checklist. **CI is
-currently blocked on a GitHub Actions billing/spending limit** —
-all jobs since #425 stopped before starting; no test runs against
-master have completed for this remediation wave. Verification
-deferred to next CI green run. Earlier 2026-05-08: multi-agent
-deep-dive audit recorded 7 new findings in
-`docs/POST_HARDENING_FOLLOWUPS.md` "Audit additions — 2026-05-08"
-section; admin hierarchy lane excluded). Prior: 2026-05-07.
+Updated: 2026-05-12. Post-Codex wave kicked off: admin hierarchy
+overhaul closed (12 slices on master); Step 3+4+5+6+7 planning
+trilogy in PR #497 (lane plans, code-health audits, indices, ledger,
+handoff prompts). Codex + Claude lane executors run against
+`docs/_indices/WAVE_EXECUTION_LEDGER.md`. AI-paused phases unchanged.
+Prior CI billing block (pre-2026-05-08) cleared.
 Owner: You · Execution: We think, Claude codes
 
 Routing map only. This file shows **only what is left**. Completed phases /
-slices live in `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
+slices live in `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`. Stale
+sprint-execution docs live in `docs/archive/_execution/`.
 
 ## Authority Order (Active Read Order)
 
@@ -83,7 +76,7 @@ one is engineering-blocked.
 
 ### 1. Operator-blocked (no engineering)
 
-Detail + resume guide: `docs/_execution/2026-05-06_v1_operator_punchlist_execution.md`.
+Detail + resume guide: `docs/archive/_execution/2026-05-06_v1_operator_punchlist_execution.md`.
 
 | Item | Owner | Blocks |
 |---|---|---|
@@ -115,7 +108,7 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 | `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |
 | `9.8` inbound vendor T&Cs (code lane) | code-ready; operator-self-served content seeding pending | `phase_9_8/*` |
 | `business-timing-live` full hierarchy + settings lanes | future | `phase_business_timing_live/*` |
-| `admin-hierarchy-settings-overhaul` | complete (2026-05-12; evidence: `docs/_execution/admin_hierarchy_settings_overhaul/06_closure_evidence_2026-05-12.md`) | `docs/_execution/admin_hierarchy_settings_overhaul_plan_2026-05-08.md` |
+| `admin-hierarchy-settings-overhaul` | complete (2026-05-12; evidence: `docs/_execution/admin_hierarchy_settings_overhaul/06_closure_evidence_2026-05-12.md`) | `docs/_execution/admin_hierarchy_settings_overhaul/` (plan archived to `docs/archive/_execution/admin_hierarchy_settings_overhaul_plan_2026-05-08.md`) |
 | Doc 1 item 7 — physical connected-device E2E | simulated proof documented; physical/emulator proof pending | new sprint `8.connected-device-e2e-smoke`; needs physical device |
 | Doc 1 item 9 — push delivery proof | preflight documented; needs staging apply + device | `8.push-notification-connected-device-proof` |
 | Group / region / company rollup truth | future | follows server rollup snapshots |

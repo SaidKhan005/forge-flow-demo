@@ -438,7 +438,7 @@ sustained multi-session traffic would hit the same wall.
 5. If preview-env reproduction is available, run the 2026-05-08
    pressure-preview-v1 sprint's webhook/backfill harness against the
    proxy and capture heap/RSS over 30 minutes. The harness lives at
-   `docs/_execution/2026-05-08_pressure_preview_findings.md` per
+   `docs/archive/_execution/2026-05-08_pressure_preview_findings.md` per
    `POST_HARDENING_FOLLOWUPS.md:526`.
 6. Raise `POSTGRES_POOL_MAX_CONNECTIONS` from default 4 to e.g. 20 (the
    value the runbook recommends at

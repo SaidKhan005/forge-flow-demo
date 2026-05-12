@@ -7,7 +7,7 @@ Owner: Phase 8 mobile core logic data wiring
 ## Purpose
 
 This contract binds the next mobile core sprint from
-`docs/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md` after
+`docs/archive/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md` after
 `8.first-connect-backfill-wire-in`.
 
 The sprint goal is plain:
@@ -24,7 +24,7 @@ The sprint goal is plain:
 ## Authority
 
 1. `PROJECT_TRACKER.md`
-2. `docs/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md`
+2. `docs/archive/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md`
 3. `docs/contracts/core_app_architecture.md`
 4. `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
 5. `docs/contracts/integration_spine_architecture_contract.md`

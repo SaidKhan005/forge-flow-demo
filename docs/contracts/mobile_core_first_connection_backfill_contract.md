@@ -7,7 +7,7 @@ Owner: Phase 8 mobile core logic data wiring
 ## Purpose
 
 This contract binds the next mobile core sprint from
-`docs/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md`.
+`docs/archive/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md`.
 It closes the first-connection spine and the production wire-in gap left after
 the live/closed truth component sprint.
 
@@ -26,7 +26,7 @@ The sprint goal is plain:
 ## Authority
 
 1. `PROJECT_TRACKER.md`
-2. `docs/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md`
+2. `docs/archive/_execution/2026-05-06_mobile_core_logic_data_wiring_contract.md`
 3. `docs/contracts/integration_spine_architecture_contract.md`
 4. `docs/contracts/phase_7_55_time_boundary_contract.md`
 5. `docs/contracts/hardening_rls_and_repository_pattern_contract.md`

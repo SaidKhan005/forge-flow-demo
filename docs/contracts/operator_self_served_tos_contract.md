@@ -52,8 +52,8 @@ served pattern.
 - `docs/phases/phase_9_8/phase_9_8_compliance_and_legal_plan.md` —
   parent compliance plan; processor-chain and DPA scope.
 - `db/migrations/202605040100_phase_9_8_tos_versions.sql` — schema.
-- `docs/_execution/2026-05-05_v1_launch_punchlist.md` — V1 launch
+- `docs/archive/_execution/2026-05-05_v1_launch_punchlist.md` — V1 launch
   punchlist; the seeding task is what unblocks `cutover.2`.
-- `docs/_execution/2026-05-06_v1_operator_punchlist_execution.md` —
+- `docs/archive/_execution/2026-05-06_v1_operator_punchlist_execution.md` —
   operator-side punchlist; the seeding task is the operator-side
   prerequisite for first-operator onboarding.
