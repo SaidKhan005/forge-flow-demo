@@ -67,7 +67,7 @@ The canonical 7-chunk split (adjust if the PR's surface footprint differs):
 4. **Don't summarize the whole PR in your head.** Use `Read` with `offset` + `limit` on big files. Never claim content you haven't read this session.
 5. **Spawn sub-agents for chunks too big to hold.** A single file with > 500 lines of diff (Codex's `advisor_proxy.dart` at +988 is the canonical case) gets split further: dispatch one sub-agent per method or per route handler with a focused brief — "audit Codex's changes to X against prior PR #N changes to X; return ≤ 300 words; list preserved invariants and missing invariants." Sub-agents can't pollute main context.
 6. **One chunk = one audit section.** Do not write "based on chunks 1-3, conclude X" until each chunk's finding is on paper. Each section is independent.
-7. **Partial merge is OK. Send-back is OK. Bundled big-bang merge is NOT OK.** If chunk 3 (proxy) has a real conflict and chunk 1 (migrations) is clean, the migrations land first as a separate PR or commit; the proxy gets a follow-up agent.
+7. **Partial merge is OK. Bundled big-bang merge is NOT OK.** If chunk 3 (proxy) has a real conflict and chunk 1 (migrations) is clean, the migrations land first as a separate PR or commit. For findings within scope, see Phase 5b — orchestrator fixes by default; send-back is the exception.
 8. **Pause and ask when ambiguous.** If a chunk feels unclear against the contract, stop and ask the operator a focused question rather than guessing. (The kind of question that nearly bit us with PR #477's wrong attribution — saved by Path C in the dispatch prompt.)
 9. **Verify, don't recall.** If a memory or earlier audit doc cites `file:line`, re-grep before citing it forward. Memories can be stale; the code is the truth.
 
@@ -93,43 +93,119 @@ Diff: <files>, +<add> / -<del> vs origin/master at <sha>.
 
 ## Verdict
 
-<approve-for-merge | material-gaps-send-back | reject>
+<approve-for-merge | material-gaps-orchestrator-fix | material-gaps-send-back | reject>
+
+- `approve-for-merge`: every chunk signs off independently. Ready for operator merge approval.
+- `material-gaps-orchestrator-fix` (default for findings — see Phase 5b): chunks have findings, orchestrator fixes inline, re-audits the fix commits. Verdict flips to `approve-for-merge` once all findings are closed by orchestrator commits.
+- `material-gaps-send-back`: rare exception per Phase 5b. Findings need the originating agent/Codex to fix because the work requires their wider context. Follow-up items table names the agent + the authority anchor.
+- `reject`: unsafe direction, fundamental contract violation, or rebase that lost both-sides preserve. Operator decides next.
 
 ## Per-chunk findings
 
+Each chunk uses this table shape (rows are findings; "CLEAN" if none):
+
+| Finding | file:line | Authority anchor | Fix (or send-back rationale) | Verification |
+|---|---|---|---|---|
+| <one-line description> | <path:line, verified by reading> | <doc + section justifying the fix; see Phase 5b authority order> | <orchestrator commit SHA OR send-back lane name> | <test command + result OR pending> |
+
 ### Chunk 1 — Schema migrations
-<findings or "CLEAN">
+<table or "CLEAN">
 
 ### Chunk 2 — Repository layer
-<findings or "CLEAN">
+<table or "CLEAN">
 
 ### Chunk 3 — Proxy + auth gateways
-<findings — include both diffs cross-ref if conflict file>
+<table — include both diffs cross-ref if conflict file>
 
 ### Chunk 4 — Admin lib
-<findings or "CLEAN">
+<table or "CLEAN">
 
 ### Chunk 5 — Tests
-<findings or "CLEAN">
+<table or "CLEAN">
 
 ### Chunk 6 — Docs + runbooks
-<findings or "CLEAN">
+<table or "CLEAN">
 
 ### Chunk 7 — Integration test harness + scripts
-<findings or "CLEAN">
+<table or "CLEAN">
 
 ## Conflict resolution log (only if rebase had conflicts)
 
-| File | Pre-rebase base | Conflict resolved by | Post-merge HP re-verify |
+| File | Pre-rebase base | Conflict resolved by | Post-merge HP re-verify | Authority anchor |
 
-## Follow-up items
+## Orchestrator-fix commits (Phase 5b)
 
-| Item | Blocking? | Owner |
+| Finding § | Commit SHA | Files touched | Re-audit result |
+
+## Follow-up items (send-back only)
+
+| Item | Blocking? | Authority anchor | Originating lane |
 
 ## Citations
 ```
 
 **Verdict flips to `approve-for-merge` only when every chunk independently signs off and every conflict shows both intents preserved.**
+
+## Phase 5b — Orchestrator-fix-by-default (NOT send-back)
+
+When the audit finds material gaps, the **default is orchestrator (main chat) fixes inline**, not send-back to the originating agent/Codex. Send-back is the exception.
+
+**Why this default:**
+
+- Send-back creates multi-day round trips that stall the wave.
+- Orchestrator already holds the audit context; re-pushing it to Codex/agent loses signal.
+- The operator (user) prefers a single accountable hand for findings → fix → re-verify, not a ping-pong loop.
+
+**When orchestrator fixes (default — almost always):**
+
+- Findings within a chunk's contract scope.
+- Test updates, missing assertions, dropped instrumentation, stale doc cross-references, contract-drift fixes, conflict resolution.
+- Anything where the fix is unambiguous once the authority doc is read.
+
+**Workflow:**
+
+1. The audit doc names each finding with `file:line` AND **the authority-doc anchor** that justifies the fix (see "Authority-doc anchor rule" below). No fix is freelanced.
+2. Orchestrator checks out the PR's branch (or a follow-up branch off the PR's tip) and applies the fix directly. Same branch keeps the audit + fix linked.
+3. Orchestrator runs the relevant tests + `dart analyze` on touched files locally.
+4. Orchestrator commits with a message that cites the audit doc section: `fix(<surface>): close audit finding §<n> — <one-line>`.
+5. Orchestrator pushes to the same PR's branch (extends the PR) OR opens a follow-up PR if the original PR is locked / merged / out of scope.
+6. The audit doc's verdict section gets updated with a re-audit entry: the new commit SHA + which findings are now closed.
+
+**When to send-back instead (the exception — rare):**
+
+- The fix requires Codex's wider implementation context that orchestrator doesn't have (e.g., the slice depends on a unverbalized design intent only Codex carries).
+- The fix is structurally beyond a single-PR scope (e.g., re-architecting an entire layer).
+- The agent that produced the slice is still actively iterating and a fix from orchestrator would conflict with the agent's in-progress work.
+- The originating agent explicitly owns a design call that we shouldn't pre-empt.
+
+For send-back, the audit doc's "Follow-up items" table names: which finding → which agent / Codex lane → what specifically to do → what authority-doc anchor justifies the ask.
+
+**Authority-doc anchor rule (non-negotiable for every fix):**
+
+Every orchestrator-side fix must cite the specific authority doc + section that justifies it. The audit doc's per-finding row uses this shape:
+
+```
+| Finding | file:line | Authority anchor | Fix | Verification |
+|---|---|---|---|---|
+| §3.2 typed-catch missing at proxy line 12421 | tool/advisor_proxy/advisor_proxy.dart:12421 | A1 proxy bug audit §1.5 item #6; CLAUDE.md "Anti-patterns" bare-catch rule | Replace bare `catch (_)` with typed `catch (error, stack)` + structured log proxy.X.failed | flutter test test/advisor_proxy_test.dart pass + dart analyze clean |
+```
+
+Authority order for anchors (earlier wins):
+
+1. The active prompt for the PR being audited.
+2. `docs/contracts/core_app_architecture.md` (Phase 7.55 canonical architecture).
+3. `docs/contracts/**` (other Tier-2 contracts).
+4. `PROJECT_TRACKER.md`, `docs/DATA_ALIGNMENT_TRACKER.md`, `docs/POST_HARDENING_FOLLOWUPS.md`.
+5. The active phase doc under `docs/phases/**`.
+6. `CLAUDE.md` (Hard Promises + durable rules).
+7. Prior audit doc findings under `docs/_audits/**` (when the fix re-applies a previously documented invariant).
+
+**No fix without an anchor.** If a finding has no authority-doc anchor, do not fix it — instead, escalate to the operator: "this finding is plausible but I cannot tie it to a current contract; do we want to add a contract, or accept the current behavior?"
+
+This rule protects against:
+- Orchestrator hallucinating best practices that conflict with project's actual contracts.
+- Drift between "what I think is right" and "what the docs say is right".
+- Imported external norms (e.g., generic Dart linter rules) overriding project-specific decisions.
 
 ## Phase 6 — Operator approval gates
 
@@ -152,3 +228,7 @@ For big slices that span multiple gated surfaces, get operator approval **per ch
 - Treating "Codex says it's done" as audit-clean.
 - Bundling a multi-surface big-bang merge instead of chunked landings.
 - Trusting your own earlier summary half-way through a long audit; not re-reading the diff.
+- Sending back findings to Codex/agent by default instead of fixing inline (Phase 5b orchestrator-fix is the default).
+- Applying a fix without naming the authority doc + section that justifies it.
+- Importing external "best practices" (generic linter rules, popular blog recommendations) that conflict with project-specific contracts.
+- Calling a finding "fixed" without a commit SHA + verification command in the audit doc.
