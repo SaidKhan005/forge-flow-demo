@@ -124,6 +124,7 @@ void main() {
         (s) => s.contains('from locations'),
       );
       expect(selectSql, contains('where operator_id = @operator_id::uuid'));
+      expect(selectSql, contains('and deleted_at is null'));
       expect(selectSql, contains('order by created_at asc'));
       // operator_id bound parametrically.
       final selectParams = tx.parameters.firstWhere(
@@ -187,9 +188,10 @@ void main() {
           final selectSql = tx.executedSql.firstWhere(
             (s) => s.contains('from locations'),
           );
+          expect(selectSql, contains('where deleted_at is null'));
           expect(
             selectSql,
-            isNot(contains('where ')),
+            isNot(contains('where operator_id')),
             reason: 'cross-operator sweep — no operator_id filter',
           );
           expect(
@@ -359,6 +361,7 @@ void main() {
         ),
       );
       expect(updateSql, contains('updated_at = now()'));
+      expect(updateSql, contains('and deleted_at is null'));
 
       // Omitted fields bound as null so coalesce keeps the existing
       // column value.
@@ -444,11 +447,20 @@ void main() {
         expect(affected, equals(1));
 
         final tx = pool.transactions.single;
-        final deleteSql = tx.executedSql.firstWhere(
-          (s) => s.contains('delete from locations'),
+        final guardSql = tx.executedSql.firstWhere(
+          (s) => s.contains('from user_roles') && s.contains('auth_invites'),
         );
+        expect(guardSql, contains("scope_type = 'location'"));
+        expect(guardSql, contains('valid_from <= now()'));
+        expect(guardSql, contains('expires_at > now()'));
+
+        final deleteSql = tx.executedSql.firstWhere(
+          (s) => s.contains('update locations'),
+        );
+        expect(deleteSql, contains('set deleted_at = now()'));
         expect(deleteSql, contains('where location_id = @location_id::uuid'));
         expect(deleteSql, contains('and operator_id = @operator_id::uuid'));
+        expect(deleteSql, contains('and deleted_at is null'));
         // Both are bound parametrically.
         final deleteParams = tx.parameters.firstWhere(
           (p) => p['location_id'] == _locA && p['operator_id'] == _opA,
@@ -470,6 +482,32 @@ void main() {
       );
       expect(affected, equals(0));
     });
+
+    test(
+      'refuses soft delete when active role or invite targets location',
+      () async {
+        final pool = _LocationsPool(
+          activeTargetRows: const <PostgresRow>[
+            <String, Object?>{'source': 'user_roles'},
+          ],
+          deleteAffectedRows: 1,
+        );
+        final repo = LocationsRepository(TenantTransactionWrapper(pool));
+        await expectLater(
+          repo.deleteLocation(
+            locationId: _locA,
+            operatorId: _opA,
+            adminReason: 'admin.locations.delete',
+          ),
+          throwsStateError,
+        );
+        final tx = pool.transactions.single;
+        expect(
+          tx.executedSql.any((s) => s.contains('update locations')),
+          isFalse,
+        );
+      },
+    );
   });
 }
 
@@ -483,6 +521,7 @@ class _LocationsPool implements PostgresPool {
     this.listAllRows = const <PostgresRow>[],
     this.insertedRows = const <PostgresRow>[],
     this.updatedRows = const <PostgresRow>[],
+    this.activeTargetRows = const <PostgresRow>[],
     this.deleteAffectedRows = 0,
   });
 
@@ -490,6 +529,7 @@ class _LocationsPool implements PostgresPool {
   final List<PostgresRow> listAllRows;
   final List<PostgresRow> insertedRows;
   final List<PostgresRow> updatedRows;
+  final List<PostgresRow> activeTargetRows;
   final int deleteAffectedRows;
   final List<_LocationsTransaction> transactions = <_LocationsTransaction>[];
 
@@ -500,6 +540,7 @@ class _LocationsPool implements PostgresPool {
       listAllRows: listAllRows,
       insertedRows: insertedRows,
       updatedRows: updatedRows,
+      activeTargetRows: activeTargetRows,
       deleteAffectedRows: deleteAffectedRows,
     );
     transactions.add(tx);
@@ -513,6 +554,7 @@ class _LocationsTransaction extends PostgresTransaction {
     required this.listAllRows,
     required this.insertedRows,
     required this.updatedRows,
+    required this.activeTargetRows,
     required this.deleteAffectedRows,
   });
 
@@ -520,6 +562,7 @@ class _LocationsTransaction extends PostgresTransaction {
   final List<PostgresRow> listAllRows;
   final List<PostgresRow> insertedRows;
   final List<PostgresRow> updatedRows;
+  final List<PostgresRow> activeTargetRows;
   final int deleteAffectedRows;
 
   final List<String> executedSql = <String>[];
@@ -542,6 +585,9 @@ class _LocationsTransaction extends PostgresTransaction {
     if (sql.contains('update locations')) {
       return updatedRows;
     }
+    if (sql.contains('from user_roles') && sql.contains('auth_invites')) {
+      return activeTargetRows;
+    }
     if (sql.contains('from locations')) {
       if (sql.contains('where operator_id = @operator_id::uuid')) {
         return listForOperatorRows;
@@ -559,7 +605,8 @@ class _LocationsTransaction extends PostgresTransaction {
     if (_finalized) throw StateError('transaction already finalized');
     executedSql.add(sql);
     this.parameters.add(parameters);
-    if (sql.contains('delete from locations')) {
+    if (sql.contains('update locations') &&
+        sql.contains('deleted_at = now()')) {
       return deleteAffectedRows;
     }
     return 0;

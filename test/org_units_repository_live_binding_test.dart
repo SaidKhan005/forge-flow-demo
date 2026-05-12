@@ -55,7 +55,9 @@ void main() {
       expect(rows.single.orgUnitPath, equals('acme.east'));
       final sql = pool.transactions.single.executedSql.last;
       expect(sql, contains('from locations'));
-      expect(sql, contains('order by org_unit_path'));
+      expect(sql, contains('where l.deleted_at is null'));
+      expect(sql, contains('deleted_ancestor.deleted_at is not null'));
+      expect(sql, contains('order by l.org_unit_path'));
     });
   });
 
@@ -901,6 +903,8 @@ void main() {
         final updateParams = tx.parameters[updateIdx];
         expect(updateParams['parent_id'], equals(_validParentId));
         expect(updateParams['location_id'], equals(_validTargetLocationId));
+        expect(updateParams['operator_id'], equals(_validOpId));
+        expect(tx.executedSql[updateIdx], contains('and deleted_at is null'));
         // Repo MUST NOT touch user_roles — that table's
         // `org_unit_id` is set when the grant is created, not when
         // a location moves between units.
@@ -929,6 +933,165 @@ void main() {
         tx.executedSql.any((sql) => sql.contains('update locations')),
         isFalse,
       );
+    });
+  });
+
+  group('OrgUnitsRepository lifecycle delete guards', () {
+    test(
+      'deleteOrgUnit refuses active direct role or invite targets',
+      () async {
+        final pool = _OrgUnitsPool(
+          orgUnitRows: <PostgresRow>[
+            <String, Object?>{
+              'id': _validParentId,
+              'operator_id': _validOpId,
+              'parent_id': '66666666-6666-4666-8666-666666666666',
+              'unit_type': 'region',
+              'path': 'acme.east',
+              'name': 'East',
+              'created_at': DateTime.utc(2026, 4, 1),
+              'updated_at': DateTime.utc(2026, 4, 1),
+            },
+          ],
+          activeTargetRows: const <PostgresRow>[
+            <String, Object?>{'source': 'user_roles'},
+          ],
+        );
+        final repo = OrgUnitsRepository(TenantTransactionWrapper(pool));
+
+        await expectLater(
+          repo.deleteOrgUnit(
+            operatorId: _validOpId,
+            locationId: _validLocId,
+            orgUnitId: _validParentId,
+            userId: _validUserId,
+          ),
+          throwsA(
+            isA<OrgUnitMoveRejected>().having(
+              (error) => error.code,
+              'code',
+              equals('org_unit_has_active_access_targets'),
+            ),
+          ),
+        );
+
+        final tx = pool.transactions.single;
+        final guardSql = tx.executedSql.firstWhere(
+          (sql) =>
+              sql.contains('from user_roles') && sql.contains('auth_invites'),
+        );
+        expect(guardSql, contains("scope_type = 'org_unit'"));
+        expect(guardSql, contains('valid_from <= now()'));
+        expect(guardSql, contains('expires_at > now()'));
+        expect(
+          tx.executedSql.any((sql) => sql.contains('update org_units')),
+          isFalse,
+        );
+      },
+    );
+
+    test('deleteOrgUnit soft-deletes with operator guard', () async {
+      final pool = _OrgUnitsPool(
+        orgUnitRows: <PostgresRow>[
+          <String, Object?>{
+            'id': _validParentId,
+            'operator_id': _validOpId,
+            'parent_id': '66666666-6666-4666-8666-666666666666',
+            'unit_type': 'region',
+            'path': 'acme.east',
+            'name': 'East',
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+          },
+        ],
+      );
+      final repo = OrgUnitsRepository(TenantTransactionWrapper(pool));
+
+      final deleted = await repo.deleteOrgUnit(
+        operatorId: _validOpId,
+        locationId: _validLocId,
+        orgUnitId: _validParentId,
+        userId: _validUserId,
+      );
+
+      expect(deleted, isTrue);
+      final tx = pool.transactions.single;
+      final updateSql = tx.executedSql.firstWhere(
+        (sql) => sql.contains('update org_units'),
+      );
+      expect(updateSql, contains('set deleted_at = now(), updated_at = now()'));
+      expect(updateSql, contains('where id = @org_unit_id::uuid'));
+      expect(updateSql, contains('and operator_id = @operator_id::uuid'));
+      expect(updateSql, contains('and deleted_at is null'));
+    });
+
+    test(
+      'deleteLocation refuses active direct role or invite targets',
+      () async {
+        final pool = _OrgUnitsPool(
+          activeTargetRows: const <PostgresRow>[
+            <String, Object?>{'source': 'auth_invites'},
+          ],
+          updateAffectedRows: 1,
+        );
+        final repo = OrgUnitsRepository(TenantTransactionWrapper(pool));
+
+        await expectLater(
+          repo.deleteLocation(
+            operatorId: _validOpId,
+            locationId: _validLocId,
+            targetLocationId: _validTargetLocationId,
+            userId: _validUserId,
+          ),
+          throwsA(
+            isA<OrgUnitMoveRejected>().having(
+              (error) => error.code,
+              'code',
+              equals('location_has_active_access_targets'),
+            ),
+          ),
+        );
+
+        final tx = pool.transactions.single;
+        final guardSql = tx.executedSql.firstWhere(
+          (sql) =>
+              sql.contains('from user_roles') && sql.contains('auth_invites'),
+        );
+        expect(guardSql, contains("scope_type = 'location'"));
+        expect(guardSql, contains('valid_from <= now()'));
+        expect(guardSql, contains('expires_at > now()'));
+        expect(
+          tx.executedSql.any(
+            (sql) =>
+                sql.contains('update locations') &&
+                sql.contains('deleted_at = now()'),
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    test('deleteLocation soft-deletes with operator guard', () async {
+      final pool = _OrgUnitsPool(updateAffectedRows: 1);
+      final repo = OrgUnitsRepository(TenantTransactionWrapper(pool));
+
+      final deleted = await repo.deleteLocation(
+        operatorId: _validOpId,
+        locationId: _validLocId,
+        targetLocationId: _validTargetLocationId,
+        userId: _validUserId,
+      );
+
+      expect(deleted, isTrue);
+      final tx = pool.transactions.single;
+      final updateSql = tx.executedSql.firstWhere(
+        (sql) =>
+            sql.contains('update locations') &&
+            sql.contains('deleted_at = now()'),
+      );
+      expect(updateSql, contains('where location_id = @location_id::uuid'));
+      expect(updateSql, contains('and operator_id = @operator_id::uuid'));
+      expect(updateSql, contains('and deleted_at is null'));
     });
   });
 
@@ -1062,6 +1225,7 @@ class _OrgUnitsPool implements PostgresPool {
     this.orgUnitRows = const <PostgresRow>[],
     this.movedOrgUnitRows = const <PostgresRow>[],
     this.roleRows = const <PostgresRow>[],
+    this.activeTargetRows = const <PostgresRow>[],
     this.updateAffectedRows = 1,
     this.createChildId,
   });
@@ -1073,6 +1237,7 @@ class _OrgUnitsPool implements PostgresPool {
   final List<PostgresRow> orgUnitRows;
   final List<PostgresRow> movedOrgUnitRows;
   final List<PostgresRow> roleRows;
+  final List<PostgresRow> activeTargetRows;
   final int updateAffectedRows;
   final String? createChildId;
 
@@ -1088,6 +1253,7 @@ class _OrgUnitsPool implements PostgresPool {
       orgUnitRows: orgUnitRows,
       movedOrgUnitRows: movedOrgUnitRows,
       roleRows: roleRows,
+      activeTargetRows: activeTargetRows,
       updateAffectedRows: updateAffectedRows,
       createChildId: createChildId,
     );
@@ -1119,6 +1285,7 @@ class _OrgUnitsTransaction extends PostgresTransaction {
     required this.orgUnitRows,
     required this.movedOrgUnitRows,
     required this.roleRows,
+    required this.activeTargetRows,
     required this.updateAffectedRows,
     required this.createChildId,
   });
@@ -1130,6 +1297,7 @@ class _OrgUnitsTransaction extends PostgresTransaction {
   final List<PostgresRow> orgUnitRows;
   final List<PostgresRow> movedOrgUnitRows;
   final List<PostgresRow> roleRows;
+  final List<PostgresRow> activeTargetRows;
   final int updateAffectedRows;
   final String? createChildId;
   final List<String> executedSql = <String>[];
@@ -1144,6 +1312,9 @@ class _OrgUnitsTransaction extends PostgresTransaction {
     if (_finalized) throw StateError('transaction already finalized');
     executedSql.add(sql);
     this.parameters.add(parameters);
+    if (sql.contains('from user_roles') && sql.contains('auth_invites')) {
+      return activeTargetRows;
+    }
     if (sql.contains('from locations')) return locationRows;
     if (sql.contains('update org_units ou')) {
       return movedOrgUnitRows.isEmpty ? orgUnitRows : movedOrgUnitRows;

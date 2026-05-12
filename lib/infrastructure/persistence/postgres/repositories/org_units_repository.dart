@@ -272,14 +272,20 @@ class OrgUnitsRepository extends OperatorScopedRepository {
     );
     return withTenant<List<OrgLocationRow>>(ctx, (exec) async {
       final rows = await exec.query(
-        'select location_id::text as location_id, '
-        'operator_id::text as operator_id, '
-        'parent_org_unit_id::text as parent_org_unit_id, '
-        'org_unit_path::text as org_unit_path, name, '
-        'timezone as business_timezone, suspended_at, deleted_at '
-        'from locations '
-        'where deleted_at is null '
-        'order by org_unit_path, name',
+        'select l.location_id::text as location_id, '
+        'l.operator_id::text as operator_id, '
+        'l.parent_org_unit_id::text as parent_org_unit_id, '
+        'l.org_unit_path::text as org_unit_path, l.name, '
+        'l.timezone as business_timezone, l.suspended_at, l.deleted_at '
+        'from locations l '
+        'where l.deleted_at is null '
+        'and not exists ('
+        'select 1 from org_units deleted_ancestor '
+        'where deleted_ancestor.operator_id = l.operator_id '
+        'and deleted_ancestor.deleted_at is not null '
+        'and l.org_unit_path <@ deleted_ancestor.path'
+        ') '
+        'order by l.org_unit_path, l.name',
       );
       return rows.map(_locationRowFromMap).toList(growable: false);
     });
@@ -326,10 +332,12 @@ class OrgUnitsRepository extends OperatorScopedRepository {
         'update locations '
         'set parent_org_unit_id = @parent_id::uuid '
         'where location_id = @location_id::uuid '
+        'and operator_id = @operator_id::uuid '
         'and deleted_at is null',
         parameters: <String, Object?>{
           'parent_id': parentOrgUnitId,
           'location_id': targetLocationId,
+          'operator_id': operatorId,
         },
       );
     });
@@ -532,11 +540,13 @@ class OrgUnitsRepository extends OperatorScopedRepository {
         'set suspended_at = case when @suspended then now() else null end, '
         'updated_at = now() '
         'where id = @org_unit_id::uuid '
+        'and operator_id = @operator_id::uuid '
         'and deleted_at is null '
         'returning id::text as id, operator_id::text as operator_id, '
         'parent_id::text as parent_id, unit_type, path::text as path, '
         'name, suspended_at, deleted_at, created_at, updated_at',
         parameters: <String, Object?>{
+          'operator_id': operatorId,
           'org_unit_id': orgUnitId,
           'suspended': suspended,
         },
@@ -604,12 +614,49 @@ class OrgUnitsRepository extends OperatorScopedRepository {
           statusCode: 409,
         );
       }
+      final activeTargets = await exec.query(
+        'select source from ('
+        "select 'user_roles' as source "
+        'from user_roles '
+        'where operator_id = @operator_id::uuid '
+        'and org_unit_id = @org_unit_id::uuid '
+        "and scope_type = 'org_unit' "
+        'and revoked_at is null '
+        'and valid_from <= now() '
+        'and (valid_until is null or valid_until > now()) '
+        'union all '
+        "select 'auth_invites' as source "
+        'from auth_invites '
+        'where operator_id = @operator_id::uuid '
+        'and org_unit_id = @org_unit_id::uuid '
+        "and scope_type = 'org_unit' "
+        'and accepted_at is null '
+        'and revoked_at is null '
+        'and expires_at > now()'
+        ') active_targets '
+        'limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'org_unit_id': orgUnitId,
+        },
+      );
+      if (activeTargets.isNotEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'org_unit_has_active_access_targets',
+          message: 'revoke or reassign active roles and invites first',
+          statusCode: 409,
+        );
+      }
       final affected = await exec.execute(
         'update org_units '
         'set deleted_at = now(), updated_at = now() '
         'where id = @org_unit_id::uuid '
+        'and operator_id = @operator_id::uuid '
         'and deleted_at is null',
-        parameters: <String, Object?>{'org_unit_id': orgUnitId},
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'org_unit_id': orgUnitId,
+        },
       );
       return affected > 0;
     });
@@ -633,6 +680,7 @@ class OrgUnitsRepository extends OperatorScopedRepository {
         'set suspended_at = case when @suspended then now() else null end, '
         'updated_at = now() '
         'where location_id = @location_id::uuid '
+        'and operator_id = @operator_id::uuid '
         'and deleted_at is null '
         'returning location_id::text as location_id, '
         'operator_id::text as operator_id, '
@@ -640,6 +688,7 @@ class OrgUnitsRepository extends OperatorScopedRepository {
         "coalesce(org_unit_path::text, '') as org_unit_path, "
         'name, timezone as business_timezone, suspended_at, deleted_at',
         parameters: <String, Object?>{
+          'operator_id': operatorId,
           'location_id': targetLocationId,
           'suspended': suspended,
         },
@@ -684,12 +733,49 @@ class OrgUnitsRepository extends OperatorScopedRepository {
           statusCode: 400,
         );
       }
+      final activeTargets = await exec.query(
+        'select source from ('
+        "select 'user_roles' as source "
+        'from user_roles '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        "and scope_type = 'location' "
+        'and revoked_at is null '
+        'and valid_from <= now() '
+        'and (valid_until is null or valid_until > now()) '
+        'union all '
+        "select 'auth_invites' as source "
+        'from auth_invites '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        "and scope_type = 'location' "
+        'and accepted_at is null '
+        'and revoked_at is null '
+        'and expires_at > now()'
+        ') active_targets '
+        'limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': targetLocationId,
+        },
+      );
+      if (activeTargets.isNotEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'location_has_active_access_targets',
+          message: 'revoke or reassign active roles and invites first',
+          statusCode: 409,
+        );
+      }
       final affected = await exec.execute(
         'update locations '
         'set deleted_at = now(), updated_at = now() '
         'where location_id = @location_id::uuid '
+        'and operator_id = @operator_id::uuid '
         'and deleted_at is null',
-        parameters: <String, Object?>{'location_id': targetLocationId},
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': targetLocationId,
+        },
       );
       if (affected == 0) {
         throw const OrgUnitMoveRejected(
@@ -740,6 +826,12 @@ class OrgUnitsRepository extends OperatorScopedRepository {
         'from locations l '
         'join operators o on o.operator_id = l.operator_id '
         'where l.deleted_at is null '
+        'and not exists ('
+        'select 1 from org_units deleted_ancestor '
+        'where deleted_ancestor.operator_id = l.operator_id '
+        'and deleted_ancestor.deleted_at is not null '
+        'and l.org_unit_path <@ deleted_ancestor.path'
+        ') '
         'order by lower(o.business_name), l.org_unit_path, '
         'lower(l.name), l.location_id',
       );
