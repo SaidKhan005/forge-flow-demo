@@ -1,0 +1,48 @@
+﻿{
+  "project_info": {
+    "project_number": "914509283000",
+    "project_id": "forge-flow-production1",
+    "storage_bucket": "forge-flow-production1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:914509283000:android:0c50a5631f92f2b8b3fe4d",
+        "android_client_info": {
+          "package_name": "com.forgeflow.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2NICTUzccjZ3TZ5R5tT5kGyjHhGezLTc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:914509283000:android:9a6a0b4cd0b1b831b3fe4d",
+        "android_client_info": {
+          "package_name": "com.forgeflow.barrio"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2NICTUzccjZ3TZ5R5tT5kGyjHhGezLTc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -40,6 +40,7 @@ param(
   [string] $ServiceAccount = 'forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com',
   [string] $ArtifactRepository = 'forge-flow-cloud-run',
   [string] $AdminProxyBaseUri = $env:FORGE_FLOW_ADMIN_PROXY_BASE_URI,
+  [string] $FirebaseConfigPath = 'web\firebase-config.js',
   [string] $SecretsFile = (Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1'),
   [switch] $DemoMode,
   [switch] $SharePreview,
@@ -58,6 +59,69 @@ if (-not (Test-Path -LiteralPath $gcloud)) {
 if (Test-Path -LiteralPath $SecretsFile) {
   . $SecretsFile
 }
+
+function Assert-ServiceAccountProject {
+  param(
+    [string] $DeployProject,
+    [string] $DeployServiceAccount
+  )
+
+  if (
+    $DeployServiceAccount -match '@(?<serviceAccountProject>[^.]+)\.iam\.gserviceaccount\.com$' -and
+    $Matches.serviceAccountProject -ne $DeployProject
+  ) {
+    Write-Host 'BLOCKED: Cloud Run service account project does not match deploy project.'
+    Write-Host " - deploy project: $DeployProject"
+    Write-Host " - service account: $DeployServiceAccount"
+    exit 1
+  }
+}
+
+Assert-ServiceAccountProject `
+  -DeployProject $Project `
+  -DeployServiceAccount $ServiceAccount
+
+function Resolve-FirebaseWebConfig {
+  param(
+    [string] $Path,
+    [string] $ExpectedProject
+  )
+
+  if (-not [System.IO.Path]::IsPathRooted($Path)) {
+    $Path = Join-Path $repoRoot $Path
+  }
+  if (-not (Test-Path -LiteralPath $Path)) {
+    Write-Host "BLOCKED: Firebase web config not found: $Path"
+    exit 1
+  }
+  $config = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+  $requiredKeys = @(
+    'apiKey',
+    'appId',
+    'messagingSenderId',
+    'projectId',
+    'authDomain',
+    'storageBucket'
+  )
+  foreach ($key in $requiredKeys) {
+    if ([string]::IsNullOrWhiteSpace([string] $config.$key)) {
+      Write-Host "BLOCKED: Firebase web config missing '$key': $Path"
+      exit 1
+    }
+  }
+  if ([string] $config.projectId -ne $ExpectedProject) {
+    Write-Host 'BLOCKED: Firebase web config projectId does not match deploy project.'
+    Write-Host " - deploy project: $ExpectedProject"
+    Write-Host " - config projectId: $($config.projectId)"
+    Write-Host " - config path: $Path"
+    exit 1
+  }
+  return $config
+}
+
+$firebaseWebConfig = Resolve-FirebaseWebConfig `
+  -Path $FirebaseConfigPath `
+  -ExpectedProject $Project
 
 if ([string]::IsNullOrWhiteSpace($AdminProxyBaseUri)) {
   if (-not [string]::IsNullOrWhiteSpace($env:FORGE_FLOW_ADMIN_PROXY_BASE_URI)) {
@@ -152,6 +216,18 @@ $cloudBuildConfig = @(
   "  - $(Quote-CloudBuildYamlValue "ADMIN_SHARE_PREVIEW=$adminSharePreview")",
   "  - '--build-arg'",
   "  - $(Quote-CloudBuildYamlValue "ADMIN_PROXY_BASE_URI=$AdminProxyBaseUri")",
+  "  - '--build-arg'",
+  "  - $(Quote-CloudBuildYamlValue "FIREBASE_WEB_API_KEY=$($firebaseWebConfig.apiKey)")",
+  "  - '--build-arg'",
+  "  - $(Quote-CloudBuildYamlValue "FIREBASE_WEB_APP_ID=$($firebaseWebConfig.appId)")",
+  "  - '--build-arg'",
+  "  - $(Quote-CloudBuildYamlValue "FIREBASE_MESSAGING_SENDER_ID=$($firebaseWebConfig.messagingSenderId)")",
+  "  - '--build-arg'",
+  "  - $(Quote-CloudBuildYamlValue "FIREBASE_PROJECT_ID=$($firebaseWebConfig.projectId)")",
+  "  - '--build-arg'",
+  "  - $(Quote-CloudBuildYamlValue "FIREBASE_AUTH_DOMAIN=$($firebaseWebConfig.authDomain)")",
+  "  - '--build-arg'",
+  "  - $(Quote-CloudBuildYamlValue "FIREBASE_STORAGE_BUCKET=$($firebaseWebConfig.storageBucket)")",
   "  - '-t'",
   "  - $(Quote-CloudBuildYamlValue $image)",
   "  - '.'",

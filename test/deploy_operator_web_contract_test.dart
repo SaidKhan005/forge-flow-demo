@@ -44,6 +44,47 @@ void main() {
       );
     });
 
+    test('loads Firebase web config and requires it to match project', () {
+      expect(
+        script,
+        contains("[string] \$FirebaseConfigPath = 'web\\firebase-config.js'"),
+      );
+      expect(script, contains('function Resolve-FirebaseWebConfig'));
+      expect(
+        script,
+        contains(
+          'BLOCKED: Firebase web config projectId does not match '
+          'deploy project.',
+        ),
+      );
+      expect(script, contains('-ExpectedProject \$Project'));
+    });
+
+    test('blocks mismatched Cloud Run service account project', () {
+      expect(script, contains('function Assert-ServiceAccountProject'));
+      expect(
+        script,
+        contains(
+          'BLOCKED: Cloud Run service account project does not match '
+          'deploy project.',
+        ),
+      );
+      expect(script, contains('-DeployServiceAccount \$ServiceAccount'));
+    });
+
+    test('passes Firebase web build args through Cloud Build', () {
+      for (final arg in <String>[
+        'FIREBASE_WEB_API_KEY',
+        'FIREBASE_WEB_APP_ID',
+        'FIREBASE_MESSAGING_SENDER_ID',
+        'FIREBASE_PROJECT_ID',
+        'FIREBASE_AUTH_DOMAIN',
+        'FIREBASE_STORAGE_BUCKET',
+      ]) {
+        expect(script, contains('"$arg='));
+      }
+    });
+
     test(
       'appends the operator-web origin without dropping existing origins',
       () {

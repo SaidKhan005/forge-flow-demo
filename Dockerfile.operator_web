@@ -45,6 +45,12 @@ FROM ghcr.io/cirruslabs/flutter:stable AS build
 # corresponding deploy-script `-DemoMode` warning path.
 ARG OPERATOR_WEB_DEMO_AUTH=false
 ARG OPERATOR_WEB_PROXY_BASE_URI=
+ARG FIREBASE_WEB_API_KEY=
+ARG FIREBASE_WEB_APP_ID=
+ARG FIREBASE_MESSAGING_SENDER_ID=
+ARG FIREBASE_PROJECT_ID=
+ARG FIREBASE_AUTH_DOMAIN=
+ARG FIREBASE_STORAGE_BUCKET=
 ARG OPERATOR_WEB_BUILD_FLAVOR=operator_web
 
 WORKDIR /workspace
@@ -85,7 +91,13 @@ RUN flutter config --enable-web \
         --release \
         --no-web-resources-cdn \
         --dart-define=OPERATOR_WEB_DEMO_AUTH=${OPERATOR_WEB_DEMO_AUTH} \
-        --dart-define=OPERATOR_WEB_PROXY_BASE_URI=${OPERATOR_WEB_PROXY_BASE_URI}
+        --dart-define=OPERATOR_WEB_PROXY_BASE_URI=${OPERATOR_WEB_PROXY_BASE_URI} \
+        --dart-define=FIREBASE_WEB_API_KEY=${FIREBASE_WEB_API_KEY} \
+        --dart-define=FIREBASE_WEB_APP_ID=${FIREBASE_WEB_APP_ID} \
+        --dart-define=FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID} \
+        --dart-define=FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID} \
+        --dart-define=FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN} \
+        --dart-define=FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET}
 
 FROM nginx:1.27-alpine
 

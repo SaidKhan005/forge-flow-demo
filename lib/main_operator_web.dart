@@ -76,19 +76,39 @@ const String _kOperatorWebProxyBaseUri = String.fromEnvironment(
   'OPERATOR_WEB_PROXY_BASE_URI',
 );
 
-/// Firebase web options for the operator-web staging project. Mirrors
-/// `web/firebase-config.js`. FlutterFire Web does not read that file
-/// automatically; the default app must be created with explicit
-/// [FirebaseOptions] unless a JavaScript bootstrap has already
-/// initialized it.
+/// Firebase web options for the operator web project.
+///
+/// Defaults mirror `web/firebase-config.js` (staging); production deploys
+/// override these with dart-defines generated from
+/// `web/firebase-config.production1.js`. FlutterFire Web does not read those
+/// files automatically; the default app must be created with explicit
+/// [FirebaseOptions] unless a JavaScript bootstrap has already initialized it.
 @visibleForTesting
 const FirebaseOptions kOperatorWebFirebaseOptions = FirebaseOptions(
-  apiKey: 'AIzaSyBeTA2ye7U1gsrwZyGcMVDOAfo7Seh2oqM',
-  appId: '1:78630909582:web:d716c986475899f13a7bdf',
-  messagingSenderId: '78630909582',
-  projectId: 'forge-flow-staging',
-  authDomain: 'forge-flow-staging.firebaseapp.com',
-  storageBucket: 'forge-flow-staging.firebasestorage.app',
+  apiKey: String.fromEnvironment(
+    'FIREBASE_WEB_API_KEY',
+    defaultValue: 'AIzaSyBeTA2ye7U1gsrwZyGcMVDOAfo7Seh2oqM',
+  ),
+  appId: String.fromEnvironment(
+    'FIREBASE_WEB_APP_ID',
+    defaultValue: '1:78630909582:web:d716c986475899f13a7bdf',
+  ),
+  messagingSenderId: String.fromEnvironment(
+    'FIREBASE_MESSAGING_SENDER_ID',
+    defaultValue: '78630909582',
+  ),
+  projectId: String.fromEnvironment(
+    'FIREBASE_PROJECT_ID',
+    defaultValue: 'forge-flow-staging',
+  ),
+  authDomain: String.fromEnvironment(
+    'FIREBASE_AUTH_DOMAIN',
+    defaultValue: 'forge-flow-staging.firebaseapp.com',
+  ),
+  storageBucket: String.fromEnvironment(
+    'FIREBASE_STORAGE_BUCKET',
+    defaultValue: 'forge-flow-staging.firebasestorage.app',
+  ),
 );
 
 Future<void> main() async {
@@ -198,13 +218,13 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
         OperatorWebTeamAuditLogGatewayProvider,
         OperatorWebSecurityGatewayProvider {
   _DemoOperatorWebAuthSourceWithTeamSurfaces()
-      : teamUsersGateway = DemoWebTeamUsersGateway(),
-        teamRolesGateway = DemoWebTeamRolesGateway(),
-        teamHierarchyGateway = DemoWebTeamHierarchyGateway(),
-        teamSessionsGateway = DemoWebTeamSessionsGateway(),
-        teamAuditLogGateway = DemoWebTeamAuditLogGateway(),
-        securityGateway = DemoWebSecurityGateway(),
-        super(initial: const OperatorWebNeedsToken());
+    : teamUsersGateway = DemoWebTeamUsersGateway(),
+      teamRolesGateway = DemoWebTeamRolesGateway(),
+      teamHierarchyGateway = DemoWebTeamHierarchyGateway(),
+      teamSessionsGateway = DemoWebTeamSessionsGateway(),
+      teamAuditLogGateway = DemoWebTeamAuditLogGateway(),
+      securityGateway = DemoWebSecurityGateway(),
+      super(initial: const OperatorWebNeedsToken());
 
   @override
   final WebTeamUsersGateway teamUsersGateway;
@@ -230,4 +250,3 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
   @override
   String? get currentSessionId => kDemoTeamSessionThisSessionId;
 }
-

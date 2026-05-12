@@ -54,6 +54,95 @@ void main() {
       expect(dockerfile, contains('gzip -9 -c "\$1" > "\$1.gz"'));
       expect(dockerfile, contains('gzip_static on;'));
     });
+
+    test('passes Firebase web config dart-defines into Flutter build', () {
+      for (final arg in <String>[
+        'FIREBASE_WEB_API_KEY',
+        'FIREBASE_WEB_APP_ID',
+        'FIREBASE_MESSAGING_SENDER_ID',
+        'FIREBASE_PROJECT_ID',
+        'FIREBASE_AUTH_DOMAIN',
+        'FIREBASE_STORAGE_BUCKET',
+      ]) {
+        expect(dockerfile, contains('ARG $arg='));
+        expect(dockerfile, contains('--dart-define=$arg='));
+      }
+      expect(
+        dockerfile,
+        contains('--dart-define=ADMIN_SHARE_PREVIEW=\${ADMIN_SHARE_PREVIEW}'),
+      );
+    });
+  });
+
+  group('operator web Dockerfile', () {
+    late String dockerfile;
+
+    setUpAll(() {
+      dockerfile = File('Dockerfile.operator_web').readAsStringSync();
+    });
+
+    test('passes Firebase web config dart-defines into Flutter build', () {
+      for (final arg in <String>[
+        'FIREBASE_WEB_API_KEY',
+        'FIREBASE_WEB_APP_ID',
+        'FIREBASE_MESSAGING_SENDER_ID',
+        'FIREBASE_PROJECT_ID',
+        'FIREBASE_AUTH_DOMAIN',
+        'FIREBASE_STORAGE_BUCKET',
+      ]) {
+        expect(dockerfile, contains('ARG $arg='));
+        expect(dockerfile, contains('--dart-define=$arg='));
+      }
+    });
+  });
+
+  group('deploy_admin_console.ps1', () {
+    late String script;
+
+    setUpAll(() {
+      script = File('scripts/deploy_admin_console.ps1').readAsStringSync();
+    });
+
+    test('loads Firebase web config and requires it to match project', () {
+      expect(
+        script,
+        contains("[string] \$FirebaseConfigPath = 'web\\firebase-config.js'"),
+      );
+      expect(script, contains('function Resolve-FirebaseWebConfig'));
+      expect(
+        script,
+        contains(
+          'BLOCKED: Firebase web config projectId does not match '
+          'deploy project.',
+        ),
+      );
+      expect(script, contains('-ExpectedProject \$Project'));
+    });
+
+    test('blocks mismatched Cloud Run service account project', () {
+      expect(script, contains('function Assert-ServiceAccountProject'));
+      expect(
+        script,
+        contains(
+          'BLOCKED: Cloud Run service account project does not match '
+          'deploy project.',
+        ),
+      );
+      expect(script, contains('-DeployServiceAccount \$ServiceAccount'));
+    });
+
+    test('passes Firebase web build args through Cloud Build', () {
+      for (final arg in <String>[
+        'FIREBASE_WEB_API_KEY',
+        'FIREBASE_WEB_APP_ID',
+        'FIREBASE_MESSAGING_SENDER_ID',
+        'FIREBASE_PROJECT_ID',
+        'FIREBASE_AUTH_DOMAIN',
+        'FIREBASE_STORAGE_BUCKET',
+      ]) {
+        expect(script, contains('"$arg='));
+      }
+    });
   });
 
   group('deploy_staging_proxy.ps1', () {
@@ -90,6 +179,35 @@ void main() {
 
     test('declares -FirebaseGoogleServicesPath parameter (empty default)', () {
       expect(script, contains("[string] \$FirebaseGoogleServicesPath = ''"));
+    });
+
+    test('declares production source env overrides with project guard', () {
+      expect(script, contains("[string] \$PostgresUrlEnvVarName = ''"));
+      expect(script, contains("[string] \$PostgresAdminUrlEnvVarName = ''"));
+      expect(script, contains("[string] \$FirebaseProjectId = ''"));
+      expect(
+        script,
+        contains('BLOCKED: FIREBASE_PROJECT_ID does not match deploy project.'),
+      );
+      expect(
+        script,
+        contains(
+          'Pass -FirebaseProjectId for production deploys when the shared '
+          'secrets loader defaults to another environment.',
+        ),
+      );
+    });
+
+    test('blocks mismatched Cloud Run service account project', () {
+      expect(script, contains('function Assert-ServiceAccountProject'));
+      expect(
+        script,
+        contains(
+          'BLOCKED: Cloud Run service account project does not match '
+          'deploy project.',
+        ),
+      );
+      expect(script, contains('-DeployServiceAccount \$ServiceAccount'));
     });
 
     test(
@@ -258,6 +376,24 @@ void main() {
       expect(
         script,
         contains(r'$googleServicesPath = $FirebaseGoogleServicesPath'),
+      );
+      expect(
+        script,
+        contains(
+          'BLOCKED: Firebase google-services config not found: '
+          r'$googleServicesPath',
+        ),
+      );
+      expect(
+        script,
+        contains(
+          'BLOCKED: Firebase google-services project_id does not match '
+          'deploy project.',
+        ),
+      );
+      expect(
+        script,
+        contains(r'[string]::IsNullOrWhiteSpace($FirebaseGoogleServicesPath)'),
       );
     });
   });

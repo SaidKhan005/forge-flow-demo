@@ -32,11 +32,19 @@ param(
   # proxy URL. Defaults to the staging variable; production deploys
   # should use a distinct name (e.g. 'FORGE_FLOW_PROXY_BASE_URI_PROD1').
   [string] $ProxyBaseUriEnvVarName = 'FORGE_FLOW_PROXY_BASE_URI',
+  # Optional source env-var names to copy into the generic runtime names after
+  # the secrets file is sourced. Production deploys should pass
+  # POSTGRES_PRODUCTION_URL / POSTGRES_PRODUCTION_ADMIN_URL here so a staging
+  # canonical loader cannot accidentally seed production Secret Manager with
+  # staging DSNs.
+  [string] $PostgresUrlEnvVarName = '',
+  [string] $PostgresAdminUrlEnvVarName = '',
+  [string] $FirebaseProjectId = '',
   # Path to the Firebase google-services.json this deploy should pull
   # FIREBASE_WEB_API_KEY from when the env var isn't already set.
   # Empty (default) resolves to the staging flutter flavor at
   # 'android\app\src\forgeflow\google-services.json'. Production deploys
-  # should pass the matching per-flavor file (e.g. 'forgeflow_prod1').
+  # should pass the matching per-flavor file (e.g. 'forgeflowProd1').
   [string] $FirebaseGoogleServicesPath = '',
   # Declared proxy environment. Staging must pass this explicitly so
   # HARD-C admin CORS startup checks do not treat an unset value as
@@ -108,9 +116,33 @@ function Assert-PresentEnv {
   }
 }
 
+function Assert-ServiceAccountProject {
+  param(
+    [string] $DeployProject,
+    [string] $DeployServiceAccount
+  )
+
+  if (
+    $DeployServiceAccount -match '@(?<serviceAccountProject>[^.]+)\.iam\.gserviceaccount\.com$' -and
+    $Matches.serviceAccountProject -ne $DeployProject
+  ) {
+    Write-Host 'BLOCKED: Cloud Run service account project does not match deploy project.'
+    Write-Host " - deploy project: $DeployProject"
+    Write-Host " - service account: $DeployServiceAccount"
+    exit 1
+  }
+}
+
+Assert-ServiceAccountProject `
+  -DeployProject $Project `
+  -DeployServiceAccount $ServiceAccount
+
 function Resolve-FirebaseWebApiKey {
   $current = [Environment]::GetEnvironmentVariable('FIREBASE_WEB_API_KEY')
-  if (-not [string]::IsNullOrWhiteSpace($current)) {
+  if (
+    -not [string]::IsNullOrWhiteSpace($current) -and
+    [string]::IsNullOrWhiteSpace($FirebaseGoogleServicesPath)
+  ) {
     return
   }
 
@@ -119,12 +151,30 @@ function Resolve-FirebaseWebApiKey {
   } else {
     $googleServicesPath = $FirebaseGoogleServicesPath
   }
+  if (-not [System.IO.Path]::IsPathRooted($googleServicesPath)) {
+    $googleServicesPath = Join-Path $repoRoot $googleServicesPath
+  }
   if (-not (Test-Path -LiteralPath $googleServicesPath)) {
+    if (-not [string]::IsNullOrWhiteSpace($FirebaseGoogleServicesPath)) {
+      Write-Host "BLOCKED: Firebase google-services config not found: $googleServicesPath"
+      exit 1
+    }
     return
   }
 
   $googleServices = Get-Content -LiteralPath $googleServicesPath -Raw |
     ConvertFrom-Json
+  $googleServicesProject = [string] $googleServices.project_info.project_id
+  if (
+    -not [string]::IsNullOrWhiteSpace($googleServicesProject) -and
+    $googleServicesProject -ne $Project
+  ) {
+    Write-Host 'BLOCKED: Firebase google-services project_id does not match deploy project.'
+    Write-Host " - deploy project: $Project"
+    Write-Host " - google-services project_id: $googleServicesProject"
+    Write-Host " - config path: $googleServicesPath"
+    exit 1
+  }
   foreach ($client in @($googleServices.client)) {
     foreach ($apiKey in @($client.api_key)) {
       $key = [string] $apiKey.current_key
@@ -143,8 +193,35 @@ if (-not (Test-Path -LiteralPath $SecretsFile)) {
 }
 
 . $SecretsFile
-if ([string]::IsNullOrWhiteSpace($env:FIREBASE_PROJECT_ID)) {
+if (-not [string]::IsNullOrWhiteSpace($FirebaseProjectId)) {
+  [Environment]::SetEnvironmentVariable('FIREBASE_PROJECT_ID', $FirebaseProjectId, 'Process')
+} elseif ([string]::IsNullOrWhiteSpace($env:FIREBASE_PROJECT_ID)) {
   [Environment]::SetEnvironmentVariable('FIREBASE_PROJECT_ID', $Project, 'Process')
+}
+if ($env:FIREBASE_PROJECT_ID -ne $Project) {
+  Write-Host 'BLOCKED: FIREBASE_PROJECT_ID does not match deploy project.'
+  Write-Host " - deploy project: $Project"
+  Write-Host " - FIREBASE_PROJECT_ID: $env:FIREBASE_PROJECT_ID"
+  Write-Host 'Pass -FirebaseProjectId for production deploys when the shared secrets loader defaults to another environment.'
+  exit 1
+}
+if (-not [string]::IsNullOrWhiteSpace($PostgresUrlEnvVarName)) {
+  $postgresUrlValue = [Environment]::GetEnvironmentVariable($PostgresUrlEnvVarName)
+  if ([string]::IsNullOrWhiteSpace($postgresUrlValue)) {
+    Write-Host 'BLOCKED: missing required env names:'
+    Write-Host " - $PostgresUrlEnvVarName"
+    exit 1
+  }
+  [Environment]::SetEnvironmentVariable('POSTGRES_URL', $postgresUrlValue, 'Process')
+}
+if (-not [string]::IsNullOrWhiteSpace($PostgresAdminUrlEnvVarName)) {
+  $postgresAdminUrlValue = [Environment]::GetEnvironmentVariable($PostgresAdminUrlEnvVarName)
+  if ([string]::IsNullOrWhiteSpace($postgresAdminUrlValue)) {
+    Write-Host 'BLOCKED: missing required env names:'
+    Write-Host " - $PostgresAdminUrlEnvVarName"
+    exit 1
+  }
+  [Environment]::SetEnvironmentVariable('POSTGRES_ADMIN_URL', $postgresAdminUrlValue, 'Process')
 }
 if (
   -not $PSBoundParameters.ContainsKey('AdminCorsAllowedOrigins') -and
