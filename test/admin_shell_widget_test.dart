@@ -165,17 +165,17 @@ void main() {
       kAdminRoutes
           .where((route) => route.section == AdminRouteSection.ai)
           .map((route) => route.id),
-      <String>[kAdminPricingRouteId, kAdminCorpusRouteId],
+      <String>[
+        kAdminPricingRouteId,
+        kAdminCorpusRouteId,
+        kAdminObservabilityRouteId,
+      ],
     );
     expect(
       kAdminRoutes
           .where((route) => route.section == AdminRouteSection.systemMonitoring)
           .map((route) => route.id),
-      <String>[
-        kAdminHealthRouteId,
-        kAdminDebugConsoleRouteId,
-        kAdminObservabilityRouteId,
-      ],
+      <String>[kAdminHealthRouteId, kAdminDebugConsoleRouteId],
     );
     expect(
       kAdminRoutes

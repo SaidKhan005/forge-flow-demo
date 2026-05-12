@@ -38,14 +38,20 @@ class PerLocationDataAccuracyScreen extends StatefulWidget {
     this.editingEnabled = true,
     this.initialScope,
     this.initialHierarchyScope,
+    this.scopeLocationIds,
     this.onBackToBusinessAccounts,
+    this.showPageHeader = true,
+    this.showScopeControls = true,
   });
 
   final DataAccuracyAdminGateway gateway;
   final String actorUserId;
   final AdminOperatorLocationScopeIntent? initialScope;
   final AdminHierarchyScopeIntent? initialHierarchyScope;
+  final Set<String>? scopeLocationIds;
   final VoidCallback? onBackToBusinessAccounts;
+  final bool showPageHeader;
+  final bool showScopeControls;
 
   /// Mirror of the pricing screen pattern: when false, the screen
   /// hides every mutate affordance. The gateway is the second line of
@@ -231,19 +237,19 @@ class _PerLocationDataAccuracyScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AdminPageHeader(
-              title: 'Data accuracy',
-              subtitle:
-                  "Inspect each operator-location's covers and wage source. "
-                  'Business and org-unit scopes are read-only until scoped '
-                  'settings resolvers exist.',
-              leading: widget.onBackToBusinessAccounts == null
-                  ? null
-                  : AdminBusinessAccountsBackButton(
-                      onPressed: widget.onBackToBusinessAccounts,
-                    ),
-            ),
-            const SizedBox(height: 14),
+            if (widget.showPageHeader) ...[
+              AdminPageHeader(
+                title: 'Covers and Wage Data Accuracy',
+                subtitle:
+                    'Review cover sources, wage sources, walk-ins, and audit history for the selected scope.',
+                leading: widget.onBackToBusinessAccounts == null
+                    ? null
+                    : AdminBusinessAccountsBackButton(
+                        onPressed: widget.onBackToBusinessAccounts,
+                      ),
+              ),
+              const SizedBox(height: 14),
+            ],
             if (!widget.editingEnabled)
               const _ReadOnlyBanner(
                 key: Key('admin_data_accuracy_readonly_banner'),
@@ -265,7 +271,7 @@ class _PerLocationDataAccuracyScreenState
     if (scope == null) return _rows;
     return _rows
         .where(
-          (row) => _scopePolicy.includesOperatorLocation(
+          (row) => _includesOperatorLocation(
             scope,
             operatorId: row.operatorRef.operatorId,
             locationId: row.operatorRef.locationId,
@@ -279,7 +285,7 @@ class _PerLocationDataAccuracyScreenState
     if (scope == null) return _auditEvents;
     return _auditEvents
         .where(
-          (event) => _scopePolicy.includesOperatorLocation(
+          (event) => _includesOperatorLocation(
             scope,
             operatorId: event.operatorId,
             locationId: event.locationId,
@@ -289,6 +295,24 @@ class _PerLocationDataAccuracyScreenState
   }
 
   String? get _scopeRestrictionCopy => _scopePolicy.restrictionCopy(_scope);
+
+  bool _includesOperatorLocation(
+    AdminHierarchyScopeIntent? scope, {
+    required String operatorId,
+    required String? locationId,
+  }) {
+    if (scope == null) return true;
+    if (scope.operatorId != operatorId) return false;
+    final locationIds = widget.scopeLocationIds;
+    if (locationIds != null && locationIds.isNotEmpty) {
+      return locationId != null && locationIds.contains(locationId);
+    }
+    return _scopePolicy.includesOperatorLocation(
+      scope,
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+  }
 
   List<AdminHierarchyScopeIntent> get _availableScopes {
     final selectedOperatorId = _scope?.operatorId;
@@ -364,26 +388,26 @@ class _PerLocationDataAccuracyScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_showScopePrompt)
+          if (widget.showScopeControls && _showScopePrompt)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: AdminHierarchyScopePrompt(
-                surfaceName: 'Data accuracy',
+                surfaceName: 'Covers and Wage Data Accuracy',
                 selectedScope: _scope,
                 scopes: _availableScopes,
                 onScopeSelected: _selectScope,
                 onCancel: () => setState(() => _showScopePrompt = false),
               ),
             ),
-          if (_scope != null)
+          if (widget.showScopeControls && _scope != null)
             AdminHierarchyScopeBanner(
               scope: _scope!,
-              surfaceName: 'data accuracy',
+              surfaceName: 'covers and wage data accuracy',
               onChangeScope: () =>
                   setState(() => _showScopePrompt = !_showScopePrompt),
               onClear: _clearScope,
             ),
-          if (_scopeRestrictionCopy != null)
+          if (widget.showScopeControls && _scopeRestrictionCopy != null)
             AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
           _buildDataAccuracySummary(),
           const SizedBox(height: 16),

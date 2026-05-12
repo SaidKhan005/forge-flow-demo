@@ -1,4 +1,4 @@
-﻿// Phase 11A.6 - Observability dashboard surface.
+// Phase 11A.6 - Observability dashboard surface.
 //
 // Read-only operator-facing view of the cost-telemetry, dormancy,
 // margin, cap-event, graph, latency, and Cloud Run rows the
@@ -193,8 +193,9 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
         setState(() => _tripwireError = error.message);
       } catch (error) {
         if (!mounted) return;
-        setState(() =>
-            _tripwireError = 'Could not load bridge tripwires: $error');
+        setState(
+          () => _tripwireError = 'Could not load bridge tripwires: $error',
+        );
       }
     }
   }
@@ -331,9 +332,9 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AdminPageHeader(
-      title: 'System metrics',
+      title: 'AI metrics',
       subtitle:
-          'Review cost, usage limits, operator activity, relationships, and hosting status.',
+          'Review advisor usage, cost, limits, model activity, and hosting status.',
       compactBreakpoint: 720,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
@@ -2434,7 +2435,8 @@ class _BridgeTripwiresSection extends StatelessWidget {
                   style: AppTextStyles.display16(color: AppColors.textPrimary),
                 ),
               ),
-              if (snapshot != null) _BridgeTripwirePill(status: snapshot!.status),
+              if (snapshot != null)
+                _BridgeTripwirePill(status: snapshot!.status),
             ],
           ),
           const SizedBox(height: 4),

@@ -39,7 +39,10 @@ class PollingAndPricingAdminScreen extends StatefulWidget {
     this.editingEnabled = true,
     this.initialScope,
     this.initialHierarchyScope,
+    this.scopeLocationIds,
     this.onBackToBusinessAccounts,
+    this.showPageHeader = true,
+    this.showScopeControls = true,
   });
 
   final DataAccuracyAdminGateway gateway;
@@ -47,7 +50,10 @@ class PollingAndPricingAdminScreen extends StatefulWidget {
   final bool editingEnabled;
   final AdminOperatorLocationScopeIntent? initialScope;
   final AdminHierarchyScopeIntent? initialHierarchyScope;
+  final Set<String>? scopeLocationIds;
   final VoidCallback? onBackToBusinessAccounts;
+  final bool showPageHeader;
+  final bool showScopeControls;
 
   @override
   State<PollingAndPricingAdminScreen> createState() =>
@@ -202,7 +208,7 @@ class _PollingAndPricingAdminScreenState
           }
           final scope = _scope;
           if (scope != null &&
-              !_scopePolicy.includesOperatorLocation(
+              !_includesOperatorLocation(
                 scope,
                 operatorId: row.operatorRef.operatorId,
                 locationId: row.operatorRef.locationId,
@@ -242,7 +248,7 @@ class _PollingAndPricingAdminScreenState
     if (scope == null) return _changeRequests;
     return _changeRequests
         .where(
-          (request) => _scopePolicy.includesOperatorLocation(
+          (request) => _includesOperatorLocation(
             scope,
             operatorId: request.operatorRef.operatorId,
             locationId: request.operatorRef.locationId,
@@ -256,7 +262,7 @@ class _PollingAndPricingAdminScreenState
     if (scope == null) return _tierAuditEvents;
     return _tierAuditEvents
         .where(
-          (event) => _scopePolicy.includesOperatorLocation(
+          (event) => _includesOperatorLocation(
             scope,
             operatorId: event.operatorId,
             locationId: event.locationId,
@@ -284,6 +290,24 @@ class _PollingAndPricingAdminScreenState
   }
 
   String? get _scopeRestrictionCopy => _scopePolicy.restrictionCopy(_scope);
+
+  bool _includesOperatorLocation(
+    AdminHierarchyScopeIntent? scope, {
+    required String operatorId,
+    required String? locationId,
+  }) {
+    if (scope == null) return true;
+    if (scope.operatorId != operatorId) return false;
+    final locationIds = widget.scopeLocationIds;
+    if (locationIds != null && locationIds.isNotEmpty) {
+      return locationId != null && locationIds.contains(locationId);
+    }
+    return _scopePolicy.includesOperatorLocation(
+      scope,
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+  }
 
   List<AdminHierarchyScopeIntent> get _availableScopes {
     final selectedOperatorId = _scope?.operatorId;
@@ -451,20 +475,19 @@ class _PollingAndPricingAdminScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            AdminPageHeader(
-              title: 'Polling & pricing',
-              subtitle:
-                  'F&F-controlled tier definitions, per-location assignments, '
-                  'margin rollup, and operator change requests. Business and '
-                  'org-unit assignment edits stay disabled until scoped '
-                  'resolvers exist.',
-              leading: widget.onBackToBusinessAccounts == null
-                  ? null
-                  : AdminBusinessAccountsBackButton(
-                      onPressed: widget.onBackToBusinessAccounts,
-                    ),
-            ),
-            const SizedBox(height: 14),
+            if (widget.showPageHeader) ...[
+              AdminPageHeader(
+                title: 'Polling Setup',
+                subtitle:
+                    'Set vendor polling tiers, estimate cost, and review margin for the selected scope.',
+                leading: widget.onBackToBusinessAccounts == null
+                    ? null
+                    : AdminBusinessAccountsBackButton(
+                        onPressed: widget.onBackToBusinessAccounts,
+                      ),
+              ),
+              const SizedBox(height: 14),
+            ],
             if (!widget.editingEnabled)
               const _ReadOnlyBanner(
                 key: Key('admin_polling_pricing_readonly_banner'),
@@ -505,26 +528,26 @@ class _PollingAndPricingAdminScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          if (_showScopePrompt)
+          if (widget.showScopeControls && _showScopePrompt)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: AdminHierarchyScopePrompt(
-                surfaceName: 'Polling and pricing',
+                surfaceName: 'Polling Setup',
                 selectedScope: _scope,
                 scopes: _availableScopes,
                 onScopeSelected: _selectScope,
                 onCancel: () => setState(() => _showScopePrompt = false),
               ),
             ),
-          if (_scope != null)
+          if (widget.showScopeControls && _scope != null)
             AdminHierarchyScopeBanner(
               scope: _scope!,
-              surfaceName: 'polling and pricing',
+              surfaceName: 'polling setup',
               onChangeScope: () =>
                   setState(() => _showScopePrompt = !_showScopePrompt),
               onClear: _clearScope,
             ),
-          if (_scopeRestrictionCopy != null)
+          if (widget.showScopeControls && _scopeRestrictionCopy != null)
             AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
           _buildPollingSummary(),
           const SizedBox(height: 16),

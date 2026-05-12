@@ -71,7 +71,7 @@ void main() {
   }
 
   testWidgets(
-    'Data Accuracy business scope is a read-only rollup from handoff',
+    'Covers and Wage Data Accuracy business scope is a read-only rollup from handoff',
     (tester) async {
       useWideViewport(tester);
       const businessScope = AdminHierarchyScopeIntent.business(
@@ -96,7 +96,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('Showing data accuracy for business scope'),
+        find.text('Showing covers and wage data accuracy for business scope'),
         findsOneWidget,
       );
       expect(find.text('Overridden at location scope'), findsOneWidget);
@@ -149,7 +149,7 @@ void main() {
     expect(find.text('Vancouver Robson'), findsNothing);
   });
 
-  testWidgets('Polling and pricing org-unit scope requires a location', (
+  testWidgets('Polling Setup org-unit scope requires a location', (
     tester,
   ) async {
     useWideViewport(tester);
@@ -172,15 +172,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Showing polling and pricing for org unit scope'),
+      find.text('Showing polling setup for org unit scope'),
       findsOneWidget,
     );
     expect(find.text('Effective: Scoped resolver pending'), findsOneWidget);
     expect(find.text('Location required to assign'), findsWidgets);
     expect(
-      find.textContaining(
-        'Org-unit polling and pricing assignment is disabled',
-      ),
+      find.textContaining('Org-unit polling setup editing is disabled'),
       findsOneWidget,
     );
     expect(find.text('No tier assignments match this view.'), findsOneWidget);

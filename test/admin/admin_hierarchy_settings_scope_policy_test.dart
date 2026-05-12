@@ -68,7 +68,7 @@ void main() {
       );
       expect(
         pollingPricing.restrictionCopy(scope),
-        contains('scoped assignment and resolver work exists'),
+        contains('scoped assignments land'),
       );
     });
 

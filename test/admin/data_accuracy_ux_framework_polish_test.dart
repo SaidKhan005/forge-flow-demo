@@ -63,7 +63,7 @@ void main() {
               ),
               AdminRoute(
                 id: 'data-placeholder',
-                title: 'Data accuracy',
+                title: 'Covers and Wage Data Accuracy',
                 path: '/data-accuracy',
                 icon: Icons.fact_check_outlined,
                 section: AdminRouteSection.operations,

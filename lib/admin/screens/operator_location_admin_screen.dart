@@ -2568,9 +2568,9 @@ class _LocationActionWrap extends StatelessWidget {
               buttonKey: Key(
                 'admin_location_data_accuracy_${location.locationId}',
               ),
-              label: 'Data accuracy',
+              label: 'Covers and wage',
               icon: Icons.fact_check_outlined,
-              tooltip: 'View data accuracy for this location',
+              tooltip: 'View covers and wage data for this location',
               minWidth: 136,
               onPressed: onOpenDataAccuracy,
             ),
@@ -2578,9 +2578,9 @@ class _LocationActionWrap extends StatelessWidget {
               buttonKey: Key(
                 'admin_location_polling_pricing_${location.locationId}',
               ),
-              label: 'Polling & pricing',
+              label: 'Polling setup',
               icon: Icons.payments_outlined,
-              tooltip: 'View polling and pricing for this location',
+              tooltip: 'View polling setup for this location',
               minWidth: 148,
               onPressed: onOpenPollingPricing,
             ),

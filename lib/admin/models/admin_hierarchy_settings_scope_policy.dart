@@ -86,24 +86,14 @@ class AdminHierarchySettingsScopePolicy {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
         if (scope.isBusinessScope) {
-          return 'Business scope is a read-only rollup. Data accuracy values '
-              'are stored per location until hierarchy-scoped schema and '
-              'resolvers exist. Select a location scope to override covers, '
-              'wages, or walk-in handling.';
+          return 'Business scope is a read-only rollup until scoped data accuracy writes land. Select a location in this scope to override covers, wages, or walk-in handling.';
         }
-        return 'Org-unit data accuracy editing is disabled until scoped '
-            'schema and resolver work exists. Select a location in this '
-            'branch to edit the location-only settings.';
+        return 'Org-unit data accuracy editing is disabled until scoped writes land. Select a location in this branch to edit location settings.';
       case AdminHierarchySettingsSurface.pollingPricing:
         if (scope.isBusinessScope) {
-          return 'Business scope is a read-only pricing rollup. Polling tier '
-              'assignments are stored per location until scoped assignment '
-              'and resolver work exists. Select a location scope to assign '
-              'or update a tier.';
+          return 'Business scope is a read-only polling rollup until scoped polling assignments land. Select a location in this scope to assign or update a tier.';
         }
-        return 'Org-unit polling and pricing assignment is disabled until '
-            'scoped assignment and resolver work exists. Select a location '
-            'in this branch to edit the location-only assignment.';
+        return 'Org-unit polling setup editing is disabled until scoped assignments land. Select a location in this branch to edit the location assignment.';
     }
   }
 

@@ -56,6 +56,7 @@ import 'services/observability_admin_gateway.dart';
 import 'services/operator_location_admin_gateway.dart';
 import 'services/pricing_tier_admin_gateway.dart';
 import 'services/roles_hierarchy_sessions_admin_gateway.dart';
+import 'widgets/admin_setup_workspace.dart';
 import '../domain/models/forge_flow_polling_tier_assignment.dart';
 
 /// CODE_OPS_DEBT Theme A item 1 — overridable MFA-freshness resolver
@@ -321,35 +322,34 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminObservabilityRouteId,
-    title: 'System metrics',
+    title: 'AI metrics',
     path: '/observability',
     icon: Icons.insights_outlined,
-    section: AdminRouteSection.systemMonitoring,
-    subtitle:
-        'Review cost, usage limits, operator activity, graph health, and hosting.',
+    section: AdminRouteSection.ai,
+    subtitle: 'Review advisor usage, cost, limits, and model activity.',
     builder: _buildObservability,
   ),
   AdminRoute(
     id: kAdminDataAccuracyRouteId,
-    title: 'Data accuracy',
+    title: 'Covers and Wage Data Accuracy',
     path: '/data-accuracy',
     icon: Icons.fact_check_outlined,
     section: AdminRouteSection.operations,
     badge: 'Work in progress',
-    subtitle: 'Inspect and override per-location covers and wage source.',
+    subtitle:
+        'Review cover sources, wage sources, walk-ins, and audit history.',
     builder: _buildDataAccuracy,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
   ),
   AdminRoute(
     id: kAdminPollingPricingRouteId,
-    title: 'Polling & pricing',
+    title: 'Polling Setup',
     path: '/polling-pricing',
     icon: Icons.payments_outlined,
     section: AdminRouteSection.operations,
     badge: 'Work in progress',
-    subtitle:
-        'Set tier definitions, per-location assignments, and review margin.',
+    subtitle: 'Set vendor polling tiers, estimate cost, and review margin.',
     builder: _buildPollingPricing,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -961,62 +961,146 @@ Widget _buildFeatureFlags(BuildContext context) {
 Widget _buildDataAccuracy(BuildContext context) {
   final gateway = AdminConsoleServicesScope.dataAccuracyAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  final scope = AdminRouteHandoff.maybeOf(context)?.operatorLocationScope;
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final hierarchyGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
   final onBackToBusinessAccounts = _backToBusinessAccounts(context);
-  if (source == null) {
-    return PerLocationDataAccuracyScreen(
-      gateway: gateway,
-      actorUserId: 'demo-super-admin',
-      initialScope: scope,
-      onBackToBusinessAccounts: onBackToBusinessAccounts,
-    );
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
+
+  Widget buildFunction(
+    BuildContext context,
+    AdminHierarchyScopeIntent selectedScope,
+    AdminSetupWorkspaceSelection selection,
+  ) {
+    final operatorScope = selectedScope.toOperatorLocationScope();
+    if (source == null) {
       return PerLocationDataAccuracyScreen(
         gateway: gateway,
-        actorUserId: session?.uid ?? 'unknown',
-        editingEnabled: canEdit,
-        initialScope: scope,
+        actorUserId: 'demo-super-admin',
+        initialScope: operatorScope,
+        initialHierarchyScope: selectedScope,
+        scopeLocationIds: selection.locationIds,
+        showPageHeader: false,
+        showScopeControls: false,
         onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
-    },
+    }
+    return StreamBuilder<AdminAuthState>(
+      stream: source.stream,
+      initialData: source.current,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final session = state is AdminAuthAuthenticated ? state.session : null;
+        final canEdit =
+            session != null && session.roles.contains('super_admin');
+        return PerLocationDataAccuracyScreen(
+          gateway: gateway,
+          actorUserId: session?.uid ?? 'unknown',
+          editingEnabled: canEdit,
+          initialScope: operatorScope,
+          initialHierarchyScope: selectedScope,
+          scopeLocationIds: selection.locationIds,
+          showPageHeader: false,
+          showScopeControls: false,
+          onBackToBusinessAccounts: onBackToBusinessAccounts,
+        );
+      },
+    );
+  }
+
+  return AdminSetupWorkspace(
+    functionTitle: 'Covers and Wage Data Accuracy',
+    description:
+        'Review covers, wage data, vendor filters, and audit history for the selected scope.',
+    operatorGateway: operatorGateway,
+    hierarchyGateway: hierarchyGateway,
+    initialScope: initialScope,
+    onBackToBusinessAccounts: onBackToBusinessAccounts,
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(
+              routeId: kAdminDataAccuracyRouteId,
+              hierarchyScope: scope,
+            ),
+          ),
+    functionBuilder: buildFunction,
   );
 }
 
 Widget _buildPollingPricing(BuildContext context) {
   final gateway = AdminConsoleServicesScope.dataAccuracyAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  final scope = AdminRouteHandoff.maybeOf(context)?.operatorLocationScope;
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final hierarchyGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
   final onBackToBusinessAccounts = _backToBusinessAccounts(context);
-  if (source == null) {
-    return PollingAndPricingAdminScreen(
-      gateway: gateway,
-      actorUserId: 'demo-super-admin',
-      initialScope: scope,
-      onBackToBusinessAccounts: onBackToBusinessAccounts,
-    );
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
+
+  Widget buildFunction(
+    BuildContext context,
+    AdminHierarchyScopeIntent selectedScope,
+    AdminSetupWorkspaceSelection selection,
+  ) {
+    final operatorScope = selectedScope.toOperatorLocationScope();
+    if (source == null) {
       return PollingAndPricingAdminScreen(
         gateway: gateway,
-        actorUserId: session?.uid ?? 'unknown',
-        editingEnabled: canEdit,
-        initialScope: scope,
+        actorUserId: 'demo-super-admin',
+        initialScope: operatorScope,
+        initialHierarchyScope: selectedScope,
+        scopeLocationIds: selection.locationIds,
+        showPageHeader: false,
+        showScopeControls: false,
         onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
-    },
+    }
+    return StreamBuilder<AdminAuthState>(
+      stream: source.stream,
+      initialData: source.current,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final session = state is AdminAuthAuthenticated ? state.session : null;
+        final canEdit =
+            session != null && session.roles.contains('super_admin');
+        return PollingAndPricingAdminScreen(
+          gateway: gateway,
+          actorUserId: session?.uid ?? 'unknown',
+          editingEnabled: canEdit,
+          initialScope: operatorScope,
+          initialHierarchyScope: selectedScope,
+          scopeLocationIds: selection.locationIds,
+          showPageHeader: false,
+          showScopeControls: false,
+          onBackToBusinessAccounts: onBackToBusinessAccounts,
+        );
+      },
+    );
+  }
+
+  return AdminSetupWorkspace(
+    functionTitle: 'Polling Setup',
+    description:
+        'Choose the hierarchy scope, assign vendor polling tiers, and estimate operating cost.',
+    operatorGateway: operatorGateway,
+    hierarchyGateway: hierarchyGateway,
+    initialScope: initialScope,
+    onBackToBusinessAccounts: onBackToBusinessAccounts,
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(
+              routeId: kAdminPollingPricingRouteId,
+              hierarchyScope: scope,
+            ),
+          ),
+    functionBuilder: buildFunction,
   );
 }
 
