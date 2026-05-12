@@ -784,8 +784,18 @@ void main() {
         ),
       );
       expect(id, equals(_validSessionId));
-      final tx = pool.transactions.single;
-      final params = tx.parameters.last;
+      // Phase 9 hardening pack (commit 17ce0391, 2026-05-07) added a
+      // B1.A6 concurrent-session-cap check that runs UNCONDITIONALLY
+      // before insertLogin. The check opens a separate `withSystem`
+      // (BYPASSRLS) admin transaction on the same pool to count active
+      // sessions globally. The recording pool returns 0 rows for the
+      // count query so the eviction branch never fires, leaving two
+      // transactions in the recorded list:
+      //   tx[0] = countActiveSessions  (withSystem / BYPASSRLS)
+      //   tx[1] = insertLogin          (withTenant)
+      expect(pool.transactions, hasLength(2));
+      final insertTx = pool.transactions[1];
+      final params = insertTx.parameters.last;
       expect(params['ip'], equals('5.6.7.8'));
       expect(params['user_agent'], equals('fake'));
       expect(params['geo_country'], equals('US'));
