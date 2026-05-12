@@ -19,9 +19,8 @@ comment on column public.users.permission_version is
   'Proxy compares JWT claim against this value; a mismatch forces a 401 '
   'so that a revoked token cannot be replayed past the next request.';
 
--- Functional index leads with user_id for O(1) point-lookups that the
--- proxy middleware runs on every authenticated request. No operator_id
--- in the predicate because users are not operator-scoped at the users
--- table level (they belong to operators via user_roles rows).
+-- Tenant-leading functional index for the proxy middleware's authenticated
+-- point lookups. `users` is operator-scoped, so keep operator_id first for
+-- RLS planning discipline, then user_id for the exact actor lookup.
 create index if not exists users_permission_version_idx
-  on public.users (user_id, permission_version);
+  on public.users (operator_id, user_id, permission_version);
