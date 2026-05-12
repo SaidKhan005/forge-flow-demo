@@ -7,11 +7,11 @@ Wave bundle: PR #497 (Step 3 lane plans + Step 4 code-health deep audits).
 
 ## Read this before dispatching any Codex lane work
 
-1. Confirm the lane is in the table below (otherwise it's Claude's — open `CLAUDE_LANE_INDEX.md`).
-2. Follow the lane's **Plan** pointer to its 5-doc execution packet.
-3. Follow the lane's **Audit** pointer (if present) for the deep code-health audit.
-4. Follow the lane's **Authority** pointer for any decision-doc anchor.
-5. Check **State** before queuing — don't double-assign.
+1. **Open the wave execution ledger first**: `docs/_indices/WAVE_EXECUTION_LEDGER.md`. The ledger is the single source of truth for slice state across all 43 slices.
+2. Find your owned slices in the ledger (filter by `Owner = Codex`).
+3. Pick the first slice with `state = assigned` that has its dependency merged.
+4. Then open this lane index for context: lane scope, audit anchor, decision authority.
+5. Then open the lane's `03_execution_slices.md` for slice-level depth.
 
 ## Lane assignments (Codex)
 
