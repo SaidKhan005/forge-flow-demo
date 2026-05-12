@@ -237,6 +237,7 @@ class AuditLogRow {
     required this.targetId,
     required this.payload,
     required this.businessDate,
+    this.actorRole,
     this.adminReason,
     this.rowHash,
   });
@@ -248,6 +249,7 @@ class AuditLogRow {
   final String actorDisplayName;
   final String actorEmail;
   final AuditActorKind actorKind;
+  final String? actorRole;
   final String operatorId;
   final String targetKind;
   final String targetId;
@@ -950,6 +952,10 @@ AuditLogRow _auditRowFromJson(Map<String, Object?> json) {
     actorDisplayName: (json['actor_display_name'] as String?) ?? '',
     actorEmail: (json['actor_email'] as String?) ?? '',
     actorKind: auditActorKindFromWire(_stringField(json, 'actor_kind')),
+    actorRole:
+        _optionalString(json['actor_role']) ??
+        _optionalString(json['actor_role_label']) ??
+        _optionalString(json['actor_display_role']),
     operatorId: _stringField(json, 'operator_id'),
     targetKind: _stringField(json, 'target_kind'),
     targetId: _stringField(json, 'target_id'),

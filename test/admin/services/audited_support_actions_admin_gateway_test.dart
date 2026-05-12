@@ -40,10 +40,12 @@ void main() {
       final gateway = InMemoryAuditedSupportActionsAdminGateway(
         auditLogByOperator: kDemoAuditLogByOperator(),
       );
-      final dinerPage =
-          await gateway.listAuditLog(operatorId: kDemoDinerOperatorId);
-      final sunsetPage =
-          await gateway.listAuditLog(operatorId: kDemoSunsetOperatorId);
+      final dinerPage = await gateway.listAuditLog(
+        operatorId: kDemoDinerOperatorId,
+      );
+      final sunsetPage = await gateway.listAuditLog(
+        operatorId: kDemoSunsetOperatorId,
+      );
       expect(dinerPage.rows, isNotEmpty);
       expect(sunsetPage.rows, isNotEmpty);
       expect(
@@ -91,8 +93,9 @@ void main() {
       final gateway = InMemoryAuditedSupportActionsAdminGateway(
         membersByOperator: kDemoSupportActionsMembersByOperator(),
       );
-      final members =
-          await gateway.listMembers(operatorId: kDemoDinerOperatorId);
+      final members = await gateway.listMembers(
+        operatorId: kDemoDinerOperatorId,
+      );
       expect(members, isNotEmpty);
       expect(members.first.email, contains('@demo-diner.test'));
     });
@@ -161,37 +164,37 @@ void main() {
       );
       for (final call in <Future<void> Function()>[
         () => gateway.exportAuditLogCsv(
-              operatorId: kDemoDinerOperatorId,
-              filters: AuditLogFilters.empty,
-              idempotencyKey: 'k1',
-              actorUserId: 'demo-super-admin',
-              actorIsForgeAdmin: true,
-              adminReason: '   ',
-            ),
+          operatorId: kDemoDinerOperatorId,
+          filters: AuditLogFilters.empty,
+          idempotencyKey: 'k1',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: '   ',
+        ),
         () => gateway.resetMemberMfa(
-              operatorId: kDemoDinerOperatorId,
-              targetUserId: 'demo-user-diner-owner',
-              idempotencyKey: 'k2',
-              actorUserId: 'demo-super-admin',
-              actorIsForgeAdmin: true,
-              adminReason: '',
-            ),
+          operatorId: kDemoDinerOperatorId,
+          targetUserId: 'demo-user-diner-owner',
+          idempotencyKey: 'k2',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: '',
+        ),
         () => gateway.initiatePasswordReset(
-              operatorId: kDemoDinerOperatorId,
-              targetUserId: 'demo-user-diner-owner',
-              idempotencyKey: 'k3',
-              actorUserId: 'demo-super-admin',
-              actorIsForgeAdmin: true,
-              adminReason: '',
-            ),
+          operatorId: kDemoDinerOperatorId,
+          targetUserId: 'demo-user-diner-owner',
+          idempotencyKey: 'k3',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: '',
+        ),
         () => gateway.issuePairedApprovalErasure(
-              operatorId: kDemoDinerOperatorId,
-              targetUserId: 'demo-user-diner-owner',
-              idempotencyKey: 'k4',
-              actorUserId: 'demo-super-admin',
-              actorIsForgeAdmin: true,
-              adminReason: '',
-            ),
+          operatorId: kDemoDinerOperatorId,
+          targetUserId: 'demo-user-diner-owner',
+          idempotencyKey: 'k4',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: '',
+        ),
       ]) {
         await expectLater(
           call(),
@@ -208,46 +211,36 @@ void main() {
   });
 
   group('audit-row shape (parity § Audit-row shape)', () {
-    test(
-      'reset MFA writes both audit_logs row and admin_action_log row '
-      'with forge_admin + admin_reason + reset_mfa_factors action',
-      () async {
-        final clock = DateTime.utc(2026, 5, 6, 12, 30);
-        final gateway = InMemoryAuditedSupportActionsAdminGateway(
-          membersByOperator: kDemoSupportActionsMembersByOperator(),
-          clock: () => clock,
-        );
-        await gateway.resetMemberMfa(
-          operatorId: kDemoDinerOperatorId,
-          targetUserId: 'demo-user-diner-owner',
-          idempotencyKey: 'k-reset',
-          actorUserId: 'demo-super-admin',
-          actorIsForgeAdmin: true,
-          adminReason: 'walkthrough verification',
-        );
-        // audit_logs row.
-        final audit =
-            gateway.capturedAuditLogFor(kDemoDinerOperatorId).single;
-        expect(
-          audit.action,
-          equals(SupportActionsAuditAction.resetMfaFactors),
-        );
-        expect(audit.actorKind, equals(AuditActorKind.forgeAdmin));
-        expect(audit.actorUserId, equals('demo-super-admin'));
-        expect(audit.adminReason, equals('walkthrough verification'));
-        expect(audit.businessDate, equals(DateTime.utc(2026, 5, 6)));
-        // admin_action_log provenance row.
-        final action = gateway.capturedAdminActionLog.single;
-        expect(
-          action.action,
-          equals(SupportActionsAuditAction.resetMfaFactors),
-        );
-        expect(action.readerUserId, equals('demo-super-admin'));
-        expect(action.targetId, equals('demo-user-diner-owner'));
-        expect(action.recordsTouched, equals(1));
-        expect(action.adminReason, equals('walkthrough verification'));
-      },
-    );
+    test('reset MFA writes both audit_logs row and admin_action_log row '
+        'with forge_admin + admin_reason + reset_mfa_factors action', () async {
+      final clock = DateTime.utc(2026, 5, 6, 12, 30);
+      final gateway = InMemoryAuditedSupportActionsAdminGateway(
+        membersByOperator: kDemoSupportActionsMembersByOperator(),
+        clock: () => clock,
+      );
+      await gateway.resetMemberMfa(
+        operatorId: kDemoDinerOperatorId,
+        targetUserId: 'demo-user-diner-owner',
+        idempotencyKey: 'k-reset',
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'walkthrough verification',
+      );
+      // audit_logs row.
+      final audit = gateway.capturedAuditLogFor(kDemoDinerOperatorId).single;
+      expect(audit.action, equals(SupportActionsAuditAction.resetMfaFactors));
+      expect(audit.actorKind, equals(AuditActorKind.forgeAdmin));
+      expect(audit.actorUserId, equals('demo-super-admin'));
+      expect(audit.adminReason, equals('walkthrough verification'));
+      expect(audit.businessDate, equals(DateTime.utc(2026, 5, 6)));
+      // admin_action_log provenance row.
+      final action = gateway.capturedAdminActionLog.single;
+      expect(action.action, equals(SupportActionsAuditAction.resetMfaFactors));
+      expect(action.readerUserId, equals('demo-super-admin'));
+      expect(action.targetId, equals('demo-user-diner-owner'));
+      expect(action.recordsTouched, equals(1));
+      expect(action.adminReason, equals('walkthrough verification'));
+    });
 
     test('password reset writes the reset_password action', () async {
       final gateway = InMemoryAuditedSupportActionsAdminGateway(
@@ -355,35 +348,34 @@ void main() {
   });
 
   group('idempotency', () {
-    test('retried resetMemberMfa returns the same row + a single audit row',
-        () async {
-      final gateway = InMemoryAuditedSupportActionsAdminGateway(
-        membersByOperator: kDemoSupportActionsMembersByOperator(),
-      );
-      const key = 'idem-reset';
-      final first = await gateway.resetMemberMfa(
-        operatorId: kDemoDinerOperatorId,
-        targetUserId: 'demo-user-diner-owner',
-        idempotencyKey: key,
-        actorUserId: 'demo-super-admin',
-        actorIsForgeAdmin: true,
-        adminReason: 'r',
-      );
-      final second = await gateway.resetMemberMfa(
-        operatorId: kDemoDinerOperatorId,
-        targetUserId: 'demo-user-diner-owner',
-        idempotencyKey: key,
-        actorUserId: 'demo-super-admin',
-        actorIsForgeAdmin: true,
-        adminReason: 'r',
-      );
-      expect(identical(first, second), isTrue);
-      expect(gateway.capturedAdminActionLog, hasLength(1));
-      expect(
-        gateway.capturedAuditLogFor(kDemoDinerOperatorId),
-        hasLength(1),
-      );
-    });
+    test(
+      'retried resetMemberMfa returns the same row + a single audit row',
+      () async {
+        final gateway = InMemoryAuditedSupportActionsAdminGateway(
+          membersByOperator: kDemoSupportActionsMembersByOperator(),
+        );
+        const key = 'idem-reset';
+        final first = await gateway.resetMemberMfa(
+          operatorId: kDemoDinerOperatorId,
+          targetUserId: 'demo-user-diner-owner',
+          idempotencyKey: key,
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'r',
+        );
+        final second = await gateway.resetMemberMfa(
+          operatorId: kDemoDinerOperatorId,
+          targetUserId: 'demo-user-diner-owner',
+          idempotencyKey: key,
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'r',
+        );
+        expect(identical(first, second), isTrue);
+        expect(gateway.capturedAdminActionLog, hasLength(1));
+        expect(gateway.capturedAuditLogFor(kDemoDinerOperatorId), hasLength(1));
+      },
+    );
   });
 
   group('CSV export', () {
@@ -407,8 +399,9 @@ void main() {
         // The export itself wrote an audit row.
         final exportRows = gateway
             .capturedAuditLogFor(kDemoDinerOperatorId)
-            .where((r) =>
-                r.action == SupportActionsAuditAction.auditExportRequested);
+            .where(
+              (r) => r.action == SupportActionsAuditAction.auditExportRequested,
+            );
         expect(exportRows, hasLength(1));
       },
     );
@@ -426,22 +419,21 @@ void main() {
       );
     });
 
-    test(
-      'admin.users.reset_mfa_factors is in the requiresMfa set',
-      () {
-        expect(
-          PermissionKeys.requiresMfa
-              .contains(PermissionKeys.adminUsersResetMfaFactors),
-          isTrue,
-        );
-      },
-    );
+    test('admin.users.reset_mfa_factors is in the requiresMfa set', () {
+      expect(
+        PermissionKeys.requiresMfa.contains(
+          PermissionKeys.adminUsersResetMfaFactors,
+        ),
+        isTrue,
+      );
+    });
 
     test(
       'additive migration file references admin.users.reset_mfa_factors',
       () {
         final repoRoot = _repoRoot();
-        final migrationPath = '$repoRoot/db/migrations/'
+        final migrationPath =
+            '$repoRoot/db/migrations/'
             '202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql';
         final file = File(migrationPath);
         expect(
@@ -466,17 +458,16 @@ void main() {
         final docPath =
             '$repoRoot/docs/contracts/auth_permission_key_catalog.md';
         final body = File(docPath).readAsStringSync();
-        expect(
-          body.contains('| `admin.users.reset_mfa_factors`'),
-          isTrue,
-        );
+        expect(body.contains('| `admin.users.reset_mfa_factors`'), isTrue);
         // The MFA marker on the same row is `| yes |` per the table
         // convention used for every other MFA-required key.
         final lineIdx = body.indexOf('| `admin.users.reset_mfa_factors`');
         expect(lineIdx, greaterThan(-1));
         final endOfLine = body.indexOf('\n', lineIdx);
-        final row =
-            body.substring(lineIdx, endOfLine).replaceAll('\r', '').trimRight();
+        final row = body
+            .substring(lineIdx, endOfLine)
+            .replaceAll('\r', '')
+            .trimRight();
         expect(
           row.endsWith('| yes |'),
           isTrue,
@@ -537,14 +528,75 @@ void main() {
       },
     );
 
-    test('listAuditLog GET sends operator_id + filter query parameters',
-        () async {
-      late http.Request captured;
+    test(
+      'listAuditLog GET sends operator_id + filter query parameters',
+      () async {
+        late http.Request captured;
+        final mock = http_testing.MockClient((http.Request request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'rows': const <Object?>[],
+              'next_cursor': null,
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+        final gateway = HttpAuditedSupportActionsAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+        await gateway.listAuditLog(
+          operatorId: 'op-1',
+          filters: const AuditLogFilters(
+            actions: <String>['admin.session.force_logout'],
+            targetKind: 'user',
+            timeWindow: AuditLogTimeWindow.last7d,
+            actorKinds: <AuditActorKind>[
+              AuditActorKind.forgeAdmin,
+              AuditActorKind.servicePrincipal,
+            ],
+          ),
+        );
+        expect(captured.method, equals('GET'));
+        expect(captured.url.path, equals('/v1/admin/auth/audit-log'));
+        expect(captured.url.queryParameters['operator_id'], equals('op-1'));
+        expect(
+          captured.url.queryParameters['actions'],
+          equals('admin.session.force_logout'),
+        );
+        expect(captured.url.queryParameters['target_kind'], equals('user'));
+        expect(captured.url.queryParameters['time_window'], equals('last_7d'));
+        expect(
+          captured.url.queryParameters['actor_kinds'],
+          equals('forge_admin,service_principal'),
+        );
+      },
+    );
+
+    test('listAuditLog parses actor role enrichment when supplied', () async {
       final mock = http_testing.MockClient((http.Request request) async {
-        captured = request;
         return http.Response(
           jsonEncode(<String, Object?>{
-            'rows': const <Object?>[],
+            'rows': <Object?>[
+              <String, Object?>{
+                'event_id': 'event-1',
+                'action': 'auth.password.change',
+                'occurred_at': '2026-05-06T12:30:00Z',
+                'actor_user_id': 'user-1',
+                'actor_display_name': 'Dana Owner',
+                'actor_email': 'owner@example.test',
+                'actor_role': 'Owner',
+                'actor_kind': 'team_member',
+                'operator_id': 'op-1',
+                'target_kind': 'user',
+                'target_id': 'user-1',
+                'payload': <String, Object?>{},
+                'business_date': '2026-05-06T00:00:00Z',
+              },
+            ],
             'next_cursor': null,
           }),
           200,
@@ -556,31 +608,12 @@ void main() {
         bearerTokenProvider: () async => 'tok',
         httpClient: mock,
       );
-      await gateway.listAuditLog(
-        operatorId: 'op-1',
-        filters: const AuditLogFilters(
-          actions: <String>['admin.session.force_logout'],
-          targetKind: 'user',
-          timeWindow: AuditLogTimeWindow.last7d,
-          actorKinds: <AuditActorKind>[
-            AuditActorKind.forgeAdmin,
-            AuditActorKind.servicePrincipal,
-          ],
-        ),
-      );
-      expect(captured.method, equals('GET'));
-      expect(captured.url.path, equals('/v1/admin/auth/audit-log'));
-      expect(captured.url.queryParameters['operator_id'], equals('op-1'));
-      expect(
-        captured.url.queryParameters['actions'],
-        equals('admin.session.force_logout'),
-      );
-      expect(captured.url.queryParameters['target_kind'], equals('user'));
-      expect(captured.url.queryParameters['time_window'], equals('last_7d'));
-      expect(
-        captured.url.queryParameters['actor_kinds'],
-        equals('forge_admin,service_principal'),
-      );
+
+      final page = await gateway.listAuditLog(operatorId: 'op-1');
+
+      expect(page.rows.single.actorDisplayName, equals('Dana Owner'));
+      expect(page.rows.single.actorEmail, equals('owner@example.test'));
+      expect(page.rows.single.actorRole, equals('Owner'));
     });
 
     test('non-forge-admin caller never reaches the network', () async {
@@ -639,8 +672,7 @@ void main() {
   });
 
   group('locked validation copy', () {
-    test('SupportActionsValidationCopy.cannotSelfPair contains no em dash',
-        () {
+    test('SupportActionsValidationCopy.cannotSelfPair contains no em dash', () {
       expect(
         SupportActionsValidationCopy.cannotSelfPair.contains('—'),
         isFalse,

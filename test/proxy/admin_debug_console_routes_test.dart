@@ -34,6 +34,54 @@ void main() {
         }
       });
     });
+
+    test(
+      'GET relationship-help forwards exact typed use-case filters',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingDebugConsoleGateway();
+          final ctx = await _spinUp(gateway);
+          try {
+            final uri = ctx.baseUri.resolve(
+              '$adminDebugRelationshipHelpPath?operator_id=op-1'
+              '&support_use_case=relationship_review&limit=25',
+            );
+            final response = await _httpGet(ctx.client, uri);
+
+            expect(response.statusCode, equals(200));
+            expect(gateway.operatorIds, equals(<String?>['op-1']));
+            expect(
+              gateway.usageClasses,
+              equals(<String?>['relationship_review']),
+            );
+            expect(gateway.limits, equals(<int>[25]));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('GET account-help rejects use cases outside the typed tab', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingDebugConsoleGateway();
+        final ctx = await _spinUp(gateway);
+        try {
+          final uri = ctx.baseUri.resolve(
+            '$adminDebugAccountHelpPath?support_use_case=relationship_review',
+          );
+          final response = await _httpGet(ctx.client, uri);
+
+          expect(response.statusCode, equals(400));
+          expect(response.body['error'], equals('invalid_support_use_case'));
+          expect(gateway.usageClasses, isEmpty);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
   });
 }
 
@@ -101,6 +149,7 @@ class _RecordingDebugConsoleGateway implements DebugConsoleAdminProxyGateway {
   final operatorIds = <String?>[];
   final locationIds = <String?>[];
   final locationIdLists = <List<String>?>[];
+  final usageClasses = <String?>[];
   final limits = <int>[];
 
   @override
@@ -120,6 +169,7 @@ class _RecordingDebugConsoleGateway implements DebugConsoleAdminProxyGateway {
     operatorIds.add(operatorId);
     this.locationIds.add(locationId);
     locationIdLists.add(locationIds);
+    usageClasses.add(usageClass);
     limits.add(limit);
     return const <Map<String, Object?>>[];
   }

@@ -1,16 +1,17 @@
 // Phase 11A.5 - Debug console admin surface (per-operator request log).
 //
 // Read-only operator-facing console for the proxy `proxy_requests`
-// projection. Three tabs reflect the launch-slice scope and the two
-// future plug-ins:
+// projection. Three tabs reflect the support workflow:
 //
 //   * Request log - live filterable / searchable view of recent
 //                   proxy requests. Meta-only by default; expand-row
 //                   reveals the full content payload only when the
 //                   operator's `feature_flags` opt-in is on AND the
 //                   actor holds `super_admin`.
-//   * Graph debug - stub for 11A.3.x. Shows the 501-style banner.
-//   * MFA diagnostics - stub for 9.UX.1a. Shows the 501-style banner.
+//   * Relationship Help - typed relationship-review / knowledge-link
+//                   support requests, filterable by exact use-case ID.
+//   * Account Help - typed account / auth / MFA / session support
+//                   requests, filterable by exact use-case ID.
 //
 // Live-tail is OFF by default. When toggled on, the screen polls
 // `tailRecent` every [kDebugConsoleTailPollInterval] seconds and
@@ -53,8 +54,9 @@ import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 
 const String _kRequestLogTab = 'request_log';
-const String _kGraphDebugTab = 'graph_debug';
-const String _kMfaDiagnosticsTab = 'mfa_diagnostics';
+const String _kRelationshipHelpTab = 'relationship_help';
+const String _kAccountHelpTab = 'account_help';
+const int _kMaxOrgUnitSupportLogLocationIds = 100;
 
 class DebugConsoleAdminScreen extends StatefulWidget {
   const DebugConsoleAdminScreen({
@@ -111,15 +113,25 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
   DateTime? _lastRefreshed;
 
   List<RequestLogEntry> _entries = const <RequestLogEntry>[];
+  List<RequestLogEntry> _relationshipHelpEntries = const <RequestLogEntry>[];
+  List<RequestLogEntry> _accountHelpEntries = const <RequestLogEntry>[];
   List<FullContentOptIn> _optIns = const <FullContentOptIn>[];
 
   late RequestLogFilter _filter;
+  RequestLogFilter _relationshipHelpFilter = const RequestLogFilter();
+  RequestLogFilter _accountHelpFilter = const RequestLogFilter();
+  String? _relationshipHelpUseCase;
+  String? _accountHelpUseCase;
   RequestLogFilter? _serverFilter;
   bool _refreshQueued = false;
   List<String>? _scopeLocationIds;
   bool _scopeResolving = false;
   String? _scopeResolutionError;
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _relationshipHelpSearchController =
+      TextEditingController();
+  final TextEditingController _accountHelpSearchController =
+      TextEditingController();
   final Set<String> _expanded = <String>{};
 
   bool _liveTailOn = false;
@@ -153,6 +165,8 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     _tabs.dispose();
     _tailTimer?.cancel();
     _searchController.dispose();
+    _relationshipHelpSearchController.dispose();
+    _accountHelpSearchController.dispose();
     super.dispose();
   }
 
@@ -163,25 +177,43 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     return false;
   }
 
-  RequestLogFilter get _effectiveFilter {
+  RequestLogFilter get _effectiveFilter => _scopeFilter(_filter);
+
+  RequestLogFilter _effectiveSupportFilter(SupportHelpSurface surface) {
+    return _scopeFilter(
+      surface == SupportHelpSurface.relationship
+          ? _relationshipHelpFilter
+          : _accountHelpFilter,
+    );
+  }
+
+  RequestLogFilter _scopeFilter(RequestLogFilter base) {
     final scope = widget.hierarchyScope;
-    if (scope == null) return _filter;
+    if (scope == null) return base;
     switch (scope.scopeType) {
       case AdminHierarchyScopeType.business:
-        return _filter.copyWith(operatorId: scope.operatorId);
+        return base.copyWith(operatorId: scope.operatorId);
       case AdminHierarchyScopeType.location:
-        return _filter.copyWith(
+        return base.copyWith(
           operatorId: scope.operatorId,
           locationId: scope.locationId,
           locationIds: null,
         );
       case AdminHierarchyScopeType.orgUnit:
         final locationIds = _scopeLocationIds ?? const <String>[];
-        return _filter.copyWith(
+        return base.copyWith(
           operatorId: scope.operatorId,
           locationIds: List<String>.unmodifiable(locationIds),
         );
     }
+  }
+
+  bool get _orgUnitScopeBlocked {
+    final scope = widget.hierarchyScope;
+    if (scope == null || !scope.isOrgUnitScope) return false;
+    if (_scopeResolving) return true;
+    if (_scopeResolutionError != null) return true;
+    return _scopeLocationIds == null;
   }
 
   void _startScopeResolution() {
@@ -225,6 +257,15 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
         for (final location in locations)
           if (coveredUnitIds.contains(location.orgUnitId)) location.locationId,
       ]..sort();
+      if (locationIds.length > _kMaxOrgUnitSupportLogLocationIds) {
+        setState(() {
+          _scopeLocationIds = const <String>[];
+          _scopeResolving = false;
+          _scopeResolutionError =
+              'This org unit covers ${locationIds.length} locations. Support logs cap explicit location filters at $_kMaxOrgUnitSupportLogLocationIds, so choose a smaller org unit or the business scope.';
+        });
+        return;
+      }
       setState(() {
         _scopeLocationIds = List<String>.unmodifiable(locationIds);
         _scopeResolving = false;
@@ -271,7 +312,22 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
       _refreshQueued = true;
       return;
     }
+    if (_orgUnitScopeBlocked) {
+      setState(() {
+        _entries = const <RequestLogEntry>[];
+        _relationshipHelpEntries = const <RequestLogEntry>[];
+        _accountHelpEntries = const <RequestLogEntry>[];
+        _initialLoading = false;
+        _refreshing = false;
+        _loadError = null;
+      });
+      return;
+    }
     final requestFilter = _effectiveFilter;
+    final relationshipFilter = _effectiveSupportFilter(
+      SupportHelpSurface.relationship,
+    );
+    final accountFilter = _effectiveSupportFilter(SupportHelpSurface.account);
     setState(() {
       _refreshing = true;
       if (_entries.isEmpty) _initialLoading = true;
@@ -281,11 +337,23 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
       final results = await Future.wait(<Future<Object>>[
         widget.gateway.listRequests(requestFilter),
         widget.gateway.listFullContentOptIns(),
+        widget.gateway.listSupportHelpRequests(
+          SupportHelpSurface.relationship,
+          relationshipFilter,
+          supportUseCaseId: _relationshipHelpUseCase,
+        ),
+        widget.gateway.listSupportHelpRequests(
+          SupportHelpSurface.account,
+          accountFilter,
+          supportUseCaseId: _accountHelpUseCase,
+        ),
       ]);
       if (!mounted) return;
       setState(() {
         _entries = results[0] as List<RequestLogEntry>;
         _optIns = results[1] as List<FullContentOptIn>;
+        _relationshipHelpEntries = results[2] as List<RequestLogEntry>;
+        _accountHelpEntries = results[3] as List<RequestLogEntry>;
         _serverFilter = requestFilter;
         _initialLoading = false;
         _loadError = null;
@@ -341,6 +409,48 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
   void _onSearchChanged(String value) {
     final next = value.trim();
     _onFilterChanged(_filter.copyWith(searchText: next.isEmpty ? null : next));
+  }
+
+  void _onSupportFilterChanged(
+    SupportHelpSurface surface,
+    RequestLogFilter next,
+  ) {
+    setState(() {
+      switch (surface) {
+        case SupportHelpSurface.relationship:
+          _relationshipHelpFilter = next;
+          break;
+        case SupportHelpSurface.account:
+          _accountHelpFilter = next;
+          break;
+      }
+    });
+    unawaited(_refresh());
+  }
+
+  void _onSupportSearchChanged(SupportHelpSurface surface, String value) {
+    final next = value.trim();
+    final filter = surface == SupportHelpSurface.relationship
+        ? _relationshipHelpFilter
+        : _accountHelpFilter;
+    _onSupportFilterChanged(
+      surface,
+      filter.copyWith(searchText: next.isEmpty ? null : next),
+    );
+  }
+
+  void _onSupportUseCaseChanged(SupportHelpSurface surface, String? useCaseId) {
+    setState(() {
+      switch (surface) {
+        case SupportHelpSurface.relationship:
+          _relationshipHelpUseCase = useCaseId;
+          break;
+        case SupportHelpSurface.account:
+          _accountHelpUseCase = useCaseId;
+          break;
+      }
+    });
+    unawaited(_refresh());
   }
 
   bool _filterCovers(RequestLogFilter loaded, RequestLogFilter requested) {
@@ -462,15 +572,15 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
               tabs: const <Widget>[
                 Tab(
                   key: Key('admin_debug_console_tab_$_kRequestLogTab'),
-                  text: 'Requests',
+                  text: 'All requests',
                 ),
                 Tab(
-                  key: Key('admin_debug_console_tab_$_kGraphDebugTab'),
-                  text: 'Relationship help',
+                  key: Key('admin_debug_console_tab_$_kRelationshipHelpTab'),
+                  text: 'Relationship Help',
                 ),
                 Tab(
-                  key: Key('admin_debug_console_tab_$_kMfaDiagnosticsTab'),
-                  text: 'Account help',
+                  key: Key('admin_debug_console_tab_$_kAccountHelpTab'),
+                  text: 'Account Help',
                 ),
               ],
             ),
@@ -508,25 +618,61 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
                   ),
                   _SupportHelpTab(
                     key: const Key('admin_debug_console_relationship_help_tab'),
+                    surface: SupportHelpSurface.relationship,
                     title: 'Relationship help',
                     icon: Icons.hub_outlined,
-                    entries: _visibleEntries,
-                    matches: _relationshipHelpMatches,
+                    entries: _relationshipHelpEntries,
+                    filter: _relationshipHelpFilter,
+                    selectedUseCaseId: _relationshipHelpUseCase,
+                    searchController: _relationshipHelpSearchController,
+                    loading: _initialLoading || _refreshing,
+                    loadError: _loadError,
+                    onFilterChanged: (next) => _onSupportFilterChanged(
+                      SupportHelpSurface.relationship,
+                      next,
+                    ),
+                    onSearchChanged: (value) => _onSupportSearchChanged(
+                      SupportHelpSurface.relationship,
+                      value,
+                    ),
+                    onUseCaseChanged: (value) => _onSupportUseCaseChanged(
+                      SupportHelpSurface.relationship,
+                      value,
+                    ),
+                    onRunRefresh: _refresh,
                     emptyBody:
                         'No relationship review requests match the current filters.',
                     body:
-                        'Review recent relationship and knowledge-base requests for this selected scope.',
+                        'Typed view of relationship review, knowledge-link, and corpus relationship support requests for the selected scope.',
                   ),
                   _SupportHelpTab(
                     key: const Key('admin_debug_console_account_help_tab'),
+                    surface: SupportHelpSurface.account,
                     title: 'Account help',
                     icon: Icons.manage_accounts_outlined,
-                    entries: _visibleEntries,
-                    matches: _accountHelpMatches,
+                    entries: _accountHelpEntries,
+                    filter: _accountHelpFilter,
+                    selectedUseCaseId: _accountHelpUseCase,
+                    searchController: _accountHelpSearchController,
+                    loading: _initialLoading || _refreshing,
+                    loadError: _loadError,
+                    onFilterChanged: (next) => _onSupportFilterChanged(
+                      SupportHelpSurface.account,
+                      next,
+                    ),
+                    onSearchChanged: (value) => _onSupportSearchChanged(
+                      SupportHelpSurface.account,
+                      value,
+                    ),
+                    onUseCaseChanged: (value) => _onSupportUseCaseChanged(
+                      SupportHelpSurface.account,
+                      value,
+                    ),
+                    onRunRefresh: _refresh,
                     emptyBody:
                         'No account support requests match the current filters.',
                     body:
-                        'Review recent sign-in, account, notification, and removal-request activity for this selected scope.',
+                        'Typed view of account, sign-in, MFA, session, notification, and removal support requests for the selected scope.',
                   ),
                 ],
               ),
@@ -982,8 +1128,13 @@ class _FilterBar extends StatelessWidget {
 }
 
 class _StatusFilterChip extends StatelessWidget {
-  const _StatusFilterChip({required this.value, required this.onChanged});
+  const _StatusFilterChip({
+    this.keyName = const Key('admin_debug_console_filter_status'),
+    required this.value,
+    required this.onChanged,
+  });
 
+  final Key keyName;
   final RequestLogStatus? value;
   final ValueChanged<RequestLogStatus?> onChanged;
 
@@ -993,7 +1144,7 @@ class _StatusFilterChip extends StatelessWidget {
         ? 'Status: any'
         : 'Status: ${_statusLabel(value!)}';
     return PopupMenuButton<RequestLogStatus?>(
-      key: const Key('admin_debug_console_filter_status'),
+      key: keyName,
       tooltip: 'Filter by status',
       onSelected: onChanged,
       itemBuilder: (_) => <PopupMenuEntry<RequestLogStatus?>>[
@@ -1017,8 +1168,13 @@ class _StatusFilterChip extends StatelessWidget {
 }
 
 class _TimeWindowFilterChip extends StatelessWidget {
-  const _TimeWindowFilterChip({required this.value, required this.onChanged});
+  const _TimeWindowFilterChip({
+    this.keyName = const Key('admin_debug_console_filter_window'),
+    required this.value,
+    required this.onChanged,
+  });
 
+  final Key keyName;
   final RequestLogTimeWindow? value;
   final ValueChanged<RequestLogTimeWindow?> onChanged;
 
@@ -1028,7 +1184,7 @@ class _TimeWindowFilterChip extends StatelessWidget {
         ? 'Window: any'
         : 'Window: ${requestLogTimeWindowLabel(value!)}';
     return PopupMenuButton<RequestLogTimeWindow?>(
-      key: const Key('admin_debug_console_filter_window'),
+      key: keyName,
       tooltip: 'Filter by time window',
       onSelected: onChanged,
       itemBuilder: (_) => <PopupMenuEntry<RequestLogTimeWindow?>>[
@@ -1449,6 +1605,11 @@ class _RequestRow extends StatelessWidget {
                     label: 'Request use case',
                     value: adminRequestUseCaseLabelWithId(entry.usageClass),
                   ),
+                  if (_supportLogActorIdentity(entry).isNotEmpty)
+                    _MetaRow(
+                      label: 'Actor',
+                      value: _supportLogActorIdentity(entry),
+                    ),
                   _MetaRow(
                     label: 'Started',
                     value: adminHumanDateTime(entry.startedAt),
@@ -1621,57 +1782,45 @@ class _FullContentLockedBlock extends StatelessWidget {
   }
 }
 
-typedef _SupportHelpMatcher = bool Function(RequestLogEntry entry);
-
-bool _relationshipHelpMatches(RequestLogEntry entry) {
-  final haystack = _supportHelpText(entry);
-  return haystack.contains('relationship') ||
-      haystack.contains('graph') ||
-      haystack.contains('corpus') ||
-      haystack.contains('knowledge') ||
-      haystack.contains('review');
-}
-
-bool _accountHelpMatches(RequestLogEntry entry) {
-  final haystack = _supportHelpText(entry);
-  return haystack.contains('account') ||
-      haystack.contains('auth') ||
-      haystack.contains('mfa') ||
-      haystack.contains('session') ||
-      haystack.contains('notification') ||
-      haystack.contains('removal') ||
-      haystack.contains('user');
-}
-
-String _supportHelpText(RequestLogEntry entry) {
-  return <String>[
-    entry.usageClass,
-    for (final value in entry.requestMeta.values) value?.toString() ?? '',
-  ].join(' ').toLowerCase();
-}
-
 class _SupportHelpTab extends StatelessWidget {
   const _SupportHelpTab({
     super.key,
+    required this.surface,
     required this.title,
     required this.icon,
     required this.entries,
-    required this.matches,
+    required this.filter,
+    required this.selectedUseCaseId,
+    required this.searchController,
+    required this.loading,
+    required this.loadError,
+    required this.onFilterChanged,
+    required this.onSearchChanged,
+    required this.onUseCaseChanged,
+    required this.onRunRefresh,
     required this.emptyBody,
     required this.body,
   });
 
+  final SupportHelpSurface surface;
   final String title;
   final IconData icon;
   final List<RequestLogEntry> entries;
-  final _SupportHelpMatcher matches;
+  final RequestLogFilter filter;
+  final String? selectedUseCaseId;
+  final TextEditingController searchController;
+  final bool loading;
+  final String? loadError;
+  final ValueChanged<RequestLogFilter> onFilterChanged;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<String?> onUseCaseChanged;
+  final Future<void> Function() onRunRefresh;
   final String emptyBody;
   final String body;
 
   @override
   Widget build(BuildContext context) {
-    final exactRows = entries.where(matches).toList(growable: false);
-    final rows = exactRows.isEmpty && entries.isNotEmpty ? entries : exactRows;
+    final rows = entries;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Center(
@@ -1710,18 +1859,152 @@ class _SupportHelpTab extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-                if (rows.isEmpty)
+                _SupportHelpFilterBar(
+                  surface: surface,
+                  filter: filter,
+                  selectedUseCaseId: selectedUseCaseId,
+                  searchController: searchController,
+                  onFilterChanged: onFilterChanged,
+                  onSearchChanged: onSearchChanged,
+                  onUseCaseChanged: onUseCaseChanged,
+                ),
+                const SizedBox(height: 14),
+                if (loadError != null)
+                  _ErrorBanner(message: loadError!)
+                else if (loading && rows.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.sunsetDark,
+                        ),
+                      ),
+                    ),
+                  )
+                else if (rows.isEmpty)
                   Text(
                     emptyBody,
                     style: AppTextStyles.body13(color: AppColors.textSecondary),
                   )
                 else
                   for (final entry in rows.take(8))
-                    _SupportHelpRequestRow(entry: entry),
+                    _SupportHelpRequestRow(surface: surface, entry: entry),
+                if (rows.isEmpty && !loading && loadError == null) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    key: Key(
+                      'admin_debug_console_${surface.name}_help_refresh',
+                    ),
+                    onPressed: onRunRefresh,
+                    style: AdminButtonStyles.secondary(),
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Refresh'),
+                  ),
+                ],
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SupportHelpFilterBar extends StatelessWidget {
+  const _SupportHelpFilterBar({
+    required this.surface,
+    required this.filter,
+    required this.selectedUseCaseId,
+    required this.searchController,
+    required this.onFilterChanged,
+    required this.onSearchChanged,
+    required this.onUseCaseChanged,
+  });
+
+  final SupportHelpSurface surface;
+  final RequestLogFilter filter;
+  final String? selectedUseCaseId;
+  final TextEditingController searchController;
+  final ValueChanged<RequestLogFilter> onFilterChanged;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<String?> onUseCaseChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key('admin_debug_console_${surface.name}_help_filter_bar'),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          TextField(
+            key: Key('admin_debug_console_${surface.name}_help_search'),
+            controller: searchController,
+            onChanged: onSearchChanged,
+            decoration: const InputDecoration(
+              isDense: true,
+              prefixIcon: Icon(Icons.search, size: 18),
+              hintText: 'Search by request or retry ID',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              _StatusFilterChip(
+                keyName: Key(
+                  'admin_debug_console_${surface.name}_help_filter_status',
+                ),
+                value: filter.status,
+                onChanged: (next) =>
+                    onFilterChanged(filter.copyWith(status: next)),
+              ),
+              _TimeWindowFilterChip(
+                keyName: Key(
+                  'admin_debug_console_${surface.name}_help_filter_window',
+                ),
+                value: filter.timeWindow,
+                onChanged: (next) =>
+                    onFilterChanged(filter.copyWith(timeWindow: next)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: <Widget>[
+              _KeyChip(
+                label: 'All ${surface.label}',
+                id: 'all',
+                description: 'all typed ${surface.label.toLowerCase()} rows',
+                active: selectedUseCaseId == null,
+                onPressed: () => onUseCaseChanged(null),
+              ),
+              for (final useCase in supportHelpUseCasesFor(surface))
+                _KeyChip(
+                  label: useCase.label,
+                  id: useCase.id,
+                  description: useCase.description,
+                  active: selectedUseCaseId == useCase.id,
+                  onPressed: () => onUseCaseChanged(
+                    selectedUseCaseId == useCase.id ? null : useCase.id,
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1750,14 +2033,18 @@ class _SupportHelpCountPill extends StatelessWidget {
 }
 
 class _SupportHelpRequestRow extends StatelessWidget {
-  const _SupportHelpRequestRow({required this.entry});
+  const _SupportHelpRequestRow({required this.surface, required this.entry});
 
+  final SupportHelpSurface surface;
   final RequestLogEntry entry;
 
   @override
   Widget build(BuildContext context) {
     final route = _friendlyRoute(entry);
     return Container(
+      key: Key(
+        'admin_debug_console_${surface.name}_help_row_${entry.requestId}',
+      ),
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1789,6 +2076,13 @@ class _SupportHelpRequestRow extends StatelessWidget {
                   '${requestLogStatusLabel(entry.status)} - ${entry.latencyMs} ms - ${_timeAgo(entry.startedAt)}',
                   style: AppTextStyles.body12(color: AppColors.textSecondary),
                 ),
+                if (_supportLogActorIdentity(entry).isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    _supportLogActorIdentity(entry),
+                    style: AppTextStyles.body12(color: AppColors.textSecondary),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1843,6 +2137,36 @@ class _SupportHelpRequestRow extends StatelessWidget {
     if (elapsed.inDays < 1) return '${elapsed.inHours} hr ago';
     return '${elapsed.inDays} d ago';
   }
+}
+
+String _supportLogActorIdentity(RequestLogEntry entry) {
+  final meta = entry.requestMeta;
+  final name = _metaString(meta, const <String>[
+    'actor_display_name',
+    'actor_name',
+    'display_name',
+  ]);
+  final role = _metaString(meta, const <String>[
+    'actor_role',
+    'actor_role_label',
+    'role_label',
+    'role',
+  ]);
+  final email = _metaString(meta, const <String>['actor_email', 'email']);
+  if (name == null && role == null && email == null) return '';
+  return <String>[
+    name ?? 'Actor unavailable',
+    role ?? 'role unavailable',
+    email ?? 'email unavailable',
+  ].join(' - ');
+}
+
+String? _metaString(Map<String, Object?> meta, List<String> keys) {
+  for (final key in keys) {
+    final raw = meta[key];
+    if (raw is String && raw.trim().isNotEmpty) return raw.trim();
+  }
+  return null;
 }
 
 class _EmptyState extends StatelessWidget {

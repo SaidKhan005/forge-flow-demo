@@ -812,41 +812,101 @@ class _ActionsPanelCard extends StatelessWidget {
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 12),
-          _ActionRow(
-            keyId: 'admin_asa_action_reset_mfa',
-            title: 'Reset member MFA',
-            description:
-                'Removes the member\'s MFA factors so they can re-enroll. '
-                'Multi-factor sign-in required.',
-            buttonLabel: 'Reset MFA',
-            enabled: editingEnabled && canResetMfaFactors,
-            onPressed: onResetMfa,
-            mfaTag: true,
+          _ActionGroup(
+            keyId: 'admin_asa_action_group_recovery',
+            title: 'Account recovery',
+            icon: Icons.lock_reset_outlined,
+            children: <Widget>[
+              _ActionRow(
+                keyId: 'admin_asa_action_reset_mfa',
+                title: 'Reset member MFA',
+                description:
+                    'Removes the member\'s MFA factors so they can re-enroll. '
+                    'Multi-factor sign-in required.',
+                buttonLabel: 'Reset MFA',
+                enabled: editingEnabled && canResetMfaFactors,
+                onPressed: onResetMfa,
+                mfaTag: true,
+              ),
+              const SizedBox(height: 8),
+              _ActionRow(
+                keyId: 'admin_asa_action_password_reset',
+                title: 'Initiate password reset',
+                description:
+                    'Sends an active member a recovery email. Pending invite-only users must accept their invite first.',
+                buttonLabel: 'Send reset email',
+                enabled: editingEnabled,
+                onPressed: onPasswordReset,
+                mfaTag: false,
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          _ActionRow(
-            keyId: 'admin_asa_action_password_reset',
-            title: 'Initiate password reset',
-            description:
-                'Sends an active member a recovery email. Pending invite-only users must accept their invite first.',
-            buttonLabel: 'Send reset email',
-            enabled: editingEnabled,
-            onPressed: onPasswordReset,
-            mfaTag: false,
+          const SizedBox(height: 10),
+          _ActionGroup(
+            keyId: 'admin_asa_action_group_data_protection',
+            title: 'Data protection',
+            icon: Icons.privacy_tip_outlined,
+            children: <Widget>[
+              _ActionRow(
+                keyId: 'admin_asa_action_erasure',
+                title: 'Issue paired-approval erasure',
+                description:
+                    'Records a right-to-erasure request that a second F&F admin '
+                    'must confirm before any data is overwritten. Multi-factor '
+                    'sign-in required.',
+                buttonLabel: 'Issue erasure',
+                enabled: editingEnabled && canIssuePairedErasure,
+                onPressed: onIssueErasure,
+                mfaTag: true,
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          _ActionRow(
-            keyId: 'admin_asa_action_erasure',
-            title: 'Issue paired-approval erasure',
-            description:
-                'Records a right-to-erasure request that a second F&F admin '
-                'must confirm before any data is overwritten. Multi-factor '
-                'sign-in required.',
-            buttonLabel: 'Issue erasure',
-            enabled: editingEnabled && canIssuePairedErasure,
-            onPressed: onIssueErasure,
-            mfaTag: true,
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionGroup extends StatelessWidget {
+  const _ActionGroup({
+    required this.keyId,
+    required this.title,
+    required this.icon,
+    required this.children,
+  });
+
+  final String keyId;
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key(keyId),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(icon, size: 16, color: AppColors.sunsetDark),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: AppTextStyles.body13(
+                  color: AppColors.textPrimary,
+                ).copyWith(fontWeight: FontWeight.w700),
+              ),
+            ],
           ),
+          const SizedBox(height: 10),
+          ...children,
         ],
       ),
     );
@@ -1476,7 +1536,7 @@ class _AuditRowTileState extends State<_AuditRowTile> {
             ),
             const SizedBox(height: 6),
             Text(
-              '${row.actorDisplayName} (${row.actorEmail})',
+              _auditActorIdentityLabel(row),
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 4),
@@ -1601,6 +1661,18 @@ String humanizeAuditAction(String action) {
     default:
       return action;
   }
+}
+
+String _auditActorIdentityLabel(AuditLogRow row) {
+  final name = row.actorDisplayName.trim().isEmpty
+      ? row.actorUserId
+      : row.actorDisplayName.trim();
+  final role = row.actorRole?.trim().isNotEmpty == true
+      ? row.actorRole!.trim()
+      : row.actorKind.displayLabel;
+  final email = row.actorEmail.trim();
+  if (email.isEmpty) return '$name - $role - email unavailable';
+  return '$name - $role - $email';
 }
 
 /// Format an audit `occurred_at` timestamp for display. The contract

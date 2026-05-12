@@ -336,6 +336,54 @@ void main() {
       final tailed = await gateway.tailRecent();
       expect(tailed.first.requestId, equals('req-newer'));
     });
+
+    test('typed support help reads use exact use-case buckets', () async {
+      final relationship = entry(
+        id: 'req-relationship',
+        operatorId: 'op-A',
+        usageClass: 'relationship_review',
+      );
+      final account = entry(
+        id: 'req-account',
+        operatorId: 'op-A',
+        usageClass: 'account_help',
+      );
+      final fuzzyMiss = entry(
+        id: 'req-fuzzy',
+        operatorId: 'op-A',
+        usageClass: 'advisor_qa',
+      );
+      final gateway = InMemoryDebugConsoleAdminGateway(
+        seed: <RequestLogEntry>[relationship, account, fuzzyMiss],
+      );
+
+      final relationshipRows = await gateway.listSupportHelpRequests(
+        SupportHelpSurface.relationship,
+        const RequestLogFilter(operatorId: 'op-A'),
+      );
+      final accountRows = await gateway.listSupportHelpRequests(
+        SupportHelpSurface.account,
+        const RequestLogFilter(operatorId: 'op-A'),
+      );
+      final exactAccountRows = await gateway.listSupportHelpRequests(
+        SupportHelpSurface.account,
+        const RequestLogFilter(operatorId: 'op-A'),
+        supportUseCaseId: 'account_help',
+      );
+
+      expect(
+        relationshipRows.map((e) => e.requestId),
+        equals(<String>['req-relationship']),
+      );
+      expect(
+        accountRows.map((e) => e.requestId),
+        equals(<String>['req-account']),
+      );
+      expect(
+        exactAccountRows.map((e) => e.requestId),
+        equals(<String>['req-account']),
+      );
+    });
   });
 
   group('HttpDebugConsoleAdminGateway', () {
@@ -372,6 +420,36 @@ void main() {
         );
       },
     );
+
+    test('sends typed account help filters to the proxy route', () async {
+      http.Request? captured;
+      final gateway = HttpDebugConsoleAdminGateway(
+        baseUri: Uri.parse('https://admin-proxy.test'),
+        bearerTokenProvider: () async => 'token',
+        httpClient: http_testing.MockClient((http.Request request) async {
+          captured = request;
+          return http.Response('{"requests":[]}', 200);
+        }),
+      );
+
+      await gateway.listSupportHelpRequests(
+        SupportHelpSurface.account,
+        const RequestLogFilter(
+          operatorId: 'op-1',
+          status: RequestLogStatus.error,
+        ),
+        supportUseCaseId: 'mfa_diagnostics',
+      );
+
+      expect(captured, isNotNull);
+      expect(captured!.url.path, equals('/v1/admin/debug/account-help'));
+      expect(captured!.url.queryParameters['operator_id'], equals('op-1'));
+      expect(
+        captured!.url.queryParameters['support_use_case'],
+        equals('mfa_diagnostics'),
+      );
+      expect(captured!.url.queryParameters['status'], equals('error'));
+    });
   });
 
   group('Demo seed', () {

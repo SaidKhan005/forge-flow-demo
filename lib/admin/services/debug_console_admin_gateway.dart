@@ -31,6 +31,100 @@ import 'admin_http_timeout.dart';
 /// tests pin a synthetic value.
 typedef DebugConsoleAdminBearerTokenProvider = Future<String> Function();
 
+enum SupportHelpSurface { relationship, account }
+
+extension SupportHelpSurfaceCopy on SupportHelpSurface {
+  String get label {
+    switch (this) {
+      case SupportHelpSurface.relationship:
+        return 'Relationship help';
+      case SupportHelpSurface.account:
+        return 'Account help';
+    }
+  }
+
+  String get path {
+    switch (this) {
+      case SupportHelpSurface.relationship:
+        return HttpDebugConsoleAdminGateway.relationshipHelpPath;
+      case SupportHelpSurface.account:
+        return HttpDebugConsoleAdminGateway.accountHelpPath;
+    }
+  }
+}
+
+class SupportHelpUseCase {
+  const SupportHelpUseCase({
+    required this.id,
+    required this.label,
+    required this.description,
+  });
+
+  final String id;
+  final String label;
+  final String description;
+}
+
+const List<SupportHelpUseCase> kRelationshipHelpUseCases = <SupportHelpUseCase>[
+  SupportHelpUseCase(
+    id: 'relationship_review',
+    label: 'Relationship review',
+    description: 'Knowledge graph and relationship review support.',
+  ),
+  SupportHelpUseCase(
+    id: 'knowledge_relationship',
+    label: 'Knowledge links',
+    description: 'Knowledge-base relationship linking and review.',
+  ),
+  SupportHelpUseCase(
+    id: 'corpus_relationship_review',
+    label: 'Corpus review',
+    description: 'Corpus relationship review and repair requests.',
+  ),
+];
+
+const List<SupportHelpUseCase> kAccountHelpUseCases = <SupportHelpUseCase>[
+  SupportHelpUseCase(
+    id: 'account_help',
+    label: 'Account help',
+    description: 'General account assistance and operator access support.',
+  ),
+  SupportHelpUseCase(
+    id: 'auth_support',
+    label: 'Sign-in help',
+    description: 'Authentication and sign-in support requests.',
+  ),
+  SupportHelpUseCase(
+    id: 'mfa_diagnostics',
+    label: 'MFA help',
+    description: 'Multi-factor setup and recovery diagnostics.',
+  ),
+  SupportHelpUseCase(
+    id: 'session_support',
+    label: 'Session help',
+    description: 'Active session review and sign-out support.',
+  ),
+  SupportHelpUseCase(
+    id: 'notification_support',
+    label: 'Notification help',
+    description: 'Email, push, and notification delivery support.',
+  ),
+  SupportHelpUseCase(
+    id: 'user_removal',
+    label: 'Removal requests',
+    description: 'User deactivation, removal, and erasure support.',
+  ),
+];
+
+List<SupportHelpUseCase> supportHelpUseCasesFor(SupportHelpSurface surface) {
+  switch (surface) {
+    case SupportHelpSurface.relationship:
+      return kRelationshipHelpUseCases;
+    case SupportHelpSurface.account:
+      return kAccountHelpUseCases;
+  }
+}
+
 /// Top-level error type for debug-console gateway calls.
 class DebugConsoleAdminGatewayError implements Exception {
   const DebugConsoleAdminGatewayError({
@@ -71,6 +165,16 @@ abstract class DebugConsoleAdminGateway {
     int limit = kDebugConsoleTailLimit,
   });
 
+  /// Typed support-log tabs. These are backed by exact request
+  /// use-case IDs instead of fuzzy matching against generic request
+  /// metadata.
+  Future<List<RequestLogEntry>> listSupportHelpRequests(
+    SupportHelpSurface surface,
+    RequestLogFilter filter, {
+    String? supportUseCaseId,
+    int limit = kDebugConsoleSupportHelpLimit,
+  });
+
   /// Operator-level full-content opt-in projections. The admin shell
   /// renders one entry per operator the caller is allowed to
   /// administer (RLS on `feature_flags` keeps the list tenant-scoped).
@@ -82,6 +186,9 @@ const int kDebugConsoleListLimit = 100;
 
 /// Default page size for live-tail polling.
 const int kDebugConsoleTailLimit = 25;
+
+/// Default bounded page size for typed support-help tabs.
+const int kDebugConsoleSupportHelpLimit = 100;
 
 /// Default poll cadence the screen uses while live-tail is on.
 const Duration kDebugConsoleTailPollInterval = Duration(seconds: 5);
@@ -107,46 +214,22 @@ class HttpDebugConsoleAdminGateway implements DebugConsoleAdminGateway {
   static const String requestByKeyPath = '/v1/admin/debug/requests/by-key';
   static const String tailPath = '/v1/admin/debug/requests/tail';
   static const String optInsPath = '/v1/admin/debug/full-content-opt-ins';
+  static const String relationshipHelpPath =
+      '/v1/admin/debug/relationship-help';
+  static const String accountHelpPath = '/v1/admin/debug/account-help';
 
   @override
   Future<List<RequestLogEntry>> listRequests(
     RequestLogFilter filter, {
     int limit = kDebugConsoleListLimit,
   }) async {
-    final query = <String, String>{'limit': '$limit'};
-    if (filter.operatorId != null && filter.operatorId!.isNotEmpty) {
-      query['operator_id'] = filter.operatorId!;
-    }
-    if (filter.locationId != null && filter.locationId!.isNotEmpty) {
-      query['location_id'] = filter.locationId!;
-    } else if (filter.locationIds != null && filter.locationIds!.length == 1) {
-      query['location_id'] = filter.locationIds!.single;
-    } else if (filter.locationIds != null && filter.locationIds!.isNotEmpty) {
-      query['location_ids'] = filter.locationIds!.join(',');
-    }
-    if (filter.usageClass != null && filter.usageClass!.isNotEmpty) {
-      query['usage_class'] = filter.usageClass!;
-    }
-    if (filter.status != null) {
-      query['status'] = requestLogStatusLabel(filter.status!);
-    }
-    if (filter.timeWindow != null) {
-      query['time_window_seconds'] =
-          '${requestLogTimeWindowSpan(filter.timeWindow!).inSeconds}';
-    }
-    if (filter.searchText != null && filter.searchText!.isNotEmpty) {
-      query['q'] = filter.searchText!;
-    }
+    final query = _requestLogQuery(filter, limit: limit);
     final body = await _send(
       method: 'GET',
       path: requestsPath,
       queryParameters: query,
     );
-    final list = (body['requests'] as List?) ?? const [];
-    return <RequestLogEntry>[
-      for (final entry in list)
-        RequestLogEntry.fromJson((entry as Map).cast<String, Object?>()),
-    ];
+    return _requestEntriesFromBody(body);
   }
 
   @override
@@ -172,11 +255,27 @@ class HttpDebugConsoleAdminGateway implements DebugConsoleAdminGateway {
       path: tailPath,
       queryParameters: <String, String>{'limit': '$limit'},
     );
-    final list = (body['requests'] as List?) ?? const [];
-    return <RequestLogEntry>[
-      for (final entry in list)
-        RequestLogEntry.fromJson((entry as Map).cast<String, Object?>()),
-    ];
+    return _requestEntriesFromBody(body);
+  }
+
+  @override
+  Future<List<RequestLogEntry>> listSupportHelpRequests(
+    SupportHelpSurface surface,
+    RequestLogFilter filter, {
+    String? supportUseCaseId,
+    int limit = kDebugConsoleSupportHelpLimit,
+  }) async {
+    final query = _requestLogQuery(filter, limit: limit);
+    final normalized = supportUseCaseId?.trim();
+    if (normalized != null && normalized.isNotEmpty) {
+      query['support_use_case'] = normalized;
+    }
+    final body = await _send(
+      method: 'GET',
+      path: surface.path,
+      queryParameters: query,
+    );
+    return _requestEntriesFromBody(body);
   }
 
   @override
@@ -208,6 +307,47 @@ class HttpDebugConsoleAdminGateway implements DebugConsoleAdminGateway {
       if (error.statusCode == 404) return null;
       rethrow;
     }
+  }
+
+  Map<String, String> _requestLogQuery(
+    RequestLogFilter filter, {
+    required int limit,
+  }) {
+    final query = <String, String>{'limit': '$limit'};
+    if (filter.operatorId != null && filter.operatorId!.isNotEmpty) {
+      query['operator_id'] = filter.operatorId!;
+    }
+    if (filter.locationId != null && filter.locationId!.isNotEmpty) {
+      query['location_id'] = filter.locationId!;
+    } else if (filter.locationIds != null && filter.locationIds!.length == 1) {
+      query['location_id'] = filter.locationIds!.single;
+    } else if (filter.locationIds != null && filter.locationIds!.isNotEmpty) {
+      query['location_ids'] = filter.locationIds!.join(',');
+    } else if (filter.locationIds != null && filter.locationIds!.isEmpty) {
+      query['location_ids'] = '__no_locations__';
+    }
+    if (filter.usageClass != null && filter.usageClass!.isNotEmpty) {
+      query['usage_class'] = filter.usageClass!;
+    }
+    if (filter.status != null) {
+      query['status'] = requestLogStatusLabel(filter.status!);
+    }
+    if (filter.timeWindow != null) {
+      query['time_window_seconds'] =
+          '${requestLogTimeWindowSpan(filter.timeWindow!).inSeconds}';
+    }
+    if (filter.searchText != null && filter.searchText!.isNotEmpty) {
+      query['q'] = filter.searchText!;
+    }
+    return query;
+  }
+
+  List<RequestLogEntry> _requestEntriesFromBody(Map<String, Object?> body) {
+    final list = (body['requests'] as List?) ?? const [];
+    return <RequestLogEntry>[
+      for (final entry in list)
+        RequestLogEntry.fromJson((entry as Map).cast<String, Object?>()),
+    ];
   }
 
   Future<Map<String, Object?>> _send({
@@ -348,6 +488,33 @@ class InMemoryDebugConsoleAdminGateway implements DebugConsoleAdminGateway {
   }
 
   @override
+  Future<List<RequestLogEntry>> listSupportHelpRequests(
+    SupportHelpSurface surface,
+    RequestLogFilter filter, {
+    String? supportUseCaseId,
+    int limit = kDebugConsoleSupportHelpLimit,
+  }) async {
+    final allowed = supportHelpUseCasesFor(surface).map((u) => u.id).toSet();
+    final selected = supportUseCaseId?.trim();
+    final wanted = selected == null || selected.isEmpty
+        ? allowed
+        : <String>{selected};
+    final reference = _now();
+    final matched = <RequestLogEntry>[
+      for (final entry in _entries)
+        if (wanted.contains(entry.usageClass) &&
+            allowed.contains(entry.usageClass) &&
+            filter.matches(entry, now: reference))
+          entry,
+    ];
+    matched.sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    final clamped = matched.length > limit
+        ? matched.sublist(0, limit)
+        : matched;
+    return List<RequestLogEntry>.unmodifiable(clamped);
+  }
+
+  @override
   Future<List<FullContentOptIn>> listFullContentOptIns() async {
     final list = _optIns.values.toList()
       ..sort((a, b) => a.operatorId.compareTo(b.operatorId));
@@ -445,6 +612,44 @@ List<RequestLogEntry> kDebugConsoleDemoEntries = <RequestLogEntry>[
       'rows_returned': 5,
     },
     fullContentOptInOn: false,
+  ),
+  RequestLogEntry(
+    requestId: 'req-00000000-0000-4000-8000-000000000c01',
+    idempotencyKey: 'idem-relationship-001',
+    operatorId: '00000000-0000-4000-8000-000000000001',
+    locationId: '00000000-0000-4000-8000-0000000000a1',
+    usageClass: 'relationship_review',
+    status: RequestLogStatus.success,
+    startedAt: DateTime.utc(2026, 5, 3, 11, 28, 12),
+    latencyMs: 908,
+    requestMeta: const <String, Object?>{
+      'route': '/v1/admin/support/relationship-review',
+      'method': 'GET',
+      'summary': 'Relationship review queue',
+      'actor_display_name': 'F&F Support',
+      'actor_role': 'ff_support',
+      'actor_email': 'support@forgeflow.test',
+    },
+    fullContentOptInOn: true,
+  ),
+  RequestLogEntry(
+    requestId: 'req-00000000-0000-4000-8000-000000000c02',
+    idempotencyKey: 'idem-account-help-001',
+    operatorId: '00000000-0000-4000-8000-000000000001',
+    locationId: '00000000-0000-4000-8000-0000000000a1',
+    usageClass: 'account_help',
+    status: RequestLogStatus.success,
+    startedAt: DateTime.utc(2026, 5, 3, 11, 25, 4),
+    latencyMs: 344,
+    requestMeta: const <String, Object?>{
+      'route': '/v1/admin/support/account-help',
+      'method': 'GET',
+      'summary': 'MFA account check',
+      'actor_display_name': 'F&F Support',
+      'actor_role': 'ff_support',
+      'actor_email': 'support@forgeflow.test',
+    },
+    fullContentOptInOn: true,
   ),
 ];
 

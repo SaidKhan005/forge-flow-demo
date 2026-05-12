@@ -7751,6 +7751,9 @@ const String adminDebugRequestByKeyPath = '/v1/admin/debug/requests/by-key';
 const String adminDebugRequestsTailPath = '/v1/admin/debug/requests/tail';
 const String adminDebugFullContentOptInsPath =
     '/v1/admin/debug/full-content-opt-ins';
+const String adminDebugRelationshipHelpPath =
+    '/v1/admin/debug/relationship-help';
+const String adminDebugAccountHelpPath = '/v1/admin/debug/account-help';
 const String adminObservabilityPath = '/v1/admin/observability';
 
 const Set<String> kFfDebugConsoleAdminReadRoles = <String>{
@@ -7761,6 +7764,19 @@ const Set<String> kFfDebugConsoleFullContentRoles = <String>{'super_admin'};
 const Set<String> kFfObservabilityAdminReadRoles = <String>{
   'super_admin',
   'ff_support',
+};
+const Set<String> kDebugRelationshipHelpUsageClasses = <String>{
+  'relationship_review',
+  'knowledge_relationship',
+  'corpus_relationship_review',
+};
+const Set<String> kDebugAccountHelpUsageClasses = <String>{
+  'account_help',
+  'auth_support',
+  'mfa_diagnostics',
+  'session_support',
+  'notification_support',
+  'user_removal',
 };
 
 abstract class DebugConsoleAdminProxyGateway {
@@ -15727,7 +15743,9 @@ bool _isAdminDebugPath(String path) {
       path == adminDebugRequestByIdPath ||
       path == adminDebugRequestByKeyPath ||
       path == adminDebugRequestsTailPath ||
-      path == adminDebugFullContentOptInsPath;
+      path == adminDebugFullContentOptInsPath ||
+      path == adminDebugRelationshipHelpPath ||
+      path == adminDebugAccountHelpPath;
 }
 
 bool _isAdminDebugOperation(String path, String method) {
@@ -15755,6 +15773,54 @@ Future<void> _routeDebugConsoleAdmin({
       : _nonBlankString(params['location_id']);
   final reasonPrefix = 'admin.debug.GET:$actorUserId';
 
+  if (path == adminDebugRelationshipHelpPath ||
+      path == adminDebugAccountHelpPath) {
+    final allowedUsageClasses = path == adminDebugRelationshipHelpPath
+        ? kDebugRelationshipHelpUsageClasses
+        : kDebugAccountHelpUsageClasses;
+    final supportUseCase = _nonBlankString(params['support_use_case']);
+    if (supportUseCase != null &&
+        !allowedUsageClasses.contains(supportUseCase)) {
+      _writeJson(response, 400, <String, Object?>{
+        'error': 'invalid_support_use_case',
+        'message': 'support_use_case is not valid for this support-log tab',
+        'allowed': allowedUsageClasses.toList(growable: false)..sort(),
+      });
+      return;
+    }
+    final limit = _clampedQueryInt(
+      params['limit'],
+      defaultValue: 100,
+      min: 1,
+      max: 100,
+    );
+    final rows = await _debugRowsBySupportHelpUsage(
+      gateway: gateway,
+      actorUserId: actorUserId,
+      adminReason:
+          '$reasonPrefix:${path == adminDebugRelationshipHelpPath ? 'relationship_help' : 'account_help'}',
+      operatorId: _nonBlankString(params['operator_id']),
+      locationId: scopedLocationId,
+      locationIds: scopedLocationIds.isEmpty ? null : scopedLocationIds,
+      allowedUsageClasses: allowedUsageClasses,
+      supportUseCase: supportUseCase,
+      status: _nonBlankString(params['status']),
+      timeWindowSeconds: _optionalClampedQueryInt(
+        params['time_window_seconds'],
+        min: 1,
+        max: 604800,
+      ),
+      searchText: _nonBlankString(params['q']),
+      limit: limit,
+      includeFullContent: includeFullContent,
+    );
+    _writeJson(response, 200, <String, Object?>{
+      'requests': rows,
+      'support_use_cases': allowedUsageClasses.toList(growable: false)..sort(),
+    });
+    return;
+  }
+
   if (path == adminDebugRequestsPath) {
     final rows = await gateway.listRequests(
       actorUserId: actorUserId,
@@ -15764,7 +15830,7 @@ Future<void> _routeDebugConsoleAdmin({
       locationIds: scopedLocationIds.isEmpty ? null : scopedLocationIds,
       usageClass: _nonBlankString(params['usage_class']),
       status: _nonBlankString(params['status']),
-      timeWindowSeconds: _clampedQueryInt(
+      timeWindowSeconds: _optionalClampedQueryInt(
         params['time_window_seconds'],
         min: 1,
         max: 604800,
@@ -15846,6 +15912,63 @@ Future<void> _routeDebugConsoleAdmin({
   }
 
   _writeNotFound(response, request);
+}
+
+Future<List<Map<String, Object?>>> _debugRowsBySupportHelpUsage({
+  required DebugConsoleAdminProxyGateway gateway,
+  required String actorUserId,
+  required String adminReason,
+  required String? operatorId,
+  required String? locationId,
+  required List<String>? locationIds,
+  required Set<String> allowedUsageClasses,
+  required String? supportUseCase,
+  required String? status,
+  required int? timeWindowSeconds,
+  required String? searchText,
+  required int limit,
+  required bool includeFullContent,
+}) async {
+  final usageClasses = supportUseCase == null
+      ? (allowedUsageClasses.toList(growable: false)..sort())
+      : <String>[supportUseCase];
+  final byRequestId = <String, Map<String, Object?>>{};
+  for (final usageClass in usageClasses) {
+    final rows = await gateway.listRequests(
+      actorUserId: actorUserId,
+      adminReason: '$adminReason:$usageClass',
+      operatorId: operatorId,
+      locationId: locationId,
+      locationIds: locationIds,
+      usageClass: usageClass,
+      status: status,
+      timeWindowSeconds: timeWindowSeconds,
+      searchText: searchText,
+      limit: limit,
+      includeFullContent: includeFullContent,
+    );
+    for (final row in rows) {
+      final requestId = row['request_id']?.toString();
+      if (requestId == null || requestId.isEmpty) continue;
+      byRequestId[requestId] = row;
+    }
+  }
+  final merged = byRequestId.values.toList(growable: false)
+    ..sort((a, b) {
+      final bTime = _debugStartedAtSortValue(b);
+      final aTime = _debugStartedAtSortValue(a);
+      return bTime.compareTo(aTime);
+    });
+  return merged.length > limit ? merged.sublist(0, limit) : merged;
+}
+
+int _debugStartedAtSortValue(Map<String, Object?> row) {
+  final raw = row['started_at'];
+  if (raw is DateTime) return raw.toUtc().microsecondsSinceEpoch;
+  if (raw is String) {
+    return DateTime.tryParse(raw)?.toUtc().microsecondsSinceEpoch ?? 0;
+  }
+  return 0;
 }
 
 bool _isAdminObservabilityPath(String path) => path == adminObservabilityPath;
@@ -17619,6 +17742,15 @@ int _clampedQueryInt(
   if (value < min) return min;
   if (value > max) return max;
   return value;
+}
+
+int? _optionalClampedQueryInt(
+  String? raw, {
+  required int min,
+  required int max,
+}) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  return _clampedQueryInt(raw, min: min, max: max);
 }
 
 Map<String, Object?> _authEventEntryToJson(AuthEventListEntry entry) {

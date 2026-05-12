@@ -110,6 +110,14 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('admin_asa_audit_log')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_asa_action_group_recovery')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_asa_action_group_data_protection')),
+        findsOneWidget,
+      );
       // Each Actions panel row carries a stable key + button.
       expect(
         find.byKey(const Key('admin_asa_action_reset_mfa')),
@@ -146,6 +154,49 @@ void main() {
       );
       expect(
         find.byKey(const Key('admin_asa_audit_row_seed-diner-3')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('audit rows show actor name, role, and email when present', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = InMemoryAuditedSupportActionsAdminGateway(
+        auditLogByOperator: <String, List<AuditLogRow>>{
+          kDemoDinerOperatorId: <AuditLogRow>[
+            AuditLogRow(
+              eventId: 'actor-full',
+              action: 'auth.password.change',
+              occurredAt: DateTime.utc(2026, 5, 6, 12, 30),
+              actorUserId: 'demo-user-diner-owner',
+              actorDisplayName: 'Dana Owner',
+              actorEmail: 'owner@demo-diner.test',
+              actorKind: AuditActorKind.teamMember,
+              actorRole: 'Owner',
+              operatorId: kDemoDinerOperatorId,
+              targetKind: 'user',
+              targetId: 'demo-user-diner-owner',
+              payload: const <String, Object?>{},
+              businessDate: DateTime.utc(2026, 5, 6),
+            ),
+          ],
+        },
+        membersByOperator: kDemoSupportActionsMembersByOperator(),
+      );
+      await tester.pumpWidget(
+        wrap(
+          AuditedSupportActionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Dana Owner - Owner - owner@demo-diner.test'),
         findsOneWidget,
       );
     });

@@ -389,6 +389,72 @@ void main() {
     );
   });
 
+  testWidgets('org-unit support logs cap expanded location filters', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    const scope = AdminHierarchyScopeIntent.orgUnit(
+      operatorId: 'op-scope',
+      orgUnitId: 'ou-region',
+      operatorName: 'Scope Group',
+      orgUnitName: 'Region',
+    );
+    final gateway = InMemoryDebugConsoleAdminGateway(
+      seed: <RequestLogEntry>[
+        seedEntry(
+          id: 'req-too-wide',
+          operatorId: 'op-scope',
+          locationId: 'loc-000',
+        ),
+      ],
+      now: () => DateTime.utc(2026, 5, 3, 12),
+    );
+    final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+      orgUnitsByOperator: const <String, List<OrgUnitAdminNode>>{
+        'op-scope': <OrgUnitAdminNode>[
+          OrgUnitAdminNode(
+            orgUnitId: 'ou-region',
+            name: 'Region',
+            operatorId: 'op-scope',
+          ),
+        ],
+      },
+      locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+        'op-scope': <HierarchyLocationLeaf>[
+          for (var i = 0; i < 101; i++)
+            HierarchyLocationLeaf(
+              locationId: 'loc-${i.toString().padLeft(3, '0')}',
+              name: 'Location $i',
+              operatorId: 'op-scope',
+              orgUnitId: 'ou-region',
+            ),
+        ],
+      },
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        DebugConsoleAdminScreen(
+          gateway: gateway,
+          hierarchyGateway: hierarchyGateway,
+          hierarchyScope: scope,
+          initialFilter: const RequestLogFilter(operatorId: 'op-scope'),
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('cap explicit location filters at 100'),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_debug_console_row_req-too-wide')),
+      findsNothing,
+    );
+  });
+
   testWidgets('search by request_id narrows the visible rows', (tester) async {
     setLargeViewport(tester);
     final gateway = InMemoryDebugConsoleAdminGateway(
@@ -884,7 +950,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Relationship and account help tabs render live panels', (
+  testWidgets('Relationship and account help tabs render typed live panels', (
     tester,
   ) async {
     setLargeViewport(tester);
@@ -904,6 +970,14 @@ void main() {
           usageClass: 'account_help',
           requestMeta: const <String, Object?>{'summary': 'MFA account check'},
         ),
+        seedEntry(
+          id: 'req-fuzzy-relationship',
+          operatorId: 'op-A',
+          usageClass: 'advisor_qa',
+          requestMeta: const <String, Object?>{
+            'summary': 'relationship word should not make this support help',
+          },
+        ),
       ],
       now: () => DateTime.utc(2026, 5, 3, 12),
     );
@@ -915,9 +989,10 @@ void main() {
         ),
       ),
     );
+    await pressRefresh(tester);
 
     await tester.tap(
-      find.byKey(const Key('admin_debug_console_tab_graph_debug')),
+      find.byKey(const Key('admin_debug_console_tab_relationship_help')),
     );
     await tester.pumpAndSettle();
     expect(
@@ -926,10 +1001,24 @@ void main() {
     );
     expect(find.text('Coming soon'), findsNothing);
     expect(find.textContaining('not wired'), findsNothing);
-    expect(find.textContaining('Review recent relationship'), findsOneWidget);
+    expect(find.textContaining('Typed view of relationship'), findsOneWidget);
+    expect(
+      find.byKey(
+        const Key('admin_debug_console_relationship_help_row_req-relationship'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const Key(
+          'admin_debug_console_relationship_help_row_req-fuzzy-relationship',
+        ),
+      ),
+      findsNothing,
+    );
 
     await tester.tap(
-      find.byKey(const Key('admin_debug_console_tab_mfa_diagnostics')),
+      find.byKey(const Key('admin_debug_console_tab_account_help')),
     );
     await tester.pumpAndSettle();
     expect(
@@ -938,7 +1027,11 @@ void main() {
     );
     expect(find.text('Coming soon'), findsNothing);
     expect(find.textContaining('not wired'), findsNothing);
-    expect(find.textContaining('Review recent sign-in'), findsOneWidget);
+    expect(find.textContaining('Typed view of account'), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_debug_console_account_help_row_req-account')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('live-tail polls do not stack when the prior tailRecent has not '
