@@ -73,11 +73,38 @@ void main() {
       );
 
       expect(sessionId, equals('11111111-1111-4111-8111-111111111111'));
-      expect(pool.beginTransactionCount, equals(1));
-      expect(pool.transactions.single.committed, isTrue);
-      expect(pool.transactions.single.rolledBack, isFalse);
+      // Phase 9 hardening pack (commit 17ce0391, 2026-05-07) added a
+      // B1.A6 concurrent-session-cap check that runs UNCONDITIONALLY
+      // before insertLogin. The check opens a `withSystem` (BYPASSRLS)
+      // admin transaction to count active sessions across the global
+      // auth_sessions table. So every recordLogin now opens TWO
+      // transactions on the underlying pool:
+      //   tx[0] = countActiveSessions  (withSystem / BYPASSRLS)
+      //   tx[1] = insertLogin          (withTenant)
+      // Both commit; the count returns 0 against the recording pool
+      // (no rows pre-seeded) so the eviction branch never fires.
+      expect(pool.beginTransactionCount, equals(2));
+      final countTx = pool.transactions[0];
+      final insertTx = pool.transactions[1];
+      expect(countTx.committed, isTrue);
+      expect(countTx.rolledBack, isFalse);
+      expect(insertTx.committed, isTrue);
+      expect(insertTx.rolledBack, isFalse);
+      // First tx is the BYPASSRLS admin count, audited with the
+      // 'system:auth.session_cap_check' reason.
       expect(
-        pool.transactions.single.executedSql,
+        countTx.executedSql,
+        containsAll(<String>[
+          "select set_config('app.bypass_rls_audit', @value, true)",
+          'set local role forge_admin',
+        ]),
+      );
+      final countQuery = countTx.queryCalls.single;
+      expect(countQuery.sql, contains('select count(*)::int as cnt'));
+      expect(countQuery.sql, contains('from auth_sessions'));
+      // Second tx is the operator-scoped tenant insert.
+      expect(
+        insertTx.executedSql,
         containsAll(<String>[
           "select set_config('app.operator_id', @value, true)",
           "select set_config('app.location_id', @value, true)",
@@ -85,7 +112,7 @@ void main() {
           "select set_config('app.bypass_rls_audit', 'tenant', true)",
         ]),
       );
-      final insertCall = pool.transactions.single.queryCalls.single;
+      final insertCall = insertTx.queryCalls.single;
       expect(insertCall.sql, contains('insert into auth_sessions'));
       expect(
         insertCall.parameters['token_hash'],
