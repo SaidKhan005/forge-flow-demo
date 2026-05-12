@@ -345,6 +345,26 @@ class _PerLocationDataAccuracyScreenState
 
   String? get _scopeRestrictionCopy => _scopePolicy.restrictionCopy(_scope);
 
+  /// Mirrors PR #485's `admin_timing_scope_inheritance_notice` gate
+  /// (`admin_timing_setup_screen.dart:164-182`): at a non-location
+  /// scope where exactly one location lives under the scope, return
+  /// that location's name so the inheritance-notice card can warn the
+  /// F&F admin that the displayed value is effectively a single-
+  /// location pull. Returns null when the scope is itself a location,
+  /// or when the count of covered locations is not exactly one.
+  String? get _singleCoveredLocationName {
+    final scope = _scope;
+    if (scope == null || scope.isLocationScope) return null;
+    final visible = _visibleRows;
+    final scopeIds = widget.scopeLocationIds;
+    final coveredCount = (scopeIds != null && scopeIds.isNotEmpty)
+        ? scopeIds.length
+        : visible.length;
+    if (coveredCount != 1) return null;
+    if (visible.isEmpty) return null;
+    return visible.first.operatorRef.locationName;
+  }
+
   bool _includesOperatorLocation(
     AdminHierarchyScopeIntent? scope, {
     required String operatorId,
@@ -459,6 +479,31 @@ class _PerLocationDataAccuracyScreenState
             ),
           if (widget.showScopeControls && _scopeRestrictionCopy != null)
             AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
+          if (_singleCoveredLocationName != null)
+            // Mirrors the inheritance notice landed in PR #485 for the
+            // Timing tile (`admin_timing_scope_inheritance_notice`).
+            // Fires at business/org_unit scope when the scope covers a
+            // single location, so the F&F admin knows the displayed
+            // covers and wage data is effectively a single-location pull
+            // even though the selected scope is "broader" (HP #11 —
+            // hierarchy honesty). See B1.a in
+            // docs/_execution/lane_b_features/03_execution_slices.md.
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                key: const Key('admin_data_accuracy_scope_inheritance_notice'),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.cardGlow,
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'Showing covers and wage data accuracy from $_singleCoveredLocationName. Other locations under this scope may have local overrides — review each location individually for accuracy.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ),
+            ),
           if (_scopeMutationEnabled) ...[
             const SizedBox(height: 16),
             _ScopedDataAccuracyActionCard(

@@ -370,4 +370,296 @@ void main() {
     );
     expect(find.text('Vancouver Robson'), findsNothing);
   });
+
+  // ---------------------------------------------------------------------------
+  // B1.a — Inheritance notice propagation to Data Accuracy + Polling tiles.
+  //
+  // Mirrors PR #485's `admin_timing_scope_inheritance_notice` widget at
+  // `lib/admin/screens/admin_timing_setup_screen.dart:164-182`. When the
+  // selected scope is business or org_unit AND covers exactly one location,
+  // both tiles render an inheritance notice warning the F&F admin that the
+  // displayed value is effectively a single-location pull (HP #11 —
+  // hierarchy honesty). Slice B1.a in
+  // `docs/_execution/lane_b_features/03_execution_slices.md`.
+
+  const singleLocationRefs = <OperatorLocationRef>[
+    OperatorLocationRef(
+      operatorId: 'op-solo',
+      businessName: 'Solo Diner LLC',
+      locationId: 'loc-solo-a',
+      locationName: 'Calgary Kensington',
+    ),
+  ];
+
+  InMemoryDataAccuracyAdminGateway singleLocationGateway() {
+    return InMemoryDataAccuracyAdminGateway(
+      operatorLocations: singleLocationRefs,
+      initialTierDefinitions: <PollingTierKey, TierDefinition>{
+        PollingTierKey.standard: kDemoStandardTierDefinition(),
+        PollingTierKey.premium: kDemoPremiumTierDefinition(),
+        PollingTierKey.custom: kDemoCustomTierDefinition(),
+      },
+    );
+  }
+
+  testWidgets(
+    'Data Accuracy business scope with single covered location shows inheritance notice',
+    (tester) async {
+      useWideViewport(tester);
+      const businessScope = AdminHierarchyScopeIntent.business(
+        operatorId: 'op-solo',
+        operatorName: 'Solo Diner LLC',
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          PerLocationDataAccuracyScreen(
+            gateway: singleLocationGateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: businessScope,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('admin_data_accuracy_scope_inheritance_notice'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          'Showing covers and wage data accuracy from Calgary Kensington',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Data Accuracy org-unit scope with single covered location shows inheritance notice',
+    (tester) async {
+      useWideViewport(tester);
+      const orgScope = AdminHierarchyScopeIntent.orgUnit(
+        operatorId: 'op-1',
+        orgUnitId: 'ou-yorkville-only',
+        operatorName: 'Demo Diner Co.',
+        orgUnitName: 'Yorkville Region',
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          PerLocationDataAccuracyScreen(
+            gateway: gateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: orgScope,
+            scopeLocationIds: const <String>{'loc-1a'},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('admin_data_accuracy_scope_inheritance_notice'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          'Showing covers and wage data accuracy from Toronto Yorkville',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Data Accuracy multi-covered scope suppresses inheritance notice',
+    (tester) async {
+      useWideViewport(tester);
+      const businessScope = AdminHierarchyScopeIntent.business(
+        operatorId: 'op-1',
+        operatorName: 'Demo Diner Co.',
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          PerLocationDataAccuracyScreen(
+            gateway: gateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: businessScope,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('admin_data_accuracy_scope_inheritance_notice'),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'Data Accuracy location scope suppresses inheritance notice',
+    (tester) async {
+      useWideViewport(tester);
+      const locationScope = AdminHierarchyScopeIntent.location(
+        operatorId: 'op-1',
+        locationId: 'loc-1a',
+        operatorName: 'Demo Diner Co.',
+        locationName: 'Toronto Yorkville',
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          PerLocationDataAccuracyScreen(
+            gateway: gateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: locationScope,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('admin_data_accuracy_scope_inheritance_notice'),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'Polling business scope with single covered location shows inheritance notice',
+    (tester) async {
+      useWideViewport(tester);
+      const businessScope = AdminHierarchyScopeIntent.business(
+        operatorId: 'op-solo',
+        operatorName: 'Solo Diner LLC',
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          PollingAndPricingAdminScreen(
+            gateway: singleLocationGateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: businessScope,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_polling_scope_inheritance_notice')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          'Showing polling setup from Calgary Kensington',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Polling org-unit scope with single covered location shows inheritance notice',
+    (tester) async {
+      useWideViewport(tester);
+      const orgScope = AdminHierarchyScopeIntent.orgUnit(
+        operatorId: 'op-1',
+        orgUnitId: 'ou-yorkville-only',
+        operatorName: 'Demo Diner Co.',
+        orgUnitName: 'Yorkville Region',
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          PollingAndPricingAdminScreen(
+            gateway: gateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: orgScope,
+            scopeLocationIds: const <String>{'loc-1a'},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_polling_scope_inheritance_notice')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          'Showing polling setup from Toronto Yorkville',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Polling multi-covered scope suppresses inheritance notice',
+    (tester) async {
+      useWideViewport(tester);
+      const orgScope = AdminHierarchyScopeIntent.orgUnit(
+        operatorId: 'op-1',
+        orgUnitId: 'ou-north',
+        operatorName: 'Demo Diner Co.',
+        orgUnitName: 'North Region',
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          PollingAndPricingAdminScreen(
+            gateway: gateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: orgScope,
+            scopeLocationIds: const <String>{'loc-1a', 'loc-1b'},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_polling_scope_inheritance_notice')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'Polling location scope suppresses inheritance notice',
+    (tester) async {
+      useWideViewport(tester);
+      const locationScope = AdminHierarchyScopeIntent.location(
+        operatorId: 'op-1',
+        locationId: 'loc-1a',
+        operatorName: 'Demo Diner Co.',
+        locationName: 'Toronto Yorkville',
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          PollingAndPricingAdminScreen(
+            gateway: gateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: locationScope,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_polling_scope_inheritance_notice')),
+        findsNothing,
+      );
+    },
+  );
 }
