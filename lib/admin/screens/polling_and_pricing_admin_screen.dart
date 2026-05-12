@@ -307,6 +307,35 @@ class _PollingAndPricingAdminScreenState
 
   String? get _scopeRestrictionCopy => _scopePolicy.restrictionCopy(_scope);
 
+  /// Mirrors PR #485's `admin_timing_scope_inheritance_notice` gate
+  /// (`admin_timing_setup_screen.dart:164-182`): at a non-location
+  /// scope where exactly one location lives under the scope, return
+  /// that location's name so the inheritance-notice card can warn the
+  /// F&F admin that the displayed polling setup is effectively a
+  /// single-location pull. Uses the scope-level location coverage
+  /// (NOT the user-filtered `_filteredAssignments`) so user-applied
+  /// filters do not silently flip the notice on or off.
+  String? get _singleCoveredLocationName {
+    final scope = _scope;
+    if (scope == null || scope.isLocationScope) return null;
+    final scopedAssignments = _assignments
+        .where(
+          (row) => _includesOperatorLocation(
+            scope,
+            operatorId: row.operatorRef.operatorId,
+            locationId: row.operatorRef.locationId,
+          ),
+        )
+        .toList(growable: false);
+    final scopeIds = widget.scopeLocationIds;
+    final coveredCount = (scopeIds != null && scopeIds.isNotEmpty)
+        ? scopeIds.length
+        : scopedAssignments.length;
+    if (coveredCount != 1) return null;
+    if (scopedAssignments.isEmpty) return null;
+    return scopedAssignments.first.operatorRef.locationName;
+  }
+
   bool _includesOperatorLocation(
     AdminHierarchyScopeIntent? scope, {
     required String operatorId,
@@ -617,6 +646,31 @@ class _PollingAndPricingAdminScreenState
             ),
           if (widget.showScopeControls && _scopeRestrictionCopy != null)
             AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
+          if (_singleCoveredLocationName != null)
+            // Mirrors the inheritance notice landed in PR #485 for the
+            // Timing tile (`admin_timing_scope_inheritance_notice`).
+            // Fires at business/org_unit scope when the scope covers a
+            // single location, so the F&F admin knows the displayed
+            // polling setup is effectively a single-location pull even
+            // though the selected scope is "broader" (HP #11 —
+            // hierarchy honesty). See B1.a in
+            // docs/_execution/lane_b_features/03_execution_slices.md.
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                key: const Key('admin_polling_scope_inheritance_notice'),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.cardGlow,
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'Showing polling setup from $_singleCoveredLocationName. Other locations under this scope may have local overrides — review each location individually for accuracy.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ),
+            ),
           if (_scopeMutationEnabled) ...[
             const SizedBox(height: 16),
             _ScopedPollingActionCard(
