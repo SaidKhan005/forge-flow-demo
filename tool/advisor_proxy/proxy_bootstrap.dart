@@ -5097,7 +5097,7 @@ class RepositoryDataAccuracyAdminProxyGateway
       _tierDefinitionJson(
         tierKey: PollingTierKey.standard,
         description:
-            'Standard polling cadence for launch operators. Poll-only vendors use five-minute cadence defaults.',
+            'Regular polling cadence. Poll-only vendors use five-minute cadence defaults until changed.',
         cadence: kStandardTierPresets,
         defaultPriceCents: 9900,
         vendorCostCents: 1200,

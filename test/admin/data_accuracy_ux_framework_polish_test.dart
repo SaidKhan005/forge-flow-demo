@@ -30,6 +30,12 @@ void main() {
     locationId: 'loc-1',
     locationName: '95 Water Street',
   );
+  const ref2 = OperatorLocationRef(
+    operatorId: 'op-1',
+    businessName: 'Barrio Legado',
+    locationId: 'loc-2',
+    locationName: 'Duckworth Street',
+  );
 
   group('Data Accuracy / Polling UX framework polish', () {
     testWidgets('Data accuracy moves under Operations with a WIP route badge', (
@@ -190,7 +196,52 @@ void main() {
       },
     );
 
-    testWidgets('data accuracy table does not show epoch dates for empty rows', (
+    testWidgets(
+      'data accuracy table does not show epoch dates for empty rows',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1600, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          wrap(
+            PerLocationDataAccuracyTable(
+              rows: <DataAccuracyAdminRow>[
+                DataAccuracyAdminRow(
+                  operatorRef: ref,
+                  settings: DataAccuracySettings(
+                    settingId: 'default:op-1:loc-1',
+                    operatorId: 'op-1',
+                    locationId: 'loc-1',
+                    coversSourceLunch: CoversSource.vendor,
+                    coversSourceDinner: CoversSource.vendor,
+                    coversSourceLateNight: CoversSource.vendor,
+                    coversManualEntries: const <String, Map<String, int>>{},
+                    wageSource: WageSource.vendor,
+                    createdAt: DateTime.utc(1970),
+                    updatedAt: DateTime.utc(1970),
+                  ),
+                ),
+              ],
+              editingEnabled: false,
+              onEditRow: (_) {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Lunch'), findsOneWidget);
+        expect(find.text('Dinner'), findsOneWidget);
+        expect(find.text('Late night'), findsOneWidget);
+        expect(find.text('Covers and wage data accuracy'), findsOneWidget);
+        expect(find.textContaining('Covers are shown as'), findsNothing);
+        expect(find.text('Vendor'), findsWidgets);
+        expect(find.text('No override yet'), findsOneWidget);
+        expect(find.textContaining('1969'), findsNothing);
+        expect(find.textContaining('1970'), findsNothing);
+      },
+    );
+
+    testWidgets('data accuracy table filters rows using vendor source', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -203,7 +254,7 @@ void main() {
               DataAccuracyAdminRow(
                 operatorRef: ref,
                 settings: DataAccuracySettings(
-                  settingId: 'default:op-1:loc-1',
+                  settingId: 'vendor-row',
                   operatorId: 'op-1',
                   locationId: 'loc-1',
                   coversSourceLunch: CoversSource.vendor,
@@ -211,27 +262,41 @@ void main() {
                   coversSourceLateNight: CoversSource.vendor,
                   coversManualEntries: const <String, Map<String, int>>{},
                   wageSource: WageSource.vendor,
-                  createdAt: DateTime.utc(1970),
-                  updatedAt: DateTime.utc(1970),
+                  createdAt: DateTime.utc(2026, 5, 1),
+                  updatedAt: DateTime.utc(2026, 5, 1),
+                ),
+              ),
+              DataAccuracyAdminRow(
+                operatorRef: ref2,
+                settings: DataAccuracySettings(
+                  settingId: 'manual-row',
+                  operatorId: 'op-1',
+                  locationId: 'loc-2',
+                  coversSourceLunch: CoversSource.manual,
+                  coversSourceDinner: CoversSource.forecast,
+                  coversSourceLateNight: CoversSource.manual,
+                  coversManualEntries: const <String, Map<String, int>>{},
+                  wageSource: WageSource.manualMix,
+                  createdAt: DateTime.utc(2026, 5, 1),
+                  updatedAt: DateTime.utc(2026, 5, 1),
                 ),
               ),
             ],
             editingEnabled: false,
             onEditRow: (_) {},
+            vendorSourceFilter: 'manual_or_forecast',
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Lunch'), findsOneWidget);
-      expect(find.text('Dinner'), findsOneWidget);
-      expect(find.text('Late night'), findsOneWidget);
-      expect(find.text('Covers and wage data accuracy'), findsOneWidget);
-      expect(find.textContaining('Covers are shown as'), findsNothing);
-      expect(find.text('Vendor'), findsWidgets);
-      expect(find.text('No override yet'), findsOneWidget);
-      expect(find.textContaining('1969'), findsNothing);
-      expect(find.textContaining('1970'), findsNothing);
+      expect(find.text('Vendor data'), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_data_accuracy_vendor_source_filter')),
+        findsOneWidget,
+      );
+      expect(find.text('Duckworth Street'), findsOneWidget);
+      expect(find.text('95 Water Street'), findsNothing);
     });
 
     testWidgets('tier assignment filters use operator-safe wording', (
@@ -326,6 +391,77 @@ void main() {
         find.byKey(const Key('admin_tier_assignment_clear_filters')),
         findsNothing,
       );
+    });
+
+    testWidgets('polling setup filters rows by polling vendor', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final now = DateTime.utc(2026, 5, 5, 12);
+      final gateway = InMemoryDataAccuracyAdminGateway(
+        operatorLocations: const <OperatorLocationRef>[ref, ref2],
+        initialTierDefinitions: <PollingTierKey, TierDefinition>{
+          PollingTierKey.standard: kDemoStandardTierDefinition(),
+          PollingTierKey.premium: kDemoPremiumTierDefinition(),
+          PollingTierKey.custom: kDemoCustomTierDefinition(),
+        },
+        initialAssignments: <String, ForgeFlowPollingTierAssignment>{
+          'op-1/loc-1': ForgeFlowPollingTierAssignment(
+            assignmentId: 'a-1',
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            tierKey: PollingTierKey.custom,
+            pollingCadencePerVendorSeconds: const <String, int>{
+              'quickbooks_time': 300,
+            },
+            monthlyPriceCents: 1900,
+            vendorApiCostEstimateCentsMonthly: 500,
+            effectiveAt: now,
+            createdAt: now,
+          ),
+          'op-1/loc-2': ForgeFlowPollingTierAssignment(
+            assignmentId: 'a-2',
+            operatorId: 'op-1',
+            locationId: 'loc-2',
+            tierKey: PollingTierKey.custom,
+            pollingCadencePerVendorSeconds: const <String, int>{
+              'oracle_micros_simphony': 300,
+            },
+            monthlyPriceCents: 1900,
+            vendorApiCostEstimateCentsMonthly: 500,
+            effectiveAt: now,
+            createdAt: now,
+          ),
+        },
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.themeData,
+          home: Scaffold(
+            body: PollingAndPricingAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('95 Water Street'), findsOneWidget);
+      expect(find.text('Duckworth Street'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const Key('admin_polling_vendor_filter_dropdown')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('QuickBooks Time').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('QuickBooks Time'), findsWidgets);
+      expect(find.text('95 Water Street'), findsOneWidget);
+      expect(find.text('Duckworth Street'), findsNothing);
     });
 
     testWidgets('tier assignment dialog uses human tier labels', (

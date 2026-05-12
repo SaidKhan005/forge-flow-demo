@@ -309,47 +309,52 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
       type: MaterialType.canvas,
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _Header(
-              lastRefreshed: _lastRefreshed,
-              onRunHealthCheck: _confirmAndRefresh,
-              loading: _loading || _refreshing,
-            ),
-            const SizedBox(height: 12),
-            if (widget.hierarchyScope != null)
-              AdminHierarchyScopeNotice(
-                message:
-                    'Running platform health checks while focused on ${widget.hierarchyScope!.displayLabel}. Advisor data, app service, and ecosystem checks are shared signals for the selected business context.',
+        child: Builder(
+          builder: (context) {
+            final showManualPrompt =
+                !_loading && _envelope == null && _loadError == null;
+            final children = <Widget>[
+              _Header(
+                lastRefreshed: _lastRefreshed,
+                onRunHealthCheck: _confirmAndRefresh,
+                loading: _loading || _refreshing,
               ),
-            if (_loadError != null)
-              _ErrorBanner(
-                key: const Key('admin_health_load_error'),
-                message: _loadError!,
-              ),
-            if (_envelope != null) _envelopeBody(_envelope!),
-            if (_loading && _envelope == null)
-              const Expanded(
-                child: Center(
-                  key: Key('admin_health_loading'),
-                  child: SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.sunsetDark,
+              const SizedBox(height: 12),
+              if (widget.hierarchyScope != null)
+                AdminHierarchyScopeNotice(
+                  message:
+                      'Running platform health checks while focused on ${widget.hierarchyScope!.displayLabel}. Advisor data, app service, and ecosystem checks are shared signals for the selected business context.',
+                ),
+              if (_loadError != null)
+                _ErrorBanner(
+                  key: const Key('admin_health_load_error'),
+                  message: _loadError!,
+                ),
+              if (_envelope != null) _envelopeBody(_envelope!),
+              if (_loading && _envelope == null)
+                const Expanded(
+                  child: Center(
+                    key: Key('admin_health_loading'),
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.sunsetDark,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            if (!_loading && _envelope == null && _loadError == null)
-              Expanded(
-                child: _ManualHealthPrompt(
-                  onRunHealthCheck: _confirmAndRefresh,
-                ),
-              ),
-          ],
+              if (showManualPrompt)
+                _ManualHealthPrompt(onRunHealthCheck: _confirmAndRefresh),
+            ];
+            final column = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: children,
+            );
+            if (!showManualPrompt) return column;
+            return SingleChildScrollView(child: column);
+          },
         ),
       ),
     );

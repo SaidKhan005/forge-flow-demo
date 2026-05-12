@@ -71,7 +71,7 @@ void main() {
       );
       expect(
         pollingPricing.restrictionCopy(scope),
-        contains('visible location'),
+        contains('covered locations inherit'),
       );
     });
 

@@ -36,10 +36,12 @@ class PerLocationTierAssignmentTable extends StatefulWidget {
     this.marginBandFilter,
     this.locationCountFilter,
     this.operatorNameFilter,
+    this.vendorFilter,
     this.onTierFilterChanged,
     this.onMarginBandFilterChanged,
     this.onLocationCountFilterChanged,
     this.onOperatorNameFilterChanged,
+    this.onVendorFilterChanged,
   });
 
   final List<TierAssignmentAdminRow> rows;
@@ -50,10 +52,12 @@ class PerLocationTierAssignmentTable extends StatefulWidget {
   final String? marginBandFilter;
   final LocationCountFilter? locationCountFilter;
   final String? operatorNameFilter;
+  final String? vendorFilter;
   final ValueChanged<PollingTierKey?>? onTierFilterChanged;
   final ValueChanged<String?>? onMarginBandFilterChanged;
   final ValueChanged<LocationCountFilter?>? onLocationCountFilterChanged;
   final ValueChanged<String>? onOperatorNameFilterChanged;
+  final ValueChanged<String?>? onVendorFilterChanged;
 
   @override
   State<PerLocationTierAssignmentTable> createState() =>
@@ -163,11 +167,13 @@ class _PerLocationTierAssignmentTableState
               tierFilter: widget.tierFilter,
               marginBandFilter: widget.marginBandFilter,
               locationCountFilter: widget.locationCountFilter,
+              vendorFilter: widget.vendorFilter,
               operatorNameController: _opNameController,
               onTierChanged: widget.onTierFilterChanged,
               onMarginChanged: widget.onMarginBandFilterChanged,
               onLocationCountChanged: widget.onLocationCountFilterChanged,
               onOperatorNameChanged: widget.onOperatorNameFilterChanged,
+              onVendorChanged: widget.onVendorFilterChanged,
             ),
             const SizedBox(height: 12),
             _AssignmentToolbar(
@@ -540,21 +546,25 @@ class _FilterBar extends StatelessWidget {
     required this.tierFilter,
     required this.marginBandFilter,
     required this.locationCountFilter,
+    required this.vendorFilter,
     required this.operatorNameController,
     required this.onTierChanged,
     required this.onMarginChanged,
     required this.onLocationCountChanged,
     required this.onOperatorNameChanged,
+    required this.onVendorChanged,
   });
 
   final PollingTierKey? tierFilter;
   final String? marginBandFilter;
   final LocationCountFilter? locationCountFilter;
+  final String? vendorFilter;
   final TextEditingController operatorNameController;
   final ValueChanged<PollingTierKey?>? onTierChanged;
   final ValueChanged<String?>? onMarginChanged;
   final ValueChanged<LocationCountFilter?>? onLocationCountChanged;
   final ValueChanged<String>? onOperatorNameChanged;
+  final ValueChanged<String?>? onVendorChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -562,6 +572,7 @@ class _FilterBar extends StatelessWidget {
         tierFilter != null ||
         marginBandFilter != null ||
         locationCountFilter != null ||
+        vendorFilter != null ||
         operatorNameController.text.trim().isNotEmpty;
     return Wrap(
       spacing: 12,
@@ -623,6 +634,33 @@ class _FilterBar extends StatelessWidget {
           ),
         ),
         SizedBox(
+          width: 230,
+          child: DropdownButtonFormField<String?>(
+            key: const Key('admin_polling_vendor_filter_dropdown'),
+            initialValue: vendorFilter,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Polling vendor',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            items: <DropdownMenuItem<String?>>[
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('All polling vendors'),
+              ),
+              for (final vendorId in kPollOnlyVendorIds)
+                DropdownMenuItem<String?>(
+                  value: vendorId,
+                  child: Text(
+                    kPollOnlyVendorDisplayNames[vendorId] ?? vendorId,
+                  ),
+                ),
+            ],
+            onChanged: onVendorChanged,
+          ),
+        ),
+        SizedBox(
           width: 280,
           child: DropdownButtonFormField<LocationCountFilter?>(
             key: const Key('admin_location_count_dropdown'),
@@ -672,6 +710,7 @@ class _FilterBar extends StatelessWidget {
               onTierChanged?.call(null);
               onMarginChanged?.call(null);
               onLocationCountChanged?.call(null);
+              onVendorChanged?.call(null);
               onOperatorNameChanged?.call('');
             },
             icon: const Icon(Icons.filter_alt_off_outlined, size: 16),

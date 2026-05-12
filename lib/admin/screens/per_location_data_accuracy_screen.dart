@@ -541,7 +541,7 @@ class _ScopedDataAccuracyActionCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'This updates covers, wage source, and walk-in handling for $locationCount visible location${locationCount == 1 ? '' : 's'}.',
+                  'This saves one scoped covers and wage override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower scope overrides it.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],

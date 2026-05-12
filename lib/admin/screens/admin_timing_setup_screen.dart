@@ -196,15 +196,13 @@ class _TimingSummaryCard extends StatelessWidget {
               ],
             ),
           ),
-          if (editingEnabled) ...<Widget>[
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              key: const Key('admin_timing_save_disabled'),
-              onPressed: null,
-              icon: const Icon(Icons.save_outlined, size: 16),
-              label: const Text('Save timing'),
-            ),
-          ],
+          const SizedBox(height: 16),
+          Text(
+            editingEnabled
+                ? 'Timing is shown here for review so the selected hierarchy has a clear source of truth.'
+                : 'Support access can review timing without changing it.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
         ],
       ),
     );

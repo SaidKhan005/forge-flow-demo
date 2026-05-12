@@ -9,6 +9,8 @@ import 'admin_responsive_layout.dart';
 
 enum _SortColumn { operator, location, covers, wage, modifiedBy, modifiedAt }
 
+typedef DataAccuracyVendorSourceFilter = String;
+
 class PerLocationDataAccuracyTable extends StatefulWidget {
   const PerLocationDataAccuracyTable({
     super.key,
@@ -16,11 +18,16 @@ class PerLocationDataAccuracyTable extends StatefulWidget {
     required this.editingEnabled,
     required this.onEditRow,
     this.onEditServicePeriod,
+    this.vendorSourceFilter,
+    this.onVendorSourceFilterChanged,
   });
 
   final List<DataAccuracyAdminRow> rows;
   final bool editingEnabled;
   final void Function(DataAccuracyAdminRow row) onEditRow;
+  final DataAccuracyVendorSourceFilter? vendorSourceFilter;
+  final ValueChanged<DataAccuracyVendorSourceFilter?>?
+  onVendorSourceFilterChanged;
 
   /// Doc 1 keyed-data-accuracy-write — invoked when the F&F admin
   /// presses "Service-period override" on a row. When `null`, the
@@ -37,6 +44,12 @@ class _PerLocationDataAccuracyTableState
     extends State<PerLocationDataAccuracyTable> {
   _SortColumn _sortColumn = _SortColumn.operator;
   bool _ascending = true;
+  DataAccuracyVendorSourceFilter? _localVendorSourceFilter;
+
+  DataAccuracyVendorSourceFilter? get _effectiveVendorSourceFilter =>
+      widget.onVendorSourceFilterChanged == null
+      ? widget.vendorSourceFilter ?? _localVendorSourceFilter
+      : widget.vendorSourceFilter;
 
   int _compare(DataAccuracyAdminRow a, DataAccuracyAdminRow b) {
     int cmp;
@@ -74,7 +87,10 @@ class _PerLocationDataAccuracyTableState
 
   @override
   Widget build(BuildContext context) {
-    final sorted = <DataAccuracyAdminRow>[...widget.rows]..sort(_compare);
+    final filtered = widget.rows
+        .where(_matchesVendorSourceFilter)
+        .toList(growable: false);
+    final sorted = <DataAccuracyAdminRow>[...filtered]..sort(_compare);
 
     return Container(
       key: const Key('admin_data_accuracy_table'),
@@ -92,12 +108,21 @@ class _PerLocationDataAccuracyTableState
               count: sorted.length,
               sortColumn: _sortColumn,
               ascending: _ascending,
+              vendorSourceFilter: _effectiveVendorSourceFilter,
               onSortChanged: (column) => setState(() {
                 _sortColumn = column;
                 _ascending = true;
               }),
               onDirectionPressed: () =>
                   setState(() => _ascending = !_ascending),
+              onVendorSourceChanged: (value) {
+                final callback = widget.onVendorSourceFilterChanged;
+                if (callback != null) {
+                  callback(value);
+                } else {
+                  setState(() => _localVendorSourceFilter = value);
+                }
+              },
             ),
             const SizedBox(height: 10),
             if (sorted.isEmpty)
@@ -119,6 +144,28 @@ class _PerLocationDataAccuracyTableState
         ),
       ),
     );
+  }
+
+  bool _matchesVendorSourceFilter(DataAccuracyAdminRow row) {
+    final filter = _effectiveVendorSourceFilter;
+    if (filter == null || filter.isEmpty) return true;
+    final settings = row.settings;
+    final coversUsesVendor =
+        settings.coversSourceLunch == CoversSource.vendor ||
+        settings.coversSourceDinner == CoversSource.vendor ||
+        settings.coversSourceLateNight == CoversSource.vendor;
+    final wageUsesVendor = settings.wageSource == WageSource.vendor;
+    switch (filter) {
+      case 'vendor_any':
+        return coversUsesVendor || wageUsesVendor;
+      case 'covers_vendor':
+        return coversUsesVendor;
+      case 'wage_vendor':
+        return wageUsesVendor;
+      case 'manual_or_forecast':
+        return !coversUsesVendor && !wageUsesVendor;
+    }
+    return true;
   }
 
   Widget _buildSummaryRow(DataAccuracyAdminRow row) {
@@ -266,15 +313,19 @@ class _TableToolbar extends StatelessWidget {
     required this.count,
     required this.sortColumn,
     required this.ascending,
+    required this.vendorSourceFilter,
     required this.onSortChanged,
     required this.onDirectionPressed,
+    required this.onVendorSourceChanged,
   });
 
   final int count;
   final _SortColumn sortColumn;
   final bool ascending;
+  final DataAccuracyVendorSourceFilter? vendorSourceFilter;
   final ValueChanged<_SortColumn> onSortChanged;
   final VoidCallback onDirectionPressed;
+  final ValueChanged<DataAccuracyVendorSourceFilter?>? onVendorSourceChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -286,6 +337,42 @@ class _TableToolbar extends StatelessWidget {
         Text(
           '$count ${count == 1 ? 'location' : 'locations'}',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+        SizedBox(
+          width: 230,
+          child: DropdownButtonFormField<DataAccuracyVendorSourceFilter?>(
+            key: const Key('admin_data_accuracy_vendor_source_filter'),
+            initialValue: vendorSourceFilter,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Vendor data',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            items: const <DropdownMenuItem<DataAccuracyVendorSourceFilter?>>[
+              DropdownMenuItem<DataAccuracyVendorSourceFilter?>(
+                value: null,
+                child: Text('All data sources'),
+              ),
+              DropdownMenuItem<DataAccuracyVendorSourceFilter?>(
+                value: 'vendor_any',
+                child: Text('Uses vendor data'),
+              ),
+              DropdownMenuItem<DataAccuracyVendorSourceFilter?>(
+                value: 'covers_vendor',
+                child: Text('Covers from vendor'),
+              ),
+              DropdownMenuItem<DataAccuracyVendorSourceFilter?>(
+                value: 'wage_vendor',
+                child: Text('Wage from vendor'),
+              ),
+              DropdownMenuItem<DataAccuracyVendorSourceFilter?>(
+                value: 'manual_or_forecast',
+                child: Text('Manual or forecast only'),
+              ),
+            ],
+            onChanged: onVendorSourceChanged,
+          ),
         ),
         SizedBox(
           width: 220,
