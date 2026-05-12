@@ -335,6 +335,135 @@ void main() {
     expect(find.text('Important: Review'), findsNothing);
   });
 
+  testWidgets('unknown producer warning shows provenance and next step', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final json = _greenEnvelope();
+    (json['metrics']! as Map<String, Object?>)['rollup_freshness_per_grain'] =
+        <String, Object?>{
+          'status': 'unknown',
+          'value': null,
+          'unit': 'seconds',
+          'description': 'rollup freshness query timed out',
+          'source': 'aggregation_state',
+          'owner': 'B45',
+          'observed_at': '2026-05-02T12:00:00.000Z',
+          'thresholds': <String, Object?>{'yellow': 3600, 'red': 21600},
+          'metadata': <String, Object?>{
+            'tier': 2,
+            'warning': 'producer_timeout',
+            'budget_ms': 300,
+          },
+        };
+    final gateway = InMemoryHealthAdminGateway(envelope: json);
+    await tester.pumpWidget(
+      wrap(
+        HealthAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 2, 12),
+        ),
+      ),
+    );
+    await runHealthCheck(tester);
+
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const Key('admin_health_tile_rollup_freshness_per_grain_state'),
+            ),
+          )
+          .data,
+      equals('Producer state: No data'),
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const Key('admin_health_tile_rollup_freshness_per_grain_source'),
+            ),
+          )
+          .data,
+      equals('Source: aggregation_state'),
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const Key('admin_health_tile_rollup_freshness_per_grain_owner'),
+            ),
+          )
+          .data,
+      equals('Owner: B45'),
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const Key(
+                'admin_health_tile_rollup_freshness_per_grain_remediation',
+              ),
+            ),
+          )
+          .data,
+      equals(
+        'Next step: The health producer timed out. Retry once; if it repeats, check the producer budget and proxy logs.',
+      ),
+    );
+  });
+
+  testWidgets('missing producer signal is not presented as healthy', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryHealthAdminGateway(envelope: _greenEnvelope());
+    await tester.pumpWidget(
+      wrap(
+        HealthAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 2, 12),
+        ),
+      ),
+    );
+    await runHealthCheck(tester);
+
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const Key('admin_health_tile_graph_traversal_latency_ms_state'),
+            ),
+          )
+          .data,
+      equals('Producer state: No data'),
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const Key('admin_health_tile_graph_traversal_latency_ms_source'),
+            ),
+          )
+          .data,
+      equals('Source: /health did not return this signal'),
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const Key(
+                'admin_health_tile_graph_traversal_latency_ms_remediation',
+              ),
+            ),
+          )
+          .data,
+      equals(
+        'Next step: This signal was missing from the health response. Check the proxy health producer registry before relying on it.',
+      ),
+    );
+  });
+
   testWidgets('manual refresh re-fetches the envelope', (tester) async {
     setLargeViewport(tester);
     final gateway = InMemoryHealthAdminGateway(envelope: _greenEnvelope());
