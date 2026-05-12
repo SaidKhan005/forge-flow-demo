@@ -29,6 +29,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart'
+    show PackagePostgresPool;
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_outbox_listener.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/pg_cron_notify_consumer.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_connection_list_repository.dart';
@@ -79,6 +81,57 @@ import 'realtime_tripwire_gateway.dart';
 import 'worker_startup_wiring.dart';
 
 Future<void> main(List<String> args) async {
+  // B2 — wrap the whole serve loop in `runZonedGuarded` so any uncaught
+  // async error in a route handler, background timer, or unawaited
+  // future emits a structured `proxy.root_zone_uncaught` line instead
+  // of letting Dart's default printer silently terminate the isolate.
+  //
+  // A1 §2.4 instrumentation item #2 (S1 mitigation observability).
+  // The completer is what `main` awaits — `runZonedGuarded` is a
+  // synchronous call that schedules the inner async work in a zone;
+  // without this completer `main` would return as soon as the inner
+  // future was registered, exiting before the listener ran.
+  final completer = Completer<void>();
+  runZonedGuarded<void>(
+    () async {
+      try {
+        await _runProxy(args);
+      } finally {
+        if (!completer.isCompleted) completer.complete();
+      }
+    },
+    (Object error, StackTrace stack) {
+      // Best-effort structured log. We deliberately do NOT exit() from
+      // here — root-zone errors are diagnostic; the listener loop's
+      // own typed catch (main.dart `proxy.listener_loop_error`) keeps
+      // serving the next request. Process termination remains the
+      // signal-handler path. If a truly fatal error escaped, the
+      // platform will tear the isolate down regardless; we just want
+      // the diagnostic trail to be available first.
+      try {
+        log(
+          LogSeverity.error,
+          'proxy.root_zone_uncaught',
+          fields: <String, Object?>{
+            'error_type': error.runtimeType.toString(),
+            'error_message': error.toString(),
+            'stack_first_frame': firstStackFrame(stack),
+            'stack_trace': stack.toString(),
+          },
+        );
+      } catch (_) {
+        // Logging itself must never re-throw past the guard.
+        stderr.writeln(
+          'proxy.root_zone_uncaught (log failed): '
+          '${error.runtimeType} :: $error',
+        );
+      }
+    },
+  );
+  await completer.future;
+}
+
+Future<void> _runProxy(List<String> args) async {
   // Startup banner — plain text only, before the log module owns
   // stdout. Once `ProxyConfig.fromEnvironment` returns, every subsequent
   // event flows through `log()` as JSON (HARD-G observability baseline).
@@ -563,6 +616,29 @@ Future<void> main(List<String> args) async {
   // boundaries).
   final GoogleCloudPubsubSubscriber? pubsubRealtimeSubscriberFinal =
       pubsubRealtimeSubscriber;
+
+  // B2 — wire the process-wide runtime gauge holder so the `/health`
+  // route can include in-process saturation signals:
+  //   - Postgres pool: openConnectionCount / idle / waiters / max.
+  //     Casts to `PackagePostgresPool` to read its snapshot getter;
+  //     `bindings.tenantPool` is the load-bearing pool (admin pool is
+  //     a small companion). A future bootstrap rework could promote
+  //     the snapshot to the `PostgresPool` interface; today's cast is
+  //     non-fatal at /health time because failures inside the closure
+  //     are swallowed by `ProxyRuntimeGauges.snapshotJson`.
+  //   - Pubsub subscriber: ringBufferKeyCount. Null-tolerant so the
+  //     gauge is only emitted when pubsub is wired.
+  final tenantPoolForGauges = productionBindings.tenantPool;
+  proxyRuntimeGauges = ProxyRuntimeGauges(
+    postgresPoolGauge: () {
+      if (tenantPoolForGauges is PackagePostgresPool) {
+        return tenantPoolForGauges.gaugeSnapshot;
+      }
+      return null;
+    },
+    ringBufferKeyCountGauge: () =>
+        pubsubRealtimeSubscriberFinal?.ringBufferKeyCount,
+  );
   Future<RealtimeReplayResult> realtimeReplayFetcher({
     required OperatorContext scope,
     required String lastEventId,

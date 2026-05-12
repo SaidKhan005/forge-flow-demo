@@ -701,6 +701,115 @@ void main() {
         expect(claims.roles, contains('super_admin'));
       },
     );
+
+    test(
+      'B1 — accepts scope-less ff_support tokens with empty operator '
+      'and location strings',
+      () async {
+        final guard = ProxyRequestGuard(
+          verifier: _FixedClaimsVerifier(
+            const ProxyJwtClaims(
+              userId: 'support_user',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['ff_support'],
+            ),
+          ),
+        );
+
+        final context = await guard.requireOperatorContext(
+          authorizationHeader: 'Bearer fake.token.value',
+        );
+
+        expect(context.userId, equals('support_user'));
+        expect(context.operatorId, equals(''));
+        expect(context.locationId, equals(''));
+        expect(context.roles, contains('ff_support'));
+      },
+    );
+
+    test(
+      'B1 — accepts scope-less super_admin tokens with empty operator '
+      'and location strings',
+      () async {
+        final guard = ProxyRequestGuard(
+          verifier: _FixedClaimsVerifier(
+            const ProxyJwtClaims(
+              userId: 'admin_user',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['super_admin'],
+            ),
+          ),
+        );
+
+        final context = await guard.requireOperatorContext(
+          authorizationHeader: 'Bearer fake.token.value',
+        );
+
+        expect(context.userId, equals('admin_user'));
+        expect(context.operatorId, equals(''));
+        expect(context.locationId, equals(''));
+        expect(context.roles, contains('super_admin'));
+      },
+    );
+
+    test(
+      'B1 — non-admin scope-less tokens still 403 with structured log '
+      'context (unchanged contract for tenant-scoped users)',
+      () async {
+        final guard = ProxyRequestGuard(
+          verifier: _FixedClaimsVerifier(
+            const ProxyJwtClaims(
+              userId: 'tenant_user',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['advisor.read'],
+            ),
+          ),
+        );
+
+        ProxyAuthError? thrown;
+        try {
+          await guard.requireOperatorContext(
+            authorizationHeader: 'Bearer fake.token.value',
+          );
+        } on ProxyAuthError catch (error) {
+          thrown = error;
+        }
+        expect(thrown, isNotNull);
+        expect(thrown!.statusCode, equals(403));
+        expect(thrown.message, contains('operator'));
+      },
+    );
+
+    test(
+      'B1 — global admin with partial operator scope still falls through '
+      'the global-admin accept branch (tolerant of either scope being '
+      'present)',
+      () async {
+        final guard = ProxyRequestGuard(
+          verifier: _FixedClaimsVerifier(
+            const ProxyJwtClaims(
+              userId: 'support_user',
+              operatorId: 'op_777',
+              locationId: null,
+              roles: <String>['ff_support'],
+            ),
+          ),
+        );
+
+        final context = await guard.requireOperatorContext(
+          authorizationHeader: 'Bearer fake.token.value',
+        );
+
+        // Operator id surfaces because the JWT carried it; the
+        // location id stays empty per the global-admin contract.
+        expect(context.operatorId, equals('op_777'));
+        expect(context.locationId, equals(''));
+        expect(context.roles, contains('ff_support'));
+      },
+    );
   });
 
   group('ProxyUsageGuard (11a.10b)', () {

@@ -488,6 +488,16 @@ class GoogleCloudPubsubSubscriber implements RealtimeReplayBacklog {
     return ring?.length ?? 0;
   }
 
+  /// Total `(operator_id, topic)` keys held in the per-pod ring-buffer
+  /// map. The key count is unbounded by design (per-key length is
+  /// capped, key set is not), so a growing value is the canonical
+  /// signal for S3 in A1's Bug 2 ranking — `_ringBuffers` map growth
+  /// driving pod RSS upward.
+  ///
+  /// Exposed via the proxy `/health` envelope (A1 §2.4 item #4). Cheap
+  /// `O(1)` Map length read; safe to sample on every probe.
+  int get ringBufferKeyCount => _ringBuffers.length;
+
   /// Visible for tests — drive one pull tick synchronously.
   Future<void> pullOnceForTest() => _pullOnce();
 
