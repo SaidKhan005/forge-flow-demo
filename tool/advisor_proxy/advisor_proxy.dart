@@ -11774,6 +11774,107 @@ Future<void> routeRequest(
             }
 
             if (request.method == 'PATCH' &&
+                authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
+                (authOperationPath.endsWith('/suspend') ||
+                    authOperationPath.endsWith('/reactivate'))) {
+              if (!await requirePermission('team.hierarchy.suspend')) return;
+              final action = authOperationPath.endsWith('/suspend')
+                  ? 'suspend'
+                  : 'reactivate';
+              final orgUnitId = _idFromAdminAuthActionPath(
+                authOperationPath,
+                adminAuthOrgUnitPrefix,
+                action,
+              );
+              final adminReason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['adminReason']);
+              if (orgUnitId == null || adminReason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_org_unit_lifecycle_fields',
+                  'message':
+                      'org unit id in path and admin_reason body are required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthOrgUnitPrefix$orgUnitId/$action',
+                key: idempotencyKey,
+                compute: () async {
+                  final command = TeamOrgUnitLifecycleCommand(
+                    actorUserId: scope.userId,
+                    operatorId: scope.operatorId,
+                    locationId: scope.locationId,
+                    orgUnitId: orgUnitId,
+                    adminReason: adminReason,
+                  );
+                  final result = action == 'suspend'
+                      ? await authOperationsGateway.suspendOrgUnit(command)
+                      : await authOperationsGateway.reactivateOrgUnit(command);
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'org_unit': _teamOrgUnitToJson(result.orgUnit),
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            if (request.method == 'POST' &&
+                authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
+                authOperationPath.endsWith('/delete')) {
+              if (!await requirePermission('team.hierarchy.delete')) return;
+              final orgUnitId = _idFromAdminAuthActionPath(
+                authOperationPath,
+                adminAuthOrgUnitPrefix,
+                'delete',
+              );
+              final adminReason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['adminReason']);
+              if (orgUnitId == null || adminReason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_org_unit_delete_fields',
+                  'message':
+                      'org unit id in path and admin_reason body are required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthOrgUnitPrefix$orgUnitId/delete',
+                key: idempotencyKey,
+                compute: () async {
+                  final deleted = await authOperationsGateway.deleteOrgUnit(
+                    TeamOrgUnitLifecycleCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      orgUnitId: orgUnitId,
+                      adminReason: adminReason,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'deleted': deleted.deleted,
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            if (request.method == 'PATCH' &&
                 authOperationPath.startsWith(adminAuthLocationsPrefix) &&
                 authOperationPath.endsWith('/org-unit')) {
               if (!await requirePermission('team.roles.assign')) return;
@@ -11816,6 +11917,107 @@ Future<void> routeRequest(
                   return CachedProxyResponse(
                     statusCode: 200,
                     body: <String, Object?>{'ok': true, 'moved': moved.moved},
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            if (request.method == 'PATCH' &&
+                authOperationPath.startsWith(adminAuthLocationsPrefix) &&
+                (authOperationPath.endsWith('/suspend') ||
+                    authOperationPath.endsWith('/reactivate'))) {
+              if (!await requirePermission('team.hierarchy.suspend')) return;
+              final action = authOperationPath.endsWith('/suspend')
+                  ? 'suspend'
+                  : 'reactivate';
+              final targetLocationId = _idFromAdminAuthActionPath(
+                authOperationPath,
+                adminAuthLocationsPrefix,
+                action,
+              );
+              final adminReason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['adminReason']);
+              if (targetLocationId == null || adminReason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_location_lifecycle_fields',
+                  'message':
+                      'location id in path and admin_reason body are required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthLocationsPrefix$targetLocationId/$action',
+                key: idempotencyKey,
+                compute: () async {
+                  final command = TeamLocationLifecycleCommand(
+                    actorUserId: scope.userId,
+                    operatorId: scope.operatorId,
+                    locationId: scope.locationId,
+                    targetLocationId: targetLocationId,
+                    adminReason: adminReason,
+                  );
+                  final result = action == 'suspend'
+                      ? await authOperationsGateway.suspendLocation(command)
+                      : await authOperationsGateway.reactivateLocation(command);
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'location': _teamOrgLocationToJson(result.location),
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            if (request.method == 'POST' &&
+                authOperationPath.startsWith(adminAuthLocationsPrefix) &&
+                authOperationPath.endsWith('/delete')) {
+              if (!await requirePermission('team.hierarchy.delete')) return;
+              final targetLocationId = _idFromAdminAuthActionPath(
+                authOperationPath,
+                adminAuthLocationsPrefix,
+                'delete',
+              );
+              final adminReason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['adminReason']);
+              if (targetLocationId == null || adminReason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_location_delete_fields',
+                  'message':
+                      'location id in path and admin_reason body are required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthLocationsPrefix$targetLocationId/delete',
+                key: idempotencyKey,
+                compute: () async {
+                  final deleted = await authOperationsGateway.deleteLocation(
+                    TeamLocationLifecycleCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      targetLocationId: targetLocationId,
+                      adminReason: adminReason,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'deleted': deleted.deleted,
+                    },
                   );
                 },
               );
@@ -17100,9 +17302,23 @@ bool _isAdminAuthOperation(String path, String method) {
       authOperationPath.endsWith('/parent')) {
     return true;
   }
+  if (authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
+      ((method == 'PATCH' &&
+              (authOperationPath.endsWith('/suspend') ||
+                  authOperationPath.endsWith('/reactivate'))) ||
+          (method == 'POST' && authOperationPath.endsWith('/delete')))) {
+    return true;
+  }
   if (method == 'PATCH' &&
       authOperationPath.startsWith(adminAuthLocationsPrefix) &&
       authOperationPath.endsWith('/org-unit')) {
+    return true;
+  }
+  if (authOperationPath.startsWith(adminAuthLocationsPrefix) &&
+      ((method == 'PATCH' &&
+              (authOperationPath.endsWith('/suspend') ||
+                  authOperationPath.endsWith('/reactivate'))) ||
+          (method == 'POST' && authOperationPath.endsWith('/delete')))) {
     return true;
   }
   return false;
@@ -17144,6 +17360,16 @@ String? _orgUnitIdFromParentPath(String path) {
   final rest = path.substring(adminAuthOrgUnitPrefix.length);
   final parts = rest.split('/');
   if (parts.length != 2 || parts[0].isEmpty || parts[1] != 'parent') {
+    return null;
+  }
+  return Uri.decodeComponent(parts[0]);
+}
+
+String? _idFromAdminAuthActionPath(String path, String prefix, String action) {
+  if (!path.startsWith(prefix)) return null;
+  final rest = path.substring(prefix.length);
+  final parts = rest.split('/');
+  if (parts.length != 2 || parts[0].isEmpty || parts[1] != action) {
     return null;
   }
   return Uri.decodeComponent(parts[0]);
@@ -17349,6 +17575,10 @@ Map<String, Object?> _teamOrgUnitToJson(TeamOrgUnitEntry entry) {
     'unit_type': entry.unitType,
     'path': entry.path,
     'label': entry.label,
+    if (entry.suspendedAt != null)
+      'suspended_at': entry.suspendedAt!.toUtc().toIso8601String(),
+    if (entry.deletedAt != null)
+      'deleted_at': entry.deletedAt!.toUtc().toIso8601String(),
   };
 }
 
@@ -17358,6 +17588,10 @@ Map<String, Object?> _teamOrgLocationToJson(TeamOrgLocationEntry entry) {
     'parent_org_unit_id': entry.parentOrgUnitId,
     'org_unit_path': entry.orgUnitPath,
     'label': entry.label,
+    if (entry.suspendedAt != null)
+      'suspended_at': entry.suspendedAt!.toUtc().toIso8601String(),
+    if (entry.deletedAt != null)
+      'deleted_at': entry.deletedAt!.toUtc().toIso8601String(),
   };
 }
 

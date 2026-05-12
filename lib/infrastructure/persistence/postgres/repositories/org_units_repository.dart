@@ -33,6 +33,8 @@ class OrgUnitRow {
     required this.unitType,
     required this.path,
     required this.name,
+    this.suspendedAt,
+    this.deletedAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -43,6 +45,8 @@ class OrgUnitRow {
   final String unitType;
   final String path;
   final String name;
+  final DateTime? suspendedAt;
+  final DateTime? deletedAt;
   final DateTime createdAt;
   final DateTime updatedAt;
 }
@@ -82,8 +86,9 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       final rows = await exec.query(
         'select id::text as id, operator_id::text as operator_id, '
         'parent_id::text as parent_id, unit_type, path::text as path, '
-        'name, created_at, updated_at '
+        'name, suspended_at, deleted_at, created_at, updated_at '
         'from org_units '
+        'where deleted_at is null '
         'order by path',
       );
       return rows.map(_rowFromMap).toList(growable: false);
@@ -107,9 +112,10 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       final rows = await exec.query(
         'select id::text as id, operator_id::text as operator_id, '
         'parent_id::text as parent_id, unit_type, path::text as path, '
-        'name, created_at, updated_at '
+        'name, suspended_at, deleted_at, created_at, updated_at '
         'from org_units '
-        'where id = @id::uuid',
+        'where id = @id::uuid '
+        'and deleted_at is null',
         parameters: <String, Object?>{'id': id},
       );
       if (rows.isEmpty) return null;
@@ -196,7 +202,8 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       final parentRows = await exec.query(
         'select path::text as path, nlevel(path) as depth '
         'from org_units '
-        'where id = @parent_id::uuid',
+        'where id = @parent_id::uuid '
+        'and deleted_at is null',
         parameters: <String, Object?>{'parent_id': parentId},
       );
       if (parentRows.isEmpty) {
@@ -223,6 +230,7 @@ class OrgUnitsRepository extends OperatorScopedRepository {
         'parent.path || @child_label::ltree, @name '
         'from org_units parent '
         'where parent.id = @parent_id::uuid '
+        'and parent.deleted_at is null '
         'returning id::text as id',
         parameters: <String, Object?>{
           'operator_id': operatorId,
@@ -268,8 +276,9 @@ class OrgUnitsRepository extends OperatorScopedRepository {
         'operator_id::text as operator_id, '
         'parent_org_unit_id::text as parent_org_unit_id, '
         'org_unit_path::text as org_unit_path, name, '
-        'timezone as business_timezone '
+        'timezone as business_timezone, suspended_at, deleted_at '
         'from locations '
+        'where deleted_at is null '
         'order by org_unit_path, name',
       );
       return rows.map(_locationRowFromMap).toList(growable: false);
@@ -303,7 +312,8 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       // FK trigger after the read.
       final parentRows = await exec.query(
         'select 1 from org_units '
-        'where id = @parent_id::uuid',
+        'where id = @parent_id::uuid '
+        'and deleted_at is null',
         parameters: <String, Object?>{'parent_id': parentOrgUnitId},
       );
       if (parentRows.isEmpty) {
@@ -315,7 +325,8 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       return exec.execute(
         'update locations '
         'set parent_org_unit_id = @parent_id::uuid '
-        'where location_id = @location_id::uuid',
+        'where location_id = @location_id::uuid '
+        'and deleted_at is null',
         parameters: <String, Object?>{
           'parent_id': parentOrgUnitId,
           'location_id': targetLocationId,
@@ -340,9 +351,11 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       final childRows = await exec.query(
         'select id::text as id, operator_id::text as operator_id, '
         'parent_id::text as parent_id, unit_type, path::text as path, '
-        'name, created_at, updated_at, nlevel(path) as depth '
+        'name, suspended_at, deleted_at, created_at, updated_at, '
+        'nlevel(path) as depth '
         'from org_units '
-        'where id = @org_unit_id::uuid',
+        'where id = @org_unit_id::uuid '
+        'and deleted_at is null',
         parameters: <String, Object?>{'org_unit_id': orgUnitId},
       );
       if (childRows.isEmpty) {
@@ -364,9 +377,11 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       final parentRows = await exec.query(
         'select id::text as id, operator_id::text as operator_id, '
         'parent_id::text as parent_id, unit_type, path::text as path, '
-        'name, created_at, updated_at, nlevel(path) as depth '
+        'name, suspended_at, deleted_at, created_at, updated_at, '
+        'nlevel(path) as depth '
         'from org_units '
-        'where id = @parent_org_unit_id::uuid',
+        'where id = @parent_org_unit_id::uuid '
+        'and deleted_at is null',
         parameters: <String, Object?>{'parent_org_unit_id': parentOrgUnitId},
       );
       if (parentRows.isEmpty) {
@@ -391,7 +406,8 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       final descendantRows = await exec.query(
         'select coalesce(max(nlevel(path) - @child_depth), 0) as max_relative '
         'from org_units '
-        'where path <@ @child_path::ltree',
+        'where path <@ @child_path::ltree '
+        'and deleted_at is null',
         parameters: <String, Object?>{
           'child_depth': childDepth,
           'child_path': child.path,
@@ -414,10 +430,12 @@ class OrgUnitsRepository extends OperatorScopedRepository {
         '         subpath(path, nlevel(path) - 1) as own_label '
         '    from org_units '
         '   where id = @org_unit_id::uuid'
+        '     and deleted_at is null'
         '), parent as ('
         '  select path as parent_path '
         '    from org_units '
         '   where id = @parent_org_unit_id::uuid'
+        '     and deleted_at is null'
         '), next_path as ('
         '  select moving.old_path, moving.old_depth, '
         '         parent.parent_path || moving.own_label as new_path '
@@ -436,9 +454,11 @@ class OrgUnitsRepository extends OperatorScopedRepository {
         '  from next_path '
         ' where ou.operator_id = @operator_id::uuid '
         '   and ou.path <@ next_path.old_path '
+        '   and ou.deleted_at is null '
         'returning ou.id::text as id, ou.operator_id::text as operator_id, '
         '          ou.parent_id::text as parent_id, ou.unit_type, '
-        '          ou.path::text as path, ou.name, ou.created_at, ou.updated_at',
+        '          ou.path::text as path, ou.name, ou.suspended_at, '
+        '          ou.deleted_at, ou.created_at, ou.updated_at',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'org_unit_id': orgUnitId,
@@ -459,6 +479,8 @@ class OrgUnitsRepository extends OperatorScopedRepository {
         ' where loc.operator_id = @operator_id::uuid '
         '   and ou.operator_id = loc.operator_id '
         '   and ou.id = loc.parent_org_unit_id '
+        '   and loc.deleted_at is null '
+        '   and ou.deleted_at is null '
         '   and loc.org_unit_path is distinct from ou.path',
         parameters: <String, Object?>{'operator_id': operatorId},
       );
@@ -471,6 +493,215 @@ class OrgUnitsRepository extends OperatorScopedRepository {
     });
   }
 
+  Future<OrgUnitRow> setOrgUnitSuspended({
+    required String operatorId,
+    required String locationId,
+    required String orgUnitId,
+    required bool suspended,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<OrgUnitRow>(ctx, (exec) async {
+      final existingRows = await exec.query(
+        'select id::text as id, parent_id::text as parent_id '
+        'from org_units '
+        'where id = @org_unit_id::uuid '
+        'and deleted_at is null',
+        parameters: <String, Object?>{'org_unit_id': orgUnitId},
+      );
+      if (existingRows.isEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'unknown_org_unit',
+          message: 'org unit not found in tenant scope',
+          statusCode: 404,
+        );
+      }
+      if (existingRows.single['parent_id'] == null) {
+        throw const OrgUnitMoveRejected(
+          code: 'cannot_suspend_root_org_unit',
+          message: 'business root org unit cannot be suspended',
+          statusCode: 400,
+        );
+      }
+      final rows = await exec.query(
+        'update org_units '
+        'set suspended_at = case when @suspended then now() else null end, '
+        'updated_at = now() '
+        'where id = @org_unit_id::uuid '
+        'and deleted_at is null '
+        'returning id::text as id, operator_id::text as operator_id, '
+        'parent_id::text as parent_id, unit_type, path::text as path, '
+        'name, suspended_at, deleted_at, created_at, updated_at',
+        parameters: <String, Object?>{
+          'org_unit_id': orgUnitId,
+          'suspended': suspended,
+        },
+      );
+      if (rows.isEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'org_unit_lifecycle_failed',
+          message: 'org unit lifecycle update did not update any rows',
+          statusCode: 409,
+        );
+      }
+      return _rowFromMap(rows.single);
+    });
+  }
+
+  Future<bool> deleteOrgUnit({
+    required String operatorId,
+    required String locationId,
+    required String orgUnitId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<bool>(ctx, (exec) async {
+      final existingRows = await exec.query(
+        'select id::text as id, parent_id::text as parent_id '
+        'from org_units '
+        'where id = @org_unit_id::uuid '
+        'and deleted_at is null',
+        parameters: <String, Object?>{'org_unit_id': orgUnitId},
+      );
+      if (existingRows.isEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'unknown_org_unit',
+          message: 'org unit not found in tenant scope',
+          statusCode: 404,
+        );
+      }
+      if (existingRows.single['parent_id'] == null) {
+        throw const OrgUnitMoveRejected(
+          code: 'cannot_delete_root_org_unit',
+          message: 'business root org unit cannot be deleted',
+          statusCode: 400,
+        );
+      }
+      final childRows = await exec.query(
+        'select 1 from org_units '
+        'where parent_id = @org_unit_id::uuid '
+        'and deleted_at is null limit 1',
+        parameters: <String, Object?>{'org_unit_id': orgUnitId},
+      );
+      final locationRows = await exec.query(
+        'select 1 from locations '
+        'where parent_org_unit_id = @org_unit_id::uuid '
+        'and deleted_at is null limit 1',
+        parameters: <String, Object?>{'org_unit_id': orgUnitId},
+      );
+      if (childRows.isNotEmpty || locationRows.isNotEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'org_unit_not_empty',
+          message: 'move or delete child org units and locations first',
+          statusCode: 409,
+        );
+      }
+      final affected = await exec.execute(
+        'update org_units '
+        'set deleted_at = now(), updated_at = now() '
+        'where id = @org_unit_id::uuid '
+        'and deleted_at is null',
+        parameters: <String, Object?>{'org_unit_id': orgUnitId},
+      );
+      return affected > 0;
+    });
+  }
+
+  Future<OrgLocationRow> setLocationSuspended({
+    required String operatorId,
+    required String locationId,
+    required String targetLocationId,
+    required bool suspended,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<OrgLocationRow>(ctx, (exec) async {
+      final rows = await exec.query(
+        'update locations '
+        'set suspended_at = case when @suspended then now() else null end, '
+        'updated_at = now() '
+        'where location_id = @location_id::uuid '
+        'and deleted_at is null '
+        'returning location_id::text as location_id, '
+        'operator_id::text as operator_id, '
+        'parent_org_unit_id::text as parent_org_unit_id, '
+        "coalesce(org_unit_path::text, '') as org_unit_path, "
+        'name, timezone as business_timezone, suspended_at, deleted_at',
+        parameters: <String, Object?>{
+          'location_id': targetLocationId,
+          'suspended': suspended,
+        },
+      );
+      if (rows.isEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'unknown_location',
+          message: 'location not found in tenant scope',
+          statusCode: 404,
+        );
+      }
+      return _locationRowFromMap(rows.single);
+    });
+  }
+
+  Future<bool> deleteLocation({
+    required String operatorId,
+    required String locationId,
+    required String targetLocationId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<bool>(ctx, (exec) async {
+      final primaryRows = await exec.query(
+        'select 1 from operators '
+        'where operator_id = @operator_id::uuid '
+        'and primary_location_id = @location_id::uuid',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': targetLocationId,
+        },
+      );
+      if (primaryRows.isNotEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'cannot_delete_primary_location',
+          message:
+              'assign a different primary location before deleting this one',
+          statusCode: 400,
+        );
+      }
+      final affected = await exec.execute(
+        'update locations '
+        'set deleted_at = now(), updated_at = now() '
+        'where location_id = @location_id::uuid '
+        'and deleted_at is null',
+        parameters: <String, Object?>{'location_id': targetLocationId},
+      );
+      if (affected == 0) {
+        throw const OrgUnitMoveRejected(
+          code: 'unknown_location',
+          message: 'location not found in tenant scope',
+          statusCode: 404,
+        );
+      }
+      return true;
+    });
+  }
+
   /// Admin/system path: SELECT every root `corp` row across operators.
   /// Used by the 11A admin console hierarchy panel + backfill
   /// verification. Runs through `withSystem` so `forge_admin`
@@ -480,9 +711,10 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       final rows = await exec.query(
         'select id::text as id, operator_id::text as operator_id, '
         'parent_id::text as parent_id, unit_type, path::text as path, '
-        'name, created_at, updated_at '
+        'name, suspended_at, deleted_at, created_at, updated_at '
         'from org_units '
         'where parent_id is null '
+        'and deleted_at is null '
         'order by operator_id, path',
       );
       return rows.map(_rowFromMap).toList(growable: false);
@@ -503,9 +735,11 @@ class OrgUnitsRepository extends OperatorScopedRepository {
         'l.parent_org_unit_id::text as parent_org_unit_id, '
         "coalesce(l.org_unit_path::text, '') as org_unit_path, "
         'l.name, l.timezone as business_timezone, '
+        'l.suspended_at, l.deleted_at, '
         'o.business_name as operator_name '
         'from locations l '
         'join operators o on o.operator_id = l.operator_id '
+        'where l.deleted_at is null '
         'order by lower(o.business_name), l.org_unit_path, '
         'lower(l.name), l.location_id',
       );
@@ -531,6 +765,8 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       unitType: row['unit_type']! as String,
       path: row['path']! as String,
       name: row['name']! as String,
+      suspendedAt: _dateTimeOrNull(row['suspended_at']),
+      deletedAt: _dateTimeOrNull(row['deleted_at']),
       createdAt: row['created_at']! as DateTime,
       updatedAt: row['updated_at']! as DateTime,
     );
@@ -550,8 +786,17 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       orgUnitPath: row['org_unit_path'] as String? ?? '',
       name: row['name']! as String,
       businessTimezone: row['business_timezone'] as String?,
+      suspendedAt: _dateTimeOrNull(row['suspended_at']),
+      deletedAt: _dateTimeOrNull(row['deleted_at']),
       operatorName: row['operator_name'] as String?,
     );
+  }
+
+  static DateTime? _dateTimeOrNull(Object? value) {
+    if (value == null) return null;
+    if (value is DateTime) return value.toUtc();
+    if (value is String && value.isNotEmpty) return DateTime.parse(value);
+    return null;
   }
 }
 
@@ -583,6 +828,8 @@ class OrgLocationRow {
     required this.name,
     this.parentOrgUnitId,
     this.businessTimezone,
+    this.suspendedAt,
+    this.deletedAt,
     this.operatorName,
   });
 
@@ -592,5 +839,7 @@ class OrgLocationRow {
   final String orgUnitPath;
   final String name;
   final String? businessTimezone;
+  final DateTime? suspendedAt;
+  final DateTime? deletedAt;
   final String? operatorName;
 }

@@ -1038,6 +1038,101 @@ void main() {
       },
     );
 
+    test(
+      'suspendOrgUnit PATCH pins lifecycle route and parses status',
+      () async {
+        late http.Request captured;
+        final mock = http_testing.MockClient((http.Request request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'org_unit': <String, Object?>{
+                'org_unit_id': 'unit-1',
+                'operator_id': 'op-1',
+                'parent_org_unit_id': 'unit-2',
+                'name': 'East',
+                'suspended_at': '2026-05-08T12:00:00.000Z',
+              },
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+        final gateway = HttpRolesHierarchySessionsAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+
+        final suspended = await gateway.suspendOrgUnit(
+          operatorId: 'op-1',
+          orgUnitId: 'unit-1',
+          idempotencyKey: 'idem-suspend-org-unit-1',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'temporarily pause branch',
+        );
+
+        expect(captured.method, equals('PATCH'));
+        expect(
+          captured.url.path,
+          equals('/v1/admin/auth/org-units/unit-1/suspend'),
+        );
+        final body = jsonDecode(captured.body) as Map<String, Object?>;
+        expect(
+          body,
+          equals(<String, Object?>{
+            'operator_id': 'op-1',
+            'admin_reason': 'temporarily pause branch',
+          }),
+        );
+        expect(suspended.suspendedAt, isNotNull);
+      },
+    );
+
+    test(
+      'deleteLocation POST pins lifecycle route with admin reason',
+      () async {
+        late http.Request captured;
+        final mock = http_testing.MockClient((http.Request request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{'ok': true, 'deleted': true}),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+        final gateway = HttpRolesHierarchySessionsAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+
+        await gateway.deleteLocation(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          idempotencyKey: 'idem-delete-location-1',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'duplicate location cleanup',
+        );
+
+        expect(captured.method, equals('POST'));
+        expect(
+          captured.url.path,
+          equals('/v1/admin/auth/locations/loc-1/delete'),
+        );
+        final body = jsonDecode(captured.body) as Map<String, Object?>;
+        expect(
+          body,
+          equals(<String, Object?>{
+            'operator_id': 'op-1',
+            'admin_reason': 'duplicate location cleanup',
+          }),
+        );
+      },
+    );
+
     test('non-forge-admin caller never reaches the network', () async {
       var hits = 0;
       final mock = http_testing.MockClient((http.Request request) async {

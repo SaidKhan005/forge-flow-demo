@@ -707,6 +707,72 @@ void main() {
       );
     });
 
+    test('hierarchy lifecycle routes carry admin reason', () async {
+      final fake = _FakeAuthOpsHttpClient(
+        patchResponse: ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{
+            'ok': true,
+            'org_unit': <String, Object?>{
+              'org_unit_id': 'unit-east',
+              'parent_org_unit_id': 'unit-root',
+              'unit_type': 'region',
+              'path': 'acme.east',
+              'label': 'East Region',
+              'suspended_at': '2026-05-08T12:00:00.000Z',
+            },
+          },
+        ),
+        postResponse: const ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{'ok': true, 'deleted': true},
+        ),
+      );
+      final gateway = ProxyAuthOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+      );
+
+      final suspended = await gateway.suspendOrgUnit(
+        const TeamOrgUnitLifecycleCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          orgUnitId: 'unit-east',
+          adminReason: 'pause branch',
+        ),
+      );
+      final deleted = await gateway.deleteLocation(
+        const TeamLocationLifecycleCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          targetLocationId: 'loc-1',
+          adminReason: 'duplicate location',
+        ),
+      );
+
+      expect(suspended.orgUnit.suspendedAt, isNotNull);
+      expect(deleted.deleted, isTrue);
+      expect(
+        fake.patches.single.url.path,
+        equals('/v1/admin/auth/org-units/unit-east/suspend'),
+      );
+      expect(
+        fake.patches.single.body,
+        equals(<String, Object?>{'admin_reason': 'pause branch'}),
+      );
+      expect(
+        fake.posts.single.url.path,
+        equals('/v1/admin/auth/locations/loc-1/delete'),
+      );
+      expect(
+        fake.posts.single.body,
+        equals(<String, Object?>{'admin_reason': 'duplicate location'}),
+      );
+    });
+
     test(
       'listActiveSessions GETs /v1/auth/sessions and parses payload',
       () async {

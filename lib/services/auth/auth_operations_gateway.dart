@@ -402,6 +402,8 @@ class TeamOrgUnitEntry {
     required this.unitType,
     required this.path,
     required this.label,
+    this.suspendedAt,
+    this.deletedAt,
   });
 
   final String orgUnitId;
@@ -409,6 +411,8 @@ class TeamOrgUnitEntry {
   final String unitType;
   final String path;
   final String label;
+  final DateTime? suspendedAt;
+  final DateTime? deletedAt;
 }
 
 class TeamOrgLocationEntry {
@@ -417,12 +421,16 @@ class TeamOrgLocationEntry {
     required this.parentOrgUnitId,
     required this.orgUnitPath,
     required this.label,
+    this.suspendedAt,
+    this.deletedAt,
   });
 
   final String locationId;
   final String parentOrgUnitId;
   final String orgUnitPath;
   final String label;
+  final DateTime? suspendedAt;
+  final DateTime? deletedAt;
 }
 
 class TeamOrgHierarchyListCommand {
@@ -499,6 +507,34 @@ class TeamOrgUnitMoved {
   final TeamOrgUnitEntry orgUnit;
 }
 
+class TeamOrgUnitLifecycleCommand {
+  const TeamOrgUnitLifecycleCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.orgUnitId,
+    required this.adminReason,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String orgUnitId;
+  final String adminReason;
+}
+
+class TeamOrgUnitLifecycleUpdated {
+  const TeamOrgUnitLifecycleUpdated({required this.orgUnit});
+
+  final TeamOrgUnitEntry orgUnit;
+}
+
+class TeamHierarchyDeleted {
+  const TeamHierarchyDeleted({required this.deleted});
+
+  final bool deleted;
+}
+
 class TeamLocationOrgUnitMoveCommand {
   const TeamLocationOrgUnitMoveCommand({
     required this.actorUserId,
@@ -521,6 +557,28 @@ class TeamLocationOrgUnitMoved {
   const TeamLocationOrgUnitMoved({required this.moved});
 
   final bool moved;
+}
+
+class TeamLocationLifecycleCommand {
+  const TeamLocationLifecycleCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.targetLocationId,
+    required this.adminReason,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String targetLocationId;
+  final String adminReason;
+}
+
+class TeamLocationLifecycleUpdated {
+  const TeamLocationLifecycleUpdated({required this.location});
+
+  final TeamOrgLocationEntry location;
 }
 
 class TeamRolePermissionRule {
@@ -1272,8 +1330,32 @@ abstract class AuthOperationsGateway {
 
   Future<TeamOrgUnitMoved> moveOrgUnit(TeamOrgUnitMoveCommand command);
 
+  Future<TeamOrgUnitLifecycleUpdated> suspendOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  );
+
+  Future<TeamOrgUnitLifecycleUpdated> reactivateOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  );
+
+  Future<TeamHierarchyDeleted> deleteOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  );
+
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command,
+  );
+
+  Future<TeamLocationLifecycleUpdated> suspendLocation(
+    TeamLocationLifecycleCommand command,
+  );
+
+  Future<TeamLocationLifecycleUpdated> reactivateLocation(
+    TeamLocationLifecycleCommand command,
+  );
+
+  Future<TeamHierarchyDeleted> deleteLocation(
+    TeamLocationLifecycleCommand command,
   );
 
   // Phase 9.UX.5 — self-service Active Sessions surface.
@@ -1415,8 +1497,50 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<TeamOrgUnitLifecycleUpdated> suspendOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamOrgUnitLifecycleUpdated> reactivateOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamHierarchyDeleted> deleteOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamLocationLifecycleUpdated> suspendLocation(
+    TeamLocationLifecycleCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamLocationLifecycleUpdated> reactivateLocation(
+    TeamLocationLifecycleCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamHierarchyDeleted> deleteLocation(
+    TeamLocationLifecycleCommand command,
   ) {
     throw StateError(_message);
   }

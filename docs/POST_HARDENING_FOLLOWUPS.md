@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/_execution/2026-05-09_security_finding_w
 
 ## P0 — Production1 Migration Apply Gap
 
-**28 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605081000_outbox_notify_channel_split.sql`; staging/preview
+**33 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605082200_admin_hierarchy_lifecycle.sql`; staging/preview
 apply evidence must stay attached to the runbook before any Production1 apply.
 
 | Migration | Origin | Staging |
@@ -66,8 +66,13 @@ apply evidence must stay attached to the runbook before any Production1 apply.
 | `202605080800_auth_permission_version.sql` | Auth permission-version invalidation column/index | code-ready |
 | `202605080900_oauth_refresh_advisory_lock.sql` | OAuth refresh advisory-lock registry row | code-ready |
 | `202605081000_outbox_notify_channel_split.sql` | Split outbox NOTIFY channels for bounded consumers | code-ready |
+| `202605081100_partman_maintenance_hourly_cron.sql` | Register hourly pg_partman audit-log maintenance cron | code-ready |
+| `202605081300_seed_kms_rollout_flags_default_disabled.sql` | Seed default-disabled KMS rollout feature flags after sentinel-operator change | code-ready |
+| `202605082000_user_pii_erasure_requests.sql` | Durable admin PII-erasure request ledger with 24h reversal window | code-ready |
+| `202605082100_phase_10a_3_retention_sweep_in_db_followup.sql` | Register bounded event-outbox retention sweep in Azure split-DB cron topology | code-ready |
+| `202605082200_admin_hierarchy_lifecycle.sql` | Admin hierarchy suspend/delete lifecycle columns and permission gates | code-ready |
 
-**Action:** apply all 28 in next Production1 event per
+**Action:** apply all 33 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 
