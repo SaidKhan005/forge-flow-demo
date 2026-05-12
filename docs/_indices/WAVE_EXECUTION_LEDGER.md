@@ -28,7 +28,7 @@ Triggers the `operator` gate: auth-critical, RLS-touching, schema-touching (migr
 
 | Slice | Plan anchor | Owner | Size | Risk | Gate | Dependency | State | PR | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| A0 | `lane_a_code_health/03_execution_slices.md` Slice A0 | orchestrator | Small | Low | auto | — | assigned | — | Verification probe for PR #476 (already-shipped B1+B2 work) |
+| A0 | `lane_a_code_health/03_execution_slices.md` Slice A0 | orchestrator | Small | Low | auto | — | merged | — | Verification PASS 2026-05-12; doc: `docs/_audits/code_health/a0_b1_b2_post_merge_verification.md` |
 | A2.1 | Slice A2.1 | Codex | Small | Low | auto | A0 merged | assigned | — | Dead-code sweep (placeholder widgets) |
 | A2.2 | Slice A2.2 | Codex | Medium | Medium | operator | A2.1 merged | assigned | — | Email pipeline wire-or-delete |
 | A3.1 | Slice A3.1 | Claude | Medium | Medium | operator | A0 merged | assigned | — | Monolith seam-map + bleed-stop lint |
@@ -119,3 +119,4 @@ When a PR is rejected/closed without merge:
 | 2026-05-12 | Initial ledger — 43 slices, all `assigned`. |
 | 2026-05-12 | First wave PRs land. **A6.1 merged** (PR #498 → master `9cdaee1e`). **B1.a / B1.b / C-8 → `audit-pending`** (orchestrator audit clean; awaiting operator approval — see `docs/_audits/post_codex_wave/pr_{499,500,501}_*_audit.md`). B1.a escalates despite `Gate=auto` due to slice-spec planning ambiguity worker correctly surfaced. |
 | 2026-05-12 | **Operator approve-all 21:55Z.** Merged: B3 (#502 `fb806262`), B1.b (#500 `427a5510`), C-8 (#499 `5583d5b9`), B1.a (#501 `a6094e9b`). B1.a copy follow-up (Option 1 — rewrite "Other locations…" → "This scope only covers…") applied by orchestrator-fix-by-default in this same PR. Unblocks Codex's held B7.a branch. |
+| 2026-05-12 | **A0 verification probe PASS** (orchestrator-owned). B1+B2 hot-fix live on master tip `f1034d0a`; runZonedGuarded + scope-less contract + soak harness all confirmed. Unblocks 9 Lane A slices (A2.1, A2.2, A3.1, A4.1, A5+A8, A7.1, A9.1, A10.1, A11.1). Evidence: `docs/_audits/code_health/a0_b1_b2_post_merge_verification.md`. |
