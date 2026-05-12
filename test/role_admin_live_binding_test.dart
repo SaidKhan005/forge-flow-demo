@@ -560,6 +560,50 @@ void main() {
       expect(audit.targetKind, equals('role'));
       expect(audit.targetId, equals(_validRoleId));
     });
+
+    test(
+      'renaming a custom role display name does not bump grant holders',
+      () async {
+        final auditRepository = _RecordingAuthEventsAuditRepository();
+        final pool = _RoleAdminPool(roleRows: <PostgresRow>[_customRoleRow()]);
+        final gateway = _gatewayWithRolePool(
+          pool,
+          auditRepository: auditRepository,
+        );
+
+        final patched = await gateway.patchRole(
+          const TeamRolePatchCommand(
+            actorUserId: _validUserId,
+            operatorId: _validOpId,
+            locationId: _validLocId,
+            roleId: _validRoleId,
+            displayName: 'Kitchen Captain',
+            reason: 'display-name correction only',
+          ),
+        );
+
+        expect(patched.bumpedUsers, equals(0));
+        expect(auditRepository.events, hasLength(1));
+        expect(
+          auditRepository.events.single.eventType,
+          equals('auth.custom_role_updated'),
+        );
+        final executedSql = pool.transactions
+            .expand((tx) => tx.executedSql)
+            .toList(growable: false);
+        expect(
+          executedSql.where(
+            (sql) =>
+                sql.contains('update users') &&
+                sql.contains('roles_version = roles_version + 1'),
+          ),
+          isEmpty,
+          reason:
+              'B3 role_key hybrid: display-name changes are presentational '
+              'and must not migrate or invalidate active grants.',
+        );
+      },
+    );
   });
 
   group('ProxyAdminPermissionGuard (B19)', () {

@@ -112,8 +112,10 @@ class RolesRepository extends OperatorScopedRepository {
     });
   }
 
-  /// Resolve a visible role key to its UUID. Operator-scoped custom roles win
-  /// over global seeded roles when both expose the same key.
+  /// Resolve a seeded role key to its UUID.
+  ///
+  /// B3 keeps the six seeded role slugs as catalog membership signals, but
+  /// custom-role mutation paths must carry `role_id` directly.
   Future<String> roleIdForVisibleKey({
     required String operatorId,
     required String locationId,
@@ -131,16 +133,13 @@ class RolesRepository extends OperatorScopedRepository {
         'from roles '
         'where role_key = @role_key '
         'and deleted_at is null '
-        'and (operator_id = @operator_id::uuid or operator_id is null) '
-        'order by case when operator_id = @operator_id::uuid then 0 else 1 end '
+        'and operator_id is null '
+        'and is_seeded = true '
         'limit 1',
-        parameters: <String, Object?>{
-          'operator_id': operatorId,
-          'role_key': roleKey,
-        },
+        parameters: <String, Object?>{'role_key': roleKey},
       );
       if (rows.isEmpty) {
-        throw StateError('role key is not visible to this operator');
+        throw StateError('seeded role key is not visible to this operator');
       }
       final id = rows.single['role_id'];
       if (id is String && id.isNotEmpty) return id;

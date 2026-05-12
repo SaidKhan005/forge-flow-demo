@@ -20,6 +20,7 @@ import 'package:forge_and_flow/admin/screens/operator_picker_screen.dart';
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/members_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -365,6 +366,77 @@ void main() {
         );
       },
     );
+
+    testWidgets('Override role grant sends custom role_id from role catalog', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = _RecordingOverrideMembersGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+      final rolesGateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: const <String, List<RoleAdminRow>>{
+          kDemoDinerOperatorId: <RoleAdminRow>[
+            RoleAdminRow(
+              roleId: 'role-seed-operator-owner',
+              roleKey: 'operator_owner',
+              displayName: 'Operator owner',
+              description: '',
+              isSeeded: true,
+              permissionKeys: <String>[],
+            ),
+            RoleAdminRow(
+              roleId: '44444444-4444-4444-8444-444444444444',
+              roleKey: 'custom.floor_captain',
+              displayName: 'Floor Captain',
+              description: '',
+              isSeeded: false,
+              permissionKeys: <String>[],
+              operatorId: kDemoDinerOperatorId,
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            rolesGateway: rolesGateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(
+          const Key('admin_members_action_override_role_demo-user-diner-owner'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_members_override_role_select')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Floor Captain').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_members_override_role_reason')),
+        'support-ticket-custom-role',
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_members_override_role_submit')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        gateway.lastOverrideRoleId,
+        equals('44444444-4444-4444-8444-444444444444'),
+      );
+      expect(gateway.lastOverrideRoleKey, equals('custom.floor_captain'));
+    });
 
     testWidgets(
       'view-only mode hides every mutate affordance across every row',
@@ -1053,6 +1125,47 @@ class _CountingMembersGateway extends InMemoryMembersAdminGateway {
       contextLocationId: contextLocationId,
       mfaEnrolled: mfaEnrolled,
       search: search,
+    );
+  }
+}
+
+class _RecordingOverrideMembersGateway extends InMemoryMembersAdminGateway {
+  _RecordingOverrideMembersGateway({
+    required super.membersByOperator,
+    required super.invitesByOperator,
+  });
+
+  String? lastOverrideRoleId;
+  String? lastOverrideRoleKey;
+
+  @override
+  Future<MemberAdminRow> overrideRoleGrant({
+    required String operatorId,
+    required String userId,
+    required String roleId,
+    required String roleKey,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+    String scopeType = 'operator_wide',
+    String? primaryLocationId,
+    String? orgUnitId,
+  }) {
+    lastOverrideRoleId = roleId;
+    lastOverrideRoleKey = roleKey;
+    return super.overrideRoleGrant(
+      operatorId: operatorId,
+      userId: userId,
+      roleId: roleId,
+      roleKey: roleKey,
+      idempotencyKey: idempotencyKey,
+      actorUserId: actorUserId,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      adminReason: adminReason,
+      scopeType: scopeType,
+      primaryLocationId: primaryLocationId,
+      orgUnitId: orgUnitId,
     );
   }
 }

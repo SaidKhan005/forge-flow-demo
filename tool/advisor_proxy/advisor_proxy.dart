@@ -11628,6 +11628,14 @@ Future<void> routeRequest(
               final targetUserId = _nonBlankString(body['user_id']);
               final roleId = _nonBlankString(body['role_id']);
               final scopeType = _nonBlankString(body['scope_type']);
+              if (_nonBlankString(body['role_key']) != null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'role_id_required',
+                  'message':
+                      'role grants must use role_id; role_key is read-only',
+                });
+                return;
+              }
               if (targetUserId == null || roleId == null || scopeType == null) {
                 _writeJson(response, 400, <String, Object?>{
                   'error': 'missing_role_grant_fields',
