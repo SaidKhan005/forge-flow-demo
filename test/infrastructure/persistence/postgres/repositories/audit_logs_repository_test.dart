@@ -89,275 +89,292 @@ void main() {
       },
     );
 
-    test(
-      'actor_kind never-NULL: both the SQL column list AND the bound '
-      'parameters carry actor_kind on every insert; the API surface '
-      'requires it (compile-time guard)',
-      () async {
-        final exec = _RecordingExecutor();
-        const repo = AuditLogsRepository();
-        // user-actor row.
-        await repo.writeRow(
+    test('actor_kind never-NULL: both the SQL column list AND the bound '
+        'parameters carry actor_kind on every insert; the API surface '
+        'requires it (compile-time guard)', () async {
+      final exec = _RecordingExecutor();
+      const repo = AuditLogsRepository();
+      // user-actor row.
+      await repo.writeRow(
+        exec,
+        operatorId: _opA,
+        locationId: _locA,
+        occurredAt: DateTime.utc(2026, 4, 30, 12),
+        actorKind: 'user',
+        actorUserId: _userA,
+        action: 'auth.user.signed_in',
+      );
+      // service-actor row.
+      await repo.writeRow(
+        exec,
+        operatorId: _opA,
+        locationId: _locA,
+        occurredAt: DateTime.utc(2026, 4, 30, 12),
+        actorKind: 'service',
+        actorPrincipalId: 'sp:$_spId',
+        action: 'admin.service_principal.issue_token',
+      );
+      // The 2026-05-08 P1 hardening adds a `current_setting`
+      // tenant-context probe before each insert; assert against the
+      // recorded INSERTs only.
+      final inserts = exec.allInsertStatements;
+      expect(inserts, hasLength(2));
+      for (final sql in inserts) {
+        expect(
+          sql,
+          contains('actor_kind'),
+          reason:
+              'every write must list actor_kind in the column list '
+              'so audit_logs.actor_kind NOT NULL is satisfied',
+        );
+        expect(
+          sql,
+          contains('@actor_kind'),
+          reason: 'actor_kind is bound, never concatenated',
+        );
+      }
+      final insertParams = exec.allInsertParameters;
+      expect(insertParams[0]['actor_kind'], equals('user'));
+      expect(insertParams[1]['actor_kind'], equals('service'));
+    });
+
+    test('admin contract fields bind business_date and admin_reason without '
+        'touching trigger-owned hash columns', () async {
+      final exec = _RecordingExecutor();
+      const repo = AuditLogsRepository();
+
+      await repo.writeRow(
+        exec,
+        operatorId: _opA,
+        locationId: _locA,
+        occurredAt: DateTime.utc(2026, 5, 12, 4),
+        businessDate: '2026-05-11',
+        actorKind: 'forge_admin',
+        actorUserId: _userA,
+        targetKind: 'user',
+        targetId: _userA,
+        action: 'admin.users.suspend',
+        adminReason: 'operator requested suspension',
+      );
+
+      final sql = exec.insertStatement;
+      expect(sql, contains('business_date'));
+      expect(sql, contains('admin_reason'));
+      expect(sql, contains('@business_date::date'));
+      final params = exec.insertParameters;
+      expect(params['business_date'], equals('2026-05-11'));
+      expect(params['admin_reason'], equals('operator requested suspension'));
+      expect(params['actor_kind'], equals('forge_admin'));
+      expect(params.containsKey('row_hash'), isFalse);
+      expect(params.containsKey('prev_row_hash'), isFalse);
+    });
+
+    test('operator_id RLS predicate posture: audit_logs writes run inside '
+        'the caller\'s transaction (no SET LOCAL emitted by the repo); '
+        'the boundary fold relies on @operator_id::uuid being bound', () async {
+      final exec = _RecordingExecutor();
+      const repo = AuditLogsRepository();
+      await repo.writeRow(
+        exec,
+        operatorId: _opA,
+        locationId: _locA,
+        occurredAt: DateTime.utc(2026, 4, 30, 12),
+        actorKind: 'user',
+        actorUserId: _userA,
+        action: 'auth.user.signed_in',
+      );
+      final sql = exec.insertStatement;
+      // The repo must bind operator_id parametrically; the auth-event
+      // boundary opens the wrapper transaction with SET LOCAL
+      // app.operator_id, and the audit_logs RLS policy folds against
+      // that GUC + the row's operator_id column. Concatenated SQL
+      // would defeat the binding and the policy fold.
+      expect(sql, contains('@operator_id::uuid'));
+      expect(exec.insertParameters['operator_id'], equals(_opA));
+      // The repo MUST NOT emit its own SET LOCAL — it relies on the
+      // caller's transaction.
+      expect(
+        exec.statements.where((s) => s.contains('set_config')),
+        isEmpty,
+        reason:
+            'audit_logs.writeRow runs inside caller\'s tx; SET '
+            'LOCAL is the caller\'s responsibility',
+      );
+    });
+
+    test('2026-05-08 P1 hardening: when caller\'s transaction has '
+        'SET LOCAL app.operator_id matching the supplied operator_id '
+        'parameter, the insert proceeds normally', () async {
+      final exec = _RecordingExecutor(tenantOperatorId: _opA);
+      const repo = AuditLogsRepository();
+      await repo.writeRow(
+        exec,
+        operatorId: _opA,
+        locationId: _locA,
+        occurredAt: DateTime.utc(2026, 4, 30, 12),
+        actorKind: 'user',
+        actorUserId: _userA,
+        action: 'auth.user.signed_in',
+      );
+      // The probe ran (1 statement) and the insert ran (1 statement).
+      expect(exec.allInsertStatements, hasLength(1));
+      expect(
+        exec.statements.where(
+          (s) => s.contains("current_setting('app.operator_id'"),
+        ),
+        hasLength(1),
+      );
+      expect(exec.insertParameters['operator_id'], equals(_opA));
+    });
+
+    test('2026-05-08 P1 hardening: when caller\'s transaction has '
+        'SET LOCAL app.operator_id that DISAGREES with the supplied '
+        'operator_id parameter, writeRow throws AuditLogsTenantMismatchError '
+        'BEFORE binding any insert SQL — closes the primary-defense '
+        'bypass that would otherwise let a forged operator_id reach '
+        'the audit chain', () async {
+      final exec = _RecordingExecutor(tenantOperatorId: _opA);
+      const repo = AuditLogsRepository();
+      const otherOperator = '44444444-4444-4444-4444-444444444444';
+      await expectLater(
+        repo.writeRow(
           exec,
-          operatorId: _opA,
+          operatorId: otherOperator,
           locationId: _locA,
           occurredAt: DateTime.utc(2026, 4, 30, 12),
           actorKind: 'user',
           actorUserId: _userA,
           action: 'auth.user.signed_in',
-        );
-        // service-actor row.
-        await repo.writeRow(
-          exec,
-          operatorId: _opA,
-          locationId: _locA,
-          occurredAt: DateTime.utc(2026, 4, 30, 12),
-          actorKind: 'service',
-          actorPrincipalId: 'sp:$_spId',
-          action: 'admin.service_principal.issue_token',
-        );
-        // The 2026-05-08 P1 hardening adds a `current_setting`
-        // tenant-context probe before each insert; assert against the
-        // recorded INSERTs only.
-        final inserts = exec.allInsertStatements;
-        expect(inserts, hasLength(2));
-        for (final sql in inserts) {
-          expect(
-            sql,
-            contains('actor_kind'),
-            reason: 'every write must list actor_kind in the column list '
-                'so audit_logs.actor_kind NOT NULL is satisfied',
-          );
-          expect(
-            sql,
-            contains('@actor_kind'),
-            reason: 'actor_kind is bound, never concatenated',
-          );
-        }
-        final insertParams = exec.allInsertParameters;
-        expect(insertParams[0]['actor_kind'], equals('user'));
-        expect(insertParams[1]['actor_kind'], equals('service'));
-      },
-    );
+        ),
+        throwsA(isA<AuditLogsTenantMismatchError>()),
+      );
+      // No INSERT SQL was ever issued — the writer aborted at the
+      // probe step.
+      expect(
+        exec.statements.where(
+          (s) => s.contains('insert into public.audit_logs'),
+        ),
+        isEmpty,
+      );
+    });
 
-    test(
-      'operator_id RLS predicate posture: audit_logs writes run inside '
-      'the caller\'s transaction (no SET LOCAL emitted by the repo); '
-      'the boundary fold relies on @operator_id::uuid being bound',
-      () async {
-        final exec = _RecordingExecutor();
-        const repo = AuditLogsRepository();
-        await repo.writeRow(
-          exec,
-          operatorId: _opA,
-          locationId: _locA,
-          occurredAt: DateTime.utc(2026, 4, 30, 12),
-          actorKind: 'user',
-          actorUserId: _userA,
-          action: 'auth.user.signed_in',
-        );
-        final sql = exec.insertStatement;
-        // The repo must bind operator_id parametrically; the auth-event
-        // boundary opens the wrapper transaction with SET LOCAL
-        // app.operator_id, and the audit_logs RLS policy folds against
-        // that GUC + the row's operator_id column. Concatenated SQL
-        // would defeat the binding and the policy fold.
-        expect(sql, contains('@operator_id::uuid'));
-        expect(exec.insertParameters['operator_id'], equals(_opA));
-        // The repo MUST NOT emit its own SET LOCAL — it relies on the
-        // caller's transaction.
-        expect(
-          exec.statements.where((s) => s.contains('set_config')),
-          isEmpty,
-          reason: 'audit_logs.writeRow runs inside caller\'s tx; SET '
-              'LOCAL is the caller\'s responsibility',
-        );
-      },
-    );
-
-    test(
-      '2026-05-08 P1 hardening: when caller\'s transaction has '
-      'SET LOCAL app.operator_id matching the supplied operator_id '
-      'parameter, the insert proceeds normally',
-      () async {
-        final exec = _RecordingExecutor(tenantOperatorId: _opA);
-        const repo = AuditLogsRepository();
-        await repo.writeRow(
-          exec,
-          operatorId: _opA,
-          locationId: _locA,
-          occurredAt: DateTime.utc(2026, 4, 30, 12),
-          actorKind: 'user',
-          actorUserId: _userA,
-          action: 'auth.user.signed_in',
-        );
-        // The probe ran (1 statement) and the insert ran (1 statement).
-        expect(exec.allInsertStatements, hasLength(1));
-        expect(
-          exec.statements
-              .where((s) => s.contains("current_setting('app.operator_id'")),
-          hasLength(1),
-        );
-        expect(exec.insertParameters['operator_id'], equals(_opA));
-      },
-    );
-
-    test(
-      '2026-05-08 P1 hardening: when caller\'s transaction has '
-      'SET LOCAL app.operator_id that DISAGREES with the supplied '
-      'operator_id parameter, writeRow throws AuditLogsTenantMismatchError '
-      'BEFORE binding any insert SQL — closes the primary-defense '
-      'bypass that would otherwise let a forged operator_id reach '
-      'the audit chain',
-      () async {
-        final exec = _RecordingExecutor(tenantOperatorId: _opA);
-        const repo = AuditLogsRepository();
-        const otherOperator = '44444444-4444-4444-4444-444444444444';
-        await expectLater(
-          repo.writeRow(
-            exec,
-            operatorId: otherOperator,
-            locationId: _locA,
-            occurredAt: DateTime.utc(2026, 4, 30, 12),
-            actorKind: 'user',
-            actorUserId: _userA,
-            action: 'auth.user.signed_in',
-          ),
-          throwsA(isA<AuditLogsTenantMismatchError>()),
-        );
-        // No INSERT SQL was ever issued — the writer aborted at the
-        // probe step.
-        expect(
-          exec.statements
-              .where((s) => s.contains('insert into public.audit_logs')),
-          isEmpty,
-        );
-      },
-    );
-
-    test(
-      '2026-05-08 P1 hardening: when the executor\'s tenant context '
-      'is unset (the runAsSystem admin path — no SET LOCAL of '
-      'app.operator_id), the writer accepts the supplied operator_id '
-      'so the F&F admin / system-event paths still land their rows. '
-      'Admin paths gate via forge_admin BYPASSRLS + the '
-      'app.bypass_rls_audit marker on the same transaction',
-      () async {
-        // Default _RecordingExecutor returns no rows for the probe,
-        // simulating the system path where the GUC is unset.
-        final exec = _RecordingExecutor();
-        const repo = AuditLogsRepository();
-        await repo.writeRow(
-          exec,
-          operatorId: _opA,
-          locationId: _locA,
-          occurredAt: DateTime.utc(2026, 4, 30, 12),
-          actorKind: 'service',
-          actorPrincipalId: 'sp:$_spId',
-          action: 'admin.system_op',
-        );
-        expect(exec.allInsertStatements, hasLength(1));
-        expect(exec.insertParameters['operator_id'], equals(_opA));
-      },
-    );
+    test('2026-05-08 P1 hardening: when the executor\'s tenant context '
+        'is unset (the runAsSystem admin path — no SET LOCAL of '
+        'app.operator_id), the writer accepts the supplied operator_id '
+        'so the F&F admin / system-event paths still land their rows. '
+        'Admin paths gate via forge_admin BYPASSRLS + the '
+        'app.bypass_rls_audit marker on the same transaction', () async {
+      // Default _RecordingExecutor returns no rows for the probe,
+      // simulating the system path where the GUC is unset.
+      final exec = _RecordingExecutor();
+      const repo = AuditLogsRepository();
+      await repo.writeRow(
+        exec,
+        operatorId: _opA,
+        locationId: _locA,
+        occurredAt: DateTime.utc(2026, 4, 30, 12),
+        actorKind: 'service',
+        actorPrincipalId: 'sp:$_spId',
+        action: 'admin.system_op',
+      );
+      expect(exec.allInsertStatements, hasLength(1));
+      expect(exec.insertParameters['operator_id'], equals(_opA));
+    });
   });
 
   group('FixedAuditLogsCutoverFlag', () {
     final exec = _RecordingExecutor();
 
-    test('FixedAuditLogsCutoverFlag(true) returns true for any executor',
-        () async {
-      const flag = FixedAuditLogsCutoverFlag(true);
-      expect(await flag.isEnabled(exec), isTrue);
-      // Fixed flag MUST NOT consult the executor.
-      expect(exec.statements, isEmpty);
-    });
+    test(
+      'FixedAuditLogsCutoverFlag(true) returns true for any executor',
+      () async {
+        const flag = FixedAuditLogsCutoverFlag(true);
+        expect(await flag.isEnabled(exec), isTrue);
+        // Fixed flag MUST NOT consult the executor.
+        expect(exec.statements, isEmpty);
+      },
+    );
 
-    test('FixedAuditLogsCutoverFlag(false) returns false for any executor',
-        () async {
-      const flag = FixedAuditLogsCutoverFlag(false);
-      expect(await flag.isEnabled(exec), isFalse);
-      expect(exec.statements, isEmpty);
-    });
+    test(
+      'FixedAuditLogsCutoverFlag(false) returns false for any executor',
+      () async {
+        const flag = FixedAuditLogsCutoverFlag(false);
+        expect(await flag.isEnabled(exec), isFalse);
+        expect(exec.statements, isEmpty);
+      },
+    );
   });
 
   group('FeatureFlagsTableAuditLogsCutoverFlag (production resolver)', () {
-    test(
-      'enabled=true row → returns true; query targets feature_flags '
-      'with global scope (operator_id IS NULL AND location_id IS NULL) '
-      'and the locked flag_name',
-      () async {
-        final exec = _CannedFeatureFlagsExecutor(rowEnabled: true);
-        const flag = FeatureFlagsTableAuditLogsCutoverFlag();
-        expect(await flag.isEnabled(exec), isTrue);
-        // Single SELECT against feature_flags.
-        expect(exec.statements, hasLength(1));
-        final sql = exec.statements.single;
-        expect(sql, contains('from public.feature_flags'));
-        expect(sql, contains("flag_name = 'audit_logs_cutover_enabled'"));
-        // Global scope predicate — the seeded row carries
-        // (operator_id NULL, location_id NULL).
-        expect(sql, contains('operator_id is null'));
-        expect(sql, contains('location_id is null'));
-        // limit 1 — never more than one canonical global row.
-        expect(sql, contains('limit 1'));
-      },
-    );
-
-    test('enabled=false row → returns false (the production rollback knob)',
-        () async {
-      final exec = _CannedFeatureFlagsExecutor(rowEnabled: false);
+    test('enabled=true row → returns true; query targets feature_flags '
+        'with the sentinel global scope and location_id IS NULL '
+        'and the locked flag_name', () async {
+      final exec = _CannedFeatureFlagsExecutor(rowEnabled: true);
       const flag = FeatureFlagsTableAuditLogsCutoverFlag();
-      expect(await flag.isEnabled(exec), isFalse);
+      expect(await flag.isEnabled(exec), isTrue);
+      // Single SELECT against feature_flags.
+      expect(exec.statements, hasLength(1));
+      final sql = exec.statements.single;
+      expect(sql, contains('from public.feature_flags'));
+      expect(sql, contains("flag_name = 'audit_logs_cutover_enabled'"));
+      // Global scope predicate — newer feature_flags store the
+      // system-wide row under a sentinel operator id so tenant-leading
+      // indexes still satisfy the RLS performance rule.
+      expect(
+        sql,
+        contains('operator_id = public.feature_flag_system_wide_operator_id()'),
+      );
+      expect(sql, contains('location_id is null'));
+      // limit 1 — never more than one canonical global row.
+      expect(sql, contains('limit 1'));
     });
 
     test(
-      'missing row → DEFAULTS TO TRUE (different from '
-      'FeatureFlagsTableKmsRolloutFlag, which defaults FALSE). '
-      'Default-ON keeps the production posture intact during a '
-      'partial migration apply',
+      'enabled=false row → returns false (the production rollback knob)',
       () async {
-        final exec = _CannedFeatureFlagsExecutor(rowEnabled: null);
+        final exec = _CannedFeatureFlagsExecutor(rowEnabled: false);
         const flag = FeatureFlagsTableAuditLogsCutoverFlag();
-        expect(
-          await flag.isEnabled(exec),
-          isTrue,
-          reason:
-              'audit_logs cutover defaults ON; KMS rollout defaults OFF — '
-              'this is the canonical pin so a refactor cannot flip them',
-        );
+        expect(await flag.isEnabled(exec), isFalse);
       },
     );
 
-    test(
-      'enabled column carries non-bool truthy values (defensive '
-      'normalization): num != 0, "true"/"t" string → returns true',
-      () async {
-        final flag = FeatureFlagsTableAuditLogsCutoverFlag();
-        // Some Postgres adapters return BOOL as 't'/'f' text.
-        expect(
-          await flag.isEnabled(
-            _CannedFeatureFlagsExecutor.withRawValue('t'),
-          ),
-          isTrue,
-        );
-        expect(
-          await flag.isEnabled(
-            _CannedFeatureFlagsExecutor.withRawValue('true'),
-          ),
-          isTrue,
-        );
-        // Numeric encodings (some legacy boolean stores hand back 1/0).
-        expect(
-          await flag.isEnabled(_CannedFeatureFlagsExecutor.withRawValue(1)),
-          isTrue,
-        );
-        expect(
-          await flag.isEnabled(_CannedFeatureFlagsExecutor.withRawValue(0)),
-          isFalse,
-        );
-      },
-    );
+    test('missing row → DEFAULTS TO TRUE (different from '
+        'FeatureFlagsTableKmsRolloutFlag, which defaults FALSE). '
+        'Default-ON keeps the production posture intact during a '
+        'partial migration apply', () async {
+      final exec = _CannedFeatureFlagsExecutor(rowEnabled: null);
+      const flag = FeatureFlagsTableAuditLogsCutoverFlag();
+      expect(
+        await flag.isEnabled(exec),
+        isTrue,
+        reason:
+            'audit_logs cutover defaults ON; KMS rollout defaults OFF — '
+            'this is the canonical pin so a refactor cannot flip them',
+      );
+    });
+
+    test('enabled column carries non-bool truthy values (defensive '
+        'normalization): num != 0, "true"/"t" string → returns true', () async {
+      final flag = FeatureFlagsTableAuditLogsCutoverFlag();
+      // Some Postgres adapters return BOOL as 't'/'f' text.
+      expect(
+        await flag.isEnabled(_CannedFeatureFlagsExecutor.withRawValue('t')),
+        isTrue,
+      );
+      expect(
+        await flag.isEnabled(_CannedFeatureFlagsExecutor.withRawValue('true')),
+        isTrue,
+      );
+      // Numeric encodings (some legacy boolean stores hand back 1/0).
+      expect(
+        await flag.isEnabled(_CannedFeatureFlagsExecutor.withRawValue(1)),
+        isTrue,
+      );
+      expect(
+        await flag.isEnabled(_CannedFeatureFlagsExecutor.withRawValue(0)),
+        isFalse,
+      );
+    });
   });
 }
 
@@ -381,9 +398,9 @@ class _RecordingExecutor implements PostgresExecutor {
   final List<PostgresParameters> parameters = <PostgresParameters>[];
 
   String get insertStatement => statements.firstWhere(
-        (s) => s.contains('insert into public.audit_logs'),
-        orElse: () => throw StateError('no audit_logs INSERT recorded'),
-      );
+    (s) => s.contains('insert into public.audit_logs'),
+    orElse: () => throw StateError('no audit_logs INSERT recorded'),
+  );
 
   PostgresParameters get insertParameters {
     final idx = statements.indexWhere(
@@ -443,12 +460,12 @@ class _RecordingExecutor implements PostgresExecutor {
 /// AND `_emitsRow` is false).
 class _CannedFeatureFlagsExecutor implements PostgresExecutor {
   _CannedFeatureFlagsExecutor({required bool? rowEnabled})
-      : _emitsRow = rowEnabled != null,
-        _value = rowEnabled;
+    : _emitsRow = rowEnabled != null,
+      _value = rowEnabled;
 
   _CannedFeatureFlagsExecutor.withRawValue(Object value)
-      : _emitsRow = true,
-        _value = value;
+    : _emitsRow = true,
+      _value = value;
 
   final bool _emitsRow;
   final Object? _value;

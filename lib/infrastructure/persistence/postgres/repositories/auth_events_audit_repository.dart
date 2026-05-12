@@ -61,6 +61,17 @@ class AuthEventListRow {
     required this.eventType,
     required this.occurredAt,
     required this.payload,
+    this.actorUserId,
+    this.targetUserId,
+    this.actorKind,
+    this.actorDisplayName,
+    this.actorEmail,
+    this.actorRoleLabel,
+    this.targetKind,
+    this.targetId,
+    this.adminReason,
+    this.rowHash,
+    this.businessDate,
     this.ip,
     this.userAgent,
     this.geoCountry,
@@ -71,6 +82,17 @@ class AuthEventListRow {
   final String eventType;
   final DateTime occurredAt;
   final Map<String, Object?> payload;
+  final String? actorUserId;
+  final String? targetUserId;
+  final String? actorKind;
+  final String? actorDisplayName;
+  final String? actorEmail;
+  final String? actorRoleLabel;
+  final String? targetKind;
+  final String? targetId;
+  final String? adminReason;
+  final String? rowHash;
+  final DateTime? businessDate;
   final String? ip;
   final String? userAgent;
   final String? geoCountry;
@@ -111,14 +133,13 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
   /// "audit_logs.actor_kind never NULL", every caller must classify
   /// the actor explicitly so worker / service-principal driven rows
   /// cannot silently inherit a `'user'` default and mis-tag the
-  /// audit row. Use `'user'` for HTTP request paths backed by a JWT
-  /// user actor, `'service_principal'` (paired with
-  /// [actorServicePrincipalId] from the SP JWT context) for worker /
-  /// service-principal driven rows, and `'system'` for legacy worker
-  /// / reset boundaries that have no human / SP attribution. The
+  /// audit row. New callers should use `'team_member'`,
+  /// `'forge_admin'`, or `'service_principal'` (paired with
+  /// [actorServicePrincipalId] from the SP JWT context). Legacy
+  /// `'user'` and `'service'` aliases remain accepted here and are
+  /// normalized before the hash-chained `audit_logs` fan-out. The
   /// shape assertion below pins the SP invariant: a non-null
-  /// [actorServicePrincipalId] requires
-  /// `actorKind == 'service_principal'`.
+  /// [actorServicePrincipalId] requires a service-principal actor.
   Future<String> insertEvent({
     required String operatorId,
     required String locationId,
@@ -127,11 +148,14 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     String? actorUserId,
     String? actorServicePrincipalId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
     String? userAgent,
     String? geoCountry,
     String? requestId,
+    String? adminReason,
   }) {
     _assertActorKindShape(
       actorKind: actorKind,
@@ -191,7 +215,10 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
         actorKind: actorKind,
         actorServicePrincipalId: actorServicePrincipalId,
         targetUserId: targetUserId,
+        targetKind: targetKind,
+        targetId: targetId,
         payload: payload,
+        adminReason: adminReason,
       );
       return id;
     });
@@ -199,22 +226,21 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
 
   /// Enforces the CLAUDE.md hard promise that
   /// `audit_logs.actor_kind` is never NULL and never silently
-  /// mis-tagged. The valid kinds are `'user'`, `'service_principal'`,
-  /// and `'system'` — a non-null [actorServicePrincipalId] requires
-  /// `actorKind == 'service_principal'` so worker / SP-driven rows
-  /// cannot land under the legacy `'user'` default.
-  ///
-  /// `'service'` is also accepted for backward compatibility with
-  /// the `audit_logs` CHECK constraint shape (the hash-chained
-  /// `public.audit_logs` enumerates `('user','service')`); the
-  /// fan-out path maps `'service_principal'` to `'service'` when it
-  /// writes the chain row.
+  /// mis-tagged. New writes use canonical kinds `'team_member'`,
+  /// `'forge_admin'`, and `'service_principal'`; `'user'` and
+  /// `'service'` are accepted only as legacy aliases. A non-null
+  /// [actorServicePrincipalId] requires a service-principal actor so
+  /// worker / SP-driven rows cannot land under the legacy `'user'`
+  /// default. The fan-out path normalizes aliases before writing the
+  /// hash-chained `public.audit_logs` row.
   static void _assertActorKindShape({
     required String actorKind,
     required String? actorServicePrincipalId,
   }) {
     const allowed = <String>{
       'user',
+      'team_member',
+      'forge_admin',
       'service_principal',
       'service',
       'system',
@@ -224,21 +250,20 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
         actorKind,
         'actorKind',
         "actor_kind must be one of "
-        "'user' / 'service_principal' / 'service' / 'system' — "
-        'audit_logs.actor_kind is non-NULL by contract.',
+            "'team_member' / 'forge_admin' / 'service_principal' "
+            "or legacy 'user' / 'service' / 'system' - "
+            'audit_logs.actor_kind is non-NULL by contract.',
       );
     }
     final hasSp =
         actorServicePrincipalId != null && actorServicePrincipalId.isNotEmpty;
-    if (hasSp &&
-        actorKind != 'service_principal' &&
-        actorKind != 'service') {
+    if (hasSp && actorKind != 'service_principal' && actorKind != 'service') {
       throw ArgumentError.value(
         actorKind,
         'actorKind',
         "actorServicePrincipalId is set but actorKind is "
-        "'$actorKind' — service-principal-driven audit rows must "
-        "pass actorKind: 'service_principal'.",
+            "'$actorKind' — service-principal-driven audit rows must "
+            "pass actorKind: 'service_principal'.",
       );
     }
     if (!hasSp &&
@@ -247,7 +272,7 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
         actorKind,
         'actorKind',
         "actorKind '$actorKind' requires actorServicePrincipalId "
-        "from the SP JWT context.",
+            "from the SP JWT context.",
       );
     }
   }
@@ -281,32 +306,58 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     required String actorKind,
     required String? actorServicePrincipalId,
     required String? targetUserId,
+    required String? targetKind,
+    required String? targetId,
     required Map<String, Object?> payload,
+    String? adminReason,
   }) async {
     if (operatorId == null) return;
-    // The hash-chained audit_logs CHECK enumerates ('user','service').
-    // Map the gateway-side `service_principal` label (CLAUDE.md hard
-    // promise) onto the chain's `service` label here so the gateway
-    // surface stays explicit ("this row is service-principal driven")
-    // without leaking the chain's wire-format detail upward.
+    // Canonical audit-log labels are stricter than the legacy
+    // auth_events_audit labels. Keep accepting old producer labels,
+    // but write the contract labels into the hash chain.
     final chainActorKind = switch (actorKind) {
-      'user' => 'user',
-      'service_principal' || 'service' => 'service',
+      'user' || 'team_member' => 'team_member',
+      'forge_admin' => 'forge_admin',
+      'service_principal' || 'service' => 'service_principal',
       _ => null,
     };
     if (chainActorKind == null) return;
-    final mappedActorUserId = chainActorKind == 'user' ? actorUserId : null;
-    final mappedActorPrincipalId = chainActorKind == 'service' &&
+    final mappedActorUserId =
+        chainActorKind == 'team_member' || chainActorKind == 'forge_admin'
+        ? actorUserId
+        : null;
+    final mappedActorPrincipalId =
+        chainActorKind == 'service_principal' &&
             actorServicePrincipalId != null &&
             actorServicePrincipalId.isNotEmpty
         ? 'sp:$actorServicePrincipalId'
         : null;
-    if (chainActorKind == 'user' &&
+    if (chainActorKind == 'team_member' &&
         (mappedActorUserId == null || mappedActorUserId.isEmpty)) {
       return;
     }
-    if (chainActorKind == 'service' && mappedActorPrincipalId == null) return;
+    if (chainActorKind == 'forge_admin' &&
+        (mappedActorUserId == null || mappedActorUserId.isEmpty)) {
+      return;
+    }
+    if (chainActorKind == 'service_principal' &&
+        mappedActorPrincipalId == null) {
+      return;
+    }
     if (!await _cutoverFlag.isEnabled(exec)) return;
+    final effectiveAdminReason =
+        adminReason ?? _stringFromPayload(payload['admin_reason']);
+    if (chainActorKind == 'forge_admin' &&
+        (effectiveAdminReason == null || effectiveAdminReason.isEmpty)) {
+      throw ArgumentError.value(
+        effectiveAdminReason,
+        'adminReason',
+        'forge_admin audit_logs rows require admin_reason',
+      );
+    }
+    final effectiveTargetKind =
+        targetKind ?? (targetUserId != null ? 'user' : null);
+    final effectiveTargetId = targetId ?? targetUserId;
     await _auditLogsRepository.writeRow(
       exec,
       operatorId: operatorId,
@@ -314,11 +365,20 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
       actorKind: chainActorKind,
       actorUserId: mappedActorUserId,
       actorPrincipalId: mappedActorPrincipalId,
-      targetKind: targetUserId != null ? 'user' : null,
-      targetId: targetUserId,
+      targetKind: effectiveTargetKind,
+      targetId: effectiveTargetId,
       action: eventType,
       payload: payload,
+      adminReason: chainActorKind == 'forge_admin'
+          ? effectiveAdminReason
+          : null,
     );
+  }
+
+  static String? _stringFromPayload(Object? value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   /// INSERT a single system-scope audit row.
@@ -336,6 +396,8 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     String? actorUserId,
     String? actorServicePrincipalId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
     String? userAgent,
@@ -357,11 +419,14 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
         actorKind: actorKind,
         actorServicePrincipalId: actorServicePrincipalId,
         targetUserId: targetUserId,
+        targetKind: targetKind,
+        targetId: targetId,
         payload: payload,
         ip: ip,
         userAgent: userAgent,
         geoCountry: geoCountry,
         requestId: requestId,
+        adminReason: adminReason,
       );
     }, reason: adminReason);
   }
@@ -382,11 +447,14 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     String? actorUserId,
     String? actorServicePrincipalId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
     String? userAgent,
     String? geoCountry,
     String? requestId,
+    String? adminReason,
   }) async {
     _assertActorKindShape(
       actorKind: actorKind,
@@ -437,7 +505,10 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
       actorKind: actorKind,
       actorServicePrincipalId: actorServicePrincipalId,
       targetUserId: targetUserId,
+      targetKind: targetKind,
+      targetId: targetId,
       payload: payload,
+      adminReason: adminReason,
     );
     return id;
   }
@@ -488,7 +559,7 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     final patternClauses = <String>[];
     for (var i = 0; i < eventTypePatterns.length; i++) {
       final key = 'pattern_$i';
-      patternClauses.add('event_type like @$key');
+      patternClauses.add('a.event_type like @$key');
       params[key] = eventTypePatterns[i];
     }
     final patternFilter = patternClauses.isEmpty
@@ -496,26 +567,38 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
         : 'and (${patternClauses.join(' or ')}) ';
     String dateFilter = '';
     if (from != null) {
-      dateFilter += 'and occurred_at >= @from ';
+      dateFilter += 'and a.occurred_at >= @from ';
       params['from'] = from.toUtc();
     }
     if (to != null) {
-      dateFilter += 'and occurred_at <= @to ';
+      dateFilter += 'and a.occurred_at <= @to ';
       params['to'] = to.toUtc();
     }
     return withTenant<List<AuthEventListRow>>(ctx, (exec) async {
       final rows = await exec.query(
-        'select event_id::text as event_id, '
-        'event_type, event_payload, occurred_at, '
-        'host(ip) as ip, user_agent, geo_country, '
-        'request_id::text as request_id '
-        'from auth_events_audit '
-        'where operator_id = @operator_id::uuid '
-        'and (actor_user_id = @user_id::uuid '
-        'or target_user_id = @user_id::uuid) '
+        'select a.event_id::text as event_id, '
+        'a.event_type, a.event_payload, a.occurred_at, '
+        'a.actor_user_id::text as actor_user_id, '
+        'a.target_user_id::text as target_user_id, '
+        'a.actor_kind, '
+        "coalesce(nullif(actor.display_name, ''), "
+        "nullif(trim(concat_ws(' ', actor.first_name, actor.last_name)), ''), "
+        'actor.email) as actor_display_name, '
+        'actor.email as actor_email, '
+        'actor_role.display_name as actor_role_label, '
+        'host(a.ip) as ip, a.user_agent, a.geo_country, '
+        'a.request_id::text as request_id '
+        'from auth_events_audit a '
+        'left join users actor on actor.user_id = a.actor_user_id '
+        'and actor.operator_id = a.operator_id '
+        'left join roles actor_role on actor_role.role_id = '
+        'actor.primary_role_id '
+        'where a.operator_id = @operator_id::uuid '
+        'and (a.actor_user_id = @user_id::uuid '
+        'or a.target_user_id = @user_id::uuid) '
         '$patternFilter'
         '$dateFilter'
-        'order by occurred_at desc '
+        'order by a.occurred_at desc '
         'limit @limit offset @offset',
         parameters: params,
       );
@@ -523,11 +606,95 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     });
   }
 
+  /// F&F admin Audit Log read projection.
+  ///
+  /// Unlike the self-service Audit Log above, this reads from the
+  /// hash-chained `audit_logs` ledger for the selected operator. The admin
+  /// route is permission-gated before it reaches this method and the query
+  /// runs through the explicit system path so `forge_admin` BYPASSRLS is
+  /// visible in the transaction audit marker.
+  Future<List<AuthEventListRow>> listAuditLogsForAdmin({
+    required String operatorId,
+    required String locationId,
+    required int limit,
+    required int offset,
+    List<String> actionPatterns = const <String>[],
+    DateTime? from,
+    DateTime? to,
+  }) {
+    final params = <String, Object?>{
+      'operator_id': operatorId,
+      'limit': limit,
+      'offset': offset,
+    };
+    final patternClauses = <String>[];
+    for (var i = 0; i < actionPatterns.length; i++) {
+      final key = 'pattern_$i';
+      patternClauses.add('al.action like @$key');
+      params[key] = actionPatterns[i];
+    }
+    final patternFilter = patternClauses.isEmpty
+        ? ''
+        : 'and (${patternClauses.join(' or ')}) ';
+    String dateFilter = '';
+    if (from != null) {
+      dateFilter += 'and al.occurred_at >= @from ';
+      params['from'] = from.toUtc();
+    }
+    if (to != null) {
+      dateFilter += 'and al.occurred_at <= @to ';
+      params['to'] = to.toUtc();
+    }
+    return withSystem<List<AuthEventListRow>>((exec) async {
+      final rows = await exec.query(
+        'select al.id::text as event_id, '
+        'al.action as event_type, al.payload as event_payload, '
+        'al.occurred_at, al.actor_user_id::text as actor_user_id, '
+        "case when al.target_kind = 'user' "
+        'then al.target_id else null end as target_user_id, '
+        'al.actor_kind, al.target_kind, al.target_id, al.admin_reason, '
+        'coalesce(al.business_date, al.chain_date)::text as business_date, '
+        "encode(al.row_hash, 'hex') as row_hash, "
+        "coalesce(nullif(actor.display_name, ''), "
+        "nullif(trim(concat_ws(' ', actor.first_name, actor.last_name)), ''), "
+        'actor.email) as actor_display_name, '
+        'actor.email as actor_email, '
+        'actor_role.display_name as actor_role_label, '
+        'null::text as ip, null::text as user_agent, '
+        'null::text as geo_country, null::text as request_id '
+        'from public.audit_logs al '
+        'left join public.users actor on actor.user_id = al.actor_user_id '
+        'and actor.operator_id = al.operator_id '
+        'left join public.roles actor_role on actor_role.role_id = '
+        'actor.primary_role_id '
+        'where al.operator_id = @operator_id::uuid '
+        '$patternFilter'
+        '$dateFilter'
+        'order by al.occurred_at desc, al.id desc '
+        'limit @limit offset @offset',
+        parameters: params,
+      );
+      return rows.map(_projectAuditRow).toList(growable: false);
+    }, reason: 'admin.auth.audit_log.read');
+  }
+
   static AuthEventListRow _projectAuditRow(Map<String, Object?> row) {
     DateTime asDateTime(Object? value) {
       if (value is DateTime) return value.toUtc();
       if (value is String) return DateTime.parse(value).toUtc();
       throw StateError('auth_events_audit row missing occurred_at');
+    }
+
+    DateTime? asOptionalDate(Object? value) {
+      if (value is DateTime) {
+        return DateTime.utc(value.year, value.month, value.day);
+      }
+      if (value is String && value.isNotEmpty) {
+        final parsed = DateTime.tryParse(value);
+        if (parsed == null) return null;
+        return DateTime.utc(parsed.year, parsed.month, parsed.day);
+      }
+      return null;
     }
 
     String? asOptionalString(Object? value) {
@@ -564,6 +731,17 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
       eventType: eventType,
       occurredAt: asDateTime(row['occurred_at']),
       payload: Map<String, Object?>.unmodifiable(payload),
+      actorUserId: asOptionalString(row['actor_user_id']),
+      targetUserId: asOptionalString(row['target_user_id']),
+      actorKind: asOptionalString(row['actor_kind']),
+      actorDisplayName: asOptionalString(row['actor_display_name']),
+      actorEmail: asOptionalString(row['actor_email']),
+      actorRoleLabel: asOptionalString(row['actor_role_label']),
+      targetKind: asOptionalString(row['target_kind']),
+      targetId: asOptionalString(row['target_id']),
+      adminReason: asOptionalString(row['admin_reason']),
+      rowHash: asOptionalString(row['row_hash']),
+      businessDate: asOptionalDate(row['business_date']),
       ip: asOptionalString(row['ip']),
       userAgent: asOptionalString(row['user_agent']),
       geoCountry: asOptionalString(row['geo_country']),

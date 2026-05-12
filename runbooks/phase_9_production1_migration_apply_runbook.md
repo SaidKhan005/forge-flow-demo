@@ -7,7 +7,7 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605121200_admin_hierarchy_scoped_data_polling.sql`. This
+`202605131010_admin_audit_logs_business_date.sql`. This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -49,7 +49,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (34 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (36 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -85,6 +85,8 @@ Pending follow-up scope (34 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605082100_phase_10a_3_retention_sweep_in_db_followup.sql`
 - `db/migrations/202605082200_admin_hierarchy_lifecycle.sql`
 - `db/migrations/202605121200_admin_hierarchy_scoped_data_polling.sql`
+- `db/migrations/202605131000_admin_audit_log_actor_reason_contract.sql`
+- `db/migrations/202605131010_admin_audit_logs_business_date.sql`
 
 Out of scope:
 
@@ -94,7 +96,7 @@ Out of scope:
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
-  anything later than `202605121200_admin_hierarchy_scoped_data_polling.sql`
+  anything later than `202605131010_admin_audit_logs_business_date.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 

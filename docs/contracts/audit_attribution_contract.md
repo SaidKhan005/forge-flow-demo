@@ -48,6 +48,14 @@ Source references:
 Both tables carry `actor_kind text not null check (actor_kind in
 ('user','service'))`.
 
+2026-05-13 contract extension: `202605131000_admin_audit_log_actor_reason_contract.sql`
+widens the valid labels while preserving the launch-era pair as compatibility
+aliases. New team/admin writes use `team_member`, `forge_admin`, and
+`service_principal`; `user` remains a legacy alias for `team_member`, and
+`service` remains a legacy alias for `service_principal`. `forge_admin` rows
+must carry `actor_user_id`, must not carry `actor_principal_id`, and require a
+non-blank `audit_logs.admin_reason`.
+
 - `'user'` — a human Firebase ID-token holder. The matching
   identifier column (`actor_user_id`) MUST be set; the non-human
   column MUST be NULL.
