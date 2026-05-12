@@ -52,7 +52,7 @@ sees tier names + tier prices, NOT vendor API per-call costs.
 Per-location is normative - `connector_connection` rows are per
 `(operator, location)`, so polling tier assignment is too. An operator
 with three locations can have three different tiers (e.g., flagship
-downtown on Premium, two satellite locations on Standard).
+downtown on Premium, two satellite locations on Regular).
 
 ### Transport-bounded live-ness (unchanged)
 
@@ -103,8 +103,15 @@ internal margin) and packages them into tier pricing.
 
 **Operator-facing UX (Lane `.B`):** the polling card on the operator
 web Data Accuracy tab is **display-only + request-change** flow.
-Operators see "Your current tier: Standard. Polling cadences: Oracle
+Operators see "Your current tier: Regular. Polling cadences: Oracle
 Simphony 5 min, QuickBooks Time 5 min." They DO NOT pick cadences in
+
+The `tier_key` enum value remains `standard` (database, audit logs,
+API contracts unchanged); only the operator-facing display label is
+"Regular". Aligned with `memory/project_ux_writing_standard.md`
+plain-English standard; ratified via PR #482 operator decision
+2026-05-12 (see `docs/_audits/post_codex_wave/pr_482_audit.md`
+Finding #1 resolution).
 the picker. To change tier, the card surfaces a "Request tier change"
 button that opens a support ticket / billing-upgrade flow.
 
@@ -192,7 +199,7 @@ The tab carries four cards in this order:
    (read from `forge_flow_polling_tier_assignment` via Lane `.A`'s
    `ForgeFlowPollingTierRepository`) and the resolved per-vendor
    cadence for the (operator, location)'s connected poll-only vendors
-   (e.g., "Standard tier - $X/month per location. Oracle Simphony
+   (e.g., "Regular tier - $X/month per location. Oracle Simphony
    polled every 5 minutes; QuickBooks Time polled every 5 minutes.").
    Webhook vendors are filtered out per the transport-bounded
    live-ness rule above. There is NO cadence picker - operators do
