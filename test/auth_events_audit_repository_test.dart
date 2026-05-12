@@ -19,30 +19,27 @@ const String _userId = '33333333-3333-4333-8333-333333333333';
 
 void main() {
   group('AuthEventsAuditRepository.listForUser', () {
-    test(
-      'WHERE pins operator_id (primary defense) so a miswired admin '
-      'wrapper cannot broaden same-user reads across operators',
-      () async {
-        final pool = _AuditPool();
-        final repo = AuthEventsAuditRepository(TenantTransactionWrapper(pool));
-        await repo.listForUser(
-          operatorId: _opId,
-          locationId: _locId,
-          userId: _userId,
-          limit: 50,
-          offset: 0,
-        );
-        final tx = pool.transactions.single;
-        final selectIndex = tx.executedSql.indexWhere(
-          (sql) => sql.contains('from auth_events_audit'),
-        );
-        expect(selectIndex, isNonNegative);
-        final sql = tx.executedSql[selectIndex];
-        expect(sql, contains('operator_id = @operator_id::uuid'));
-        final params = tx.parameters[selectIndex];
-        expect(params['operator_id'], equals(_opId));
-      },
-    );
+    test('WHERE pins operator_id (primary defense) so a miswired admin '
+        'wrapper cannot broaden same-user reads across operators', () async {
+      final pool = _AuditPool();
+      final repo = AuthEventsAuditRepository(TenantTransactionWrapper(pool));
+      await repo.listForUser(
+        operatorId: _opId,
+        locationId: _locId,
+        userId: _userId,
+        limit: 50,
+        offset: 0,
+      );
+      final tx = pool.transactions.single;
+      final selectIndex = tx.executedSql.indexWhere(
+        (sql) => sql.contains('from auth_events_audit'),
+      );
+      expect(selectIndex, isNonNegative);
+      final sql = tx.executedSql[selectIndex];
+      expect(sql, contains('operator_id = @operator_id::uuid'));
+      final params = tx.parameters[selectIndex];
+      expect(params['operator_id'], equals(_opId));
+    });
 
     test(
       'date range (from/to) bounds occurred_at and binds parameters',
@@ -113,7 +110,10 @@ void main() {
         expect(rows, hasLength(2));
         expect(rows.first.eventId, equals('event-1'));
         expect(rows.first.eventType, equals('auth.user.signed_in'));
-        expect(rows.first.payload, equals(<String, Object?>{'reason': 'normal'}));
+        expect(
+          rows.first.payload,
+          equals(<String, Object?>{'reason': 'normal'}),
+        );
         expect(rows.first.ip, equals('203.0.113.10'));
         // Empty / null nullable fields are projected to null, not blank
         // strings, so the UI can hide them cleanly.
@@ -133,7 +133,7 @@ void main() {
         expect(sql, contains('actor_user_id = @user_id::uuid'));
         expect(sql, contains('target_user_id = @user_id::uuid'));
         // Acceptance: ordered newest first.
-        expect(sql, contains('order by occurred_at desc'));
+        expect(sql, contains('order by a.occurred_at desc'));
         // Acceptance: LIMIT + OFFSET bind to the parameters.
         expect(sql, contains('limit @limit offset @offset'));
         final params = tx.parameters[selectIndex];
@@ -201,6 +201,78 @@ void main() {
       expect(userIdIndex, lessThan(selectIndex));
       expect(tx.parameters[userIdIndex]['value'], equals(_userId));
     });
+
+    test(
+      'admin projection reads hash-chained audit_logs with actor identity',
+      () async {
+        final pool = _AuditPool(
+          rows: <PostgresRow>[
+            <String, Object?>{
+              'event_id': '42',
+              'event_type': 'team.users.invite',
+              'event_payload': <String, Object?>{'email': 'new@example.test'},
+              'occurred_at': DateTime.utc(2026, 5, 11, 16),
+              'actor_user_id': _userId,
+              'target_user_id': '44444444-4444-4444-8444-444444444444',
+              'actor_kind': 'forge_admin',
+              'actor_display_name': 'Avery Admin',
+              'actor_email': 'avery@example.test',
+              'actor_role_label': 'F&F Support',
+              'target_kind': 'user',
+              'target_id': '44444444-4444-4444-8444-444444444444',
+              'admin_reason': 'operator requested invite',
+              'row_hash': 'abc123',
+              'business_date': '2026-05-11',
+            },
+          ],
+        );
+        final repo = AuthEventsAuditRepository(TenantTransactionWrapper(pool));
+
+        final rows = await repo.listAuditLogsForAdmin(
+          operatorId: _opId,
+          locationId: _locId,
+          limit: 200,
+          offset: 0,
+          actionPatterns: const <String>['%invite%'],
+        );
+
+        expect(rows.single.eventId, equals('42'));
+        expect(rows.single.eventType, equals('team.users.invite'));
+        expect(rows.single.actorDisplayName, equals('Avery Admin'));
+        expect(rows.single.actorEmail, equals('avery@example.test'));
+        expect(rows.single.actorRoleLabel, equals('F&F Support'));
+        expect(rows.single.targetKind, equals('user'));
+        expect(
+          rows.single.targetId,
+          equals('44444444-4444-4444-8444-444444444444'),
+        );
+        expect(rows.single.adminReason, equals('operator requested invite'));
+        expect(rows.single.rowHash, equals('abc123'));
+        expect(rows.single.businessDate, equals(DateTime.utc(2026, 5, 11)));
+
+        final tx = pool.transactions.single;
+        final systemMarker = tx.executedSql.indexWhere(
+          (sql) => sql.contains("'app.bypass_rls_audit'"),
+        );
+        final roleIndex = tx.executedSql.indexWhere(
+          (sql) => sql.contains('set local role forge_admin'),
+        );
+        final selectIndex = tx.executedSql.indexWhere(
+          (sql) => sql.contains('from public.audit_logs'),
+        );
+        expect(systemMarker, isNonNegative);
+        expect(roleIndex, isNonNegative);
+        expect(selectIndex, isNonNegative);
+        expect(roleIndex, lessThan(selectIndex));
+        final sql = tx.executedSql[selectIndex];
+        expect(sql, contains('al.operator_id = @operator_id::uuid'));
+        expect(sql, contains("encode(al.row_hash, 'hex') as row_hash"));
+        expect(sql, contains('al.action like @pattern_0'));
+        final params = tx.parameters[selectIndex];
+        expect(params['operator_id'], equals(_opId));
+        expect(params['pattern_0'], equals('%invite%'));
+      },
+    );
   });
 }
 
@@ -234,19 +306,18 @@ class _AuditTransaction extends PostgresTransaction {
     if (_finalized) throw StateError('transaction already finalized');
     executedSql.add(sql);
     this.parameters.add(parameters);
-    if (sql.contains('from auth_events_audit')) {
+    if (sql.contains('from auth_events_audit') ||
+        sql.contains('from public.audit_logs')) {
       // Re-encode JSON payloads as strings to mirror the package:postgres
       // text-mode return type that production code path also handles.
-      return rows
-          .map((r) {
-            final clone = Map<String, Object?>.from(r);
-            final p = clone['event_payload'];
-            if (p is Map) {
-              clone['event_payload'] = jsonEncode(p);
-            }
-            return clone;
-          })
-          .toList();
+      return rows.map((r) {
+        final clone = Map<String, Object?>.from(r);
+        final p = clone['event_payload'];
+        if (p is Map) {
+          clone['event_payload'] = jsonEncode(p);
+        }
+        return clone;
+      }).toList();
     }
     return <PostgresRow>[];
   }

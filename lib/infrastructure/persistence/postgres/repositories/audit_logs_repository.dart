@@ -25,9 +25,12 @@
 //   * `chain_date` MUST equal `(occurred_at at time zone 'UTC')::date`.
 //     The CHECK on the table rejects any disagreement; we compute
 //     `chain_date` from the same UTC instant the row carries.
-//   * `actor_kind` is `'user'` or `'service'`. Exactly one of
-//     `actor_user_id` (user case) or `actor_principal_id` (service
-//     case) must be set. The `audit_logs_actor_shape_check` enforces
+//   * `actor_kind` is `'team_member'`, `'forge_admin'`, or
+//     `'service_principal'` for new writes. Legacy `'user'` and
+//     `'service'` rows remain valid while older producers are retired.
+//     Exactly one of `actor_user_id` (human/admin case) or
+//     `actor_principal_id` (service case) must be set. The
+//     `audit_logs_actor_shape_check` enforces
 //     this — callers that violate the shape get a runtime error from
 //     the constraint, which is the desired hard-stop for misuse.
 //   * `prev_row_hash` and `row_hash` are NOT supplied here; the
@@ -64,10 +67,13 @@ class AuditLogsRepository {
   /// computes `prev_row_hash` and `row_hash` server-side; this method
   /// supplies the row inputs only.
   ///
-  /// `actor_kind` is `'user'` or `'service'`; exactly one of
-  /// [actorUserId] (user case) or [actorPrincipalId] (service case)
-  /// must be set. The DB CHECK constraint enforces this; callers that
-  /// violate the shape get a hard-stop from the constraint.
+  /// `actor_kind` is `'team_member'`, `'forge_admin'`, or
+  /// `'service_principal'` for new writes. Legacy `'user'` and
+  /// `'service'` rows remain valid while older producers are retired.
+  /// Exactly one of [actorUserId] (human/admin case) or
+  /// [actorPrincipalId] (service case) must be set. The DB CHECK
+  /// constraint enforces this; callers that violate the shape get a
+  /// hard-stop from the constraint.
   ///
   /// Defense-in-depth: when [exec]'s transaction has the tenant
   /// `SET LOCAL app.operator_id` injected (the normal
@@ -83,6 +89,7 @@ class AuditLogsRepository {
     required String operatorId,
     String? locationId,
     DateTime? occurredAt,
+    String? businessDate,
     required String actorKind,
     String? actorUserId,
     String? actorPrincipalId,
@@ -90,25 +97,45 @@ class AuditLogsRepository {
     String? targetId,
     required String action,
     Map<String, Object?> payload = const <String, Object?>{},
+    String? adminReason,
   }) async {
     await _assertTenantContextMatches(exec, operatorId);
     final occurred = (occurredAt ?? DateTime.now()).toUtc();
     final chainDate = _formatChainDate(occurred);
     await exec.query(
       'insert into public.audit_logs ('
-      'operator_id, location_id, chain_date, occurred_at, '
+      'operator_id, location_id, chain_date, business_date, occurred_at, '
       'actor_kind, actor_user_id, actor_principal_id, '
-      'target_kind, target_id, action, payload) '
+      'target_kind, target_id, action, payload, admin_reason) '
       'values ('
       '@operator_id::uuid, @location_id::uuid, @chain_date::date, '
+      'coalesce(@business_date::date, ('
+      'select (((@occurred_at::timestamptz at time zone '
+      "coalesce(nullif(l.timezone, ''), 'UTC')) - "
+      "(coalesce(l.business_day_rollover_hour, 0) * interval '1 hour'))::date "
+      'from public.locations l '
+      'where l.operator_id = @operator_id::uuid '
+      'and l.location_id = @location_id::uuid '
+      'limit 1'
+      '), ('
+      'select (((@occurred_at::timestamptz at time zone '
+      "coalesce(nullif(l.timezone, ''), 'UTC')) - "
+      "(coalesce(l.business_day_rollover_hour, 0) * interval '1 hour'))::date "
+      'from public.locations l '
+      'where l.operator_id = @operator_id::uuid '
+      'and l.deleted_at is null '
+      'order by l.location_id '
+      'limit 1'
+      '), @chain_date::date), '
       '@occurred_at::timestamptz, @actor_kind, '
       '@actor_user_id::uuid, @actor_principal_id, '
-      '@target_kind, @target_id, @action, @payload::jsonb) '
+      '@target_kind, @target_id, @action, @payload::jsonb, @admin_reason) '
       'returning id',
       parameters: <String, Object?>{
         'operator_id': operatorId,
         'location_id': locationId,
         'chain_date': chainDate,
+        'business_date': businessDate,
         'occurred_at': occurred,
         'actor_kind': actorKind,
         'actor_user_id': actorUserId,
@@ -117,6 +144,7 @@ class AuditLogsRepository {
         'target_id': targetId,
         'action': action,
         'payload': jsonEncode(payload),
+        'admin_reason': adminReason,
       },
     );
   }

@@ -152,10 +152,11 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
-`202605121200_admin_hierarchy_scoped_data_polling.sql`, including the later cron
+`202605131010_admin_audit_logs_business_date.sql`, including the later cron
 maintenance, KMS flag seed, PII erasure, retention sweep, admin hierarchy
-lifecycle, and scoped Data Accuracy/Polling migrations that move shared
-operations-console support surfaces.
+lifecycle, scoped Data Accuracy/Polling, and audit-log
+actor/reason/business-date migrations that move shared operations-console
+support surfaces.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin

@@ -108,7 +108,9 @@ void main() {
         operatorId: _validOpId,
         adminReason: 'admin.users.soft_delete',
       );
-      final sql = pool.transactions.single.executedSql.last;
+      final sql = pool.transactions.single.executedSql.firstWhere(
+        (value) => value.contains('update users'),
+      );
       expect(sql, contains('deleted_at = now()'));
       expect(sql, contains("status = 'deleted'"));
       expect(sql, contains('deleted_at is null'));
@@ -146,7 +148,9 @@ void main() {
         operatorId: _validOpId,
         adminReason: 'admin.users.roles_changed',
       );
-      final sql = pool.transactions.single.executedSql.last;
+      final sql = pool.transactions.single.executedSql.firstWhere(
+        (value) => value.contains('update users'),
+      );
       expect(sql, contains('roles_version = roles_version + 1'));
     });
 
@@ -293,6 +297,7 @@ void main() {
               'firebase_uid': 'firebase-admin-uid',
               'postgres_user_id': _validUserId,
               'roles_version': 12,
+              'permission_version': 0,
               'is_super_admin': true,
               'is_ff_support': true,
             },
@@ -315,6 +320,7 @@ void main() {
             'operator_id': _validOpId,
             'location_id': _validLocId,
             'roles_version': 12,
+            'permission_version': 0,
             'is_super_admin': true,
             'is_ff_support': true,
           }),

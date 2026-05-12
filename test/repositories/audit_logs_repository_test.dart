@@ -56,103 +56,88 @@ void main() {
         // unset (system path) — exec returns no rows, so the writer
         // accepts the parameter. Tests assert the INSERT shape via
         // `exec.insertStatement` to stay decoupled from the read.
-        expect(
-          exec.insertStatement,
-          contains('insert into public.audit_logs'),
-        );
+        expect(exec.insertStatement, contains('insert into public.audit_logs'));
         expect(exec.insertStatement, isNot(contains('prev_row_hash')));
         expect(exec.insertStatement, isNot(contains('row_hash')));
       },
     );
 
-    test(
-      'computes chain_date from the UTC date of occurred_at so the '
-      'trigger CHECK (chain_date = occurred_at::date) holds even when '
-      'the caller hands in a non-UTC instant',
-      () async {
-        final exec = _RecordingExecutor();
-        const repo = AuditLogsRepository();
-        // 2026-04-30 23:30 EDT = 2026-05-01 03:30 UTC; the chain_date
-        // must be the UTC date (2026-05-01), not the wall-clock date.
-        final localInstant = DateTime.utc(
-          2026,
-          5,
-          1,
-          3,
-          30,
-        ).toLocal(); // round-trips through local zone
-        await repo.writeRow(
-          exec,
-          operatorId: _opA,
-          occurredAt: localInstant,
-          actorKind: 'user',
-          actorUserId: _userA,
-          action: 'auth.user.signed_in',
-        );
-        final params = exec.insertParameters;
-        expect(params['chain_date'], equals('2026-05-01'));
-        expect(
-          (params['occurred_at']! as DateTime).toUtc(),
-          equals(DateTime.utc(2026, 5, 1, 3, 30)),
-        );
-      },
-    );
+    test('computes chain_date from the UTC date of occurred_at so the '
+        'trigger CHECK (chain_date = occurred_at::date) holds even when '
+        'the caller hands in a non-UTC instant', () async {
+      final exec = _RecordingExecutor();
+      const repo = AuditLogsRepository();
+      // 2026-04-30 23:30 EDT = 2026-05-01 03:30 UTC; the chain_date
+      // must be the UTC date (2026-05-01), not the wall-clock date.
+      final localInstant = DateTime.utc(
+        2026,
+        5,
+        1,
+        3,
+        30,
+      ).toLocal(); // round-trips through local zone
+      await repo.writeRow(
+        exec,
+        operatorId: _opA,
+        occurredAt: localInstant,
+        actorKind: 'user',
+        actorUserId: _userA,
+        action: 'auth.user.signed_in',
+      );
+      final params = exec.insertParameters;
+      expect(params['chain_date'], equals('2026-05-01'));
+      expect(
+        (params['occurred_at']! as DateTime).toUtc(),
+        equals(DateTime.utc(2026, 5, 1, 3, 30)),
+      );
+    });
 
-    test(
-      'user actor: actor_kind=user, actor_user_id set, '
-      'actor_principal_id null (audit_logs_actor_shape_check)',
-      () async {
-        final exec = _RecordingExecutor();
-        const repo = AuditLogsRepository();
-        await repo.writeRow(
-          exec,
-          operatorId: _opA,
-          locationId: _locA,
-          occurredAt: DateTime.utc(2026, 4, 30, 12),
-          actorKind: 'user',
-          actorUserId: _userA,
-          targetKind: 'user',
-          targetId: _userA,
-          action: 'auth.password_changed',
-        );
-        final params = exec.insertParameters;
-        expect(params['actor_kind'], equals('user'));
-        expect(params['actor_user_id'], equals(_userA));
-        expect(params['actor_principal_id'], isNull);
-        expect(params['target_kind'], equals('user'));
-        expect(params['target_id'], equals(_userA));
-        expect(params['action'], equals('auth.password_changed'));
-        expect(params['operator_id'], equals(_opA));
-        expect(params['location_id'], equals(_locA));
-      },
-    );
+    test('user actor: actor_kind=user, actor_user_id set, '
+        'actor_principal_id null (audit_logs_actor_shape_check)', () async {
+      final exec = _RecordingExecutor();
+      const repo = AuditLogsRepository();
+      await repo.writeRow(
+        exec,
+        operatorId: _opA,
+        locationId: _locA,
+        occurredAt: DateTime.utc(2026, 4, 30, 12),
+        actorKind: 'user',
+        actorUserId: _userA,
+        targetKind: 'user',
+        targetId: _userA,
+        action: 'auth.password_changed',
+      );
+      final params = exec.insertParameters;
+      expect(params['actor_kind'], equals('user'));
+      expect(params['actor_user_id'], equals(_userA));
+      expect(params['actor_principal_id'], isNull);
+      expect(params['target_kind'], equals('user'));
+      expect(params['target_id'], equals(_userA));
+      expect(params['action'], equals('auth.password_changed'));
+      expect(params['operator_id'], equals(_opA));
+      expect(params['location_id'], equals(_locA));
+    });
 
-    test(
-      'service actor: actor_kind=service, actor_principal_id carries '
-      'the canonical sp:<uuid> JWT subject, actor_user_id null',
-      () async {
-        final exec = _RecordingExecutor();
-        const repo = AuditLogsRepository();
-        await repo.writeRow(
-          exec,
-          operatorId: _opA,
-          locationId: _locA,
-          occurredAt: DateTime.utc(2026, 4, 30, 12),
-          actorKind: 'service',
-          actorPrincipalId: 'sp:$_spId',
-          action: 'admin.service_principal.issue_token',
-          payload: const <String, Object?>{'service_principal_id': _spId},
-        );
-        final params = exec.insertParameters;
-        expect(params['actor_kind'], equals('service'));
-        expect(params['actor_user_id'], isNull);
-        expect(params['actor_principal_id'], equals('sp:$_spId'));
-        expect(
-          params['action'],
-          equals('admin.service_principal.issue_token'),
-        );
-      },
-    );
+    test('service actor: actor_kind=service, actor_principal_id carries '
+        'the canonical sp:<uuid> JWT subject, actor_user_id null', () async {
+      final exec = _RecordingExecutor();
+      const repo = AuditLogsRepository();
+      await repo.writeRow(
+        exec,
+        operatorId: _opA,
+        locationId: _locA,
+        occurredAt: DateTime.utc(2026, 4, 30, 12),
+        actorKind: 'service',
+        actorPrincipalId: 'sp:$_spId',
+        action: 'admin.service_principal.issue_token',
+        payload: const <String, Object?>{'service_principal_id': _spId},
+      );
+      final params = exec.insertParameters;
+      expect(params['actor_kind'], equals('service'));
+      expect(params['actor_user_id'], isNull);
+      expect(params['actor_principal_id'], equals('sp:$_spId'));
+      expect(params['action'], equals('admin.service_principal.issue_token'));
+    });
 
     test('payload is encoded as canonical JSON so the SQL trigger and '
         'the verifier compute the same canonical bytes', () async {
@@ -165,17 +150,17 @@ void main() {
         actorKind: 'user',
         actorUserId: _userA,
         action: 'auth.user.signed_in',
-        payload: const <String, Object?>{
-          'method': 'password',
-          'count': 3,
-        },
+        payload: const <String, Object?>{'method': 'password', 'count': 3},
       );
-      final params = exec.parameters.single;
+      final params = exec.insertParameters;
       final encoded = params['payload'] as String;
       // The binding sends the JSON text; PG's `::jsonb` cast normalizes
       // key order for the trigger.
       final decoded = jsonDecode(encoded);
-      expect(decoded, equals(<String, Object?>{'method': 'password', 'count': 3}));
+      expect(
+        decoded,
+        equals(<String, Object?>{'method': 'password', 'count': 3}),
+      );
     });
 
     test('omitting occurredAt defaults to "now" in UTC; chain_date '
@@ -191,9 +176,12 @@ void main() {
         action: 'auth.user.signed_in',
       );
       final after = DateTime.now().toUtc();
-      final params = exec.parameters.single;
+      final params = exec.insertParameters;
       final occurred = (params['occurred_at']! as DateTime).toUtc();
-      expect(occurred.isAfter(before.subtract(const Duration(seconds: 1))), isTrue);
+      expect(
+        occurred.isAfter(before.subtract(const Duration(seconds: 1))),
+        isTrue,
+      );
       expect(occurred.isBefore(after.add(const Duration(seconds: 1))), isTrue);
       final chainDate = params['chain_date'] as String;
       expect(
@@ -209,22 +197,20 @@ void main() {
 }
 
 class _RecordingExecutor implements PostgresExecutor {
-  _RecordingExecutor({this.tenantOperatorId});
+  _RecordingExecutor();
 
-  /// When non-null, the recording executor responds to the
-  /// `current_setting('app.operator_id', true)` probe with this
-  /// value, simulating a tenant-scoped transaction whose
-  /// `SET LOCAL app.operator_id` is set. When null (the default),
-  /// the probe returns no rows — the system / no-tenant path.
-  final String? tenantOperatorId;
+  /// The recording executor returns no rows for the
+  /// `current_setting('app.operator_id', true)` probe, simulating the
+  /// system / no-tenant path. Tenant-match and mismatch cases are
+  /// covered by the canonical infrastructure repository test.
 
   final List<String> statements = <String>[];
   final List<PostgresParameters> parameters = <PostgresParameters>[];
 
   String get insertStatement => statements.firstWhere(
-        (s) => s.contains('insert into public.audit_logs'),
-        orElse: () => throw StateError('no audit_logs INSERT recorded'),
-      );
+    (s) => s.contains('insert into public.audit_logs'),
+    orElse: () => throw StateError('no audit_logs INSERT recorded'),
+  );
 
   PostgresParameters get insertParameters {
     final idx = statements.indexWhere(
@@ -244,11 +230,7 @@ class _RecordingExecutor implements PostgresExecutor {
     statements.add(sql);
     this.parameters.add(parameters);
     if (sql.contains("current_setting('app.operator_id'")) {
-      final tenant = tenantOperatorId;
-      if (tenant == null) return const <PostgresRow>[];
-      return <PostgresRow>[
-        <String, Object?>{'operator_id': tenant},
-      ];
+      return const <PostgresRow>[];
     }
     return const <PostgresRow>[];
   }
