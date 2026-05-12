@@ -46,6 +46,20 @@ normative in `CLAUDE.md`.
 Prefer `.mcp.json` servers for orientation: `forgeflow_docs`,
 `forgeflow_sqlite_schema`, `graphify`.
 
+## Indices (post-Codex wave routing)
+
+Single canonical entry points for each agent's work-track. Open the relevant
+index BEFORE dispatching any post-Codex-wave slice.
+
+| Index | Audience | Purpose |
+| --- | --- | --- |
+| `docs/_indices/CLAUDE_LANE_INDEX.md` | Claude (orchestrator + Claude lane agents) | Routes every Claude-assigned lane (A1/A3/A4/A7/A10 + B1/B2/B8/B11 + C-EmailsNotifs) |
+| `docs/_indices/CODEX_LANE_INDEX.md` | Codex (Codex lane agents) | Routes every Codex-assigned lane (A2/A5/A6/A8/A9 + B3-B7/B9/B10 + C-Admin/C-OpsWeb/C-Mobile) |
+| `docs/_indices/README.md` | Either | Explains the index pattern + update cadence |
+
+Wave bundle (Step 3 lane plans + Step 4 code-health deep audits): PR #497.
+Authority anchor: parked-plan Step 6 (locked 2026-05-12).
+
 ## Hard Product Rule - Hierarchy-Scoped Settings
 
 Every setting that can affect a business account resolves through the operator
