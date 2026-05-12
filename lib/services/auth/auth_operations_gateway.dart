@@ -506,6 +506,7 @@ class TeamLocationOrgUnitMoveCommand {
     required this.locationId,
     required this.targetLocationId,
     required this.parentOrgUnitId,
+    this.adminReason,
   });
 
   final String actorUserId;
@@ -513,6 +514,7 @@ class TeamLocationOrgUnitMoveCommand {
   final String locationId;
   final String targetLocationId;
   final String parentOrgUnitId;
+  final String? adminReason;
 }
 
 class TeamLocationOrgUnitMoved {

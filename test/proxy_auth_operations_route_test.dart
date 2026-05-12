@@ -405,6 +405,7 @@ void main() {
               '/v1/admin/auth/locations/$targetLocation/org-unit',
               const <String, Object?>{
                 'parent_org_unit_id': '77777777-7777-4777-8777-777777777777',
+                'admin_reason': 'operator requested location move',
               },
               idempotencyKey: 'idem-location-move-1',
             );
@@ -420,6 +421,10 @@ void main() {
               command.parentOrgUnitId,
               equals('77777777-7777-4777-8777-777777777777'),
             );
+            expect(
+              command.adminReason,
+              equals('operator requested location move'),
+            );
             expect(response.json['moved'], isTrue);
           } finally {
             await harness.close();
@@ -427,6 +432,36 @@ void main() {
         });
       },
     );
+
+    test('PATCH location org-unit requires admin_reason', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          const targetLocation = '33333333-3333-4333-8333-333333333333';
+          final response = await harness.patchJson(
+            '/v1/admin/auth/locations/$targetLocation/org-unit',
+            const <String, Object?>{
+              'parent_org_unit_id': '77777777-7777-4777-8777-777777777777',
+            },
+            idempotencyKey: 'idem-location-move-missing-reason',
+          );
+
+          expect(response.statusCode, equals(400));
+          expect(
+            response.json['error'],
+            equals('missing_location_org_unit_fields'),
+          );
+          expect(gateway.locationOrgUnitMoves, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
 
     test('admin guard denial stops auth operation before gateway', () async {
       await _withRealHttp(() async {

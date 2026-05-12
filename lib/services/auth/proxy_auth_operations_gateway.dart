@@ -606,7 +606,10 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     final response = await _patch(
       '$locationsPrefix${Uri.encodeComponent(command.targetLocationId)}'
       '/org-unit',
-      <String, Object?>{'parent_org_unit_id': command.parentOrgUnitId},
+      <String, Object?>{
+        'parent_org_unit_id': command.parentOrgUnitId,
+        if (command.adminReason != null) 'admin_reason': command.adminReason,
+      },
     );
     _expectStatus(response, 200);
     final moved = response.body['moved'];

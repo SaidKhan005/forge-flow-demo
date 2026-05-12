@@ -662,6 +662,7 @@ void main() {
           locationId: 'loc',
           targetLocationId: 'loc-1',
           parentOrgUnitId: 'unit-2',
+          adminReason: 'admin location realignment',
         ),
       );
 
@@ -699,7 +700,10 @@ void main() {
       );
       expect(
         fake.patches[1].body,
-        equals(<String, Object?>{'parent_org_unit_id': 'unit-2'}),
+        equals(<String, Object?>{
+          'parent_org_unit_id': 'unit-2',
+          'admin_reason': 'admin location realignment',
+        }),
       );
     });
 

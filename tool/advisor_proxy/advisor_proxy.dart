@@ -11783,11 +11783,16 @@ Future<void> routeRequest(
               final parentOrgUnitId = _nonBlankString(
                 body['parent_org_unit_id'],
               );
-              if (targetLocationId == null || parentOrgUnitId == null) {
+              final adminReason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['adminReason']);
+              if (targetLocationId == null ||
+                  parentOrgUnitId == null ||
+                  adminReason == null) {
                 _writeJson(response, 400, <String, Object?>{
                   'error': 'missing_location_org_unit_fields',
                   'message':
-                      'location id in path and parent_org_unit_id body are required',
+                      'location id in path, parent_org_unit_id, and admin_reason body are required',
                 });
                 return;
               }
@@ -11805,6 +11810,7 @@ Future<void> routeRequest(
                           locationId: scope.locationId,
                           targetLocationId: targetLocationId,
                           parentOrgUnitId: parentOrgUnitId,
+                          adminReason: adminReason,
                         ),
                       );
                   return CachedProxyResponse(

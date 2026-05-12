@@ -940,6 +940,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         payload: <String, Object?>{
           'target_location_id': command.targetLocationId,
           'parent_org_unit_id': command.parentOrgUnitId,
+          if (command.adminReason != null) 'admin_reason': command.adminReason,
         },
       );
     }
