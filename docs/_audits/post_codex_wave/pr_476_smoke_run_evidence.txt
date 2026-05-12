@@ -1,0 +1,151 @@
+PR #476 smoke-run evidence — 2026-05-12
+=======================================
+
+Target URL: http://localhost:8080 (no proxy was listening; harness exercised request loop only)
+Dart SDK: 3.9.2 (stable) Wed Aug 27 03:49:40 2025 -0700, windows_x64
+Worktree: C:/Git Local Repos/forge_flow_demo/.claude/worktrees/b1-b2-proxy-soak-fix
+
+---
+
+p4_session_soak.dart — 30s, ops=2, concurrency=2
+------------------------------------------------
+
+CMD:
+  dart run tool/pressure/p4_session_soak.dart --ops=2 --concurrency=2 --duration=30s --proxy-url=http://localhost:8080
+
+OUTPUT:
+  === p4_session_soak plan ===
+    proxy: http://localhost:8080
+    ops: 2
+    concurrency: 2
+    duration: 30s
+    think-ms: 500
+    ff_support operators: 1
+  ===
+
+  # p4_session_soak — summary
+
+  Proxy: `http://localhost:8080`
+  Started: 2026-05-12T03:44:06.884649Z
+  Ended:   2026-05-12T03:44:38.073105Z
+  Ops: 2  concurrency: 2  duration: 30s
+
+  | Metric | Value |
+  |---|---|
+  | Total requests | 24 |
+  | 2xx | 0 |
+  | 4xx | 0 |
+  | 5xx | 0 |
+  | network errors | 24 |
+  | timeouts | 0 |
+  | **incomplete 200 records** | 0 |
+
+  Findings: 0
+
+EXIT_CODE: 0
+NOTES:
+  - Harness ran for the full 30 seconds, drained workers cleanly.
+  - SIGINT handler registered (not exercised in this smoke).
+  - URL allow-list (kSoakAllowedHostSubstrings) accepted http://localhost:8080.
+  - Every request returned a network error (no proxy listening). Harness did NOT crash.
+  - Zero incomplete-record findings (correct: no 200 responses observed).
+  - Output files written: p4_session_soak_raw.jsonl, p4_session_soak_findings.jsonl, p4_session_soak_summary.md.
+
+---
+
+p4_operator_day_soak.dart — 30s, ops=2, concurrency=2
+-----------------------------------------------------
+
+CMD:
+  dart run tool/pressure/p4_operator_day_soak.dart --ops=2 --concurrency=2 --duration=30s --proxy-url=http://localhost:8080
+
+OUTPUT:
+  === p4_operator_day_soak plan ===
+    proxy: http://localhost:8080
+    ops: 2
+    concurrency: 2
+    duration: 30s
+    think-ms: 1500
+  ===
+
+  # p4_operator_day_soak — summary
+
+  Proxy: `http://localhost:8080`
+  Started: 2026-05-12T03:44:44.719751Z
+  Ended:   2026-05-12T03:45:16.456664Z
+  Ops: 2  concurrency: 2  duration: 30s
+
+  | Metric | Value |
+  |---|---|
+  | Total step requests | 18 |
+  | Completed journeys | 0 |
+  | 5xx responses | 0 |
+  | **incomplete sign-in records** | 0 |
+
+  Findings: 0
+
+EXIT_CODE: 0
+NOTES:
+  - Multi-step integrity guard worked: sign-in returned network-error → downstream steps were skipped.
+  - Completed journeys = 0 is correct given no proxy listening (sign-in never succeeded).
+  - No unhandled exceptions, clean shutdown.
+
+---
+
+dart analyze (all 10 touched files)
+-----------------------------------
+
+CMD:
+  dart analyze tool/advisor_proxy/main.dart tool/advisor_proxy/advisor_proxy.dart \
+    lib/infrastructure/persistence/postgres/package_postgres_executor.dart \
+    lib/services/realtime/google_cloud_pubsub_subscriber.dart \
+    tool/pressure/p4_session_soak.dart tool/pressure/p4_operator_day_soak.dart \
+    tool/pressure/p4_session_record_predicate.dart \
+    test/pressure/p4_session_record_predicate_test.dart \
+    test/advisor_proxy_test.dart
+
+OUTPUT:
+  Analyzing main.dart, advisor_proxy.dart, package_postgres_executor.dart,
+  google_cloud_pubsub_subscriber.dart, p4_session_soak.dart, p4_operator_day_soak.dart,
+  p4_session_record_predicate.dart, p4_session_record_predicate_test.dart,
+  advisor_proxy_test.dart...
+  No issues found!
+
+EXIT_CODE: 0
+
+---
+
+flutter test test/pressure/p4_session_record_predicate_test.dart
+----------------------------------------------------------------
+
+OUTPUT (tail):
+  00:00 +0: SessionRecordCompleteness.assertComplete tenant-scoped: all four fields non-empty → complete
+  00:00 +1: SessionRecordCompleteness.assertComplete tenant-scoped: missing operator_id → incomplete
+  00:00 +2: SessionRecordCompleteness.assertComplete tenant-scoped: missing user_id and location_id → both reported
+  00:00 +3: SessionRecordCompleteness.assertComplete ff_support: session_id + user_id non-empty AND operator/location empty → complete
+  00:00 +4: SessionRecordCompleteness.assertComplete ff_support: operator_id non-empty → unexpected_fields populated
+  00:00 +5: SessionRecordCompleteness.assertComplete super_admin uses same global-admin contract as ff_support
+  00:00 +6: SessionRecordCompleteness.assertComplete user with both global-admin AND tenant roles uses admin contract
+  00:00 +7: SessionRecordCompleteness.assertComplete missing session_id always flagged regardless of role mode
+  00:00 +8: parseSoakDurationSeconds parses seconds, minutes, hours
+  00:00 +9: parseSoakDurationSeconds rejects garbage strings
+  00:00 +10: isSoakProxyUrlAllowed accepts preview/staging/localhost
+  00:00 +11: isSoakProxyUrlAllowed refuses arbitrary URLs
+  00:00 +12: All tests passed!
+
+PASS: 12 / 12
+
+---
+
+flutter test test/advisor_proxy_test.dart
+-----------------------------------------
+
+PASS: 218 / 218 (final line "00:02 +218: All tests passed!")
+
+Tests of interest (B1 contract):
+  - B1 — accepts scope-less ff_support tokens with empty operator and location strings
+  - B1 — accepts scope-less super_admin tokens with empty operator and location strings
+  - B1 — non-admin scope-less tokens still 403 with structured log context (unchanged contract for tenant-scoped users)
+  - B1 — global admin with partial operator scope still falls through the global-admin accept branch (tolerant of either scope being present)
+
+All four B1 contract tests pass.
