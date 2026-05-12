@@ -117,6 +117,9 @@ void main() {
         find.byKey(const Key('admin_data_accuracy_edit_op-1_loc-1a')),
         findsNothing,
       );
+      expect(find.text('Visible locations'), findsNothing);
+      expect(find.text('Manual covers'), findsNothing);
+      expect(find.text('Forecast covers'), findsNothing);
     },
   );
 
@@ -248,6 +251,9 @@ void main() {
         find.byKey(const Key('admin_tier_assignment_assign_op-1_loc-1a')),
         findsNothing,
       );
+      expect(find.text('Visible locations'), findsNothing);
+      expect(find.text('Assigned tiers'), findsNothing);
+      expect(find.text('Open requests'), findsNothing);
     },
   );
 

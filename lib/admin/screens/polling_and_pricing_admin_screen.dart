@@ -600,7 +600,6 @@ class _PollingAndPricingAdminScreenState
             ),
           if (widget.showScopeControls && _scopeRestrictionCopy != null)
             AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
-          _buildPollingSummary(),
           if (_scopeMutationEnabled) ...[
             const SizedBox(height: 16),
             _ScopedPollingActionCard(
@@ -662,32 +661,6 @@ class _PollingAndPricingAdminScreenState
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildPollingSummary() {
-    final rows = _filteredAssignments;
-    final assignedRows = rows.where((row) => row.assignment != null).length;
-    final openRequests = _visibleChangeRequests
-        .where(
-          (request) =>
-              request.status == TierChangeRequestStatus.pending ||
-              request.status == TierChangeRequestStatus.negotiating,
-        )
-        .length;
-    final margin = _visibleRollup.totalMonthlyMarginCents;
-    final marginLabel = formatCents(margin);
-    return AdminStatStrip(
-      items: <AdminStatItem>[
-        AdminStatItem(label: 'Visible locations', value: '${rows.length}'),
-        AdminStatItem(label: 'Assigned tiers', value: '$assignedRows'),
-        AdminStatItem(label: 'Open requests', value: '$openRequests'),
-        AdminStatItem(label: 'Net margin', value: marginLabel),
-        AdminStatItem(
-          label: 'Audit rows',
-          value: '${_visibleTierAuditEvents.length}',
-        ),
-      ],
     );
   }
 

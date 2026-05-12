@@ -457,7 +457,6 @@ class _PerLocationDataAccuracyScreenState
             ),
           if (widget.showScopeControls && _scopeRestrictionCopy != null)
             AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
-          _buildDataAccuracySummary(),
           if (_scopeMutationEnabled) ...[
             const SizedBox(height: 16),
             _ScopedDataAccuracyActionCard(
@@ -477,41 +476,6 @@ class _PerLocationDataAccuracyScreenState
           DataAccuracyAuditHistoryPanel(events: _visibleAuditEvents),
         ],
       ),
-    );
-  }
-
-  Widget _buildDataAccuracySummary() {
-    final rows = _visibleRows;
-    final manualCoverRows = rows
-        .where(
-          (row) =>
-              row.settings.coversSourceLunch == CoversSource.manual ||
-              row.settings.coversSourceDinner == CoversSource.manual ||
-              row.settings.coversSourceLateNight == CoversSource.manual,
-        )
-        .length;
-    final forecastCoverRows = rows
-        .where(
-          (row) =>
-              row.settings.coversSourceLunch == CoversSource.forecast ||
-              row.settings.coversSourceDinner == CoversSource.forecast ||
-              row.settings.coversSourceLateNight == CoversSource.forecast,
-        )
-        .length;
-    final manualWageRows = rows
-        .where((row) => row.settings.wageSource == WageSource.manualMix)
-        .length;
-    return AdminStatStrip(
-      items: <AdminStatItem>[
-        AdminStatItem(label: 'Visible locations', value: '${rows.length}'),
-        AdminStatItem(label: 'Manual covers', value: '$manualCoverRows'),
-        AdminStatItem(label: 'Forecast covers', value: '$forecastCoverRows'),
-        AdminStatItem(label: 'Manual wage mix', value: '$manualWageRows'),
-        AdminStatItem(
-          label: 'Audit rows',
-          value: '${_visibleAuditEvents.length}',
-        ),
-      ],
     );
   }
 
