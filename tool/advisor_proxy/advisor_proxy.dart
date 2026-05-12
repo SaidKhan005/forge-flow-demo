@@ -51,6 +51,8 @@ import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/domain/services/graceful_refusal_response.dart';
 import 'package:forge_and_flow/domain/services/llm_provider.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart'
+    show PostgresPoolGaugeSnapshot;
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_connection_list_repository.dart';
@@ -2150,10 +2152,19 @@ class ProxyRequestGuard {
   ///
   ///   - Missing / malformed header -> 401.
   ///   - Token verification failure -> 401.
-  ///   - Verified token without operator/location scope -> 403.
+  ///   - Verified token without operator/location scope -> 403,
+  ///     UNLESS the verified roles include `ff_support` or
+  ///     `super_admin`. Those are inherently multi-operator identities
+  ///     (B1 of the post-Codex addendum); the proxy returns an
+  ///     [OperatorContext] with empty operator/location strings and
+  ///     downstream routes that need a concrete tenant must call the
+  ///     impersonation flow (`/v1/admin/auth/sessions`) to pick one
+  ///     before they execute writes.
   ///
-  /// Successful return implies (a) the JWT is verified and (b) the
-  /// caller has both an `operatorId` and a `locationId`.
+  /// Successful return implies (a) the JWT is verified and (b) either
+  /// the caller has both an `operatorId` and a `locationId`, OR the
+  /// caller is a global admin (`ff_support` / `super_admin`) and both
+  /// scope fields are empty strings.
   Future<OperatorContext> requireOperatorContext({
     required String? authorizationHeader,
   }) async {
@@ -2163,13 +2174,63 @@ class ProxyRequestGuard {
 
     final operatorId = claims.operatorId;
     final locationId = claims.locationId;
-    if (operatorId == null ||
-        operatorId.isEmpty ||
-        locationId == null ||
-        locationId.isEmpty) {
-      throw ProxyAuthError(
-        'verified token is missing operator or location scope',
-        statusCode: 403,
+    final hasOperatorScope = operatorId != null && operatorId.isNotEmpty;
+    final hasLocationScope = locationId != null && locationId.isNotEmpty;
+    final isGlobalAdmin = _hasGlobalAdminRole(claims.roles);
+    if (!hasOperatorScope || !hasLocationScope) {
+      // B1 sign-in contract alignment: scope-less ff_support /
+      // super_admin tokens are accepted because their inherent
+      // identity is "platform-wide, no single tenant". Log every
+      // accept + reject branch with `user_id` + `roles` + claim
+      // presence so production traffic surfaces the path in use.
+      if (!isGlobalAdmin) {
+        log(
+          LogSeverity.warning,
+          'proxy.auth.scope_missing_rejected',
+          fields: <String, Object?>{
+            'user_id': claims.userId,
+            'roles': claims.roles,
+            'has_operator_id': hasOperatorScope,
+            'has_location_id': hasLocationScope,
+            'claim_shape': 'tenant_scoped',
+            'status_code': 403,
+          },
+        );
+        throw ProxyAuthError(
+          'verified token is missing operator or location scope',
+          statusCode: 403,
+        );
+      }
+      log(
+        LogSeverity.info,
+        'proxy.auth.scope_missing_accepted_global_admin',
+        fields: <String, Object?>{
+          'user_id': claims.userId,
+          'roles': claims.roles,
+          'has_operator_id': hasOperatorScope,
+          'has_location_id': hasLocationScope,
+          'claim_shape': 'global_admin',
+        },
+      );
+      // Bind a sentinel so log-context filters can still group lines by
+      // user even though no operator was picked yet. Pass null when the
+      // operator id is absent so the context filter is not confused by
+      // an empty-string tenant id.
+      bindOperatorIdToLogContext(
+        hasOperatorScope ? operatorId : null,
+      );
+      return OperatorContext(
+        userId: claims.userId,
+        operatorId: hasOperatorScope ? operatorId : '',
+        locationId: hasLocationScope ? locationId : '',
+        roles: claims.roles,
+        actorKind: claims.actorKind,
+        servicePrincipalId: claims.servicePrincipalId,
+        firebaseUid: claims.firebaseUid,
+        rolesVersion:
+            claims.rolesVersion ?? _rolesVersionFromRoles(claims.roles),
+        lastFreshAuthAt: claims.lastFreshAuthAt,
+        permissionVersion: claims.permissionVersion,
       );
     }
 
@@ -2190,6 +2251,17 @@ class ProxyRequestGuard {
       lastFreshAuthAt: claims.lastFreshAuthAt,
       permissionVersion: claims.permissionVersion,
     );
+  }
+
+  /// True when the verified roles list includes a global admin role
+  /// (`ff_support` or `super_admin`). These identities are platform-
+  /// wide; they do not require per-tenant scope on the JWT and pick
+  /// the active operator via impersonation downstream.
+  static bool _hasGlobalAdminRole(List<String> roles) {
+    for (final role in roles) {
+      if (role == 'ff_support' || role == 'super_admin') return true;
+    }
+    return false;
   }
 
   static int _rolesVersionFromRoles(List<String> roles) {
@@ -3579,6 +3651,81 @@ class ScaffoldFailingProxyAccountingStore implements ProxyAccountingStore {
 abstract class ProxyHealthCheckStore {
   Future<ProxyHealthStatus> check();
 }
+
+/// In-process runtime gauges the proxy `/health` envelope surfaces
+/// alongside the dependency-probe + producer-registry envelope.
+///
+/// These are CHEAP O(1) snapshots collected at request time:
+///   - Postgres pool saturation (open / idle / waiter / max)
+///   - Pub/Sub subscriber ring-buffer key count
+///
+/// A1 §2.4 instrumentation items #3 and #4 — surface S2 (pool waiter
+/// exhaustion) + S3 (`_ringBuffers` unbounded key growth) so operators
+/// can see the early signal before a Cloud Run pod crashes.
+///
+/// Production wiring sets this in `main.dart` immediately after
+/// constructing the Postgres pool + pubsub subscriber. The /health
+/// route reads `current` if it has been wired; when null (tests / dev
+/// scaffolds), the envelope omits the `runtime_gauges` field so
+/// existing test assertions stay green.
+class ProxyRuntimeGauges {
+  ProxyRuntimeGauges({this.postgresPoolGauge, this.ringBufferKeyCountGauge});
+
+  /// Returns a snapshot of the Postgres pool, or null when the pool
+  /// runs without connection reuse (close-on-commit mode).
+  final PostgresPoolGaugeSnapshot? Function()? postgresPoolGauge;
+
+  /// Returns the live ring-buffer `(operator_id, topic)` key count
+  /// for the pubsub subscriber, or null when no subscriber is wired.
+  final int? Function()? ringBufferKeyCountGauge;
+
+  /// Snapshot every gauge into a JSON-shaped map. Each gauge is
+  /// independently null-tolerant so a missing collector never tips
+  /// the rest of the envelope to error. Empty when no collectors are
+  /// wired (so callers can omit the field entirely).
+  Map<String, Object?> snapshotJson() {
+    final result = <String, Object?>{};
+    final pgCollector = postgresPoolGauge;
+    if (pgCollector != null) {
+      try {
+        final snapshot = pgCollector();
+        if (snapshot != null) {
+          result['postgres_pool'] = snapshot.toJson();
+        }
+      } catch (_) {
+        // Collectors must not destabilize /health. Failure here is
+        // logged as a one-line warning; the envelope just omits the
+        // section.
+        result['postgres_pool'] = <String, Object?>{
+          'error': 'pool_gauge_collector_failed',
+        };
+      }
+    }
+    final ringCollector = ringBufferKeyCountGauge;
+    if (ringCollector != null) {
+      try {
+        final value = ringCollector();
+        if (value != null) {
+          result['pubsub_subscriber'] = <String, Object?>{
+            'ring_buffer_keys': value,
+          };
+        }
+      } catch (_) {
+        result['pubsub_subscriber'] = <String, Object?>{
+          'error': 'ring_buffer_gauge_collector_failed',
+        };
+      }
+    }
+    return result;
+  }
+}
+
+/// Process-wide runtime gauge holder. Set once by the production
+/// entrypoint (`tool/advisor_proxy/main.dart`) once the Postgres pool
+/// and pubsub subscriber are constructed. Tests and dev scaffolds
+/// leave this null; the /health route then omits the
+/// `runtime_gauges` envelope field, preserving existing assertions.
+ProxyRuntimeGauges? proxyRuntimeGauges;
 
 class ProxyHealthStatus {
   const ProxyHealthStatus({
@@ -8451,6 +8598,13 @@ Future<void> routeRequest(
         }
 
         if (request.method == 'GET' && path == deepHealthPath) {
+          // Collect in-process runtime gauges (Postgres pool, pubsub
+          // ring buffer) at request time. The gauges are O(1) reads of
+          // live counters; when the holder is null (tests / dev
+          // scaffolds without production wiring) the envelope omits
+          // the `runtime_gauges` field so existing assertions stay
+          // green (A1 §2.4 instrumentation items #3 + #4).
+          final runtimeGaugesSnapshot = proxyRuntimeGauges?.snapshotJson();
           if (healthCheckStore == null) {
             _writeJson(response, 503, <String, Object?>{
               ...const ProxyHealthStatus(
@@ -8458,6 +8612,9 @@ Future<void> routeRequest(
                 ageOk: false,
                 pgvectorOk: false,
               ).toJson(checkedAt: clock().toUtc()),
+              if (runtimeGaugesSnapshot != null &&
+                  runtimeGaugesSnapshot.isNotEmpty)
+                'runtime_gauges': runtimeGaugesSnapshot,
               'error': 'health_check_not_configured',
               'message':
                   'route requires a ProxyHealthCheckStore to be installed',
@@ -8475,16 +8632,25 @@ Future<void> routeRequest(
                 ageOk: false,
                 pgvectorOk: false,
               ).toJson(checkedAt: clock().toUtc()),
+              if (runtimeGaugesSnapshot != null &&
+                  runtimeGaugesSnapshot.isNotEmpty)
+                'runtime_gauges': runtimeGaugesSnapshot,
               'error': 'health_check_failed',
               'message': 'proxy dependency health check failed',
             });
             return;
           }
 
+          final envelope = <String, Object?>{
+            ...status.toJson(checkedAt: clock().toUtc()),
+            if (runtimeGaugesSnapshot != null &&
+                runtimeGaugesSnapshot.isNotEmpty)
+              'runtime_gauges': runtimeGaugesSnapshot,
+          };
           _writeJson(
             response,
             status.ok ? 200 : 503,
-            status.toJson(checkedAt: clock().toUtc()),
+            envelope,
           );
           return;
         }
@@ -12389,11 +12555,25 @@ Future<void> routeRequest(
                 context: ledgerContext,
               ),
             );
-          } catch (_) {
-            // Fail closed with a calm message — no error stack leaks past
-            // this boundary. The client surfaces this to the user as a
-            // "try again in a moment" banner via
-            // `AuthLoginFailure(code: 'ledger_unavailable')`.
+          } catch (error, stack) {
+            // Fail closed with a calm message — no error stack leaks
+            // past this boundary. The client surfaces this to the user
+            // as a "try again in a moment" banner via
+            // `AuthLoginFailure(code: 'ledger_unavailable')`. The
+            // diagnostic log line carries the typed runtime class +
+            // first stack frame so the originating failure mode is
+            // never silently dropped (A1 instrumentation item #5).
+            log(
+              LogSeverity.error,
+              'proxy.auth.session_ledger_record_login_failed',
+              fields: <String, Object?>{
+                'error_type': error.runtimeType.toString(),
+                'stack_first_frame': firstStackFrame(stack),
+                'user_id': scope.userId,
+                'operator_id_present': scope.operatorId.isNotEmpty,
+                'location_id_present': scope.locationId.isNotEmpty,
+              },
+            );
             _writeJson(response, 503, <String, Object?>{
               'error': 'auth_session_ledger_unavailable',
               'message': 'auth session ledger is unavailable; please retry',
@@ -12418,12 +12598,25 @@ Future<void> routeRequest(
                 locationId: scope.locationId,
                 actorUserId: scope.userId,
               );
-            } catch (_) {
-              // Lockout-ledger write failure must not block a successful
-              // login. The session is already recorded; missing the
-              // success row in the lockout ledger only affects the audit
-              // surface and is recoverable from the auth_events_audit
-              // success row.
+            } catch (error, stack) {
+              // Lockout-ledger write failure must not block a
+              // successful login. The session is already recorded;
+              // missing the success row in the lockout ledger only
+              // affects the audit surface and is recoverable from the
+              // auth_events_audit success row. The diagnostic log line
+              // surfaces the failure class so we can spot recurring
+              // breakage (A1 instrumentation item #6).
+              log(
+                LogSeverity.warning,
+                'proxy.auth.lockout_record_success_failed',
+                fields: <String, Object?>{
+                  'error_type': error.runtimeType.toString(),
+                  'stack_first_frame': firstStackFrame(stack),
+                  'user_id': scope.userId,
+                  'operator_id_present': scope.operatorId.isNotEmpty,
+                  'location_id_present': scope.locationId.isNotEmpty,
+                },
+              );
             }
           }
 

@@ -218,6 +218,182 @@ void main() {
       expect(error.message.contains('session-from-proxy'), isFalse);
     });
 
+    // B1 follow-up — global-admin (ff_support / super_admin) sign-in
+    // contract: proxy returns 200 with empty-string `operator_id` /
+    // `location_id` for these identities. The parser MUST accept that
+    // shape for global admins and MUST still reject it for everyone
+    // else. See `docs/_audits/post_codex_wave/pr_476_b1_b2_audit.md`
+    // §1.
+    test(
+      'ff_support: 200 with empty operator/location echo is accepted '
+      'and surfaces a record with empty scope',
+      () async {
+        final fake = _FakeProxyHttpJsonClient(
+          respondWith: const ProxyHttpJsonResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'session_id': 'session-from-proxy',
+              'user_id': 'support-user-id',
+              // Proxy contract for global admins: empty strings, not
+              // null — the keys are still present so the client can
+              // sanity-check the shape, but the values are empty.
+              'operator_id': '',
+              'location_id': '',
+            },
+          ),
+        );
+        final writer = ProxyAuthSessionLedgerWriter(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'token',
+          httpClient: fake,
+        );
+
+        final record = await writer.recordLoginAndResolveScope(
+          const AuthSessionLedgerLogin(
+            userId: 'support-user-id',
+            // Local AuthSession for a global admin also has empty
+            // scope because the verified JWT carried no tenant claim.
+            operatorId: '',
+            locationId: '',
+            tokenHash: 'h',
+            roles: <String>['ff_support'],
+          ),
+        );
+
+        expect(record.sessionId, equals('session-from-proxy'));
+        expect(record.userId, equals('support-user-id'));
+        expect(record.operatorId, equals(''));
+        expect(record.locationId, equals(''));
+      },
+    );
+
+    test(
+      'super_admin: 200 with empty operator/location echo is accepted '
+      'and surfaces a record with empty scope',
+      () async {
+        final fake = _FakeProxyHttpJsonClient(
+          respondWith: const ProxyHttpJsonResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'session_id': 'session-from-proxy',
+              'user_id': 'admin-user-id',
+              'operator_id': '',
+              'location_id': '',
+            },
+          ),
+        );
+        final writer = ProxyAuthSessionLedgerWriter(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'token',
+          httpClient: fake,
+        );
+
+        // recordLogin also exercises `_validateLoginScopeEcho`, so
+        // running it through the higher-level API covers both
+        // role-aware code paths.
+        final sessionId = await writer.recordLogin(
+          const AuthSessionLedgerLogin(
+            userId: 'admin-user-id',
+            operatorId: '',
+            locationId: '',
+            tokenHash: 'h',
+            roles: <String>['super_admin'],
+          ),
+        );
+        expect(sessionId, equals('session-from-proxy'));
+      },
+    );
+
+    test(
+      'normal user: 200 with empty operator/location echo still maps '
+      'to malformed_response (regression protection)',
+      () async {
+        final fake = _FakeProxyHttpJsonClient(
+          respondWith: const ProxyHttpJsonResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'session_id': 'session-from-proxy',
+              'user_id': 'normal-user-id',
+              'operator_id': '',
+              'location_id': '',
+            },
+          ),
+        );
+        final writer = ProxyAuthSessionLedgerWriter(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'token',
+          httpClient: fake,
+        );
+
+        Object? thrown;
+        try {
+          await writer.recordLogin(
+            const AuthSessionLedgerLogin(
+              userId: 'normal-user-id',
+              operatorId: 'op',
+              locationId: 'loc',
+              tokenHash: 'h',
+              // Empty roles -> strict tenant-scoped contract applies.
+              // Even if a normal user's claims include unrelated
+              // role markers (e.g. `advisor.read`), the parser only
+              // tolerates the empty-scope shape when the role set
+              // contains `ff_support` or `super_admin`.
+              roles: <String>['advisor.read'],
+            ),
+          );
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown, isA<ProxyAuthSessionLedgerError>());
+        final error = thrown! as ProxyAuthSessionLedgerError;
+        expect(error.code, equals('malformed_response'));
+        expect(
+          error.message,
+          contains('incomplete scope'),
+        );
+      },
+    );
+
+    test(
+      'ff_support: 200 with NON-empty operator/location echo still '
+      'parses cleanly (no regression to the normal tenant-scoped path)',
+      () async {
+        // A global admin who has explicitly impersonated a tenant
+        // could legitimately receive a populated echo. The carve-out
+        // widens "what we accept", it does not narrow it.
+        final fake = _FakeProxyHttpJsonClient(
+          respondWith: const ProxyHttpJsonResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'session_id': 'session-from-proxy',
+              'user_id': 'support-user-id',
+              'operator_id': 'op',
+              'location_id': 'loc',
+            },
+          ),
+        );
+        final writer = ProxyAuthSessionLedgerWriter(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'token',
+          httpClient: fake,
+        );
+
+        final record = await writer.recordLoginAndResolveScope(
+          const AuthSessionLedgerLogin(
+            userId: 'support-user-id',
+            operatorId: 'op',
+            locationId: 'loc',
+            tokenHash: 'h',
+            roles: <String>['ff_support'],
+          ),
+        );
+
+        expect(record.sessionId, equals('session-from-proxy'));
+        expect(record.operatorId, equals('op'));
+        expect(record.locationId, equals('loc'));
+      },
+    );
+
     test('200 with mismatched scope echo maps to scope_mismatch', () async {
       final fake = _FakeProxyHttpJsonClient(
         respondWith: const ProxyHttpJsonResponse(

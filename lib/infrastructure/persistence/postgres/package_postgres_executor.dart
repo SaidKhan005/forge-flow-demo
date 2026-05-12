@@ -47,6 +47,35 @@ DependencyTimeoutException _emitPostgresTimeout({
 typedef PackagePostgresConnectionFactory =
     Future<PackagePostgresConnection> Function();
 
+/// Read-only snapshot of [PackagePostgresPool] saturation. Exposed
+/// so the proxy `/health` envelope can surface pool gauges without
+/// reaching into private state. Counts are non-negative integers.
+///
+/// A1 §2.4 instrumentation: emit `openConnectionCount`, `idleCount`,
+/// `waiterCount` so we can spot Postgres pool exhaustion before it
+/// cascades. Pool max is included so a single read of the snapshot
+/// answers "are we at the ceiling".
+class PostgresPoolGaugeSnapshot {
+  const PostgresPoolGaugeSnapshot({
+    required this.openConnectionCount,
+    required this.idleCount,
+    required this.waiterCount,
+    required this.maxConnectionCount,
+  });
+
+  final int openConnectionCount;
+  final int idleCount;
+  final int waiterCount;
+  final int maxConnectionCount;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'open_connection_count': openConnectionCount,
+        'idle_count': idleCount,
+        'waiter_count': waiterCount,
+        'max_connection_count': maxConnectionCount,
+      };
+}
+
 abstract class PackagePostgresConnection {
   Future<pg.Result> execute(
     Object query, {
@@ -101,6 +130,18 @@ class PackagePostgresPool implements PostgresPool {
   final Duration _acquireConnectionTimeout;
   final Duration _perStatementTimeout;
   final _ReusablePackagePostgresConnections? _reusableConnections;
+
+  /// Read-only snapshot of pool saturation, surfaced via the proxy
+  /// `/health` envelope so we can spot pool exhaustion before it
+  /// cascades into root-zone uncaught failures (A1 §2.4 item #3).
+  ///
+  /// Returns null when this pool runs without connection reuse — in
+  /// that mode there is no shared pool to inspect.
+  PostgresPoolGaugeSnapshot? get gaugeSnapshot {
+    final reusable = _reusableConnections;
+    if (reusable == null) return null;
+    return reusable._snapshotForGauges();
+  }
 
   @override
   Future<PostgresTransaction> beginTransaction() async {
@@ -231,6 +272,19 @@ class _ReusablePackagePostgresConnections {
   final _idle = Queue<PackagePostgresConnection>();
   final _waiters = Queue<_PackagePostgresWaiter>();
   var _openConnectionCount = 0;
+
+  /// Snapshot saturation counters for the `/health` envelope. Counted
+  /// from the live `Queue` lengths + `_openConnectionCount` so the
+  /// values can be sampled at any time without holding a lock — Dart
+  /// is single-threaded per isolate, so the read is consistent.
+  PostgresPoolGaugeSnapshot _snapshotForGauges() {
+    return PostgresPoolGaugeSnapshot(
+      openConnectionCount: _openConnectionCount,
+      idleCount: _idle.length,
+      waiterCount: _waiters.length,
+      maxConnectionCount: _maxConnectionCount,
+    );
+  }
 
   Future<PackagePostgresConnection> acquire(Duration timeout) async {
     if (_idle.isNotEmpty) return _idle.removeFirst();
