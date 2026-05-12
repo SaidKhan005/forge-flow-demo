@@ -162,14 +162,21 @@ class MembersScreen extends StatefulWidget {
     return session.roles.any(kOperatorWebMembersAdmittedRoles.contains);
   }
 
-  /// True iff the actor may invite + mutate members. Prefers the
+  /// True iff the actor may create or cancel pending invites. Prefers
+  /// the permission snapshot; falls back to the role tier when the
+  /// snapshot has not hydrated yet.
+  bool get _canManageInvites {
+    if (session.permissions.isNotEmpty) {
+      return session.permissions.contains(kMembersInvitePermissionKey);
+    }
+    return session.roles.any(kOperatorWebMembersWriteRoles.contains);
+  }
+
+  /// True iff the actor may mutate existing member rows. Prefers the
   /// permission snapshot; falls back to the role tier when the
   /// snapshot has not hydrated yet.
   bool get _canWrite {
     if (session.permissions.isNotEmpty) {
-      if (session.permissions.contains(kMembersInvitePermissionKey)) {
-        return true;
-      }
       if (session.permissions.any(kMembersStatusMutationKeys.contains)) {
         return true;
       }
@@ -194,6 +201,7 @@ class _MembersScreenState extends State<MembersScreen> {
   bool _loading = true;
   String? _loadError;
   final Set<String> _busyUserIds = <String>{};
+  final Set<String> _busyInviteIds = <String>{};
   int _loadGeneration = 0;
   int _idempotencySeq = 0;
 
@@ -482,6 +490,46 @@ class _MembersScreenState extends State<MembersScreen> {
     }
   }
 
+  Future<void> _cancelInvite(TeamInviteListEntry invite) async {
+    final confirmed = await _confirm(
+      title: 'Cancel invite',
+      body:
+          'Cancel the pending invite for ${invite.email}? Their link will stop '
+          'working. You can send a new invite later if they still need access.',
+      cta: 'Cancel invite',
+    );
+    if (!confirmed || !mounted) return;
+    setState(() => _busyInviteIds.add(invite.inviteId));
+    try {
+      await widget.gateway.revokeInvite(
+        TeamInviteRevokeCommand(
+          actorUserId: widget.session.uid,
+          operatorId: widget.session.operatorId,
+          locationId: widget.session.primaryLocationId,
+          inviteId: invite.inviteId,
+        ),
+        idempotencyKey: _nextIdempotencyKey(),
+      );
+      await _loadAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          duration: Duration(seconds: 10),
+          content: Text('Invite cancelled. Send a new invite if needed.'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyMutationError(error))));
+    } finally {
+      if (mounted) {
+        setState(() => _busyInviteIds.remove(invite.inviteId));
+      }
+    }
+  }
+
   String _friendlyMutationError(Object error) {
     if (error is WebTeamUsersError) {
       return 'Action could not be completed (${error.code}). Try again in a '
@@ -594,7 +642,7 @@ class _MembersScreenState extends State<MembersScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _MembersHeader(
-            canInvite: widget._canWrite,
+            canInvite: widget._canManageInvites,
             onInvite: _openInviteDialog,
           ),
           const SizedBox(height: 18),
@@ -682,7 +730,12 @@ class _MembersScreenState extends State<MembersScreen> {
           ),
           if (_invites.isNotEmpty) ...[
             const SizedBox(height: 24),
-            _PendingInvitesPanel(invites: _invites),
+            _PendingInvitesPanel(
+              invites: _invites,
+              canCancel: widget._canManageInvites,
+              busyInviteIds: _busyInviteIds,
+              onCancel: _cancelInvite,
+            ),
           ],
         ],
       ),
@@ -1483,9 +1536,17 @@ class _MembersPaginationBar extends StatelessWidget {
 }
 
 class _PendingInvitesPanel extends StatelessWidget {
-  const _PendingInvitesPanel({required this.invites});
+  const _PendingInvitesPanel({
+    required this.invites,
+    required this.canCancel,
+    required this.busyInviteIds,
+    required this.onCancel,
+  });
 
   final List<TeamInviteListEntry> invites;
+  final bool canCancel;
+  final Set<String> busyInviteIds;
+  final Future<void> Function(TeamInviteListEntry invite) onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -1516,6 +1577,7 @@ class _PendingInvitesPanel extends StatelessWidget {
           const SizedBox(height: 10),
           for (final invite in invites)
             Padding(
+              key: Key('operator_web_pending_invite_${invite.inviteId}'),
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(
                 children: <Widget>[
@@ -1540,6 +1602,33 @@ class _PendingInvitesPanel extends StatelessWidget {
                       style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),
                   ),
+                  if (canCancel)
+                    SizedBox(
+                      width: 88,
+                      child: busyInviteIds.contains(invite.inviteId)
+                          ? const Align(
+                              alignment: Alignment.centerRight,
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.sunsetDark,
+                                ),
+                              ),
+                            )
+                          : Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                key: Key(
+                                  'operator_web_pending_invite_cancel_'
+                                  '${invite.inviteId}',
+                                ),
+                                onPressed: () => onCancel(invite),
+                                child: const Text('Cancel'),
+                              ),
+                            ),
+                    ),
                 ],
               ),
             ),

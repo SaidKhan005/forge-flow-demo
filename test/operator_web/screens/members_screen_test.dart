@@ -127,6 +127,56 @@ void main() {
       );
     });
 
+    testWidgets('pending invite row exposes Cancel and revokes through the '
+        'gateway contract', (tester) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      final gateway = DemoWebTeamUsersGateway();
+      await pumpScreen(
+        tester,
+        session: sessionWithRole('operator_owner'),
+        gateway: gateway,
+      );
+
+      expect(
+        find.byKey(
+          const Key('operator_web_pending_invite_demo-invite-pending-1'),
+        ),
+        findsOneWidget,
+      );
+
+      final cancelButton = find.byKey(
+        const Key('operator_web_pending_invite_cancel_demo-invite-pending-1'),
+      );
+      await tester.ensureVisible(cancelButton);
+      await tester.tap(cancelButton);
+      await tester.pumpAndSettle();
+      expect(find.text('Cancel invite'), findsWidgets);
+
+      await confirmDialog(tester);
+
+      expect(
+        find.byKey(
+          const Key('operator_web_pending_invite_demo-invite-pending-1'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.text('Invite cancelled. Send a new invite if needed.'),
+        findsOneWidget,
+      );
+      final invites = await gateway.listInvites(
+        const TeamInviteListCommand(
+          actorUserId: 'actor',
+          operatorId: kDemoOperatorIdFixture,
+          locationId: 'demo-loc-downtown',
+        ),
+      );
+      expect(
+        invites.invites.any((i) => i.inviteId == 'demo-invite-pending-1'),
+        isFalse,
+      );
+    });
+
     testWidgets('filter rail surfaces all five locked filter chips', (
       tester,
     ) async {
@@ -439,6 +489,60 @@ void main() {
         find.byKey(const Key('operator_web_members_invite_button')),
       );
       expect(inviteButton.onPressed, isNull);
+    });
+
+    testWidgets('reset-only write permission does not expose invite actions', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(
+        tester,
+        session: sessionWithRole(
+          'custom_floor_captain',
+          permissions: const <String>{
+            kMembersViewPermissionKey,
+            kMembersResetPasswordPermissionKey,
+          },
+        ),
+      );
+
+      final inviteButton = tester.widget<FilledButton>(
+        find.byKey(const Key('operator_web_members_invite_button')),
+      );
+      expect(inviteButton.onPressed, isNull);
+      expect(
+        find.byKey(
+          const Key('operator_web_pending_invite_cancel_demo-invite-pending-1'),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('team.users.invite permission exposes invite actions', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(
+        tester,
+        session: sessionWithRole(
+          'custom_floor_captain',
+          permissions: const <String>{
+            kMembersViewPermissionKey,
+            kMembersInvitePermissionKey,
+          },
+        ),
+      );
+
+      final inviteButton = tester.widget<FilledButton>(
+        find.byKey(const Key('operator_web_members_invite_button')),
+      );
+      expect(inviteButton.onPressed, isNotNull);
+      expect(
+        find.byKey(
+          const Key('operator_web_pending_invite_cancel_demo-invite-pending-1'),
+        ),
+        findsOneWidget,
+      );
     });
   });
 

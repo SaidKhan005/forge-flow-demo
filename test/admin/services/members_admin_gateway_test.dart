@@ -919,10 +919,12 @@ void main() {
 
       expect(bodies[0]['scope_type'], equals('operator_wide'));
       expect(bodies[0].containsKey('location_id'), isFalse);
+      expect(bodies[0].containsKey('primary_location_id'), isFalse);
       expect(bodies[0].containsKey('org_unit_id'), isFalse);
       expect(bodies[1]['scope_type'], equals('org_unit'));
       expect(bodies[1]['org_unit_id'], equals('unit-1'));
       expect(bodies[1].containsKey('location_id'), isFalse);
+      expect(bodies[1].containsKey('primary_location_id'), isFalse);
     });
 
     test('overrideRoleGrant sends scoped role-grant payload', () async {
