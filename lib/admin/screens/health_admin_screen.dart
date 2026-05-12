@@ -1000,13 +1000,16 @@ class _MetricTile extends StatelessWidget {
     final severity = m?.status ?? HealthSeverity.unknown;
     final tier = m?.tier ?? 3;
     final chipColor = _tierChipColor(tier, severity);
-    final value = m?.displayValue ?? 'No data';
+    final value = _metricDisplayValue(m);
     final unit = m?.unit ?? '';
     final threshold = m?.thresholdCaption;
     final observed = m?.observedAt;
+    final source = _metricSourceLabel(m);
+    final owner = _metricOwnerLabel(m);
+    final remediation = _metricRemediation(m, tier, severity);
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 220, maxWidth: 320),
+      constraints: const BoxConstraints(minWidth: 240, maxWidth: 360),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
@@ -1040,12 +1043,27 @@ class _MetricTile extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              unit.isEmpty ? value : '$value $unit',
+              unit.isEmpty || value == 'No value yet' ? value : '$value $unit',
               style: AppTextStyles.mono14(
                 color: AppColors.textPrimary,
                 weight: FontWeight.w700,
               ),
             ),
+            const SizedBox(height: 4),
+            Text(
+              'Producer state: ${_severityLabel(severity)}',
+              key: Key('admin_health_tile_${tile.metricKey}_state'),
+              style: AppTextStyles.body12(color: AppColors.textSecondary),
+            ),
+            if (m != null && m.description.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                m.description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.body12(color: AppColors.textSecondary),
+              ),
+            ],
             if (threshold != null) ...[
               const SizedBox(height: 4),
               Text(
@@ -1055,10 +1073,30 @@ class _MetricTile extends StatelessWidget {
             ],
             const SizedBox(height: 4),
             Text(
+              'Source: $source',
+              key: Key('admin_health_tile_${tile.metricKey}_source'),
+              style: AppTextStyles.mono8(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Owner: $owner',
+              key: Key('admin_health_tile_${tile.metricKey}_owner'),
+              style: AppTextStyles.mono8(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 2),
+            Text(
               observed == null
                   ? 'Checked: no data'
                   : 'Checked: ${adminHumanDateTime(observed)}',
               style: AppTextStyles.mono8(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              remediation,
+              key: Key('admin_health_tile_${tile.metricKey}_remediation'),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.body12(color: _remediationColor(severity)),
             ),
           ],
         ),
@@ -1153,6 +1191,87 @@ String _compactSeverityLabel(HealthSeverity severity) {
       return 'Fail';
     case HealthSeverity.unknown:
       return 'No data';
+  }
+}
+
+String _metricDisplayValue(HealthMetric? metric) {
+  if (metric == null || metric.value == null) return 'No value yet';
+  final value = metric.displayValue;
+  if (value == '-' || value.trim().isEmpty) return 'No value yet';
+  return value;
+}
+
+String _metricSourceLabel(HealthMetric? metric) {
+  final source = metric?.source?.trim();
+  if (source == null || source.isEmpty) {
+    return metric == null
+        ? '/health did not return this signal'
+        : 'Not reported';
+  }
+  return source;
+}
+
+String _metricOwnerLabel(HealthMetric? metric) {
+  final owner = metric?.owner.trim();
+  if (owner == null || owner.isEmpty) {
+    return metric == null ? 'Not reported' : 'Unassigned in health envelope';
+  }
+  return owner;
+}
+
+String _metricRemediation(
+  HealthMetric? metric,
+  int tier,
+  HealthSeverity severity,
+) {
+  if (metric == null) {
+    return 'Next step: This signal was missing from the health response. Check the proxy health producer registry before relying on it.';
+  }
+
+  final warning = metric.metadata['warning'];
+  if (warning is String && warning.isNotEmpty) {
+    return 'Next step: ${_producerWarningRemediation(warning)}';
+  }
+
+  switch (severity) {
+    case HealthSeverity.green:
+      return 'Next step: No action needed for this producer.';
+    case HealthSeverity.yellow:
+      return 'Next step: Investigate this ${_tierLabel(tier).toLowerCase()} signal and rerun the check after the source recovers.';
+    case HealthSeverity.red:
+      return tier == 1
+          ? 'Next step: Treat this as blocking. Fix the source, then rerun the system check.'
+          : 'Next step: Fix this producer source before relying on the affected workflow.';
+    case HealthSeverity.unknown:
+      return 'Next step: No current producer value is available. Confirm the producer is wired, then rerun the system check.';
+  }
+}
+
+String _producerWarningRemediation(String warning) {
+  return switch (warning) {
+    'producer_timeout' =>
+      'The health producer timed out. Retry once; if it repeats, check the producer budget and proxy logs.',
+    'producer_error' =>
+      'The health producer failed while collecting this signal. Check proxy logs for the producer.',
+    'registry_route_budget_exceeded' =>
+      'The health sweep ran out of time before this producer finished. Retry once, then check slow health producers.',
+    'registry_outer_failure' =>
+      'The registry wrapper failed while collecting this signal. Check proxy health logs before relying on it.',
+    _ =>
+      'The health producer reported "$warning". Check proxy health logs before relying on this signal.',
+  };
+}
+
+Color _remediationColor(HealthSeverity severity) {
+  switch (severity) {
+    case HealthSeverity.green:
+      return AppColors.textSecondary;
+    case HealthSeverity.yellow:
+      return AppColors.warning;
+    case HealthSeverity.red:
+      return AppColors.negative;
+    case HealthSeverity.unknown:
+      return AppColors.neutral;
   }
 }
 
