@@ -31,7 +31,7 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 
 ## Workflow
 
-- Phase loop: graph refresh → Claude proposes prompts → worktrees implement → Codex reviews → Claude fixes → Codex updates docs.
+- Phase loop: Claude proposes prompts → worktrees implement → Codex reviews → Claude fixes → Codex updates docs. Graph refresh is manual-only when the operator asks for it.
 - Parallel lanes: Codex on master; Claude in `.claude/worktrees/<lane>`. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 - Between batches: master runs `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md` to audit, lean docs, archive, emit next prompts.
 - After `db/migrations/*.sql` changes: `tool/migration_drift_scanner.dart --fix --strict-docs` then `tool/migration_cutoff_lint.dart`.
@@ -98,19 +98,20 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 ## Tooling: Codex skill + MCP servers + graphify
 
 - Codex `$forge-flow` skill at `~/.codex/skills/forge-flow` mirrors this file's authority order, phase routing, live-mutation boundaries, migration/runtime gates, walkthrough expectations, tracker closeout rules.
-- `.mcp.json` registers `forgeflow_docs` (read-only docs/contracts/runbooks search), `forgeflow_sqlite_schema` (read-only local SQLite schema), `graphify` (code/docs graph).
-- `rg` first when symbol/filename/import path/literal text is known. Use `graphify` (`shortest_path` / `query_graph`) for orientation only.
+- `.mcp.json` registers `forgeflow_docs` (read-only docs/contracts/runbooks search), `forgeflow_sqlite_schema` (read-only local SQLite schema), `graphify` (manually refreshed local code/docs graph).
+- `rg` first when symbol/filename/import path/literal text is known. Use `graphify` only when the operator explicitly asks for graph context or confirms it was manually refreshed.
 
-## Knowledge Graph Refresh
+## Knowledge Graph
 
-- `graphify-out/needs_update` exists → run `/graphify --update` first thing next turn (only sanctioned mid-session run). Brief ack, no duration promise.
-- Hook excludes `docs/archive/**` and `graphify-out/**` via `FROZEN_HISTORY_PATHS` in `.githooks/post-commit`. Extend when a surface retires.
+- Manual-only for cost control. Do not auto-run `/graphify --update`, do not create `graphify-out/needs_update`, and do not treat a stale `needs_update` file as a required next-turn action.
+- The operator manually triggers graph refresh when needed. Until then, prefer authority docs, repo-local search, and code inspection.
 
 ## Commits & Push
 
 - Commits at phase close, not slice close (unless asked).
-- Push is automatic on commit. Post-commit hook AST-rebuilds the code graph and writes `needs_update` if Markdown changed.
-- Don't run graphify mid-session except per Knowledge Graph Refresh.
+- Push is automatic on commit.
+- Local hooks are cheap guardrails only. Install with `scripts/install_git_hooks.ps1`; they do not run graphify, provider calls, cloud actions, browser QA, or full Flutter test suites.
+- Do not run graphify mid-session unless the operator explicitly requests a manual refresh.
 
 ## Session Handoff (only when wrapping)
 

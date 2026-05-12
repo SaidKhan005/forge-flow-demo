@@ -1,0 +1,121 @@
+#!/bin/sh
+# Cheap Forge & Flow repo lints before pushing. This is deliberately not
+# flutter analyze/test, browser QA, provider work, graph work, or cloud work.
+
+set -u
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+repo_root_posix=$(printf '%s' "$repo_root" | tr '\\' '/')
+
+case "$repo_root_posix" in
+  */.claude/worktrees/*|*/.codex_worktrees/*)
+    echo "[forge-flow pre-push] Refusing to push from an agent worktree:"
+    echo "  $repo_root"
+    echo "Push from the main repo after review/merge instead."
+    exit 1
+    ;;
+esac
+
+cd "$repo_root" || exit 1
+
+if [ "${FORGE_FLOW_SKIP_PRE_PUSH_LINTS:-}" = "1" ]; then
+  echo "[forge-flow pre-push] Skipping repo lints because FORGE_FLOW_SKIP_PRE_PUSH_LINTS=1."
+  exit 0
+fi
+
+changed_files=""
+zero_sha=0000000000000000000000000000000000000000
+
+while read -r local_ref local_sha remote_ref remote_sha
+do
+  [ -z "${local_sha:-}" ] && continue
+  [ "$local_sha" = "$zero_sha" ] && continue
+
+  if [ "${remote_sha:-$zero_sha}" = "$zero_sha" ]; then
+    base=$(git merge-base "$local_sha" origin/master 2>/dev/null || true)
+    if [ -z "$base" ]; then
+      base=$(git rev-list --max-parents=0 "$local_sha" 2>/dev/null | tail -n 1)
+    fi
+    files=$(git diff --name-only "$base..$local_sha" 2>/dev/null || true)
+  else
+    files=$(git diff --name-only "$remote_sha..$local_sha" 2>/dev/null || true)
+  fi
+
+  if [ -n "$files" ]; then
+    changed_files="$changed_files
+$files"
+  fi
+done
+
+if [ -z "$changed_files" ]; then
+  upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+  if [ -n "$upstream" ]; then
+    changed_files=$(git diff --name-only "${upstream}...HEAD" 2>/dev/null || true)
+  fi
+fi
+
+changed_files=$(printf '%s\n' "$changed_files" | sed '/^[[:space:]]*$/d' | sort -u)
+
+if [ -z "$changed_files" ]; then
+  echo "[forge-flow pre-push] No pushed file changes detected; skipping scoped repo lints."
+  exit 0
+fi
+
+has_changed() {
+  printf '%s\n' "$changed_files" | grep -Eq "$1"
+}
+
+echo "[forge-flow pre-push] Running scoped cheap repo lints..."
+status=0
+ran=0
+
+run_lint() {
+  ran=1
+  echo
+  echo "+ $*"
+  "$@" || status=1
+}
+
+if has_changed '\.dart$|^pubspec\.yaml$|^pubspec\.lock$'; then
+  run_lint dart run tool/postgres_import_lint.dart
+fi
+
+if has_changed '^db/migrations/.*\.sql$|^tool/index_leading_column_lint\.dart$'; then
+  run_lint dart run tool/index_leading_column_lint.dart
+fi
+
+if has_changed '^lib/auth/permission_keys\.dart$|^docs/contracts/auth_permission_key_catalog\.md$|^tool/permission_key_lint\.dart$'; then
+  run_lint dart run tool/permission_key_lint.dart
+fi
+
+if has_changed '^db/migrations/.*\.sql$|^scripts/postgres_staging_setup\.ps1$|^tool/migration_cutoff_lint\.dart$'; then
+  run_lint dart run tool/migration_cutoff_lint.dart
+fi
+
+if has_changed '^\.github/workflows/|^tool/release_dart_defines_lint\.dart$'; then
+  run_lint dart run tool/release_dart_defines_lint.dart
+fi
+
+if has_changed '^\.github/workflows/|^tool/actions_pinning_lint\.dart$'; then
+  run_lint dart run tool/actions_pinning_lint.dart
+fi
+
+if has_changed '^db/migrations/.*\.sql$|^tool/rls_policy_lint\.dart$|^tool/rls_policy_lint_allowlist\.txt$'; then
+  run_lint dart run tool/rls_policy_lint.dart
+fi
+
+if [ "$ran" -eq 0 ]; then
+  echo "[forge-flow pre-push] Pushed files do not require scoped repo lints."
+  exit 0
+fi
+
+if [ "$status" -ne 0 ]; then
+  echo
+  echo "[forge-flow pre-push] One or more cheap repo lints failed."
+  echo "Fix the reported issue, or use FORGE_FLOW_SKIP_PRE_PUSH_LINTS=1 only for an explicit operator-approved emergency."
+  exit "$status"
+fi
+
+echo
+echo "[forge-flow pre-push] Repo lints passed."
+exit 0

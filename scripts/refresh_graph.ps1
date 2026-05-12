@@ -1,5 +1,8 @@
-# Daily graph-refresh routine. Runs at 7am via Windows Task Scheduler.
-# Complements the post-commit hook and manual /graphify --update workflow.
+# Manual graph-refresh helper.
+#
+# Graphify upkeep is intentionally not wired into git hooks, agent edit hooks,
+# or scheduled runs because refreshes can be expensive. This script exits
+# unless -RunGraph is passed.
 #
 # Steps:
 #   1. git pull --rebase
@@ -9,7 +12,17 @@
 #      (graphify-out/ is gitignored, so it stays local; only the
 #       migrations summary triggers commits.)
 
+param(
+    [switch]$RunGraph
+)
+
 $ErrorActionPreference = 'Stop'
+
+if (-not $RunGraph) {
+    Write-Host 'Graph refresh is manual-only. Re-run scripts/refresh_graph.ps1 with -RunGraph when you intentionally want /graphify --update .'
+    exit 0
+}
+
 $logDir = Join-Path $env:USERPROFILE 'AppData\Local\ForgeFlow\logs'
 $null = New-Item -ItemType Directory -Force -Path $logDir
 $logFile = Join-Path $logDir ("refresh_graph_" + (Get-Date -Format "yyyy-MM-dd") + ".log")
@@ -57,7 +70,7 @@ try {
     $staged = git diff --cached --name-only
 
     if (-not $staged) {
-        Write-Host "[$(Get-Date -f HH:mm:ss)] no migration changes; graph refreshed locally, nothing to commit."
+        Write-Host "[$(Get-Date -f HH:mm:ss)] no migration changes; manual graph refresh complete, nothing to commit."
     } else {
         $today = Get-Date -Format "yyyy-MM-dd"
         git commit -m "graph update $today"

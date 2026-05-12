@@ -1,0 +1,50 @@
+#!/bin/sh
+# Cheap Forge & Flow workflow guardrails. No graph work, provider calls,
+# cloud mutation, or heavy test suites belong here.
+
+set -u
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+repo_root_posix=$(printf '%s' "$repo_root" | tr '\\' '/')
+
+case "$repo_root_posix" in
+  */.claude/worktrees/*|*/.codex_worktrees/*)
+    echo "[forge-flow pre-commit] Refusing to commit from an agent worktree:"
+    echo "  $repo_root"
+    echo "Commit from the main repo after review/merge instead."
+    exit 1
+    ;;
+esac
+
+cd "$repo_root" || exit 1
+
+staged=$(git diff --cached --name-only --diff-filter=ACMRTD)
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+if printf '%s\n' "$staged" | grep -q '^PROJECT_TRACKER\.md$' &&
+   printf '%s\n' "$staged" | grep -Eq '^(lib|tool|test|integration_test|web|android|ios|windows|db|scripts|infrastructure)/|^(pubspec\.yaml|pubspec\.lock|analysis_options\.yaml|Dockerfile|Dockerfile\..*)$'; then
+  echo "[forge-flow pre-commit] Reminder: code and PROJECT_TRACKER.md are staged together."
+  echo "Only move tracker truth when implementation, verification, and closeout evidence support it."
+fi
+
+if printf '%s\n' "$staged" | grep -Eq '^db/migrations/.*\.sql$'; then
+  echo "[forge-flow pre-commit] db/migrations changed; running migration guardrails..."
+  status=0
+
+  dart run tool/migration_drift_scanner.dart --strict-docs --report=build/reports/git_hook_migration_drift_report.md || status=1
+  dart run tool/migration_cutoff_lint.dart || status=1
+
+  if [ "$status" -ne 0 ]; then
+    echo
+    echo "[forge-flow pre-commit] Migration guardrails failed."
+    echo "Usually fix with:"
+    echo "  dart run tool/migration_drift_scanner.dart --fix --strict-docs"
+    echo "  dart run tool/migration_cutoff_lint.dart"
+    echo "Then review/stage the resulting docs or script changes."
+    exit "$status"
+  fi
+fi
+
+exit 0

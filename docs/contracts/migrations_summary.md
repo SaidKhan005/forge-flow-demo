@@ -1,7 +1,7 @@
 # Database migrations summary
 
 Auto-generated from `db/migrations/*.sql` by
-`scripts/generate_migrations_summary.py` (daily 7am routine).
+`scripts/generate_migrations_summary.py` (manual graph-refresh helper).
 
 Architectural index of `db/migrations/` for the knowledge graph.
 The `.sql` files are not extension-supported by graphify; this
