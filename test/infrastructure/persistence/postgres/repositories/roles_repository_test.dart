@@ -34,11 +34,10 @@
 //     `case when operator_id is null then 0 else 1 end, role_key`
 //     ordering shape.
 //
-//   * Operator-scoped role-key precedence — `roleIdForVisibleKey`
-//     resolves a role_key when both a global and an operator-scoped
-//     row carry the same key. Operator-scoped wins. Test pins the
-//     ORDER BY `case when operator_id = @operator_id::uuid then 0
-//     else 1 end LIMIT 1` shape.
+//   * Seeded role-key compatibility — `roleIdForVisibleKey` resolves
+//     only global seeded slugs. Operator-scoped custom-role mutations
+//     must carry `role_id`; custom `role_key` fallback is intentionally
+//     not available after the B3 hybrid identifier sweep.
 //
 //   * `insertOperatorRole` — hard-coded `is_seeded = false` (custom
 //     roles cannot mint themselves as seeded); `created_by` and
@@ -93,422 +92,374 @@ PostgresRow _roleRow({
 
 void main() {
   group('RolesRepository.listVisibleRoles (tenant-scoped read)', () {
-    test(
-      'tenant SET LOCAL ordering (operator_id, location_id, user_id) '
-      'runs before the SELECT; visibility ORDER BY puts global rows '
-      '(operator_id IS NULL) first, then operator-scoped, both by '
-      'role_key for stable UI grouping',
-      () async {
-        final pool = _RolesPool(
-          listRows: <PostgresRow>[
-            _roleRow(
-              roleId: _roleGlobal,
-              operatorId: null,
-              roleKey: 'admin',
-              displayName: 'Admin',
-              isSeeded: true,
-              isEditable: false,
-            ),
-            _roleRow(roleKey: 'shift_manager'),
-          ],
-        );
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        final rows = await repo.listVisibleRoles(
-          operatorId: _opA,
-          locationId: _locA,
-          actorUserId: _actorA,
-        );
-        expect(rows, hasLength(2));
-        expect(rows[0].operatorId, isNull,
-            reason: 'global rows are projected first (operatorId null)');
-        expect(rows[0].isSeeded, isTrue);
-        expect(rows[0].isEditable, isFalse);
-        expect(rows[1].operatorId, equals(_opA));
-
-        final tx = pool.transactions.single;
-        // Tenant-scoping GUCs ran first, in the canonical order.
-        expect(tx.executedSql[0], contains("'app.operator_id'"));
-        expect(tx.parameters[0]['value'], equals(_opA));
-        expect(tx.executedSql[1], contains("'app.location_id'"));
-        expect(tx.parameters[1]['value'], equals(_locA));
-        expect(tx.executedSql[2], contains("'app.user_id'"));
-        expect(tx.parameters[2]['value'], equals(_actorA));
-        // Tenant audit marker — NOT system.
-        expect(
-          tx.executedSql.where(
-            (s) => s.contains("'app.bypass_rls_audit'") && s.contains('true'),
+    test('tenant SET LOCAL ordering (operator_id, location_id, user_id) '
+        'runs before the SELECT; visibility ORDER BY puts global rows '
+        '(operator_id IS NULL) first, then operator-scoped, both by '
+        'role_key for stable UI grouping', () async {
+      final pool = _RolesPool(
+        listRows: <PostgresRow>[
+          _roleRow(
+            roleId: _roleGlobal,
+            operatorId: null,
+            roleKey: 'admin',
+            displayName: 'Admin',
+            isSeeded: true,
+            isEditable: false,
           ),
-          isNotEmpty,
-        );
-        expect(
-          tx.executedSql.where((s) => s.contains('set local role forge_admin')),
-          isEmpty,
-          reason: 'roles repo is a pure tenant-scoped surface — no '
-              'BYPASSRLS path should engage',
-        );
-        // Visibility ORDER BY shape — globals first, then by role_key.
-        final selectSql = tx.executedSql.firstWhere(
-          (s) => s.contains('from roles'),
-        );
-        expect(selectSql, contains('where deleted_at is null'));
-        expect(
-          selectSql,
-          contains(
-            'order by case when operator_id is null then 0 else 1 end, role_key',
-          ),
-        );
-      },
-    );
+          _roleRow(roleKey: 'shift_manager'),
+        ],
+      );
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      final rows = await repo.listVisibleRoles(
+        operatorId: _opA,
+        locationId: _locA,
+        actorUserId: _actorA,
+      );
+      expect(rows, hasLength(2));
+      expect(
+        rows[0].operatorId,
+        isNull,
+        reason: 'global rows are projected first (operatorId null)',
+      );
+      expect(rows[0].isSeeded, isTrue);
+      expect(rows[0].isEditable, isFalse);
+      expect(rows[1].operatorId, equals(_opA));
 
-    test(
-      'actorUserId optional — when null, app.user_id SET LOCAL is '
-      'skipped (background sweeps that have no human actor)',
-      () async {
-        final pool = _RolesPool(listRows: const <PostgresRow>[]);
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        await repo.listVisibleRoles(
-          operatorId: _opA,
-          locationId: _locA,
-        );
-        final tx = pool.transactions.single;
-        // No app.user_id SET LOCAL when actorUserId omitted.
-        expect(
-          tx.executedSql.where((s) => s.contains("'app.user_id'")),
-          isEmpty,
-        );
-        // operator_id and location_id still set.
-        expect(
-          tx.executedSql.where((s) => s.contains("'app.operator_id'")),
-          hasLength(1),
-        );
-        expect(
-          tx.executedSql.where((s) => s.contains("'app.location_id'")),
-          hasLength(1),
-        );
-      },
-    );
+      final tx = pool.transactions.single;
+      // Tenant-scoping GUCs ran first, in the canonical order.
+      expect(tx.executedSql[0], contains("'app.operator_id'"));
+      expect(tx.parameters[0]['value'], equals(_opA));
+      expect(tx.executedSql[1], contains("'app.location_id'"));
+      expect(tx.parameters[1]['value'], equals(_locA));
+      expect(tx.executedSql[2], contains("'app.user_id'"));
+      expect(tx.parameters[2]['value'], equals(_actorA));
+      // Tenant audit marker — NOT system.
+      expect(
+        tx.executedSql.where(
+          (s) => s.contains("'app.bypass_rls_audit'") && s.contains('true'),
+        ),
+        isNotEmpty,
+      );
+      expect(
+        tx.executedSql.where((s) => s.contains('set local role forge_admin')),
+        isEmpty,
+        reason:
+            'roles repo is a pure tenant-scoped surface — no '
+            'BYPASSRLS path should engage',
+      );
+      // Visibility ORDER BY shape — globals first, then by role_key.
+      final selectSql = tx.executedSql.firstWhere(
+        (s) => s.contains('from roles'),
+      );
+      expect(selectSql, contains('where deleted_at is null'));
+      expect(
+        selectSql,
+        contains(
+          'order by case when operator_id is null then 0 else 1 end, role_key',
+        ),
+      );
+    });
+
+    test('actorUserId optional — when null, app.user_id SET LOCAL is '
+        'skipped (background sweeps that have no human actor)', () async {
+      final pool = _RolesPool(listRows: const <PostgresRow>[]);
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      await repo.listVisibleRoles(operatorId: _opA, locationId: _locA);
+      final tx = pool.transactions.single;
+      // No app.user_id SET LOCAL when actorUserId omitted.
+      expect(tx.executedSql.where((s) => s.contains("'app.user_id'")), isEmpty);
+      // operator_id and location_id still set.
+      expect(
+        tx.executedSql.where((s) => s.contains("'app.operator_id'")),
+        hasLength(1),
+      );
+      expect(
+        tx.executedSql.where((s) => s.contains("'app.location_id'")),
+        hasLength(1),
+      );
+    });
   });
 
-  group('RolesRepository.roleIdForVisibleKey (operator wins over global)', () {
-    test(
-      'ORDER BY puts operator-scoped rows ahead of globals so a custom '
-      'role with the same role_key as a seeded one resolves to the '
-      'custom role_id (operator override semantics)',
-      () async {
-        final pool = _RolesPool(
-          roleKeyLookupRows: <PostgresRow>[
-            <String, Object?>{'role_id': _roleOpScoped},
-          ],
-        );
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        final id = await repo.roleIdForVisibleKey(
+  group('RolesRepository.roleIdForVisibleKey (seeded-key compatibility)', () {
+    test('resolves only global seeded role_key rows; custom roles must '
+        'mutate by role_id instead of presentation slug', () async {
+      final pool = _RolesPool(
+        roleKeyLookupRows: <PostgresRow>[
+          <String, Object?>{'role_id': _roleGlobal},
+        ],
+      );
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      final id = await repo.roleIdForVisibleKey(
+        operatorId: _opA,
+        locationId: _locA,
+        roleKey: 'operator_staff',
+        actorUserId: _actorA,
+      );
+      expect(id, equals(_roleGlobal));
+
+      final tx = pool.transactions.single;
+      final selectSql = tx.executedSql.firstWhere(
+        (s) => s.contains('from roles') && s.contains('role_key'),
+      );
+      expect(selectSql, contains('and operator_id is null'));
+      expect(selectSql, contains('and is_seeded = true'));
+      expect(selectSql, isNot(contains('order by case when operator_id')));
+      expect(selectSql, contains('limit 1'));
+    });
+
+    test('throws StateError for non-seeded custom role_key fallback — '
+        'mutation callers must submit role_id', () async {
+      final pool = _RolesPool(roleKeyLookupRows: const <PostgresRow>[]);
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      await expectLater(
+        repo.roleIdForVisibleKey(
+          operatorId: _opA,
+          locationId: _locA,
+          roleKey: 'custom.floor_captain',
+          actorUserId: _actorA,
+        ),
+        throwsStateError,
+      );
+    });
+
+    test('throws StateError when RETURNING role_id is malformed (non-string '
+        'or empty) — defensive: the driver should never return that, but '
+        'the guard is in production code so the test pins it', () async {
+      final pool = _RolesPool(
+        roleKeyLookupRows: <PostgresRow>[
+          <String, Object?>{'role_id': ''},
+        ],
+      );
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      await expectLater(
+        repo.roleIdForVisibleKey(
           operatorId: _opA,
           locationId: _locA,
           roleKey: 'shift_manager',
           actorUserId: _actorA,
-        );
-        expect(id, equals(_roleOpScoped));
-
-        final tx = pool.transactions.single;
-        final selectSql = tx.executedSql.firstWhere(
-          (s) => s.contains('from roles') && s.contains('role_key'),
-        );
-        // Visibility predicate: operator-scoped OR global.
-        expect(
-          selectSql,
-          contains('(operator_id = @operator_id::uuid or operator_id is null)'),
-        );
-        // Precedence ORDER BY — operator-scoped first.
-        expect(
-          selectSql,
-          contains(
-            'order by case when operator_id = @operator_id::uuid then 0 else 1 end',
-          ),
-        );
-        expect(selectSql, contains('limit 1'));
-      },
-    );
-
-    test(
-      'throws StateError when no row visible — the proxy translates '
-      'this into a 404 / "role not found" envelope',
-      () async {
-        final pool = _RolesPool(roleKeyLookupRows: const <PostgresRow>[]);
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        await expectLater(
-          repo.roleIdForVisibleKey(
-            operatorId: _opA,
-            locationId: _locA,
-            roleKey: 'unknown_role',
-            actorUserId: _actorA,
-          ),
-          throwsStateError,
-        );
-      },
-    );
-
-    test(
-      'throws StateError when RETURNING role_id is malformed (non-string '
-      'or empty) — defensive: the driver should never return that, but '
-      'the guard is in production code so the test pins it',
-      () async {
-        final pool = _RolesPool(
-          roleKeyLookupRows: <PostgresRow>[
-            <String, Object?>{'role_id': ''},
-          ],
-        );
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        await expectLater(
-          repo.roleIdForVisibleKey(
-            operatorId: _opA,
-            locationId: _locA,
-            roleKey: 'shift_manager',
-            actorUserId: _actorA,
-          ),
-          throwsStateError,
-        );
-      },
-    );
+        ),
+        throwsStateError,
+      );
+    });
   });
 
   group('RolesRepository.insertOperatorRole', () {
-    test(
-      'INSERT shape: is_seeded hard-coded false (custom roles cannot '
-      'mint themselves as seeded); created_by and updated_by both '
-      'bound to the actor on a fresh row',
-      () async {
-        final pool = _RolesPool(insertedRoleId: _roleOpScoped);
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        final id = await repo.insertOperatorRole(
+    test('INSERT shape: is_seeded hard-coded false (custom roles cannot '
+        'mint themselves as seeded); created_by and updated_by both '
+        'bound to the actor on a fresh row', () async {
+      final pool = _RolesPool(insertedRoleId: _roleOpScoped);
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      final id = await repo.insertOperatorRole(
+        operatorId: _opA,
+        locationId: _locA,
+        createdByUserId: _actorA,
+        roleKey: 'shift_manager',
+        displayName: 'Shift Manager',
+        description: 'Custom role for shift leads',
+      );
+      expect(id, equals(_roleOpScoped));
+
+      final tx = pool.transactions.single;
+      final insertSql = tx.executedSql.firstWhere(
+        (s) => s.contains('insert into roles'),
+      );
+      // is_seeded literal false in the VALUES list — never bound.
+      expect(
+        insertSql,
+        contains('false, @is_editable'),
+        reason:
+            'custom roles cannot self-mark as seeded; the false '
+            'must be a SQL literal so a bind-substitution attack '
+            'cannot lift an operator role to seeded posture',
+      );
+      // created_by and updated_by share the same parameter.
+      expect(insertSql, contains('@created_by::uuid, @created_by::uuid'));
+
+      final params = tx.parameters.firstWhere(
+        (p) => p['role_key'] == 'shift_manager',
+      );
+      expect(params['operator_id'], equals(_opA));
+      expect(params['display_name'], equals('Shift Manager'));
+      expect(params['description'], equals('Custom role for shift leads'));
+      expect(params['created_by'], equals(_actorA));
+      expect(params['is_editable'], isTrue);
+    });
+
+    test('isEditable=false plumbs through (locked custom roles for '
+        'operator-side admin curation)', () async {
+      final pool = _RolesPool(insertedRoleId: _roleOpScoped);
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      await repo.insertOperatorRole(
+        operatorId: _opA,
+        locationId: _locA,
+        createdByUserId: _actorA,
+        roleKey: 'locked_role',
+        displayName: 'Locked',
+        isEditable: false,
+      );
+      final params = pool.transactions.single.parameters.firstWhere(
+        (p) => p['role_key'] == 'locked_role',
+      );
+      expect(params['is_editable'], isFalse);
+    });
+
+    test('INSERT returning empty rows → throws StateError (RLS denied '
+        'the row even though SET LOCAL ran — hard failure, never a '
+        'silent null)', () async {
+      final pool = _RolesPool(insertedRoleId: null);
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      await expectLater(
+        repo.insertOperatorRole(
           operatorId: _opA,
           locationId: _locA,
           createdByUserId: _actorA,
           roleKey: 'shift_manager',
           displayName: 'Shift Manager',
-          description: 'Custom role for shift leads',
-        );
-        expect(id, equals(_roleOpScoped));
+        ),
+        throwsStateError,
+      );
+    });
 
-        final tx = pool.transactions.single;
-        final insertSql = tx.executedSql.firstWhere(
-          (s) => s.contains('insert into roles'),
-        );
-        // is_seeded literal false in the VALUES list — never bound.
-        expect(
-          insertSql,
-          contains('false, @is_editable'),
-          reason: 'custom roles cannot self-mark as seeded; the false '
-              'must be a SQL literal so a bind-substitution attack '
-              'cannot lift an operator role to seeded posture',
-        );
-        // created_by and updated_by share the same parameter.
-        expect(insertSql, contains('@created_by::uuid, @created_by::uuid'));
-
-        final params = tx.parameters.firstWhere(
-          (p) => p['role_key'] == 'shift_manager',
-        );
-        expect(params['operator_id'], equals(_opA));
-        expect(params['display_name'], equals('Shift Manager'));
-        expect(params['description'], equals('Custom role for shift leads'));
-        expect(params['created_by'], equals(_actorA));
-        expect(params['is_editable'], isTrue);
-      },
-    );
-
-    test(
-      'isEditable=false plumbs through (locked custom roles for '
-      'operator-side admin curation)',
-      () async {
-        final pool = _RolesPool(insertedRoleId: _roleOpScoped);
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        await repo.insertOperatorRole(
+    test('INSERT returning malformed role_id (empty string) → throws '
+        'StateError (defensive guard against a misbehaving driver)', () async {
+      final pool = _RolesPool(insertedRoleId: '');
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      await expectLater(
+        repo.insertOperatorRole(
           operatorId: _opA,
           locationId: _locA,
           createdByUserId: _actorA,
-          roleKey: 'locked_role',
-          displayName: 'Locked',
-          isEditable: false,
-        );
-        final params = pool.transactions.single.parameters.firstWhere(
-          (p) => p['role_key'] == 'locked_role',
-        );
-        expect(params['is_editable'], isFalse);
-      },
-    );
-
-    test(
-      'INSERT returning empty rows → throws StateError (RLS denied '
-      'the row even though SET LOCAL ran — hard failure, never a '
-      'silent null)',
-      () async {
-        final pool = _RolesPool(insertedRoleId: null);
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        await expectLater(
-          repo.insertOperatorRole(
-            operatorId: _opA,
-            locationId: _locA,
-            createdByUserId: _actorA,
-            roleKey: 'shift_manager',
-            displayName: 'Shift Manager',
-          ),
-          throwsStateError,
-        );
-      },
-    );
-
-    test(
-      'INSERT returning malformed role_id (empty string) → throws '
-      'StateError (defensive guard against a misbehaving driver)',
-      () async {
-        final pool = _RolesPool(insertedRoleId: '');
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        await expectLater(
-          repo.insertOperatorRole(
-            operatorId: _opA,
-            locationId: _locA,
-            createdByUserId: _actorA,
-            roleKey: 'shift_manager',
-            displayName: 'Shift Manager',
-          ),
-          throwsStateError,
-        );
-      },
-    );
+          roleKey: 'shift_manager',
+          displayName: 'Shift Manager',
+        ),
+        throwsStateError,
+      );
+    });
   });
 
   group('RolesRepository.updateOperatorRole', () {
-    test(
-      'roles-row monotonicity: UPDATE always advances updated_at = '
-      'now() and binds updated_by = actor — even when only one '
-      'editable column is supplied via coalesce',
-      () async {
-        final pool = _RolesPool(updateAffectedRows: 1);
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        final affected = await repo.updateOperatorRole(
-          operatorId: _opA,
-          locationId: _locA,
-          updatedByUserId: _actorA,
-          roleId: _roleOpScoped,
-          displayName: 'Updated Name',
-        );
-        expect(affected, equals(1));
+    test('roles-row monotonicity: UPDATE always advances updated_at = '
+        'now() and binds updated_by = actor — even when only one '
+        'editable column is supplied via coalesce', () async {
+      final pool = _RolesPool(updateAffectedRows: 1);
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      final affected = await repo.updateOperatorRole(
+        operatorId: _opA,
+        locationId: _locA,
+        updatedByUserId: _actorA,
+        roleId: _roleOpScoped,
+        displayName: 'Updated Name',
+      );
+      expect(affected, equals(1));
 
-        final tx = pool.transactions.single;
-        final updateSql = tx.executedSql.firstWhere(
-          (s) => s.contains('update roles'),
-        );
-        // Updated_at MUST advance and updated_by MUST be rewritten —
-        // these are the per-row monotonic markers the audit trail
-        // depends on for ordered playback.
-        expect(updateSql, contains('updated_at = now()'));
-        expect(updateSql, contains('updated_by = @updated_by::uuid'));
-        // Coalesce guards every editable column so an omitted field
-        // is preserved, not blanked.
-        expect(
-          updateSql,
-          contains('display_name = coalesce(@display_name, display_name)'),
-        );
-        expect(
-          updateSql,
-          contains('description = coalesce(@description, description)'),
-        );
+      final tx = pool.transactions.single;
+      final updateSql = tx.executedSql.firstWhere(
+        (s) => s.contains('update roles'),
+      );
+      // Updated_at MUST advance and updated_by MUST be rewritten —
+      // these are the per-row monotonic markers the audit trail
+      // depends on for ordered playback.
+      expect(updateSql, contains('updated_at = now()'));
+      expect(updateSql, contains('updated_by = @updated_by::uuid'));
+      // Coalesce guards every editable column so an omitted field
+      // is preserved, not blanked.
+      expect(
+        updateSql,
+        contains('display_name = coalesce(@display_name, display_name)'),
+      );
+      expect(
+        updateSql,
+        contains('description = coalesce(@description, description)'),
+      );
 
-        final params = tx.parameters.firstWhere(
-          (p) => p['display_name'] == 'Updated Name',
-        );
-        expect(params['updated_by'], equals(_actorA));
-        expect(params['description'], isNull,
-            reason: 'omitted description binds null so coalesce keeps '
-                'the existing value');
-      },
-    );
+      final params = tx.parameters.firstWhere(
+        (p) => p['display_name'] == 'Updated Name',
+      );
+      expect(params['updated_by'], equals(_actorA));
+      expect(
+        params['description'],
+        isNull,
+        reason:
+            'omitted description binds null so coalesce keeps '
+            'the existing value',
+      );
+    });
 
-    test(
-      'guard clauses: WHERE requires is_seeded=false AND is_editable=true '
-      'AND deleted_at is null — operator cannot mutate seeded / locked '
-      '/ deleted rows even with a stale role_id',
-      () async {
-        final pool = _RolesPool(updateAffectedRows: 0);
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        await repo.updateOperatorRole(
-          operatorId: _opA,
-          locationId: _locA,
-          updatedByUserId: _actorA,
-          roleId: _roleOpScoped,
-          displayName: 'X',
-        );
-        final tx = pool.transactions.single;
-        final updateSql = tx.executedSql.firstWhere(
-          (s) => s.contains('update roles'),
-        );
-        expect(updateSql, contains('and operator_id = @operator_id::uuid'));
-        expect(updateSql, contains('and is_seeded = false'));
-        expect(updateSql, contains('and is_editable = true'));
-        expect(updateSql, contains('and deleted_at is null'));
-      },
-    );
+    test('guard clauses: WHERE requires is_seeded=false AND is_editable=true '
+        'AND deleted_at is null — operator cannot mutate seeded / locked '
+        '/ deleted rows even with a stale role_id', () async {
+      final pool = _RolesPool(updateAffectedRows: 0);
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      await repo.updateOperatorRole(
+        operatorId: _opA,
+        locationId: _locA,
+        updatedByUserId: _actorA,
+        roleId: _roleOpScoped,
+        displayName: 'X',
+      );
+      final tx = pool.transactions.single;
+      final updateSql = tx.executedSql.firstWhere(
+        (s) => s.contains('update roles'),
+      );
+      expect(updateSql, contains('and operator_id = @operator_id::uuid'));
+      expect(updateSql, contains('and is_seeded = false'));
+      expect(updateSql, contains('and is_editable = true'));
+      expect(updateSql, contains('and deleted_at is null'));
+    });
 
-    test(
-      'returns 0 when no row matches the guards (proxy translates to '
-      '404 / 403 envelope based on context)',
-      () async {
-        final pool = _RolesPool(updateAffectedRows: 0);
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        final affected = await repo.updateOperatorRole(
-          operatorId: _opA,
-          locationId: _locA,
-          updatedByUserId: _actorA,
-          roleId: _roleOpScoped,
-          displayName: 'X',
-        );
-        expect(affected, equals(0));
-      },
-    );
+    test('returns 0 when no row matches the guards (proxy translates to '
+        '404 / 403 envelope based on context)', () async {
+      final pool = _RolesPool(updateAffectedRows: 0);
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      final affected = await repo.updateOperatorRole(
+        operatorId: _opA,
+        locationId: _locA,
+        updatedByUserId: _actorA,
+        roleId: _roleOpScoped,
+        displayName: 'X',
+      );
+      expect(affected, equals(0));
+    });
   });
 
-  group('RolesRepository.softDeleteOperatorRole — active-grant invariant',
-      () {
-    test(
-      'refuses with StateError when at least one active grant exists; '
-      'the active-grants probe runs FIRST inside the same transaction '
-      'so a grant insert that races the DELETE rolls back cleanly',
-      () async {
-        final pool = _RolesPool(
-          activeGrantsRows: <PostgresRow>[
-            <String, Object?>{'?column?': 1},
-          ],
-        );
-        final repo = RolesRepository(TenantTransactionWrapper(pool));
-        await expectLater(
-          repo.softDeleteOperatorRole(
-            operatorId: _opA,
-            locationId: _locA,
-            updatedByUserId: _actorA,
-            roleId: _roleOpScoped,
-          ),
-          throwsStateError,
-        );
+  group('RolesRepository.softDeleteOperatorRole — active-grant invariant', () {
+    test('refuses with StateError when at least one active grant exists; '
+        'the active-grants probe runs FIRST inside the same transaction '
+        'so a grant insert that races the DELETE rolls back cleanly', () async {
+      final pool = _RolesPool(
+        activeGrantsRows: <PostgresRow>[
+          <String, Object?>{'?column?': 1},
+        ],
+      );
+      final repo = RolesRepository(TenantTransactionWrapper(pool));
+      await expectLater(
+        repo.softDeleteOperatorRole(
+          operatorId: _opA,
+          locationId: _locA,
+          updatedByUserId: _actorA,
+          roleId: _roleOpScoped,
+        ),
+        throwsStateError,
+      );
 
-        final tx = pool.transactions.single;
-        // Active-grants probe shape — single SELECT 1 from user_roles
-        // filtered to the role + revoked_at IS NULL.
-        final probeSql = tx.executedSql.firstWhere(
-          (s) =>
-              s.contains('from user_roles') && s.contains('revoked_at is null'),
-        );
-        expect(probeSql, contains('role_id = @role_id::uuid'));
-        // No UPDATE on roles ran — the probe short-circuited the
-        // soft-delete.
-        expect(
-          tx.executedSql.where(
-            (s) =>
-                s.contains('update roles') && s.contains('deleted_at = now()'),
-          ),
-          isEmpty,
-          reason: 'soft-delete must not run when an active grant blocks',
-        );
-      },
-    );
+      final tx = pool.transactions.single;
+      // Active-grants probe shape — single SELECT 1 from user_roles
+      // filtered to the role + revoked_at IS NULL.
+      final probeSql = tx.executedSql.firstWhere(
+        (s) =>
+            s.contains('from user_roles') && s.contains('revoked_at is null'),
+      );
+      expect(probeSql, contains('role_id = @role_id::uuid'));
+      // No UPDATE on roles ran — the probe short-circuited the
+      // soft-delete.
+      expect(
+        tx.executedSql.where(
+          (s) => s.contains('update roles') && s.contains('deleted_at = now()'),
+        ),
+        isEmpty,
+        reason: 'soft-delete must not run when an active grant blocks',
+      );
+    });
 
     test(
       'happy path: no active grants → soft-delete UPDATE runs, '
@@ -529,8 +480,7 @@ void main() {
 
         final tx = pool.transactions.single;
         final updateSql = tx.executedSql.firstWhere(
-          (s) =>
-              s.contains('update roles') && s.contains('deleted_at = now()'),
+          (s) => s.contains('update roles') && s.contains('deleted_at = now()'),
         );
         // updated_at MUST advance with deleted_at on the same row write —
         // the audit trail's per-row monotonicity depends on it.
@@ -643,8 +593,7 @@ class _RolesTransaction extends PostgresTransaction {
         <String, Object?>{'role_id': id},
       ];
     }
-    if (sql.contains('from user_roles') &&
-        sql.contains('revoked_at is null')) {
+    if (sql.contains('from user_roles') && sql.contains('revoked_at is null')) {
       return activeGrantsRows;
     }
     if (sql.contains('from roles')) {

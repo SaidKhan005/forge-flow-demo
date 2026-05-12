@@ -265,13 +265,15 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       updates: command.permissions,
     );
     var bumpedUsers = 0;
-    if (metadataChanged || permissionChanges > 0) {
+    if (permissionChanges > 0) {
       bumpedUsers = await userRolesRepository.bumpActiveGrantHoldersForRole(
         operatorId: command.operatorId,
         locationId: command.locationId,
         actorUserId: command.actorUserId,
         roleId: command.roleId,
       );
+    }
+    if (metadataChanged || permissionChanges > 0) {
       await _audit(
         operatorId: command.operatorId,
         locationId: command.locationId,

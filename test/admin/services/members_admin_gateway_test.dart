@@ -227,6 +227,7 @@ void main() {
           gateway.overrideRoleGrant(
             operatorId: kDemoDinerOperatorId,
             userId: 'demo-user-diner-owner',
+            roleId: 'operator_manager',
             roleKey: 'operator_manager',
             idempotencyKey: 'k3',
             actorUserId: 'demo-non-admin',
@@ -495,6 +496,7 @@ void main() {
         final first = await gateway.overrideRoleGrant(
           operatorId: kDemoDinerOperatorId,
           userId: 'demo-user-diner-supervisor',
+          roleId: 'operator_manager',
           roleKey: 'operator_manager',
           idempotencyKey: key,
           actorUserId: 'demo-super-admin',
@@ -504,6 +506,7 @@ void main() {
         final second = await gateway.overrideRoleGrant(
           operatorId: kDemoDinerOperatorId,
           userId: 'demo-user-diner-supervisor',
+          roleId: 'operator_owner',
           roleKey: 'operator_owner',
           idempotencyKey: key,
           actorUserId: 'demo-super-admin',
@@ -576,6 +579,7 @@ void main() {
         final updated = await gateway.overrideRoleGrant(
           operatorId: kDemoDinerOperatorId,
           userId: 'demo-user-diner-staff-archived',
+          roleId: 'operator_supervisor',
           roleKey: 'operator_supervisor',
           idempotencyKey: 'k-override',
           actorUserId: 'demo-super-admin',
@@ -940,6 +944,7 @@ void main() {
       final updated = await gateway.overrideRoleGrant(
         operatorId: 'op-1',
         userId: 'user-1',
+        roleId: 'operator_manager',
         roleKey: 'operator_manager',
         scopeType: 'org_unit',
         orgUnitId: 'unit-1',
@@ -952,12 +957,50 @@ void main() {
       expect(captured.url.path, equals('/v1/admin/auth/role-grants'));
       final body = jsonDecode(captured.body) as Map<String, Object?>;
       expect(body['role_id'], equals('operator_manager'));
-      expect(body['role_key'], equals('operator_manager'));
+      expect(body.containsKey('role_key'), isFalse);
       expect(body['scope_type'], equals('org_unit'));
       expect(body['org_unit_id'], equals('unit-1'));
       expect(body['admin_reason'], equals('support-onboarding'));
       expect(updated.grants.single.scopeType, equals('org_unit'));
     });
+
+    test(
+      'overrideRoleGrant sends custom role UUID as role_id, not role_key slug',
+      () async {
+        late http.Request captured;
+        final mock = http_testing.MockClient((http.Request request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{'user_role_id': 'grant-custom-1'}),
+            201,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+        final gateway = HttpMembersAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+
+        final updated = await gateway.overrideRoleGrant(
+          operatorId: 'op-1',
+          userId: 'user-1',
+          roleId: '44444444-4444-4444-8444-444444444444',
+          roleKey: 'custom.floor_captain',
+          scopeType: 'operator_wide',
+          idempotencyKey: 'idem-grant-custom-role',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'support-reassignment',
+        );
+
+        final body = jsonDecode(captured.body) as Map<String, Object?>;
+        expect(body['role_id'], equals('44444444-4444-4444-8444-444444444444'));
+        expect(body.containsKey('role_key'), isFalse);
+        expect(updated.roleKey, equals('custom.floor_captain'));
+        expect(updated.grants.single.roleKey, equals('custom.floor_captain'));
+      },
+    );
 
     test('createInvite accepts the proxy auth create response shape', () async {
       final mock = http_testing.MockClient((http.Request request) async {

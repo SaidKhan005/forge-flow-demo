@@ -454,6 +454,62 @@ void main() {
       },
     );
 
+    test(
+      'POST /v1/admin/auth/role-grants rejects role_key without role_id',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
+          );
+          try {
+            final response = await harness
+                .postJson(adminAuthRoleGrantsPath, const <String, Object?>{
+                  'user_id': 'target-user',
+                  'role_key': 'custom.floor_captain',
+                  'scope_type': 'operator_wide',
+                }, idempotencyKey: 'idem-role-grant-role-key');
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('role_id_required'));
+            expect(gateway.roleGrantCreates, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'POST /v1/admin/auth/role-grants rejects role_key even with role_id',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
+          );
+          try {
+            final response = await harness.postJson(
+              adminAuthRoleGrantsPath,
+              const <String, Object?>{
+                'user_id': 'target-user',
+                'role_id': _roleId,
+                'role_key': 'custom.floor_captain',
+                'scope_type': 'operator_wide',
+              },
+              idempotencyKey: 'idem-role-grant-role-key-with-id',
+            );
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('role_id_required'));
+            expect(gateway.roleGrantCreates, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
     test('DELETE /v1/admin/auth/role-grants/{id} rejects missing '
         'Idempotency-Key', () async {
       await _withRealHttp(() async {

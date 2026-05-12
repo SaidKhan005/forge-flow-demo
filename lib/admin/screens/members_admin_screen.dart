@@ -538,6 +538,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       builder: (_) => _OverrideRoleDialog(
         currentRoleKey: row.roleKey,
         targetDisplayName: row.displayName,
+        roles: _roles,
         accessScopes: _availableAccessScopes,
         initialScope: _initialGrantScope(row),
       ),
@@ -547,6 +548,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       () => widget.gateway.overrideRoleGrant(
         operatorId: widget.pickedOperator.operatorId,
         userId: row.userId,
+        roleId: result.roleId,
         roleKey: result.roleKey,
         idempotencyKey: _nextIdempotencyKey('member-override-role'),
         actorUserId: widget.actorUserId,
@@ -2094,14 +2096,28 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
 
 class _OverrideRoleResult {
   const _OverrideRoleResult({
+    required this.roleId,
     required this.roleKey,
     required this.scope,
     required this.adminReason,
   });
 
+  final String roleId;
   final String roleKey;
   final MemberAccessScopeRef scope;
   final String adminReason;
+}
+
+class _OverrideRoleChoice {
+  const _OverrideRoleChoice({
+    required this.roleId,
+    required this.roleKey,
+    required this.label,
+  });
+
+  final String roleId;
+  final String roleKey;
+  final String label;
 }
 
 String _inviteScopeLabel(MemberInviteRow invite) {
@@ -2123,12 +2139,14 @@ class _OverrideRoleDialog extends StatefulWidget {
   const _OverrideRoleDialog({
     required this.currentRoleKey,
     required this.targetDisplayName,
+    required this.roles,
     required this.accessScopes,
     this.initialScope,
   });
 
   final String currentRoleKey;
   final String targetDisplayName;
+  final List<RoleAdminRow> roles;
   final List<MemberAccessScopeRef> accessScopes;
   final MemberAccessScopeRef? initialScope;
 
@@ -2137,7 +2155,8 @@ class _OverrideRoleDialog extends StatefulWidget {
 }
 
 class _OverrideRoleDialogState extends State<_OverrideRoleDialog> {
-  late String _selectedRole = widget.currentRoleKey;
+  late final List<_OverrideRoleChoice> _roleChoices = _buildRoleChoices();
+  late String _selectedRoleId = _initialRoleId();
   late String? _selectedScopeId =
       widget.initialScope?.id ??
       (widget.accessScopes.isEmpty ? null : widget.accessScopes.first.id);
@@ -2157,9 +2176,15 @@ class _OverrideRoleDialogState extends State<_OverrideRoleDialog> {
       setState(() => _violated = true);
       return;
     }
+    final role = _selectedRoleChoice;
+    if (role == null) {
+      setState(() => _violated = true);
+      return;
+    }
     Navigator.of(context).pop(
       _OverrideRoleResult(
-        roleKey: _selectedRole,
+        roleId: role.roleId,
+        roleKey: role.roleKey,
         scope: scope,
         adminReason: reason,
       ),
@@ -2173,6 +2198,43 @@ class _OverrideRoleDialogState extends State<_OverrideRoleDialog> {
       if (scope.id == selected) return scope;
     }
     return null;
+  }
+
+  _OverrideRoleChoice? get _selectedRoleChoice {
+    for (final choice in _roleChoices) {
+      if (choice.roleId == _selectedRoleId) return choice;
+    }
+    return null;
+  }
+
+  List<_OverrideRoleChoice> _buildRoleChoices() {
+    if (widget.roles.isNotEmpty) {
+      return <_OverrideRoleChoice>[
+        for (final role in widget.roles)
+          _OverrideRoleChoice(
+            roleId: role.roleId,
+            roleKey: role.roleKey,
+            label: roleAdminDisplayLabel(role),
+          ),
+      ];
+    }
+    return <_OverrideRoleChoice>[
+      for (final roleKey in kSeededRoleKeysForAdmin)
+        _OverrideRoleChoice(
+          roleId: roleKey,
+          roleKey: roleKey,
+          label: memberRoleLabel(roleKey),
+        ),
+    ];
+  }
+
+  String _initialRoleId() {
+    for (final choice in _roleChoices) {
+      if (choice.roleKey == widget.currentRoleKey) return choice.roleId;
+    }
+    return _roleChoices.isEmpty
+        ? widget.currentRoleKey
+        : _roleChoices.first.roleId;
   }
 
   @override
@@ -2199,22 +2261,22 @@ class _OverrideRoleDialogState extends State<_OverrideRoleDialog> {
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               key: const Key('admin_members_override_role_select'),
-              initialValue: _selectedRole,
+              initialValue: _selectedRoleId,
               isExpanded: true,
               decoration: const InputDecoration(
                 labelText: 'New role',
                 border: OutlineInputBorder(),
               ),
               items: <DropdownMenuItem<String>>[
-                for (final role in kSeededRoleKeysForAdmin)
+                for (final role in _roleChoices)
                   DropdownMenuItem<String>(
-                    value: role,
-                    child: Text(memberRoleLabel(role)),
+                    value: role.roleId,
+                    child: Text(role.label),
                   ),
               ],
               onChanged: (v) {
                 if (v == null) return;
-                setState(() => _selectedRole = v);
+                setState(() => _selectedRoleId = v);
               },
             ),
             const SizedBox(height: 12),

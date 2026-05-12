@@ -501,6 +501,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
   Future<MemberAdminRow> overrideRoleGrant({
     required String operatorId,
     required String userId,
+    required String roleId,
     required String roleKey,
     required String idempotencyKey,
     required String actorUserId,
@@ -563,6 +564,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
       targetKind: 'team_user',
       targetId: userId,
       payload: <String, Object?>{
+        'role_id': roleId,
         'role_key': <String, String>{'from': prev.roleKey, 'to': roleKey},
         'scope_type': scopeType,
         if (primaryLocationId != null) 'location_id': primaryLocationId,

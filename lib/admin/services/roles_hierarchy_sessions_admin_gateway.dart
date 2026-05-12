@@ -973,16 +973,8 @@ RoleAdminRow _roleRowFromJson(Map<String, Object?> json) {
         if (p is String) p,
   ];
   return RoleAdminRow(
-    roleId: _firstStringField(json, const <String>[
-      'role_id',
-      'id',
-      'role_key',
-    ]),
-    roleKey: _firstStringField(json, const <String>[
-      'role_key',
-      'key',
-      'role_id',
-    ]),
+    roleId: _firstStringField(json, const <String>['role_id', 'id']),
+    roleKey: _firstStringField(json, const <String>['role_key', 'key']),
     displayName: _firstStringField(json, const <String>[
       'display_name',
       'role_label',

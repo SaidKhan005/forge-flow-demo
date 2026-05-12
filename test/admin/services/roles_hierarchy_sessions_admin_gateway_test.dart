@@ -683,6 +683,7 @@ void main() {
               'roles': <Object?>[
                 <String, Object?>{
                   'role_id': 'operator_staff',
+                  'role_key': 'operator_staff',
                   'role_label': 'Operator staff',
                   'is_seeded': true,
                   'permission_keys': <String>['team.users.view'],
@@ -748,6 +749,38 @@ void main() {
       expect(sessions.single.deviceFingerprint, equals('Unknown device'));
       expect(sessions.single.createdAt, equals(sessions.single.lastActiveAt));
     });
+
+    test(
+      'listRoles requires role_id and does not treat role_key as the mutation id',
+      () async {
+        final mock = http_testing.MockClient((http.Request request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'roles': <Object?>[
+                <String, Object?>{
+                  'role_key': 'custom.floor_captain',
+                  'display_name': 'Floor Captain',
+                  'is_seeded': false,
+                  'permission_keys': const <String>[],
+                },
+              ],
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+        final gateway = HttpRolesHierarchySessionsAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+
+        await expectLater(
+          gateway.listRoles(operatorId: 'op-1'),
+          throwsStateError,
+        );
+      },
+    );
 
     test(
       'listOrgUnits GET pins /v1/admin/auth/org-units + operator_id',

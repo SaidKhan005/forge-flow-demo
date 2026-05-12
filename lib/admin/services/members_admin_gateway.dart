@@ -374,6 +374,7 @@ abstract class MembersAdminGateway {
   Future<MemberAdminRow> overrideRoleGrant({
     required String operatorId,
     required String userId,
+    required String roleId,
     required String roleKey,
     required String idempotencyKey,
     required String actorUserId,
@@ -685,6 +686,7 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
   Future<MemberAdminRow> overrideRoleGrant({
     required String operatorId,
     required String userId,
+    required String roleId,
     required String roleKey,
     required String idempotencyKey,
     required String actorUserId,
@@ -703,8 +705,7 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
         'user_id': userId,
-        'role_key': roleKey,
-        'role_id': roleKey,
+        'role_id': roleId,
         'scope_type': scopeType,
         if (scopeType == 'location' &&
             primaryLocationId != null &&
