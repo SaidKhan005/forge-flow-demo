@@ -18,6 +18,28 @@
 // UX writing standard (`memory/project_ux_writing_standard.md`):
 // every label, button, status, snackbar trains the operator. Plain
 // English. No engineering jargon.
+//
+// Slice C-8 (catalog completeness): the screen renders every entry
+// from `kNotificationCatalog` (no filtering by wiring readiness),
+// stamping each with one of three plain-English state badges:
+//
+//   * "Available"    - emit + delivery wired; toggle controls fanout.
+//   * "Coming soon"  - catalog entry exists but the emitter is not
+//                      yet shipped (per audit matrix
+//                      `docs/_execution/lane_c_parity/02_plumbing_audit_matrix.md`
+//                      section E4 and the FOLLOW-UP block at
+//                      `tool/advisor_proxy/email_dispatch/notification_event_fanout.dart:737-757`).
+//                      Toggles are disabled; subcopy explains why.
+//   * "Backend-only" - emit is wired and Forge & Flow sends regardless
+//                      of operator preference (system-mandated; e.g.
+//                      audit-chain integrity alerts). Toggles disabled;
+//                      subcopy points to the audit log.
+//
+// Hierarchy carve-out (CLAUDE.md HP #11): notification preferences are
+// per-(operator, user, event, channel), not hierarchy-scoped. This is
+// the same carve-out the My Account screen relies on - it's a personal
+// preference surface, not an org-config surface. Documented inline so
+// future audit passes don't flag it as missing inheritance.
 
 import 'dart:async';
 import 'dart:math';
@@ -28,6 +50,78 @@ import '../../domain/models/notification_event_catalog.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_notification_preferences_gateway_provider.dart';
 import '../../theme/app_theme.dart';
+
+/// Wiring-readiness state for one catalog entry, as surfaced on the
+/// operator-web Notifications screen. Plain-English labels live in
+/// [_kStateLabel] / [_kStateSubcopy].
+///
+/// State assignment lives in [_kEventState] below (not in the catalog
+/// itself - the catalog is the durable contract for the fanout worker
+/// and stays free of UI-side wiring flags per slice C-8). When a
+/// future hook ships, flip the matching map entry from `comingSoon` to
+/// `available` in one place.
+enum _NotifEventState {
+  /// Emit + delivery fully wired. Toggle controls fanout.
+  available,
+
+  /// Catalog entry exists; emitter not yet shipped. Toggle disabled;
+  /// row reads honestly so the operator knows the surface is coming.
+  comingSoon,
+
+  /// Emit is wired and Forge & Flow sends regardless of operator
+  /// preference (system-mandated). Toggle disabled; subcopy points to
+  /// the audit log so the operator knows where to look.
+  backendOnly,
+}
+
+/// Per-event readiness map. Source of truth:
+///   * Audit matrix E4 + O3 in
+///     `docs/_execution/lane_c_parity/02_plumbing_audit_matrix.md`.
+///   * FOLLOW-UP comments at
+///     `tool/advisor_proxy/email_dispatch/notification_event_fanout.dart:737-757`.
+///   * Catalog comment on `notif.audit.anchor_failure` ("rare and
+///     never blocks operations, but you should know") classifies it
+///     as a system-mandated notification under the backend-only state.
+///
+/// When a hook ships and the audit matrix flips, update this map and
+/// the existing tests will catch any drift.
+const Map<String, _NotifEventState> _kEventState = <String, _NotifEventState>{
+  'notif.backfill.complete': _NotifEventState.available,
+  'notif.backfill.failed': _NotifEventState.available,
+  'notif.vendor.now_available': _NotifEventState.available,
+  'notif.audit.anchor_failure': _NotifEventState.backendOnly,
+  'notif.shift.stale': _NotifEventState.comingSoon,
+  'notif.star.override': _NotifEventState.comingSoon,
+  'notif.plan.updated': _NotifEventState.comingSoon,
+};
+
+/// Resolves the readiness state for a catalog entry. Defaults to
+/// `available` when the event is missing from `_kEventState` so a
+/// newly added catalog entry renders as a working toggle while a
+/// follow-up annotates the matrix.
+_NotifEventState _stateFor(NotificationCatalogEntry entry) =>
+    _kEventState[entry.eventKey] ?? _NotifEventState.available;
+
+/// Plain-English badge labels per state. UX writing standard: no
+/// jargon, train the operator inline.
+const Map<_NotifEventState, String> _kStateLabel = <_NotifEventState, String>{
+  _NotifEventState.available: 'Available',
+  _NotifEventState.comingSoon: 'Coming soon',
+  _NotifEventState.backendOnly: 'Always on',
+};
+
+/// Plain-English subcopy per state. Explains what the operator can or
+/// cannot do, and why.
+const Map<_NotifEventState, String> _kStateSubcopy =
+    <_NotifEventState, String>{
+  _NotifEventState.available: '',
+  _NotifEventState.comingSoon:
+      "We'll turn this on once the team launches it. "
+          "You can come back later to set how you'd like to be notified.",
+  _NotifEventState.backendOnly:
+      "Forge & Flow sends this no matter what - it's part of how we "
+          "keep your data safe. Open the audit log to see recent activity.",
+};
 
 /// Operator Web Notifications screen. Pure render +
 /// optimistic-toggle widget; all I/O flows through [gateway].
@@ -136,6 +230,11 @@ class _SettingsNotificationsScreenState
   }) async {
     final gateway = widget.gateway;
     if (gateway == null) return;
+    // Coming-soon and backend-only rows render disabled switches; this
+    // guard is a defense-in-depth so a stray tap never persists a
+    // preference row that the fanout will ignore (coming soon) or
+    // override (backend-only).
+    if (_stateFor(event) != _NotifEventState.available) return;
     final next = !currentlyEnabled;
     final key = _PrefKey(eventKey: event.eventKey, channel: channel);
     setState(() => _explicit[key] = next);
@@ -365,6 +464,9 @@ class _EventRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = _stateFor(event);
+    final isAvailable = state == _NotifEventState.available;
+    final subcopy = _kStateSubcopy[state] ?? '';
     return Row(
       key: Key('settings_notifications_event_${event.eventKey}'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -373,18 +475,39 @@ class _EventRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                event.title,
-                style: AppTextStyles.mono14(
-                  color: AppColors.textPrimary,
-                  weight: FontWeight.w600,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      event.title,
+                      style: AppTextStyles.mono14(
+                        color: AppColors.textPrimary,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _StateBadge(
+                    eventKey: event.eventKey,
+                    state: state,
+                  ),
+                ],
               ),
               const SizedBox(height: 4),
               Text(
                 event.description,
                 style: AppTextStyles.body12(color: AppColors.textMuted),
               ),
+              if (subcopy.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subcopy,
+                  key: Key(
+                      'settings_notifications_subcopy_${event.eventKey}'),
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
+                ),
+              ],
             ],
           ),
         ),
@@ -396,10 +519,52 @@ class _EventRow extends StatelessWidget {
               event: event,
               channel: channel,
               enabled: resolveEnabled(event, channel),
-              onToggle: onToggle,
+              onToggle: isAvailable ? onToggle : null,
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Plain-English state badge for one catalog row. Three variants:
+/// "Available" (success-tinted), "Coming soon" (warning-tinted),
+/// "Always on" (subtle/muted).
+class _StateBadge extends StatelessWidget {
+  const _StateBadge({required this.eventKey, required this.state});
+
+  final String eventKey;
+  final _NotifEventState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _kStateLabel[state] ?? '';
+    final (Color bg, Color fg) = switch (state) {
+      _NotifEventState.available => (
+        AppColors.sunsetDark.withValues(alpha: 0.10),
+        AppColors.sunsetDark,
+      ),
+      _NotifEventState.comingSoon => (
+        AppColors.warningBadgeBg,
+        AppColors.warning,
+      ),
+      _NotifEventState.backendOnly => (
+        AppColors.borderSubtle.withValues(alpha: 0.55),
+        AppColors.textSecondary,
+      ),
+    };
+    return Container(
+      key: Key('settings_notifications_state_badge_$eventKey'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.mono10(color: fg)
+            .copyWith(fontWeight: FontWeight.w700),
+      ),
     );
   }
 }

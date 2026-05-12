@@ -6,6 +6,13 @@
 //   * manager-only events hidden for a non-manager role
 //   * toggle fires PUT through the gateway
 //   * gateway failure rolls the toggle back + surfaces error snackbar
+//
+// Slice C-8 (catalog completeness):
+//   * every catalog entry renders for an admin actor
+//   * "Coming soon" rows render disabled switches + the plain-English
+//     subcopy and never call the gateway when tapped
+//   * "Backend-only" rows (audit-chain integrity) render disabled
+//     switches with audit-log subcopy
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -157,6 +164,224 @@ void main() {
       expect(call['channel'], equals('push'));
       expect(call['enabled'], isFalse);
       expect(call['idempotencyKey'], equals('test-idem-1'));
+    });
+
+    // ---- Slice C-8: catalog completeness --------------------------------
+
+    testWidgets(
+        'C-8: admin actor sees every catalog entry with a state badge',
+        (tester) async {
+      await sizeViewport(tester, const Size(1024, 1600));
+      final session = sessionWithRoles(<String>['operator_owner']);
+      final gateway = _FakeGateway();
+      await tester.pumpWidget(
+        wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+      for (final event in kNotificationCatalog) {
+        expect(
+          find.byKey(Key('settings_notifications_event_${event.eventKey}')),
+          findsOneWidget,
+          reason: 'C-8 contract: render every catalog entry (${event.eventKey})',
+        );
+        expect(
+          find.byKey(
+              Key('settings_notifications_state_badge_${event.eventKey}')),
+          findsOneWidget,
+          reason: 'state badge present for ${event.eventKey}',
+        );
+      }
+    });
+
+    testWidgets(
+        'C-8: "Coming soon" rows render disabled switches + subcopy and '
+        'never call the gateway when tapped', (tester) async {
+      await sizeViewport(tester, const Size(1024, 1600));
+      final session = sessionWithRoles(<String>['operator_owner']);
+      final gateway = _FakeGateway();
+      await tester.pumpWidget(
+        wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+
+      // The 3 "Coming soon" entries per the audit matrix E4:
+      //   notif.shift.stale, notif.star.override, notif.plan.updated.
+      const comingSoon = <String>{
+        'notif.shift.stale',
+        'notif.star.override',
+        'notif.plan.updated',
+      };
+      for (final key in comingSoon) {
+        // Badge text "Coming soon" is present in the row.
+        final badgeFinder = find.byKey(Key(
+          'settings_notifications_state_badge_$key',
+        ));
+        expect(badgeFinder, findsOneWidget);
+        expect(
+          find.descendant(
+            of: badgeFinder,
+            matching: find.text('Coming soon'),
+          ),
+          findsOneWidget,
+          reason: '$key badge reads "Coming soon"',
+        );
+        // Plain-English subcopy present.
+        expect(
+          find.byKey(Key('settings_notifications_subcopy_$key')),
+          findsOneWidget,
+          reason: '$key has plain-English subcopy',
+        );
+        // Every channel toggle for this row is disabled (Switch.onChanged
+        // == null when the row is coming-soon).
+        for (final channel in kNotificationChannelOrder) {
+          final toggle = tester.widget<Switch>(
+            find.byKey(Key('settings_notifications_toggle_${key}_$channel')),
+          );
+          expect(
+            toggle.onChanged,
+            isNull,
+            reason: '$key channel $channel toggle must be disabled',
+          );
+        }
+      }
+
+      // Tapping a coming-soon switch must NOT call the gateway. We tap
+      // the underlying Switch widget regardless of disabled state to
+      // prove the guard short-circuits.
+      gateway.upsertCalls.clear();
+      // ignore: lines_longer_than_80_chars
+      final switchFinder = find.byKey(
+        const Key('settings_notifications_toggle_notif.shift.stale_push'),
+      );
+      // Disabled switches ignore taps; this acts as a regression guard
+      // in case the disabled-state regresses later.
+      await tester.tap(switchFinder, warnIfMissed: false);
+      await tester.pump();
+      expect(
+        gateway.upsertCalls,
+        isEmpty,
+        reason: 'coming-soon toggle must not call the gateway',
+      );
+    });
+
+    testWidgets(
+        'C-8: "Backend-only" rows render disabled switches + audit-log '
+        'subcopy', (tester) async {
+      await sizeViewport(tester, const Size(1024, 1600));
+      final session = sessionWithRoles(<String>['operator_owner']);
+      final gateway = _FakeGateway();
+      await tester.pumpWidget(
+        wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+
+      const auditKey = 'notif.audit.anchor_failure';
+      // Badge text "Always on".
+      expect(
+        find.descendant(
+          of: find.byKey(Key('settings_notifications_state_badge_$auditKey')),
+          matching: find.text('Always on'),
+        ),
+        findsOneWidget,
+      );
+      // Subcopy mentions the audit log so the operator knows where to
+      // look for activity.
+      final subcopy = tester.widget<Text>(
+        find.byKey(Key('settings_notifications_subcopy_$auditKey')),
+      );
+      expect(subcopy.data, contains('audit log'));
+      // All channel toggles disabled.
+      for (final channel in kNotificationChannelOrder) {
+        final toggle = tester.widget<Switch>(
+          find.byKey(
+            Key('settings_notifications_toggle_${auditKey}_$channel'),
+          ),
+        );
+        expect(
+          toggle.onChanged,
+          isNull,
+          reason: 'audit-chain backend-only row toggle must be disabled',
+        );
+      }
+    });
+
+    testWidgets(
+        'C-8: "Available" rows have no subcopy and stay interactive',
+        (tester) async {
+      await sizeViewport(tester, const Size(1024, 1600));
+      final session = sessionWithRoles(<String>['operator_owner']);
+      final gateway = _FakeGateway();
+      await tester.pumpWidget(
+        wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+
+      const availableKey = 'notif.backfill.complete';
+      // No subcopy widget for available rows.
+      expect(
+        find.byKey(Key('settings_notifications_subcopy_$availableKey')),
+        findsNothing,
+      );
+      // Badge present and reads "Available".
+      expect(
+        find.descendant(
+          of: find.byKey(
+              Key('settings_notifications_state_badge_$availableKey')),
+          matching: find.text('Available'),
+        ),
+        findsOneWidget,
+      );
+      // Every channel toggle for this row has an onChanged handler.
+      for (final channel in kNotificationChannelOrder) {
+        final toggle = tester.widget<Switch>(
+          find.byKey(
+            Key('settings_notifications_toggle_${availableKey}_$channel'),
+          ),
+        );
+        expect(
+          toggle.onChanged,
+          isNotNull,
+          reason: 'available-row toggle must be interactive',
+        );
+      }
+    });
+
+    testWidgets(
+        'C-8: catalog rendering preserves declared order within each '
+        'category', (tester) async {
+      await sizeViewport(tester, const Size(1024, 1600));
+      final session = sessionWithRoles(<String>['operator_owner']);
+      final gateway = _FakeGateway();
+      await tester.pumpWidget(
+        wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+
+      // Group expected order by category from the catalog.
+      final expectedByCategory =
+          <NotificationCategory, List<String>>{};
+      for (final entry in kNotificationCatalog) {
+        expectedByCategory
+            .putIfAbsent(entry.category, () => <String>[])
+            .add(entry.eventKey);
+      }
+      // Inside the "shift" category, the rendered order of
+      // `notif.shift.stale` then `notif.star.override` (per the
+      // catalog) must match the on-screen y-coordinate order.
+      final shiftEvents = expectedByCategory[NotificationCategory.shift]!;
+      double? lastY;
+      for (final key in shiftEvents) {
+        final element = tester
+            .element(find.byKey(Key('settings_notifications_event_$key')));
+        final box = element.renderObject as RenderBox?;
+        if (box == null) continue;
+        final y = box.localToGlobal(Offset.zero).dy;
+        if (lastY != null) {
+          expect(y, greaterThan(lastY),
+              reason: 'catalog order must hold within shift category');
+        }
+        lastY = y;
+      }
     });
 
     testWidgets(
