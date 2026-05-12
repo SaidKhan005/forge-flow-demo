@@ -51,7 +51,7 @@ Triggers the `operator` gate: auth-critical, RLS-touching, schema-touching (migr
 | B1.b | B1.b | Claude | Small | Medium | operator | — | audit-pending | #500 | Admin audit actor fix — escalated to operator (proxy + audit-attribution gate) |
 | B2.1 | B2.1 | Claude | Medium | Medium | operator | — | assigned | — | Default Role catalog schema + publish endpoint |
 | B2.2 | B2.2 | Claude | Medium | Medium | operator | B2.1 merged | assigned | — | Default Role catalog admin editor |
-| B3 | B3 | Codex | Medium | Medium | operator | — | assigned | — | Role-key hybrid identifier sweep |
+| B3 | B3 | Codex | Medium | Medium | operator | — | audit-pending | #502 | Role-key hybrid identifier sweep — escalated to operator (auth-critical) |
 | B4 | B4 | Codex | Small | Low | auto | B3 merged | assigned | — | Two-product taxonomy in role editor |
 | B5 | B5 | Codex | Medium | Medium | operator | — | assigned | — | Admin access-control + permission-key completeness |
 | B6 | B6 | Codex | Medium | Medium | operator | B10.1 merged | assigned | — | Benchmark override (hierarchy-inherited) |
