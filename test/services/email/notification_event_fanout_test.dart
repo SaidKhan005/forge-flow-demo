@@ -22,6 +22,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/models/notification_preference.dart';
+import 'package:forge_and_flow/services/observability/log.dart';
 
 import '../../../tool/advisor_proxy/email_dispatch/notification_event_fanout.dart';
 
@@ -439,6 +440,150 @@ void main() {
       expect(outcome.emailDispatched, 1);
     });
   });
+
+  // ---------------------------------------------------------------
+  // B3 hot-fix coverage (silent-swallow site -> structured log).
+  // Source: docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md
+  // Block B, B3.
+  // ---------------------------------------------------------------
+  group('NotificationEventFanout - B3 structured log', () {
+    test('email-side dispatch failure emits '
+        'notification.fanout.email_render_failed', () async {
+      final prefs = _FakePrefSeam();
+      final pushes = _RecordingPushSeam();
+      final emails = _RecordingEmailSeam(
+        failOnTemplateId: 'unknown_template_id',
+      );
+      final logs = _RecordingLogSeam();
+      final fanout = NotificationEventFanout(
+        preferenceReadSeam: prefs,
+        userDirectory: ({required String operatorId}) async => <FanoutUser>[
+          _adminUser(),
+        ],
+        pushDispatch: pushes.dispatch,
+        emailDispatch: emails.dispatch,
+        logSeam: logs.seam,
+      );
+
+      final outcome = await fanout.fanOut(
+        operatorId: 'op-9',
+        envelope: const NotificationEventEnvelope(
+          eventKey: 'notif.backfill.complete',
+          dedupeKeyPrefix: 'notif.backfill.complete:op-9:job-1',
+          pushTitle: 'Historical sync complete',
+          pushBody: 'done',
+          emailTemplateId: 'unknown_template_id',
+          emailTemplateData: <String, String>{},
+        ),
+      );
+
+      // Push still flows; email fails, counted as skipped.
+      expect(outcome.pushDispatched, 1);
+      expect(outcome.emailDispatched, 0);
+      expect(outcome.skipped, 1);
+
+      // Exactly one structured log line emitted for the email-side
+      // failure; previously the catch (_) swallowed it.
+      final emailFailureLogs = logs.records
+          .where((r) => r.event == 'notification.fanout.email_render_failed')
+          .toList();
+      expect(emailFailureLogs, hasLength(1));
+      final record = emailFailureLogs.single;
+      expect(record.severity, LogSeverity.error);
+      expect(record.fields['event_kind'], 'notif.backfill.complete');
+      expect(record.fields['template_id'], 'unknown_template_id');
+      expect(record.fields['operator_id'], 'op-9');
+      expect(record.fields['user_id'], 'user-1');
+      expect(record.fields['channel'], 'email');
+      // Error type + first stack frame both present.
+      expect(record.fields['error.runtimeType'], isNotEmpty);
+      expect(record.fields['stack_first_frame'], isNotEmpty);
+    });
+
+    test('unknown event_key emits '
+        'notification.fanout.unknown_event_key', () async {
+      final prefs = _FakePrefSeam();
+      final pushes = _RecordingPushSeam();
+      final emails = _RecordingEmailSeam();
+      final logs = _RecordingLogSeam();
+      final fanout = NotificationEventFanout(
+        preferenceReadSeam: prefs,
+        userDirectory: ({required String operatorId}) async => <FanoutUser>[
+          _adminUser(),
+        ],
+        pushDispatch: pushes.dispatch,
+        emailDispatch: emails.dispatch,
+        logSeam: logs.seam,
+      );
+
+      final outcome = await fanout.fanOut(
+        operatorId: 'op-2',
+        envelope: const NotificationEventEnvelope(
+          eventKey: 'notif.unknown.thing',
+          dedupeKeyPrefix: 'notif.unknown.thing:op-2:x',
+          pushTitle: 't',
+          pushBody: 'b',
+          emailTemplateId: 'ghost_template',
+          emailTemplateData: <String, String>{},
+        ),
+      );
+
+      expect(outcome.usersConsidered, 0);
+      final unknown = logs.records
+          .where((r) => r.event == 'notification.fanout.unknown_event_key')
+          .toList();
+      expect(unknown, hasLength(1));
+      expect(unknown.single.severity, LogSeverity.warning);
+      expect(unknown.single.fields['event_kind'], 'notif.unknown.thing');
+      expect(unknown.single.fields['template_id'], 'ghost_template');
+      expect(unknown.single.fields['operator_id'], 'op-2');
+    });
+
+    test('successful fanout dispatches all admitted channels for '
+        'registered template ids (B3 regression)', () async {
+      // Drives the now-registered backfill_complete envelope all the
+      // way through. Adds inbox via an explicit opt-in preference so
+      // we exercise push + email + inbox in one pass.
+      final prefs = _FakePrefSeam(rows: <NotificationPreferenceRow>[
+        const NotificationPreferenceRow(
+          userId: 'user-1',
+          channel: NotificationChannel.inbox,
+          scopeKind: NotificationScopeKind.operator,
+          scopeId: null,
+          enabled: true,
+        ),
+      ]);
+      final pushes = _RecordingPushSeam();
+      final emails = _RecordingEmailSeam();
+      final logs = _RecordingLogSeam();
+      final fanout = NotificationEventFanout(
+        preferenceReadSeam: prefs,
+        userDirectory: ({required String operatorId}) async => <FanoutUser>[
+          _adminUser(),
+        ],
+        pushDispatch: pushes.dispatch,
+        emailDispatch: emails.dispatch,
+        logSeam: logs.seam,
+      );
+
+      final outcome = await fanout.fanOut(
+        operatorId: 'op-3',
+        envelope: _backfillCompleteEnvelope(),
+      );
+
+      expect(outcome.pushDispatched, 1);
+      expect(outcome.emailDispatched, 1);
+      expect(outcome.inboxDispatched, 1);
+      expect(outcome.skipped, 0);
+      // Happy path: zero failure log lines.
+      expect(
+        logs.records.where(
+          (r) => r.event == 'notification.fanout.email_render_failed',
+        ),
+        isEmpty,
+      );
+    });
+  });
 }
 
 NotificationEventEnvelope _backfillCompleteEnvelope() {
@@ -498,9 +643,50 @@ class _RecordingPushSeam {
 }
 
 class _RecordingEmailSeam {
+  _RecordingEmailSeam({this.failOnTemplateId});
+
+  /// When set, dispatch throws an [ArgumentError] for any payload
+  /// carrying this template id - simulating the renderer's
+  /// "Unknown templateId" exception that previously got swallowed
+  /// by the fanout's silent `catch (_)`.
+  final String? failOnTemplateId;
   final List<FanoutEmailPayload> calls = <FanoutEmailPayload>[];
 
   Future<void> dispatch(FanoutEmailPayload payload) async {
+    if (failOnTemplateId != null &&
+        payload.templateId == failOnTemplateId) {
+      throw ArgumentError('Unknown templateId: ${payload.templateId}');
+    }
     calls.add(payload);
   }
+}
+
+/// Captures every log call the fanout makes through its log seam.
+/// Mirrors the [log] signature so wiring is a no-op for tests.
+class _RecordingLogSeam {
+  final List<_LoggedRecord> records = <_LoggedRecord>[];
+
+  void seam(
+    LogSeverity severity,
+    String event, {
+    Map<String, Object?> fields = const <String, Object?>{},
+  }) {
+    records.add(_LoggedRecord(
+      severity: severity,
+      event: event,
+      fields: Map<String, Object?>.from(fields),
+    ));
+  }
+}
+
+class _LoggedRecord {
+  _LoggedRecord({
+    required this.severity,
+    required this.event,
+    required this.fields,
+  });
+
+  final LogSeverity severity;
+  final String event;
+  final Map<String, Object?> fields;
 }

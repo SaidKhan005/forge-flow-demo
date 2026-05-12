@@ -72,6 +72,17 @@ void main() {
         'changeSummary': 'Updated data-processing terms.',
         'versionLabel': '2026-06-03',
         'tosUrl': 'https://forgeflow.app/legal/tos',
+        // B3 hot-fix templates (backfill complete / failed,
+        // audit anchor failure).
+        'completionTimestampHumanReadable': '2026-05-04 17:42 UTC',
+        'dashboardUrl': 'https://app.forgeflow.app/dashboard',
+        'errorCategory': 'network timeout during seed run',
+        'vendorConnectionUrl':
+            'https://app.forgeflow.app/admin/integrations/toast',
+        'checkDateHumanReadable': '2026-05-04',
+        'summary': 'one daily check did not finish before the next started',
+        'retryStatusHumanReadable':
+            'will retry on the next scheduled cycle',
       };
 
   group('EmailTemplateRenderer', () {
@@ -245,12 +256,18 @@ void main() {
 
   group('EmailTemplateIds.all', () {
     test('lists the V1 templates from the slice doc + V1.E fan-out '
-        'template', () {
+        'template + B3 hot-fix templates', () {
       // Phase 9.8 shipped 8 V1 templates; Phase 8 V1.E added a 9th
       // (`vendor_now_available`) for the lifecycle-promotion fan-out.
-      // Source:
-      // `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md` V1.E.
-      expect(EmailTemplateIds.all, hasLength(9));
+      // B3 hot-fix (2026-05-12) added 3 more
+      // (`backfill_complete`, `backfill_failed`, `audit_anchor_failure`)
+      // that had hooks calling NotificationEventFanout but no
+      // registered template id, so the email channel silently
+      // no-op'd. Source:
+      // `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md` V1.E
+      // + `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`
+      // Block B, B3.
+      expect(EmailTemplateIds.all, hasLength(12));
       expect(EmailTemplateIds.all, contains('operator_invite_first_admin'));
       expect(EmailTemplateIds.all, contains('operator_admin_invite'));
       expect(EmailTemplateIds.all, contains('password_reset_request'));
@@ -266,6 +283,9 @@ void main() {
       );
       expect(EmailTemplateIds.all, contains('tos_version_updated_notice'));
       expect(EmailTemplateIds.all, contains('vendor_now_available'));
+      expect(EmailTemplateIds.all, contains('backfill_complete'));
+      expect(EmailTemplateIds.all, contains('backfill_failed'));
+      expect(EmailTemplateIds.all, contains('audit_anchor_failure'));
     });
 
     test('every V1 template has a matching .md file on disk', () {
