@@ -71,7 +71,7 @@ void main() {
   }
 
   testWidgets(
-    'Covers and Wage Data Accuracy business scope is a read-only rollup from handoff',
+    'Covers and Wage Data Accuracy business scope exposes selected-scope edit',
     (tester) async {
       useWideViewport(tester);
       const businessScope = AdminHierarchyScopeIntent.business(
@@ -99,22 +99,78 @@ void main() {
         find.text('Showing covers and wage data accuracy for business scope'),
         findsOneWidget,
       );
-      expect(find.text('Overridden at location scope'), findsOneWidget);
-      expect(find.text('Effective: Location rollup'), findsOneWidget);
-      expect(find.text('Select a location to edit'), findsWidgets);
+      expect(find.text('Set at this scope'), findsOneWidget);
+      expect(find.text('Effective: Business scope'), findsOneWidget);
+      expect(find.text('Edit selected scope'), findsWidgets);
       expect(
-        find.textContaining('Business scope is a read-only rollup'),
+        find.textContaining('edits apply to every visible location'),
         findsOneWidget,
       );
       expect(find.text('Toronto Yorkville'), findsOneWidget);
       expect(find.text('Vancouver Robson'), findsOneWidget);
       expect(find.text('Brooklyn Williamsburg'), findsNothing);
       expect(
+        find.byKey(const Key('admin_data_accuracy_scope_override')),
+        findsOneWidget,
+      );
+      expect(
         find.byKey(const Key('admin_data_accuracy_edit_op-1_loc-1a')),
         findsNothing,
       );
     },
   );
+
+  testWidgets('Covers and Wage scope edit writes every visible location', (
+    tester,
+  ) async {
+    useWideViewport(tester);
+    const businessScope = AdminHierarchyScopeIntent.business(
+      operatorId: 'op-1',
+      operatorName: 'Demo Diner Co.',
+    );
+    final adminGateway = gateway();
+
+    await tester.pumpWidget(
+      wrap(
+        PerLocationDataAccuracyScreen(
+          gateway: adminGateway,
+          actorUserId: 'demo-super-admin',
+          initialHierarchyScope: businessScope,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final scopeButton = find.byKey(
+      const Key('admin_data_accuracy_scope_override'),
+    );
+    expect(scopeButton, findsOneWidget);
+    await tester.ensureVisible(scopeButton);
+    await tester.tap(scopeButton);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('admin_data_accuracy_lunch')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Manual entry').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('admin_data_accuracy_reason_note')),
+      'Business scope lunch override',
+    );
+    await tester.tap(
+      find.byKey(const Key('admin_data_accuracy_override_submit')),
+    );
+    await tester.pumpAndSettle();
+
+    final events = adminGateway.capturedAuditEvents
+        .where((event) => event.eventType == 'admin.data_accuracy.override')
+        .toList();
+    expect(events, hasLength(2));
+    expect(events.map((event) => event.locationId).toSet(), <String>{
+      'loc-1a',
+      'loc-1b',
+    });
+  });
 
   testWidgets('Data Accuracy location scope keeps location edit behavior', (
     tester,
@@ -149,7 +205,53 @@ void main() {
     expect(find.text('Vancouver Robson'), findsNothing);
   });
 
-  testWidgets('Polling Setup org-unit scope requires a location', (
+  testWidgets(
+    'Polling Setup org-unit scope exposes selected-scope assignment',
+    (tester) async {
+      useWideViewport(tester);
+      const orgScope = AdminHierarchyScopeIntent.orgUnit(
+        operatorId: 'op-1',
+        orgUnitId: 'ou-north',
+        operatorName: 'Demo Diner Co.',
+        orgUnitName: 'North Region',
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          PollingAndPricingAdminScreen(
+            gateway: gateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: orgScope,
+            scopeLocationIds: const <String>{'loc-1a', 'loc-1b'},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Showing polling setup for org unit scope'),
+        findsOneWidget,
+      );
+      expect(find.text('Effective: Org unit scope'), findsOneWidget);
+      expect(find.text('Assign selected scope'), findsWidgets);
+      expect(
+        find.textContaining('assignments apply to every visible location'),
+        findsOneWidget,
+      );
+      expect(find.text('Toronto Yorkville'), findsOneWidget);
+      expect(find.text('Vancouver Robson'), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_polling_setup_scope_assign')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_tier_assignment_assign_op-1_loc-1a')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('Polling Setup scope assignment writes every visible location', (
     tester,
   ) async {
     useWideViewport(tester);
@@ -159,33 +261,72 @@ void main() {
       operatorName: 'Demo Diner Co.',
       orgUnitName: 'North Region',
     );
+    final adminGateway = gateway();
 
     await tester.pumpWidget(
       wrap(
         PollingAndPricingAdminScreen(
-          gateway: gateway(),
+          gateway: adminGateway,
           actorUserId: 'demo-super-admin',
           initialHierarchyScope: orgScope,
+          scopeLocationIds: const <String>{'loc-1a', 'loc-1b'},
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('Showing polling setup for org unit scope'),
-      findsOneWidget,
+    final scopeButton = find.byKey(
+      const Key('admin_polling_setup_scope_assign'),
     );
-    expect(find.text('Effective: Scoped resolver pending'), findsOneWidget);
-    expect(find.text('Location required to assign'), findsWidgets);
-    expect(
-      find.textContaining('Org-unit polling setup editing is disabled'),
-      findsOneWidget,
+    expect(scopeButton, findsOneWidget);
+    await tester.ensureVisible(scopeButton);
+    await tester.tap(scopeButton);
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('admin_tier_assignment_dialog_tier')),
     );
-    expect(find.text('No tier assignments match this view.'), findsOneWidget);
-    expect(
-      find.byKey(const Key('admin_tier_assignment_assign_op-1_loc-1a')),
-      findsNothing,
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Premium').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('admin_polling_calculator_calls_per_day')),
+      '100',
     );
+    await tester.enterText(
+      find.byKey(const Key('admin_polling_calculator_cost_per_call')),
+      '0.02',
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('admin_polling_calculator_use_estimate')),
+    );
+    await tester.pump();
+    expect(find.widgetWithText(TextField, '60.00'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('admin_tier_assignment_dialog_reason')),
+      'Org-unit polling upgrade',
+    );
+    await tester.tap(
+      find.byKey(const Key('admin_tier_assignment_dialog_submit')),
+    );
+    await tester.pumpAndSettle();
+
+    final events = adminGateway.capturedAuditEvents
+        .where(
+          (event) => event.eventType == 'admin.polling_tier_assignment.assign',
+        )
+        .toList();
+    expect(events, hasLength(2));
+    expect(events.map((event) => event.locationId).toSet(), <String>{
+      'loc-1a',
+      'loc-1b',
+    });
+    for (final event in events) {
+      final costDiff =
+          event.diff['vendor_api_cost_estimate_cents_monthly']! as Map;
+      expect(costDiff['to'], 6000);
+    }
   });
 
   testWidgets('Polling and pricing location scope keeps assignment action', (

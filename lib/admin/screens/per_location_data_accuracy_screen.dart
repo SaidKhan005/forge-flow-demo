@@ -198,7 +198,7 @@ class _PerLocationDataAccuracyScreenState
   }
 
   Future<void> _onEditServicePeriod(DataAccuracyAdminRow row) async {
-    if (!widget.editingEnabled) return;
+    if (!_locationMutationEnabled) return;
     final draft = await showDialog<_ServicePeriodOverrideDraft>(
       context: context,
       builder: (_) => _ServicePeriodOverrideDialog(initial: row),
@@ -224,6 +224,54 @@ class _PerLocationDataAccuracyScreenState
     } catch (error) {
       if (!mounted) return;
       setState(() => _actionError = 'Service-period override failed: $error');
+    }
+  }
+
+  Future<void> _onEditSelectedScope() async {
+    if (!_scopeMutationEnabled) return;
+    final rows = _visibleRows;
+    if (rows.isEmpty) return;
+    final scope = _scope!;
+    final result = await showDialog<_DataAccuracyOverrideDraft>(
+      context: context,
+      builder: (_) => _DataAccuracyOverrideDialog(
+        initial: rows.first,
+        title: 'Apply data accuracy to ${scope.displayLabel}',
+      ),
+    );
+    if (result == null) return;
+    setState(() => _actionError = null);
+    try {
+      for (final row in rows) {
+        await widget.gateway.overrideDataAccuracy(
+          operatorId: row.operatorRef.operatorId,
+          locationId: row.operatorRef.locationId,
+          coversSourceLunch: result.coversSourceLunch,
+          coversSourceDinner: result.coversSourceDinner,
+          coversSourceLateNight: result.coversSourceLateNight,
+          wageSource: result.wageSource,
+          walkInHandlingMode: result.walkInHandlingMode,
+          actorUserId: widget.actorUserId,
+          actorIsForgeAdmin: widget.editingEnabled,
+          reasonNote: result.reasonNote,
+        );
+      }
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Applied covers and wage settings to ${rows.length} location'
+            '${rows.length == 1 ? '' : 's'}.',
+          ),
+        ),
+      );
+    } on DataAccuracyAdminForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = 'Scope override failed: $error');
     }
   }
 
@@ -410,6 +458,14 @@ class _PerLocationDataAccuracyScreenState
           if (widget.showScopeControls && _scopeRestrictionCopy != null)
             AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
           _buildDataAccuracySummary(),
+          if (_scopeMutationEnabled) ...[
+            const SizedBox(height: 16),
+            _ScopedDataAccuracyActionCard(
+              scope: _scope!,
+              locationCount: _visibleRows.length,
+              onPressed: _onEditSelectedScope,
+            ),
+          ],
           const SizedBox(height: 16),
           PerLocationDataAccuracyTable(
             rows: _visibleRows,
@@ -465,6 +521,65 @@ class _PerLocationDataAccuracyScreenState
       editingEnabled: widget.editingEnabled,
     );
   }
+
+  bool get _scopeMutationEnabled {
+    final scope = _scope;
+    return widget.editingEnabled &&
+        scope != null &&
+        !scope.isLocationScope &&
+        _visibleRows.isNotEmpty;
+  }
+}
+
+class _ScopedDataAccuracyActionCard extends StatelessWidget {
+  const _ScopedDataAccuracyActionCard({
+    required this.scope,
+    required this.locationCount,
+    required this.onPressed,
+  });
+
+  final AdminHierarchyScopeIntent scope;
+  final int locationCount;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      key: const Key('admin_data_accuracy_scope_action_card'),
+      child: Row(
+        children: [
+          const Icon(Icons.account_tree_outlined, color: AppColors.peacockDark),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Apply to selected ${scope.scopeType.label.toLowerCase()}',
+                  style: AppTextStyles.sectionTitle(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'This updates covers, wage source, and walk-in handling for $locationCount visible location${locationCount == 1 ? '' : 's'}.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton.icon(
+            key: const Key('admin_data_accuracy_scope_override'),
+            style: AdminButtonStyles.primary,
+            onPressed: onPressed,
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('Edit scope'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _DataAccuracyOverrideDraft {
@@ -486,9 +601,10 @@ class _DataAccuracyOverrideDraft {
 }
 
 class _DataAccuracyOverrideDialog extends StatefulWidget {
-  const _DataAccuracyOverrideDialog({required this.initial});
+  const _DataAccuracyOverrideDialog({required this.initial, this.title});
 
   final DataAccuracyAdminRow initial;
+  final String? title;
 
   @override
   State<_DataAccuracyOverrideDialog> createState() =>
@@ -517,8 +633,9 @@ class _DataAccuracyOverrideDialogState
       key: const Key('admin_data_accuracy_override_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Override data accuracy: ${widget.initial.operatorRef.businessName} '
-        '/ ${widget.initial.operatorRef.locationName}',
+        widget.title ??
+            'Override data accuracy: ${widget.initial.operatorRef.businessName} '
+                '/ ${widget.initial.operatorRef.locationName}',
         style: AdminButtonStyles.dialogTitleStyle,
       ),
       content: SizedBox(

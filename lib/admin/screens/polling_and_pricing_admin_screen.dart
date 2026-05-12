@@ -419,6 +419,57 @@ class _PollingAndPricingAdminScreenState
     }
   }
 
+  Future<void> _onAssignSelectedScope() async {
+    if (!_scopeMutationEnabled) return;
+    final rows = _filteredAssignments;
+    if (rows.isEmpty) return;
+    final scope = _scope!;
+    final result = await showDialog<_TierAssignmentDraft>(
+      context: context,
+      builder: (_) => _TierAssignmentDialog(
+        row: rows.first,
+        definitions: _definitions,
+        title: 'Assign polling setup to ${scope.displayLabel}',
+        scopeLocationCount: rows.length,
+      ),
+    );
+    if (result == null) return;
+    setState(() => _actionError = null);
+    try {
+      for (final row in rows) {
+        await widget.gateway.assignTier(
+          operatorId: row.operatorRef.operatorId,
+          locationId: row.operatorRef.locationId,
+          tierKey: result.tierKey,
+          customCadencePerVendorSeconds: result.customCadence,
+          monthlyPriceCentsOverride: result.monthlyPriceCentsOverride,
+          vendorApiCostEstimateCentsMonthlyOverride:
+              result.vendorApiCostEstimateCentsMonthlyOverride,
+          adminNotes: result.adminNotes,
+          actorUserId: widget.actorUserId,
+          actorIsForgeAdmin: widget.editingEnabled,
+          reasonNote: result.reasonNote,
+        );
+      }
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Applied polling setup to ${rows.length} location'
+            '${rows.length == 1 ? '' : 's'}.',
+          ),
+        ),
+      );
+    } on DataAccuracyAdminForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = 'Scope tier assignment failed: $error');
+    }
+  }
+
   Future<void> _onResolveChangeRequest(
     TierChangeRequest request,
     TierChangeRequestStatus newStatus,
@@ -550,6 +601,14 @@ class _PollingAndPricingAdminScreenState
           if (widget.showScopeControls && _scopeRestrictionCopy != null)
             AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
           _buildPollingSummary(),
+          if (_scopeMutationEnabled) ...[
+            const SizedBox(height: 16),
+            _ScopedPollingActionCard(
+              scope: _scope!,
+              locationCount: _filteredAssignments.length,
+              onPressed: _onAssignSelectedScope,
+            ),
+          ],
           const SizedBox(height: 16),
           const PlainEnglishExplainerCard(),
           const SizedBox(height: 16),
@@ -706,6 +765,65 @@ class _PollingAndPricingAdminScreenState
     }
     return null;
   }
+
+  bool get _scopeMutationEnabled {
+    final scope = _scope;
+    return widget.editingEnabled &&
+        scope != null &&
+        !scope.isLocationScope &&
+        _filteredAssignments.isNotEmpty;
+  }
+}
+
+class _ScopedPollingActionCard extends StatelessWidget {
+  const _ScopedPollingActionCard({
+    required this.scope,
+    required this.locationCount,
+    required this.onPressed,
+  });
+
+  final AdminHierarchyScopeIntent scope;
+  final int locationCount;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      key: const Key('admin_polling_setup_scope_action_card'),
+      child: Row(
+        children: [
+          const Icon(Icons.account_tree_outlined, color: AppColors.peacockDark),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Assign selected ${scope.scopeType.label.toLowerCase()}',
+                  style: AppTextStyles.sectionTitle(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'This updates polling tier, price, cost basis, and notes for $locationCount visible location${locationCount == 1 ? '' : 's'}.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton.icon(
+            key: const Key('admin_polling_setup_scope_assign'),
+            style: AdminButtonStyles.primary,
+            onPressed: onPressed,
+            icon: const Icon(Icons.payments_outlined),
+            label: const Text('Assign scope'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _MutableTierMargin {
@@ -739,10 +857,17 @@ class _TierAssignmentDraft {
 }
 
 class _TierAssignmentDialog extends StatefulWidget {
-  const _TierAssignmentDialog({required this.row, required this.definitions});
+  const _TierAssignmentDialog({
+    required this.row,
+    required this.definitions,
+    this.title,
+    this.scopeLocationCount = 1,
+  });
 
   final TierAssignmentAdminRow row;
   final List<TierDefinition> definitions;
+  final String? title;
+  final int scopeLocationCount;
 
   @override
   State<_TierAssignmentDialog> createState() => _TierAssignmentDialogState();
@@ -769,6 +894,8 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
         : (widget.row.assignment!.vendorApiCostEstimateCentsMonthly! / 100)
               .toStringAsFixed(2),
   );
+  final TextEditingController _callsPerDay = TextEditingController();
+  final TextEditingController _apiCostPerCall = TextEditingController();
   late final TextEditingController _notes = TextEditingController(
     text: widget.row.adminNotes ?? '',
   );
@@ -778,6 +905,8 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
   void dispose() {
     _price.dispose();
     _cost.dispose();
+    _callsPerDay.dispose();
+    _apiCostPerCall.dispose();
     _notes.dispose();
     _reason.dispose();
     super.dispose();
@@ -791,14 +920,30 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
     return (dollars * 100).round();
   }
 
+  double? _parsePositiveDouble(String raw) {
+    final value = double.tryParse(raw.trim());
+    if (value == null || value < 0) return null;
+    return value;
+  }
+
+  int? get _calculatorMonthlyCostCents {
+    final callsPerDay = _parsePositiveDouble(_callsPerDay.text);
+    final costPerCall = _parsePositiveDouble(_apiCostPerCall.text);
+    if (callsPerDay == null || costPerCall == null) return null;
+    return (callsPerDay * costPerCall * 30 * 100).round();
+  }
+
+  String _formatCents(int cents) => (cents / 100).toStringAsFixed(2);
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       key: const Key('admin_tier_assignment_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Assign tier - ${widget.row.operatorRef.businessName} '
-        '/ ${widget.row.operatorRef.locationName}',
+        widget.title ??
+            'Assign tier - ${widget.row.operatorRef.businessName} '
+                '/ ${widget.row.operatorRef.locationName}',
         style: AdminButtonStyles.dialogTitleStyle,
       ),
       content: SizedBox(
@@ -857,6 +1002,103 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
                 ),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                key: const Key('admin_polling_cost_calculator'),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.peacock.withValues(alpha: 0.06),
+                  border: Border.all(
+                    color: AppColors.peacock.withValues(alpha: 0.24),
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Cost calculator',
+                      style: AppTextStyles.uiLabel(
+                        color: AppColors.peacockDark,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            key: const Key(
+                              'admin_polling_calculator_calls_per_day',
+                            ),
+                            controller: _callsPerDay,
+                            decoration: const InputDecoration(
+                              labelText: 'Calls per day per location',
+                              border: OutlineInputBorder(),
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            key: const Key(
+                              'admin_polling_calculator_cost_per_call',
+                            ),
+                            controller: _apiCostPerCall,
+                            decoration: const InputDecoration(
+                              labelText: 'API cost per call (USD)',
+                              border: OutlineInputBorder(),
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Builder(
+                      builder: (context) {
+                        final perLocation = _calculatorMonthlyCostCents;
+                        final scopeTotal = perLocation == null
+                            ? null
+                            : perLocation * widget.scopeLocationCount;
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                perLocation == null
+                                    ? 'Enter calls and API cost to estimate monthly cost.'
+                                    : 'Estimate: \$${_formatCents(perLocation)} per location, \$${_formatCents(scopeTotal!)} for ${widget.scopeLocationCount} location${widget.scopeLocationCount == 1 ? '' : 's'}.',
+                                style: AppTextStyles.body13(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            OutlinedButton.icon(
+                              key: const Key(
+                                'admin_polling_calculator_use_estimate',
+                              ),
+                              onPressed: perLocation == null
+                                  ? null
+                                  : () => setState(() {
+                                      _cost.text = _formatCents(perLocation);
+                                    }),
+                              icon: const Icon(Icons.calculate_outlined),
+                              label: const Text('Use estimate'),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 12),

@@ -11,41 +11,44 @@ void main() {
       AdminHierarchySettingsSurface.pollingPricing,
     );
 
-    test('decorates business data accuracy scope as read-only rollup', () {
-      const raw = AdminHierarchyScopeIntent.business(
-        operatorId: 'op-1',
-        operatorName: 'Demo Diner Co.',
-        allowedActionsLabel: 'Editable',
-      );
-
-      final scope = dataAccuracy.decorate(raw, editingEnabled: true);
-
-      expect(scope.inheritanceLabel, 'Overridden at location scope');
-      expect(scope.effectiveValueLabel, 'Location rollup');
-      expect(scope.allowedActionsLabel, 'Select a location to edit');
-      expect(
-        dataAccuracy.allowsLocationMutation(scope, editingEnabled: true),
-        isFalse,
-      );
-      expect(
-        dataAccuracy.includesOperatorLocation(
-          scope,
+    test(
+      'decorates business data accuracy scope for selected-scope editing',
+      () {
+        const raw = AdminHierarchyScopeIntent.business(
           operatorId: 'op-1',
-          locationId: 'loc-1',
-        ),
-        isTrue,
-      );
-      expect(
-        dataAccuracy.includesOperatorLocation(
-          scope,
-          operatorId: 'op-2',
-          locationId: 'loc-1',
-        ),
-        isFalse,
-      );
-    });
+          operatorName: 'Demo Diner Co.',
+          allowedActionsLabel: 'Editable',
+        );
 
-    test('keeps org-unit polling scope location-required', () {
+        final scope = dataAccuracy.decorate(raw, editingEnabled: true);
+
+        expect(scope.inheritanceLabel, 'Set at this scope');
+        expect(scope.effectiveValueLabel, 'Business scope');
+        expect(scope.allowedActionsLabel, 'Edit selected scope');
+        expect(
+          dataAccuracy.allowsLocationMutation(scope, editingEnabled: true),
+          isFalse,
+        );
+        expect(
+          dataAccuracy.includesOperatorLocation(
+            scope,
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+          ),
+          isTrue,
+        );
+        expect(
+          dataAccuracy.includesOperatorLocation(
+            scope,
+            operatorId: 'op-2',
+            locationId: 'loc-1',
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    test('decorates org-unit polling scope for selected-scope assignment', () {
       const raw = AdminHierarchyScopeIntent.orgUnit(
         operatorId: 'op-1',
         orgUnitId: 'ou-north',
@@ -55,9 +58,9 @@ void main() {
 
       final scope = pollingPricing.decorate(raw, editingEnabled: true);
 
-      expect(scope.inheritanceLabel, 'Overridden at location scope');
-      expect(scope.effectiveValueLabel, 'Scoped resolver pending');
-      expect(scope.allowedActionsLabel, 'Location required to assign');
+      expect(scope.inheritanceLabel, 'Set at this scope');
+      expect(scope.effectiveValueLabel, 'Org unit scope');
+      expect(scope.allowedActionsLabel, 'Assign selected scope');
       expect(
         pollingPricing.includesOperatorLocation(
           scope,
@@ -68,7 +71,7 @@ void main() {
       );
       expect(
         pollingPricing.restrictionCopy(scope),
-        contains('scoped assignments land'),
+        contains('visible location'),
       );
     });
 

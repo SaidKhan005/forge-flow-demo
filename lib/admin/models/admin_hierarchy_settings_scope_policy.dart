@@ -16,8 +16,7 @@ class AdminHierarchySettingsScopePolicy {
         return AdminHierarchyScopeIntent.business(
           operatorId: scope.operatorId,
           operatorName: scope.operatorName,
-          valueState: AdminHierarchyScopeValueState.overriddenAtChildScope,
-          inheritedFromLabel: 'location scope',
+          valueState: AdminHierarchyScopeValueState.setAtScope,
           effectiveValueLabel: _businessEffectiveLabel,
           allowedActionsLabel: _businessAllowedActionsLabel,
         );
@@ -28,8 +27,7 @@ class AdminHierarchySettingsScopePolicy {
           operatorName: scope.operatorName,
           orgUnitName: scope.orgUnitName,
           hierarchyPath: scope.hierarchyPath,
-          valueState: AdminHierarchyScopeValueState.overriddenAtChildScope,
-          inheritedFromLabel: 'location scope',
+          valueState: AdminHierarchyScopeValueState.setAtScope,
           effectiveValueLabel: _orgUnitEffectiveLabel,
           allowedActionsLabel: _orgUnitAllowedActionsLabel,
         );
@@ -86,32 +84,32 @@ class AdminHierarchySettingsScopePolicy {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
         if (scope.isBusinessScope) {
-          return 'Business scope is a read-only rollup until scoped data accuracy writes land. Select a location in this scope to override covers, wages, or walk-in handling.';
+          return 'Business scope edits apply to every visible location in this business.';
         }
-        return 'Org-unit data accuracy editing is disabled until scoped writes land. Select a location in this branch to edit location settings.';
+        return 'Org-unit scope edits apply to every visible location in this branch.';
       case AdminHierarchySettingsSurface.pollingPricing:
         if (scope.isBusinessScope) {
-          return 'Business scope is a read-only polling rollup until scoped polling assignments land. Select a location in this scope to assign or update a tier.';
+          return 'Business scope assignments apply to every visible location in this business.';
         }
-        return 'Org-unit polling setup editing is disabled until scoped assignments land. Select a location in this branch to edit the location assignment.';
+        return 'Org-unit polling assignments apply to every visible location in this branch.';
     }
   }
 
   String get _businessEffectiveLabel {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
-        return 'Location rollup';
+        return 'Business scope';
       case AdminHierarchySettingsSurface.pollingPricing:
-        return 'Tier assignment rollup';
+        return 'Business scope';
     }
   }
 
   String get _orgUnitEffectiveLabel {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
-        return 'Location required';
+        return 'Org unit scope';
       case AdminHierarchySettingsSurface.pollingPricing:
-        return 'Scoped resolver pending';
+        return 'Org unit scope';
     }
   }
 
@@ -127,18 +125,18 @@ class AdminHierarchySettingsScopePolicy {
   String get _businessAllowedActionsLabel {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
-        return 'Select a location to edit';
+        return 'Edit selected scope';
       case AdminHierarchySettingsSurface.pollingPricing:
-        return 'Select a location to assign';
+        return 'Assign selected scope';
     }
   }
 
   String get _orgUnitAllowedActionsLabel {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
-        return 'Location required to edit';
+        return 'Edit selected scope';
       case AdminHierarchySettingsSurface.pollingPricing:
-        return 'Location required to assign';
+        return 'Assign selected scope';
     }
   }
 }
