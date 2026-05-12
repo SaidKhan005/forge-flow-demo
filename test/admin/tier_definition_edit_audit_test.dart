@@ -22,7 +22,7 @@ void main() {
 
   group('8.spine-bridge.C — Tab 2 tier definition edit round-trips '
       'with audit row', () {
-    testWidgets('standard tier description + price update writes '
+    testWidgets('regular tier description + price update writes '
         'admin.polling_tier_definition.update', (tester) async {
       // Use a wide viewport so the screen's filter bar fits without
       // overflow exceptions during layout.
@@ -72,8 +72,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Expand the standard tier definition subcard. The card is an
-      // ExpansionTile whose title contains the text "Standard"; tap it
+      // Expand the regular tier definition subcard. The card is an
+      // ExpansionTile whose title contains the text "Regular"; tap it
       // to expand the children (which include the Edit button).
       final subcard = find.byKey(
         const Key('admin_tier_definition_standard'),
@@ -81,7 +81,7 @@ void main() {
       expect(subcard, findsOneWidget);
       final standardTitle = find.descendant(
         of: subcard,
-        matching: find.text('Standard'),
+        matching: find.text('Regular'),
       );
       expect(standardTitle, findsOneWidget);
       await tester.ensureVisible(standardTitle);
@@ -89,7 +89,7 @@ void main() {
       await tester.tap(standardTitle);
       await tester.pumpAndSettle();
 
-      // Tap the Edit button on the standard tier subcard (now visible
+      // Tap the Edit button on the regular tier subcard (now visible
       // because the ExpansionTile is expanded).
       final editButton = find.byKey(
         const Key('admin_tier_definition_edit_standard'),
