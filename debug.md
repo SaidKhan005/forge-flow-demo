@@ -302,3 +302,27 @@ for the devices listed it does not need to shoe the ip, just when and what devic
 Then there can be a sign out and sign out of all devices.
 
 The settings tab should be setup, integrations, data (for forge and flow admins), account
+
+
+
+
+
+On the email and notification pipeline
+This is the part that directly serves your "audit code vs docs, no scaffold" directive.
+
+Of nine email templates locked into the codebase, only three are actually wired. The other six exist as markdown files with a doc string explaining why they're deferred. That's textbook scaffold.
+
+Three internal events (backfill complete, backfill failed, audit anchor failure) try to send emails using template IDs that don't exist in the registry. The fanout system silently swallows the failure. Push and in-app notifications still work for these events, but operators never get the emails — and nothing in production tells you that's happening.
+
+Every operator invite — first-admin and team-admin alike — uses Firebase's password-reset email path, not the dedicated invite template that's been built and shipped. Two parallel implementations of the same feature, one wired, one dormant.
+
+This is the wedge you wanted to drive into the codebase. The pattern almost certainly repeats elsewhere — anywhere a feature was specced, partially built, and then the team pivoted without removing the scaffolding. A full "scaffold audit" lane in the code-health wave is the right response.
+
+
+On the soak and testing capability
+Your concern about "live usage for hours, multiple sessions" maps cleanly to what the research recommends: a Dart-native harness extending your existing pressure-test pattern. Roughly six days of work gets you both bug fixes covered by automated regression tests. Another six days gets you a durable forensic kit (heap snapshots uploaded to cloud storage on crash, state-machine property tests, full sign-in flow integrity tests).
+
+For emails and notifications, the recommendation is more pragmatic: roughly ten engineering days plus about $200/month in tooling (Patrol for Flutter device automation, Firebase Test Lab for real-device runs, Mailosaur for capturing test emails, the existing SendGrid event webhook for send-side verification). That's the price tag to be able to actually pressure-test the whole loopback chain — email arrives, click link, land in app, action executes — without manual operator clicks.
+
+
+
