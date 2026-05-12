@@ -14,15 +14,15 @@ Audit shape: full 7-chunk playbook per `docs/_audits/audit_chunking_playbook.md`
 
 ## Verdict
 
-**partially-resolved-pending-operator-on-#M1** (after orchestrator-fix on this branch + escalation on Finding #M1).
+**approve-retroactively** (after orchestrator-fix landed for both findings).
 
-- **Finding #4-1 (HP #11 honesty gap on admin_timing_setup_screen):** RESOLVED on this audit branch via the orchestrator-fix commit. New inheritance notice card warns that other locations under business/orgUnit scope may have local overrides. `dart analyze` clean. Deeper data-wiring (service periods + week-start from actual location data) deferred as a future polish slice — operator-visible only when locations have real overrides, currently a low-frequency case.
+- **Finding #4-1 (HP #11 honesty gap on admin_timing_setup_screen):** RESOLVED 2026-05-12 via PR #485 (merge commit `9e012f48`). New inheritance notice card warns that other locations under business/orgUnit scope may have local overrides. `dart analyze` clean. Deeper data-wiring (service periods + week-start from actual location data) deferred as a future polish slice — operator-visible only when locations have real overrides, currently a low-frequency case.
 
-- **Finding #M1 (Migration 80800 in-place rewrite):** ESCALATED — needs operator-side verification of staging `migration_history` table to decide (a) accept the in-place rewrite + document, or (b) revert + add a new migration that drops the old index and creates the corrected one.
+- **Finding #M1 (Migration 80800 in-place rewrite):** RESOLVED 2026-05-13 via path (a). Operator confirmed migration `202605080800_auth_permission_version.sql` had NOT been applied to staging or Production1 at the time of PR #481's in-place rewrite (it was still in the "code-ready" pending-apply queue). Orchestrator-fix adds a documented carve-out to the migration file's header comment explaining the rewrite is acceptable for this case, with a forward-looking rule that future migrations applied anywhere downstream MUST use the expand-contract pattern (new migration drops + recreates the index, not in-place edit).
 
 Plus 4 observations (no anchor) and 1 carry-over operator-visual-test item from PR #482's audit (back-nav consolidation).
 
-No findings required send-back to Codex. No reject-class findings — the wave is contract-aligned overall. The original `material-gaps-orchestrator-fix` verdict flips to `approve-retroactively` once Finding #M1 resolves.
+No findings required send-back to Codex. No reject-class findings — the wave is contract-aligned overall.
 
 Critical positive: **all 8 PR #476 hot-fix invariants on `tool/advisor_proxy/advisor_proxy.dart` and `tool/advisor_proxy/main.dart` were preserved** through this big consolidation (Chunk 3 sub-agent verification).
 
@@ -147,8 +147,8 @@ Migrations `202605082200_admin_hierarchy_lifecycle.sql` (55 lines) and `20260512
 
 | Finding § | Commit SHA | Files touched | Re-audit result |
 |---|---|---|---|
-| #M1 Migration 80800 immutability | PENDING — operator decision required after checking staging migration_history | (a) accept rewrite + document, OR (b) revert + add new migration | pending |
-| #4-1 admin_timing_setup_screen HP #11 gap | (this PR — fix commit on this branch) | `lib/admin/screens/admin_timing_setup_screen.dart` — adds an inheritance notice card above the detail rows when scope is not a location AND covered location count > 1 (`Showing timing from ${location.name}. Other locations under this scope may have local overrides — review each location individually for accuracy.`); `dart analyze` clean | PARTIAL RESOLVED — HP #11 honesty gap closed for multi-location business/orgUnit scopes; deeper service-period data-wiring deferred as future polish slice (operator-visible only when locations have actual overrides, currently low-frequency case) |
+| #M1 Migration 80800 immutability | `claude/m1-migration-80800-closure` (this branch's fix commit) | `db/migrations/202605080800_auth_permission_version.sql` — adds header carve-out comment documenting that the in-place rewrite is acceptable because the migration had not been applied anywhere downstream when rewritten (operator confirmed 2026-05-13). Forward-looking rule: future migrations applied downstream MUST use expand-contract pattern. | RESOLVED — operator verified pre-condition (migration not applied to staging/Production1), path (a) selected: accept in-place rewrite + document. The CHANGE itself (operator-leading index) is correct per HP #4 — only the WAY was off-pattern in the general case. Documented carve-out closes the loop. |
+| #4-1 admin_timing_setup_screen HP #11 gap | `9e012f48` (PR #485 merge) | `lib/admin/screens/admin_timing_setup_screen.dart` — adds an inheritance notice card above the detail rows when scope is not a location AND covered location count > 1 (`Showing timing from ${location.name}. Other locations under this scope may have local overrides — review each location individually for accuracy.`); `dart analyze` clean | PARTIAL RESOLVED — HP #11 honesty gap closed for multi-location business/orgUnit scopes; deeper service-period data-wiring deferred as future polish slice (operator-visible only when locations have actual overrides, currently low-frequency case) |
 
 ---
 
