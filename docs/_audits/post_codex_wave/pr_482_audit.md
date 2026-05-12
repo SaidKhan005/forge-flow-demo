@@ -11,7 +11,11 @@ Audit shape: per `docs/_audits/audit_chunking_playbook.md` light playbook (3 act
 
 ## Verdict
 
-**material-gaps-orchestrator-fix** — pending operator decision on Finding #1 (Phase 5b "No fix without an anchor" escalation).
+**approve-for-merge** (after operator decision on Finding #1 on 2026-05-12 + orchestrator-fix landed on this branch).
+
+Original verdict was `material-gaps-orchestrator-fix`. Operator chose option (a): keep the Standard→Regular rename and update the contract doc inline. Orchestrator-fix applied at the commit appended to this audit branch — `docs/contracts/data_accuracy_settings_contract.md` L55 + L106 + L195 updated to use "Regular" as the operator-facing label, with a clarifying paragraph noting the `tier_key` enum value remains `standard` (persistence/contract semantics unchanged). Finding #1 closed.
+
+Finding #3 (back-button removal observation) is not orchestrator-fixable — pending operator visual sign-off when the merged admin surfaces are exercised.
 
 Chunk-level summary:
 
@@ -84,8 +88,8 @@ Test coverage is appropriate for the new features (vendor filters). No gap.
 
 | Finding § | Commit SHA | Files touched | Re-audit result |
 |---|---|---|---|
-| #1 Standard→Regular drift | PENDING — operator decision required | (a) data_accuracy_settings_contract.md L106/L195 OR (b) 7 rename sites + 2 tests | pending |
-| #3 Back-button observation | NO FIX — operator visual sign-off only | — | pending |
+| #1 Standard→Regular drift | (this PR — next commit on this branch) | `docs/contracts/data_accuracy_settings_contract.md` L55 + L106-114 + L195-196 (3 operator-facing label sites updated to "Regular" + clarifying paragraph that `tier_key` enum value stays `standard`) | RESOLVED — contract now matches the rename Codex shipped in PR #482's branch; `tier_key` enum value preserved so persistence + contract semantics unchanged |
+| #3 Back-button observation | NO FIX — operator visual sign-off only | — | pending (visual test) |
 
 ---
 
