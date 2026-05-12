@@ -1,4 +1,4 @@
-﻿// Phase 11A.7 - Feature flags admin screen.
+// Phase 11A.7 - Feature flags admin screen.
 //
 // Replaces the 11A.0 placeholder. F&F internal-only surface that
 // lists every row in the `public.feature_flags` catalog and lets a
@@ -33,18 +33,24 @@ import '../../theme/app_theme.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
+import '../admin_route_handoff.dart';
 import '../models/feature_flags_admin_models.dart';
 import '../services/feature_flags_admin_gateway.dart';
+import '../widgets/admin_hierarchy_scope_notice.dart';
 
 class FeatureFlagsAdminScreen extends StatefulWidget {
   const FeatureFlagsAdminScreen({
     super.key,
     required this.gateway,
     this.editingEnabled = true,
+    this.hierarchyScope,
+    this.scopeLocationIds = const <String>{},
     this.idempotencyKeyFactory,
   });
 
   final FeatureFlagsAdminGateway gateway;
+  final AdminHierarchyScopeIntent? hierarchyScope;
+  final Set<String> scopeLocationIds;
 
   /// When false, the screen hides every toggle affordance - used for
   /// the `ff_support` walkthrough path. The proxy enforces the same
@@ -81,7 +87,7 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
       _loadError = null;
     });
     try {
-      final list = await widget.gateway.listFlags();
+      final list = await widget.gateway.listFlags(scope: _scopeFilter);
       if (!mounted) return;
       setState(() {
         _flags = list;
@@ -164,6 +170,11 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
           children: [
             const _Header(),
             const SizedBox(height: 14),
+            if (widget.hierarchyScope != null)
+              AdminHierarchyScopeNotice(
+                message:
+                    'Showing launch controls that apply to ${widget.hierarchyScope!.displayLabel}. Global controls still affect every business; business and location controls are limited to the selected hierarchy.',
+              ),
             if (!widget.editingEnabled)
               const _ReadOnlyBanner(
                 key: Key('admin_feature_flags_readonly_banner'),
@@ -240,6 +251,16 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
           onToggle: () => _onTogglePressed(row),
         );
       },
+    );
+  }
+
+  FeatureFlagScopeFilter? get _scopeFilter {
+    final scope = widget.hierarchyScope;
+    if (scope == null) return null;
+    return FeatureFlagScopeFilter(
+      operatorId: scope.operatorId,
+      locationId: scope.locationId,
+      locationIds: widget.scopeLocationIds,
     );
   }
 }
@@ -335,6 +356,85 @@ class _FeatureFlagTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final displayName = _friendlyFlagName(row.flagName);
+    final toggleButton = editingEnabled
+        ? FilledButton.tonal(
+            key: Key('admin_feature_flag_toggle_${row.flagId}'),
+            onPressed: toggling ? null : onToggle,
+            style: AdminButtonStyles.tonal(destructive: row.isDestructive),
+            child: toggling
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(row.enabled ? 'Disable' : 'Enable'),
+          )
+        : FilledButton.tonal(
+            key: Key('admin_feature_flag_toggle_disabled_${row.flagId}'),
+            onPressed: null,
+            child: Text(row.enabled ? 'Disable' : 'Enable'),
+          );
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              displayName,
+              style: AppTextStyles.body14(
+                color: AppColors.textPrimary,
+              ).copyWith(fontWeight: FontWeight.w700),
+            ),
+            if (row.isDestructive)
+              _Chip(
+                key: Key('admin_feature_flag_danger_${row.flagId}'),
+                label: 'High impact',
+                background: AppColors.negative.withValues(alpha: 0.15),
+                foreground: AppColors.negative,
+              )
+            else
+              _Chip(
+                key: Key('admin_feature_flag_kind_${row.flagId}'),
+                label: _friendlyFlagKind(row.kind),
+                background: AppColors.backgroundDeep,
+                foreground: AppColors.textSecondary,
+              ),
+            _Chip(
+              key: Key('admin_feature_flag_scope_${row.flagId}'),
+              label: _friendlyScope(row.scopeLabel),
+              background: AppColors.backgroundDeep,
+              foreground: AppColors.textMuted,
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(
+            _friendlyFlagDescription(row.flagName, row.description),
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ),
+        Text(
+          'Status: ${row.enabled ? 'On' : 'Off'}',
+          key: Key('admin_feature_flag_value_${row.flagId}'),
+          style: AppTextStyles.mono12(
+            color: row.enabled ? AppColors.positive : AppColors.textSecondary,
+            weight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Last changed by ${row.updatedBy ?? 'unknown'} on '
+          '${adminHumanDateTime(row.updatedAt)}',
+          style: AppTextStyles.mono8(color: AppColors.textMuted),
+        ),
+        _FeatureFlagDetails(row: row),
+      ],
+    );
 
     return Container(
       key: Key('admin_feature_flag_row_${row.flagId}'),
@@ -349,101 +449,63 @@ class _FeatureFlagTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 520) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        displayName,
-                        style: AppTextStyles.body14(
-                          color: AppColors.textPrimary,
-                        ).copyWith(fontWeight: FontWeight.w700),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (row.isDestructive)
-                      _Chip(
-                        key: Key('admin_feature_flag_danger_${row.flagId}'),
-                        label: 'High impact',
-                        background: AppColors.negative.withValues(alpha: 0.15),
-                        foreground: AppColors.negative,
-                      )
-                    else
-                      _Chip(
-                        key: Key('admin_feature_flag_kind_${row.flagId}'),
-                        label: _friendlyFlagKind(row.kind),
-                        background: AppColors.backgroundDeep,
-                        foreground: AppColors.textSecondary,
-                      ),
-                    const SizedBox(width: 6),
-                    _Chip(
-                      key: Key('admin_feature_flag_scope_${row.flagId}'),
-                      label: _friendlyScope(row.scopeLabel),
-                      background: AppColors.backgroundDeep,
-                      foreground: AppColors.textMuted,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Control ID: ${row.flagName}',
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 4),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    _friendlyFlagDescription(row.flagName, row.description),
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                ),
-                Text(
-                  'Status: ${row.enabled ? 'On' : 'Off'}',
-                  key: Key('admin_feature_flag_value_${row.flagId}'),
-                  style: AppTextStyles.mono12(
-                    color: row.enabled
-                        ? AppColors.positive
-                        : AppColors.textSecondary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Last changed by ${row.updatedBy ?? 'unknown'} on '
-                  '${adminHumanDateTime(row.updatedAt)}',
-                  style: AppTextStyles.mono8(color: AppColors.textMuted),
-                ),
+                content,
+                const SizedBox(height: 10),
+                Align(alignment: Alignment.centerRight, child: toggleButton),
               ],
-            ),
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: content),
+              const SizedBox(width: 12),
+              toggleButton,
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _FeatureFlagDetails extends StatelessWidget {
+  const _FeatureFlagDetails({required this.row});
+
+  final FeatureFlagAdminRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: Material(
+        type: MaterialType.transparency,
+        child: ExpansionTile(
+          key: Key('admin_feature_flag_details_${row.flagId}'),
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          title: Text(
+            'Advanced details',
+            style: AppTextStyles.mono8(
+              color: AppColors.textMuted,
+            ).copyWith(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(width: 12),
-          if (editingEnabled)
-            FilledButton.tonal(
-              key: Key('admin_feature_flag_toggle_${row.flagId}'),
-              onPressed: toggling ? null : onToggle,
-              style: AdminButtonStyles.tonal(destructive: row.isDestructive),
-              child: toggling
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(row.enabled ? 'Disable' : 'Enable'),
-            )
-          else
-            FilledButton.tonal(
-              key: Key('admin_feature_flag_toggle_disabled_${row.flagId}'),
-              onPressed: null,
-              child: Text(row.enabled ? 'Disable' : 'Enable'),
+          children: <Widget>[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Control ID: ${row.flagName}',
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

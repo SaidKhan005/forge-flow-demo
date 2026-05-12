@@ -83,6 +83,8 @@ class LocationAdminRecord {
     required this.address,
     required this.timezone,
     required this.businessDayRolloverHour,
+    this.suspendedAt,
+    this.deletedAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -94,8 +96,13 @@ class LocationAdminRecord {
   final String address;
   final String timezone;
   final int? businessDayRolloverHour;
+  final DateTime? suspendedAt;
+  final DateTime? deletedAt;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  bool get isSuspended => suspendedAt != null;
+  bool get isDeleted => deletedAt != null;
 
   static LocationAdminRecord fromJson(Map<String, Object?> json) {
     return LocationAdminRecord(
@@ -106,6 +113,8 @@ class LocationAdminRecord {
       address: (json['address'] as String?) ?? '',
       timezone: json['timezone']! as String,
       businessDayRolloverHour: json['business_day_rollover_hour'] as int?,
+      suspendedAt: _dateTimeOrNull(json['suspended_at']),
+      deletedAt: _dateTimeOrNull(json['deleted_at']),
       createdAt: DateTime.parse(json['created_at']! as String),
       updatedAt: DateTime.parse(json['updated_at']! as String),
     );
@@ -119,6 +128,8 @@ class LocationAdminRecord {
     'address': address,
     'timezone': timezone,
     'business_day_rollover_hour': businessDayRolloverHour,
+    'suspended_at': suspendedAt?.toUtc().toIso8601String(),
+    'deleted_at': deletedAt?.toUtc().toIso8601String(),
     'created_at': createdAt.toUtc().toIso8601String(),
     'updated_at': updatedAt.toUtc().toIso8601String(),
   };

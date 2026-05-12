@@ -38,14 +38,20 @@ class PerLocationDataAccuracyScreen extends StatefulWidget {
     this.editingEnabled = true,
     this.initialScope,
     this.initialHierarchyScope,
+    this.scopeLocationIds,
     this.onBackToBusinessAccounts,
+    this.showPageHeader = true,
+    this.showScopeControls = true,
   });
 
   final DataAccuracyAdminGateway gateway;
   final String actorUserId;
   final AdminOperatorLocationScopeIntent? initialScope;
   final AdminHierarchyScopeIntent? initialHierarchyScope;
+  final Set<String>? scopeLocationIds;
   final VoidCallback? onBackToBusinessAccounts;
+  final bool showPageHeader;
+  final bool showScopeControls;
 
   /// Mirror of the pricing screen pattern: when false, the screen
   /// hides every mutate affordance. The gateway is the second line of
@@ -192,7 +198,7 @@ class _PerLocationDataAccuracyScreenState
   }
 
   Future<void> _onEditServicePeriod(DataAccuracyAdminRow row) async {
-    if (!widget.editingEnabled) return;
+    if (!_locationMutationEnabled) return;
     final draft = await showDialog<_ServicePeriodOverrideDraft>(
       context: context,
       builder: (_) => _ServicePeriodOverrideDialog(initial: row),
@@ -221,6 +227,55 @@ class _PerLocationDataAccuracyScreenState
     }
   }
 
+  Future<void> _onEditSelectedScope() async {
+    if (!_scopeMutationEnabled) return;
+    final rows = _visibleRows;
+    if (rows.isEmpty) return;
+    final scope = _scope!;
+    final result = await showDialog<_DataAccuracyOverrideDraft>(
+      context: context,
+      builder: (_) => _DataAccuracyOverrideDialog(
+        initial: rows.first,
+        title: 'Apply data accuracy to ${scope.displayLabel}',
+      ),
+    );
+    if (result == null) return;
+    setState(() => _actionError = null);
+    try {
+      final update = await widget.gateway.overrideDataAccuracyScope(
+        operatorId: scope.operatorId,
+        scopeType: _mutationScopeType(scope),
+        orgUnitId: scope.orgUnitId,
+        locationId: scope.locationId,
+        coversSourceLunch: result.coversSourceLunch,
+        coversSourceDinner: result.coversSourceDinner,
+        coversSourceLateNight: result.coversSourceLateNight,
+        wageSource: result.wageSource,
+        walkInHandlingMode: result.walkInHandlingMode,
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        reasonNote: result.reasonNote,
+      );
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Applied covers and wage settings to '
+            '${update.affectedLocationCount} location'
+            '${update.affectedLocationCount == 1 ? '' : 's'}.',
+          ),
+        ),
+      );
+    } on DataAccuracyAdminForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = 'Scope override failed: $error');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -231,19 +286,19 @@ class _PerLocationDataAccuracyScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AdminPageHeader(
-              title: 'Data accuracy',
-              subtitle:
-                  "Inspect each operator-location's covers and wage source. "
-                  'Business and org-unit scopes are read-only until scoped '
-                  'settings resolvers exist.',
-              leading: widget.onBackToBusinessAccounts == null
-                  ? null
-                  : AdminBusinessAccountsBackButton(
-                      onPressed: widget.onBackToBusinessAccounts,
-                    ),
-            ),
-            const SizedBox(height: 14),
+            if (widget.showPageHeader) ...[
+              AdminPageHeader(
+                title: 'Covers and Wage Data Accuracy',
+                subtitle:
+                    'Review cover sources, wage sources, walk-ins, and audit history for the selected scope.',
+                leading: widget.onBackToBusinessAccounts == null
+                    ? null
+                    : AdminBusinessAccountsBackButton(
+                        onPressed: widget.onBackToBusinessAccounts,
+                      ),
+              ),
+              const SizedBox(height: 14),
+            ],
             if (!widget.editingEnabled)
               const _ReadOnlyBanner(
                 key: Key('admin_data_accuracy_readonly_banner'),
@@ -265,7 +320,7 @@ class _PerLocationDataAccuracyScreenState
     if (scope == null) return _rows;
     return _rows
         .where(
-          (row) => _scopePolicy.includesOperatorLocation(
+          (row) => _includesOperatorLocation(
             scope,
             operatorId: row.operatorRef.operatorId,
             locationId: row.operatorRef.locationId,
@@ -279,7 +334,7 @@ class _PerLocationDataAccuracyScreenState
     if (scope == null) return _auditEvents;
     return _auditEvents
         .where(
-          (event) => _scopePolicy.includesOperatorLocation(
+          (event) => _includesOperatorLocation(
             scope,
             operatorId: event.operatorId,
             locationId: event.locationId,
@@ -289,6 +344,25 @@ class _PerLocationDataAccuracyScreenState
   }
 
   String? get _scopeRestrictionCopy => _scopePolicy.restrictionCopy(_scope);
+
+  bool _includesOperatorLocation(
+    AdminHierarchyScopeIntent? scope, {
+    required String operatorId,
+    required String? locationId,
+  }) {
+    if (scope == null) return true;
+    if (scope.operatorId != operatorId) return false;
+    if (locationId == null) return true;
+    final locationIds = widget.scopeLocationIds;
+    if (locationIds != null && locationIds.isNotEmpty) {
+      return locationIds.contains(locationId);
+    }
+    return _scopePolicy.includesOperatorLocation(
+      scope,
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+  }
 
   List<AdminHierarchyScopeIntent> get _availableScopes {
     final selectedOperatorId = _scope?.operatorId;
@@ -364,28 +438,35 @@ class _PerLocationDataAccuracyScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_showScopePrompt)
+          if (widget.showScopeControls && _showScopePrompt)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: AdminHierarchyScopePrompt(
-                surfaceName: 'Data accuracy',
+                surfaceName: 'Covers and Wage Data Accuracy',
                 selectedScope: _scope,
                 scopes: _availableScopes,
                 onScopeSelected: _selectScope,
                 onCancel: () => setState(() => _showScopePrompt = false),
               ),
             ),
-          if (_scope != null)
+          if (widget.showScopeControls && _scope != null)
             AdminHierarchyScopeBanner(
               scope: _scope!,
-              surfaceName: 'data accuracy',
+              surfaceName: 'covers and wage data accuracy',
               onChangeScope: () =>
                   setState(() => _showScopePrompt = !_showScopePrompt),
               onClear: _clearScope,
             ),
-          if (_scopeRestrictionCopy != null)
+          if (widget.showScopeControls && _scopeRestrictionCopy != null)
             AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
-          _buildDataAccuracySummary(),
+          if (_scopeMutationEnabled) ...[
+            const SizedBox(height: 16),
+            _ScopedDataAccuracyActionCard(
+              scope: _scope!,
+              locationCount: _visibleRows.length,
+              onPressed: _onEditSelectedScope,
+            ),
+          ],
           const SizedBox(height: 16),
           PerLocationDataAccuracyTable(
             rows: _visibleRows,
@@ -400,45 +481,82 @@ class _PerLocationDataAccuracyScreenState
     );
   }
 
-  Widget _buildDataAccuracySummary() {
-    final rows = _visibleRows;
-    final manualCoverRows = rows
-        .where(
-          (row) =>
-              row.settings.coversSourceLunch == CoversSource.manual ||
-              row.settings.coversSourceDinner == CoversSource.manual ||
-              row.settings.coversSourceLateNight == CoversSource.manual,
-        )
-        .length;
-    final forecastCoverRows = rows
-        .where(
-          (row) =>
-              row.settings.coversSourceLunch == CoversSource.forecast ||
-              row.settings.coversSourceDinner == CoversSource.forecast ||
-              row.settings.coversSourceLateNight == CoversSource.forecast,
-        )
-        .length;
-    final manualWageRows = rows
-        .where((row) => row.settings.wageSource == WageSource.manualMix)
-        .length;
-    return AdminStatStrip(
-      items: <AdminStatItem>[
-        AdminStatItem(label: 'Visible locations', value: '${rows.length}'),
-        AdminStatItem(label: 'Manual covers', value: '$manualCoverRows'),
-        AdminStatItem(label: 'Forecast covers', value: '$forecastCoverRows'),
-        AdminStatItem(label: 'Manual wage mix', value: '$manualWageRows'),
-        AdminStatItem(
-          label: 'Audit rows',
-          value: '${_visibleAuditEvents.length}',
-        ),
-      ],
-    );
-  }
-
   bool get _locationMutationEnabled {
     return _scopePolicy.allowsLocationMutation(
       _scope,
       editingEnabled: widget.editingEnabled,
+    );
+  }
+
+  bool get _scopeMutationEnabled {
+    final scope = _scope;
+    return widget.editingEnabled &&
+        scope != null &&
+        !scope.isLocationScope &&
+        _visibleRows.isNotEmpty;
+  }
+
+  AdminDataAccuracyMutationScopeType _mutationScopeType(
+    AdminHierarchyScopeIntent scope,
+  ) {
+    switch (scope.scopeType) {
+      case AdminHierarchyScopeType.business:
+        return AdminDataAccuracyMutationScopeType.business;
+      case AdminHierarchyScopeType.orgUnit:
+        return AdminDataAccuracyMutationScopeType.orgUnit;
+      case AdminHierarchyScopeType.location:
+        return AdminDataAccuracyMutationScopeType.location;
+    }
+  }
+}
+
+class _ScopedDataAccuracyActionCard extends StatelessWidget {
+  const _ScopedDataAccuracyActionCard({
+    required this.scope,
+    required this.locationCount,
+    required this.onPressed,
+  });
+
+  final AdminHierarchyScopeIntent scope;
+  final int locationCount;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      key: const Key('admin_data_accuracy_scope_action_card'),
+      child: Row(
+        children: [
+          const Icon(Icons.account_tree_outlined, color: AppColors.peacockDark),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Apply to selected ${scope.scopeType.label.toLowerCase()}',
+                  style: AppTextStyles.sectionTitle(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'This updates covers, wage source, and walk-in handling for $locationCount visible location${locationCount == 1 ? '' : 's'}.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton.icon(
+            key: const Key('admin_data_accuracy_scope_override'),
+            style: AdminButtonStyles.primary,
+            onPressed: onPressed,
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('Edit scope'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -462,9 +580,10 @@ class _DataAccuracyOverrideDraft {
 }
 
 class _DataAccuracyOverrideDialog extends StatefulWidget {
-  const _DataAccuracyOverrideDialog({required this.initial});
+  const _DataAccuracyOverrideDialog({required this.initial, this.title});
 
   final DataAccuracyAdminRow initial;
+  final String? title;
 
   @override
   State<_DataAccuracyOverrideDialog> createState() =>
@@ -493,8 +612,9 @@ class _DataAccuracyOverrideDialogState
       key: const Key('admin_data_accuracy_override_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Override data accuracy: ${widget.initial.operatorRef.businessName} '
-        '/ ${widget.initial.operatorRef.locationName}',
+        widget.title ??
+            'Override data accuracy: ${widget.initial.operatorRef.businessName} '
+                '/ ${widget.initial.operatorRef.locationName}',
         style: AdminButtonStyles.dialogTitleStyle,
       ),
       content: SizedBox(

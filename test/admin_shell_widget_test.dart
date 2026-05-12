@@ -50,6 +50,26 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> chooseWorkspaceBusinessScope(
+    WidgetTester tester, {
+    required String operatorId,
+    String? functionTabLabel,
+  }) async {
+    final option = find.byKey(Key('admin_setup_scope_business_$operatorId'));
+    await tester.ensureVisible(option);
+    await tester.pumpAndSettle();
+    await tester.tap(option);
+    await tester.pumpAndSettle();
+    if (functionTabLabel != null &&
+        find
+            .byKey(const Key('admin_setup_workspace_tabs'))
+            .evaluate()
+            .isNotEmpty) {
+      await tester.tap(find.widgetWithText(Tab, functionTabLabel));
+      await tester.pumpAndSettle();
+    }
+  }
+
   Future<void> openSetupTileAndReturn(
     WidgetTester tester, {
     required Key tileKey,
@@ -165,17 +185,17 @@ void main() {
       kAdminRoutes
           .where((route) => route.section == AdminRouteSection.ai)
           .map((route) => route.id),
-      <String>[kAdminPricingRouteId, kAdminCorpusRouteId],
+      <String>[
+        kAdminPricingRouteId,
+        kAdminCorpusRouteId,
+        kAdminObservabilityRouteId,
+      ],
     );
     expect(
       kAdminRoutes
           .where((route) => route.section == AdminRouteSection.systemMonitoring)
           .map((route) => route.id),
-      <String>[
-        kAdminHealthRouteId,
-        kAdminDebugConsoleRouteId,
-        kAdminObservabilityRouteId,
-      ],
+      <String>[kAdminHealthRouteId, kAdminDebugConsoleRouteId],
     );
     expect(
       kAdminRoutes
@@ -295,31 +315,114 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('observability route renders the live metrics surface', (
-    tester,
-  ) async {
-    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
-    addTearDown(source.dispose);
+  testWidgets(
+    'observability route uses workspace before live metrics surface',
+    (tester) async {
+      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+      addTearDown(source.dispose);
 
-    await tester.pumpWidget(
-      wrap(AdminShell(session: superAdmin, authSource: source)),
-    );
+      await tester.pumpWidget(
+        wrap(AdminShell(session: superAdmin, authSource: source)),
+      );
 
-    await tester.ensureVisible(
-      find.byKey(const Key('admin_nav_item_observability')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('admin_nav_item_observability')));
-    await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_nav_item_observability')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_nav_item_observability')));
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('admin_observability_screen')), findsOneWidget);
-    expect(
-      find.byKey(const Key('admin_placeholder_observability')),
-      findsNothing,
-    );
-    expect(find.byKey(const Key('admin_operators_screen')), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      expect(
+        find.byKey(const Key('admin_setup_workspace_scope_pane')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('admin_observability_screen')), findsNothing);
+
+      await chooseWorkspaceBusinessScope(
+        tester,
+        operatorId: '00000000-0000-4000-8000-000000000001',
+        functionTabLabel: 'AI Metrics',
+      );
+
+      expect(
+        find.byKey(const Key('admin_observability_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_placeholder_observability')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('admin_operators_screen')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final scenario in <({String routeId, String title, Key screenKey})>[
+    (
+      routeId: kAdminPricingRouteId,
+      title: 'Plans and limits',
+      screenKey: Key('admin_pricing_screen'),
+    ),
+    (
+      routeId: kAdminCorpusRouteId,
+      title: 'Knowledge Base',
+      screenKey: Key('admin_corpus_screen'),
+    ),
+    (
+      routeId: kAdminIntegrationsRouteId,
+      title: 'Connected services',
+      screenKey: Key('admin_integrations_screen'),
+    ),
+    (
+      routeId: kAdminHealthRouteId,
+      title: 'System health',
+      screenKey: Key('admin_health_screen'),
+    ),
+    (
+      routeId: kAdminObservabilityRouteId,
+      title: 'AI Metrics',
+      screenKey: Key('admin_observability_screen'),
+    ),
+    (
+      routeId: kAdminFeatureFlagsRouteId,
+      title: 'Launch controls',
+      screenKey: Key('admin_feature_flags_screen'),
+    ),
+  ]) {
+    testWidgets('${scenario.title} uses the shared hierarchy workspace', (
+      tester,
+    ) async {
+      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          AdminShell(
+            session: superAdmin,
+            authSource: source,
+            initialRouteId: scenario.routeId,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_setup_workspace_scope_pane')),
+        findsOneWidget,
+      );
+      expect(find.text(scenario.title), findsWidgets);
+      expect(find.byKey(scenario.screenKey), findsNothing);
+
+      await chooseWorkspaceBusinessScope(
+        tester,
+        operatorId: '00000000-0000-4000-8000-000000000001',
+        functionTabLabel: scenario.title,
+      );
+
+      expect(find.byKey(scenario.screenKey), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('11A.5 promotes the debug route from placeholder to live', (
     tester,
@@ -336,9 +439,12 @@ void main() {
     await tester.tap(find.byKey(const Key('admin_nav_item_debug')));
     await tester.pumpAndSettle();
 
-    // The live debug console screen renders; the old placeholder is
-    // gone.
-    expect(find.byKey(const Key('admin_debug_console_screen')), findsOneWidget);
+    // The live Support logs route now starts in the shared hierarchy
+    // workspace. The request table appears after a scope is selected.
+    expect(
+      find.byKey(const Key('admin_setup_workspace_scope_pane')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('admin_placeholder_debug')), findsNothing);
     // Regression guard: pre-fix the embedded screen overflowed by
     // ~124 px at the normal shell viewport. The ListView refactor
@@ -427,7 +533,7 @@ void main() {
     expect(source.current, isA<AdminAuthUnauthenticated>());
   });
 
-  testWidgets('initialRouteId selects the requested route on first paint', (
+  testWidgets('initialRouteId opens the requested workspace on first paint', (
     tester,
   ) async {
     final source = DemoAdminAuthSource.signedInAsSuperAdmin();
@@ -441,6 +547,20 @@ void main() {
           initialRouteId: 'observability',
         ),
       ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_setup_workspace_scope_pane')),
+      findsOneWidget,
+    );
+    expect(find.text('AI Metrics'), findsWidgets);
+    expect(find.byKey(const Key('admin_observability_screen')), findsNothing);
+
+    await chooseWorkspaceBusinessScope(
+      tester,
+      operatorId: '00000000-0000-4000-8000-000000000001',
+      functionTabLabel: 'AI Metrics',
     );
 
     expect(find.byKey(const Key('admin_observability_screen')), findsOneWidget);
@@ -466,15 +586,18 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_members_no_operator_state')),
+        find.byKey(const Key('admin_setup_workspace_scope_pane')),
         findsOneWidget,
       );
       expect(
         find.byKey(const Key('admin_operator_picker_screen')),
         findsNothing,
       );
-      expect(find.text('Choose an operator'), findsOneWidget);
-      expect(find.text('Choose operator'), findsOneWidget);
+      expect(find.text('Scope'), findsWidgets);
+      expect(
+        find.text('Choose a business, org unit, or location.'),
+        findsOneWidget,
+      );
     },
   );
 

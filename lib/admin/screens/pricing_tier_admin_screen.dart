@@ -1,4 +1,4 @@
-﻿// Phase 11A.2 - Pricing tier admin screen.
+// Phase 11A.2 - Pricing tier admin screen.
 //
 // Admin-side editor over `usage_caps` per (operator, location,
 // usage_class, staff_id?, workflow_id?) plus subscription tier on
@@ -29,6 +29,7 @@ import '../../theme/app_theme.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
+import '../admin_route_handoff.dart';
 import '../models/pricing_tier_admin_models.dart';
 import '../services/pricing_tier_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
@@ -39,6 +40,8 @@ class PricingTierAdminScreen extends StatefulWidget {
     required this.gateway,
     this.editingEnabled = true,
     this.idempotencyKeyFactory,
+    this.hierarchyScope,
+    this.scopeLocationIds = const <String>{},
   });
 
   final PricingTierAdminGateway gateway;
@@ -53,6 +56,8 @@ class PricingTierAdminScreen extends StatefulWidget {
   /// widget tests inject a deterministic counter so retries can be
   /// asserted.
   final String Function()? idempotencyKeyFactory;
+  final AdminHierarchyScopeIntent? hierarchyScope;
+  final Set<String> scopeLocationIds;
 
   @override
   State<PricingTierAdminScreen> createState() => _PricingTierAdminScreenState();
@@ -94,13 +99,19 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       setState(() {
         _bundles = bundles;
         _loading = false;
+        final visible = _visibleBundles;
+        final preferredOperatorId = widget.hierarchyScope?.operatorId;
+        if (preferredOperatorId != null &&
+            visible.any((b) => b.operatorId == preferredOperatorId)) {
+          _selectedOperatorId = preferredOperatorId;
+        }
         if (_selectedOperatorId != null &&
-            bundles.every((b) => b.operatorId != _selectedOperatorId)) {
+            visible.every((b) => b.operatorId != _selectedOperatorId)) {
           _selectedOperatorId = null;
         }
-        _selectedOperatorId ??= bundles.isEmpty
+        _selectedOperatorId ??= visible.isEmpty
             ? null
-            : bundles.first.operatorId;
+            : visible.first.operatorId;
       });
     } on PricingTierAdminGatewayError catch (error) {
       if (!mounted) return;
@@ -120,10 +131,45 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
   PricingOperatorBundle? get _selected {
     final id = _selectedOperatorId;
     if (id == null) return null;
-    for (final b in _bundles) {
+    for (final b in _visibleBundles) {
       if (b.operatorId == id) return b;
     }
     return null;
+  }
+
+  List<PricingOperatorBundle> get _visibleBundles {
+    final scope = widget.hierarchyScope;
+    if (scope == null) return _bundles;
+    return <PricingOperatorBundle>[
+      for (final bundle in _bundles)
+        if (bundle.operatorId == scope.operatorId) _bundleForScope(bundle),
+    ];
+  }
+
+  PricingOperatorBundle _bundleForScope(PricingOperatorBundle bundle) {
+    final scope = widget.hierarchyScope;
+    if (scope == null || scope.isBusinessScope) return bundle;
+    final scopedLocationIds = _scopeLocationIds(scope);
+    return PricingOperatorBundle(
+      operatorId: bundle.operatorId,
+      businessName: bundle.businessName,
+      subscriptionTier: bundle.subscriptionTier,
+      preferredCurrency: bundle.preferredCurrency,
+      primaryLocationId: bundle.primaryLocationId,
+      primaryLocationName: bundle.primaryLocationName,
+      suspended: bundle.suspended,
+      caps: bundle.caps
+          .where((cap) => scopedLocationIds.contains(cap.locationId))
+          .toList(growable: false),
+    );
+  }
+
+  Set<String> _scopeLocationIds(AdminHierarchyScopeIntent scope) {
+    final locationId = scope.locationId;
+    if (locationId != null && locationId.isNotEmpty) {
+      return <String>{locationId};
+    }
+    return widget.scopeLocationIds;
   }
 
   Future<void> _runAndRefresh(
@@ -198,13 +244,14 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
         message: _loadError!,
       );
     }
-    if (_bundles.isEmpty) {
+    final visibleBundles = _visibleBundles;
+    if (visibleBundles.isEmpty) {
       return Center(
         key: const Key('admin_pricing_empty'),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 380),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 380),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -226,7 +273,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     }
     return AdminMasterDetailLayout(
       master: _OperatorList(
-        bundles: _bundles,
+        bundles: visibleBundles,
         selectedOperatorId: _selectedOperatorId,
         onSelect: (id) => setState(() => _selectedOperatorId = id),
       ),
@@ -252,7 +299,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       builder: (_) => _ConfirmDialog(
         title: 'Apply ${template.displayName} template?',
         message:
-            'Sets the Forge & Flow AI plan to ${template.subscriptionTier} and '
+            'Sets the Forge & Flow AI plan to ${template.displayName} and '
             'replaces ${template.caps.length} usage limit'
             '${template.caps.length == 1 ? '' : 's'} '
             'on ${bundle.businessName}. Existing limits for the same '
@@ -279,15 +326,18 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
   ) async {
     if (newTier == bundle.subscriptionTier) return;
     final key = _nextIdempotencyKey();
-    await _runAndRefresh(() async {
-      await widget.gateway.updateOperatorTier(
-        OperatorTierPatchCommand(
-          operatorId: bundle.operatorId,
-          subscriptionTier: newTier,
-          idempotencyKey: key,
-        ),
-      );
-    }, successHint: 'Forge & Flow AI plan set to $newTier.');
+    await _runAndRefresh(
+      () async {
+        await widget.gateway.updateOperatorTier(
+          OperatorTierPatchCommand(
+            operatorId: bundle.operatorId,
+            subscriptionTier: newTier,
+            idempotencyKey: key,
+          ),
+        );
+      },
+      successHint: 'Forge & Flow AI plan set to ${_tierDisplayName(newTier)}.',
+    );
   }
 
   Future<void> _onEditCap(PricingOperatorBundle bundle, UsageCapRow row) async {
@@ -311,7 +361,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       context: context,
       builder: (_) => _UsageCapDialog(
         operatorId: bundle.operatorId,
-        primaryLocationId: bundle.primaryLocationId,
+        primaryLocationId: _defaultLocationId(bundle),
         idempotencyKey: _nextIdempotencyKey(),
       ),
     );
@@ -319,6 +369,17 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     await _runAndRefresh(() async {
       await widget.gateway.upsertUsageCap(command);
     }, successHint: 'Cap row added.');
+  }
+
+  String? _defaultLocationId(PricingOperatorBundle bundle) {
+    final scopeLocationId = widget.hierarchyScope?.locationId;
+    if (scopeLocationId != null && scopeLocationId.isNotEmpty) {
+      return scopeLocationId;
+    }
+    if (widget.scopeLocationIds.isNotEmpty) {
+      return widget.scopeLocationIds.first;
+    }
+    return bundle.primaryLocationId;
   }
 }
 
@@ -406,7 +467,7 @@ class _OperatorList extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Forge & Flow AI plan: ${bundle.subscriptionTier}',
+                      'Forge & Flow AI plan: ${_tierDisplayName(bundle.subscriptionTier)}',
                       style: AppTextStyles.mono11(
                         color: AppColors.textSecondary,
                       ),
@@ -465,7 +526,7 @@ class _OperatorPricingDetail extends StatelessWidget {
                 const SizedBox(height: 10),
                 AdminDetailRow(
                   label: 'Forge & Flow AI plan',
-                  value: bundle.subscriptionTier,
+                  value: _tierDisplayName(bundle.subscriptionTier),
                 ),
                 AdminDetailRow(
                   label: 'Currency',
@@ -474,6 +535,26 @@ class _OperatorPricingDetail extends StatelessWidget {
                 AdminDetailRow(
                   label: 'Primary location',
                   value: _primaryLocationLabel(bundle),
+                ),
+                _PricingAdvancedDetails(
+                  keyName:
+                      'admin_pricing_operator_details_${bundle.operatorId}',
+                  title: 'Plan details',
+                  rows: <_PricingDetail>[
+                    _PricingDetail(
+                      label: 'Operator ID',
+                      value: bundle.operatorId,
+                    ),
+                    _PricingDetail(
+                      label: 'Plan key',
+                      value: bundle.subscriptionTier,
+                    ),
+                    if (bundle.primaryLocationId != null)
+                      _PricingDetail(
+                        label: 'Primary location ID',
+                        value: bundle.primaryLocationId!,
+                      ),
+                  ],
                 ),
                 if (editingEnabled) ...[
                   const SizedBox(height: 14),
@@ -562,7 +643,104 @@ class _OperatorPricingDetail extends StatelessWidget {
 String _primaryLocationLabel(PricingOperatorBundle bundle) {
   final name = bundle.primaryLocationName?.trim();
   if (name != null && name.isNotEmpty) return name;
-  return bundle.primaryLocationId ?? 'No primary location';
+  if (bundle.primaryLocationId != null) return 'Primary location selected';
+  return 'No primary location';
+}
+
+String _tierDisplayName(String tier) {
+  final normalized = tier.trim().toLowerCase();
+  for (final template in kPricingTierTemplates) {
+    if (template.subscriptionTier.toLowerCase() == normalized ||
+        template.tierKey.toLowerCase() == normalized) {
+      return template.displayName;
+    }
+  }
+  if (normalized.isEmpty) return 'Unknown plan';
+  return normalized
+      .replaceAll(RegExp(r'[_\-]+'), ' ')
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .map(
+        (part) => part.length == 1
+            ? part.toUpperCase()
+            : '${part.substring(0, 1).toUpperCase()}${part.substring(1)}',
+      )
+      .join(' ');
+}
+
+String _limitScopeLabel(UsageCapRow row) {
+  final parts = <String>[];
+  if (row.staffId != null) parts.add('specific staff member');
+  if (row.workflowId != null) parts.add('specific workflow');
+  if (parts.isEmpty) return 'Applies to all staff and workflows';
+  return 'Applies to ${parts.join(' and ')}';
+}
+
+class _PricingDetail {
+  const _PricingDetail({required this.label, required this.value});
+
+  final String label;
+  final String value;
+}
+
+class _PricingAdvancedDetails extends StatelessWidget {
+  const _PricingAdvancedDetails({
+    required this.keyName,
+    required this.title,
+    required this.rows,
+  });
+
+  final String keyName;
+  final String title;
+  final List<_PricingDetail> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: Material(
+        type: MaterialType.transparency,
+        child: ExpansionTile(
+          key: Key(keyName),
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(top: 4, bottom: 4),
+          title: Text(
+            title,
+            style: AppTextStyles.mono8(
+              color: AppColors.textMuted,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
+          children: <Widget>[
+            for (final row in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    SizedBox(
+                      width: 140,
+                      child: Text(
+                        row.label,
+                        style: AppTextStyles.mono10(color: AppColors.textMuted),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        row.value,
+                        style: AppTextStyles.mono10(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _UsageCapRowTile extends StatelessWidget {
@@ -603,7 +781,7 @@ class _UsageCapRowTile extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  row.usageClass,
+                  adminRequestUseCaseLabel(row.usageClass),
                   style: AppTextStyles.mono14(
                     color: AppColors.textPrimary,
                     weight: FontWeight.w600,
@@ -619,20 +797,41 @@ class _UsageCapRowTile extends StatelessWidget {
                 if (row.staffId != null || row.workflowId != null) ...[
                   const SizedBox(height: 2),
                   Text(
-                    [
-                      if (row.staffId != null) 'staff: ${row.staffId}',
-                      if (row.workflowId != null) 'workflow: ${row.workflowId}',
-                    ].join(' - '),
+                    _limitScopeLabel(row),
                     style: AppTextStyles.mono8(color: AppColors.textMuted),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
                 const SizedBox(height: 2),
                 Text(
-                  'Updated by ${row.updatedBy ?? 'Unknown'} - '
-                  '${adminHumanDateTime(row.updatedAt)}',
+                  'Updated ${adminHumanDateTime(row.updatedAt)}',
                   style: AppTextStyles.mono8(color: AppColors.textMuted),
                   overflow: TextOverflow.ellipsis,
+                ),
+                _PricingAdvancedDetails(
+                  keyName: 'admin_pricing_cap_details_$keySuffix',
+                  title: 'Limit details',
+                  rows: <_PricingDetail>[
+                    if (row.capId != null)
+                      _PricingDetail(label: 'Limit ID', value: row.capId!),
+                    _PricingDetail(label: 'Use case ID', value: row.usageClass),
+                    _PricingDetail(label: 'Location ID', value: row.locationId),
+                    if (row.staffId != null)
+                      _PricingDetail(
+                        label: 'Staff member ID',
+                        value: row.staffId!,
+                      ),
+                    if (row.workflowId != null)
+                      _PricingDetail(
+                        label: 'Workflow ID',
+                        value: row.workflowId!,
+                      ),
+                    if (row.updatedBy != null)
+                      _PricingDetail(
+                        label: 'Updated by',
+                        value: row.updatedBy!,
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -732,7 +931,7 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                     ),
                   ),
                 _LabelledField(
-                  label: 'Use case ID',
+                  label: 'Use case',
                   controller: _usageClass,
                   fieldKey: const Key('admin_pricing_cap_usage_class'),
                   validator: _requiredValidator,
@@ -768,14 +967,14 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                   validator: _decimalValidator,
                 ),
                 _LabelledField(
-                  label: 'Staff member ID (optional)',
+                  label: 'Staff member (optional)',
                   controller: _staffId,
                   fieldKey: const Key('admin_pricing_cap_staff_id'),
                   hintText: 'Leave blank for all staff',
                   enabled: !editing,
                 ),
                 _LabelledField(
-                  label: 'Workflow ID (optional)',
+                  label: 'Workflow (optional)',
                   controller: _workflowId,
                   fieldKey: const Key('admin_pricing_cap_workflow_id'),
                   hintText: 'Leave blank for all workflows',

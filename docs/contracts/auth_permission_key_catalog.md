@@ -182,6 +182,8 @@ factor is sensitive.
 | `team.roles.create_custom` | Create operator-scoped custom role. | — |
 | `team.roles.assign` | Grant role to user within own operator. | — |
 | `team.roles.revoke` | Revoke role from user within own operator. | — |
+| `team.hierarchy.suspend` | Suspend or reactivate locations and hierarchy levels. | — |
+| `team.hierarchy.delete` | Delete locations and empty hierarchy levels. | — |
 | `team.audit_log.view` | View audit log scoped to own operator. | — |
 | `team.audit_log.export` | View and export team audit log entries (CSV). | — |
 | `team.session.force_logout` | Force-logout a user's sessions within own operator. | — |
@@ -193,7 +195,8 @@ Baseline grants seeded by 9.0a:
   keys. The MFA hardening migration grants `team.users.reset_mfa`. The
   11W.5 reconciliation migration grants `team.audit_log.export`.
 - `operator_owner` gets ALL `team.*` keys, including
-  `team.users.reset_mfa` and `team.audit_log.export`.
+  `team.users.reset_mfa`, `team.audit_log.export`, and hierarchy lifecycle
+  keys.
 - `operator_admin` (when seeded) gets `team.audit_log.export` so the
   Operator Web Audit Log CSV export action carries an honest gate.
 - `operator_manager` gets the manager-tier subset:
@@ -201,7 +204,7 @@ Baseline grants seeded by 9.0a:
   `team.users.reset_password`, `team.roles.view`,
   `team.roles.assign`, `team.roles.revoke`, `team.audit_log.view`,
   `team.session.force_logout`. Manager **cannot** create custom roles,
-  soft-delete users, reset MFA, or export audit logs by default
+  suspend/delete hierarchy levels, soft-delete users, reset MFA, or export audit logs by default
   (locked); pulling a full audit trail to CSV is a senior-role action.
 - `operator_supervisor` and `operator_staff` get nothing in
   `team.*`.

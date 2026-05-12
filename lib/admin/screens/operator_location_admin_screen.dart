@@ -48,6 +48,8 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     this.onOpenDataAccuracyScope,
     this.onOpenPollingPricing,
     this.onOpenPollingPricingScope,
+    this.onOpenIntegrationsScope,
+    this.onOpenTimingScope,
     this.onOpenSupportOperatorView,
     this.onOpenTeam,
     this.onOpenAccess,
@@ -72,6 +74,8 @@ class OperatorLocationAdminScreen extends StatefulWidget {
   final ValueChanged<AdminHierarchyScopeIntent>? onOpenDataAccuracyScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
   final ValueChanged<AdminHierarchyScopeIntent>? onOpenPollingPricingScope;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenIntegrationsScope;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenTimingScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>?
   onOpenSupportOperatorView;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenTeam;
@@ -200,16 +204,9 @@ class _OperatorLocationAdminScreenState
   }
 
   AdminOperatorLocationScopeIntent _scopeForBundle(OperatorAdminBundle bundle) {
-    final primaryLocation = bundle.primaryLocation;
-    final fallbackLocation = bundle.locations.isEmpty
-        ? null
-        : bundle.locations.first;
-    final location = primaryLocation ?? fallbackLocation;
     return AdminOperatorLocationScopeIntent(
       operatorId: bundle.operator.operatorId,
       operatorName: bundle.operator.businessName,
-      locationId: location?.locationId,
-      locationName: location?.name,
     );
   }
 
@@ -374,6 +371,8 @@ class _OperatorLocationAdminScreenState
               onOpenDataAccuracyScope: widget.onOpenDataAccuracyScope,
               onOpenPollingPricing: widget.onOpenPollingPricing,
               onOpenPollingPricingScope: widget.onOpenPollingPricingScope,
+              onOpenIntegrationsScope: widget.onOpenIntegrationsScope,
+              onOpenTimingScope: widget.onOpenTimingScope,
               onOpenSupportOperatorView: widget.onOpenSupportOperatorView,
               onOpenTeam: widget.onOpenTeam,
               onOpenAccess: widget.onOpenAccess,
@@ -972,6 +971,8 @@ class _OperatorDetail extends StatelessWidget {
     required this.onOpenDataAccuracyScope,
     required this.onOpenPollingPricing,
     required this.onOpenPollingPricingScope,
+    required this.onOpenIntegrationsScope,
+    required this.onOpenTimingScope,
     required this.onOpenSupportOperatorView,
     required this.onOpenTeam,
     required this.onOpenAccess,
@@ -1003,6 +1004,8 @@ class _OperatorDetail extends StatelessWidget {
   final ValueChanged<AdminHierarchyScopeIntent>? onOpenDataAccuracyScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
   final ValueChanged<AdminHierarchyScopeIntent>? onOpenPollingPricingScope;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenIntegrationsScope;
+  final ValueChanged<AdminHierarchyScopeIntent>? onOpenTimingScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>?
   onOpenSupportOperatorView;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenTeam;
@@ -1179,37 +1182,43 @@ class _OperatorDetail extends StatelessWidget {
                         scope.operatorId,
                         scope.locationId,
                       )),
-            onOpenIntegrations: (scope) {
-              final scopedLocation = _locationForScope(bundle, scope);
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  settings: const RouteSettings(name: '/vendor-connections'),
-                  builder: (_) => VendorConnectionsAdminMount(
-                    operatorId: operator.operatorId,
-                    locationId: scopedLocation?.locationId,
-                    locationName: scopedLocation?.name,
-                    selectedScope: scope,
-                    gateway: vendorConnectionsGateway,
-                    canMutate: editingEnabled,
-                    onBackToBusinessAccounts: () =>
-                        Navigator.of(context).maybePop(),
-                  ),
-                ),
-              );
-            },
-            onOpenTiming: (scope) {
-              final scopedTimingLocation =
-                  _locationForScope(bundle, scope) ?? timingLocation;
-              showDialog<void>(
-                context: context,
-                builder: (_) => _AdminLocationTimingDialog(
-                  operatorName: operator.businessName,
-                  selectedScope: scope,
-                  timingLocation: scopedTimingLocation,
-                  editingEnabled: editingEnabled,
-                ),
-              );
-            },
+            onOpenIntegrations:
+                onOpenIntegrationsScope ??
+                (scope) {
+                  final scopedLocation = _locationForScope(bundle, scope);
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      settings: const RouteSettings(
+                        name: '/vendor-connections',
+                      ),
+                      builder: (_) => VendorConnectionsAdminMount(
+                        operatorId: operator.operatorId,
+                        locationId: scopedLocation?.locationId,
+                        locationName: scopedLocation?.name,
+                        selectedScope: scope,
+                        gateway: vendorConnectionsGateway,
+                        canMutate: editingEnabled,
+                        onBackToBusinessAccounts: () =>
+                            Navigator.of(context).maybePop(),
+                      ),
+                    ),
+                  );
+                },
+            onOpenTiming:
+                onOpenTimingScope ??
+                (scope) {
+                  final scopedTimingLocation =
+                      _locationForScope(bundle, scope) ?? timingLocation;
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => _AdminLocationTimingDialog(
+                      operatorName: operator.businessName,
+                      selectedScope: scope,
+                      timingLocation: scopedTimingLocation,
+                      editingEnabled: editingEnabled,
+                    ),
+                  );
+                },
           ),
         ],
       ),
@@ -1546,12 +1555,502 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     }
   }
 
+  Future<void> _onMoveOrgUnit(OrgUnitAdminNode unit) async {
+    final gateway = widget.gateway;
+    if (!widget.editingEnabled || gateway == null) return;
+    final data = await (_future ?? _load());
+    final blockedIds = <String>{unit.orgUnitId, ..._descendantIds(data, unit)};
+    final candidates = <_HierarchyMoveTarget>[
+      for (final candidate in data.orgUnits)
+        if (!blockedIds.contains(candidate.orgUnitId) &&
+            candidate.orgUnitId != unit.parentOrgUnitId)
+          _HierarchyMoveTarget(
+            id: candidate.orgUnitId,
+            label: _pathLabelForUnit(data, candidate),
+          ),
+    ];
+    if (unit.parentOrgUnitId == null) {
+      _showHierarchySnack('The business root stays at business level.');
+      return;
+    }
+    if (candidates.isEmpty) {
+      _showHierarchySnack('No other org unit is available for this move.');
+      return;
+    }
+    if (!mounted) return;
+    final result = await showDialog<_MoveHierarchyResult>(
+      context: context,
+      builder: (_) => _MoveHierarchyDialog(
+        dialogKey: const Key('admin_hierarchy_move_org_unit_dialog'),
+        targetKey: const Key('admin_hierarchy_move_org_unit_parent'),
+        reasonKey: const Key('admin_hierarchy_move_org_unit_reason'),
+        submitKey: const Key('admin_hierarchy_move_org_unit_submit'),
+        title: 'Move ${unit.name}',
+        targetLabel: 'New parent',
+        candidates: candidates,
+      ),
+    );
+    if (result == null) return;
+    try {
+      final moved = await gateway.moveOrgUnit(
+        operatorId: widget.bundle.operator.operatorId,
+        orgUnitId: unit.orgUnitId,
+        newParentOrgUnitId: result.targetId,
+        idempotencyKey: widget.idempotencyKeyFactory(),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: result.adminReason,
+      );
+      if (!mounted) return;
+      _selectMovedOrgUnit(moved, data);
+      setState(() {
+        _future = _load();
+      });
+      _showHierarchySnack('Moved ${unit.name}');
+    } catch (error) {
+      if (!mounted) return;
+      _showHierarchySnack('Could not move org unit: $error');
+    }
+  }
+
+  Future<void> _onMoveLocation(
+    LocationAdminRecord location, {
+    required String? currentOrgUnitId,
+  }) async {
+    final gateway = widget.gateway;
+    if (!widget.editingEnabled || gateway == null) return;
+    final data = await (_future ?? _load());
+    final candidates = <_HierarchyMoveTarget>[
+      for (final candidate in data.orgUnits)
+        if (candidate.orgUnitId != currentOrgUnitId)
+          _HierarchyMoveTarget(
+            id: candidate.orgUnitId,
+            label: _pathLabelForUnit(data, candidate),
+          ),
+    ];
+    if (candidates.isEmpty) {
+      _showHierarchySnack('No other org unit is available for this move.');
+      return;
+    }
+    if (!mounted) return;
+    final result = await showDialog<_MoveHierarchyResult>(
+      context: context,
+      builder: (_) => _MoveHierarchyDialog(
+        dialogKey: const Key('admin_hierarchy_move_location_dialog'),
+        targetKey: const Key('admin_hierarchy_move_location_parent'),
+        reasonKey: const Key('admin_hierarchy_move_location_reason'),
+        submitKey: const Key('admin_hierarchy_move_location_submit'),
+        title: 'Move ${location.name}',
+        targetLabel: 'New org unit',
+        candidates: candidates,
+      ),
+    );
+    if (result == null) return;
+    try {
+      final moved = await gateway.moveLocation(
+        operatorId: widget.bundle.operator.operatorId,
+        locationId: location.locationId,
+        newOrgUnitId: result.targetId,
+        idempotencyKey: widget.idempotencyKeyFactory(),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: result.adminReason,
+      );
+      if (!mounted) return;
+      _selectMovedLocation(location, moved, data);
+      setState(() {
+        _future = _load();
+      });
+      _showHierarchySnack('Moved ${location.name}');
+    } catch (error) {
+      if (!mounted) return;
+      _showHierarchySnack('Could not move location: $error');
+    }
+  }
+
+  Future<void> _onToggleOrgUnitSuspension(OrgUnitAdminNode unit) async {
+    final gateway = widget.gateway;
+    if (!widget.editingEnabled || gateway == null) return;
+    final suspending = !unit.isSuspended;
+    if (unit.parentOrgUnitId == null && suspending) {
+      _showHierarchySnack('The business root cannot be suspended.');
+      return;
+    }
+    if (!mounted) return;
+    final reason = await _askHierarchyReason(
+      dialogKey: Key(
+        suspending
+            ? 'admin_hierarchy_org_unit_suspend_dialog'
+            : 'admin_hierarchy_org_unit_reactivate_dialog',
+      ),
+      reasonKey: Key(
+        suspending
+            ? 'admin_hierarchy_org_unit_suspend_reason'
+            : 'admin_hierarchy_org_unit_reactivate_reason',
+      ),
+      submitKey: Key(
+        suspending
+            ? 'admin_hierarchy_org_unit_suspend_submit'
+            : 'admin_hierarchy_org_unit_reactivate_submit',
+      ),
+      title: suspending ? 'Suspend ${unit.name}' : 'Reactivate ${unit.name}',
+      message: suspending
+          ? 'This keeps the org unit in the hierarchy but blocks it for active use until reactivated.'
+          : 'This makes the org unit active again.',
+      submitLabel: suspending ? 'Suspend' : 'Reactivate',
+      danger: suspending,
+    );
+    if (reason == null) return;
+    try {
+      final updated = suspending
+          ? await gateway.suspendOrgUnit(
+              operatorId: widget.bundle.operator.operatorId,
+              orgUnitId: unit.orgUnitId,
+              idempotencyKey: widget.idempotencyKeyFactory(),
+              actorUserId: widget.actorUserId,
+              actorIsForgeAdmin: widget.editingEnabled,
+              adminReason: reason,
+            )
+          : await gateway.reactivateOrgUnit(
+              operatorId: widget.bundle.operator.operatorId,
+              orgUnitId: unit.orgUnitId,
+              idempotencyKey: widget.idempotencyKeyFactory(),
+              actorUserId: widget.actorUserId,
+              actorIsForgeAdmin: widget.editingEnabled,
+              adminReason: reason,
+            );
+      if (!mounted) return;
+      final data = await (_future ?? _load());
+      _selectMovedOrgUnit(updated, data);
+      setState(() {
+        _future = _load();
+      });
+      _showHierarchySnack(
+        suspending ? 'Suspended ${unit.name}' : 'Reactivated ${unit.name}',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showHierarchySnack(
+        suspending
+            ? 'Could not suspend org unit: $error'
+            : 'Could not reactivate org unit: $error',
+      );
+    }
+  }
+
+  Future<void> _onDeleteOrgUnit(OrgUnitAdminNode unit) async {
+    final gateway = widget.gateway;
+    if (!widget.editingEnabled || gateway == null) return;
+    if (unit.parentOrgUnitId == null) {
+      _showHierarchySnack('The business root cannot be deleted.');
+      return;
+    }
+    if (!mounted) return;
+    final reason = await _askHierarchyReason(
+      dialogKey: const Key('admin_hierarchy_org_unit_delete_dialog'),
+      reasonKey: const Key('admin_hierarchy_org_unit_delete_reason'),
+      submitKey: const Key('admin_hierarchy_org_unit_delete_submit'),
+      title: 'Delete ${unit.name}',
+      message:
+          'This removes an empty org unit from active hierarchy views. Move any child org units or locations first.',
+      submitLabel: 'Delete',
+      danger: true,
+    );
+    if (reason == null) return;
+    try {
+      await gateway.deleteOrgUnit(
+        operatorId: widget.bundle.operator.operatorId,
+        orgUnitId: unit.orgUnitId,
+        idempotencyKey: widget.idempotencyKeyFactory(),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: reason,
+      );
+      if (!mounted) return;
+      if (widget.selectedScope.scopeType == AdminHierarchyScopeType.orgUnit &&
+          widget.selectedScope.orgUnitId == unit.orgUnitId) {
+        widget.onSelectScope(_businessScope());
+      }
+      setState(() {
+        _future = _load();
+      });
+      _showHierarchySnack('Deleted ${unit.name}');
+    } catch (error) {
+      if (!mounted) return;
+      _showHierarchySnack('Could not delete org unit: $error');
+    }
+  }
+
+  Future<void> _onToggleLocationSuspension(
+    LocationAdminRecord location, {
+    required bool isSuspended,
+  }) async {
+    final gateway = widget.gateway;
+    if (!widget.editingEnabled || gateway == null) return;
+    final suspending = !isSuspended;
+    if (!mounted) return;
+    final reason = await _askHierarchyReason(
+      dialogKey: Key(
+        suspending
+            ? 'admin_hierarchy_location_suspend_dialog'
+            : 'admin_hierarchy_location_reactivate_dialog',
+      ),
+      reasonKey: Key(
+        suspending
+            ? 'admin_hierarchy_location_suspend_reason'
+            : 'admin_hierarchy_location_reactivate_reason',
+      ),
+      submitKey: Key(
+        suspending
+            ? 'admin_hierarchy_location_suspend_submit'
+            : 'admin_hierarchy_location_reactivate_submit',
+      ),
+      title: suspending
+          ? 'Suspend ${location.name}'
+          : 'Reactivate ${location.name}',
+      message: suspending
+          ? 'This keeps the location in the hierarchy but blocks it for active use until reactivated.'
+          : 'This makes the location active again.',
+      submitLabel: suspending ? 'Suspend' : 'Reactivate',
+      danger: suspending,
+    );
+    if (reason == null) return;
+    try {
+      final updated = suspending
+          ? await gateway.suspendLocation(
+              operatorId: widget.bundle.operator.operatorId,
+              locationId: location.locationId,
+              idempotencyKey: widget.idempotencyKeyFactory(),
+              actorUserId: widget.actorUserId,
+              actorIsForgeAdmin: widget.editingEnabled,
+              adminReason: reason,
+            )
+          : await gateway.reactivateLocation(
+              operatorId: widget.bundle.operator.operatorId,
+              locationId: location.locationId,
+              idempotencyKey: widget.idempotencyKeyFactory(),
+              actorUserId: widget.actorUserId,
+              actorIsForgeAdmin: widget.editingEnabled,
+              adminReason: reason,
+            );
+      if (!mounted) return;
+      final data = await (_future ?? _load());
+      _selectMovedLocation(location, updated, data);
+      setState(() {
+        _future = _load();
+      });
+      _showHierarchySnack(
+        suspending
+            ? 'Suspended ${location.name}'
+            : 'Reactivated ${location.name}',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showHierarchySnack(
+        suspending
+            ? 'Could not suspend location: $error'
+            : 'Could not reactivate location: $error',
+      );
+    }
+  }
+
+  Future<void> _onDeleteHierarchyLocation(LocationAdminRecord location) async {
+    final gateway = widget.gateway;
+    if (!widget.editingEnabled || gateway == null) {
+      widget.onRemoveLocation(location);
+      return;
+    }
+    if (widget.bundle.operator.primaryLocationId == location.locationId) {
+      _showHierarchySnack('The primary location cannot be deleted.');
+      return;
+    }
+    if (!mounted) return;
+    final reason = await _askHierarchyReason(
+      dialogKey: const Key('admin_hierarchy_location_delete_dialog'),
+      reasonKey: const Key('admin_hierarchy_location_delete_reason'),
+      submitKey: const Key('admin_hierarchy_location_delete_submit'),
+      title: 'Delete ${location.name}',
+      message:
+          "This removes the location from active hierarchy views. The business's primary location cannot be deleted.",
+      submitLabel: 'Delete',
+      danger: true,
+    );
+    if (reason == null) return;
+    try {
+      await gateway.deleteLocation(
+        operatorId: widget.bundle.operator.operatorId,
+        locationId: location.locationId,
+        idempotencyKey: widget.idempotencyKeyFactory(),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: reason,
+      );
+      if (!mounted) return;
+      if (widget.selectedScope.scopeType == AdminHierarchyScopeType.location &&
+          widget.selectedScope.locationId == location.locationId) {
+        widget.onSelectScope(_businessScope());
+      }
+      setState(() {
+        _future = _load();
+      });
+      _showHierarchySnack('Deleted ${location.name}');
+    } catch (error) {
+      if (!mounted) return;
+      _showHierarchySnack('Could not delete location: $error');
+    }
+  }
+
+  Future<String?> _askHierarchyReason({
+    required Key dialogKey,
+    required Key reasonKey,
+    required Key submitKey,
+    required String title,
+    required String message,
+    required String submitLabel,
+    required bool danger,
+  }) {
+    return showDialog<String>(
+      context: context,
+      builder: (_) => _HierarchyReasonDialog(
+        dialogKey: dialogKey,
+        reasonKey: reasonKey,
+        submitKey: submitKey,
+        title: title,
+        message: message,
+        submitLabel: submitLabel,
+        danger: danger,
+      ),
+    );
+  }
+
+  void _showHierarchySnack(String message) {
+    if (Scaffold.maybeOf(context) == null) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _selectMovedOrgUnit(OrgUnitAdminNode moved, _HierarchyPanelData data) {
+    widget.onSelectScope(
+      AdminHierarchyScopeIntent.orgUnit(
+        operatorId: widget.bundle.operator.operatorId,
+        operatorName: widget.bundle.operator.businessName,
+        orgUnitId: moved.orgUnitId,
+        orgUnitName: moved.name,
+        hierarchyPath: _ancestorNamesForUnit(data, moved.parentOrgUnitId),
+        effectiveValueLabel: 'Branch default',
+        allowedActionsLabel: widget.editingEnabled ? 'Editable' : 'Read-only',
+      ),
+    );
+  }
+
+  void _selectMovedLocation(
+    LocationAdminRecord location,
+    HierarchyLocationLeaf moved,
+    _HierarchyPanelData data,
+  ) {
+    final parent = _findOrgUnit(data, moved.orgUnitId);
+    widget.onSelectScope(
+      AdminHierarchyScopeIntent.location(
+        operatorId: widget.bundle.operator.operatorId,
+        operatorName: widget.bundle.operator.businessName,
+        orgUnitId: parent?.orgUnitId,
+        orgUnitName: parent?.name,
+        locationId: location.locationId,
+        locationName: location.name,
+        hierarchyPath: _ancestorNamesForUnit(data, parent?.orgUnitId),
+        valueState: AdminHierarchyScopeValueState.locationOnly,
+        effectiveValueLabel: location.timezone,
+        allowedActionsLabel: widget.editingEnabled
+            ? 'Location controls'
+            : 'Read-only',
+      ),
+    );
+  }
+
+  Set<String> _descendantIds(
+    _HierarchyPanelData data,
+    OrgUnitAdminNode ancestor,
+  ) {
+    final childrenByParent = <String, List<OrgUnitAdminNode>>{};
+    for (final unit in data.orgUnits) {
+      final parentId = unit.parentOrgUnitId;
+      if (parentId == null) continue;
+      childrenByParent
+          .putIfAbsent(parentId, () => <OrgUnitAdminNode>[])
+          .add(unit);
+    }
+    final result = <String>{};
+    void walk(String parentId) {
+      for (final child
+          in childrenByParent[parentId] ?? const <OrgUnitAdminNode>[]) {
+        if (result.add(child.orgUnitId)) {
+          walk(child.orgUnitId);
+        }
+      }
+    }
+
+    walk(ancestor.orgUnitId);
+    return result;
+  }
+
+  OrgUnitAdminNode? _findOrgUnit(_HierarchyPanelData data, String? orgUnitId) {
+    if (orgUnitId == null) return null;
+    for (final unit in data.orgUnits) {
+      if (unit.orgUnitId == orgUnitId) return unit;
+    }
+    return null;
+  }
+
+  String _pathLabelForUnit(_HierarchyPanelData data, OrgUnitAdminNode unit) {
+    final names = <String>[
+      ..._ancestorNamesForUnit(data, unit.parentOrgUnitId),
+    ];
+    names.add(unit.name);
+    return names.join(' / ');
+  }
+
+  List<String> _ancestorNamesForUnit(_HierarchyPanelData data, String? unitId) {
+    final byId = <String, OrgUnitAdminNode>{
+      for (final unit in data.orgUnits) unit.orgUnitId: unit,
+    };
+    final names = <String>[];
+    final seen = <String>{};
+    String? cursor = unitId;
+    while (cursor != null && seen.add(cursor)) {
+      final unit = byId[cursor];
+      if (unit == null) break;
+      names.insert(0, unit.name);
+      cursor = unit.parentOrgUnitId;
+    }
+    return names;
+  }
+
   AdminHierarchyScopeIntent _businessScope() {
     return AdminHierarchyScopeIntent.business(
       operatorId: widget.bundle.operator.operatorId,
       operatorName: widget.bundle.operator.businessName,
       effectiveValueLabel: 'Business default',
       allowedActionsLabel: widget.editingEnabled ? 'Editable' : 'Read-only',
+    );
+  }
+
+  Widget _hierarchyIconButton({
+    required Key key,
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback? onPressed,
+    Color? color,
+  }) {
+    return IconButton(
+      key: key,
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      color: color,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+      visualDensity: VisualDensity.compact,
     );
   }
 
@@ -1656,6 +2155,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     final unitsByParent = <String?, List<OrgUnitAdminNode>>{};
     final unitNames = <String, String>{};
     for (final unit in data.orgUnits) {
+      if (unit.isDeleted) continue;
       unitNames[unit.orgUnitId] = unit.name;
       unitsByParent
           .putIfAbsent(unit.parentOrgUnitId, () => <OrgUnitAdminNode>[])
@@ -1667,12 +2167,24 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
 
     final leafParentByLocation = <String, String>{};
     for (final leaf in data.locations) {
+      if (leaf.isDeleted) continue;
       leafParentByLocation[leaf.locationId] = leaf.orgUnitId;
     }
+    final leafByLocation = <String, HierarchyLocationLeaf>{
+      for (final leaf in data.locations)
+        if (!leaf.isDeleted) leaf.locationId: leaf,
+    };
+    final trustHierarchyLocations =
+        widget.gateway != null && data.locations.isNotEmpty;
     final locationsByParent = <String?, List<LocationAdminRecord>>{};
     for (final location in widget.bundle.locations) {
+      if (location.isDeleted) continue;
+      final leaf = leafByLocation[location.locationId];
+      if (trustHierarchyLocations && leaf == null) continue;
       final parentFromData =
-          location.parentOrgUnitId ?? leafParentByLocation[location.locationId];
+          leaf?.orgUnitId ??
+          leafParentByLocation[location.locationId] ??
+          location.parentOrgUnitId;
       final parent = unitNames.containsKey(parentFromData)
           ? parentFromData
           : null;
@@ -1706,13 +2218,22 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           unitsByParent: unitsByParent,
           unitNames: unitNames,
           locationsByParent: locationsByParent,
+          allOrgUnits: data.orgUnits,
+          leafByLocation: leafByLocation,
           path: const <String>[],
         ),
       );
     }
     final unassigned = locationsByParent[null] ?? const <LocationAdminRecord>[];
     for (final location in unassigned) {
-      rows.add(_buildLocationRow(location: location, depth: 0));
+      rows.add(
+        _buildLocationRow(
+          location: location,
+          depth: 0,
+          orgUnits: data.orgUnits,
+          hierarchyLeaf: leafByLocation[location.locationId],
+        ),
+      );
     }
     if (rows.isEmpty) {
       rows.add(
@@ -1734,42 +2255,99 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     required Map<String?, List<OrgUnitAdminNode>> unitsByParent,
     required Map<String, String> unitNames,
     required Map<String?, List<LocationAdminRecord>> locationsByParent,
+    required List<OrgUnitAdminNode> allOrgUnits,
+    required Map<String, HierarchyLocationLeaf> leafByLocation,
     required List<String> path,
   }) {
     final nextPath = _appendHierarchyPath(path, unit.name);
     final rows = <Widget>[
-      _HierarchyScopeRow(
-        key: Key('admin_hierarchy_org_unit_${unit.orgUnitId}'),
-        icon: Icons.account_tree_outlined,
-        label: unit.name,
-        subtitle: depth == 0 ? 'Org unit' : 'Org unit branch',
-        depth: depth,
-        selected:
-            widget.selectedScope.scopeType == AdminHierarchyScopeType.orgUnit &&
-            widget.selectedScope.orgUnitId == unit.orgUnitId,
-        onTap: () => widget.onSelectScope(
-          AdminHierarchyScopeIntent.orgUnit(
-            operatorId: widget.bundle.operator.operatorId,
-            operatorName: widget.bundle.operator.businessName,
-            orgUnitId: unit.orgUnitId,
-            orgUnitName: unit.name,
-            hierarchyPath: path,
-            effectiveValueLabel: 'Branch default',
-            allowedActionsLabel: widget.editingEnabled
-                ? 'Editable'
-                : 'Read-only',
+      Opacity(
+        opacity: unit.isSuspended ? 0.6 : 1,
+        child: _HierarchyScopeRow(
+          key: Key('admin_hierarchy_org_unit_${unit.orgUnitId}'),
+          icon: Icons.account_tree_outlined,
+          label: unit.name,
+          subtitle: unit.isSuspended
+              ? (depth == 0 ? 'Suspended org unit' : 'Suspended branch')
+              : (depth == 0 ? 'Org unit' : 'Org unit branch'),
+          depth: depth,
+          selected:
+              widget.selectedScope.scopeType ==
+                  AdminHierarchyScopeType.orgUnit &&
+              widget.selectedScope.orgUnitId == unit.orgUnitId,
+          onTap: () => widget.onSelectScope(
+            AdminHierarchyScopeIntent.orgUnit(
+              operatorId: widget.bundle.operator.operatorId,
+              operatorName: widget.bundle.operator.businessName,
+              orgUnitId: unit.orgUnitId,
+              orgUnitName: unit.name,
+              hierarchyPath: path,
+              effectiveValueLabel: 'Branch default',
+              allowedActionsLabel: widget.editingEnabled
+                  ? 'Editable'
+                  : 'Read-only',
+            ),
           ),
+          trailing: widget.editingEnabled && widget.gateway != null
+              ? Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+                    _hierarchyIconButton(
+                      key: Key(
+                        'admin_hierarchy_org_unit_add_child_${unit.orgUnitId}',
+                      ),
+                      tooltip: 'Add child org unit',
+                      onPressed: () => _onAddChildOrgUnit(unit),
+                      icon: Icons.add,
+                    ),
+                    _hierarchyIconButton(
+                      key: Key(
+                        'admin_hierarchy_org_unit_move_${unit.orgUnitId}',
+                      ),
+                      tooltip: unit.parentOrgUnitId == null
+                          ? 'Business root stays at business level'
+                          : 'Move org unit',
+                      onPressed: unit.parentOrgUnitId == null
+                          ? null
+                          : () => _onMoveOrgUnit(unit),
+                      icon: Icons.drive_file_move_outlined,
+                    ),
+                    _hierarchyIconButton(
+                      key: Key(
+                        unit.isSuspended
+                            ? 'admin_hierarchy_org_unit_reactivate_${unit.orgUnitId}'
+                            : 'admin_hierarchy_org_unit_suspend_${unit.orgUnitId}',
+                      ),
+                      tooltip: unit.parentOrgUnitId == null
+                          ? 'Business root cannot be suspended'
+                          : unit.isSuspended
+                          ? 'Reactivate org unit'
+                          : 'Suspend org unit',
+                      onPressed: unit.parentOrgUnitId == null
+                          ? null
+                          : () => _onToggleOrgUnitSuspension(unit),
+                      icon: unit.isSuspended
+                          ? Icons.play_circle_outline
+                          : Icons.pause_circle_outline,
+                    ),
+                    _hierarchyIconButton(
+                      key: Key(
+                        'admin_hierarchy_org_unit_delete_${unit.orgUnitId}',
+                      ),
+                      tooltip: unit.parentOrgUnitId == null
+                          ? 'Business root cannot be deleted'
+                          : 'Delete org unit',
+                      onPressed: unit.parentOrgUnitId == null
+                          ? null
+                          : () => _onDeleteOrgUnit(unit),
+                      icon: Icons.delete_outline,
+                      color: AppColors.negative,
+                    ),
+                  ],
+                )
+              : null,
         ),
-        trailing: widget.editingEnabled && widget.gateway != null
-            ? OutlinedButton.icon(
-                key: Key(
-                  'admin_hierarchy_org_unit_add_child_${unit.orgUnitId}',
-                ),
-                onPressed: () => _onAddChildOrgUnit(unit),
-                icon: const Icon(Icons.add, size: 14),
-                label: const Text('Add child'),
-              )
-            : null,
       ),
     ];
     final locations =
@@ -1781,6 +2359,8 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           depth: depth + 1,
           orgUnitId: unit.orgUnitId,
           orgUnitName: unitNames[unit.orgUnitId] ?? unit.name,
+          orgUnits: allOrgUnits,
+          hierarchyLeaf: leafByLocation[location.locationId],
           path: nextPath,
         ),
       );
@@ -1795,6 +2375,8 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           unitsByParent: unitsByParent,
           unitNames: unitNames,
           locationsByParent: locationsByParent,
+          allOrgUnits: allOrgUnits,
+          leafByLocation: leafByLocation,
           path: nextPath,
         ),
       );
@@ -1817,20 +2399,28 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
   Widget _buildLocationRow({
     required LocationAdminRecord location,
     required int depth,
+    required List<OrgUnitAdminNode> orgUnits,
+    HierarchyLocationLeaf? hierarchyLeaf,
     String? orgUnitId,
     String? orgUnitName,
     List<String> path = const <String>[],
   }) {
     final isPrimary =
         widget.bundle.operator.primaryLocationId == location.locationId;
+    final isSuspended =
+        widget.bundle.operator.isSuspended ||
+        location.isSuspended ||
+        hierarchyLeaf?.isSuspended == true;
     return Opacity(
       key: Key('admin_location_suspended_fade_${location.locationId}'),
-      opacity: widget.bundle.operator.isSuspended ? 0.55 : 1,
+      opacity: isSuspended ? 0.55 : 1,
       child: _HierarchyScopeRow(
         key: Key('admin_hierarchy_location_${location.locationId}'),
         icon: Icons.storefront_outlined,
         label: location.name,
-        subtitle: isPrimary ? 'Primary location' : 'Location',
+        subtitle: isSuspended
+            ? (isPrimary ? 'Suspended primary location' : 'Suspended location')
+            : (isPrimary ? 'Primary location' : 'Location'),
         depth: depth,
         selected:
             widget.selectedScope.scopeType ==
@@ -1854,16 +2444,50 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
         ),
         trailing: widget.editingEnabled
             ? Wrap(
-                spacing: 6,
-                runSpacing: 6,
+                spacing: 4,
+                runSpacing: 4,
                 children: [
-                  IconButton(
+                  _hierarchyIconButton(
+                    key: Key('admin_location_move_${location.locationId}'),
+                    tooltip: 'Move location',
+                    onPressed:
+                        widget.gateway == null ||
+                            orgUnits
+                                .where((unit) => unit.orgUnitId != orgUnitId)
+                                .isEmpty
+                        ? null
+                        : () => _onMoveLocation(
+                            location,
+                            currentOrgUnitId: orgUnitId,
+                          ),
+                    icon: Icons.drive_file_move_outlined,
+                  ),
+                  _hierarchyIconButton(
+                    key: Key(
+                      isSuspended
+                          ? 'admin_location_reactivate_${location.locationId}'
+                          : 'admin_location_suspend_${location.locationId}',
+                    ),
+                    tooltip: isSuspended
+                        ? 'Reactivate location'
+                        : 'Suspend location',
+                    onPressed: widget.gateway == null
+                        ? null
+                        : () => _onToggleLocationSuspension(
+                            location,
+                            isSuspended: isSuspended,
+                          ),
+                    icon: isSuspended
+                        ? Icons.play_circle_outline
+                        : Icons.pause_circle_outline,
+                  ),
+                  _hierarchyIconButton(
                     key: Key('admin_location_edit_${location.locationId}'),
                     tooltip: 'Edit location',
                     onPressed: () => widget.onEditLocation(location),
-                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    icon: Icons.edit_outlined,
                   ),
-                  IconButton(
+                  _hierarchyIconButton(
                     key: Key(
                       'admin_location_make_primary_${location.locationId}',
                     ),
@@ -1871,15 +2495,17 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                     onPressed: isPrimary
                         ? null
                         : () => widget.onSetPrimary(location),
-                    icon: const Icon(Icons.star_outline, size: 18),
+                    icon: Icons.star_outline,
                   ),
-                  IconButton(
+                  _hierarchyIconButton(
                     key: Key('admin_location_remove_${location.locationId}'),
-                    tooltip: 'Remove location',
+                    tooltip: widget.gateway == null
+                        ? 'Remove location'
+                        : 'Delete location',
                     onPressed: isPrimary
                         ? null
-                        : () => widget.onRemoveLocation(location),
-                    icon: const Icon(Icons.delete_outline, size: 18),
+                        : () => _onDeleteHierarchyLocation(location),
+                    icon: Icons.delete_outline,
                     color: AppColors.negative,
                   ),
                 ],
@@ -1920,24 +2546,20 @@ class _AddChildOrgUnitDialog extends StatefulWidget {
 class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
   String _unitType = 'region';
   final _nameController = TextEditingController();
-  final _labelController = TextEditingController();
   final _reasonController = TextEditingController();
   String? _nameError;
-  String? _labelError;
   String? _reasonError;
 
   @override
   void dispose() {
     _nameController.dispose();
-    _labelController.dispose();
     _reasonController.dispose();
     super.dispose();
   }
 
   void _onSubmit() {
     final name = _nameController.text.trim();
-    final rawLabel = _labelController.text.trim();
-    final label = rawLabel.isEmpty ? _sanitiseLabel(name) : rawLabel;
+    final label = _sanitiseLabel(name);
     final reason = _reasonController.text.trim();
     setState(() {
       _nameError = name.isEmpty
@@ -1945,12 +2567,9 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
           : widget.existingNames.contains(name.toLowerCase())
           ? 'A sibling org unit already uses this name.'
           : null;
-      _labelError = label.isEmpty || !RegExp(r'^[a-z0-9_]+$').hasMatch(label)
-          ? 'Use lowercase letters, numbers, and underscores.'
-          : null;
       _reasonError = reason.isEmpty ? 'Add a reason before continuing.' : null;
     });
-    if (_nameError != null || _labelError != null || _reasonError != null) {
+    if (_nameError != null || _reasonError != null) {
       return;
     }
     Navigator.of(context).pop(
@@ -2026,16 +2645,6 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
             ),
             const SizedBox(height: 12),
             TextField(
-              key: const Key('admin_hierarchy_add_org_unit_label'),
-              controller: _labelController,
-              decoration: InputDecoration(
-                labelText: 'Label (a-z, 0-9, underscore)',
-                border: const OutlineInputBorder(),
-                errorText: _labelError,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
               key: const Key('admin_hierarchy_add_org_unit_reason'),
               controller: _reasonController,
               minLines: 1,
@@ -2060,6 +2669,226 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
           style: AdminButtonStyles.primary,
           onPressed: _onSubmit,
           child: const Text('Add'),
+        ),
+      ],
+    );
+  }
+}
+
+class _HierarchyMoveTarget {
+  const _HierarchyMoveTarget({required this.id, required this.label});
+
+  final String id;
+  final String label;
+}
+
+class _MoveHierarchyResult {
+  const _MoveHierarchyResult({
+    required this.targetId,
+    required this.adminReason,
+  });
+
+  final String targetId;
+  final String adminReason;
+}
+
+class _MoveHierarchyDialog extends StatefulWidget {
+  const _MoveHierarchyDialog({
+    required this.dialogKey,
+    required this.targetKey,
+    required this.reasonKey,
+    required this.submitKey,
+    required this.title,
+    required this.targetLabel,
+    required this.candidates,
+  });
+
+  final Key dialogKey;
+  final Key targetKey;
+  final Key reasonKey;
+  final Key submitKey;
+  final String title;
+  final String targetLabel;
+  final List<_HierarchyMoveTarget> candidates;
+
+  @override
+  State<_MoveHierarchyDialog> createState() => _MoveHierarchyDialogState();
+}
+
+class _MoveHierarchyDialogState extends State<_MoveHierarchyDialog> {
+  late String _selectedTargetId = widget.candidates.first.id;
+  final _reasonController = TextEditingController();
+  bool _missingReason = false;
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  void _onSubmit() {
+    final reason = _reasonController.text.trim();
+    if (reason.isEmpty) {
+      setState(() => _missingReason = true);
+      return;
+    }
+    Navigator.of(context).pop(
+      _MoveHierarchyResult(targetId: _selectedTargetId, adminReason: reason),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: widget.dialogKey,
+      backgroundColor: AppColors.backgroundSurface,
+      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
+      content: SizedBox(
+        width: 500,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            DropdownButtonFormField<String>(
+              key: widget.targetKey,
+              initialValue: _selectedTargetId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: widget.targetLabel,
+                border: const OutlineInputBorder(),
+              ),
+              items: <DropdownMenuItem<String>>[
+                for (final candidate in widget.candidates)
+                  DropdownMenuItem<String>(
+                    value: candidate.id,
+                    child: Text(candidate.label),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => _selectedTargetId = value);
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: widget.reasonKey,
+              controller: _reasonController,
+              minLines: 1,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Reason',
+                border: const OutlineInputBorder(),
+                errorText: _missingReason
+                    ? 'Add a reason before continuing.'
+                    : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: widget.submitKey,
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: const Text('Move'),
+        ),
+      ],
+    );
+  }
+}
+
+class _HierarchyReasonDialog extends StatefulWidget {
+  const _HierarchyReasonDialog({
+    required this.dialogKey,
+    required this.reasonKey,
+    required this.submitKey,
+    required this.title,
+    required this.message,
+    required this.submitLabel,
+    required this.danger,
+  });
+
+  final Key dialogKey;
+  final Key reasonKey;
+  final Key submitKey;
+  final String title;
+  final String message;
+  final String submitLabel;
+  final bool danger;
+
+  @override
+  State<_HierarchyReasonDialog> createState() => _HierarchyReasonDialogState();
+}
+
+class _HierarchyReasonDialogState extends State<_HierarchyReasonDialog> {
+  final _reasonController = TextEditingController();
+  bool _missingReason = false;
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  void _onSubmit() {
+    final reason = _reasonController.text.trim();
+    if (reason.isEmpty) {
+      setState(() => _missingReason = true);
+      return;
+    }
+    Navigator.of(context).pop(reason);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: widget.dialogKey,
+      backgroundColor: AppColors.backgroundSurface,
+      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
+      content: SizedBox(
+        width: 500,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              widget.message,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: widget.reasonKey,
+              controller: _reasonController,
+              minLines: 1,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Reason',
+                border: const OutlineInputBorder(),
+                errorText: _missingReason
+                    ? 'Add a reason before continuing.'
+                    : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: widget.submitKey,
+          style: widget.danger
+              ? AdminButtonStyles.danger
+              : AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: Text(widget.submitLabel),
         ),
       ],
     );
@@ -2568,9 +3397,9 @@ class _LocationActionWrap extends StatelessWidget {
               buttonKey: Key(
                 'admin_location_data_accuracy_${location.locationId}',
               ),
-              label: 'Data accuracy',
+              label: 'Covers and wage',
               icon: Icons.fact_check_outlined,
-              tooltip: 'View data accuracy for this location',
+              tooltip: 'View covers and wage data for this location',
               minWidth: 136,
               onPressed: onOpenDataAccuracy,
             ),
@@ -2578,9 +3407,9 @@ class _LocationActionWrap extends StatelessWidget {
               buttonKey: Key(
                 'admin_location_polling_pricing_${location.locationId}',
               ),
-              label: 'Polling & pricing',
+              label: 'Polling setup',
               icon: Icons.payments_outlined,
-              tooltip: 'View polling and pricing for this location',
+              tooltip: 'View polling setup for this location',
               minWidth: 148,
               onPressed: onOpenPollingPricing,
             ),

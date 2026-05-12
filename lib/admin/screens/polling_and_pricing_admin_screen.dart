@@ -39,7 +39,10 @@ class PollingAndPricingAdminScreen extends StatefulWidget {
     this.editingEnabled = true,
     this.initialScope,
     this.initialHierarchyScope,
+    this.scopeLocationIds,
     this.onBackToBusinessAccounts,
+    this.showPageHeader = true,
+    this.showScopeControls = true,
   });
 
   final DataAccuracyAdminGateway gateway;
@@ -47,7 +50,10 @@ class PollingAndPricingAdminScreen extends StatefulWidget {
   final bool editingEnabled;
   final AdminOperatorLocationScopeIntent? initialScope;
   final AdminHierarchyScopeIntent? initialHierarchyScope;
+  final Set<String>? scopeLocationIds;
   final VoidCallback? onBackToBusinessAccounts;
+  final bool showPageHeader;
+  final bool showScopeControls;
 
   @override
   State<PollingAndPricingAdminScreen> createState() =>
@@ -202,7 +208,7 @@ class _PollingAndPricingAdminScreenState
           }
           final scope = _scope;
           if (scope != null &&
-              !_scopePolicy.includesOperatorLocation(
+              !_includesOperatorLocation(
                 scope,
                 operatorId: row.operatorRef.operatorId,
                 locationId: row.operatorRef.locationId,
@@ -242,7 +248,7 @@ class _PollingAndPricingAdminScreenState
     if (scope == null) return _changeRequests;
     return _changeRequests
         .where(
-          (request) => _scopePolicy.includesOperatorLocation(
+          (request) => _includesOperatorLocation(
             scope,
             operatorId: request.operatorRef.operatorId,
             locationId: request.operatorRef.locationId,
@@ -256,7 +262,7 @@ class _PollingAndPricingAdminScreenState
     if (scope == null) return _tierAuditEvents;
     return _tierAuditEvents
         .where(
-          (event) => _scopePolicy.includesOperatorLocation(
+          (event) => _includesOperatorLocation(
             scope,
             operatorId: event.operatorId,
             locationId: event.locationId,
@@ -284,6 +290,25 @@ class _PollingAndPricingAdminScreenState
   }
 
   String? get _scopeRestrictionCopy => _scopePolicy.restrictionCopy(_scope);
+
+  bool _includesOperatorLocation(
+    AdminHierarchyScopeIntent? scope, {
+    required String operatorId,
+    required String? locationId,
+  }) {
+    if (scope == null) return true;
+    if (scope.operatorId != operatorId) return false;
+    if (locationId == null) return true;
+    final locationIds = widget.scopeLocationIds;
+    if (locationIds != null && locationIds.isNotEmpty) {
+      return locationIds.contains(locationId);
+    }
+    return _scopePolicy.includesOperatorLocation(
+      scope,
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+  }
 
   List<AdminHierarchyScopeIntent> get _availableScopes {
     final selectedOperatorId = _scope?.operatorId;
@@ -395,6 +420,57 @@ class _PollingAndPricingAdminScreenState
     }
   }
 
+  Future<void> _onAssignSelectedScope() async {
+    if (!_scopeMutationEnabled) return;
+    final rows = _filteredAssignments;
+    if (rows.isEmpty) return;
+    final scope = _scope!;
+    final result = await showDialog<_TierAssignmentDraft>(
+      context: context,
+      builder: (_) => _TierAssignmentDialog(
+        row: rows.first,
+        definitions: _definitions,
+        title: 'Assign polling setup to ${scope.displayLabel}',
+        scopeLocationCount: rows.length,
+      ),
+    );
+    if (result == null) return;
+    setState(() => _actionError = null);
+    try {
+      final update = await widget.gateway.assignTierScope(
+        operatorId: scope.operatorId,
+        scopeType: _mutationScopeType(scope),
+        orgUnitId: scope.orgUnitId,
+        locationId: scope.locationId,
+        tierKey: result.tierKey,
+        customCadencePerVendorSeconds: result.customCadence,
+        monthlyPriceCentsOverride: result.monthlyPriceCentsOverride,
+        vendorApiCostEstimateCentsMonthlyOverride:
+            result.vendorApiCostEstimateCentsMonthlyOverride,
+        adminNotes: result.adminNotes,
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        reasonNote: result.reasonNote,
+      );
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Applied polling setup to ${update.affectedLocationCount} '
+            'location${update.affectedLocationCount == 1 ? '' : 's'}.',
+          ),
+        ),
+      );
+    } on DataAccuracyAdminForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = 'Scope tier assignment failed: $error');
+    }
+  }
+
   Future<void> _onResolveChangeRequest(
     TierChangeRequest request,
     TierChangeRequestStatus newStatus,
@@ -451,20 +527,19 @@ class _PollingAndPricingAdminScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            AdminPageHeader(
-              title: 'Polling & pricing',
-              subtitle:
-                  'F&F-controlled tier definitions, per-location assignments, '
-                  'margin rollup, and operator change requests. Business and '
-                  'org-unit assignment edits stay disabled until scoped '
-                  'resolvers exist.',
-              leading: widget.onBackToBusinessAccounts == null
-                  ? null
-                  : AdminBusinessAccountsBackButton(
-                      onPressed: widget.onBackToBusinessAccounts,
-                    ),
-            ),
-            const SizedBox(height: 14),
+            if (widget.showPageHeader) ...[
+              AdminPageHeader(
+                title: 'Polling Setup',
+                subtitle:
+                    'Set vendor polling tiers, estimate cost, and review margin for the selected scope.',
+                leading: widget.onBackToBusinessAccounts == null
+                    ? null
+                    : AdminBusinessAccountsBackButton(
+                        onPressed: widget.onBackToBusinessAccounts,
+                      ),
+              ),
+              const SizedBox(height: 14),
+            ],
             if (!widget.editingEnabled)
               const _ReadOnlyBanner(
                 key: Key('admin_polling_pricing_readonly_banner'),
@@ -505,28 +580,35 @@ class _PollingAndPricingAdminScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          if (_showScopePrompt)
+          if (widget.showScopeControls && _showScopePrompt)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: AdminHierarchyScopePrompt(
-                surfaceName: 'Polling and pricing',
+                surfaceName: 'Polling Setup',
                 selectedScope: _scope,
                 scopes: _availableScopes,
                 onScopeSelected: _selectScope,
                 onCancel: () => setState(() => _showScopePrompt = false),
               ),
             ),
-          if (_scope != null)
+          if (widget.showScopeControls && _scope != null)
             AdminHierarchyScopeBanner(
               scope: _scope!,
-              surfaceName: 'polling and pricing',
+              surfaceName: 'polling setup',
               onChangeScope: () =>
                   setState(() => _showScopePrompt = !_showScopePrompt),
               onClear: _clearScope,
             ),
-          if (_scopeRestrictionCopy != null)
+          if (widget.showScopeControls && _scopeRestrictionCopy != null)
             AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
-          _buildPollingSummary(),
+          if (_scopeMutationEnabled) ...[
+            const SizedBox(height: 16),
+            _ScopedPollingActionCard(
+              scope: _scope!,
+              locationCount: _filteredAssignments.length,
+              onPressed: _onAssignSelectedScope,
+            ),
+          ],
           const SizedBox(height: 16),
           const PlainEnglishExplainerCard(),
           const SizedBox(height: 16),
@@ -580,32 +662,6 @@ class _PollingAndPricingAdminScreenState
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildPollingSummary() {
-    final rows = _filteredAssignments;
-    final assignedRows = rows.where((row) => row.assignment != null).length;
-    final openRequests = _visibleChangeRequests
-        .where(
-          (request) =>
-              request.status == TierChangeRequestStatus.pending ||
-              request.status == TierChangeRequestStatus.negotiating,
-        )
-        .length;
-    final margin = _visibleRollup.totalMonthlyMarginCents;
-    final marginLabel = formatCents(margin);
-    return AdminStatStrip(
-      items: <AdminStatItem>[
-        AdminStatItem(label: 'Visible locations', value: '${rows.length}'),
-        AdminStatItem(label: 'Assigned tiers', value: '$assignedRows'),
-        AdminStatItem(label: 'Open requests', value: '$openRequests'),
-        AdminStatItem(label: 'Net margin', value: marginLabel),
-        AdminStatItem(
-          label: 'Audit rows',
-          value: '${_visibleTierAuditEvents.length}',
-        ),
-      ],
     );
   }
 
@@ -683,6 +739,78 @@ class _PollingAndPricingAdminScreenState
     }
     return null;
   }
+
+  bool get _scopeMutationEnabled {
+    final scope = _scope;
+    return widget.editingEnabled &&
+        scope != null &&
+        !scope.isLocationScope &&
+        _filteredAssignments.isNotEmpty;
+  }
+
+  AdminDataAccuracyMutationScopeType _mutationScopeType(
+    AdminHierarchyScopeIntent scope,
+  ) {
+    switch (scope.scopeType) {
+      case AdminHierarchyScopeType.business:
+        return AdminDataAccuracyMutationScopeType.business;
+      case AdminHierarchyScopeType.orgUnit:
+        return AdminDataAccuracyMutationScopeType.orgUnit;
+      case AdminHierarchyScopeType.location:
+        return AdminDataAccuracyMutationScopeType.location;
+    }
+  }
+}
+
+class _ScopedPollingActionCard extends StatelessWidget {
+  const _ScopedPollingActionCard({
+    required this.scope,
+    required this.locationCount,
+    required this.onPressed,
+  });
+
+  final AdminHierarchyScopeIntent scope;
+  final int locationCount;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      key: const Key('admin_polling_setup_scope_action_card'),
+      child: Row(
+        children: [
+          const Icon(Icons.account_tree_outlined, color: AppColors.peacockDark),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Assign selected ${scope.scopeType.label.toLowerCase()}',
+                  style: AppTextStyles.sectionTitle(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'This updates polling tier, price, cost basis, and notes for $locationCount visible location${locationCount == 1 ? '' : 's'}.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton.icon(
+            key: const Key('admin_polling_setup_scope_assign'),
+            style: AdminButtonStyles.primary,
+            onPressed: onPressed,
+            icon: const Icon(Icons.payments_outlined),
+            label: const Text('Assign scope'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _MutableTierMargin {
@@ -716,10 +844,17 @@ class _TierAssignmentDraft {
 }
 
 class _TierAssignmentDialog extends StatefulWidget {
-  const _TierAssignmentDialog({required this.row, required this.definitions});
+  const _TierAssignmentDialog({
+    required this.row,
+    required this.definitions,
+    this.title,
+    this.scopeLocationCount = 1,
+  });
 
   final TierAssignmentAdminRow row;
   final List<TierDefinition> definitions;
+  final String? title;
+  final int scopeLocationCount;
 
   @override
   State<_TierAssignmentDialog> createState() => _TierAssignmentDialogState();
@@ -746,6 +881,8 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
         : (widget.row.assignment!.vendorApiCostEstimateCentsMonthly! / 100)
               .toStringAsFixed(2),
   );
+  final TextEditingController _callsPerDay = TextEditingController();
+  final TextEditingController _apiCostPerCall = TextEditingController();
   late final TextEditingController _notes = TextEditingController(
     text: widget.row.adminNotes ?? '',
   );
@@ -755,6 +892,8 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
   void dispose() {
     _price.dispose();
     _cost.dispose();
+    _callsPerDay.dispose();
+    _apiCostPerCall.dispose();
     _notes.dispose();
     _reason.dispose();
     super.dispose();
@@ -768,14 +907,30 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
     return (dollars * 100).round();
   }
 
+  double? _parsePositiveDouble(String raw) {
+    final value = double.tryParse(raw.trim());
+    if (value == null || value < 0) return null;
+    return value;
+  }
+
+  int? get _calculatorMonthlyCostCents {
+    final callsPerDay = _parsePositiveDouble(_callsPerDay.text);
+    final costPerCall = _parsePositiveDouble(_apiCostPerCall.text);
+    if (callsPerDay == null || costPerCall == null) return null;
+    return (callsPerDay * costPerCall * 30 * 100).round();
+  }
+
+  String _formatCents(int cents) => (cents / 100).toStringAsFixed(2);
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       key: const Key('admin_tier_assignment_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Assign tier - ${widget.row.operatorRef.businessName} '
-        '/ ${widget.row.operatorRef.locationName}',
+        widget.title ??
+            'Assign tier - ${widget.row.operatorRef.businessName} '
+                '/ ${widget.row.operatorRef.locationName}',
         style: AdminButtonStyles.dialogTitleStyle,
       ),
       content: SizedBox(
@@ -834,6 +989,103 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
                 ),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                key: const Key('admin_polling_cost_calculator'),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.peacock.withValues(alpha: 0.06),
+                  border: Border.all(
+                    color: AppColors.peacock.withValues(alpha: 0.24),
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Cost calculator',
+                      style: AppTextStyles.uiLabel(
+                        color: AppColors.peacockDark,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            key: const Key(
+                              'admin_polling_calculator_calls_per_day',
+                            ),
+                            controller: _callsPerDay,
+                            decoration: const InputDecoration(
+                              labelText: 'Calls per day per location',
+                              border: OutlineInputBorder(),
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            key: const Key(
+                              'admin_polling_calculator_cost_per_call',
+                            ),
+                            controller: _apiCostPerCall,
+                            decoration: const InputDecoration(
+                              labelText: 'API cost per call (USD)',
+                              border: OutlineInputBorder(),
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Builder(
+                      builder: (context) {
+                        final perLocation = _calculatorMonthlyCostCents;
+                        final scopeTotal = perLocation == null
+                            ? null
+                            : perLocation * widget.scopeLocationCount;
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                perLocation == null
+                                    ? 'Enter calls and API cost to estimate monthly cost.'
+                                    : 'Estimate: \$${_formatCents(perLocation)} per location, \$${_formatCents(scopeTotal!)} for ${widget.scopeLocationCount} location${widget.scopeLocationCount == 1 ? '' : 's'}.',
+                                style: AppTextStyles.body13(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            OutlinedButton.icon(
+                              key: const Key(
+                                'admin_polling_calculator_use_estimate',
+                              ),
+                              onPressed: perLocation == null
+                                  ? null
+                                  : () => setState(() {
+                                      _cost.text = _formatCents(perLocation);
+                                    }),
+                              icon: const Icon(Icons.calculate_outlined),
+                              label: const Text('Use estimate'),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 12),
@@ -902,7 +1154,7 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
 String _tierLabel(PollingTierKey tier) {
   switch (tier) {
     case PollingTierKey.standard:
-      return 'Standard';
+      return 'Regular';
     case PollingTierKey.premium:
       return 'Premium';
     case PollingTierKey.custom:

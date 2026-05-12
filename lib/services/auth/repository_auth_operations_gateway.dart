@@ -791,6 +791,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
             unitType: row.unitType,
             path: row.path,
             label: row.name,
+            suspendedAt: row.suspendedAt,
+            deletedAt: row.deletedAt,
           ),
         ),
       ),
@@ -806,6 +808,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
             parentOrgUnitId: row.parentOrgUnitId ?? '',
             orgUnitPath: row.orgUnitPath,
             label: row.name,
+            suspendedAt: row.suspendedAt,
+            deletedAt: row.deletedAt,
           ),
         ),
       ),
@@ -861,6 +865,132 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<TeamOrgUnitMoved> moveOrgUnit(TeamOrgUnitMoveCommand command) async {
+    final repo = _requireOrgUnitsRepository();
+    await _requireOperatorWidePermission(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      requiredPermissionKey: 'team.roles.assign',
+    );
+    final moved = await _moveOrgUnitOrReject(repo, command);
+    await _audit(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      eventType: 'auth.org_unit_moved',
+      payload: <String, Object?>{
+        'org_unit_id': command.orgUnitId,
+        'parent_org_unit_id': command.parentOrgUnitId,
+        if (command.adminReason != null) 'admin_reason': command.adminReason,
+      },
+    );
+    return TeamOrgUnitMoved(orgUnit: _teamOrgUnitFromRow(moved));
+  }
+
+  Future<OrgUnitRow> _moveOrgUnitOrReject(
+    OrgUnitsRepository repo,
+    TeamOrgUnitMoveCommand command,
+  ) async {
+    try {
+      return await repo.moveOrgUnit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        orgUnitId: command.orgUnitId,
+        parentOrgUnitId: command.parentOrgUnitId,
+        userId: command.actorUserId,
+      );
+    } on OrgUnitMoveRejected catch (error) {
+      throw _rejectedFromOrgUnit(error);
+    }
+  }
+
+  @override
+  Future<TeamOrgUnitLifecycleUpdated> suspendOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  ) {
+    return _setOrgUnitSuspended(command, suspended: true);
+  }
+
+  @override
+  Future<TeamOrgUnitLifecycleUpdated> reactivateOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  ) {
+    return _setOrgUnitSuspended(command, suspended: false);
+  }
+
+  Future<TeamOrgUnitLifecycleUpdated> _setOrgUnitSuspended(
+    TeamOrgUnitLifecycleCommand command, {
+    required bool suspended,
+  }) async {
+    final repo = _requireOrgUnitsRepository();
+    await _requireOperatorWidePermission(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      requiredPermissionKey: 'team.hierarchy.suspend',
+    );
+    try {
+      final updated = await repo.setOrgUnitSuspended(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        orgUnitId: command.orgUnitId,
+        suspended: suspended,
+        userId: command.actorUserId,
+      );
+      await _audit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        eventType: suspended
+            ? 'auth.org_unit_suspended'
+            : 'auth.org_unit_reactivated',
+        payload: <String, Object?>{
+          'org_unit_id': command.orgUnitId,
+          'admin_reason': command.adminReason,
+        },
+      );
+      return TeamOrgUnitLifecycleUpdated(orgUnit: _teamOrgUnitFromRow(updated));
+    } on OrgUnitMoveRejected catch (error) {
+      throw _rejectedFromOrgUnit(error);
+    }
+  }
+
+  @override
+  Future<TeamHierarchyDeleted> deleteOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  ) async {
+    final repo = _requireOrgUnitsRepository();
+    await _requireOperatorWidePermission(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      requiredPermissionKey: 'team.hierarchy.delete',
+    );
+    try {
+      final deleted = await repo.deleteOrgUnit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        orgUnitId: command.orgUnitId,
+        userId: command.actorUserId,
+      );
+      await _audit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        eventType: 'auth.org_unit_deleted',
+        payload: <String, Object?>{
+          'org_unit_id': command.orgUnitId,
+          'admin_reason': command.adminReason,
+        },
+      );
+      return TeamHierarchyDeleted(deleted: deleted);
+    } on OrgUnitMoveRejected catch (error) {
+      throw _rejectedFromOrgUnit(error);
+    }
+  }
+
+  @override
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command,
   ) async {
@@ -887,10 +1017,129 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         payload: <String, Object?>{
           'target_location_id': command.targetLocationId,
           'parent_org_unit_id': command.parentOrgUnitId,
+          if (command.adminReason != null) 'admin_reason': command.adminReason,
         },
       );
     }
     return TeamLocationOrgUnitMoved(moved: affected > 0);
+  }
+
+  @override
+  Future<TeamLocationLifecycleUpdated> suspendLocation(
+    TeamLocationLifecycleCommand command,
+  ) {
+    return _setLocationSuspended(command, suspended: true);
+  }
+
+  @override
+  Future<TeamLocationLifecycleUpdated> reactivateLocation(
+    TeamLocationLifecycleCommand command,
+  ) {
+    return _setLocationSuspended(command, suspended: false);
+  }
+
+  Future<TeamLocationLifecycleUpdated> _setLocationSuspended(
+    TeamLocationLifecycleCommand command, {
+    required bool suspended,
+  }) async {
+    final repo = _requireOrgUnitsRepository();
+    await _requireOperatorWidePermission(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      requiredPermissionKey: 'team.hierarchy.suspend',
+    );
+    try {
+      final updated = await repo.setLocationSuspended(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        targetLocationId: command.targetLocationId,
+        suspended: suspended,
+        userId: command.actorUserId,
+      );
+      await _audit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        eventType: suspended
+            ? 'auth.location_suspended'
+            : 'auth.location_reactivated',
+        payload: <String, Object?>{
+          'target_location_id': command.targetLocationId,
+          'admin_reason': command.adminReason,
+        },
+      );
+      return TeamLocationLifecycleUpdated(
+        location: _teamLocationFromRow(updated),
+      );
+    } on OrgUnitMoveRejected catch (error) {
+      throw _rejectedFromOrgUnit(error);
+    }
+  }
+
+  @override
+  Future<TeamHierarchyDeleted> deleteLocation(
+    TeamLocationLifecycleCommand command,
+  ) async {
+    final repo = _requireOrgUnitsRepository();
+    await _requireOperatorWidePermission(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      requiredPermissionKey: 'team.hierarchy.delete',
+    );
+    try {
+      final deleted = await repo.deleteLocation(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        targetLocationId: command.targetLocationId,
+        userId: command.actorUserId,
+      );
+      await _audit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        eventType: 'auth.location_deleted',
+        payload: <String, Object?>{
+          'target_location_id': command.targetLocationId,
+          'admin_reason': command.adminReason,
+        },
+      );
+      return TeamHierarchyDeleted(deleted: deleted);
+    } on OrgUnitMoveRejected catch (error) {
+      throw _rejectedFromOrgUnit(error);
+    }
+  }
+
+  static TeamOrgUnitEntry _teamOrgUnitFromRow(OrgUnitRow row) {
+    return TeamOrgUnitEntry(
+      orgUnitId: row.id,
+      parentOrgUnitId: row.parentId,
+      unitType: row.unitType,
+      path: row.path,
+      label: row.name,
+      suspendedAt: row.suspendedAt,
+      deletedAt: row.deletedAt,
+    );
+  }
+
+  static TeamOrgLocationEntry _teamLocationFromRow(OrgLocationRow row) {
+    return TeamOrgLocationEntry(
+      locationId: row.locationId,
+      parentOrgUnitId: row.parentOrgUnitId ?? '',
+      orgUnitPath: row.orgUnitPath,
+      label: row.name,
+      suspendedAt: row.suspendedAt,
+      deletedAt: row.deletedAt,
+    );
+  }
+
+  static AuthOperationRejected _rejectedFromOrgUnit(OrgUnitMoveRejected error) {
+    return AuthOperationRejected(
+      code: error.code,
+      message: error.message,
+      statusCode: error.statusCode,
+    );
   }
 
   // Phase 9.UX.6 — self-service Audit Log surface. The audit

@@ -2216,9 +2216,7 @@ class ProxyRequestGuard {
       // user even though no operator was picked yet. Pass null when the
       // operator id is absent so the context filter is not confused by
       // an empty-string tenant id.
-      bindOperatorIdToLogContext(
-        hasOperatorScope ? operatorId : null,
-      );
+      bindOperatorIdToLogContext(hasOperatorScope ? operatorId : null);
       return OperatorContext(
         userId: claims.userId,
         operatorId: hasOperatorScope ? operatorId : '',
@@ -6997,8 +6995,10 @@ const String authTeamRoleGrantPrefix = '$authTeamRoleGrantsPath/';
 // `team.users.view`, mutations on `team.roles.assign` (per the
 // hierarchy-touches-grants posture from `phase_9_auth_plan.md`).
 const String adminAuthOrgUnitsPath = '/v1/admin/auth/org-units';
+const String adminAuthOrgUnitPrefix = '$adminAuthOrgUnitsPath/';
 const String adminAuthLocationsPrefix = '/v1/admin/auth/locations/';
 const String authTeamOrgUnitsPath = '/v1/auth/team/org-units';
+const String authTeamOrgUnitPrefix = '$authTeamOrgUnitsPath/';
 const String authTeamLocationsPrefix = '/v1/auth/team/locations/';
 const String adminServicePrincipalsPath = '/v1/admin/service-principals';
 const String adminServicePrincipalsPrefix = '$adminServicePrincipalsPath/';
@@ -7032,6 +7032,8 @@ const String adminDataAccuracyRowsPath = '/v1/admin/data-accuracy/rows';
 const String adminDataAccuracySettingsPath = '/v1/admin/data-accuracy/settings';
 const String adminDataAccuracySettingsPrefix =
     '$adminDataAccuracySettingsPath/';
+const String adminDataAccuracyScopedSettingsPath =
+    '/v1/admin/data-accuracy/scoped-settings';
 const String adminDataAccuracyAuditHistoryPath =
     '/v1/admin/data-accuracy/audit-history';
 const String adminPollingPricingTierDefinitionsPath =
@@ -7042,6 +7044,8 @@ const String adminPollingPricingAssignmentsPath =
     '/v1/admin/polling-pricing/assignments';
 const String adminPollingPricingAssignmentsPrefix =
     '$adminPollingPricingAssignmentsPath/';
+const String adminPollingPricingScopedAssignmentsPath =
+    '/v1/admin/polling-pricing/scoped-assignments';
 const String adminPollingPricingMarginPath = '/v1/admin/polling-pricing/margin';
 const String adminPollingPricingMarginExportPath =
     '/v1/admin/polling-pricing/margin/export-csv';
@@ -7309,6 +7313,21 @@ abstract class DataAccuracyAdminProxyGateway {
     required String adminReason,
   });
 
+  Future<Map<String, Object?>> overrideDataAccuracyScope({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    String? coversSourceLunch,
+    String? coversSourceDinner,
+    String? coversSourceLateNight,
+    String? wageSource,
+    String? walkInHandlingMode,
+    String? reasonNote,
+    required String adminReason,
+  });
+
   Future<List<Map<String, Object?>>> listTierDefinitions({
     required String actorUserId,
     required String adminReason,
@@ -7334,6 +7353,21 @@ abstract class DataAccuracyAdminProxyGateway {
     required String actorUserId,
     required String operatorId,
     required String locationId,
+    required String tierKey,
+    Map<String, int>? customCadencePerVendorSeconds,
+    int? monthlyPriceCentsOverride,
+    int? vendorApiCostEstimateCentsMonthlyOverride,
+    String? adminNotes,
+    String? reasonNote,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>> assignTierScope({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
     required String tierKey,
     Map<String, int>? customCadencePerVendorSeconds,
     int? monthlyPriceCentsOverride,
@@ -7631,6 +7665,9 @@ abstract class IntegrationAdminProxyGateway {
   Future<Map<String, Object?>> listBundle({
     required String actorUserId,
     required String adminReason,
+    String? operatorId,
+    String? locationId,
+    List<String>? locationIds,
   });
 
   /// Rotate one provider key. The gateway hands the plaintext to its
@@ -7718,6 +7755,9 @@ abstract class FeatureFlagsAdminProxyGateway {
   Future<List<Map<String, Object?>>> listFlags({
     required String actorUserId,
     required String adminReason,
+    String? operatorId,
+    String? locationId,
+    List<String>? locationIds,
   });
 
   /// Toggle one flag's `enabled` bit by `flagId`. Returns the
@@ -7751,6 +7791,9 @@ const String adminDebugRequestByKeyPath = '/v1/admin/debug/requests/by-key';
 const String adminDebugRequestsTailPath = '/v1/admin/debug/requests/tail';
 const String adminDebugFullContentOptInsPath =
     '/v1/admin/debug/full-content-opt-ins';
+const String adminDebugRelationshipHelpPath =
+    '/v1/admin/debug/relationship-help';
+const String adminDebugAccountHelpPath = '/v1/admin/debug/account-help';
 const String adminObservabilityPath = '/v1/admin/observability';
 
 const Set<String> kFfDebugConsoleAdminReadRoles = <String>{
@@ -7761,6 +7804,19 @@ const Set<String> kFfDebugConsoleFullContentRoles = <String>{'super_admin'};
 const Set<String> kFfObservabilityAdminReadRoles = <String>{
   'super_admin',
   'ff_support',
+};
+const Set<String> kDebugRelationshipHelpUsageClasses = <String>{
+  'relationship_review',
+  'knowledge_relationship',
+  'corpus_relationship_review',
+};
+const Set<String> kDebugAccountHelpUsageClasses = <String>{
+  'account_help',
+  'auth_support',
+  'mfa_diagnostics',
+  'session_support',
+  'notification_support',
+  'user_removal',
 };
 
 abstract class DebugConsoleAdminProxyGateway {
@@ -7811,6 +7867,9 @@ abstract class ObservabilityAdminProxyGateway {
     required String adminReason,
     required int costTelemetryLimit,
     String? queryClassFilter,
+    String? operatorId,
+    String? locationId,
+    List<String>? locationIds,
   });
 }
 
@@ -8647,11 +8706,7 @@ Future<void> routeRequest(
                 runtimeGaugesSnapshot.isNotEmpty)
               'runtime_gauges': runtimeGaugesSnapshot,
           };
-          _writeJson(
-            response,
-            status.ok ? 200 : 503,
-            envelope,
-          );
+          _writeJson(response, status.ok ? 200 : 503, envelope);
           return;
         }
 
@@ -11726,6 +11781,159 @@ Future<void> routeRequest(
             }
 
             if (request.method == 'PATCH' &&
+                authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
+                authOperationPath.endsWith('/parent')) {
+              if (!await requirePermission('team.roles.assign')) return;
+              final targetOrgUnitId = _orgUnitIdFromParentPath(
+                authOperationPath,
+              );
+              final parentOrgUnitId = _nonBlankString(
+                body['parent_org_unit_id'],
+              );
+              final adminReason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['adminReason']);
+              if (targetOrgUnitId == null ||
+                  parentOrgUnitId == null ||
+                  adminReason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_org_unit_move_fields',
+                  'message':
+                      'org unit id in path, parent_org_unit_id, and admin_reason body are required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthOrgUnitPrefix$targetOrgUnitId/parent',
+                key: idempotencyKey,
+                compute: () async {
+                  final moved = await authOperationsGateway.moveOrgUnit(
+                    TeamOrgUnitMoveCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      orgUnitId: targetOrgUnitId,
+                      parentOrgUnitId: parentOrgUnitId,
+                      adminReason: adminReason,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'org_unit': _teamOrgUnitToJson(moved.orgUnit),
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            if (request.method == 'PATCH' &&
+                authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
+                (authOperationPath.endsWith('/suspend') ||
+                    authOperationPath.endsWith('/reactivate'))) {
+              if (!await requirePermission('team.hierarchy.suspend')) return;
+              final action = authOperationPath.endsWith('/suspend')
+                  ? 'suspend'
+                  : 'reactivate';
+              final orgUnitId = _idFromAdminAuthActionPath(
+                authOperationPath,
+                adminAuthOrgUnitPrefix,
+                action,
+              );
+              final adminReason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['adminReason']);
+              if (orgUnitId == null || adminReason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_org_unit_lifecycle_fields',
+                  'message':
+                      'org unit id in path and admin_reason body are required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthOrgUnitPrefix$orgUnitId/$action',
+                key: idempotencyKey,
+                compute: () async {
+                  final command = TeamOrgUnitLifecycleCommand(
+                    actorUserId: scope.userId,
+                    operatorId: scope.operatorId,
+                    locationId: scope.locationId,
+                    orgUnitId: orgUnitId,
+                    adminReason: adminReason,
+                  );
+                  final result = action == 'suspend'
+                      ? await authOperationsGateway.suspendOrgUnit(command)
+                      : await authOperationsGateway.reactivateOrgUnit(command);
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'org_unit': _teamOrgUnitToJson(result.orgUnit),
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            if (request.method == 'POST' &&
+                authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
+                authOperationPath.endsWith('/delete')) {
+              if (!await requirePermission('team.hierarchy.delete')) return;
+              final orgUnitId = _idFromAdminAuthActionPath(
+                authOperationPath,
+                adminAuthOrgUnitPrefix,
+                'delete',
+              );
+              final adminReason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['adminReason']);
+              if (orgUnitId == null || adminReason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_org_unit_delete_fields',
+                  'message':
+                      'org unit id in path and admin_reason body are required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthOrgUnitPrefix$orgUnitId/delete',
+                key: idempotencyKey,
+                compute: () async {
+                  final deleted = await authOperationsGateway.deleteOrgUnit(
+                    TeamOrgUnitLifecycleCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      orgUnitId: orgUnitId,
+                      adminReason: adminReason,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'deleted': deleted.deleted,
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            if (request.method == 'PATCH' &&
                 authOperationPath.startsWith(adminAuthLocationsPrefix) &&
                 authOperationPath.endsWith('/org-unit')) {
               if (!await requirePermission('team.roles.assign')) return;
@@ -11735,11 +11943,16 @@ Future<void> routeRequest(
               final parentOrgUnitId = _nonBlankString(
                 body['parent_org_unit_id'],
               );
-              if (targetLocationId == null || parentOrgUnitId == null) {
+              final adminReason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['adminReason']);
+              if (targetLocationId == null ||
+                  parentOrgUnitId == null ||
+                  adminReason == null) {
                 _writeJson(response, 400, <String, Object?>{
                   'error': 'missing_location_org_unit_fields',
                   'message':
-                      'location id in path and parent_org_unit_id body are required',
+                      'location id in path, parent_org_unit_id, and admin_reason body are required',
                 });
                 return;
               }
@@ -11757,11 +11970,113 @@ Future<void> routeRequest(
                           locationId: scope.locationId,
                           targetLocationId: targetLocationId,
                           parentOrgUnitId: parentOrgUnitId,
+                          adminReason: adminReason,
                         ),
                       );
                   return CachedProxyResponse(
                     statusCode: 200,
                     body: <String, Object?>{'ok': true, 'moved': moved.moved},
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            if (request.method == 'PATCH' &&
+                authOperationPath.startsWith(adminAuthLocationsPrefix) &&
+                (authOperationPath.endsWith('/suspend') ||
+                    authOperationPath.endsWith('/reactivate'))) {
+              if (!await requirePermission('team.hierarchy.suspend')) return;
+              final action = authOperationPath.endsWith('/suspend')
+                  ? 'suspend'
+                  : 'reactivate';
+              final targetLocationId = _idFromAdminAuthActionPath(
+                authOperationPath,
+                adminAuthLocationsPrefix,
+                action,
+              );
+              final adminReason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['adminReason']);
+              if (targetLocationId == null || adminReason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_location_lifecycle_fields',
+                  'message':
+                      'location id in path and admin_reason body are required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthLocationsPrefix$targetLocationId/$action',
+                key: idempotencyKey,
+                compute: () async {
+                  final command = TeamLocationLifecycleCommand(
+                    actorUserId: scope.userId,
+                    operatorId: scope.operatorId,
+                    locationId: scope.locationId,
+                    targetLocationId: targetLocationId,
+                    adminReason: adminReason,
+                  );
+                  final result = action == 'suspend'
+                      ? await authOperationsGateway.suspendLocation(command)
+                      : await authOperationsGateway.reactivateLocation(command);
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'location': _teamOrgLocationToJson(result.location),
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            if (request.method == 'POST' &&
+                authOperationPath.startsWith(adminAuthLocationsPrefix) &&
+                authOperationPath.endsWith('/delete')) {
+              if (!await requirePermission('team.hierarchy.delete')) return;
+              final targetLocationId = _idFromAdminAuthActionPath(
+                authOperationPath,
+                adminAuthLocationsPrefix,
+                'delete',
+              );
+              final adminReason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['adminReason']);
+              if (targetLocationId == null || adminReason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_location_delete_fields',
+                  'message':
+                      'location id in path and admin_reason body are required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthLocationsPrefix$targetLocationId/delete',
+                key: idempotencyKey,
+                compute: () async {
+                  final deleted = await authOperationsGateway.deleteLocation(
+                    TeamLocationLifecycleCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      targetLocationId: targetLocationId,
+                      adminReason: adminReason,
+                    ),
+                  );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'deleted': deleted.deleted,
+                    },
                   );
                 },
               );
@@ -14683,6 +14998,7 @@ bool _isAdminDataAccuracyPath(String path) {
   if (path == adminDataAccuracyRowsPath) return true;
   if (path == adminDataAccuracyAuditHistoryPath) return true;
   if (path.startsWith(adminDataAccuracySettingsPrefix)) return true;
+  if (path == adminDataAccuracyScopedSettingsPath) return true;
   if (path == adminPollingPricingTierDefinitionsPath ||
       path.startsWith(adminPollingPricingTierDefinitionsPrefix)) {
     return true;
@@ -14691,6 +15007,7 @@ bool _isAdminDataAccuracyPath(String path) {
       path.startsWith(adminPollingPricingAssignmentsPrefix)) {
     return true;
   }
+  if (path == adminPollingPricingScopedAssignmentsPath) return true;
   if (path == adminPollingPricingMarginPath ||
       path == adminPollingPricingMarginExportPath) {
     return true;
@@ -14755,18 +15072,26 @@ Future<void> _routeIntegrationsAdmin({
   final reasonPrefix = 'admin.integrations.$method:$actorLogId';
 
   if (method == 'GET' && path == adminIntegrationsListPath) {
+    final params = request.uri.queryParameters;
     final bundle = await gateway.listBundle(
       actorUserId: actorUserId,
       adminReason: '$reasonPrefix:list',
+      operatorId: _nonBlankString(params['operator_id']),
+      locationId: _nonBlankString(params['location_id']),
+      locationIds: _commaSeparatedQueryList(params['location_ids']),
     );
     _writeJson(response, 200, bundle);
     return;
   }
 
   if (method == 'GET' && path == adminIntegrationsStatusPath) {
+    final params = request.uri.queryParameters;
     final bundle = await gateway.listBundle(
       actorUserId: actorUserId,
       adminReason: '$reasonPrefix:status',
+      operatorId: _nonBlankString(params['operator_id']),
+      locationId: _nonBlankString(params['location_id']),
+      locationIds: _commaSeparatedQueryList(params['location_ids']),
     );
     _writeJson(response, 200, <String, Object?>{
       'vendor_connectors': bundle['vendor_connectors'],
@@ -14845,6 +15170,11 @@ bool _isAdminDataAccuracyOperation(String path, String method) {
   }
   if (method == 'PUT' &&
       path.startsWith(adminPollingPricingAssignmentsPrefix)) {
+    return true;
+  }
+  if (method == 'PUT' &&
+      (path == adminDataAccuracyScopedSettingsPath ||
+          path == adminPollingPricingScopedAssignmentsPath)) {
     return true;
   }
   if (method == 'POST' && path == adminPollingPricingMarginExportPath) {
@@ -14936,6 +15266,51 @@ Future<void> _routeDataAccuracyAdmin({
           );
         }
         return (statusCode: 200, payload: <String, Object?>{'row': row});
+      },
+    );
+    return;
+  }
+
+  if (method == 'PUT' && path == adminDataAccuracyScopedSettingsPath) {
+    final operatorId = _requireBodyString(body, 'operator_id');
+    final scopeType = _requireBodyString(body, 'scope_type');
+    final orgUnitId = _optionalBodyString(body, 'org_unit_id');
+    final locationId = _optionalBodyString(body, 'location_id');
+    final coversLunch = _optionalBodyString(body, 'covers_source_lunch');
+    final coversDinner = _optionalBodyString(body, 'covers_source_dinner');
+    final coversLateNight = _optionalBodyString(
+      body,
+      'covers_source_late_night',
+    );
+    final wageSource = _optionalBodyString(body, 'wage_source');
+    final walkInHandlingMode = _optionalBodyString(
+      body,
+      'walk_in_handling_mode',
+    );
+    final reasonNote = _optionalBodyString(body, 'reason_note');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.data_accuracy.scope_override',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final result = await gateway.overrideDataAccuracyScope(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          scopeType: scopeType,
+          orgUnitId: orgUnitId,
+          locationId: locationId,
+          coversSourceLunch: coversLunch,
+          coversSourceDinner: coversDinner,
+          coversSourceLateNight: coversLateNight,
+          wageSource: wageSource,
+          walkInHandlingMode: walkInHandlingMode,
+          reasonNote: reasonNote,
+          adminReason: '$reasonPrefix:scoped_settings:$operatorId:$scopeType',
+        );
+        return (statusCode: 200, payload: result);
       },
     );
     return;
@@ -15063,6 +15438,54 @@ Future<void> _routeDataAccuracyAdmin({
           statusCode: 200,
           payload: <String, Object?>{'assignment': assignment},
         );
+      },
+    );
+    return;
+  }
+
+  if (method == 'PUT' && path == adminPollingPricingScopedAssignmentsPath) {
+    final operatorId = _requireBodyString(body, 'operator_id');
+    final scopeType = _requireBodyString(body, 'scope_type');
+    final orgUnitId = _optionalBodyString(body, 'org_unit_id');
+    final locationId = _optionalBodyString(body, 'location_id');
+    final tierKey = _requireBodyString(body, 'tier_key');
+    final cadence = _optionalBodyPositiveIntMap(
+      body,
+      'custom_cadence_per_vendor_seconds',
+    );
+    final price = _optionalBodyNonNegativeInt(
+      body,
+      'monthly_price_cents_override',
+    );
+    final cost = _optionalBodyNonNegativeInt(
+      body,
+      'vendor_api_cost_estimate_cents_monthly_override',
+    );
+    final adminNotes = _optionalBodyString(body, 'admin_notes');
+    final reasonNote = _optionalBodyString(body, 'reason_note');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.polling_pricing.scope_assign_tier',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final result = await gateway.assignTierScope(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          scopeType: scopeType,
+          orgUnitId: orgUnitId,
+          locationId: locationId,
+          tierKey: tierKey,
+          customCadencePerVendorSeconds: cadence,
+          monthlyPriceCentsOverride: price,
+          vendorApiCostEstimateCentsMonthlyOverride: cost,
+          adminNotes: adminNotes,
+          reasonNote: reasonNote,
+          adminReason: '$reasonPrefix:scope_assignment:$operatorId:$scopeType',
+        );
+        return (statusCode: 200, payload: result);
       },
     );
     return;
@@ -15471,7 +15894,9 @@ bool _isAdminDebugPath(String path) {
       path == adminDebugRequestByIdPath ||
       path == adminDebugRequestByKeyPath ||
       path == adminDebugRequestsTailPath ||
-      path == adminDebugFullContentOptInsPath;
+      path == adminDebugFullContentOptInsPath ||
+      path == adminDebugRelationshipHelpPath ||
+      path == adminDebugAccountHelpPath;
 }
 
 bool _isAdminDebugOperation(String path, String method) {
@@ -15499,6 +15924,54 @@ Future<void> _routeDebugConsoleAdmin({
       : _nonBlankString(params['location_id']);
   final reasonPrefix = 'admin.debug.GET:$actorUserId';
 
+  if (path == adminDebugRelationshipHelpPath ||
+      path == adminDebugAccountHelpPath) {
+    final allowedUsageClasses = path == adminDebugRelationshipHelpPath
+        ? kDebugRelationshipHelpUsageClasses
+        : kDebugAccountHelpUsageClasses;
+    final supportUseCase = _nonBlankString(params['support_use_case']);
+    if (supportUseCase != null &&
+        !allowedUsageClasses.contains(supportUseCase)) {
+      _writeJson(response, 400, <String, Object?>{
+        'error': 'invalid_support_use_case',
+        'message': 'support_use_case is not valid for this support-log tab',
+        'allowed': allowedUsageClasses.toList(growable: false)..sort(),
+      });
+      return;
+    }
+    final limit = _clampedQueryInt(
+      params['limit'],
+      defaultValue: 100,
+      min: 1,
+      max: 100,
+    );
+    final rows = await _debugRowsBySupportHelpUsage(
+      gateway: gateway,
+      actorUserId: actorUserId,
+      adminReason:
+          '$reasonPrefix:${path == adminDebugRelationshipHelpPath ? 'relationship_help' : 'account_help'}',
+      operatorId: _nonBlankString(params['operator_id']),
+      locationId: scopedLocationId,
+      locationIds: scopedLocationIds.isEmpty ? null : scopedLocationIds,
+      allowedUsageClasses: allowedUsageClasses,
+      supportUseCase: supportUseCase,
+      status: _nonBlankString(params['status']),
+      timeWindowSeconds: _optionalClampedQueryInt(
+        params['time_window_seconds'],
+        min: 1,
+        max: 604800,
+      ),
+      searchText: _nonBlankString(params['q']),
+      limit: limit,
+      includeFullContent: includeFullContent,
+    );
+    _writeJson(response, 200, <String, Object?>{
+      'requests': rows,
+      'support_use_cases': allowedUsageClasses.toList(growable: false)..sort(),
+    });
+    return;
+  }
+
   if (path == adminDebugRequestsPath) {
     final rows = await gateway.listRequests(
       actorUserId: actorUserId,
@@ -15508,7 +15981,7 @@ Future<void> _routeDebugConsoleAdmin({
       locationIds: scopedLocationIds.isEmpty ? null : scopedLocationIds,
       usageClass: _nonBlankString(params['usage_class']),
       status: _nonBlankString(params['status']),
-      timeWindowSeconds: _clampedQueryInt(
+      timeWindowSeconds: _optionalClampedQueryInt(
         params['time_window_seconds'],
         min: 1,
         max: 604800,
@@ -15592,6 +16065,63 @@ Future<void> _routeDebugConsoleAdmin({
   _writeNotFound(response, request);
 }
 
+Future<List<Map<String, Object?>>> _debugRowsBySupportHelpUsage({
+  required DebugConsoleAdminProxyGateway gateway,
+  required String actorUserId,
+  required String adminReason,
+  required String? operatorId,
+  required String? locationId,
+  required List<String>? locationIds,
+  required Set<String> allowedUsageClasses,
+  required String? supportUseCase,
+  required String? status,
+  required int? timeWindowSeconds,
+  required String? searchText,
+  required int limit,
+  required bool includeFullContent,
+}) async {
+  final usageClasses = supportUseCase == null
+      ? (allowedUsageClasses.toList(growable: false)..sort())
+      : <String>[supportUseCase];
+  final byRequestId = <String, Map<String, Object?>>{};
+  for (final usageClass in usageClasses) {
+    final rows = await gateway.listRequests(
+      actorUserId: actorUserId,
+      adminReason: '$adminReason:$usageClass',
+      operatorId: operatorId,
+      locationId: locationId,
+      locationIds: locationIds,
+      usageClass: usageClass,
+      status: status,
+      timeWindowSeconds: timeWindowSeconds,
+      searchText: searchText,
+      limit: limit,
+      includeFullContent: includeFullContent,
+    );
+    for (final row in rows) {
+      final requestId = row['request_id']?.toString();
+      if (requestId == null || requestId.isEmpty) continue;
+      byRequestId[requestId] = row;
+    }
+  }
+  final merged = byRequestId.values.toList(growable: false)
+    ..sort((a, b) {
+      final bTime = _debugStartedAtSortValue(b);
+      final aTime = _debugStartedAtSortValue(a);
+      return bTime.compareTo(aTime);
+    });
+  return merged.length > limit ? merged.sublist(0, limit) : merged;
+}
+
+int _debugStartedAtSortValue(Map<String, Object?> row) {
+  final raw = row['started_at'];
+  if (raw is DateTime) return raw.toUtc().microsecondsSinceEpoch;
+  if (raw is String) {
+    return DateTime.tryParse(raw)?.toUtc().microsecondsSinceEpoch ?? 0;
+  }
+  return 0;
+}
+
 bool _isAdminObservabilityPath(String path) => path == adminObservabilityPath;
 
 bool _isAdminObservabilityOperation(String path, String method) {
@@ -15610,6 +16140,15 @@ Future<void> _routeObservabilityAdmin({
     return;
   }
   final params = request.uri.queryParameters;
+  final repeatedLocationIds = _nonBlankStrings(
+    request.uri.queryParametersAll['location_id'],
+  );
+  final scopedLocationIds = repeatedLocationIds.length > 1
+      ? repeatedLocationIds
+      : _commaSeparatedQueryList(params['location_ids']);
+  final scopedLocationId = repeatedLocationIds.length > 1
+      ? null
+      : _nonBlankString(params['location_id']);
   final limit = _clampedQueryInt(
     params['cost_telemetry_limit'],
     defaultValue: 100,
@@ -15621,6 +16160,9 @@ Future<void> _routeObservabilityAdmin({
     adminReason: 'admin.observability.GET:$actorUserId:fetch',
     costTelemetryLimit: limit,
     queryClassFilter: _nonBlankString(params['query_class']),
+    operatorId: _nonBlankString(params['operator_id']),
+    locationId: scopedLocationId,
+    locationIds: scopedLocationIds.isEmpty ? null : scopedLocationIds,
   );
   _writeJson(response, 200, payload);
 }
@@ -15650,9 +16192,13 @@ Future<void> _routeFeatureFlagsAdmin({
   final reasonPrefix = 'admin.feature_flags.$method:$actorUserId';
 
   if (method == 'GET' && path == adminFeatureFlagsListPath) {
+    final params = request.uri.queryParameters;
     final flags = await gateway.listFlags(
       actorUserId: actorUserId,
       adminReason: '$reasonPrefix:list',
+      operatorId: _nonBlankString(params['operator_id']),
+      locationId: _nonBlankString(params['location_id']),
+      locationIds: _commaSeparatedQueryList(params['location_ids']),
     );
     _writeJson(response, 200, <String, Object?>{'flags': flags});
     return;
@@ -17042,8 +17588,27 @@ bool _isAdminAuthOperation(String path, String method) {
     return true;
   }
   if (method == 'PATCH' &&
+      authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
+      authOperationPath.endsWith('/parent')) {
+    return true;
+  }
+  if (authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
+      ((method == 'PATCH' &&
+              (authOperationPath.endsWith('/suspend') ||
+                  authOperationPath.endsWith('/reactivate'))) ||
+          (method == 'POST' && authOperationPath.endsWith('/delete')))) {
+    return true;
+  }
+  if (method == 'PATCH' &&
       authOperationPath.startsWith(adminAuthLocationsPrefix) &&
       authOperationPath.endsWith('/org-unit')) {
+    return true;
+  }
+  if (authOperationPath.startsWith(adminAuthLocationsPrefix) &&
+      ((method == 'PATCH' &&
+              (authOperationPath.endsWith('/suspend') ||
+                  authOperationPath.endsWith('/reactivate'))) ||
+          (method == 'POST' && authOperationPath.endsWith('/delete')))) {
     return true;
   }
   return false;
@@ -17069,11 +17634,35 @@ String _canonicalAuthOperationPath(String path) {
         '${path.substring(authTeamInvitePrefix.length)}';
   }
   if (path == authTeamOrgUnitsPath) return adminAuthOrgUnitsPath;
+  if (path.startsWith(authTeamOrgUnitPrefix)) {
+    return '$adminAuthOrgUnitPrefix'
+        '${path.substring(authTeamOrgUnitPrefix.length)}';
+  }
   if (path.startsWith(authTeamLocationsPrefix)) {
     return '$adminAuthLocationsPrefix'
         '${path.substring(authTeamLocationsPrefix.length)}';
   }
   return path;
+}
+
+String? _orgUnitIdFromParentPath(String path) {
+  if (!path.startsWith(adminAuthOrgUnitPrefix)) return null;
+  final rest = path.substring(adminAuthOrgUnitPrefix.length);
+  final parts = rest.split('/');
+  if (parts.length != 2 || parts[0].isEmpty || parts[1] != 'parent') {
+    return null;
+  }
+  return Uri.decodeComponent(parts[0]);
+}
+
+String? _idFromAdminAuthActionPath(String path, String prefix, String action) {
+  if (!path.startsWith(prefix)) return null;
+  final rest = path.substring(prefix.length);
+  final parts = rest.split('/');
+  if (parts.length != 2 || parts[0].isEmpty || parts[1] != action) {
+    return null;
+  }
+  return Uri.decodeComponent(parts[0]);
 }
 
 String? _orgUnitLocationIdFromPath(String path) {
@@ -17276,6 +17865,10 @@ Map<String, Object?> _teamOrgUnitToJson(TeamOrgUnitEntry entry) {
     'unit_type': entry.unitType,
     'path': entry.path,
     'label': entry.label,
+    if (entry.suspendedAt != null)
+      'suspended_at': entry.suspendedAt!.toUtc().toIso8601String(),
+    if (entry.deletedAt != null)
+      'deleted_at': entry.deletedAt!.toUtc().toIso8601String(),
   };
 }
 
@@ -17285,6 +17878,10 @@ Map<String, Object?> _teamOrgLocationToJson(TeamOrgLocationEntry entry) {
     'parent_org_unit_id': entry.parentOrgUnitId,
     'org_unit_path': entry.orgUnitPath,
     'label': entry.label,
+    if (entry.suspendedAt != null)
+      'suspended_at': entry.suspendedAt!.toUtc().toIso8601String(),
+    if (entry.deletedAt != null)
+      'deleted_at': entry.deletedAt!.toUtc().toIso8601String(),
   };
 }
 
@@ -17312,6 +17909,15 @@ int _clampedQueryInt(
   if (value < min) return min;
   if (value > max) return max;
   return value;
+}
+
+int? _optionalClampedQueryInt(
+  String? raw, {
+  required int min,
+  required int max,
+}) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  return _clampedQueryInt(raw, min: min, max: max);
 }
 
 Map<String, Object?> _authEventEntryToJson(AuthEventListEntry entry) {

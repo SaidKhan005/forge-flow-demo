@@ -1,4 +1,4 @@
-﻿// Phase 11A.4 - Integration management value objects.
+// Phase 11A.4 - Integration management value objects.
 //
 // Value objects backing the F&F Operations Console "Integrations"
 // surface: provider key rotation (Anthropic, Voyage, Azure DB) plus
@@ -15,6 +15,9 @@
 // reads return the masked-only [ProviderKeyRow].
 
 import 'package:flutter/foundation.dart';
+
+import '../../integrations/ui/vendor_connections/vendor_connections_models.dart'
+    show VendorCategory;
 
 /// Stable string identifying one of the rotatable provider lanes.
 /// Mirrors the database `key_kind` CHECK constraint and the proxy's
@@ -111,12 +114,33 @@ class VendorConnectorStatus {
     required this.displayName,
     required this.statusLabel,
     required this.detailMessage,
+    this.category,
+    this.apiReachable,
+    this.healthSourceLabel,
+    this.unlockLabel,
   });
 
   final String id;
   final String displayName;
   final String statusLabel;
   final String detailMessage;
+
+  /// POS / labor / reservation grouping for vendor connector rows.
+  /// Null for non-vendor shared services such as FX rates and email.
+  final VendorCategory? category;
+
+  /// Whether the live setup API is reachable for this vendor. Null
+  /// means the payload did not expose a reachability signal and the
+  /// gateway should derive the display conservatively from the legacy
+  /// status label.
+  final bool? apiReachable;
+
+  /// Plain-English source for [apiReachable], for example a live API
+  /// probe, a mocked gateway seam, or a lifecycle projection.
+  final String? healthSourceLabel;
+
+  /// Plain-English setup availability derived from API reachability.
+  final String? unlockLabel;
 }
 
 /// Convenience alias for FX-rate / email provider status placeholders.

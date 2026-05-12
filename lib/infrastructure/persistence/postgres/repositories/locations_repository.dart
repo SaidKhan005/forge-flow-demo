@@ -30,9 +30,11 @@ class LocationsRepository extends OperatorScopedRepository {
         'operator_id::text as operator_id, '
         'parent_org_unit_id::text as parent_org_unit_id, '
         'name, address, timezone, '
-        'business_day_rollover_hour, created_at, updated_at '
+        'business_day_rollover_hour, suspended_at, deleted_at, '
+        'created_at, updated_at '
         'from locations '
         'where operator_id = @operator_id::uuid '
+        'and deleted_at is null '
         'order by created_at asc',
         parameters: <String, Object?>{'operator_id': operatorId},
       );
@@ -54,8 +56,10 @@ class LocationsRepository extends OperatorScopedRepository {
         'operator_id::text as operator_id, '
         'parent_org_unit_id::text as parent_org_unit_id, '
         'name, address, timezone, '
-        'business_day_rollover_hour, created_at, updated_at '
+        'business_day_rollover_hour, suspended_at, deleted_at, '
+        'created_at, updated_at '
         'from locations '
+        'where deleted_at is null '
         'order by operator_id asc, created_at asc',
       );
       return <LocationAdminRow>[
@@ -91,7 +95,8 @@ class LocationsRepository extends OperatorScopedRepository {
         'operator_id::text as operator_id, '
         'parent_org_unit_id::text as parent_org_unit_id, '
         'name, address, timezone, '
-        'business_day_rollover_hour, created_at, updated_at',
+        'business_day_rollover_hour, suspended_at, deleted_at, '
+        'created_at, updated_at',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'parent_org_unit_id': parentOrgUnitId,
@@ -132,7 +137,8 @@ class LocationsRepository extends OperatorScopedRepository {
         'operator_id::text as operator_id, '
         'parent_org_unit_id::text as parent_org_unit_id, '
         'name, address, timezone, '
-        'business_day_rollover_hour, created_at, updated_at',
+        'business_day_rollover_hour, suspended_at, deleted_at, '
+        'created_at, updated_at',
         parameters: <String, Object?>{
           'location_id': locationId,
           'name': name,
@@ -160,9 +166,11 @@ class LocationsRepository extends OperatorScopedRepository {
   }) {
     return withSystem<int>((exec) async {
       return exec.execute(
-        'delete from locations '
+        'update locations '
+        'set deleted_at = now(), updated_at = now() '
         'where location_id = @location_id::uuid '
-        'and operator_id = @operator_id::uuid',
+        'and operator_id = @operator_id::uuid '
+        'and deleted_at is null',
         parameters: <String, Object?>{
           'location_id': locationId,
           'operator_id': operatorId,
@@ -181,6 +189,8 @@ class LocationAdminRow {
     required this.address,
     required this.timezone,
     required this.businessDayRolloverHour,
+    this.suspendedAt,
+    this.deletedAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -192,6 +202,8 @@ class LocationAdminRow {
   final String address;
   final String timezone;
   final int? businessDayRolloverHour;
+  final DateTime? suspendedAt;
+  final DateTime? deletedAt;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -203,6 +215,8 @@ class LocationAdminRow {
     'address': address,
     'timezone': timezone,
     'business_day_rollover_hour': businessDayRolloverHour,
+    'suspended_at': suspendedAt?.toUtc().toIso8601String(),
+    'deleted_at': deletedAt?.toUtc().toIso8601String(),
     'created_at': createdAt.toUtc().toIso8601String(),
     'updated_at': updatedAt.toUtc().toIso8601String(),
   };
@@ -217,6 +231,8 @@ LocationAdminRow _locationAdminRowFromMap(PostgresRow row) {
     address: (row['address'] as String?) ?? '',
     timezone: row['timezone']! as String,
     businessDayRolloverHour: row['business_day_rollover_hour'] as int?,
+    suspendedAt: _toDateTime(row['suspended_at']),
+    deletedAt: _toDateTime(row['deleted_at']),
     createdAt: _toDateTime(row['created_at'])!,
     updatedAt: _toDateTime(row['updated_at'])!,
   );

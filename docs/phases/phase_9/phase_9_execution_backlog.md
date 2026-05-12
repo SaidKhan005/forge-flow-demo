@@ -146,12 +146,14 @@ Do not re-open stale findings unless the repo regresses:
   `location_id` to the fact/webhook idempotency keys and switch all 17
   vendor sinks to a DO UPDATE WHERE `vendor_modified_at >=` guard. The
   follow-up queue now continues through
-  `202605081000_outbox_notify_channel_split.sql` for permission-cache,
+  `202605121200_admin_hierarchy_scoped_data_polling.sql` for permission-cache,
   webhook-secret, demo-counter, audit-anchor, auth-version,
-  OAuth-refresh-lock, and outbox NOTIFY split hardening.
+  OAuth-refresh-lock, outbox NOTIFY split hardening, cron maintenance,
+  KMS flag seeding, PII erasure, retention sweep, and admin hierarchy
+  lifecycle/scoped settings gates.
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605081000_outbox_notify_channel_split.sql`.
+  `202605121200_admin_hierarchy_scoped_data_polling.sql`.
 
 ## Remaining Live-Closeout Gates
 

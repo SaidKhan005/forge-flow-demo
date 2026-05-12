@@ -22,6 +22,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/observability_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/observability_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/observability_admin_gateway.dart';
@@ -80,7 +81,49 @@ void main() {
       find.byKey(const Key('admin_observability_manual_prompt')),
       findsOneWidget,
     );
+    expect(find.text('Check AI Metrics'), findsOneWidget);
+    expect(find.textContaining('system metrics'), findsNothing);
     expect(find.byKey(const Key('admin_observability_tabs')), findsNothing);
+  });
+
+  testWidgets('manual check carries selected hierarchy scope to gateway', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = _BlockingObservabilityGateway();
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          hierarchyScope: const AdminHierarchyScopeIntent.orgUnit(
+            operatorId: 'op-a',
+            orgUnitId: 'ou-a',
+            operatorName: 'Demo Diner',
+            orgUnitName: 'Downtown',
+          ),
+          scopeLocationIds: const <String>{'loc-a', 'loc-b'},
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Demo Diner / Downtown'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('admin_observability_refresh_button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_observability_confirm_run')));
+    await tester.pump();
+
+    expect(gateway.fetchCount, equals(1));
+    expect(gateway.requests.single.operatorId, equals('op-a'));
+    expect(gateway.requests.single.locationId, isNull);
+    expect(
+      gateway.requests.single.locationIds,
+      equals(<String>{'loc-a', 'loc-b'}),
+    );
   });
 
   testWidgets('confirmed manual fetch renders six tabs + as-of strip', (
@@ -157,7 +200,20 @@ void main() {
     );
     await runCheck(tester);
 
-    // Cost tab is selected by default.
+    // Cost tab is selected by default; backend request group IDs stay
+    // inside the advanced disclosure.
+    expect(
+      find.byKey(const Key('admin_observability_request_group_advanced')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_request_group_key')),
+      findsNothing,
+    );
+    await tester.tap(
+      find.byKey(const Key('admin_observability_request_group_advanced')),
+    );
+    await tester.pumpAndSettle();
     expect(
       find.byKey(const Key('admin_observability_request_group_key')),
       findsOneWidget,
@@ -268,9 +324,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byTooltip(
-        'Operator, request group, and time that hit a usage limit.',
-      ),
+      find.byTooltip('Operator, use case, and time that hit a usage limit.'),
       findsOneWidget,
     );
 
@@ -288,15 +342,12 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byTooltip('API route or service path being measured.'),
-      findsOneWidget,
-    );
-    expect(
       find.byTooltip(
-        'Current active instances plus configured minimum and maximum capacity.',
+        'Readable service area being measured. Route paths are in advanced details.',
       ),
       findsOneWidget,
     );
+    expect(find.byTooltip('Current active hosting instances.'), findsOneWidget);
   });
 
   testWidgets('operator dormancy flags 30+ days silent', (tester) async {
@@ -434,6 +485,10 @@ void main() {
       find.byKey(const Key('admin_observability_cost_truncated')),
       findsOneWidget,
     );
+    await tester.tap(
+      find.byKey(const Key('admin_observability_request_group_advanced')),
+    );
+    await tester.pumpAndSettle();
     // Filter chip and Apply button are present.
     expect(
       find.byKey(const Key('admin_observability_cost_query_class_filter')),
@@ -468,6 +523,10 @@ void main() {
       find.byKey(const Key('admin_observability_cost_query_class_filter_chip')),
       findsNothing,
     );
+    await tester.tap(
+      find.byKey(const Key('admin_observability_request_group_advanced')),
+    );
+    await tester.pumpAndSettle();
 
     await tester.enterText(
       find.byKey(const Key('admin_observability_cost_query_class_filter')),
@@ -682,6 +741,23 @@ void main() {
       find.byKey(const Key('admin_observability_cloud_run_admin-proxy')),
       findsOneWidget,
     );
+    expect(find.text('/v1/advisor/answer'), findsNothing);
+    expect(find.text('advisor-proxy-00037-n1k'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const Key('admin_observability_route_latency_advanced')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('/v1/advisor/answer'), findsOneWidget);
+
+    final hostingAdvanced = find.byKey(
+      const Key('admin_observability_hosting_advanced'),
+    );
+    await tester.ensureVisible(hostingAdvanced);
+    await tester.pumpAndSettle();
+    await tester.tap(hostingAdvanced);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('advisor-proxy-00037-n1k'), findsOneWidget);
   });
 
   testWidgets('top-N renders 1d / 7d / 30d sections', (tester) async {
@@ -825,26 +901,17 @@ void main() {
             'event_outbox_undelivered_count': <String, Object?>{
               'value': 5,
               'status': 'green',
-              'thresholds': <String, Object?>{
-                'yellow': 10000,
-                'red': 100000,
-              },
+              'thresholds': <String, Object?>{'yellow': 10000, 'red': 100000},
             },
             'event_outbox_publish_error_rate': <String, Object?>{
               'value': 0.10,
               'status': 'red',
-              'thresholds': <String, Object?>{
-                'yellow': 0.01,
-                'red': 0.05,
-              },
+              'thresholds': <String, Object?>{'yellow': 0.01, 'red': 0.05},
             },
             'pg_notification_queue_usage': <String, Object?>{
               'value': 0.05,
               'status': 'green',
-              'thresholds': <String, Object?>{
-                'yellow': 0.10,
-                'red': 0.25,
-              },
+              'thresholds': <String, Object?>{'yellow': 0.10, 'red': 0.25},
             },
           },
           'breaches': const <Object?>[],
@@ -864,9 +931,7 @@ void main() {
 
       // Section is mounted above the tab bar.
       expect(
-        find.byKey(
-          const Key('admin_observability_bridge_tripwires_section'),
-        ),
+        find.byKey(const Key('admin_observability_bridge_tripwires_section')),
         findsOneWidget,
       );
       expect(find.text('Realtime bridge tripwires'), findsOneWidget);
@@ -875,21 +940,16 @@ void main() {
       for (final metric in OutboxTripwireMetric.values) {
         final key = outboxTripwireMetricKey(metric);
         expect(
-          find.byKey(
-            Key('admin_observability_bridge_tripwire_row_$key'),
-          ),
+          find.byKey(Key('admin_observability_bridge_tripwire_row_$key')),
           findsOneWidget,
-          reason:
-              'expected a row for $key in the bridge tripwires section',
+          reason: 'expected a row for $key in the bridge tripwires section',
         );
       }
 
       // Worst-wins header pill is red because publish_error_rate
       // breached red even though bridge_lag is only yellow.
       expect(
-        find.byKey(
-          const Key('admin_observability_bridge_tripwire_status_red'),
-        ),
+        find.byKey(const Key('admin_observability_bridge_tripwire_status_red')),
         findsOneWidget,
       );
     },

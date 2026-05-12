@@ -250,6 +250,15 @@ class _AuditRow extends StatelessWidget {
   }
 
   static String _actorLabel(DataAccuracyAdminAuditEvent event) {
+    final name = event.actorDisplayName?.trim();
+    final role = event.actorRole?.trim();
+    final email = event.actorEmail?.trim();
+    final parts = <String>[
+      if (name != null && name.isNotEmpty) name,
+      if (role != null && role.isNotEmpty) role,
+      if (email != null && email.isNotEmpty) email,
+    ];
+    if (parts.isNotEmpty) return parts.join(' - ');
     final actorId = event.actorUserId.trim();
     if (actorId.toLowerCase() == 'system') return 'System';
     switch (event.actorKind.trim().toLowerCase()) {

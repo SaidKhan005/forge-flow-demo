@@ -571,13 +571,89 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<TeamOrgUnitMoved> moveOrgUnit(TeamOrgUnitMoveCommand command) async {
+    final response = await _patch(
+      '$orgUnitsPath/${Uri.encodeComponent(command.orgUnitId)}/parent',
+      <String, Object?>{
+        'parent_org_unit_id': command.parentOrgUnitId,
+        if (command.adminReason != null) 'admin_reason': command.adminReason,
+      },
+    );
+    _expectStatus(response, 200);
+    final rawOrgUnit = response.body['org_unit'];
+    if (rawOrgUnit is Map) {
+      return TeamOrgUnitMoved(orgUnit: _orgUnitFromJson(response, rawOrgUnit));
+    }
+    final orgUnitId = _readNonBlankString(response.body['org_unit_id']);
+    if (orgUnitId == null) {
+      throw _malformed(response, 'org unit move response was incomplete');
+    }
+    return TeamOrgUnitMoved(
+      orgUnit: TeamOrgUnitEntry(
+        orgUnitId: orgUnitId,
+        parentOrgUnitId: command.parentOrgUnitId,
+        unitType: _readNonBlankString(response.body['unit_type']) ?? 'region',
+        path: _readNonBlankString(response.body['path']) ?? '',
+        label: _readNonBlankString(response.body['label']) ?? orgUnitId,
+      ),
+    );
+  }
+
+  @override
+  Future<TeamOrgUnitLifecycleUpdated> suspendOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  ) {
+    return _orgUnitLifecycle(command, 'suspend');
+  }
+
+  @override
+  Future<TeamOrgUnitLifecycleUpdated> reactivateOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  ) {
+    return _orgUnitLifecycle(command, 'reactivate');
+  }
+
+  Future<TeamOrgUnitLifecycleUpdated> _orgUnitLifecycle(
+    TeamOrgUnitLifecycleCommand command,
+    String action,
+  ) async {
+    final response = await _patch(
+      '$orgUnitsPath/${Uri.encodeComponent(command.orgUnitId)}/$action',
+      <String, Object?>{'admin_reason': command.adminReason},
+    );
+    _expectStatus(response, 200);
+    final rawOrgUnit = response.body['org_unit'];
+    if (rawOrgUnit is! Map) {
+      throw _malformed(response, 'org unit lifecycle response was incomplete');
+    }
+    return TeamOrgUnitLifecycleUpdated(
+      orgUnit: _orgUnitFromJson(response, rawOrgUnit),
+    );
+  }
+
+  @override
+  Future<TeamHierarchyDeleted> deleteOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  ) async {
+    final response = await _post(
+      '$orgUnitsPath/${Uri.encodeComponent(command.orgUnitId)}/delete',
+      <String, Object?>{'admin_reason': command.adminReason},
+    );
+    _expectStatus(response, 200);
+    return TeamHierarchyDeleted(deleted: response.body['deleted'] == true);
+  }
+
+  @override
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command,
   ) async {
     final response = await _patch(
       '$locationsPrefix${Uri.encodeComponent(command.targetLocationId)}'
       '/org-unit',
-      <String, Object?>{'parent_org_unit_id': command.parentOrgUnitId},
+      <String, Object?>{
+        'parent_org_unit_id': command.parentOrgUnitId,
+        if (command.adminReason != null) 'admin_reason': command.adminReason,
+      },
     );
     _expectStatus(response, 200);
     final moved = response.body['moved'];
@@ -585,6 +661,50 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       throw _malformed(response, 'org unit move response was incomplete');
     }
     return TeamLocationOrgUnitMoved(moved: moved);
+  }
+
+  @override
+  Future<TeamLocationLifecycleUpdated> suspendLocation(
+    TeamLocationLifecycleCommand command,
+  ) {
+    return _locationLifecycle(command, 'suspend');
+  }
+
+  @override
+  Future<TeamLocationLifecycleUpdated> reactivateLocation(
+    TeamLocationLifecycleCommand command,
+  ) {
+    return _locationLifecycle(command, 'reactivate');
+  }
+
+  Future<TeamLocationLifecycleUpdated> _locationLifecycle(
+    TeamLocationLifecycleCommand command,
+    String action,
+  ) async {
+    final response = await _patch(
+      '$locationsPrefix${Uri.encodeComponent(command.targetLocationId)}/$action',
+      <String, Object?>{'admin_reason': command.adminReason},
+    );
+    _expectStatus(response, 200);
+    final rawLocation = response.body['location'];
+    if (rawLocation is! Map) {
+      throw _malformed(response, 'location lifecycle response was incomplete');
+    }
+    return TeamLocationLifecycleUpdated(
+      location: _orgLocationFromJson(response, rawLocation),
+    );
+  }
+
+  @override
+  Future<TeamHierarchyDeleted> deleteLocation(
+    TeamLocationLifecycleCommand command,
+  ) async {
+    final response = await _post(
+      '$locationsPrefix${Uri.encodeComponent(command.targetLocationId)}/delete',
+      <String, Object?>{'admin_reason': command.adminReason},
+    );
+    _expectStatus(response, 200);
+    return TeamHierarchyDeleted(deleted: response.body['deleted'] == true);
   }
 
   @override
@@ -811,6 +931,8 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       unitType: unitType,
       path: path,
       label: label,
+      suspendedAt: _readDateTime(json['suspended_at']),
+      deletedAt: _readDateTime(json['deleted_at']),
     );
   }
 
@@ -837,6 +959,8 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       parentOrgUnitId: parentOrgUnitId,
       orgUnitPath: orgUnitPath,
       label: label,
+      suspendedAt: _readDateTime(json['suspended_at']),
+      deletedAt: _readDateTime(json['deleted_at']),
     );
   }
 

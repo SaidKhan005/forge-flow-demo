@@ -494,11 +494,14 @@ class InMemoryOperatorLocationAdminGateway
     final updated = LocationAdminRecord(
       locationId: existing.locationId,
       operatorId: existing.operatorId,
+      parentOrgUnitId: existing.parentOrgUnitId,
       name: command.name?.trim() ?? existing.name,
       address: command.address ?? existing.address,
       timezone: command.timezone ?? existing.timezone,
       businessDayRolloverHour:
           command.businessDayRolloverHour ?? existing.businessDayRolloverHour,
+      suspendedAt: existing.suspendedAt,
+      deletedAt: existing.deletedAt,
       createdAt: existing.createdAt,
       updatedAt: _now().toUtc(),
     );

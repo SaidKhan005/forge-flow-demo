@@ -1,4 +1,4 @@
-﻿// Phase 11A.UX.health (F.1) - Gateway for the proxy /health envelope.
+// Phase 11A.UX.health (F.1) - Gateway for the proxy /health envelope.
 //
 // The proxy `/health` route is public unauthenticated per
 // `docs/contracts/proxy_health_contract.md`, so the HTTP gateway does
@@ -30,8 +30,32 @@ class HealthAdminGatewayError implements Exception {
   String toString() => 'HealthAdminGatewayError($statusCode): $message';
 }
 
+class HealthAdminFetchRequest {
+  const HealthAdminFetchRequest({
+    this.operatorId,
+    this.locationId,
+    this.locationIds = const <String>{},
+  });
+
+  final String? operatorId;
+  final String? locationId;
+  final Set<String> locationIds;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      if (operatorId != null && operatorId!.isNotEmpty)
+        'operator_id': operatorId!,
+      if (locationId != null && locationId!.isNotEmpty)
+        'location_id': locationId!,
+      if (locationIds.isNotEmpty) 'location_ids': locationIds.join(','),
+    };
+  }
+}
+
 abstract class HealthAdminGateway {
-  Future<HealthEnvelope> fetch();
+  Future<HealthEnvelope> fetch([
+    HealthAdminFetchRequest request = const HealthAdminFetchRequest(),
+  ]);
 }
 
 /// Production gateway: hits `GET <proxy>/health` and surfaces the
@@ -55,8 +79,12 @@ class HttpHealthAdminGateway implements HealthAdminGateway {
   static const String healthPath = '/health';
 
   @override
-  Future<HealthEnvelope> fetch() async {
-    final uri = baseUri.resolve(healthPath);
+  Future<HealthEnvelope> fetch([
+    HealthAdminFetchRequest fetchRequest = const HealthAdminFetchRequest(),
+  ]) async {
+    final uri = baseUri
+        .resolve(healthPath)
+        .replace(queryParameters: fetchRequest.toQueryParameters());
     final request = http.Request('GET', uri)
       ..headers['accept'] = 'application/json';
     late final http.Response response;
@@ -132,7 +160,9 @@ class InMemoryHealthAdminGateway implements HealthAdminGateway {
   }
 
   @override
-  Future<HealthEnvelope> fetch() async {
+  Future<HealthEnvelope> fetch([
+    HealthAdminFetchRequest request = const HealthAdminFetchRequest(),
+  ]) async {
     final err = _errorOnFetch;
     if (err != null) throw err;
     return HealthEnvelope.fromJson(

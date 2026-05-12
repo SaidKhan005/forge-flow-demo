@@ -1,4 +1,4 @@
-﻿// Phase 11A.UX.health (F.1) - Health admin surface (HP #10 cleanup).
+// Phase 11A.UX.health (F.1) - Health admin surface (HP #10 cleanup).
 //
 // Read-only operator-facing view of the proxy `/health` envelope.
 // Three tabs reflect the three D.1 metric tiers:
@@ -33,9 +33,11 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
+import '../admin_route_handoff.dart';
 import '../admin_human_labels.dart';
 import '../models/health_admin_models.dart';
 import '../services/health_admin_gateway.dart';
+import '../widgets/admin_hierarchy_scope_notice.dart';
 import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_run_check_controls.dart';
 
@@ -197,10 +199,14 @@ class HealthAdminScreen extends StatefulWidget {
   const HealthAdminScreen({
     super.key,
     required this.gateway,
+    this.hierarchyScope,
+    this.scopeLocationIds = const <String>{},
     @visibleForTesting this.now,
   });
 
   final HealthAdminGateway gateway;
+  final AdminHierarchyScopeIntent? hierarchyScope;
+  final Set<String> scopeLocationIds;
 
   /// Test-only clock injection so the "Last checked" timestamp is
   /// deterministic. Production uses [DateTime.now].
@@ -254,7 +260,13 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
       _loadError = null;
     });
     try {
-      final envelope = await widget.gateway.fetch();
+      final envelope = await widget.gateway.fetch(
+        HealthAdminFetchRequest(
+          operatorId: widget.hierarchyScope?.operatorId,
+          locationId: widget.hierarchyScope?.locationId,
+          locationIds: widget.scopeLocationIds,
+        ),
+      );
       if (!mounted) return;
       setState(() {
         _envelope = envelope;
@@ -306,6 +318,11 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
               loading: _loading || _refreshing,
             ),
             const SizedBox(height: 12),
+            if (widget.hierarchyScope != null)
+              AdminHierarchyScopeNotice(
+                message:
+                    'Running platform health checks while focused on ${widget.hierarchyScope!.displayLabel}. Advisor data, app service, and ecosystem checks are shared signals for the selected business context.',
+              ),
             if (_loadError != null)
               _ErrorBanner(
                 key: const Key('admin_health_load_error'),
@@ -339,6 +356,7 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
   }
 
   Widget _envelopeBody(HealthEnvelope envelope) {
+    final showDefinitions = MediaQuery.sizeOf(context).width >= 520;
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -354,6 +372,10 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
             ),
           const _HealthPriorityKey(),
           const SizedBox(height: 12),
+          if (showDefinitions) ...[
+            const _HealthDefinitionsCard(),
+            const SizedBox(height: 12),
+          ],
           _DependenciesStrip(envelope: envelope),
           const SizedBox(height: 12),
           _OverallSeverityChip(envelope: envelope),
@@ -693,6 +715,98 @@ class _PriorityKeyItem extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HealthDefinitionsCard extends StatelessWidget {
+  const _HealthDefinitionsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_health_plain_english_definitions'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = constraints.maxWidth >= 900
+              ? 4
+              : constraints.maxWidth >= 520
+              ? 2
+              : 1;
+          const gap = 10.0;
+          final itemWidth =
+              (constraints.maxWidth - (gap * (columns - 1))) / columns;
+          return Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: <Widget>[
+              _HealthDefinitionItem(
+                width: itemWidth,
+                label: 'Advisor data',
+                description:
+                    'Knowledge, vectors, and rollups the advisor uses to answer accurately.',
+              ),
+              _HealthDefinitionItem(
+                width: itemWidth,
+                label: 'App service',
+                description:
+                    'The backend services that serve admin, advisor, and workflow requests.',
+              ),
+              _HealthDefinitionItem(
+                width: itemWidth,
+                label: 'Ecosystem',
+                description:
+                    'Shared database, search, queues, and scheduled work that keep the app running.',
+              ),
+              _HealthDefinitionItem(
+                width: itemWidth,
+                label: 'Service checks',
+                description:
+                    'Read-only pings that confirm each required service answered successfully.',
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _HealthDefinitionItem extends StatelessWidget {
+  const _HealthDefinitionItem({
+    required this.width,
+    required this.label,
+    required this.description,
+  });
+
+  final double width;
+  final String label;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Text.rich(
+        TextSpan(
+          text: label,
+          style: AppTextStyles.body12(
+            color: AppColors.textPrimary,
+          ).copyWith(fontWeight: FontWeight.w700),
+          children: <InlineSpan>[
+            TextSpan(
+              text: ' - $description',
+              style: AppTextStyles.body12(color: AppColors.textSecondary),
+            ),
+          ],
+        ),
       ),
     );
   }

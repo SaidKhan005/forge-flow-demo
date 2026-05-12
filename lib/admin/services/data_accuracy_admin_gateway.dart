@@ -102,6 +102,74 @@ class OperatorLocationRef {
   final String locationName;
 }
 
+enum AdminDataAccuracyMutationScopeType {
+  business,
+  orgUnit,
+  location;
+
+  String get wire {
+    switch (this) {
+      case AdminDataAccuracyMutationScopeType.business:
+        return 'business';
+      case AdminDataAccuracyMutationScopeType.orgUnit:
+        return 'org_unit';
+      case AdminDataAccuracyMutationScopeType.location:
+        return 'location';
+    }
+  }
+}
+
+extension AdminDataAccuracyMutationScopeTypeWire
+    on AdminDataAccuracyMutationScopeType {
+  static AdminDataAccuracyMutationScopeType fromWire(String value) {
+    switch (value) {
+      case 'business':
+        return AdminDataAccuracyMutationScopeType.business;
+      case 'org_unit':
+        return AdminDataAccuracyMutationScopeType.orgUnit;
+      case 'location':
+        return AdminDataAccuracyMutationScopeType.location;
+    }
+    throw ArgumentError.value(value, 'scope_type', 'unknown hierarchy scope');
+  }
+}
+
+class DataAccuracyScopeMutationResult {
+  const DataAccuracyScopeMutationResult({
+    required this.scopeType,
+    required this.operatorId,
+    required this.affectedLocationCount,
+    required this.rows,
+    this.orgUnitId,
+    this.locationId,
+  });
+
+  final AdminDataAccuracyMutationScopeType scopeType;
+  final String operatorId;
+  final String? orgUnitId;
+  final String? locationId;
+  final int affectedLocationCount;
+  final List<DataAccuracyAdminRow> rows;
+}
+
+class PollingTierScopeMutationResult {
+  const PollingTierScopeMutationResult({
+    required this.scopeType,
+    required this.operatorId,
+    required this.affectedLocationCount,
+    required this.assignments,
+    this.orgUnitId,
+    this.locationId,
+  });
+
+  final AdminDataAccuracyMutationScopeType scopeType;
+  final String operatorId;
+  final String? orgUnitId;
+  final String? locationId;
+  final int affectedLocationCount;
+  final List<TierAssignmentAdminRow> assignments;
+}
+
 /// Tab 1 row - the per-location data accuracy override view. Mirrors
 /// the contract's "Tab 1: Data Accuracy" table columns.
 class DataAccuracyAdminRow {
@@ -281,6 +349,9 @@ class DataAccuracyAdminAuditEvent {
     required this.diff,
     this.reasonNote,
     this.actorKind = 'forge_admin',
+    this.actorDisplayName,
+    this.actorRole,
+    this.actorEmail,
   });
 
   final String eventId;
@@ -288,6 +359,9 @@ class DataAccuracyAdminAuditEvent {
   final DateTime occurredAt;
   final String actorUserId;
   final String actorKind;
+  final String? actorDisplayName;
+  final String? actorRole;
+  final String? actorEmail;
   final String operatorId;
   final String? locationId;
   final Map<String, Object?> diff;
@@ -363,6 +437,21 @@ abstract class DataAccuracyAdminGateway {
     String? reasonNote,
   });
 
+  Future<DataAccuracyScopeMutationResult> overrideDataAccuracyScope({
+    required String operatorId,
+    required AdminDataAccuracyMutationScopeType scopeType,
+    String? orgUnitId,
+    String? locationId,
+    CoversSource? coversSourceLunch,
+    CoversSource? coversSourceDinner,
+    CoversSource? coversSourceLateNight,
+    WageSource? wageSource,
+    DataAccuracyWalkInHandlingMode? walkInHandlingMode,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  });
+
   /// Doc 1 keyed-data-accuracy-write — service-period override.
   ///
   /// Mirrors the operator-web keyed write surface but routes through
@@ -373,8 +462,7 @@ abstract class DataAccuracyAdminGateway {
   /// Throws [DataAccuracyAdminForbiddenException] when the caller is
   /// not a forge_admin (defence-in-depth alongside the screen-level
   /// `editingEnabled` gate).
-  Future<DataAccuracyServicePeriodSetting>
-  overrideDataAccuracyServicePeriod({
+  Future<DataAccuracyServicePeriodSetting> overrideDataAccuracyServicePeriod({
     required String operatorId,
     required String locationId,
     required String servicePeriodKey,
@@ -427,6 +515,21 @@ abstract class DataAccuracyAdminGateway {
     String? reasonNote,
   });
 
+  Future<PollingTierScopeMutationResult> assignTierScope({
+    required String operatorId,
+    required AdminDataAccuracyMutationScopeType scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required PollingTierKey tierKey,
+    Map<String, int>? customCadencePerVendorSeconds,
+    int? monthlyPriceCentsOverride,
+    int? vendorApiCostEstimateCentsMonthlyOverride,
+    String? adminNotes,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  });
+
   Future<TierChangeRequest> resolveTierChangeRequest({
     required String requestId,
     required TierChangeRequestStatus newStatus,
@@ -460,6 +563,8 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
 
   static const String dataRowsPath = '/v1/admin/data-accuracy/rows';
   static const String dataSettingsPrefix = '/v1/admin/data-accuracy/settings/';
+  static const String dataScopedSettingsPath =
+      '/v1/admin/data-accuracy/scoped-settings';
   static const String dataServicePeriodSettingsPrefix =
       '/v1/admin/data-accuracy/service-period-settings/';
   static const String auditHistoryPath =
@@ -472,6 +577,8 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       '/v1/admin/polling-pricing/assignments';
   static const String tierAssignmentsPrefix =
       '/v1/admin/polling-pricing/assignments/';
+  static const String tierScopedAssignmentsPath =
+      '/v1/admin/polling-pricing/scoped-assignments';
   static const String marginPath = '/v1/admin/polling-pricing/margin';
   static const String marginExportPath =
       '/v1/admin/polling-pricing/margin/export-csv';
@@ -550,8 +657,49 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   }
 
   @override
-  Future<DataAccuracyServicePeriodSetting>
-  overrideDataAccuracyServicePeriod({
+  Future<DataAccuracyScopeMutationResult> overrideDataAccuracyScope({
+    required String operatorId,
+    required AdminDataAccuracyMutationScopeType scopeType,
+    String? orgUnitId,
+    String? locationId,
+    CoversSource? coversSourceLunch,
+    CoversSource? coversSourceDinner,
+    CoversSource? coversSourceLateNight,
+    WageSource? wageSource,
+    DataAccuracyWalkInHandlingMode? walkInHandlingMode,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'overrideDataAccuracyScope');
+    final body = await _send(
+      method: 'PUT',
+      path: dataScopedSettingsPath,
+      idempotencyKey: _newIdempotencyKey('data-accuracy-scope'),
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'scope_type': scopeType.wire,
+        if (orgUnitId != null && orgUnitId.isNotEmpty) 'org_unit_id': orgUnitId,
+        if (locationId != null && locationId.isNotEmpty)
+          'location_id': locationId,
+        if (coversSourceLunch != null)
+          'covers_source_lunch': coversSourceLunch.wire,
+        if (coversSourceDinner != null)
+          'covers_source_dinner': coversSourceDinner.wire,
+        if (coversSourceLateNight != null)
+          'covers_source_late_night': coversSourceLateNight.wire,
+        if (wageSource != null) 'wage_source': wageSource.wire,
+        if (walkInHandlingMode != null)
+          'walk_in_handling_mode': walkInHandlingMode.wire,
+        if (reasonNote != null && reasonNote.trim().isNotEmpty)
+          'reason_note': reasonNote.trim(),
+      },
+    );
+    return _dataAccuracyScopeResultFromJson(body);
+  }
+
+  @override
+  Future<DataAccuracyServicePeriodSetting> overrideDataAccuracyServicePeriod({
     required String operatorId,
     required String locationId,
     required String servicePeriodKey,
@@ -723,6 +871,48 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   }
 
   @override
+  Future<PollingTierScopeMutationResult> assignTierScope({
+    required String operatorId,
+    required AdminDataAccuracyMutationScopeType scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required PollingTierKey tierKey,
+    Map<String, int>? customCadencePerVendorSeconds,
+    int? monthlyPriceCentsOverride,
+    int? vendorApiCostEstimateCentsMonthlyOverride,
+    String? adminNotes,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'assignTierScope');
+    final body = await _send(
+      method: 'PUT',
+      path: tierScopedAssignmentsPath,
+      idempotencyKey: _newIdempotencyKey('tier-scope-assignment'),
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'scope_type': scopeType.wire,
+        if (orgUnitId != null && orgUnitId.isNotEmpty) 'org_unit_id': orgUnitId,
+        if (locationId != null && locationId.isNotEmpty)
+          'location_id': locationId,
+        'tier_key': tierKey.wire,
+        if (customCadencePerVendorSeconds != null)
+          'custom_cadence_per_vendor_seconds': customCadencePerVendorSeconds,
+        if (monthlyPriceCentsOverride != null)
+          'monthly_price_cents_override': monthlyPriceCentsOverride,
+        if (vendorApiCostEstimateCentsMonthlyOverride != null)
+          'vendor_api_cost_estimate_cents_monthly_override':
+              vendorApiCostEstimateCentsMonthlyOverride,
+        if (adminNotes != null) 'admin_notes': adminNotes,
+        if (reasonNote != null && reasonNote.trim().isNotEmpty)
+          'reason_note': reasonNote.trim(),
+      },
+    );
+    return _pollingTierScopeResultFromJson(body);
+  }
+
+  @override
   Future<TierChangeRequest> resolveTierChangeRequest({
     required String requestId,
     required TierChangeRequestStatus newStatus,
@@ -837,6 +1027,25 @@ DataAccuracyAdminRow _dataAccuracyRowFromJson(Map<String, Object?> json) {
   );
 }
 
+DataAccuracyScopeMutationResult _dataAccuracyScopeResultFromJson(
+  Map<String, Object?> json,
+) {
+  final rows = (json['rows'] as List?) ?? const [];
+  return DataAccuracyScopeMutationResult(
+    scopeType: AdminDataAccuracyMutationScopeTypeWire.fromWire(
+      _stringField(json, 'scope_type'),
+    ),
+    operatorId: _stringField(json, 'operator_id'),
+    orgUnitId: _optionalString(json['org_unit_id']),
+    locationId: _optionalString(json['location_id']),
+    affectedLocationCount: _intField(json, 'affected_location_count'),
+    rows: <DataAccuracyAdminRow>[
+      for (final row in rows)
+        _dataAccuracyRowFromJson((row as Map).cast<String, Object?>()),
+    ],
+  );
+}
+
 OperatorLocationRef _operatorRefFromJson(Map<String, Object?> json) {
   return OperatorLocationRef(
     operatorId: _stringField(json, 'operator_id'),
@@ -871,6 +1080,9 @@ DataAccuracyAdminAuditEvent _auditEventFromJson(Map<String, Object?> json) {
     occurredAt: _dateTimeField(json, 'occurred_at'),
     actorUserId: _optionalString(json['actor_user_id']) ?? '',
     actorKind: _optionalString(json['actor_kind']) ?? 'forge_admin',
+    actorDisplayName: _optionalString(json['actor_display_name']),
+    actorRole: _optionalString(json['actor_role']),
+    actorEmail: _optionalString(json['actor_email']),
     operatorId: _optionalString(json['operator_id']) ?? '',
     locationId: _optionalString(json['location_id']),
     diff: _asMap(json['diff']),
@@ -903,6 +1115,25 @@ TierAssignmentAdminRow _tierAssignmentRowFromJson(Map<String, Object?> json) {
         ? _assignmentFromJson(assignmentRaw.cast<String, Object?>())
         : null,
     adminNotes: _optionalString(json['admin_notes']),
+  );
+}
+
+PollingTierScopeMutationResult _pollingTierScopeResultFromJson(
+  Map<String, Object?> json,
+) {
+  final assignments = (json['assignments'] as List?) ?? const [];
+  return PollingTierScopeMutationResult(
+    scopeType: AdminDataAccuracyMutationScopeTypeWire.fromWire(
+      _stringField(json, 'scope_type'),
+    ),
+    operatorId: _stringField(json, 'operator_id'),
+    orgUnitId: _optionalString(json['org_unit_id']),
+    locationId: _optionalString(json['location_id']),
+    affectedLocationCount: _intField(json, 'affected_location_count'),
+    assignments: <TierAssignmentAdminRow>[
+      for (final assignment in assignments)
+        _tierAssignmentRowFromJson((assignment as Map).cast<String, Object?>()),
+    ],
   );
 }
 
@@ -1136,6 +1367,11 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         locationId: locationId,
         diff: Map<String, Object?>.unmodifiable(diff),
         reasonNote: reasonNote,
+        actorDisplayName: actorUserId,
+        actorRole: 'Forge & Flow admin',
+        actorEmail: actorUserId.contains('@')
+            ? actorUserId
+            : '$actorUserId@forgeflow.internal',
       ),
     );
   }
@@ -1157,6 +1393,32 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         updatedAt: _clock(),
       ),
     );
+  }
+
+  List<OperatorLocationRef> _operatorRefsForScope({
+    required String operatorId,
+    required AdminDataAccuracyMutationScopeType scopeType,
+    String? locationId,
+  }) {
+    switch (scopeType) {
+      case AdminDataAccuracyMutationScopeType.business:
+      case AdminDataAccuracyMutationScopeType.orgUnit:
+        return _operatorLocations
+            .where((ref) => ref.operatorId == operatorId)
+            .toList(growable: false);
+      case AdminDataAccuracyMutationScopeType.location:
+        final scopedLocationId = locationId;
+        if (scopedLocationId == null || scopedLocationId.isEmpty) {
+          throw StateError('location scope requires locationId');
+        }
+        return _operatorLocations
+            .where(
+              (ref) =>
+                  ref.operatorId == operatorId &&
+                  ref.locationId == scopedLocationId,
+            )
+            .toList(growable: false);
+    }
   }
 
   @override
@@ -1275,8 +1537,86 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   }
 
   @override
-  Future<DataAccuracyServicePeriodSetting>
-  overrideDataAccuracyServicePeriod({
+  Future<DataAccuracyScopeMutationResult> overrideDataAccuracyScope({
+    required String operatorId,
+    required AdminDataAccuracyMutationScopeType scopeType,
+    String? orgUnitId,
+    String? locationId,
+    CoversSource? coversSourceLunch,
+    CoversSource? coversSourceDinner,
+    CoversSource? coversSourceLateNight,
+    WageSource? wageSource,
+    DataAccuracyWalkInHandlingMode? walkInHandlingMode,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'overrideDataAccuracyScope');
+    final refs = _operatorRefsForScope(
+      operatorId: operatorId,
+      scopeType: scopeType,
+      locationId: locationId,
+    );
+    if (refs.isEmpty) {
+      throw StateError('overrideDataAccuracyScope: no locations in scope');
+    }
+    final auditStart = _auditLog.length;
+    final rows = <DataAccuracyAdminRow>[];
+    for (final ref in refs) {
+      rows.add(
+        await overrideDataAccuracy(
+          operatorId: ref.operatorId,
+          locationId: ref.locationId,
+          coversSourceLunch: coversSourceLunch,
+          coversSourceDinner: coversSourceDinner,
+          coversSourceLateNight: coversSourceLateNight,
+          wageSource: wageSource,
+          walkInHandlingMode: walkInHandlingMode,
+          actorUserId: actorUserId,
+          actorIsForgeAdmin: actorIsForgeAdmin,
+          reasonNote: reasonNote,
+        ),
+      );
+    }
+    if (_auditLog.length > auditStart) {
+      _auditLog.removeRange(auditStart, _auditLog.length);
+    }
+    _record(
+      eventType: 'admin.data_accuracy.scope_override',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: scopeType == AdminDataAccuracyMutationScopeType.location
+          ? locationId
+          : null,
+      diff: <String, Object?>{
+        'scope_type': scopeType.wire,
+        if (orgUnitId != null) 'org_unit_id': orgUnitId,
+        if (locationId != null) 'location_id': locationId,
+        'affected_location_count': refs.length,
+        if (coversSourceLunch != null)
+          'covers_source_lunch': coversSourceLunch.wire,
+        if (coversSourceDinner != null)
+          'covers_source_dinner': coversSourceDinner.wire,
+        if (coversSourceLateNight != null)
+          'covers_source_late_night': coversSourceLateNight.wire,
+        if (wageSource != null) 'wage_source': wageSource.wire,
+        if (walkInHandlingMode != null)
+          'walk_in_handling_mode': walkInHandlingMode.wire,
+      },
+      reasonNote: reasonNote,
+    );
+    return DataAccuracyScopeMutationResult(
+      scopeType: scopeType,
+      operatorId: operatorId,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+      affectedLocationCount: refs.length,
+      rows: List<DataAccuracyAdminRow>.unmodifiable(rows),
+    );
+  }
+
+  @override
+  Future<DataAccuracyServicePeriodSetting> overrideDataAccuracyServicePeriod({
     required String operatorId,
     required String locationId,
     required String servicePeriodKey,
@@ -1600,6 +1940,86 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       operatorRef: ref,
       assignment: next,
       adminNotes: _adminNotes[key],
+    );
+  }
+
+  @override
+  Future<PollingTierScopeMutationResult> assignTierScope({
+    required String operatorId,
+    required AdminDataAccuracyMutationScopeType scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required PollingTierKey tierKey,
+    Map<String, int>? customCadencePerVendorSeconds,
+    int? monthlyPriceCentsOverride,
+    int? vendorApiCostEstimateCentsMonthlyOverride,
+    String? adminNotes,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'assignTierScope');
+    final refs = _operatorRefsForScope(
+      operatorId: operatorId,
+      scopeType: scopeType,
+      locationId: locationId,
+    );
+    if (refs.isEmpty) {
+      throw StateError('assignTierScope: no locations in scope');
+    }
+    final auditStart = _auditLog.length;
+    final rows = <TierAssignmentAdminRow>[];
+    for (final ref in refs) {
+      rows.add(
+        await assignTier(
+          operatorId: ref.operatorId,
+          locationId: ref.locationId,
+          tierKey: tierKey,
+          customCadencePerVendorSeconds: customCadencePerVendorSeconds,
+          monthlyPriceCentsOverride: monthlyPriceCentsOverride,
+          vendorApiCostEstimateCentsMonthlyOverride:
+              vendorApiCostEstimateCentsMonthlyOverride,
+          adminNotes: adminNotes,
+          actorUserId: actorUserId,
+          actorIsForgeAdmin: actorIsForgeAdmin,
+          reasonNote: reasonNote,
+        ),
+      );
+    }
+    if (_auditLog.length > auditStart) {
+      _auditLog.removeRange(auditStart, _auditLog.length);
+    }
+    _record(
+      eventType: 'admin.polling_tier_assignment.scope_assign',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: scopeType == AdminDataAccuracyMutationScopeType.location
+          ? locationId
+          : null,
+      diff: <String, Object?>{
+        'scope_type': scopeType.wire,
+        if (orgUnitId != null) 'org_unit_id': orgUnitId,
+        if (locationId != null) 'location_id': locationId,
+        'affected_location_count': refs.length,
+        'tier_key': tierKey.wire,
+        if (customCadencePerVendorSeconds != null)
+          'polling_cadence_per_vendor_seconds': customCadencePerVendorSeconds,
+        if (monthlyPriceCentsOverride != null)
+          'monthly_price_cents': monthlyPriceCentsOverride,
+        if (vendorApiCostEstimateCentsMonthlyOverride != null)
+          'vendor_api_cost_estimate_cents_monthly':
+              vendorApiCostEstimateCentsMonthlyOverride,
+        if (adminNotes != null) 'admin_notes': adminNotes,
+      },
+      reasonNote: reasonNote,
+    );
+    return PollingTierScopeMutationResult(
+      scopeType: scopeType,
+      operatorId: operatorId,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+      affectedLocationCount: refs.length,
+      assignments: List<TierAssignmentAdminRow>.unmodifiable(rows),
     );
   }
 

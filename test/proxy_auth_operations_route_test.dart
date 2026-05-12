@@ -342,6 +342,54 @@ void main() {
     );
 
     test(
+      'PATCH org-unit parent moves the branch and gates on team.roles.assign',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            const targetOrgUnit = '88888888-8888-4888-8888-888888888888';
+            final response = await harness.patchJson(
+              '$adminAuthOrgUnitsPath/$targetOrgUnit/parent',
+              const <String, Object?>{
+                'parent_org_unit_id': '77777777-7777-4777-8777-777777777777',
+                'admin_reason': 'admin branch realignment',
+              },
+              idempotencyKey: 'idem-org-unit-move-1',
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
+            final command = gateway.orgUnitMoves.single;
+            expect(command.actorUserId, equals(_userId));
+            expect(command.operatorId, equals(_operatorId));
+            expect(command.locationId, equals(_locationId));
+            expect(command.orgUnitId, equals(targetOrgUnit));
+            expect(
+              command.parentOrgUnitId,
+              equals('77777777-7777-4777-8777-777777777777'),
+            );
+            expect(command.adminReason, equals('admin branch realignment'));
+            final orgUnit = Map<String, Object?>.from(
+              response.json['org_unit'] as Map,
+            );
+            expect(orgUnit['org_unit_id'], equals(targetOrgUnit));
+            expect(
+              orgUnit['parent_org_unit_id'],
+              equals('77777777-7777-4777-8777-777777777777'),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
       'PATCH location org-unit moves the location and gates on team.roles.assign',
       () async {
         await _withRealHttp(() async {
@@ -357,6 +405,7 @@ void main() {
               '/v1/admin/auth/locations/$targetLocation/org-unit',
               const <String, Object?>{
                 'parent_org_unit_id': '77777777-7777-4777-8777-777777777777',
+                'admin_reason': 'operator requested location move',
               },
               idempotencyKey: 'idem-location-move-1',
             );
@@ -372,6 +421,10 @@ void main() {
               command.parentOrgUnitId,
               equals('77777777-7777-4777-8777-777777777777'),
             );
+            expect(
+              command.adminReason,
+              equals('operator requested location move'),
+            );
             expect(response.json['moved'], isTrue);
           } finally {
             await harness.close();
@@ -379,6 +432,129 @@ void main() {
         });
       },
     );
+
+    test('PATCH location org-unit requires admin_reason', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          const targetLocation = '33333333-3333-4333-8333-333333333333';
+          final response = await harness.patchJson(
+            '/v1/admin/auth/locations/$targetLocation/org-unit',
+            const <String, Object?>{
+              'parent_org_unit_id': '77777777-7777-4777-8777-777777777777',
+            },
+            idempotencyKey: 'idem-location-move-missing-reason',
+          );
+
+          expect(response.statusCode, equals(400));
+          expect(
+            response.json['error'],
+            equals('missing_location_org_unit_fields'),
+          );
+          expect(gateway.locationOrgUnitMoves, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('PATCH org-unit suspend gates on team.hierarchy.suspend', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          const orgUnit = '66666666-6666-4666-8666-666666666666';
+          final response = await harness.patchJson(
+            '/v1/admin/auth/org-units/$orgUnit/suspend',
+            const <String, Object?>{'admin_reason': 'pause this district'},
+            idempotencyKey: 'idem-org-unit-suspend-1',
+          );
+
+          expect(response.statusCode, equals(200));
+          expect(
+            guard.permissionKeys,
+            equals(<String>['team.hierarchy.suspend']),
+          );
+          final command = gateway.orgUnitLifecycle.single;
+          expect(command.orgUnitId, equals(orgUnit));
+          expect(command.adminReason, equals('pause this district'));
+          expect(response.json['org_unit'], isA<Map<String, Object?>>());
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST org-unit delete gates on team.hierarchy.delete', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          const orgUnit = '66666666-6666-4666-8666-666666666666';
+          final response = await harness.postJson(
+            '/v1/admin/auth/org-units/$orgUnit/delete',
+            const <String, Object?>{'admin_reason': 'empty hierarchy cleanup'},
+            idempotencyKey: 'idem-org-unit-delete-1',
+          );
+
+          expect(response.statusCode, equals(200));
+          expect(
+            guard.permissionKeys,
+            equals(<String>['team.hierarchy.delete']),
+          );
+          final command = gateway.orgUnitDeletes.single;
+          expect(command.orgUnitId, equals(orgUnit));
+          expect(command.adminReason, equals('empty hierarchy cleanup'));
+          expect(response.json['deleted'], isTrue);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('PATCH location suspend gates on team.hierarchy.suspend', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          const targetLocation = '33333333-3333-4333-8333-333333333333';
+          final response = await harness.patchJson(
+            '/v1/admin/auth/locations/$targetLocation/suspend',
+            const <String, Object?>{'admin_reason': 'temporary closure'},
+            idempotencyKey: 'idem-location-suspend-1',
+          );
+
+          expect(response.statusCode, equals(200));
+          expect(
+            guard.permissionKeys,
+            equals(<String>['team.hierarchy.suspend']),
+          );
+          final command = gateway.locationLifecycle.single;
+          expect(command.targetLocationId, equals(targetLocation));
+          expect(command.adminReason, equals('temporary closure'));
+          expect(response.json['location'], isA<Map<String, Object?>>());
+        } finally {
+          await harness.close();
+        }
+      });
+    });
 
     test('admin guard denial stops auth operation before gateway', () async {
       await _withRealHttp(() async {
@@ -2641,7 +2817,12 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
 
   final orgHierarchyLists = <TeamOrgHierarchyListCommand>[];
   final orgUnitCreates = <TeamOrgUnitCreateCommand>[];
+  final orgUnitMoves = <TeamOrgUnitMoveCommand>[];
+  final orgUnitLifecycle = <TeamOrgUnitLifecycleCommand>[];
+  final orgUnitDeletes = <TeamOrgUnitLifecycleCommand>[];
   final locationOrgUnitMoves = <TeamLocationOrgUnitMoveCommand>[];
+  final locationLifecycle = <TeamLocationLifecycleCommand>[];
+  final locationDeletes = <TeamLocationLifecycleCommand>[];
 
   @override
   Future<TeamOrgHierarchyListed> listOrgHierarchy(
@@ -2680,11 +2861,105 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<TeamOrgUnitMoved> moveOrgUnit(TeamOrgUnitMoveCommand command) async {
+    orgUnitMoves.add(command);
+    return TeamOrgUnitMoved(
+      orgUnit: TeamOrgUnitEntry(
+        orgUnitId: command.orgUnitId,
+        parentOrgUnitId: command.parentOrgUnitId,
+        unitType: 'region',
+        path: 'acme.east',
+        label: 'East Region',
+      ),
+    );
+  }
+
+  @override
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command,
   ) async {
     locationOrgUnitMoves.add(command);
     return const TeamLocationOrgUnitMoved(moved: true);
+  }
+
+  @override
+  Future<TeamOrgUnitLifecycleUpdated> suspendOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  ) async {
+    orgUnitLifecycle.add(command);
+    return TeamOrgUnitLifecycleUpdated(
+      orgUnit: TeamOrgUnitEntry(
+        orgUnitId: command.orgUnitId,
+        parentOrgUnitId: '66666666-6666-4666-8666-666666666666',
+        unitType: 'region',
+        path: 'acme.east',
+        label: 'East Region',
+        suspendedAt: DateTime.utc(2026, 5, 8, 12),
+      ),
+    );
+  }
+
+  @override
+  Future<TeamOrgUnitLifecycleUpdated> reactivateOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  ) async {
+    orgUnitLifecycle.add(command);
+    return TeamOrgUnitLifecycleUpdated(
+      orgUnit: TeamOrgUnitEntry(
+        orgUnitId: command.orgUnitId,
+        parentOrgUnitId: '66666666-6666-4666-8666-666666666666',
+        unitType: 'region',
+        path: 'acme.east',
+        label: 'East Region',
+      ),
+    );
+  }
+
+  @override
+  Future<TeamHierarchyDeleted> deleteOrgUnit(
+    TeamOrgUnitLifecycleCommand command,
+  ) async {
+    orgUnitDeletes.add(command);
+    return const TeamHierarchyDeleted(deleted: true);
+  }
+
+  @override
+  Future<TeamLocationLifecycleUpdated> suspendLocation(
+    TeamLocationLifecycleCommand command,
+  ) async {
+    locationLifecycle.add(command);
+    return TeamLocationLifecycleUpdated(
+      location: TeamOrgLocationEntry(
+        locationId: command.targetLocationId,
+        parentOrgUnitId: '66666666-6666-4666-8666-666666666666',
+        orgUnitPath: 'acme',
+        label: 'Downtown',
+        suspendedAt: DateTime.utc(2026, 5, 8, 12),
+      ),
+    );
+  }
+
+  @override
+  Future<TeamLocationLifecycleUpdated> reactivateLocation(
+    TeamLocationLifecycleCommand command,
+  ) async {
+    locationLifecycle.add(command);
+    return TeamLocationLifecycleUpdated(
+      location: TeamOrgLocationEntry(
+        locationId: command.targetLocationId,
+        parentOrgUnitId: '66666666-6666-4666-8666-666666666666',
+        orgUnitPath: 'acme',
+        label: 'Downtown',
+      ),
+    );
+  }
+
+  @override
+  Future<TeamHierarchyDeleted> deleteLocation(
+    TeamLocationLifecycleCommand command,
+  ) async {
+    locationDeletes.add(command);
+    return const TeamHierarchyDeleted(deleted: true);
   }
 
   final activeSessionsLists = <AuthActiveSessionsListCommand>[];

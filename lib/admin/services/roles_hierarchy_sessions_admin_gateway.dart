@@ -111,12 +111,19 @@ class OrgUnitAdminNode {
     required this.name,
     required this.operatorId,
     this.parentOrgUnitId,
+    this.suspendedAt,
+    this.deletedAt,
   });
 
   final String orgUnitId;
   final String name;
   final String operatorId;
   final String? parentOrgUnitId;
+  final DateTime? suspendedAt;
+  final DateTime? deletedAt;
+
+  bool get isSuspended => suspendedAt != null;
+  bool get isDeleted => deletedAt != null;
 }
 
 /// One leaf in the hierarchy: a location attached to an org-unit.
@@ -131,12 +138,19 @@ class HierarchyLocationLeaf {
     required this.name,
     required this.operatorId,
     required this.orgUnitId,
+    this.suspendedAt,
+    this.deletedAt,
   });
 
   final String locationId;
   final String name;
   final String operatorId;
   final String orgUnitId;
+  final DateTime? suspendedAt;
+  final DateTime? deletedAt;
+
+  bool get isSuspended => suspendedAt != null;
+  bool get isDeleted => deletedAt != null;
 }
 
 /// One row in the Sessions tab. One row per `auth_sessions` row per
@@ -305,11 +319,65 @@ abstract class RolesHierarchySessionsAdminGateway {
     required String adminReason,
   });
 
+  Future<OrgUnitAdminNode> suspendOrgUnit({
+    required String operatorId,
+    required String orgUnitId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
+  Future<OrgUnitAdminNode> reactivateOrgUnit({
+    required String operatorId,
+    required String orgUnitId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
+  Future<void> deleteOrgUnit({
+    required String operatorId,
+    required String orgUnitId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
   /// Move a location under a new org-unit. Audited.
   Future<HierarchyLocationLeaf> moveLocation({
     required String operatorId,
     required String locationId,
     required String newOrgUnitId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
+  Future<HierarchyLocationLeaf> suspendLocation({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
+  Future<HierarchyLocationLeaf> reactivateLocation({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
+  Future<void> deleteLocation({
+    required String operatorId,
+    required String locationId,
     required String idempotencyKey,
     required String actorUserId,
     required bool actorIsForgeAdmin,
@@ -562,10 +630,113 @@ class HttpRolesHierarchySessionsAdminGateway
   }) async {
     _requireEditable(actorIsForgeAdmin, 'moveOrgUnit');
     _requireAdminReason(adminReason, 'moveOrgUnit');
-    throw const RolesHierarchySessionsGatewayError(
-      statusCode: 501,
-      errorCode: 'org_unit_move_unimplemented',
-      message: 'Org-unit move is not exposed by the admin auth route contract.',
+    final body = await _send(
+      method: 'PATCH',
+      path: '$orgUnitsPath/${Uri.encodeComponent(orgUnitId)}/parent',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'parent_org_unit_id': newParentOrgUnitId,
+        'admin_reason': adminReason,
+      },
+    );
+    final orgUnit = body['org_unit'];
+    if (orgUnit != null) {
+      return _orgUnitFromJson(_asMap(orgUnit));
+    }
+    return OrgUnitAdminNode(
+      orgUnitId: orgUnitId,
+      name:
+          _optionalString(body['name']) ??
+          _optionalString(body['label']) ??
+          orgUnitId,
+      operatorId: operatorId,
+      parentOrgUnitId: newParentOrgUnitId,
+    );
+  }
+
+  @override
+  Future<OrgUnitAdminNode> suspendOrgUnit({
+    required String operatorId,
+    required String orgUnitId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) {
+    return _orgUnitLifecycle(
+      operation: 'suspendOrgUnit',
+      operatorId: operatorId,
+      orgUnitId: orgUnitId,
+      action: 'suspend',
+      idempotencyKey: idempotencyKey,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      adminReason: adminReason,
+    );
+  }
+
+  @override
+  Future<OrgUnitAdminNode> reactivateOrgUnit({
+    required String operatorId,
+    required String orgUnitId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) {
+    return _orgUnitLifecycle(
+      operation: 'reactivateOrgUnit',
+      operatorId: operatorId,
+      orgUnitId: orgUnitId,
+      action: 'reactivate',
+      idempotencyKey: idempotencyKey,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      adminReason: adminReason,
+    );
+  }
+
+  Future<OrgUnitAdminNode> _orgUnitLifecycle({
+    required String operation,
+    required String operatorId,
+    required String orgUnitId,
+    required String action,
+    required String idempotencyKey,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, operation);
+    _requireAdminReason(adminReason, operation);
+    final body = await _send(
+      method: 'PATCH',
+      path: '$orgUnitsPath/${Uri.encodeComponent(orgUnitId)}/$action',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'admin_reason': adminReason,
+      },
+    );
+    return _orgUnitFromJson(_asMap(body['org_unit']));
+  }
+
+  @override
+  Future<void> deleteOrgUnit({
+    required String operatorId,
+    required String orgUnitId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'deleteOrgUnit');
+    _requireAdminReason(adminReason, 'deleteOrgUnit');
+    await _send(
+      method: 'POST',
+      path: '$orgUnitsPath/${Uri.encodeComponent(orgUnitId)}/delete',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'admin_reason': adminReason,
+      },
     );
   }
 
@@ -601,6 +772,93 @@ class HttpRolesHierarchySessionsAdminGateway
       name: _optionalString(body['location_label']) ?? locationId,
       operatorId: operatorId,
       orgUnitId: newOrgUnitId,
+    );
+  }
+
+  @override
+  Future<HierarchyLocationLeaf> suspendLocation({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) {
+    return _locationLifecycle(
+      operation: 'suspendLocation',
+      operatorId: operatorId,
+      locationId: locationId,
+      action: 'suspend',
+      idempotencyKey: idempotencyKey,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      adminReason: adminReason,
+    );
+  }
+
+  @override
+  Future<HierarchyLocationLeaf> reactivateLocation({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) {
+    return _locationLifecycle(
+      operation: 'reactivateLocation',
+      operatorId: operatorId,
+      locationId: locationId,
+      action: 'reactivate',
+      idempotencyKey: idempotencyKey,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      adminReason: adminReason,
+    );
+  }
+
+  Future<HierarchyLocationLeaf> _locationLifecycle({
+    required String operation,
+    required String operatorId,
+    required String locationId,
+    required String action,
+    required String idempotencyKey,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, operation);
+    _requireAdminReason(adminReason, operation);
+    final body = await _send(
+      method: 'PATCH',
+      path:
+          '/v1/admin/auth/locations/${Uri.encodeComponent(locationId)}/$action',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'admin_reason': adminReason,
+      },
+    );
+    return _locationLeafFromJson(_asMap(body['location']));
+  }
+
+  @override
+  Future<void> deleteLocation({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'deleteLocation');
+    _requireAdminReason(adminReason, 'deleteLocation');
+    await _send(
+      method: 'POST',
+      path:
+          '/v1/admin/auth/locations/${Uri.encodeComponent(locationId)}/delete',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'admin_reason': adminReason,
+      },
     );
   }
 
@@ -749,6 +1007,8 @@ OrgUnitAdminNode _orgUnitFromJson(Map<String, Object?> json) {
     ]),
     operatorId: _optionalString(json['operator_id']) ?? '',
     parentOrgUnitId: _optionalString(json['parent_org_unit_id']),
+    suspendedAt: _optionalDateTime(json['suspended_at']),
+    deletedAt: _optionalDateTime(json['deleted_at']),
   );
 }
 
@@ -766,6 +1026,8 @@ HierarchyLocationLeaf _locationLeafFromJson(Map<String, Object?> json) {
         _optionalString(json['org_unit_id']) ??
         _optionalString(json['parent_org_unit_id']) ??
         '',
+    suspendedAt: _optionalDateTime(json['suspended_at']),
+    deletedAt: _optionalDateTime(json['deleted_at']),
   );
 }
 

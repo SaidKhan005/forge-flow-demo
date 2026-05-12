@@ -931,6 +931,126 @@ void main() {
       );
     });
   });
+
+  group('OrgUnitsRepository.moveOrgUnit', () {
+    test(
+      'updates org-unit subtree paths and refreshes location path snapshots',
+      () async {
+        final childUnit = <String, Object?>{
+          'id': '66666666-6666-4666-8666-666666666666',
+          'operator_id': _validOpId,
+          'parent_id': '77777777-7777-4777-8777-777777777777',
+          'unit_type': 'region',
+          'path': 'acme.east',
+          'name': 'East',
+          'created_at': DateTime.utc(2026, 4, 1),
+          'updated_at': DateTime.utc(2026, 4, 1),
+          'depth': 2,
+        };
+        final newParent = <String, Object?>{
+          'id': _validParentId,
+          'operator_id': _validOpId,
+          'parent_id': null,
+          'unit_type': 'corp',
+          'path': 'acme',
+          'name': 'ACME',
+          'created_at': DateTime.utc(2026, 4, 1),
+          'updated_at': DateTime.utc(2026, 4, 1),
+          'depth': 1,
+        };
+        final movedRow = <String, Object?>{
+          ...childUnit,
+          'parent_id': _validParentId,
+          'path': 'acme.east',
+        };
+        final pool = _OrgUnitsPool(
+          orgUnitRows: <PostgresRow>[childUnit, newParent],
+          movedOrgUnitRows: <PostgresRow>[movedRow],
+        );
+        final repo = OrgUnitsRepository(TenantTransactionWrapper(pool));
+
+        final moved = await repo.moveOrgUnit(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          orgUnitId: '66666666-6666-4666-8666-666666666666',
+          parentOrgUnitId: _validParentId,
+          userId: _validUserId,
+        );
+
+        expect(moved.id, equals('66666666-6666-4666-8666-666666666666'));
+        expect(moved.parentId, equals(_validParentId));
+        final tx = pool.transactions.single;
+        expect(
+          tx.executedSql.any((sql) => sql.contains('update org_units ou')),
+          isTrue,
+        );
+        expect(
+          tx.executedSql.any((sql) => sql.contains('update locations loc')),
+          isTrue,
+        );
+        final moveIdx = tx.executedSql.indexWhere(
+          (sql) => sql.contains('update org_units ou'),
+        );
+        expect(
+          tx.parameters[moveIdx]['org_unit_id'],
+          equals('66666666-6666-4666-8666-666666666666'),
+        );
+        expect(tx.parameters[moveIdx]['parent_org_unit_id'], _validParentId);
+      },
+    );
+
+    test('rejects moving an org unit under its own descendant', () async {
+      final pool = _OrgUnitsPool(
+        orgUnitRows: <PostgresRow>[
+          <String, Object?>{
+            'id': '66666666-6666-4666-8666-666666666666',
+            'operator_id': _validOpId,
+            'parent_id': '77777777-7777-4777-8777-777777777777',
+            'unit_type': 'region',
+            'path': 'acme.east',
+            'name': 'East',
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+            'depth': 2,
+          },
+          <String, Object?>{
+            'id': _validParentId,
+            'operator_id': _validOpId,
+            'parent_id': '66666666-6666-4666-8666-666666666666',
+            'unit_type': 'district',
+            'path': 'acme.east.downtown',
+            'name': 'Downtown',
+            'created_at': DateTime.utc(2026, 4, 1),
+            'updated_at': DateTime.utc(2026, 4, 1),
+            'depth': 3,
+          },
+        ],
+      );
+      final repo = OrgUnitsRepository(TenantTransactionWrapper(pool));
+
+      await expectLater(
+        repo.moveOrgUnit(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          orgUnitId: '66666666-6666-4666-8666-666666666666',
+          parentOrgUnitId: _validParentId,
+        ),
+        throwsA(
+          isA<OrgUnitMoveRejected>().having(
+            (error) => error.code,
+            'code',
+            equals('org_unit_cycle'),
+          ),
+        ),
+      );
+      expect(
+        pool.transactions.single.executedSql.any(
+          (sql) => sql.contains('update org_units ou'),
+        ),
+        isFalse,
+      );
+    });
+  });
 }
 
 class _OrgUnitsPool implements PostgresPool {
@@ -940,6 +1060,7 @@ class _OrgUnitsPool implements PostgresPool {
     this.userRoleRows = const <PostgresRow>[],
     this.rolePermissionsByRole = const <String, List<PostgresRow>>{},
     this.orgUnitRows = const <PostgresRow>[],
+    this.movedOrgUnitRows = const <PostgresRow>[],
     this.roleRows = const <PostgresRow>[],
     this.updateAffectedRows = 1,
     this.createChildId,
@@ -950,6 +1071,7 @@ class _OrgUnitsPool implements PostgresPool {
   final List<PostgresRow> userRoleRows;
   final Map<String, List<PostgresRow>> rolePermissionsByRole;
   final List<PostgresRow> orgUnitRows;
+  final List<PostgresRow> movedOrgUnitRows;
   final List<PostgresRow> roleRows;
   final int updateAffectedRows;
   final String? createChildId;
@@ -964,6 +1086,7 @@ class _OrgUnitsPool implements PostgresPool {
       userRoleRows: userRoleRows,
       rolePermissionsByRole: rolePermissionsByRole,
       orgUnitRows: orgUnitRows,
+      movedOrgUnitRows: movedOrgUnitRows,
       roleRows: roleRows,
       updateAffectedRows: updateAffectedRows,
       createChildId: createChildId,
@@ -994,6 +1117,7 @@ class _OrgUnitsTransaction extends PostgresTransaction {
     required this.userRoleRows,
     required this.rolePermissionsByRole,
     required this.orgUnitRows,
+    required this.movedOrgUnitRows,
     required this.roleRows,
     required this.updateAffectedRows,
     required this.createChildId,
@@ -1004,6 +1128,7 @@ class _OrgUnitsTransaction extends PostgresTransaction {
   final List<PostgresRow> userRoleRows;
   final Map<String, List<PostgresRow>> rolePermissionsByRole;
   final List<PostgresRow> orgUnitRows;
+  final List<PostgresRow> movedOrgUnitRows;
   final List<PostgresRow> roleRows;
   final int updateAffectedRows;
   final String? createChildId;
@@ -1020,6 +1145,23 @@ class _OrgUnitsTransaction extends PostgresTransaction {
     executedSql.add(sql);
     this.parameters.add(parameters);
     if (sql.contains('from locations')) return locationRows;
+    if (sql.contains('update org_units ou')) {
+      return movedOrgUnitRows.isEmpty ? orgUnitRows : movedOrgUnitRows;
+    }
+    if (sql.contains('coalesce(max(nlevel(path)')) {
+      return <PostgresRow>[
+        <String, Object?>{'max_relative': 0},
+      ];
+    }
+    if (sql.contains('where id = @org_unit_id::uuid')) {
+      final id = parameters['org_unit_id'];
+      return orgUnitRows.where((row) => row['id'] == id).toList();
+    }
+    if (sql.contains('where id = @parent_org_unit_id::uuid')) {
+      final id = parameters['parent_org_unit_id'];
+      final rows = orgUnitRows.where((row) => row['id'] == id).toList();
+      return rows.isEmpty ? parentRows : rows;
+    }
     if (sql.contains('select path::text as path, nlevel(path)')) {
       return parentRows;
     }

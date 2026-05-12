@@ -133,14 +133,18 @@ class InMemoryRolesHierarchySessionsAdminGateway
   Future<List<OrgUnitAdminNode>> listOrgUnits({
     required String operatorId,
   }) async {
-    return List<OrgUnitAdminNode>.unmodifiable(_orgUnitsFor(operatorId));
+    return List<OrgUnitAdminNode>.unmodifiable(
+      _orgUnitsFor(operatorId).where((unit) => !unit.isDeleted),
+    );
   }
 
   @override
   Future<List<HierarchyLocationLeaf>> listHierarchyLocations({
     required String operatorId,
   }) async {
-    return List<HierarchyLocationLeaf>.unmodifiable(_locationsFor(operatorId));
+    return List<HierarchyLocationLeaf>.unmodifiable(
+      _locationsFor(operatorId).where((location) => !location.isDeleted),
+    );
   }
 
   @override
@@ -418,6 +422,8 @@ class InMemoryRolesHierarchySessionsAdminGateway
       name: prev.name,
       operatorId: prev.operatorId,
       parentOrgUnitId: newParentOrgUnitId,
+      suspendedAt: prev.suspendedAt,
+      deletedAt: prev.deletedAt,
     );
     units[index] = updated;
     _record(
@@ -436,6 +442,160 @@ class InMemoryRolesHierarchySessionsAdminGateway
     );
     _idempotentResults[idempotencyKey] = updated;
     return updated;
+  }
+
+  @override
+  Future<OrgUnitAdminNode> suspendOrgUnit({
+    required String operatorId,
+    required String orgUnitId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) {
+    return _setOrgUnitSuspended(
+      operatorId: operatorId,
+      orgUnitId: orgUnitId,
+      suspended: true,
+      idempotencyKey: idempotencyKey,
+      actorUserId: actorUserId,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      adminReason: adminReason,
+    );
+  }
+
+  @override
+  Future<OrgUnitAdminNode> reactivateOrgUnit({
+    required String operatorId,
+    required String orgUnitId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) {
+    return _setOrgUnitSuspended(
+      operatorId: operatorId,
+      orgUnitId: orgUnitId,
+      suspended: false,
+      idempotencyKey: idempotencyKey,
+      actorUserId: actorUserId,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      adminReason: adminReason,
+    );
+  }
+
+  Future<OrgUnitAdminNode> _setOrgUnitSuspended({
+    required String operatorId,
+    required String orgUnitId,
+    required bool suspended,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'setOrgUnitSuspended');
+    _ensureAdminReason(adminReason, 'setOrgUnitSuspended');
+    final cached = _idempotentResults[idempotencyKey];
+    if (cached is OrgUnitAdminNode) return cached;
+    final units = _orgUnitsFor(operatorId);
+    final index = units.indexWhere((u) => u.orgUnitId == orgUnitId);
+    if (index < 0 || units[index].isDeleted) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 404,
+        errorCode: 'unknown_org_unit',
+        message: 'org unit $orgUnitId not found for operator $operatorId',
+      );
+    }
+    final prev = units[index];
+    if (prev.parentOrgUnitId == null) {
+      throw const RolesHierarchySessionsGatewayError(
+        statusCode: 400,
+        errorCode: 'cannot_suspend_root_org_unit',
+        message: 'business root org unit cannot be suspended',
+      );
+    }
+    final updated = OrgUnitAdminNode(
+      orgUnitId: prev.orgUnitId,
+      name: prev.name,
+      operatorId: prev.operatorId,
+      parentOrgUnitId: prev.parentOrgUnitId,
+      suspendedAt: suspended ? _clock().toUtc() : null,
+      deletedAt: prev.deletedAt,
+    );
+    units[index] = updated;
+    _record(
+      action: suspended ? 'team.org_unit.suspend' : 'team.org_unit.reactivate',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      targetKind: 'org_unit',
+      targetId: orgUnitId,
+      payload: <String, Object?>{'suspended': suspended},
+      adminReason: adminReason,
+    );
+    _idempotentResults[idempotencyKey] = updated;
+    return updated;
+  }
+
+  @override
+  Future<void> deleteOrgUnit({
+    required String operatorId,
+    required String orgUnitId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'deleteOrgUnit');
+    _ensureAdminReason(adminReason, 'deleteOrgUnit');
+    if (_idempotentResults.containsKey(idempotencyKey)) return;
+    final units = _orgUnitsFor(operatorId);
+    final index = units.indexWhere((u) => u.orgUnitId == orgUnitId);
+    if (index < 0 || units[index].isDeleted) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 404,
+        errorCode: 'unknown_org_unit',
+        message: 'org unit $orgUnitId not found for operator $operatorId',
+      );
+    }
+    final prev = units[index];
+    if (prev.parentOrgUnitId == null) {
+      throw const RolesHierarchySessionsGatewayError(
+        statusCode: 400,
+        errorCode: 'cannot_delete_root_org_unit',
+        message: 'business root org unit cannot be deleted',
+      );
+    }
+    final hasChildren = units.any(
+      (u) => !u.isDeleted && u.parentOrgUnitId == orgUnitId,
+    );
+    final hasLocations = _locationsFor(
+      operatorId,
+    ).any((l) => !l.isDeleted && l.orgUnitId == orgUnitId);
+    if (hasChildren || hasLocations) {
+      throw const RolesHierarchySessionsGatewayError(
+        statusCode: 409,
+        errorCode: 'org_unit_not_empty',
+        message: 'move or delete child org units and locations first',
+      );
+    }
+    units[index] = OrgUnitAdminNode(
+      orgUnitId: prev.orgUnitId,
+      name: prev.name,
+      operatorId: prev.operatorId,
+      parentOrgUnitId: prev.parentOrgUnitId,
+      suspendedAt: prev.suspendedAt,
+      deletedAt: _clock().toUtc(),
+    );
+    _record(
+      action: 'team.org_unit.delete',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      targetKind: 'org_unit',
+      targetId: orgUnitId,
+      payload: const <String, Object?>{},
+      adminReason: adminReason,
+    );
+    _idempotentResults[idempotencyKey] = const Object();
   }
 
   bool _isDescendant(
@@ -487,6 +647,8 @@ class InMemoryRolesHierarchySessionsAdminGateway
       name: prev.name,
       operatorId: prev.operatorId,
       orgUnitId: newOrgUnitId,
+      suspendedAt: prev.suspendedAt,
+      deletedAt: prev.deletedAt,
     );
     locations[index] = updated;
     _record(
@@ -505,6 +667,133 @@ class InMemoryRolesHierarchySessionsAdminGateway
     );
     _idempotentResults[idempotencyKey] = updated;
     return updated;
+  }
+
+  @override
+  Future<HierarchyLocationLeaf> suspendLocation({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) {
+    return _setLocationSuspended(
+      operatorId: operatorId,
+      locationId: locationId,
+      suspended: true,
+      idempotencyKey: idempotencyKey,
+      actorUserId: actorUserId,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      adminReason: adminReason,
+    );
+  }
+
+  @override
+  Future<HierarchyLocationLeaf> reactivateLocation({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) {
+    return _setLocationSuspended(
+      operatorId: operatorId,
+      locationId: locationId,
+      suspended: false,
+      idempotencyKey: idempotencyKey,
+      actorUserId: actorUserId,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      adminReason: adminReason,
+    );
+  }
+
+  Future<HierarchyLocationLeaf> _setLocationSuspended({
+    required String operatorId,
+    required String locationId,
+    required bool suspended,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'setLocationSuspended');
+    _ensureAdminReason(adminReason, 'setLocationSuspended');
+    final cached = _idempotentResults[idempotencyKey];
+    if (cached is HierarchyLocationLeaf) return cached;
+    final locations = _locationsFor(operatorId);
+    final index = locations.indexWhere((l) => l.locationId == locationId);
+    if (index < 0 || locations[index].isDeleted) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 404,
+        errorCode: 'unknown_location',
+        message: 'location $locationId not found for operator $operatorId',
+      );
+    }
+    final prev = locations[index];
+    final updated = HierarchyLocationLeaf(
+      locationId: prev.locationId,
+      name: prev.name,
+      operatorId: prev.operatorId,
+      orgUnitId: prev.orgUnitId,
+      suspendedAt: suspended ? _clock().toUtc() : null,
+      deletedAt: prev.deletedAt,
+    );
+    locations[index] = updated;
+    _record(
+      action: suspended ? 'team.location.suspend' : 'team.location.reactivate',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      targetKind: 'location',
+      targetId: locationId,
+      payload: <String, Object?>{'suspended': suspended},
+      adminReason: adminReason,
+    );
+    _idempotentResults[idempotencyKey] = updated;
+    return updated;
+  }
+
+  @override
+  Future<void> deleteLocation({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'deleteLocation');
+    _ensureAdminReason(adminReason, 'deleteLocation');
+    if (_idempotentResults.containsKey(idempotencyKey)) return;
+    final locations = _locationsFor(operatorId);
+    final index = locations.indexWhere((l) => l.locationId == locationId);
+    if (index < 0 || locations[index].isDeleted) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 404,
+        errorCode: 'unknown_location',
+        message: 'location $locationId not found for operator $operatorId',
+      );
+    }
+    final prev = locations[index];
+    locations[index] = HierarchyLocationLeaf(
+      locationId: prev.locationId,
+      name: prev.name,
+      operatorId: prev.operatorId,
+      orgUnitId: prev.orgUnitId,
+      suspendedAt: prev.suspendedAt,
+      deletedAt: _clock().toUtc(),
+    );
+    _record(
+      action: 'team.location.delete',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      targetKind: 'location',
+      targetId: locationId,
+      payload: const <String, Object?>{},
+      adminReason: adminReason,
+    );
+    _idempotentResults[idempotencyKey] = const Object();
   }
 
   @override

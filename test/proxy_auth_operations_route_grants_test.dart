@@ -514,7 +514,10 @@ void main() {
         try {
           final response = await harness.patchJson(
             '/v1/admin/auth/locations/$_locationId/org-unit',
-            const <String, Object?>{'parent_org_unit_id': 'unit-east'},
+            const <String, Object?>{
+              'parent_org_unit_id': 'unit-east',
+              'admin_reason': 'admin hierarchy setup',
+            },
           );
           expect(response.statusCode, equals(400));
           expect(response.json['error'], equals('missing_idempotency_key'));
@@ -1017,6 +1020,7 @@ class _IdempotencyRecordingAuthOperationsGateway
   final roleGrantCreates = <TeamRoleGrantCreateCommand>[];
   final roleGrantRevokes = <TeamRoleGrantRevokeCommand>[];
   final orgUnitCreates = <TeamOrgUnitCreateCommand>[];
+  final orgUnitMoves = <TeamOrgUnitMoveCommand>[];
   final locationOrgUnitMoves = <TeamLocationOrgUnitMoveCommand>[];
   final profilePatches = <TeamUserProfilePatchCommand>[];
   final userSuspends = <TeamUserStatusCommand>[];
@@ -1127,6 +1131,20 @@ class _IdempotencyRecordingAuthOperationsGateway
   ) async {
     orgUnitCreates.add(command);
     return const TeamOrgUnitCreated(orgUnitId: 'unit-east');
+  }
+
+  @override
+  Future<TeamOrgUnitMoved> moveOrgUnit(TeamOrgUnitMoveCommand command) async {
+    orgUnitMoves.add(command);
+    return TeamOrgUnitMoved(
+      orgUnit: TeamOrgUnitEntry(
+        orgUnitId: command.orgUnitId,
+        parentOrgUnitId: command.parentOrgUnitId,
+        unitType: 'region',
+        path: 'root.east',
+        label: 'East',
+      ),
+    );
   }
 
   @override

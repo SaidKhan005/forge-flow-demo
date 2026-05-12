@@ -152,6 +152,8 @@ class PermissionKeys {
   static const String teamRolesCreateCustom = 'team.roles.create_custom';
   static const String teamRolesAssign = 'team.roles.assign';
   static const String teamRolesRevoke = 'team.roles.revoke';
+  static const String teamHierarchySuspend = 'team.hierarchy.suspend';
+  static const String teamHierarchyDelete = 'team.hierarchy.delete';
   static const String teamAuditLogView = 'team.audit_log.view';
   // Added 11W.5 (2026-05-06). Operator Web Audit Log CSV export gate.
   // Default-granted to operator_owner + operator_admin only — pulling
@@ -278,6 +280,8 @@ class PermissionKeys {
     teamRolesCreateCustom,
     teamRolesAssign,
     teamRolesRevoke,
+    teamHierarchySuspend,
+    teamHierarchyDelete,
     teamAuditLogView,
     teamAuditLogExport,
     teamSessionForceLogout,

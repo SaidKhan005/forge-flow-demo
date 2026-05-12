@@ -84,13 +84,8 @@ class _PerLocationDataAccuracyTableState
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Per-location data accuracy',
+              'Covers and wage data accuracy',
               style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Covers are shown as lunch, dinner, and late night so support can scan each location without moving sideways.',
-              style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
             const SizedBox(height: 12),
             _TableToolbar(

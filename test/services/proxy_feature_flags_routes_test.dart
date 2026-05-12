@@ -41,7 +41,8 @@ void main() {
         _FakeFeatureFlagsAdminGateway gateway,
         _FakeActorResolver resolver,
       })
-    > spinUp({
+    >
+    spinUp({
       ProxyJwtClaims? initialClaims,
       _FakeFeatureFlagsAdminGateway? customGateway,
       _FakeActorResolver? customResolver,
@@ -60,14 +61,10 @@ void main() {
           await routeRequest(
             request,
             guard,
-            featureFlagsAdminGateway:
-                gatewayConfigured ? gateway : null,
-            integrationAdminActorResolver:
-                resolverConfigured ? resolver : null,
+            featureFlagsAdminGateway: gatewayConfigured ? gateway : null,
+            integrationAdminActorResolver: resolverConfigured ? resolver : null,
             now: () => clockNow,
-            adminCorsAllowList: const <String>[
-              'https://admin.forgeflow.app',
-            ],
+            adminCorsAllowList: const <String>['https://admin.forgeflow.app'],
           );
         } catch (_) {
           try {
@@ -77,8 +74,7 @@ void main() {
         }
       });
       final client = HttpClient();
-      final baseUri =
-          Uri.parse('http://${server.address.host}:${server.port}');
+      final baseUri = Uri.parse('http://${server.address.host}:${server.port}');
       return (
         server: server,
         client: client,
@@ -89,104 +85,88 @@ void main() {
       );
     }
 
-    test(
-      'GET /v1/admin/feature-flags returns 503 without a gateway',
-      () async {
-        await withRealHttp(() async {
-          final ctx = await spinUp(gatewayConfigured: false);
-          try {
-            final response = await _httpGet(
-              ctx.client,
-              ctx.baseUri.resolve(adminFeatureFlagsListPath),
-              authorization: 'Bearer fake.token',
-            );
-            expect(response.statusCode, equals(503));
-            final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['error'], equals('feature_flags_admin_not_configured'));
-          } finally {
-            ctx.client.close(force: true);
-            await ctx.server.close(force: true);
-          }
-        });
-      },
-    );
-
-    test(
-      'GET /v1/admin/feature-flags rejects operator_owner (403)',
-      () async {
-        await withRealHttp(() async {
-          final ctx = await spinUp(
-            initialClaims: const ProxyJwtClaims(
-              userId: 'user_x',
-              operatorId: 'op_x',
-              locationId: 'loc_x',
-              roles: <String>['operator_owner'],
-            ),
+    test('GET /v1/admin/feature-flags returns 503 without a gateway', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(gatewayConfigured: false);
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(adminFeatureFlagsListPath),
+            authorization: 'Bearer fake.token',
           );
-          try {
-            final response = await _httpGet(
-              ctx.client,
-              ctx.baseUri.resolve(adminFeatureFlagsListPath),
-              authorization: 'Bearer fake.token',
-            );
-            expect(response.statusCode, equals(403));
-            final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['error'], equals('permission_denied'));
-            final required = (body['required_roles']! as List).cast<String>();
-            expect(required, contains('super_admin'));
-            expect(required, contains('ff_support'));
-          } finally {
-            ctx.client.close(force: true);
-            await ctx.server.close(force: true);
-          }
-        });
-      },
-    );
+          expect(response.statusCode, equals(503));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('feature_flags_admin_not_configured'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('GET /v1/admin/feature-flags rejects operator_owner (403)', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_x',
+            operatorId: 'op_x',
+            locationId: 'loc_x',
+            roles: <String>['operator_owner'],
+          ),
+        );
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(adminFeatureFlagsListPath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(403));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('permission_denied'));
+          final required = (body['required_roles']! as List).cast<String>();
+          expect(required, contains('super_admin'));
+          expect(required, contains('ff_support'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
 
     test(
-      'GET /v1/admin/feature-flags admits ff_support (read-only)',
+      'GET /v1/admin/feature-flags forwards selected hierarchy query',
       () async {
         await withRealHttp(() async {
           final gateway = _FakeFeatureFlagsAdminGateway();
-          gateway.listResult = <Map<String, Object?>>[
-            <String, Object?>{
-              'flag_id': 'flag-1',
-              'flag_name': 'advisor_enabled',
-              'operator_id': null,
-              'location_id': null,
-              'enabled': true,
-              'kind': 'standard',
-              'description': null,
-              'updated_by': null,
-              'created_at': clockNow.toIso8601String(),
-              'updated_at': clockNow.toIso8601String(),
-            },
-          ];
-          const supportUuid = '22222222-2222-4222-8222-222222222222';
+          const actorUuid = '11111111-1111-4111-8111-111111111111';
           final ctx = await spinUp(
             customGateway: gateway,
             initialClaims: const ProxyJwtClaims(
-              userId: supportUuid,
-              firebaseUid: supportUuid,
+              userId: actorUuid,
+              firebaseUid: actorUuid,
               operatorId: null,
               locationId: null,
-              roles: <String>['ff_support'],
+              roles: <String>['super_admin'],
             ),
           );
           try {
+            final uri = ctx.baseUri
+                .resolve(adminFeatureFlagsListPath)
+                .replace(
+                  queryParameters: const <String, String>{
+                    'operator_id': 'op-a',
+                    'location_id': 'loc-a',
+                  },
+                );
             final response = await _httpGet(
               ctx.client,
-              ctx.baseUri.resolve(adminFeatureFlagsListPath),
+              uri,
               authorization: 'Bearer fake.token',
             );
             expect(response.statusCode, equals(200));
-            final body = jsonDecode(response.body) as Map<String, Object?>;
-            final flags =
-                (body['flags']! as List).cast<Map<String, Object?>>();
-            expect(flags, hasLength(1));
-            expect(flags.first['flag_name'], equals('advisor_enabled'));
-            // Reads skip resolver, so the gateway sees the raw user id.
-            expect(gateway.lastListActorUserId, equals(supportUuid));
+            expect(gateway.lastListOperatorId, equals('op-a'));
+            expect(gateway.lastListLocationId, equals('loc-a'));
+            expect(gateway.lastListLocationIds, isEmpty);
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -194,6 +174,54 @@ void main() {
         });
       },
     );
+
+    test('GET /v1/admin/feature-flags admits ff_support (read-only)', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeFeatureFlagsAdminGateway();
+        gateway.listResult = <Map<String, Object?>>[
+          <String, Object?>{
+            'flag_id': 'flag-1',
+            'flag_name': 'advisor_enabled',
+            'operator_id': null,
+            'location_id': null,
+            'enabled': true,
+            'kind': 'standard',
+            'description': null,
+            'updated_by': null,
+            'created_at': clockNow.toIso8601String(),
+            'updated_at': clockNow.toIso8601String(),
+          },
+        ];
+        const supportUuid = '22222222-2222-4222-8222-222222222222';
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: supportUuid,
+            firebaseUid: supportUuid,
+            operatorId: null,
+            locationId: null,
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(adminFeatureFlagsListPath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final flags = (body['flags']! as List).cast<Map<String, Object?>>();
+          expect(flags, hasLength(1));
+          expect(flags.first['flag_name'], equals('advisor_enabled'));
+          // Reads skip resolver, so the gateway sees the raw user id.
+          expect(gateway.lastListActorUserId, equals(supportUuid));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
 
     test(
       'POST /v1/admin/feature-flags/toggle rejects ff_support (write)',
@@ -224,8 +252,7 @@ void main() {
             expect(response.statusCode, equals(403));
             final body = jsonDecode(response.body) as Map<String, Object?>;
             expect(body['error'], equals('permission_denied'));
-            final required =
-                (body['required_roles']! as List).cast<String>();
+            final required = (body['required_roles']! as List).cast<String>();
             expect(required, equals(<String>['super_admin']));
           } finally {
             ctx.client.close(force: true);
@@ -294,8 +321,7 @@ void main() {
           // the Postgres user UUID.
           final resolver = _FakeActorResolver()
             ..resolveByFirebaseUid = <String, String?>{
-              'firebase-admin-uid':
-                  '11111111-1111-4111-8111-111111111111',
+              'firebase-admin-uid': '11111111-1111-4111-8111-111111111111',
             }
             ..useEchoFallback = false;
           final ctx = await spinUp(
@@ -338,46 +364,40 @@ void main() {
       },
     );
 
-    test(
-      'POST toggle returns 403 actor_user_not_resolvable when no '
-      'matching Postgres users row',
-      () async {
-        await withRealHttp(() async {
-          final resolver = _FakeActorResolver()
-            ..useEchoFallback = false
-            ..resolveResult = null;
-          final ctx = await spinUp(
-            customResolver: resolver,
-            initialClaims: const ProxyJwtClaims(
-              userId: 'firebase-admin-uid',
-              firebaseUid: 'firebase-admin-uid',
-              operatorId: null,
-              locationId: null,
-              roles: <String>['super_admin'],
-            ),
+    test('POST toggle returns 403 actor_user_not_resolvable when no '
+        'matching Postgres users row', () async {
+      await withRealHttp(() async {
+        final resolver = _FakeActorResolver()
+          ..useEchoFallback = false
+          ..resolveResult = null;
+        final ctx = await spinUp(
+          customResolver: resolver,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'firebase-admin-uid',
+            firebaseUid: 'firebase-admin-uid',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['super_admin'],
+          ),
+        );
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(adminFeatureFlagsTogglePath),
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-1',
+            body: const <String, Object?>{'flag_id': 'flag-1', 'enabled': true},
           );
-          try {
-            final response = await _httpJson(
-              ctx.client,
-              'POST',
-              ctx.baseUri.resolve(adminFeatureFlagsTogglePath),
-              authorization: 'Bearer fake.token',
-              idempotencyKey: 'idem-1',
-              body: const <String, Object?>{
-                'flag_id': 'flag-1',
-                'enabled': true,
-              },
-            );
-            expect(response.statusCode, equals(403));
-            final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['error'], equals('actor_user_not_resolvable'));
-          } finally {
-            ctx.client.close(force: true);
-            await ctx.server.close(force: true);
-          }
-        });
-      },
-    );
+          expect(response.statusCode, equals(403));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('actor_user_not_resolvable'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
 
     test('POST toggle returns 404 when gateway returns null', () async {
       await withRealHttp(() async {
@@ -455,6 +475,9 @@ class _FakeFeatureFlagsAdminGateway implements FeatureFlagsAdminProxyGateway {
   List<Map<String, Object?>> listResult = const <Map<String, Object?>>[];
   Map<String, Object?>? toggleResult = <String, Object?>{};
   String? lastListActorUserId;
+  String? lastListOperatorId;
+  String? lastListLocationId;
+  List<String>? lastListLocationIds;
   String? lastToggleActorUserId;
   String? lastToggleIdempotencyKey;
   String? lastToggleFlagId;
@@ -465,8 +488,14 @@ class _FakeFeatureFlagsAdminGateway implements FeatureFlagsAdminProxyGateway {
   Future<List<Map<String, Object?>>> listFlags({
     required String actorUserId,
     required String adminReason,
+    String? operatorId,
+    String? locationId,
+    List<String>? locationIds,
   }) async {
     lastListActorUserId = actorUserId;
+    lastListOperatorId = operatorId;
+    lastListLocationId = locationId;
+    lastListLocationIds = locationIds;
     return listResult;
   }
 

@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/models/integration_admin_models.dart';
 import 'package:forge_and_flow/admin/services/integration_admin_gateway.dart';
 import 'package:forge_and_flow/infrastructure/kms/kms_stub_provider.dart';
+import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'package:http/http.dart' as http;
 
 void main() {
@@ -112,6 +113,30 @@ void main() {
               .firstWhere((status) => status.id == 'toast')
               .detailMessage,
           startsWith('API reachability pending.'),
+        );
+        expect(
+          bundle.vendorConnectors
+              .firstWhere((status) => status.id == 'toast')
+              .category,
+          VendorCategory.pos,
+        );
+        expect(
+          bundle.vendorConnectors
+              .firstWhere((status) => status.id == 'quickbooks_time')
+              .category,
+          VendorCategory.labor,
+        );
+        expect(
+          bundle.vendorConnectors
+              .firstWhere((status) => status.id == 'tock')
+              .category,
+          VendorCategory.reservation,
+        );
+        expect(
+          bundle.vendorConnectors
+              .firstWhere((status) => status.id == 'toast')
+              .unlockLabel,
+          equals('Vendor setup waits for reachable API access'),
         );
       },
     );
@@ -269,12 +294,20 @@ void main() {
                   'id': 'toast',
                   'display_name': 'Toast',
                   'status_label': 'Documented',
+                  'category': 'pos',
+                  'api_reachable': false,
+                  'health_source': 'live_api_probe',
+                  'unlock_state': 'api_pending',
                   'detail_message': 'POS adapter implemented.',
                 },
                 <String, Object?>{
                   'id': 'lightspeed_lsk',
                   'display_name': 'Lightspeed Restaurant K-Series',
                   'status_label': 'Ready to connect',
+                  'category': 'pos',
+                  'api_reachable': true,
+                  'health_source_label': 'Vendor API probe succeeded',
+                  'can_connect': true,
                   'detail_message': 'Production credentials available.',
                 },
               ],
@@ -306,6 +339,29 @@ void main() {
         expect(
           bundle.vendorConnectors.map((status) => status.statusLabel),
           equals(<String>['API pending', 'API reachable']),
+        );
+        expect(
+          bundle.vendorConnectors.map((status) => status.apiReachable),
+          equals(<bool?>[false, true]),
+        );
+        expect(
+          bundle.vendorConnectors.map((status) => status.category),
+          equals(<VendorCategory?>[VendorCategory.pos, VendorCategory.pos]),
+        );
+        expect(
+          bundle.vendorConnectors.first.healthSourceLabel,
+          equals('Live API reachability check'),
+        );
+        expect(
+          bundle.vendorConnectors.last.healthSourceLabel,
+          equals('Vendor API probe succeeded'),
+        );
+        expect(
+          bundle.vendorConnectors.map((status) => status.unlockLabel),
+          equals(<String?>[
+            'Vendor setup waits for reachable API access',
+            'Vendor setup unlocked',
+          ]),
         );
         expect(
           bundle.vendorConnectors.first.detailMessage,

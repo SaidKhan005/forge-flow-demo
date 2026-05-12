@@ -26,6 +26,7 @@ import 'models/feature_flags_admin_models.dart';
 import 'models/integration_admin_models.dart';
 import 'models/operator_location_admin_models.dart';
 import 'models/pricing_tier_admin_models.dart';
+import 'screens/admin_timing_setup_screen.dart';
 import 'screens/corpus_admin_screen.dart';
 import 'screens/debug_console_admin_screen.dart';
 import 'screens/feature_flags_admin_screen.dart';
@@ -41,6 +42,7 @@ import 'screens/polling_and_pricing_admin_screen.dart';
 import 'screens/pricing_tier_admin_screen.dart';
 import 'screens/roles_hierarchy_sessions_admin_screen.dart';
 import 'screens/support_operator_view_admin_screen.dart';
+import 'screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'services/audited_support_actions_admin_gateway.dart';
 import 'services/corpus_admin_gateway.dart';
 import 'services/data_accuracy_admin_gateway.dart';
@@ -56,6 +58,7 @@ import 'services/observability_admin_gateway.dart';
 import 'services/operator_location_admin_gateway.dart';
 import 'services/pricing_tier_admin_gateway.dart';
 import 'services/roles_hierarchy_sessions_admin_gateway.dart';
+import 'widgets/admin_setup_workspace.dart';
 import '../domain/models/forge_flow_polling_tier_assignment.dart';
 
 /// CODE_OPS_DEBT Theme A item 1 — overridable MFA-freshness resolver
@@ -210,6 +213,14 @@ const String kAdminDataAccuracyRouteId = 'data-accuracy';
 /// Phase 8 spine-bridge Lane .C - Polling & Pricing admin tab (Tab 2).
 const String kAdminPollingPricingRouteId = 'polling-pricing';
 
+/// Hidden setup route for per-location vendor lifecycle controls launched
+/// from Business Accounts.
+const String kAdminVendorIntegrationsRouteId = 'vendor-integrations';
+
+/// Hidden setup route for business/org-unit/location timing review launched
+/// from Business Accounts.
+const String kAdminTimingSetupRouteId = 'timing-setup';
+
 /// Phase 11A.12 - cross-operator Members + Invites surface. Mounted
 /// after the operator picker; the F&F admin opens this route, picks
 /// an operator, and lands on the members table scoped to the chosen
@@ -321,36 +332,57 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminObservabilityRouteId,
-    title: 'System metrics',
+    title: 'AI Metrics',
     path: '/observability',
     icon: Icons.insights_outlined,
-    section: AdminRouteSection.systemMonitoring,
-    subtitle:
-        'Review cost, usage limits, operator activity, graph health, and hosting.',
+    section: AdminRouteSection.ai,
+    subtitle: 'Review advisor usage, cost, limits, and model activity.',
     builder: _buildObservability,
   ),
   AdminRoute(
     id: kAdminDataAccuracyRouteId,
-    title: 'Data accuracy',
+    title: 'Covers and Wage Data Accuracy',
     path: '/data-accuracy',
     icon: Icons.fact_check_outlined,
     section: AdminRouteSection.operations,
     badge: 'Work in progress',
-    subtitle: 'Inspect and override per-location covers and wage source.',
+    subtitle:
+        'Review cover sources, wage sources, walk-ins, and audit history.',
     builder: _buildDataAccuracy,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
   ),
   AdminRoute(
     id: kAdminPollingPricingRouteId,
-    title: 'Polling & pricing',
+    title: 'Polling Setup',
     path: '/polling-pricing',
     icon: Icons.payments_outlined,
     section: AdminRouteSection.operations,
     badge: 'Work in progress',
-    subtitle:
-        'Set tier definitions, per-location assignments, and review margin.',
+    subtitle: 'Set vendor polling tiers, estimate cost, and review margin.',
     builder: _buildPollingPricing,
+    visibleInNav: false,
+    navAnchorRouteId: kAdminOperatorsRouteId,
+  ),
+  AdminRoute(
+    id: kAdminVendorIntegrationsRouteId,
+    title: 'Vendor integrations',
+    path: '/admin/vendor-integrations',
+    icon: Icons.link_outlined,
+    section: AdminRouteSection.operations,
+    subtitle: 'Connect, test, and manage vendors for the selected scope.',
+    builder: _buildVendorIntegrations,
+    visibleInNav: false,
+    navAnchorRouteId: kAdminOperatorsRouteId,
+  ),
+  AdminRoute(
+    id: kAdminTimingSetupRouteId,
+    title: 'Timing',
+    path: '/admin/timing',
+    icon: Icons.schedule_outlined,
+    section: AdminRouteSection.operations,
+    subtitle: 'Review effective timezone, business day, and service periods.',
+    builder: _buildTimingSetup,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
   ),
@@ -477,6 +509,26 @@ Widget _buildOperators(BuildContext context) {
                 ),
               );
             },
+      onOpenIntegrationsScope: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminVendorIntegrationsRouteId,
+                  hierarchyScope: scope,
+                ),
+              );
+            },
+      onOpenTimingScope: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminTimingSetupRouteId,
+                  hierarchyScope: scope,
+                ),
+              );
+            },
       onOpenSupportOperatorView: handoff == null
           ? null
           : (scope) {
@@ -577,6 +629,35 @@ VoidCallback? _backToBusinessAccounts(BuildContext context) {
   );
 }
 
+Widget _buildScopedAdminWorkspace({
+  required BuildContext context,
+  required String routeId,
+  required String functionTitle,
+  required String description,
+  required AdminSetupWorkspaceBuilder functionBuilder,
+}) {
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final hierarchyGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  return AdminSetupWorkspace(
+    functionTitle: functionTitle,
+    description: description,
+    operatorGateway: operatorGateway,
+    hierarchyGateway: hierarchyGateway,
+    initialScope: handoff?.effectiveHierarchyScope,
+    onBackToBusinessAccounts: _backToBusinessAccounts(context),
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(routeId: routeId, hierarchyScope: scope),
+          ),
+    functionBuilder: functionBuilder,
+  );
+}
+
 // Retained for backwards-compatible deep-link handoff while the primary IA
 // moves Support Workspace functions into scoped setup tiles.
 // ignore: unused_element
@@ -593,6 +674,7 @@ Widget _buildSupportOperatorView(BuildContext context) {
   );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
   final initialPicked = _pickerResultFromScope(handoff?.operatorLocationScope);
 
   void rememberPickedOperator(OperatorPickerResult result) {
@@ -632,6 +714,7 @@ Widget _buildSupportOperatorView(BuildContext context) {
       canExportAuditLog: false,
       adminUid: null,
       initialPicked: initialPicked,
+      initialScope: initialScope,
       openPicker: openPicker,
       onOperatorPicked: rememberPickedOperator,
     );
@@ -662,6 +745,7 @@ Widget _buildSupportOperatorView(BuildContext context) {
         canExportAuditLog: _isAdminMfaFresh(session),
         adminUid: session?.uid,
         initialPicked: initialPicked,
+        initialScope: initialScope,
         openPicker: openPicker,
         onOperatorPicked: rememberPickedOperator,
       );
@@ -682,6 +766,7 @@ class _SupportOperatorViewRouteShell extends StatefulWidget {
     required this.canExportAuditLog,
     required this.adminUid,
     required this.initialPicked,
+    required this.initialScope,
     required this.openPicker,
     required this.onOperatorPicked,
   });
@@ -697,6 +782,7 @@ class _SupportOperatorViewRouteShell extends StatefulWidget {
   final bool canExportAuditLog;
   final String? adminUid;
   final OperatorPickerResult? initialPicked;
+  final AdminHierarchyScopeIntent? initialScope;
   final Future<OperatorPickerResult?> Function(
     BuildContext context,
     String? adminUid,
@@ -812,20 +898,38 @@ class _SupportOperatorViewRouteShellState
 Widget _buildPricing(BuildContext context) {
   final gateway = AdminConsoleServicesScope.pricingTierGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  if (source == null) {
-    // No source wired (typical widget-test path) - default to live
-    // edit affordances. Production wires `source` from main_admin so
-    // `ff_support` lands on the read-only branch below.
-    return PricingTierAdminScreen(gateway: gateway);
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
-      return PricingTierAdminScreen(gateway: gateway, editingEnabled: canEdit);
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminPricingRouteId,
+    functionTitle: 'Plans and limits',
+    description:
+        'Review plan status and usage limits for the selected hierarchy scope.',
+    functionBuilder: (context, selectedScope, selection) {
+      if (source == null) {
+        return PricingTierAdminScreen(
+          gateway: gateway,
+          hierarchyScope: selectedScope,
+          scopeLocationIds: selection.locationIds,
+        );
+      }
+      return StreamBuilder<AdminAuthState>(
+        stream: source.stream,
+        initialData: source.current,
+        builder: (context, snapshot) {
+          final state = snapshot.data;
+          final session = state is AdminAuthAuthenticated
+              ? state.session
+              : null;
+          final canEdit =
+              session != null && session.roles.contains('super_admin');
+          return PricingTierAdminScreen(
+            gateway: gateway,
+            editingEnabled: canEdit,
+            hierarchyScope: selectedScope,
+            scopeLocationIds: selection.locationIds,
+          );
+        },
+      );
     },
   );
 }
@@ -848,58 +952,40 @@ const String kCorpusAdminDemoTargetLocationId =
 
 Widget _buildCorpus(BuildContext context) {
   final gateway = AdminConsoleServicesScope.corpusAdminGatewayOf(context);
-  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
-    context,
-  );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  // Demo mode (in-memory gateway) targets the seeded demo tenant.
-  // Live mode (HTTP gateway, or any non-in-memory binding) leaves
-  // the targets null so the Graph candidates commit button starts
-  // disabled. The "Pick operator" button on that surface opens
-  // [OperatorPickerScreen] via [_openOperatorPickerFromContext]; once
-  // the admin confirms a pair, the corpus screen state takes over
-  // and the commit button enables.
-  final isDemoGateway = gateway is InMemoryCorpusAdminGateway;
-  final demoTargetOperatorId = isDemoGateway
-      ? kCorpusAdminDemoTargetOperatorId
-      : null;
-  final demoTargetLocationId = isDemoGateway
-      ? kCorpusAdminDemoTargetLocationId
-      : null;
-  Future<OperatorPickerResult?> openPicker(BuildContext routeContext) {
-    final state = source?.current;
-    final adminUid = state is AdminAuthAuthenticated ? state.session.uid : null;
-    return Navigator.of(routeContext).push<OperatorPickerResult?>(
-      MaterialPageRoute<OperatorPickerResult?>(
-        settings: const RouteSettings(name: '/operator-picker'),
-        builder: (_) =>
-            OperatorPickerScreen(gateway: operatorGateway, adminUid: adminUid),
-      ),
-    );
-  }
-
-  if (source == null) {
-    // No source wired (test path) - default to live edit affordances.
-    return CorpusAdminScreen(
-      gateway: gateway,
-      targetOperatorId: demoTargetOperatorId,
-      targetLocationId: demoTargetLocationId,
-      operatorPickerOpener: openPicker,
-    );
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
-      return CorpusAdminScreen(
-        gateway: gateway,
-        editingEnabled: canEdit,
-        targetOperatorId: demoTargetOperatorId,
-        targetLocationId: demoTargetLocationId,
-        operatorPickerOpener: openPicker,
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminCorpusRouteId,
+    functionTitle: 'Knowledge Base',
+    description:
+        'Review knowledge content and relationship review for the selected scope.',
+    functionBuilder: (context, selectedScope, selection) {
+      final targetOperatorId = selectedScope.operatorId;
+      final targetLocationId = selectedScope.locationId;
+      if (source == null) {
+        return CorpusAdminScreen(
+          gateway: gateway,
+          targetOperatorId: targetOperatorId,
+          targetLocationId: targetLocationId,
+        );
+      }
+      return StreamBuilder<AdminAuthState>(
+        stream: source.stream,
+        initialData: source.current,
+        builder: (context, snapshot) {
+          final state = snapshot.data;
+          final session = state is AdminAuthAuthenticated
+              ? state.session
+              : null;
+          final canEdit =
+              session != null && session.roles.contains('super_admin');
+          return CorpusAdminScreen(
+            gateway: gateway,
+            editingEnabled: canEdit,
+            targetOperatorId: targetOperatorId,
+            targetLocationId: targetLocationId,
+          );
+        },
       );
     },
   );
@@ -908,17 +994,39 @@ Widget _buildCorpus(BuildContext context) {
 Widget _buildIntegrations(BuildContext context) {
   final gateway = AdminConsoleServicesScope.integrationGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  if (source == null) {
-    return IntegrationAdminScreen(gateway: gateway);
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
-      return IntegrationAdminScreen(gateway: gateway, editingEnabled: canEdit);
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminIntegrationsRouteId,
+    functionTitle: 'Connected services',
+    description:
+        'Review platform services and vendor API reachability for the selected hierarchy scope.',
+    functionBuilder: (context, selectedScope, selection) {
+      Widget buildScreen({required bool canEdit}) {
+        return IntegrationAdminScreen(
+          key: ValueKey<String>('integrations-${selectedScope.cacheKey}'),
+          gateway: gateway,
+          editingEnabled: canEdit,
+          hierarchyScope: selectedScope,
+          scopeLocationIds: selection.locationIds,
+        );
+      }
+
+      if (source == null) {
+        return buildScreen(canEdit: true);
+      }
+      return StreamBuilder<AdminAuthState>(
+        stream: source.stream,
+        initialData: source.current,
+        builder: (context, snapshot) {
+          final state = snapshot.data;
+          final session = state is AdminAuthAuthenticated
+              ? state.session
+              : null;
+          final canEdit =
+              session != null && session.roles.contains('super_admin');
+          return buildScreen(canEdit: canEdit);
+        },
+      );
     },
   );
 }
@@ -928,7 +1036,19 @@ Widget _buildHealth(BuildContext context) {
   // gateway is the only injection point; there is no editingEnabled
   // flag because the surface has no mutate affordances.
   final gateway = AdminConsoleServicesScope.healthGatewayOf(context);
-  return HealthAdminScreen(gateway: gateway);
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminHealthRouteId,
+    functionTitle: 'System health',
+    description:
+        'Run health checks for Advisor data, app services, and ecosystem dependencies in the selected scope.',
+    functionBuilder: (context, selectedScope, selection) => HealthAdminScreen(
+      key: ValueKey<String>('health-${selectedScope.cacheKey}'),
+      gateway: gateway,
+      hierarchyScope: selectedScope,
+      scopeLocationIds: selection.locationIds,
+    ),
+  );
 }
 
 Widget _buildObservability(BuildContext context) {
@@ -937,23 +1057,58 @@ Widget _buildObservability(BuildContext context) {
   // dormancy + margin + cap-event + graph + Cloud Run dashboard.
   // No editingEnabled flag because there are no mutate affordances.
   final gateway = AdminConsoleServicesScope.observabilityGatewayOf(context);
-  return ObservabilityAdminScreen(gateway: gateway);
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminObservabilityRouteId,
+    functionTitle: 'AI Metrics',
+    description:
+        'Review AI cost, usage, reliability, and hosting signals for the selected hierarchy scope.',
+    functionBuilder: (context, selectedScope, selection) =>
+        ObservabilityAdminScreen(
+          key: ValueKey<String>('observability-${selectedScope.cacheKey}'),
+          gateway: gateway,
+          hierarchyScope: selectedScope,
+          scopeLocationIds: selection.locationIds,
+        ),
+  );
 }
 
 Widget _buildFeatureFlags(BuildContext context) {
   final gateway = AdminConsoleServicesScope.featureFlagsGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  if (source == null) {
-    return FeatureFlagsAdminScreen(gateway: gateway);
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
-      return FeatureFlagsAdminScreen(gateway: gateway, editingEnabled: canEdit);
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminFeatureFlagsRouteId,
+    functionTitle: 'Launch controls',
+    description:
+        'Turn rollout controls on or off for the selected hierarchy scope with audit-backed confirmation.',
+    functionBuilder: (context, selectedScope, selection) {
+      Widget buildScreen({required bool canEdit}) {
+        return FeatureFlagsAdminScreen(
+          key: ValueKey<String>('feature-flags-${selectedScope.cacheKey}'),
+          gateway: gateway,
+          editingEnabled: canEdit,
+          hierarchyScope: selectedScope,
+          scopeLocationIds: selection.locationIds,
+        );
+      }
+
+      if (source == null) {
+        return buildScreen(canEdit: true);
+      }
+      return StreamBuilder<AdminAuthState>(
+        stream: source.stream,
+        initialData: source.current,
+        builder: (context, snapshot) {
+          final state = snapshot.data;
+          final session = state is AdminAuthAuthenticated
+              ? state.session
+              : null;
+          final canEdit =
+              session != null && session.roles.contains('super_admin');
+          return buildScreen(canEdit: canEdit);
+        },
+      );
     },
   );
 }
@@ -961,62 +1116,272 @@ Widget _buildFeatureFlags(BuildContext context) {
 Widget _buildDataAccuracy(BuildContext context) {
   final gateway = AdminConsoleServicesScope.dataAccuracyAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  final scope = AdminRouteHandoff.maybeOf(context)?.operatorLocationScope;
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final hierarchyGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
   final onBackToBusinessAccounts = _backToBusinessAccounts(context);
-  if (source == null) {
-    return PerLocationDataAccuracyScreen(
-      gateway: gateway,
-      actorUserId: 'demo-super-admin',
-      initialScope: scope,
-      onBackToBusinessAccounts: onBackToBusinessAccounts,
-    );
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
+
+  Widget buildFunction(
+    BuildContext context,
+    AdminHierarchyScopeIntent selectedScope,
+    AdminSetupWorkspaceSelection selection,
+  ) {
+    final operatorScope = selectedScope.toOperatorLocationScope();
+    if (source == null) {
       return PerLocationDataAccuracyScreen(
         gateway: gateway,
-        actorUserId: session?.uid ?? 'unknown',
-        editingEnabled: canEdit,
-        initialScope: scope,
+        actorUserId: 'demo-super-admin',
+        initialScope: operatorScope,
+        initialHierarchyScope: selectedScope,
+        scopeLocationIds: selection.locationIds,
+        showPageHeader: false,
+        showScopeControls: false,
         onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
-    },
+    }
+    return StreamBuilder<AdminAuthState>(
+      stream: source.stream,
+      initialData: source.current,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final session = state is AdminAuthAuthenticated ? state.session : null;
+        final canEdit =
+            session != null && session.roles.contains('super_admin');
+        return PerLocationDataAccuracyScreen(
+          gateway: gateway,
+          actorUserId: session?.uid ?? 'unknown',
+          editingEnabled: canEdit,
+          initialScope: operatorScope,
+          initialHierarchyScope: selectedScope,
+          scopeLocationIds: selection.locationIds,
+          showPageHeader: false,
+          showScopeControls: false,
+          onBackToBusinessAccounts: onBackToBusinessAccounts,
+        );
+      },
+    );
+  }
+
+  return AdminSetupWorkspace(
+    functionTitle: 'Covers and Wage Data Accuracy',
+    description:
+        'Review covers, wage data, vendor filters, and audit history for the selected scope.',
+    operatorGateway: operatorGateway,
+    hierarchyGateway: hierarchyGateway,
+    initialScope: initialScope,
+    onBackToBusinessAccounts: onBackToBusinessAccounts,
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(
+              routeId: kAdminDataAccuracyRouteId,
+              hierarchyScope: scope,
+            ),
+          ),
+    functionBuilder: buildFunction,
   );
 }
 
 Widget _buildPollingPricing(BuildContext context) {
   final gateway = AdminConsoleServicesScope.dataAccuracyAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  final scope = AdminRouteHandoff.maybeOf(context)?.operatorLocationScope;
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final hierarchyGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
   final onBackToBusinessAccounts = _backToBusinessAccounts(context);
-  if (source == null) {
-    return PollingAndPricingAdminScreen(
-      gateway: gateway,
-      actorUserId: 'demo-super-admin',
-      initialScope: scope,
-      onBackToBusinessAccounts: onBackToBusinessAccounts,
-    );
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
+
+  Widget buildFunction(
+    BuildContext context,
+    AdminHierarchyScopeIntent selectedScope,
+    AdminSetupWorkspaceSelection selection,
+  ) {
+    final operatorScope = selectedScope.toOperatorLocationScope();
+    if (source == null) {
       return PollingAndPricingAdminScreen(
         gateway: gateway,
-        actorUserId: session?.uid ?? 'unknown',
-        editingEnabled: canEdit,
-        initialScope: scope,
+        actorUserId: 'demo-super-admin',
+        initialScope: operatorScope,
+        initialHierarchyScope: selectedScope,
+        scopeLocationIds: selection.locationIds,
+        showPageHeader: false,
+        showScopeControls: false,
         onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
-    },
+    }
+    return StreamBuilder<AdminAuthState>(
+      stream: source.stream,
+      initialData: source.current,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final session = state is AdminAuthAuthenticated ? state.session : null;
+        final canEdit =
+            session != null && session.roles.contains('super_admin');
+        return PollingAndPricingAdminScreen(
+          gateway: gateway,
+          actorUserId: session?.uid ?? 'unknown',
+          editingEnabled: canEdit,
+          initialScope: operatorScope,
+          initialHierarchyScope: selectedScope,
+          scopeLocationIds: selection.locationIds,
+          showPageHeader: false,
+          showScopeControls: false,
+          onBackToBusinessAccounts: onBackToBusinessAccounts,
+        );
+      },
+    );
+  }
+
+  return AdminSetupWorkspace(
+    functionTitle: 'Polling Setup',
+    description:
+        'Choose the hierarchy scope, assign vendor polling tiers, and estimate operating cost.',
+    operatorGateway: operatorGateway,
+    hierarchyGateway: hierarchyGateway,
+    initialScope: initialScope,
+    onBackToBusinessAccounts: onBackToBusinessAccounts,
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(
+              routeId: kAdminPollingPricingRouteId,
+              hierarchyScope: scope,
+            ),
+          ),
+    functionBuilder: buildFunction,
+  );
+}
+
+Widget _buildVendorIntegrations(BuildContext context) {
+  final gateway = AdminConsoleServicesScope.vendorConnectionsGatewayOf(context);
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final hierarchyGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
+  final onBackToBusinessAccounts = _backToBusinessAccounts(context);
+
+  Widget buildFunction(
+    BuildContext context,
+    AdminHierarchyScopeIntent selectedScope,
+    AdminSetupWorkspaceSelection selection,
+  ) {
+    Widget buildMount({required bool canMutate}) {
+      return VendorConnectionsAdminMount(
+        operatorId: selectedScope.operatorId,
+        locationId: selectedScope.locationId,
+        locationName: selectedScope.locationName,
+        selectedScope: selectedScope,
+        gateway: gateway,
+        canMutate: canMutate,
+        embedded: true,
+      );
+    }
+
+    if (source == null) {
+      return buildMount(canMutate: true);
+    }
+    return StreamBuilder<AdminAuthState>(
+      stream: source.stream,
+      initialData: source.current,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final session = state is AdminAuthAuthenticated ? state.session : null;
+        final canEdit =
+            session != null && session.roles.contains('super_admin');
+        return buildMount(canMutate: canEdit);
+      },
+    );
+  }
+
+  return AdminSetupWorkspace(
+    functionTitle: 'Vendor integrations',
+    description:
+        'Select a location, then connect, test, disconnect, and review vendor setup.',
+    operatorGateway: operatorGateway,
+    hierarchyGateway: hierarchyGateway,
+    initialScope: initialScope,
+    onBackToBusinessAccounts: onBackToBusinessAccounts,
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(
+              routeId: kAdminVendorIntegrationsRouteId,
+              hierarchyScope: scope,
+            ),
+          ),
+    functionBuilder: buildFunction,
+  );
+}
+
+Widget _buildTimingSetup(BuildContext context) {
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final hierarchyGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
+  final onBackToBusinessAccounts = _backToBusinessAccounts(context);
+
+  Widget buildFunction(
+    BuildContext context,
+    AdminHierarchyScopeIntent selectedScope,
+    AdminSetupWorkspaceSelection selection,
+  ) {
+    Widget buildScreen({required bool canEdit}) {
+      return AdminTimingSetupScreen(
+        operatorGateway: operatorGateway,
+        selectedScope: selectedScope,
+        scopeLocationIds: selection.locationIds,
+        editingEnabled: canEdit,
+      );
+    }
+
+    if (source == null) {
+      return buildScreen(canEdit: true);
+    }
+    return StreamBuilder<AdminAuthState>(
+      stream: source.stream,
+      initialData: source.current,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final session = state is AdminAuthAuthenticated ? state.session : null;
+        final canEdit =
+            session != null && session.roles.contains('super_admin');
+        return buildScreen(canEdit: canEdit);
+      },
+    );
+  }
+
+  return AdminSetupWorkspace(
+    functionTitle: 'Timing',
+    description:
+        'Review timezone, business day, and service periods for the selected hierarchy scope.',
+    operatorGateway: operatorGateway,
+    hierarchyGateway: hierarchyGateway,
+    initialScope: initialScope,
+    onBackToBusinessAccounts: onBackToBusinessAccounts,
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(
+              routeId: kAdminTimingSetupRouteId,
+              hierarchyScope: scope,
+            ),
+          ),
+    functionBuilder: buildFunction,
   );
 }
 
@@ -1067,83 +1432,90 @@ Widget _buildMembers(BuildContext context) {
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
   final initialScope = handoff?.effectiveHierarchyScope;
-  final initialPicked = _pickerResultFromScope(
-    handoff?.operatorLocationScope ?? initialScope?.toOperatorLocationScope(),
-    allowBusinessScope: true,
-  );
-  void rememberPickedOperator(OperatorPickerResult result) {
-    handoff?.onSelectRoute(
-      AdminRouteIntent(
-        routeId: kAdminMembersRouteId,
-        operatorLocationScope: _scopeFromPickerResult(result),
-      ),
-    );
-  }
+  final onBackToBusinessAccounts = _backToBusinessAccounts(context);
 
-  void openScopedAccess(OperatorPickerResult result) {
-    handoff?.onSelectRoute(
-      AdminRouteIntent(
-        routeId: kAdminRolesHierarchySessionsRouteId,
-        operatorLocationScope: _scopeFromPickerResult(result),
-      ),
-    );
-  }
-
-  Future<OperatorPickerResult?> openPicker(
-    BuildContext routeContext,
-    String? adminUid,
+  Widget buildFunction(
+    BuildContext context,
+    AdminHierarchyScopeIntent selectedScope,
+    AdminSetupWorkspaceSelection selection,
   ) {
-    return Navigator.of(routeContext).push<OperatorPickerResult?>(
-      MaterialPageRoute<OperatorPickerResult?>(
-        settings: const RouteSettings(name: '/admin/members/operator-picker'),
-        builder: (_) =>
-            OperatorPickerScreen(gateway: operatorGateway, adminUid: adminUid),
-      ),
-    );
-  }
+    final picked = _pickerResultFromScope(
+      selectedScope.toOperatorLocationScope(),
+      allowBusinessScope: true,
+    )!;
+    VoidCallback? openAccess;
+    if (handoff != null) {
+      openAccess = () => handoff.onSelectRoute(
+        AdminRouteIntent(
+          routeId: kAdminRolesHierarchySessionsRouteId,
+          hierarchyScope: selectedScope,
+        ),
+      );
+    }
 
-  if (source == null) {
-    // Test path: default to live edit affordances.
-    return _MembersAdminRouteShell(
-      gateway: gateway,
-      rolesGateway: rolesGateway,
-      actorUserId: 'demo-super-admin',
-      editingEnabled: true,
-      canEditSeededRoles: false,
-      adminUid: null,
-      initialPicked: initialPicked,
-      initialScope: initialScope,
-      openPicker: openPicker,
-      onOperatorPicked: rememberPickedOperator,
-      onOpenAccess: handoff == null ? null : openScopedAccess,
-      onBackToBusinessAccounts: _backToBusinessAccounts(context),
-    );
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
-      return _MembersAdminRouteShell(
+    Widget buildScreen({
+      required String actorUserId,
+      required bool canEdit,
+      required bool canEditSeededRoles,
+    }) {
+      return MembersAdminScreen(
+        key: ValueKey<String>('members-${selectedScope.cacheKey}'),
         gateway: gateway,
         rolesGateway: rolesGateway,
-        actorUserId: session?.uid ?? 'unknown',
+        actorUserId: actorUserId,
+        pickedOperator: picked,
         editingEnabled: canEdit,
-        canEditSeededRoles: _isAdminMfaFresh(session),
-        adminUid: session?.uid,
-        initialPicked: initialPicked,
-        initialScope: initialScope,
-        openPicker: openPicker,
-        onOperatorPicked: rememberPickedOperator,
-        onOpenAccess: handoff == null ? null : openScopedAccess,
-        onBackToBusinessAccounts: _backToBusinessAccounts(context),
+        canEditSeededRoles: canEditSeededRoles,
+        initialScope: selectedScope,
+        onOpenAccess: openAccess,
       );
-    },
+    }
+
+    if (source == null) {
+      return buildScreen(
+        actorUserId: 'demo-super-admin',
+        canEdit: true,
+        canEditSeededRoles: false,
+      );
+    }
+    return StreamBuilder<AdminAuthState>(
+      stream: source.stream,
+      initialData: source.current,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final session = state is AdminAuthAuthenticated ? state.session : null;
+        final canEdit =
+            session != null && session.roles.contains('super_admin');
+        return buildScreen(
+          actorUserId: session?.uid ?? 'unknown',
+          canEdit: canEdit,
+          canEditSeededRoles: _isAdminMfaFresh(session),
+        );
+      },
+    );
+  }
+
+  return AdminSetupWorkspace(
+    functionTitle: 'People, access, and roles',
+    description:
+        'Manage members, invites, role assignments, and access policy for the selected scope.',
+    operatorGateway: operatorGateway,
+    hierarchyGateway: rolesGateway,
+    initialScope: initialScope,
+    onBackToBusinessAccounts: onBackToBusinessAccounts,
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(
+              routeId: kAdminMembersRouteId,
+              hierarchyScope: scope,
+            ),
+          ),
+    functionBuilder: buildFunction,
   );
 }
 
+// ignore: unused_element
 class _MembersAdminRouteShell extends StatefulWidget {
   const _MembersAdminRouteShell({
     required this.gateway,
@@ -1300,6 +1672,90 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
   final initialScope = handoff?.effectiveHierarchyScope;
+  final onBackToBusinessAccounts = _backToBusinessAccounts(context);
+
+  Widget buildFunction(
+    BuildContext context,
+    AdminHierarchyScopeIntent selectedScope,
+    AdminSetupWorkspaceSelection selection,
+  ) {
+    final picked = _pickerResultFromScope(
+      selectedScope.toOperatorLocationScope(),
+      allowBusinessScope: true,
+    )!;
+
+    Widget buildScreen({
+      required String actorUserId,
+      required bool canEdit,
+      required bool canEditSeededRoles,
+    }) {
+      return RolesHierarchySessionsAdminScreen(
+        key: ValueKey<String>('rhs-${selectedScope.cacheKey}'),
+        gateway: gateway,
+        actorUserId: actorUserId,
+        pickedOperator: picked,
+        editingEnabled: canEdit,
+        canEditSeededRoles: canEditSeededRoles,
+        initialScope: selectedScope,
+        onBackToBusinessAccounts: onBackToBusinessAccounts,
+      );
+    }
+
+    if (source == null) {
+      return buildScreen(
+        actorUserId: 'demo-super-admin',
+        canEdit: true,
+        canEditSeededRoles: false,
+      );
+    }
+    return StreamBuilder<AdminAuthState>(
+      stream: source.stream,
+      initialData: source.current,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final session = state is AdminAuthAuthenticated ? state.session : null;
+        final canEdit =
+            session != null && session.roles.contains('super_admin');
+        return buildScreen(
+          actorUserId: session?.uid ?? 'unknown',
+          canEdit: canEdit,
+          canEditSeededRoles: _isAdminMfaFresh(session),
+        );
+      },
+    );
+  }
+
+  return AdminSetupWorkspace(
+    functionTitle: 'Access',
+    description:
+        'Review hierarchy, roles, permission policy, and active sessions for the selected scope.',
+    operatorGateway: operatorGateway,
+    hierarchyGateway: gateway,
+    initialScope: initialScope,
+    onBackToBusinessAccounts: onBackToBusinessAccounts,
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(
+              routeId: kAdminRolesHierarchySessionsRouteId,
+              hierarchyScope: scope,
+            ),
+          ),
+    functionBuilder: buildFunction,
+  );
+}
+
+// ignore: unused_element
+Widget _buildRolesHierarchySessionsLegacy(BuildContext context) {
+  final gateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
+  final onBackToBusinessAccounts = _backToBusinessAccounts(context);
   final initialPicked = _pickerResultFromScope(
     handoff?.operatorLocationScope ?? initialScope?.toOperatorLocationScope(),
     allowBusinessScope: true,
@@ -1338,9 +1794,10 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
       canEditSeededRoles: false,
       adminUid: null,
       initialPicked: initialPicked,
+      initialScope: initialScope,
       openPicker: openPicker,
       onOperatorPicked: rememberPickedOperator,
-      onBackToBusinessAccounts: _backToBusinessAccounts(context),
+      onBackToBusinessAccounts: onBackToBusinessAccounts,
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -1368,9 +1825,10 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
         canEditSeededRoles: canEditSeeded,
         adminUid: session?.uid,
         initialPicked: initialPicked,
+        initialScope: initialScope,
         openPicker: openPicker,
         onOperatorPicked: rememberPickedOperator,
-        onBackToBusinessAccounts: _backToBusinessAccounts(context),
+        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     },
   );
@@ -1384,6 +1842,7 @@ class _RolesHierarchySessionsRouteShell extends StatefulWidget {
     required this.canEditSeededRoles,
     required this.adminUid,
     required this.initialPicked,
+    required this.initialScope,
     required this.openPicker,
     required this.onOperatorPicked,
     required this.onBackToBusinessAccounts,
@@ -1395,6 +1854,7 @@ class _RolesHierarchySessionsRouteShell extends StatefulWidget {
   final bool canEditSeededRoles;
   final String? adminUid;
   final OperatorPickerResult? initialPicked;
+  final AdminHierarchyScopeIntent? initialScope;
   final Future<OperatorPickerResult?> Function(
     BuildContext context,
     String? adminUid,
@@ -1495,6 +1955,7 @@ class _RolesHierarchySessionsRouteShellState
       pickedOperator: picked,
       editingEnabled: widget.editingEnabled,
       canEditSeededRoles: widget.canEditSeededRoles,
+      initialScope: widget.initialScope,
       onChangeOperator: _openPicker,
       onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
     );
@@ -1502,6 +1963,102 @@ class _RolesHierarchySessionsRouteShellState
 }
 
 Widget _buildAuditedSupportActions(BuildContext context) {
+  final gateway = AdminConsoleServicesScope.auditedSupportActionsAdminGatewayOf(
+    context,
+  );
+  final sessionsGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
+  final onBackToBusinessAccounts = _backToBusinessAccounts(context);
+
+  Widget buildFunction(
+    BuildContext context,
+    AdminHierarchyScopeIntent selectedScope,
+    AdminSetupWorkspaceSelection selection,
+  ) {
+    final picked = _pickerResultFromScope(
+      selectedScope.toOperatorLocationScope(),
+      allowBusinessScope: true,
+    )!;
+
+    Widget buildScreen({
+      required String actorUserId,
+      required bool canEdit,
+      required bool canResetMfaFactors,
+      required bool canIssuePairedErasure,
+      required bool canExportAuditLog,
+    }) {
+      return AuditedSupportActionsAdminScreen(
+        key: ValueKey<String>('asa-${selectedScope.cacheKey}'),
+        gateway: gateway,
+        sessionsGateway: sessionsGateway,
+        actorUserId: actorUserId,
+        pickedOperator: picked,
+        editingEnabled: canEdit,
+        canResetMfaFactors: canResetMfaFactors,
+        canIssuePairedErasure: canIssuePairedErasure,
+        canExportAuditLog: canExportAuditLog,
+        hierarchyScope: selectedScope,
+        onBackToBusinessAccounts: onBackToBusinessAccounts,
+      );
+    }
+
+    if (source == null) {
+      return buildScreen(
+        actorUserId: 'demo-super-admin',
+        canEdit: true,
+        canResetMfaFactors: false,
+        canIssuePairedErasure: false,
+        canExportAuditLog: false,
+      );
+    }
+    return StreamBuilder<AdminAuthState>(
+      stream: source.stream,
+      initialData: source.current,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final session = state is AdminAuthAuthenticated ? state.session : null;
+        final canEdit =
+            session != null && session.roles.contains('super_admin');
+        final fresh = _isAdminMfaFresh(session);
+        return buildScreen(
+          actorUserId: session?.uid ?? 'unknown',
+          canEdit: canEdit,
+          canResetMfaFactors: fresh,
+          canIssuePairedErasure: fresh,
+          canExportAuditLog: fresh,
+        );
+      },
+    );
+  }
+
+  return AdminSetupWorkspace(
+    functionTitle: 'Security, audit, and sessions',
+    description:
+        'Review audit history, active sessions, and guarded support actions for the selected scope.',
+    operatorGateway: operatorGateway,
+    hierarchyGateway: sessionsGateway,
+    initialScope: initialScope,
+    onBackToBusinessAccounts: onBackToBusinessAccounts,
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(
+              routeId: kAdminAuditedSupportActionsRouteId,
+              hierarchyScope: scope,
+            ),
+          ),
+    functionBuilder: buildFunction,
+  );
+}
+
+// ignore: unused_element
+Widget _buildAuditedSupportActionsLegacy(BuildContext context) {
   final gateway = AdminConsoleServicesScope.auditedSupportActionsAdminGatewayOf(
     context,
   );
@@ -1737,48 +2294,78 @@ class _AuditedSupportActionsRouteShellState
 }
 
 Widget _buildDebugConsole(BuildContext context) {
-  // 11A.5 - full-content reveal is gated on `super_admin`. `ff_support`
-  // lands on the read-only meta view (no expand-to-full-content
-  // affordance); the diff still renders so support can audit recent
-  // request meta.
   final gateway = AdminConsoleServicesScope.debugConsoleGatewayOf(context);
   final hierarchyGateway =
       AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  final supportLogFilter = AdminRouteHandoff.maybeOf(context)?.supportLogFilter;
-  final supportLogScope = supportLogFilter?.effectiveHierarchyScope;
-  final onBackToBusinessAccounts = supportLogFilter == null
-      ? null
-      : _backToBusinessAccounts(context);
-  final initialFilter = RequestLogFilter(
-    operatorId: supportLogFilter?.effectiveOperatorId,
-    locationId: supportLogFilter?.effectiveLocationId,
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
   );
-  if (source == null) {
-    return DebugConsoleAdminScreen(
-      gateway: gateway,
-      hierarchyGateway: hierarchyGateway,
-      hierarchyScope: supportLogScope,
-      initialFilter: initialFilter,
-      onBackToBusinessAccounts: onBackToBusinessAccounts,
+  final supportLogFilter = handoff?.supportLogFilter;
+  final supportLogScope = supportLogFilter?.effectiveHierarchyScope;
+  final initialScope = supportLogScope ?? handoff?.effectiveHierarchyScope;
+  final onBackToBusinessAccounts = _backToBusinessAccounts(context);
+
+  Widget buildFunction(
+    BuildContext context,
+    AdminHierarchyScopeIntent selectedScope,
+    AdminSetupWorkspaceSelection selection,
+  ) {
+    final initialFilter = RequestLogFilter(
+      operatorId: selectedScope.operatorId,
+      locationId: selectedScope.locationId,
+      locationIds: selectedScope.isOrgUnitScope
+          ? selection.locationIds.toList(growable: false)
+          : null,
     );
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
+    if (source == null) {
       return DebugConsoleAdminScreen(
         gateway: gateway,
         hierarchyGateway: hierarchyGateway,
-        hierarchyScope: supportLogScope,
-        editingEnabled: canEdit,
+        hierarchyScope: selectedScope,
         initialFilter: initialFilter,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
-    },
+    }
+    return StreamBuilder<AdminAuthState>(
+      stream: source.stream,
+      initialData: source.current,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final session = state is AdminAuthAuthenticated ? state.session : null;
+        final canEdit =
+            session != null && session.roles.contains('super_admin');
+        return DebugConsoleAdminScreen(
+          gateway: gateway,
+          hierarchyGateway: hierarchyGateway,
+          hierarchyScope: selectedScope,
+          editingEnabled: canEdit,
+          initialFilter: initialFilter,
+        );
+      },
+    );
+  }
+
+  return AdminSetupWorkspace(
+    functionTitle: 'Support logs',
+    description:
+        'Review support-safe requests, relationship help, and account help for the selected scope.',
+    operatorGateway: operatorGateway,
+    hierarchyGateway: hierarchyGateway,
+    initialScope: initialScope,
+    onBackToBusinessAccounts: onBackToBusinessAccounts,
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(
+              routeId: kAdminDebugConsoleRouteId,
+              hierarchyScope: scope,
+              supportLogFilter: AdminSupportLogFilterIntent.fromHierarchyScope(
+                scope,
+              ),
+            ),
+          ),
+    functionBuilder: buildFunction,
   );
 }
 

@@ -67,12 +67,9 @@ void main() {
             request,
             guard,
             integrationAdminGateway: gatewayConfigured ? gateway : null,
-            integrationAdminActorResolver:
-                resolverConfigured ? resolver : null,
+            integrationAdminActorResolver: resolverConfigured ? resolver : null,
             now: () => clockNow,
-            adminCorsAllowList: const <String>[
-              'https://admin.forgeflow.app',
-            ],
+            adminCorsAllowList: const <String>['https://admin.forgeflow.app'],
           );
         } catch (_) {
           try {
@@ -82,8 +79,7 @@ void main() {
         }
       });
       final client = HttpClient();
-      final baseUri =
-          Uri.parse('http://${server.address.host}:${server.port}');
+      final baseUri = Uri.parse('http://${server.address.host}:${server.port}');
       return (
         server: server,
         client: client,
@@ -107,10 +103,7 @@ void main() {
             );
             expect(response.statusCode, equals(503));
             final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(
-              body['error'],
-              equals('integration_admin_not_configured'),
-            );
+            expect(body['error'], equals('integration_admin_not_configured'));
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -140,10 +133,51 @@ void main() {
             expect(response.statusCode, equals(403));
             final body = jsonDecode(response.body) as Map<String, Object?>;
             expect(body['error'], equals('permission_denied'));
-            final required =
-                (body['required_roles']! as List).cast<String>();
+            final required = (body['required_roles']! as List).cast<String>();
             expect(required, contains('super_admin'));
             expect(required, contains('ff_support'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.4 GET /v1/admin/integrations forwards selected hierarchy query',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeIntegrationAdminGateway();
+          const actorUuid = '11111111-1111-4111-8111-111111111111';
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: actorUuid,
+              firebaseUid: actorUuid,
+              operatorId: null,
+              locationId: null,
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final uri = ctx.baseUri
+                .resolve(adminIntegrationsListPath)
+                .replace(
+                  queryParameters: const <String, String>{
+                    'operator_id': 'op-a',
+                    'location_ids': 'loc-a,loc-b',
+                  },
+                );
+            final response = await _httpGet(
+              ctx.client,
+              uri,
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.lastOperatorId, equals('op-a'));
+            expect(gateway.lastLocationId, isNull);
+            expect(gateway.lastLocationIds, equals(<String>['loc-a', 'loc-b']));
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -250,77 +284,76 @@ void main() {
       },
     );
 
-    test('11A.4 POST .../rotate-anthropic forwards to gateway as super_admin',
-        () async {
-      await withRealHttp(() async {
-        final gateway = _FakeIntegrationAdminGateway();
-        gateway.rotateResult = <String, Object?>{
-          'row': <String, Object?>{
-            'credential_id': 'cred-new',
-            'key_kind': 'anthropic',
-            'masked_value': 'sk-a***1234',
-            'kms_secret_name': 'kms://stub/new-uuid',
-            'created_by': '11111111-1111-4111-8111-111111111111',
-            'updated_by': '11111111-1111-4111-8111-111111111111',
-            'rotated_at': '2026-05-01T12:00:00.000Z',
-          },
-          'plaintext_value': 'sk-ant-newvalue1234',
-        };
-        // Use a UUID-shaped firebase_uid so the resolver's echo
-        // fallback returns the same UUID as the resolved Postgres
-        // user_id.
-        const actorUuid = '11111111-1111-4111-8111-111111111111';
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: ProxyJwtClaims(
-            userId: actorUuid,
-            firebaseUid: actorUuid,
-            operatorId: null,
-            locationId: null,
-            roles: const <String>['super_admin'],
-            lastFreshAuthAt: freshAuthAt,
-          ),
-        );
-        try {
-          final response = await _httpJson(
-            ctx.client,
-            'POST',
-            ctx.baseUri.resolve(adminIntegrationsRotateAnthropicPath),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{
-              'plaintext_value': 'sk-ant-newvalue1234',
+    test(
+      '11A.4 POST .../rotate-anthropic forwards to gateway as super_admin',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeIntegrationAdminGateway();
+          gateway.rotateResult = <String, Object?>{
+            'row': <String, Object?>{
+              'credential_id': 'cred-new',
+              'key_kind': 'anthropic',
+              'masked_value': 'sk-a***1234',
+              'kms_secret_name': 'kms://stub/new-uuid',
+              'created_by': '11111111-1111-4111-8111-111111111111',
+              'updated_by': '11111111-1111-4111-8111-111111111111',
+              'rotated_at': '2026-05-01T12:00:00.000Z',
             },
+            'plaintext_value': 'sk-ant-newvalue1234',
+          };
+          // Use a UUID-shaped firebase_uid so the resolver's echo
+          // fallback returns the same UUID as the resolved Postgres
+          // user_id.
+          const actorUuid = '11111111-1111-4111-8111-111111111111';
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: ProxyJwtClaims(
+              userId: actorUuid,
+              firebaseUid: actorUuid,
+              operatorId: null,
+              locationId: null,
+              roles: const <String>['super_admin'],
+              lastFreshAuthAt: freshAuthAt,
+            ),
           );
-          expect(response.statusCode, equals(200));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          // Plaintext echoed ONCE on the rotation response.
-          expect(body['plaintext_value'], equals('sk-ant-newvalue1234'));
-          // Masked-value invariant on the row.
-          final row = (body['row'] as Map).cast<String, Object?>();
-          expect(row['masked_value'], equals('sk-a***1234'));
-          expect(gateway.rotateCalls, hasLength(1));
-          expect(
-            gateway.rotateCalls.single['key_kind'],
-            equals('anthropic'),
-          );
-          expect(
-            gateway.rotateCalls.single['plaintext_value'],
-            equals('sk-ant-newvalue1234'),
-          );
-          expect(gateway.lastReason, contains('admin.integrations.POST'));
-          // The reason string carries the verified Firebase UID for
-          // traceability, alongside the resolved Postgres user UUID
-          // on the gateway's actorUserId parameter.
-          expect(gateway.lastReason, contains(actorUuid));
-          // The gateway receives the resolved Postgres user UUID
-          // (UUID-backed audit attribution).
-          expect(gateway.lastActorUserId, equals(actorUuid));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(adminIntegrationsRotateAnthropicPath),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{
+                'plaintext_value': 'sk-ant-newvalue1234',
+              },
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            // Plaintext echoed ONCE on the rotation response.
+            expect(body['plaintext_value'], equals('sk-ant-newvalue1234'));
+            // Masked-value invariant on the row.
+            final row = (body['row'] as Map).cast<String, Object?>();
+            expect(row['masked_value'], equals('sk-a***1234'));
+            expect(gateway.rotateCalls, hasLength(1));
+            expect(gateway.rotateCalls.single['key_kind'], equals('anthropic'));
+            expect(
+              gateway.rotateCalls.single['plaintext_value'],
+              equals('sk-ant-newvalue1234'),
+            );
+            expect(gateway.lastReason, contains('admin.integrations.POST'));
+            // The reason string carries the verified Firebase UID for
+            // traceability, alongside the resolved Postgres user UUID
+            // on the gateway's actorUserId parameter.
+            expect(gateway.lastReason, contains(actorUuid));
+            // The gateway receives the resolved Postgres user UUID
+            // (UUID-backed audit attribution).
+            expect(gateway.lastActorUserId, equals(actorUuid));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test(
       '11A.4 POST .../rotate-anthropic with stale lastFreshAuthAt is 403 mfa_freshness_required',
@@ -637,36 +670,38 @@ void main() {
       },
     );
 
-    test('11A.4 POST .../rotate-azure-db rejects missing plaintext (400)',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp(
-          initialClaims: ProxyJwtClaims(
-            userId: '11111111-1111-4111-8111-111111111111',
-            firebaseUid: '11111111-1111-4111-8111-111111111111',
-            operatorId: null,
-            locationId: null,
-            roles: const <String>['super_admin'],
-            lastFreshAuthAt: freshAuthAt,
-          ),
-        );
-        try {
-          final response = await _httpJson(
-            ctx.client,
-            'POST',
-            ctx.baseUri.resolve(adminIntegrationsRotateAzureDbPath),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{},
+    test(
+      '11A.4 POST .../rotate-azure-db rejects missing plaintext (400)',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: ProxyJwtClaims(
+              userId: '11111111-1111-4111-8111-111111111111',
+              firebaseUid: '11111111-1111-4111-8111-111111111111',
+              operatorId: null,
+              locationId: null,
+              roles: const <String>['super_admin'],
+              lastFreshAuthAt: freshAuthAt,
+            ),
           );
-          expect(response.statusCode, equals(400));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], equals('missing_plaintext_value'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(adminIntegrationsRotateAzureDbPath),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{},
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('missing_plaintext_value'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test(
       '11A.4 POST rotate surfaces gateway validation error as a structured 4xx/5xx',
@@ -791,15 +826,24 @@ class _FakeIntegrationAdminGateway implements IntegrationAdminProxyGateway {
   Object? rotateRaises;
   String? lastActorUserId;
   String? lastReason;
+  String? lastOperatorId;
+  String? lastLocationId;
+  List<String>? lastLocationIds;
   final List<Map<String, Object?>> rotateCalls = <Map<String, Object?>>[];
 
   @override
   Future<Map<String, Object?>> listBundle({
     required String actorUserId,
     required String adminReason,
+    String? operatorId,
+    String? locationId,
+    List<String>? locationIds,
   }) async {
     lastActorUserId = actorUserId;
     lastReason = adminReason;
+    lastOperatorId = operatorId;
+    lastLocationId = locationId;
+    lastLocationIds = locationIds;
     return listResult;
   }
 

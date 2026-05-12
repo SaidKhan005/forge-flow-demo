@@ -1,4 +1,4 @@
-﻿// Phase 11A.6 - Observability dashboard surface.
+// Phase 11A.6 - Observability dashboard surface.
 //
 // Read-only operator-facing view of the cost-telemetry, dormancy,
 // margin, cap-event, graph, latency, and Cloud Run rows the
@@ -33,10 +33,12 @@ import '../../services/realtime/outbox_tripwire_evaluator.dart';
 import '../../theme/app_theme.dart';
 
 import '../admin_human_labels.dart';
+import '../admin_route_handoff.dart';
 import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
 import '../services/realtime_tripwire_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
+import '../widgets/admin_hierarchy_scope_notice.dart';
 import '../widgets/admin_run_check_controls.dart';
 
 class _TabSpec {
@@ -59,10 +61,14 @@ class ObservabilityAdminScreen extends StatefulWidget {
     super.key,
     required this.gateway,
     this.tripwireGateway,
+    this.hierarchyScope,
+    this.scopeLocationIds = const <String>{},
     @visibleForTesting this.now,
   });
 
   final ObservabilityAdminGateway gateway;
+  final AdminHierarchyScopeIntent? hierarchyScope;
+  final Set<String> scopeLocationIds;
 
   /// Phase 10a.4 — optional gateway for the Realtime bridge tripwire
   /// section. When wired, the manual run-check refreshes both the
@@ -145,6 +151,9 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
       final filter = _queryClassFilterController.text.trim();
       final request = ObservabilityFetchRequest(
         queryClassFilter: filter.isEmpty ? null : filter,
+        operatorId: widget.hierarchyScope?.operatorId,
+        locationId: widget.hierarchyScope?.locationId,
+        locationIds: widget.scopeLocationIds,
       );
       final envelope = await widget.gateway.fetch(request);
       if (!mounted) return;
@@ -193,8 +202,9 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
         setState(() => _tripwireError = error.message);
       } catch (error) {
         if (!mounted) return;
-        setState(() =>
-            _tripwireError = 'Could not load bridge tripwires: $error');
+        setState(
+          () => _tripwireError = 'Could not load bridge tripwires: $error',
+        );
       }
     }
   }
@@ -216,6 +226,11 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
               loading: _loading || _refreshing,
             ),
             const SizedBox(height: 12),
+            if (widget.hierarchyScope != null)
+              AdminHierarchyScopeNotice(
+                message:
+                    'Showing AI usage, cost, and reliability for ${widget.hierarchyScope!.displayLabel}. Hosting and knowledge graph signals stay platform-wide when they are not stored per business.',
+              ),
             if (_loadError != null)
               _ErrorBanner(
                 key: const Key('admin_observability_load_error'),
@@ -331,9 +346,9 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AdminPageHeader(
-      title: 'System metrics',
+      title: 'AI Metrics',
       subtitle:
-          'Review cost, usage limits, operator activity, relationships, and hosting status.',
+          'Review advisor usage, cost, limits, model activity, and hosting status.',
       compactBreakpoint: 720,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
@@ -421,7 +436,7 @@ class _ManualRunPrompt extends StatelessWidget {
     return AdminRunCheckPrompt(
       key: const Key('admin_observability_manual_prompt'),
       icon: Icons.insights_outlined,
-      title: 'Check system metrics',
+      title: 'Check AI Metrics',
       description:
           'Load the current staging view before comparing cost, usage, limits, and hosting signals.',
       buttonLabel: 'Run metrics check',
@@ -704,20 +719,18 @@ class _CostTab extends StatelessWidget {
         children: <Widget>[
           _SectionCard(
             keyName: 'admin_observability_section_cost_telemetry',
-            title: 'AI request cost by request group',
+            title: 'AI request cost by use case',
             subtitle:
-                'Shows cost by operator scope and readable request group. Use the exact request group ID when you need to narrow the table.',
+                'Shows estimated cost by operator scope and readable request type. Advanced filters include backend request groups for support work.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                _CostTelemetryFilterBar(
-                  controller: filterController,
+                _RequestGroupAdvancedPanel(
+                  filterController: filterController,
                   activeFilter: activeFilter,
-                  onApply: onApplyFilter,
-                  applying: filterApplying,
+                  onApplyFilter: onApplyFilter,
+                  filterApplying: filterApplying,
                 ),
-                const SizedBox(height: 8),
-                const _RequestGroupKey(),
                 const SizedBox(height: 8),
                 _CostTelemetryTruncationHint(envelope: envelope),
                 const SizedBox(height: 8),
@@ -725,7 +738,7 @@ class _CostTab extends StatelessWidget {
                   const _EmptyState(
                     keyName: 'admin_observability_cost_telemetry_empty',
                     label:
-                        'No cost rows in this window, or the request group ID filter excluded every row.',
+                        'No cost rows in this window, or the advanced filter excluded every row.',
                   )
                 else
                   _CostTelemetryTable(rows: envelope.costTelemetry),
@@ -759,7 +772,7 @@ class _CostTab extends StatelessWidget {
           ),
           _SectionCard(
             keyName: 'admin_observability_section_model_mix',
-            title: 'Model use by request group',
+            title: 'Model use by use case',
             subtitle:
                 'Shows how much work is routed to fast, standard, or more detailed models. Higher detailed-model share can increase cost.',
             child: envelope.modelMix.isEmpty
@@ -813,10 +826,41 @@ class _CostTab extends StatelessWidget {
   }
 }
 
-/// Filter bar above the cost-telemetry table. The text field accepts
-/// a single `query_class` value (e.g. `advisor_qa`); applying the
-/// filter re-fetches the envelope through the gateway with the
-/// scope narrowed server-side.
+class _RequestGroupAdvancedPanel extends StatelessWidget {
+  const _RequestGroupAdvancedPanel({
+    required this.filterController,
+    required this.activeFilter,
+    required this.onApplyFilter,
+    required this.filterApplying,
+  });
+
+  final TextEditingController filterController;
+  final String? activeFilter;
+  final Future<void> Function() onApplyFilter;
+  final bool filterApplying;
+
+  @override
+  Widget build(BuildContext context) {
+    return _AdvancedDetails(
+      keyName: 'admin_observability_request_group_advanced',
+      title: 'Advanced request group filters',
+      children: <Widget>[
+        _CostTelemetryFilterBar(
+          controller: filterController,
+          activeFilter: activeFilter,
+          onApply: onApplyFilter,
+          applying: filterApplying,
+        ),
+        const SizedBox(height: 8),
+        const _RequestGroupKey(),
+      ],
+    );
+  }
+}
+
+/// Advanced filter bar above the cost-telemetry table. The text field accepts
+/// a single backend request group value (for example `advisor_qa`); applying
+/// the filter re-fetches the envelope with the scope narrowed server-side.
 class _CostTelemetryFilterBar extends StatelessWidget {
   const _CostTelemetryFilterBar({
     required this.controller,
@@ -844,7 +888,7 @@ class _CostTelemetryFilterBar extends StatelessWidget {
             style: AppTextStyles.mono11(color: AppColors.textPrimary),
             decoration: InputDecoration(
               isDense: true,
-              hintText: 'Filter by request group ID, for example wf_pl',
+              hintText: 'Filter by backend request group, for example wf_pl',
               hintStyle: AppTextStyles.mono10(color: AppColors.textMuted),
               filled: true,
               fillColor: AppColors.backgroundSurface,
@@ -892,7 +936,7 @@ class _CostTelemetryFilterBar extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              'Request group ID: $activeFilter',
+              'Advanced filter active: $activeFilter',
               style: AppTextStyles.mono10(
                 color: AppColors.textMuted,
               ).copyWith(fontWeight: FontWeight.w600),
@@ -924,7 +968,7 @@ class _RequestGroupKey extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Request group ID key',
+            'Backend request group key',
             style: AppTextStyles.body13(
               color: AppColors.textPrimary,
             ).copyWith(fontWeight: FontWeight.w700),
@@ -984,7 +1028,7 @@ class _CostTelemetryTruncationHint extends StatelessWidget {
     final truncated = envelope.costTelemetryTruncated;
     final color = truncated ? AppColors.warning : AppColors.textMuted;
     final label = truncated
-        ? 'Showing $shown of $total rows. Refine the request group ID filter to narrow the scope.'
+        ? 'Showing $shown of $total rows. Open advanced filters to narrow the scope.'
         : 'Showing $shown of $total rows.';
     return Container(
       key: truncated
@@ -1034,9 +1078,9 @@ class _CostTelemetryTable extends StatelessWidget {
               Expanded(
                 flex: 2,
                 child: _HelpLabel(
-                  label: 'Request group',
+                  label: 'Use case',
                   message:
-                      'Human request type plus the exact request group ID used for filtering.',
+                      'Readable request type. Backend group values are in advanced filters.',
                 ),
               ),
               Expanded(
@@ -1075,17 +1119,14 @@ class _CostTelemetryTable extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
                           Text(
-                            row.businessName ??
-                                'Operator ID: ${row.operatorId}',
+                            row.businessName ?? 'Unnamed operator',
                             style: AppTextStyles.mono11(
                               color: AppColors.textPrimary,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
-                            'Location ID: ${row.locationId ?? 'Any'} - '
-                            'Staff ID: ${row.staffId ?? 'Any'} - '
-                            'Workflow ID: ${row.workflowId ?? 'Any'}',
+                            _costScopeSummary(row),
                             style: AppTextStyles.mono10(
                               color: AppColors.textMuted,
                             ),
@@ -1102,12 +1143,16 @@ class _CostTelemetryTable extends StatelessWidget {
                         children: <Widget>[
                           Text(
                             adminRequestUseCaseLabel(row.queryClass),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: AppTextStyles.body13(
                               color: AppColors.textPrimary,
                             ).copyWith(fontWeight: FontWeight.w700),
                           ),
                           Text(
                             _requestGroupCaption(row),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: AppTextStyles.mono10(
                               color: AppColors.textMuted,
                             ),
@@ -1169,10 +1214,10 @@ class _HitRateTile extends StatelessWidget {
     }
     return _MetricTileShell(
       label: adminRequestUseCaseLabel(entry.queryClass),
-      labelHelp: 'Request group measured for saved answer reuse.',
+      labelHelp: 'Use case measured for saved answer reuse.',
       value: '${(entry.hitRate * 100).toStringAsFixed(1)}%',
       caption:
-          'ID: ${entry.queryClass} - review below ${(entry.yellowThreshold * 100).toStringAsFixed(0)}% - '
+          'Review below ${(entry.yellowThreshold * 100).toStringAsFixed(0)}% - '
           'failing below ${(entry.redThreshold * 100).toStringAsFixed(0)}%',
       accent: color,
     );
@@ -1191,12 +1236,12 @@ class _ModelMixTile extends StatelessWidget {
         : AppColors.positive;
     return _MetricTileShell(
       label: adminRequestUseCaseLabel(entry.queryClass),
-      labelHelp: 'Request group whose model routing mix is shown.',
+      labelHelp: 'Use case whose model routing mix is shown.',
       value:
           'Haiku ${(entry.haikuShare * 100).toStringAsFixed(0)}% - '
           'Sonnet ${(entry.sonnetShare * 100).toStringAsFixed(0)}%',
       caption:
-          'ID: ${entry.queryClass} - detailed model target: ${(entry.sonnetShareCeiling * 100).toStringAsFixed(0)}%',
+          'Detailed model target: ${(entry.sonnetShareCeiling * 100).toStringAsFixed(0)}%',
       accent: color,
     );
   }
@@ -1214,10 +1259,9 @@ class _BatchModeShareTile extends StatelessWidget {
         : AppColors.neutral;
     return _MetricTileShell(
       label: adminRequestUseCaseLabel(entry.queryClass),
-      labelHelp: 'Request group measured for batch-processing share.',
+      labelHelp: 'Use case measured for batch-processing share.',
       value: '${(entry.batchShare * 100).toStringAsFixed(0)}%',
-      caption:
-          'ID: ${entry.queryClass} - target ${(entry.targetShare * 100).toStringAsFixed(0)}%',
+      caption: 'Target ${(entry.targetShare * 100).toStringAsFixed(0)}%',
       accent: color,
     );
   }
@@ -1290,7 +1334,7 @@ class _TopExpensiveList extends StatelessWidget {
               SizedBox(width: 10),
               Expanded(
                 child: _HelpLabel(
-                  label: 'Name or ID',
+                  label: 'Name',
                   message:
                       'The operator, staff member, or workflow using the most AI budget.',
                 ),
@@ -1525,8 +1569,7 @@ class _DormancyRow extends StatelessWidget {
                   style: AppTextStyles.mono14(color: AppColors.textPrimary),
                 ),
                 Text(
-                  'Operator ID: ${entry.operatorId} - AI plan: '
-                  '${entry.subscriptionTier ?? 'Unknown'}',
+                  'AI plan: ${entry.subscriptionTier ?? 'Unknown'}',
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
                 Text(
@@ -1619,8 +1662,7 @@ class _MarginRow extends StatelessWidget {
                   style: AppTextStyles.mono14(color: AppColors.textPrimary),
                 ),
                 Text(
-                  'AI plan: ${entry.subscriptionTier} - Operator ID: '
-                  '${entry.operatorId}',
+                  'AI plan: ${entry.subscriptionTier}',
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
               ],
@@ -1722,8 +1764,7 @@ class _CapEventsHeader extends StatelessWidget {
             flex: 3,
             child: _HelpLabel(
               label: 'Operator / request / time',
-              message:
-                  'Operator, request group, and time that hit a usage limit.',
+              message: 'Operator, use case, and time that hit a usage limit.',
             ),
           ),
           Expanded(
@@ -1764,7 +1805,7 @@ class _CapEventRow extends StatelessWidget {
               children: <Widget>[
                 Text(
                   '${event.businessName} - '
-                  '${adminRequestUseCaseLabelWithId(event.queryClass)}',
+                  '${adminRequestUseCaseLabel(event.queryClass)}',
                   style: AppTextStyles.mono11(color: AppColors.textPrimary),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1927,7 +1968,7 @@ class _CloudRunTab extends StatelessWidget {
             keyName: 'admin_observability_section_route_latency',
             title: 'Service response time',
             subtitle:
-                'Median, 95th percentile, and 99th percentile response time with server-error rate for each route.',
+                'Median, 95th percentile, and 99th percentile response time with server-error rate for each service area.',
             child: envelope.routeLatency.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_route_latency_empty',
@@ -1943,9 +1984,9 @@ class _CloudRunTab extends StatelessWidget {
                             Expanded(
                               flex: 4,
                               child: _HelpLabel(
-                                label: 'Route',
+                                label: 'Service area',
                                 message:
-                                    'API route or service path being measured.',
+                                    'Readable service area being measured. Route paths are in advanced details.',
                               ),
                             ),
                             Expanded(
@@ -2003,9 +2044,9 @@ class _CloudRunTab extends StatelessWidget {
                               Expanded(
                                 flex: 4,
                                 child: Text(
-                                  row.route,
+                                  _serviceRouteLabel(row.route),
                                   overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.mono11(
+                                  style: AppTextStyles.body13(
                                     color: AppColors.textPrimary,
                                   ),
                                 ),
@@ -2051,6 +2092,7 @@ class _CloudRunTab extends StatelessWidget {
                             ],
                           ),
                         ),
+                      _RouteLatencyAdvancedDetails(rows: envelope.routeLatency),
                     ],
                   ),
           ),
@@ -2058,7 +2100,7 @@ class _CloudRunTab extends StatelessWidget {
             keyName: 'admin_observability_section_cloud_run_instances',
             title: 'Hosting capacity',
             subtitle:
-                'Active hosting instance counts and the deployed version currently serving traffic.',
+                'Active hosting instance counts for each service area. Deployed versions are in advanced details.',
             child: envelope.cloudRun.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_cloud_run_empty',
@@ -2091,14 +2133,13 @@ class _CloudRunTab extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: <Widget>[
                                     Text(
-                                      svc.serviceName,
-                                      style: AppTextStyles.mono14(
+                                      _hostingServiceLabel(svc.serviceName),
+                                      style: AppTextStyles.body14(
                                         color: AppColors.textPrimary,
-                                        weight: FontWeight.w700,
-                                      ),
+                                      ).copyWith(fontWeight: FontWeight.w700),
                                     ),
                                     Text(
-                                      'Running version: ${svc.revisionId}',
+                                      _hostingCapacityLabel(svc),
                                       style: AppTextStyles.mono10(
                                         color: AppColors.textMuted,
                                       ),
@@ -2118,19 +2159,13 @@ class _CloudRunTab extends StatelessWidget {
                                         weight: FontWeight.w700,
                                       ),
                                     ),
-                                    Text(
-                                      'Min ${svc.minInstances} / max '
-                                      '${svc.maxInstances}',
-                                      style: AppTextStyles.mono10(
-                                        color: AppColors.textMuted,
-                                      ),
-                                    ),
                                   ],
                                 ),
                               ),
                             ],
                           ),
                         ),
+                      _HostingAdvancedDetails(services: envelope.cloudRun),
                     ],
                   ),
           ),
@@ -2152,17 +2187,16 @@ class _CloudRunHeader extends StatelessWidget {
           Expanded(
             flex: 3,
             child: _HelpLabel(
-              label: 'Service / version',
+              label: 'Service area',
               message:
-                  'Cloud service and deployed version currently serving traffic.',
+                  'Readable hosting service area. Deployed versions are in advanced details.',
             ),
           ),
           Expanded(
             flex: 2,
             child: _HelpLabel(
-              label: 'Active / min / max',
-              message:
-                  'Current active instances plus configured minimum and maximum capacity.',
+              label: 'Active',
+              message: 'Current active hosting instances.',
               textAlign: TextAlign.right,
             ),
           ),
@@ -2188,12 +2222,145 @@ String _costRowKey(CostTelemetryEntry row) =>
 
 // ── Shared building blocks ──────────────────────────────────────────
 
-String _requestGroupCaption(CostTelemetryEntry row) {
-  if (row.usageClass == row.queryClass) {
-    return 'ID: ${row.queryClass}';
+class _RouteLatencyAdvancedDetails extends StatelessWidget {
+  const _RouteLatencyAdvancedDetails({required this.rows});
+
+  final List<RouteLatencyEntry> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return _AdvancedDetails(
+      keyName: 'admin_observability_route_latency_advanced',
+      title: 'Advanced route details',
+      children: <Widget>[
+        for (final row in rows)
+          _AdvancedDetailRow(
+            label: _serviceRouteLabel(row.route),
+            value: row.route,
+          ),
+      ],
+    );
   }
-  return 'Use case ID: ${row.usageClass} - request group ID: ${row.queryClass}';
 }
+
+class _HostingAdvancedDetails extends StatelessWidget {
+  const _HostingAdvancedDetails({required this.services});
+
+  final List<CloudRunInstanceMetric> services;
+
+  @override
+  Widget build(BuildContext context) {
+    return _AdvancedDetails(
+      keyName: 'admin_observability_hosting_advanced',
+      title: 'Advanced hosting details',
+      children: <Widget>[
+        for (final svc in services)
+          _AdvancedDetailRow(
+            label: _hostingServiceLabel(svc.serviceName),
+            value:
+                '${svc.serviceName} - revision ${svc.revisionId} - min ${svc.minInstances} / max ${svc.maxInstances}',
+          ),
+      ],
+    );
+  }
+}
+
+class _AdvancedDetails extends StatelessWidget {
+  const _AdvancedDetails({
+    required this.keyName,
+    required this.title,
+    required this.children,
+  });
+
+  final String keyName;
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: Material(
+        type: MaterialType.transparency,
+        child: ExpansionTile(
+          key: Key(keyName),
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(top: 8, bottom: 4),
+          title: Text(
+            title,
+            style: AppTextStyles.body12(
+              color: AppColors.textSecondary,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
+          children: children,
+        ),
+      ),
+    );
+  }
+}
+
+class _AdvancedDetailRow extends StatelessWidget {
+  const _AdvancedDetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 180,
+            child: Text(
+              label,
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: AppTextStyles.mono10(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _costScopeSummary(CostTelemetryEntry row) {
+  final parts = <String>[];
+  parts.add(row.locationId == null ? 'All locations' : 'One location');
+  parts.add(row.staffId == null ? 'All staff' : 'One staff member');
+  parts.add(row.workflowId == null ? 'All workflows' : 'One workflow');
+  return parts.join(' - ');
+}
+
+String _requestGroupCaption(CostTelemetryEntry row) {
+  return adminRequestUseCaseDescription(row.queryClass);
+}
+
+String _serviceRouteLabel(String route) {
+  final lower = route.toLowerCase();
+  if (lower.contains('advisor')) return 'Advisor answers';
+  if (lower.contains('coach')) return 'Coaching help';
+  if (lower.contains('workflow')) return 'Workflow service';
+  if (lower.contains('admin')) return 'Admin service';
+  return 'Service endpoint';
+}
+
+String _hostingServiceLabel(String serviceName) {
+  final lower = serviceName.toLowerCase();
+  if (lower.contains('advisor')) return 'Advisor service';
+  if (lower.contains('admin')) return 'Admin service';
+  return 'Hosting service';
+}
+
+String _hostingCapacityLabel(CloudRunInstanceMetric svc) =>
+    'Autoscaling range ${svc.minInstances}-${svc.maxInstances} instances';
 
 class _SectionCard extends StatelessWidget {
   const _SectionCard({
@@ -2434,7 +2601,8 @@ class _BridgeTripwiresSection extends StatelessWidget {
                   style: AppTextStyles.display16(color: AppColors.textPrimary),
                 ),
               ),
-              if (snapshot != null) _BridgeTripwirePill(status: snapshot!.status),
+              if (snapshot != null)
+                _BridgeTripwirePill(status: snapshot!.status),
             ],
           ),
           const SizedBox(height: 4),

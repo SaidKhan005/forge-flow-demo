@@ -1,16 +1,17 @@
 // Phase 11A.5 - Debug console admin surface (per-operator request log).
 //
 // Read-only operator-facing console for the proxy `proxy_requests`
-// projection. Three tabs reflect the launch-slice scope and the two
-// future plug-ins:
+// projection. Three tabs reflect the support workflow:
 //
 //   * Request log - live filterable / searchable view of recent
 //                   proxy requests. Meta-only by default; expand-row
 //                   reveals the full content payload only when the
 //                   operator's `feature_flags` opt-in is on AND the
 //                   actor holds `super_admin`.
-//   * Graph debug - stub for 11A.3.x. Shows the 501-style banner.
-//   * MFA diagnostics - stub for 9.UX.1a. Shows the 501-style banner.
+//   * Relationship Help - typed relationship-review / knowledge-link
+//                   support requests, filterable by exact use-case ID.
+//   * Account Help - typed account / auth / MFA / session support
+//                   requests, filterable by exact use-case ID.
 //
 // Live-tail is OFF by default. When toggled on, the screen polls
 // `tailRecent` every [kDebugConsoleTailPollInterval] seconds and
@@ -53,8 +54,9 @@ import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 
 const String _kRequestLogTab = 'request_log';
-const String _kGraphDebugTab = 'graph_debug';
-const String _kMfaDiagnosticsTab = 'mfa_diagnostics';
+const String _kRelationshipHelpTab = 'relationship_help';
+const String _kAccountHelpTab = 'account_help';
+const int _kMaxOrgUnitSupportLogLocationIds = 100;
 
 class DebugConsoleAdminScreen extends StatefulWidget {
   const DebugConsoleAdminScreen({
@@ -111,15 +113,25 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
   DateTime? _lastRefreshed;
 
   List<RequestLogEntry> _entries = const <RequestLogEntry>[];
+  List<RequestLogEntry> _relationshipHelpEntries = const <RequestLogEntry>[];
+  List<RequestLogEntry> _accountHelpEntries = const <RequestLogEntry>[];
   List<FullContentOptIn> _optIns = const <FullContentOptIn>[];
 
   late RequestLogFilter _filter;
+  RequestLogFilter _relationshipHelpFilter = const RequestLogFilter();
+  RequestLogFilter _accountHelpFilter = const RequestLogFilter();
+  String? _relationshipHelpUseCase;
+  String? _accountHelpUseCase;
   RequestLogFilter? _serverFilter;
   bool _refreshQueued = false;
   List<String>? _scopeLocationIds;
   bool _scopeResolving = false;
   String? _scopeResolutionError;
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _relationshipHelpSearchController =
+      TextEditingController();
+  final TextEditingController _accountHelpSearchController =
+      TextEditingController();
   final Set<String> _expanded = <String>{};
 
   bool _liveTailOn = false;
@@ -153,6 +165,8 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     _tabs.dispose();
     _tailTimer?.cancel();
     _searchController.dispose();
+    _relationshipHelpSearchController.dispose();
+    _accountHelpSearchController.dispose();
     super.dispose();
   }
 
@@ -163,25 +177,43 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     return false;
   }
 
-  RequestLogFilter get _effectiveFilter {
+  RequestLogFilter get _effectiveFilter => _scopeFilter(_filter);
+
+  RequestLogFilter _effectiveSupportFilter(SupportHelpSurface surface) {
+    return _scopeFilter(
+      surface == SupportHelpSurface.relationship
+          ? _relationshipHelpFilter
+          : _accountHelpFilter,
+    );
+  }
+
+  RequestLogFilter _scopeFilter(RequestLogFilter base) {
     final scope = widget.hierarchyScope;
-    if (scope == null) return _filter;
+    if (scope == null) return base;
     switch (scope.scopeType) {
       case AdminHierarchyScopeType.business:
-        return _filter.copyWith(operatorId: scope.operatorId);
+        return base.copyWith(operatorId: scope.operatorId);
       case AdminHierarchyScopeType.location:
-        return _filter.copyWith(
+        return base.copyWith(
           operatorId: scope.operatorId,
           locationId: scope.locationId,
           locationIds: null,
         );
       case AdminHierarchyScopeType.orgUnit:
         final locationIds = _scopeLocationIds ?? const <String>[];
-        return _filter.copyWith(
+        return base.copyWith(
           operatorId: scope.operatorId,
           locationIds: List<String>.unmodifiable(locationIds),
         );
     }
+  }
+
+  bool get _orgUnitScopeBlocked {
+    final scope = widget.hierarchyScope;
+    if (scope == null || !scope.isOrgUnitScope) return false;
+    if (_scopeResolving) return true;
+    if (_scopeResolutionError != null) return true;
+    return _scopeLocationIds == null;
   }
 
   void _startScopeResolution() {
@@ -225,6 +257,15 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
         for (final location in locations)
           if (coveredUnitIds.contains(location.orgUnitId)) location.locationId,
       ]..sort();
+      if (locationIds.length > _kMaxOrgUnitSupportLogLocationIds) {
+        setState(() {
+          _scopeLocationIds = const <String>[];
+          _scopeResolving = false;
+          _scopeResolutionError =
+              'This org unit covers ${locationIds.length} locations. Support logs cap explicit location filters at $_kMaxOrgUnitSupportLogLocationIds, so choose a smaller org unit or the business scope.';
+        });
+        return;
+      }
       setState(() {
         _scopeLocationIds = List<String>.unmodifiable(locationIds);
         _scopeResolving = false;
@@ -271,7 +312,22 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
       _refreshQueued = true;
       return;
     }
+    if (_orgUnitScopeBlocked) {
+      setState(() {
+        _entries = const <RequestLogEntry>[];
+        _relationshipHelpEntries = const <RequestLogEntry>[];
+        _accountHelpEntries = const <RequestLogEntry>[];
+        _initialLoading = false;
+        _refreshing = false;
+        _loadError = null;
+      });
+      return;
+    }
     final requestFilter = _effectiveFilter;
+    final relationshipFilter = _effectiveSupportFilter(
+      SupportHelpSurface.relationship,
+    );
+    final accountFilter = _effectiveSupportFilter(SupportHelpSurface.account);
     setState(() {
       _refreshing = true;
       if (_entries.isEmpty) _initialLoading = true;
@@ -281,11 +337,23 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
       final results = await Future.wait(<Future<Object>>[
         widget.gateway.listRequests(requestFilter),
         widget.gateway.listFullContentOptIns(),
+        widget.gateway.listSupportHelpRequests(
+          SupportHelpSurface.relationship,
+          relationshipFilter,
+          supportUseCaseId: _relationshipHelpUseCase,
+        ),
+        widget.gateway.listSupportHelpRequests(
+          SupportHelpSurface.account,
+          accountFilter,
+          supportUseCaseId: _accountHelpUseCase,
+        ),
       ]);
       if (!mounted) return;
       setState(() {
         _entries = results[0] as List<RequestLogEntry>;
         _optIns = results[1] as List<FullContentOptIn>;
+        _relationshipHelpEntries = results[2] as List<RequestLogEntry>;
+        _accountHelpEntries = results[3] as List<RequestLogEntry>;
         _serverFilter = requestFilter;
         _initialLoading = false;
         _loadError = null;
@@ -341,6 +409,48 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
   void _onSearchChanged(String value) {
     final next = value.trim();
     _onFilterChanged(_filter.copyWith(searchText: next.isEmpty ? null : next));
+  }
+
+  void _onSupportFilterChanged(
+    SupportHelpSurface surface,
+    RequestLogFilter next,
+  ) {
+    setState(() {
+      switch (surface) {
+        case SupportHelpSurface.relationship:
+          _relationshipHelpFilter = next;
+          break;
+        case SupportHelpSurface.account:
+          _accountHelpFilter = next;
+          break;
+      }
+    });
+    unawaited(_refresh());
+  }
+
+  void _onSupportSearchChanged(SupportHelpSurface surface, String value) {
+    final next = value.trim();
+    final filter = surface == SupportHelpSurface.relationship
+        ? _relationshipHelpFilter
+        : _accountHelpFilter;
+    _onSupportFilterChanged(
+      surface,
+      filter.copyWith(searchText: next.isEmpty ? null : next),
+    );
+  }
+
+  void _onSupportUseCaseChanged(SupportHelpSurface surface, String? useCaseId) {
+    setState(() {
+      switch (surface) {
+        case SupportHelpSurface.relationship:
+          _relationshipHelpUseCase = useCaseId;
+          break;
+        case SupportHelpSurface.account:
+          _accountHelpUseCase = useCaseId;
+          break;
+      }
+    });
+    unawaited(_refresh());
   }
 
   bool _filterCovers(RequestLogFilter loaded, RequestLogFilter requested) {
@@ -462,15 +572,15 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
               tabs: const <Widget>[
                 Tab(
                   key: Key('admin_debug_console_tab_$_kRequestLogTab'),
-                  text: 'Requests',
+                  text: 'All requests',
                 ),
                 Tab(
-                  key: Key('admin_debug_console_tab_$_kGraphDebugTab'),
-                  text: 'Relationship help',
+                  key: Key('admin_debug_console_tab_$_kRelationshipHelpTab'),
+                  text: 'Relationship Help',
                 ),
                 Tab(
-                  key: Key('admin_debug_console_tab_$_kMfaDiagnosticsTab'),
-                  text: 'Account help',
+                  key: Key('admin_debug_console_tab_$_kAccountHelpTab'),
+                  text: 'Account Help',
                 ),
               ],
             ),
@@ -506,19 +616,63 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
                     onToggleLiveTail: _toggleLiveTail,
                     onRunRefresh: _refresh,
                   ),
-                  const _StubTab(
-                    key: Key('admin_debug_console_stub_$_kGraphDebugTab'),
+                  _SupportHelpTab(
+                    key: const Key('admin_debug_console_relationship_help_tab'),
+                    surface: SupportHelpSurface.relationship,
                     title: 'Relationship help',
-                    badge: 'Coming soon',
+                    icon: Icons.hub_outlined,
+                    entries: _relationshipHelpEntries,
+                    filter: _relationshipHelpFilter,
+                    selectedUseCaseId: _relationshipHelpUseCase,
+                    searchController: _relationshipHelpSearchController,
+                    loading: _initialLoading || _refreshing,
+                    loadError: _loadError,
+                    onFilterChanged: (next) => _onSupportFilterChanged(
+                      SupportHelpSurface.relationship,
+                      next,
+                    ),
+                    onSearchChanged: (value) => _onSupportSearchChanged(
+                      SupportHelpSurface.relationship,
+                      value,
+                    ),
+                    onUseCaseChanged: (value) => _onSupportUseCaseChanged(
+                      SupportHelpSurface.relationship,
+                      value,
+                    ),
+                    onRunRefresh: _refresh,
+                    emptyBody:
+                        'No relationship review requests match the current filters.',
                     body:
-                        'Relationship diagnostics are not wired here yet. Use Corpus > Relationship review for the current review workflow.',
+                        'Typed view of relationship review, knowledge-link, and corpus relationship support requests for the selected scope.',
                   ),
-                  const _StubTab(
-                    key: Key('admin_debug_console_stub_$_kMfaDiagnosticsTab'),
+                  _SupportHelpTab(
+                    key: const Key('admin_debug_console_account_help_tab'),
+                    surface: SupportHelpSurface.account,
                     title: 'Account help',
-                    badge: 'Coming soon',
+                    icon: Icons.manage_accounts_outlined,
+                    entries: _accountHelpEntries,
+                    filter: _accountHelpFilter,
+                    selectedUseCaseId: _accountHelpUseCase,
+                    searchController: _accountHelpSearchController,
+                    loading: _initialLoading || _refreshing,
+                    loadError: _loadError,
+                    onFilterChanged: (next) => _onSupportFilterChanged(
+                      SupportHelpSurface.account,
+                      next,
+                    ),
+                    onSearchChanged: (value) => _onSupportSearchChanged(
+                      SupportHelpSurface.account,
+                      value,
+                    ),
+                    onUseCaseChanged: (value) => _onSupportUseCaseChanged(
+                      SupportHelpSurface.account,
+                      value,
+                    ),
+                    onRunRefresh: _refresh,
+                    emptyBody:
+                        'No account support requests match the current filters.',
                     body:
-                        'Account diagnostics are not wired here yet. This tab will cover authenticator apps, pending removal requests, notifications, and account mismatch checks.',
+                        'Typed view of account, sign-in, MFA, session, notification, and removal support requests for the selected scope.',
                   ),
                 ],
               ),
@@ -550,7 +704,7 @@ class _Header extends StatelessWidget {
     return AdminPageHeader(
       title: 'Support logs',
       subtitle:
-          'Translate recent backend requests into support-safe details. Filter with exact IDs when you need a precise lookup.',
+          'Translate recent backend requests into support-safe details. Use precise references only when support needs a targeted lookup.',
       leading: onBackToBusinessAccounts == null
           ? null
           : AdminBusinessAccountsBackButton(
@@ -682,6 +836,7 @@ class _RequestLogTab extends StatelessWidget {
         SliverToBoxAdapter(
           child: _FilterBar(
             filter: filter,
+            hierarchyScope: hierarchyScope,
             scopeLocationIds: scopeLocationIds,
             searchController: searchController,
             onFilterChanged: onFilterChanged,
@@ -872,6 +1027,7 @@ class _ScopePill extends StatelessWidget {
 class _FilterBar extends StatelessWidget {
   const _FilterBar({
     required this.filter,
+    required this.hierarchyScope,
     required this.scopeLocationIds,
     required this.searchController,
     required this.onFilterChanged,
@@ -879,6 +1035,7 @@ class _FilterBar extends StatelessWidget {
   });
 
   final RequestLogFilter filter;
+  final AdminHierarchyScopeIntent? hierarchyScope;
   final List<String>? scopeLocationIds;
   final TextEditingController searchController;
   final ValueChanged<RequestLogFilter> onFilterChanged;
@@ -904,7 +1061,7 @@ class _FilterBar extends StatelessWidget {
             decoration: const InputDecoration(
               isDense: true,
               prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Search by request or retry ID',
+              hintText: 'Search by request or retry reference',
               border: OutlineInputBorder(),
             ),
           ),
@@ -925,9 +1082,10 @@ class _FilterBar extends StatelessWidget {
               ),
               _StringFilterChip(
                 keyName: const Key('admin_debug_console_filter_operator'),
-                label: 'Operator',
+                label: 'Business',
                 value: filter.operatorId,
-                hint: 'Type an operator ID, or open this view from Operators',
+                displayValue: _businessFilterLabel(filter.operatorId),
+                hint: 'Type an exact business ID for support lookup',
                 onChanged: (next) =>
                     onFilterChanged(filter.copyWith(operatorId: next)),
               ),
@@ -935,7 +1093,8 @@ class _FilterBar extends StatelessWidget {
                 keyName: const Key('admin_debug_console_filter_location'),
                 label: 'Location',
                 value: filter.locationId,
-                hint: 'Type a location ID, or open this view from a location',
+                displayValue: _locationFilterLabel(filter.locationId),
+                hint: 'Type an exact location ID for support lookup',
                 onChanged: (next) =>
                     onFilterChanged(filter.copyWith(locationId: next)),
               ),
@@ -946,8 +1105,9 @@ class _FilterBar extends StatelessWidget {
                 ),
               _StringFilterChip(
                 keyName: const Key('admin_debug_console_filter_usage_class'),
-                label: 'Request use case ID',
+                label: 'Request type',
                 value: filter.usageClass,
+                displayValue: _requestTypeFilterLabel(filter.usageClass),
                 hint: 'advisor_qa, coach_qa, wf_pl',
                 onChanged: (next) =>
                     onFilterChanged(filter.copyWith(usageClass: next)),
@@ -956,7 +1116,7 @@ class _FilterBar extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Tip: choose View logs from a business, org unit, or location to fill the exact filters automatically.',
+            'Tip: choose View logs from a business, org unit, or location to fill the scope filters automatically.',
             style: AppTextStyles.body12(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 10),
@@ -971,11 +1131,39 @@ class _FilterBar extends StatelessWidget {
       ),
     );
   }
+
+  String? _businessFilterLabel(String? value) {
+    if (value == null || value.isEmpty) return null;
+    final scope = hierarchyScope;
+    if (scope != null && value == scope.operatorId) {
+      return scope.operatorName ?? scope.displayLabel;
+    }
+    return 'Exact business filter';
+  }
+
+  String? _locationFilterLabel(String? value) {
+    if (value == null || value.isEmpty) return null;
+    final scope = hierarchyScope;
+    if (scope != null && value == scope.locationId) {
+      return scope.locationName ?? scope.displayLabel;
+    }
+    return 'Exact location filter';
+  }
+
+  String? _requestTypeFilterLabel(String? value) {
+    if (value == null || value.isEmpty) return null;
+    return adminRequestUseCaseLabel(value);
+  }
 }
 
 class _StatusFilterChip extends StatelessWidget {
-  const _StatusFilterChip({required this.value, required this.onChanged});
+  const _StatusFilterChip({
+    this.keyName = const Key('admin_debug_console_filter_status'),
+    required this.value,
+    required this.onChanged,
+  });
 
+  final Key keyName;
   final RequestLogStatus? value;
   final ValueChanged<RequestLogStatus?> onChanged;
 
@@ -985,7 +1173,7 @@ class _StatusFilterChip extends StatelessWidget {
         ? 'Status: any'
         : 'Status: ${_statusLabel(value!)}';
     return PopupMenuButton<RequestLogStatus?>(
-      key: const Key('admin_debug_console_filter_status'),
+      key: keyName,
       tooltip: 'Filter by status',
       onSelected: onChanged,
       itemBuilder: (_) => <PopupMenuEntry<RequestLogStatus?>>[
@@ -1009,8 +1197,13 @@ class _StatusFilterChip extends StatelessWidget {
 }
 
 class _TimeWindowFilterChip extends StatelessWidget {
-  const _TimeWindowFilterChip({required this.value, required this.onChanged});
+  const _TimeWindowFilterChip({
+    this.keyName = const Key('admin_debug_console_filter_window'),
+    required this.value,
+    required this.onChanged,
+  });
 
+  final Key keyName;
   final RequestLogTimeWindow? value;
   final ValueChanged<RequestLogTimeWindow?> onChanged;
 
@@ -1020,7 +1213,7 @@ class _TimeWindowFilterChip extends StatelessWidget {
         ? 'Window: any'
         : 'Window: ${requestLogTimeWindowLabel(value!)}';
     return PopupMenuButton<RequestLogTimeWindow?>(
-      key: const Key('admin_debug_console_filter_window'),
+      key: keyName,
       tooltip: 'Filter by time window',
       onSelected: onChanged,
       itemBuilder: (_) => <PopupMenuEntry<RequestLogTimeWindow?>>[
@@ -1044,6 +1237,7 @@ class _StringFilterChip extends StatefulWidget {
     required this.keyName,
     required this.label,
     required this.value,
+    this.displayValue,
     required this.hint,
     required this.onChanged,
   });
@@ -1051,6 +1245,7 @@ class _StringFilterChip extends StatefulWidget {
   final Key keyName;
   final String label;
   final String? value;
+  final String? displayValue;
   final String hint;
   final ValueChanged<String?> onChanged;
 
@@ -1064,7 +1259,7 @@ class _StringFilterChipState extends State<_StringFilterChip> {
     final v = widget.value;
     final label = (v == null || v.isEmpty)
         ? '${widget.label}: any'
-        : '${widget.label}: $v';
+        : '${widget.label}: ${widget.displayValue ?? v}';
     return InkWell(
       key: widget.keyName,
       onTap: () async {
@@ -1191,7 +1386,7 @@ class _RequestUseCaseKey extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Request use case ID key',
+            'Request type key',
             style: AppTextStyles.body13(
               color: AppColors.textPrimary,
             ).copyWith(fontWeight: FontWeight.w700),
@@ -1242,19 +1437,7 @@ class _KeyChip extends StatelessWidget {
         key: Key('admin_debug_console_use_case_filter_$id'),
         onPressed: onPressed,
         style: AdminButtonStyles.filter(active: active),
-        child: Text.rich(
-          TextSpan(
-            text: label,
-            children: <InlineSpan>[
-              TextSpan(
-                text: '  $id',
-                style: AppTextStyles.mono10(
-                  color: active ? AppColors.sunsetDark : AppColors.textMuted,
-                ),
-              ),
-            ],
-          ),
-        ),
+        child: Text(label),
       ),
     );
   }
@@ -1330,6 +1513,8 @@ class _RequestRow extends StatelessWidget {
     final canRevealFullContent =
         editingEnabled && optInOn && entry.fullContentPayload != null;
     final statusColor = _statusColor(entry.status);
+    final requestType = adminRequestUseCaseLabel(entry.usageClass);
+    final summary = _requestSummary(entry);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1356,8 +1541,8 @@ class _RequestRow extends StatelessWidget {
                   Expanded(
                     flex: 3,
                     child: Text(
-                      entry.requestId,
-                      style: AppTextStyles.mono11(
+                      requestType,
+                      style: AppTextStyles.body12(
                         color: AppColors.textPrimary,
                       ).copyWith(fontWeight: FontWeight.w600),
                       overflow: TextOverflow.ellipsis,
@@ -1366,8 +1551,8 @@ class _RequestRow extends StatelessWidget {
                   Expanded(
                     flex: 3,
                     child: Text(
-                      entry.idempotencyKey,
-                      style: AppTextStyles.mono10(
+                      summary,
+                      style: AppTextStyles.body12(
                         color: AppColors.textSecondary,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -1375,25 +1560,10 @@ class _RequestRow extends StatelessWidget {
                   ),
                   Expanded(
                     flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Text(
-                          adminRequestUseCaseLabel(entry.usageClass),
-                          style: AppTextStyles.body12(
-                            color: AppColors.textPrimary,
-                          ).copyWith(fontWeight: FontWeight.w700),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          entry.usageClass,
-                          style: AppTextStyles.mono8(
-                            color: AppColors.textMuted,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                    child: Text(
+                      _requestAge(entry.startedAt),
+                      style: AppTextStyles.body12(color: AppColors.textMuted),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   Container(
@@ -1432,6 +1602,8 @@ class _RequestRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
+                  _MetaRow(label: 'Request reference', value: entry.requestId),
+                  _MetaRow(label: 'Retry reference', value: entry.idempotencyKey),
                   _MetaRow(label: 'Operator ID', value: entry.operatorId),
                   _MetaRow(
                     label: 'Location ID',
@@ -1441,6 +1613,11 @@ class _RequestRow extends StatelessWidget {
                     label: 'Request use case',
                     value: adminRequestUseCaseLabelWithId(entry.usageClass),
                   ),
+                  if (_supportLogActorIdentity(entry).isNotEmpty)
+                    _MetaRow(
+                      label: 'Actor',
+                      value: _supportLogActorIdentity(entry),
+                    ),
                   _MetaRow(
                     label: 'Started',
                     value: adminHumanDateTime(entry.startedAt),
@@ -1489,6 +1666,27 @@ class _RequestRow extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static String _requestSummary(RequestLogEntry entry) {
+    final meta = entry.requestMeta;
+    final value =
+        meta['summary'] ??
+        meta['route'] ??
+        meta['path'] ??
+        meta['method'] ??
+        entry.idempotencyKey;
+    final text = value.toString().trim();
+    if (text.isEmpty) return 'Recent support request';
+    return text;
+  }
+
+  static String _requestAge(DateTime startedAt) {
+    final elapsed = DateTime.now().toUtc().difference(startedAt.toUtc());
+    if (elapsed.inMinutes < 1) return 'just now';
+    if (elapsed.inHours < 1) return '${elapsed.inMinutes} min ago';
+    if (elapsed.inDays < 1) return '${elapsed.inHours} hr ago';
+    return '${elapsed.inDays} d ago';
   }
 }
 
@@ -1613,82 +1811,391 @@ class _FullContentLockedBlock extends StatelessWidget {
   }
 }
 
-class _StubTab extends StatelessWidget {
-  const _StubTab({
+class _SupportHelpTab extends StatelessWidget {
+  const _SupportHelpTab({
     super.key,
+    required this.surface,
     required this.title,
-    required this.badge,
+    required this.icon,
+    required this.entries,
+    required this.filter,
+    required this.selectedUseCaseId,
+    required this.searchController,
+    required this.loading,
+    required this.loadError,
+    required this.onFilterChanged,
+    required this.onSearchChanged,
+    required this.onUseCaseChanged,
+    required this.onRunRefresh,
+    required this.emptyBody,
     required this.body,
   });
 
+  final SupportHelpSurface surface;
   final String title;
-  final String badge;
+  final IconData icon;
+  final List<RequestLogEntry> entries;
+  final RequestLogFilter filter;
+  final String? selectedUseCaseId;
+  final TextEditingController searchController;
+  final bool loading;
+  final String? loadError;
+  final ValueChanged<RequestLogFilter> onFilterChanged;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<String?> onUseCaseChanged;
+  final Future<void> Function() onRunRefresh;
+  final String emptyBody;
   final String body;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: AppColors.backgroundSurface,
-            border: Border.all(color: AppColors.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: <Widget>[
-                  const Icon(
-                    Icons.hourglass_empty,
-                    size: 16,
-                    color: AppColors.textMuted,
-                  ),
+    final rows = entries;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: AdminCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Icon(icon, size: 18, color: AppColors.sunsetDark),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            title,
+                            style: AppTextStyles.display20(
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            body,
+                            style: AppTextStyles.body13(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _SupportHelpCountPill(count: rows.length),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _SupportHelpFilterBar(
+                  surface: surface,
+                  filter: filter,
+                  selectedUseCaseId: selectedUseCaseId,
+                  searchController: searchController,
+                  onFilterChanged: onFilterChanged,
+                  onSearchChanged: onSearchChanged,
+                  onUseCaseChanged: onUseCaseChanged,
+                ),
+                const SizedBox(height: 14),
+                if (loadError != null)
+                  _ErrorBanner(message: loadError!)
+                else if (loading && rows.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.sunsetDark,
+                        ),
+                      ),
+                    ),
+                  )
+                else if (rows.isEmpty)
                   Text(
-                    title,
-                    style: AppTextStyles.display20(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  Container(
+                    emptyBody,
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
+                  )
+                else
+                  for (final entry in rows.take(8))
+                    _SupportHelpRequestRow(surface: surface, entry: entry),
+                if (rows.isEmpty && !loading && loadError == null) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
                     key: Key(
-                      'admin_debug_console_stub_badge_'
-                      '${title.toLowerCase().replaceAll(' ', '_')}',
+                      'admin_debug_console_${surface.name}_help_refresh',
                     ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.warning.withValues(alpha: 0.14),
-                      border: Border.all(color: AppColors.warning, width: 1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      badge,
-                      style: AppTextStyles.chipLabel(color: AppColors.warning),
-                    ),
+                    onPressed: onRunRefresh,
+                    style: AdminButtonStyles.secondary(),
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Refresh'),
                   ),
                 ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                body,
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+class _SupportHelpFilterBar extends StatelessWidget {
+  const _SupportHelpFilterBar({
+    required this.surface,
+    required this.filter,
+    required this.selectedUseCaseId,
+    required this.searchController,
+    required this.onFilterChanged,
+    required this.onSearchChanged,
+    required this.onUseCaseChanged,
+  });
+
+  final SupportHelpSurface surface;
+  final RequestLogFilter filter;
+  final String? selectedUseCaseId;
+  final TextEditingController searchController;
+  final ValueChanged<RequestLogFilter> onFilterChanged;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<String?> onUseCaseChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key('admin_debug_console_${surface.name}_help_filter_bar'),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          TextField(
+            key: Key('admin_debug_console_${surface.name}_help_search'),
+            controller: searchController,
+            onChanged: onSearchChanged,
+            decoration: const InputDecoration(
+              isDense: true,
+              prefixIcon: Icon(Icons.search, size: 18),
+              hintText: 'Search by request or retry reference',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              _StatusFilterChip(
+                keyName: Key(
+                  'admin_debug_console_${surface.name}_help_filter_status',
+                ),
+                value: filter.status,
+                onChanged: (next) =>
+                    onFilterChanged(filter.copyWith(status: next)),
+              ),
+              _TimeWindowFilterChip(
+                keyName: Key(
+                  'admin_debug_console_${surface.name}_help_filter_window',
+                ),
+                value: filter.timeWindow,
+                onChanged: (next) =>
+                    onFilterChanged(filter.copyWith(timeWindow: next)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: <Widget>[
+              _KeyChip(
+                label: 'All ${surface.label}',
+                id: 'all',
+                description: 'all typed ${surface.label.toLowerCase()} rows',
+                active: selectedUseCaseId == null,
+                onPressed: () => onUseCaseChanged(null),
+              ),
+              for (final useCase in supportHelpUseCasesFor(surface))
+                _KeyChip(
+                  label: useCase.label,
+                  id: useCase.id,
+                  description: useCase.description,
+                  active: selectedUseCaseId == useCase.id,
+                  onPressed: () => onUseCaseChanged(
+                    selectedUseCaseId == useCase.id ? null : useCase.id,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SupportHelpCountPill extends StatelessWidget {
+  const _SupportHelpCountPill({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.peacock.withValues(alpha: 0.12),
+        border: Border.all(color: AppColors.peacockDark, width: 1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '$count request${count == 1 ? '' : 's'}',
+        style: AppTextStyles.chipLabel(color: AppColors.peacockDark),
+      ),
+    );
+  }
+}
+
+class _SupportHelpRequestRow extends StatelessWidget {
+  const _SupportHelpRequestRow({required this.surface, required this.entry});
+
+  final SupportHelpSurface surface;
+  final RequestLogEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final route = _friendlyRoute(entry);
+    return Container(
+      key: Key(
+        'admin_debug_console_${surface.name}_help_row_${entry.requestId}',
+      ),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(
+            _statusIcon(entry.status),
+            size: 17,
+            color: _statusColor(entry.status),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  route,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${requestLogStatusLabel(entry.status)} - ${entry.latencyMs} ms - ${_timeAgo(entry.startedAt)}',
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
+                ),
+                if (_supportLogActorIdentity(entry).isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    _supportLogActorIdentity(entry),
+                    style: AppTextStyles.body12(color: AppColors.textSecondary),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _friendlyRoute(RequestLogEntry entry) {
+    final meta = entry.requestMeta;
+    final value =
+        meta['summary'] ??
+        meta['route'] ??
+        meta['path'] ??
+        meta['method'] ??
+        entry.usageClass;
+    final text = value.toString().trim();
+    if (text.isEmpty) return 'Support request';
+    return text;
+  }
+
+  static IconData _statusIcon(RequestLogStatus status) {
+    switch (status) {
+      case RequestLogStatus.success:
+        return Icons.check_circle_outline;
+      case RequestLogStatus.error:
+        return Icons.error_outline;
+      case RequestLogStatus.timeout:
+        return Icons.timer_off_outlined;
+      case RequestLogStatus.unknown:
+        return Icons.help_outline;
+    }
+  }
+
+  static Color _statusColor(RequestLogStatus status) {
+    switch (status) {
+      case RequestLogStatus.success:
+        return AppColors.positive;
+      case RequestLogStatus.error:
+        return AppColors.negative;
+      case RequestLogStatus.timeout:
+        return AppColors.warning;
+      case RequestLogStatus.unknown:
+        return AppColors.textMuted;
+    }
+  }
+
+  static String _timeAgo(DateTime startedAt) {
+    final elapsed = DateTime.now().toUtc().difference(startedAt.toUtc());
+    if (elapsed.inMinutes < 1) return 'just now';
+    if (elapsed.inHours < 1) return '${elapsed.inMinutes} min ago';
+    if (elapsed.inDays < 1) return '${elapsed.inHours} hr ago';
+    return '${elapsed.inDays} d ago';
+  }
+}
+
+String _supportLogActorIdentity(RequestLogEntry entry) {
+  final meta = entry.requestMeta;
+  final name = _metaString(meta, const <String>[
+    'actor_display_name',
+    'actor_name',
+    'display_name',
+  ]);
+  final role = _metaString(meta, const <String>[
+    'actor_role',
+    'actor_role_label',
+    'role_label',
+    'role',
+  ]);
+  final email = _metaString(meta, const <String>['actor_email', 'email']);
+  if (name == null && role == null && email == null) return '';
+  return <String>[
+    name ?? 'Actor unavailable',
+    role ?? 'role unavailable',
+    email ?? 'email unavailable',
+  ].join(' - ');
+}
+
+String? _metaString(Map<String, Object?> meta, List<String> keys) {
+  for (final key in keys) {
+    final raw = meta[key];
+    if (raw is String && raw.trim().isNotEmpty) return raw.trim();
+  }
+  return null;
 }
 
 class _EmptyState extends StatelessWidget {
