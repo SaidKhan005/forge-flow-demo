@@ -356,6 +356,69 @@ void main() {
       expect(audit.targetKind, equals('location'));
       expect(audit.targetId, equals('loc-1'));
     });
+
+    // Slice B1.b regression — the operator-location admin gateway is
+    // only reachable through the `super_admin`-gated proxy routes
+    // (`kFfOperatorLocationAdminRoles` in `advisor_proxy.dart`). Per
+    // the CLAUDE.md actor taxonomy (`user` = real human end-user,
+    // `forge_admin` = F&F support / super_admin acting
+    // cross-operator), every audit row this gateway writes must
+    // carry `actor_kind = 'forge_admin'` so the hash-chained
+    // `audit_logs` fan-out records honest attribution. Pinning the
+    // literal here guards against an accidental flip back to
+    // `'user'`, which would mislabel the row in both
+    // `auth_events_audit` and (post-cutover) `audit_logs`.
+    test(
+      'patchOperator records actor_kind=forge_admin (B1.b regression)',
+      () async {
+        final auditRepository = _RecordingSystemAuditRepository();
+        final operatorsRepository = _FakeOperatorsRepository(
+          updatedOperator: _operatorRow(),
+        );
+        final gateway = _operatorLocationGateway(
+          operatorsRepository: operatorsRepository,
+          auditRepository: auditRepository,
+        );
+
+        await gateway.patchOperator(
+          actorUserId: 'admin-user',
+          operatorId: 'op-1',
+          businessName: 'Renamed Operator',
+          adminReason: 'Support-requested rename',
+        );
+
+        expect(auditRepository.events, hasLength(1));
+        expect(auditRepository.events.single.actorKind, equals('forge_admin'));
+      },
+    );
+
+    test(
+      'addLocation records actor_kind=forge_admin (B1.b regression)',
+      () async {
+        final auditRepository = _RecordingSystemAuditRepository();
+        final locationsRepository = _FakeLocationsRepository(
+          insertedLocation: _locationRow(),
+        );
+        final gateway = _operatorLocationGateway(
+          locationsRepository: locationsRepository,
+          auditRepository: auditRepository,
+        );
+
+        await gateway.addLocation(
+          actorUserId: 'admin-user',
+          operatorId: 'op-1',
+          parentOrgUnitId: 'org-1',
+          name: 'North',
+          address: '1 Main',
+          timezone: 'America/Toronto',
+          businessDayRolloverHour: 4,
+          adminReason: 'Adding a reopened location',
+        );
+
+        expect(auditRepository.events, hasLength(1));
+        expect(auditRepository.events.single.actorKind, equals('forge_admin'));
+      },
+    );
   });
 
   group('Cloud Run entrypoint wiring', () {
@@ -518,11 +581,13 @@ class _FakeOperatorAdminsRepository extends OperatorAdminsRepository {
 class _RecordedSystemAuditEvent {
   const _RecordedSystemAuditEvent({
     required this.eventType,
+    required this.actorKind,
     required this.targetKind,
     required this.targetId,
   });
 
   final String eventType;
+  final String actorKind;
   final String? targetKind;
   final String? targetId;
 }
@@ -553,6 +618,7 @@ class _RecordingSystemAuditRepository extends AuthEventsAuditRepository {
     events.add(
       _RecordedSystemAuditEvent(
         eventType: eventType,
+        actorKind: actorKind,
         targetKind: targetKind,
         targetId: targetId,
       ),
