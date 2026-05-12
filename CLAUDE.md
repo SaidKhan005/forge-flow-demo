@@ -39,6 +39,7 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 - Feature lens audit: use `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` before broad feature work, settings work, route/schema changes, runtime-exposed behavior, or any implementation where hidden plumbing may matter.
 - Main chat is read-only across worktrees when worktrees are running. Tracker/memory/coordination edits on master OK.
 - Don't broaden scope. Don't update trackers during implementation unless asked. Report `Links updated: yes/no` if docs move.
+- **Agent-led slices: no auto-merge.** When work is delegated to a worktree agent, the agent's contract is `commit + push + open PR → STOP`. The agent must not merge, must not run `--no-verify` to bypass hooks, and must not update trackers. The orchestrator (main chat) audits the PR diff against contracts + slice intent, dispatches a follow-up agent if material gaps, and merges only when clean. Audit artifacts live in `docs/_audits/<wave>/pr_<n>_<topic>.md`. Auth-critical, RLS-touching, schema-touching, and proxy-touching slices require explicit operator approval before merge regardless of audit verdict. Detail: `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Agent-Led Slices".
 
 ## Review Loop (user pastes an Execution Report)
 

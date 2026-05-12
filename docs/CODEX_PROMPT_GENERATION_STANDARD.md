@@ -242,6 +242,78 @@ Claude git actions happen only after:
 
 Execution prompts say: `Do not commit unless explicitly asked.`
 
+## Agent-Led Slices (orchestrator-audited)
+
+Sibling workflow to the Codex-led review loop above. Use when the orchestrator
+(main chat) delegates work to a worktree agent via the Task tool — typically
+for hot-fixes, audits, research, regression triage, or parallel slices fired
+outside the Codex sprint cadence.
+
+**Agent contract.** The dispatched agent's git workflow is:
+
+1. Work in a worktree on a `claude/<lane>` branch off `origin/master`.
+2. Run `dart analyze` + the smallest sufficient `flutter test` for the change.
+3. `git add` only files inside the named scope; never `git add -A` in an agent.
+4. Commit and push the branch.
+5. Open a PR with `gh pr create`.
+6. Report and **STOP**. The agent must not merge, must not amend
+   already-pushed commits, must not run `--no-verify` to bypass hooks, must
+   not update `PROJECT_TRACKER.md` or any other tracker.
+
+The agent's dispatch prompt must include this verbatim: `DO NOT auto-merge.
+Report and stop.`
+
+**Orchestrator audit before merge.** The orchestrator (main chat) is the
+audit gate for every agent PR:
+
+- Read the diff (not just the agent's report — agent summaries describe
+  intent, not what shipped).
+- Cross-check against the contracts the slice cites in its prompt, the
+  active phase doc, and `CLAUDE.md` Hard Promises when relevant.
+- For test failures, snapshot the same test against `origin/master`
+  pre-PR to distinguish PR-introduced regressions from latent failures
+  (see `memory/feedback_audit_baseline_test_snapshot.md`).
+- Write a verdict doc at `docs/_audits/<wave>/pr_<n>_<topic>.md` with:
+  - Verdict: `approve-for-merge` | `material-gaps-send-back` | `reject`.
+  - Per-section findings keyed to the slice's stated scope.
+  - Smoke-run evidence (file paths or inline transcripts).
+  - Follow-up items with `blocking? yes/no` and proposed owner.
+
+**Send-back vs. merge.** If material gaps: dispatch a follow-up agent
+(or fix inline) and re-audit only the new diff. If clean: merge per the
+operator-approval rules below.
+
+**Operator approval gates.** These surfaces require explicit operator
+approval (in chat) before merge regardless of audit verdict:
+
+- Auth, RLS, BYPASSRLS, audit-log hash-chain, session ledger.
+- Schema (`db/migrations/**`), expand-contract migration steps.
+- Proxy contract changes (`/v1/*`, `/v2/*`, idempotency keys, JWT shape).
+- Vendor connector live-rollout slices (`*.live.sandbox`, `*.live.prod`).
+- Demo-mode reader-side carve-outs (CLAUDE.md HP #2).
+- Anything touching billing, KMS, Cloud Run config, or production secrets.
+
+Lower-risk surfaces (docs, tests-only, internal tooling, dev-mode helpers)
+may be merged on audit verdict alone, but the orchestrator must still
+record the verdict doc.
+
+**Hook discipline.** Pre-commit and pre-push hooks at `.githooks/`
+permit commits/pushes from `claude/*` and `codex/*` branches inside
+`.claude/worktrees/**` and `.codex_worktrees/**`. Agents must never
+bypass hooks with `--no-verify`. If a hook blocks, the agent's correct
+move is to fix the underlying failure and re-stage, not to skip the
+guardrail.
+
+**Anti-patterns specific to agent-led slices.**
+
+- Agent merges its own PR before the orchestrator audits.
+- Agent uses `--no-verify` to bypass a hook failure.
+- Orchestrator merges on the agent's report alone without reading the diff.
+- Audit attributes a latent test failure to the PR under audit without
+  first running the test against the pre-PR base commit.
+- Follow-up agent re-runs the orchestrator's full audit against the whole
+  PR (correct behavior: re-audit only the new diff layered on top).
+
 ## Execution Report
 
 Claude reports:
