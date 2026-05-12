@@ -252,6 +252,8 @@
 			inputPaths = (
 				"${PROJECT_DIR}/Runner/Firebase/GoogleService-Info-ForgeFlow.plist",
 				"${PROJECT_DIR}/Runner/Firebase/GoogleService-Info-Barrio.plist",
+				"${PROJECT_DIR}/Runner/Firebase/GoogleService-Info-ForgeFlow-Production1.plist",
+				"${PROJECT_DIR}/Runner/Firebase/GoogleService-Info-Barrio-Production1.plist",
 			);
 			name = "Copy Firebase Config";
 			outputPaths = (
@@ -259,7 +261,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\ncase \"${PRODUCT_BUNDLE_IDENTIFIER}\" in\n  com.forgeflow.barrio)\n    FIREBASE_PLIST=\"${PROJECT_DIR}/Runner/Firebase/GoogleService-Info-Barrio.plist\"\n    ;;\n  *)\n    FIREBASE_PLIST=\"${PROJECT_DIR}/Runner/Firebase/GoogleService-Info-ForgeFlow.plist\"\n    ;;\nesac\nif [ ! -f \"$FIREBASE_PLIST\" ]; then\n  echo \"Missing Firebase plist: $FIREBASE_PLIST\" >&2\n  exit 1\nfi\ncp \"$FIREBASE_PLIST\" \"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/GoogleService-Info.plist\"\n";
+			shellScript = "set -e\nfirebase_suffix=\"\"\ncase \"${FIREBASE_CONFIG_ENVIRONMENT}\" in\n  production1|prod1)\n    firebase_suffix=\"-Production1\"\n    ;;\nesac\ncase \"${PRODUCT_BUNDLE_IDENTIFIER}\" in\n  com.forgeflow.barrio)\n    FIREBASE_PLIST=\"${PROJECT_DIR}/Runner/Firebase/GoogleService-Info-Barrio${firebase_suffix}.plist\"\n    ;;\n  *)\n    FIREBASE_PLIST=\"${PROJECT_DIR}/Runner/Firebase/GoogleService-Info-ForgeFlow${firebase_suffix}.plist\"\n    ;;\nesac\nif [ ! -f \"$FIREBASE_PLIST\" ]; then\n  echo \"Missing Firebase plist: $FIREBASE_PLIST\" >&2\n  exit 1\nfi\ncp \"$FIREBASE_PLIST\" \"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/GoogleService-Info.plist\"\n";
 		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;

@@ -54,10 +54,29 @@ android {
             applicationId = "com.forgeflow.app"
             resValue("string", "app_name", "Forge & Flow")
         }
+        create("forgeflowProd1") {
+            dimension = "brand"
+            applicationId = "com.forgeflow.app"
+            resValue("string", "app_name", "Forge & Flow")
+        }
         create("barrio") {
             dimension = "brand"
             applicationId = "com.forgeflow.barrio"
             resValue("string", "app_name", "Barrio")
+        }
+        create("barrioProd1") {
+            dimension = "brand"
+            applicationId = "com.forgeflow.barrio"
+            resValue("string", "app_name", "Barrio")
+        }
+    }
+
+    sourceSets {
+        getByName("forgeflowProd1") {
+            res.srcDir("src/forgeflow/res")
+        }
+        getByName("barrioProd1") {
+            res.srcDir("src/barrio/res")
         }
     }
 

@@ -422,7 +422,7 @@ pwsh scripts/deploy_staging_proxy.ps1 `
   -ServiceAccount forge-flow-production1-admin@forge-flow-production1.iam.gserviceaccount.com `
   -SecretPrefix forge-flow-production- `
   -ProxyBaseUriEnvVarName FORGE_FLOW_PROXY_BASE_URI_PROD1 `
-  -FirebaseGoogleServicesPath android\app\src\forgeflow_prod1\google-services.json `
+  -FirebaseGoogleServicesPath android\app\src\forgeflowProd1\google-services.json `
   -ProxyEnvironment prod `
   -VpcConnector <production-vpc-connector> `
   -VpcEgress all-traffic
