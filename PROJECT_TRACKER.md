@@ -101,7 +101,7 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 | `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |
 | `9.8` inbound vendor T&Cs (code lane) | code-ready; operator-self-served content seeding pending | `phase_9_8/*` |
 | `business-timing-live` full hierarchy + settings lanes | future | `phase_business_timing_live/*` |
-| `admin-hierarchy-settings-overhaul` | planned | `docs/_execution/admin_hierarchy_settings_overhaul_plan_2026-05-08.md` |
+| `admin-hierarchy-settings-overhaul` | complete (2026-05-12; evidence: `docs/_execution/admin_hierarchy_settings_overhaul/06_closure_evidence_2026-05-12.md`) | `docs/_execution/admin_hierarchy_settings_overhaul_plan_2026-05-08.md` |
 | Doc 1 item 7 — physical connected-device E2E | simulated proof documented; physical/emulator proof pending | new sprint `8.connected-device-e2e-smoke`; needs physical device |
 | Doc 1 item 9 — push delivery proof | preflight documented; needs staging apply + device | `8.push-notification-connected-device-proof` |
 | Group / region / company rollup truth | future | follows server rollup snapshots |
