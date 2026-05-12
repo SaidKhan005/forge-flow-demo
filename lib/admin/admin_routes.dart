@@ -629,6 +629,35 @@ VoidCallback? _backToBusinessAccounts(BuildContext context) {
   );
 }
 
+Widget _buildScopedAdminWorkspace({
+  required BuildContext context,
+  required String routeId,
+  required String functionTitle,
+  required String description,
+  required AdminSetupWorkspaceBuilder functionBuilder,
+}) {
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final hierarchyGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  return AdminSetupWorkspace(
+    functionTitle: functionTitle,
+    description: description,
+    operatorGateway: operatorGateway,
+    hierarchyGateway: hierarchyGateway,
+    initialScope: handoff?.effectiveHierarchyScope,
+    onBackToBusinessAccounts: _backToBusinessAccounts(context),
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(routeId: routeId, hierarchyScope: scope),
+          ),
+    functionBuilder: functionBuilder,
+  );
+}
+
 // Retained for backwards-compatible deep-link handoff while the primary IA
 // moves Support Workspace functions into scoped setup tiles.
 // ignore: unused_element
@@ -869,20 +898,32 @@ class _SupportOperatorViewRouteShellState
 Widget _buildPricing(BuildContext context) {
   final gateway = AdminConsoleServicesScope.pricingTierGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  if (source == null) {
-    // No source wired (typical widget-test path) - default to live
-    // edit affordances. Production wires `source` from main_admin so
-    // `ff_support` lands on the read-only branch below.
-    return PricingTierAdminScreen(gateway: gateway);
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
-      return PricingTierAdminScreen(gateway: gateway, editingEnabled: canEdit);
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminPricingRouteId,
+    functionTitle: 'Plans and limits',
+    description:
+        'Review plan status and usage limits for the selected hierarchy scope.',
+    functionBuilder: (context, selectedScope, selection) {
+      if (source == null) {
+        return PricingTierAdminScreen(gateway: gateway);
+      }
+      return StreamBuilder<AdminAuthState>(
+        stream: source.stream,
+        initialData: source.current,
+        builder: (context, snapshot) {
+          final state = snapshot.data;
+          final session = state is AdminAuthAuthenticated
+              ? state.session
+              : null;
+          final canEdit =
+              session != null && session.roles.contains('super_admin');
+          return PricingTierAdminScreen(
+            gateway: gateway,
+            editingEnabled: canEdit,
+          );
+        },
+      );
     },
   );
 }
@@ -905,58 +946,40 @@ const String kCorpusAdminDemoTargetLocationId =
 
 Widget _buildCorpus(BuildContext context) {
   final gateway = AdminConsoleServicesScope.corpusAdminGatewayOf(context);
-  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
-    context,
-  );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  // Demo mode (in-memory gateway) targets the seeded demo tenant.
-  // Live mode (HTTP gateway, or any non-in-memory binding) leaves
-  // the targets null so the Graph candidates commit button starts
-  // disabled. The "Pick operator" button on that surface opens
-  // [OperatorPickerScreen] via [_openOperatorPickerFromContext]; once
-  // the admin confirms a pair, the corpus screen state takes over
-  // and the commit button enables.
-  final isDemoGateway = gateway is InMemoryCorpusAdminGateway;
-  final demoTargetOperatorId = isDemoGateway
-      ? kCorpusAdminDemoTargetOperatorId
-      : null;
-  final demoTargetLocationId = isDemoGateway
-      ? kCorpusAdminDemoTargetLocationId
-      : null;
-  Future<OperatorPickerResult?> openPicker(BuildContext routeContext) {
-    final state = source?.current;
-    final adminUid = state is AdminAuthAuthenticated ? state.session.uid : null;
-    return Navigator.of(routeContext).push<OperatorPickerResult?>(
-      MaterialPageRoute<OperatorPickerResult?>(
-        settings: const RouteSettings(name: '/operator-picker'),
-        builder: (_) =>
-            OperatorPickerScreen(gateway: operatorGateway, adminUid: adminUid),
-      ),
-    );
-  }
-
-  if (source == null) {
-    // No source wired (test path) - default to live edit affordances.
-    return CorpusAdminScreen(
-      gateway: gateway,
-      targetOperatorId: demoTargetOperatorId,
-      targetLocationId: demoTargetLocationId,
-      operatorPickerOpener: openPicker,
-    );
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
-      return CorpusAdminScreen(
-        gateway: gateway,
-        editingEnabled: canEdit,
-        targetOperatorId: demoTargetOperatorId,
-        targetLocationId: demoTargetLocationId,
-        operatorPickerOpener: openPicker,
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminCorpusRouteId,
+    functionTitle: 'Knowledge Base',
+    description:
+        'Review knowledge content and relationship review for the selected scope.',
+    functionBuilder: (context, selectedScope, selection) {
+      final targetOperatorId = selectedScope.operatorId;
+      final targetLocationId = selectedScope.locationId;
+      if (source == null) {
+        return CorpusAdminScreen(
+          gateway: gateway,
+          targetOperatorId: targetOperatorId,
+          targetLocationId: targetLocationId,
+        );
+      }
+      return StreamBuilder<AdminAuthState>(
+        stream: source.stream,
+        initialData: source.current,
+        builder: (context, snapshot) {
+          final state = snapshot.data;
+          final session = state is AdminAuthAuthenticated
+              ? state.session
+              : null;
+          final canEdit =
+              session != null && session.roles.contains('super_admin');
+          return CorpusAdminScreen(
+            gateway: gateway,
+            editingEnabled: canEdit,
+            targetOperatorId: targetOperatorId,
+            targetLocationId: targetLocationId,
+          );
+        },
       );
     },
   );
@@ -965,17 +988,37 @@ Widget _buildCorpus(BuildContext context) {
 Widget _buildIntegrations(BuildContext context) {
   final gateway = AdminConsoleServicesScope.integrationGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  if (source == null) {
-    return IntegrationAdminScreen(gateway: gateway);
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
-      return IntegrationAdminScreen(gateway: gateway, editingEnabled: canEdit);
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminIntegrationsRouteId,
+    functionTitle: 'Connected services',
+    description:
+        'Review platform services and vendor API reachability for the selected hierarchy scope.',
+    functionBuilder: (context, selectedScope, selection) {
+      Widget buildScreen({required bool canEdit}) {
+        return IntegrationAdminScreen(
+          key: ValueKey<String>('integrations-${selectedScope.cacheKey}'),
+          gateway: gateway,
+          editingEnabled: canEdit,
+        );
+      }
+
+      if (source == null) {
+        return buildScreen(canEdit: true);
+      }
+      return StreamBuilder<AdminAuthState>(
+        stream: source.stream,
+        initialData: source.current,
+        builder: (context, snapshot) {
+          final state = snapshot.data;
+          final session = state is AdminAuthAuthenticated
+              ? state.session
+              : null;
+          final canEdit =
+              session != null && session.roles.contains('super_admin');
+          return buildScreen(canEdit: canEdit);
+        },
+      );
     },
   );
 }
@@ -985,7 +1028,17 @@ Widget _buildHealth(BuildContext context) {
   // gateway is the only injection point; there is no editingEnabled
   // flag because the surface has no mutate affordances.
   final gateway = AdminConsoleServicesScope.healthGatewayOf(context);
-  return HealthAdminScreen(gateway: gateway);
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminHealthRouteId,
+    functionTitle: 'System health',
+    description:
+        'Run health checks for Advisor data, app services, and ecosystem dependencies in the selected scope.',
+    functionBuilder: (context, selectedScope, selection) => HealthAdminScreen(
+      key: ValueKey<String>('health-${selectedScope.cacheKey}'),
+      gateway: gateway,
+    ),
+  );
 }
 
 Widget _buildObservability(BuildContext context) {
@@ -994,23 +1047,54 @@ Widget _buildObservability(BuildContext context) {
   // dormancy + margin + cap-event + graph + Cloud Run dashboard.
   // No editingEnabled flag because there are no mutate affordances.
   final gateway = AdminConsoleServicesScope.observabilityGatewayOf(context);
-  return ObservabilityAdminScreen(gateway: gateway);
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminObservabilityRouteId,
+    functionTitle: 'AI Metrics',
+    description:
+        'Review AI cost, usage, reliability, and hosting signals for the selected hierarchy scope.',
+    functionBuilder: (context, selectedScope, selection) =>
+        ObservabilityAdminScreen(
+          key: ValueKey<String>('observability-${selectedScope.cacheKey}'),
+          gateway: gateway,
+        ),
+  );
 }
 
 Widget _buildFeatureFlags(BuildContext context) {
   final gateway = AdminConsoleServicesScope.featureFlagsGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  if (source == null) {
-    return FeatureFlagsAdminScreen(gateway: gateway);
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
-      return FeatureFlagsAdminScreen(gateway: gateway, editingEnabled: canEdit);
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminFeatureFlagsRouteId,
+    functionTitle: 'Launch controls',
+    description:
+        'Turn rollout controls on or off for the selected hierarchy scope with audit-backed confirmation.',
+    functionBuilder: (context, selectedScope, selection) {
+      Widget buildScreen({required bool canEdit}) {
+        return FeatureFlagsAdminScreen(
+          key: ValueKey<String>('feature-flags-${selectedScope.cacheKey}'),
+          gateway: gateway,
+          editingEnabled: canEdit,
+        );
+      }
+
+      if (source == null) {
+        return buildScreen(canEdit: true);
+      }
+      return StreamBuilder<AdminAuthState>(
+        stream: source.stream,
+        initialData: source.current,
+        builder: (context, snapshot) {
+          final state = snapshot.data;
+          final session = state is AdminAuthAuthenticated
+              ? state.session
+              : null;
+          final canEdit =
+              session != null && session.roles.contains('super_admin');
+          return buildScreen(canEdit: canEdit);
+        },
+      );
     },
   );
 }
