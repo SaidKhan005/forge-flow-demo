@@ -326,7 +326,10 @@ void main() {
         expect(script, contains(r'"https://$Project.firebaseapp.com"'));
         expect(script, contains(r'"https://$Project.web.app"'));
         expect(script, contains(r'$authActionOrigin'));
-        expect(script, contains(r'$firebaseActionCorsOrigins += $authActionOrigin'));
+        expect(
+          script,
+          contains(r'$firebaseActionCorsOrigins += $authActionOrigin'),
+        );
         expect(script, contains(r'$effectiveAdminCorsAllowedOrigins'));
         expect(
           script,

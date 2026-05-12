@@ -446,24 +446,26 @@ void main() {
       });
     });
 
-    test('OPTIONS allowed origin echoes origin for role hierarchy routes',
-        () async {
-      await _withRealHttp(() async {
-        final ctx = await _spinUp();
-        try {
-          final res = await _options(
-            ctx.client,
-            ctx.baseUri.resolve(adminAuthRolesPath),
-            requestMethod: 'GET',
-            origin: _adminOrigin,
-          );
-          _expectAllowed(res);
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+    test(
+      'OPTIONS allowed origin echoes origin for role hierarchy routes',
+      () async {
+        await _withRealHttp(() async {
+          final ctx = await _spinUp();
+          try {
+            final res = await _options(
+              ctx.client,
+              ctx.baseUri.resolve(adminAuthRolesPath),
+              requestMethod: 'GET',
+              origin: _adminOrigin,
+            );
+            _expectAllowed(res);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('OPTIONS disallowed origin -> 403 on admin auth paths', () async {
       await _withRealHttp(() async {
