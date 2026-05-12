@@ -161,6 +161,25 @@ class _TimingSummaryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
+          if (!selectedScope.isLocationScope &&
+              scopeLocationCount != null &&
+              scopeLocationCount! > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                key: const Key('admin_timing_scope_inheritance_notice'),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.cardGlow,
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'Showing timing from ${location.name}. Other locations under this scope may have local overrides — review each location individually for accuracy.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ),
+            ),
           AdminDetailRow(
             label: 'Selected scope',
             value: selectedScope.displayLabel,
