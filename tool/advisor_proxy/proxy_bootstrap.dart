@@ -3635,9 +3635,19 @@ class RepositoryOperatorLocationAdminProxyGateway
     String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
-    // Admin operator-mgmt path: actor is a verified F&F admin JWT.
+    // Admin operator-mgmt path: actor is a verified F&F admin JWT
+    // (super_admin role gated by `_isFfOperatorLocationAdminCaller`
+    // in `advisor_proxy.dart`). Per the CLAUDE.md actor taxonomy
+    // (`user` = real human end-user, `forge_admin` = F&F support /
+    // super_admin acting cross-operator) the cross-operator fan-out
+    // must record `actor_kind = 'forge_admin'` so the hash-chained
+    // `audit_logs` row carries honest attribution. The 2026-05-13
+    // `admin_audit_log_actor_reason_contract` migration makes
+    // `forge_admin` a valid value in both
+    // `auth_events_audit.actor_kind` and `audit_logs.actor_kind` and
+    // pairs it with the mandatory `admin_reason` CHECK.
     return _auditRepository.insertSystemEvent(
-      actorKind: 'user',
+      actorKind: 'forge_admin',
       actorUserId: actorUserId,
       operatorId: operatorId,
       locationId: locationId,
