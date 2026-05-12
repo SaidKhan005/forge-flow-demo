@@ -22,6 +22,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/observability_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/observability_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/observability_admin_gateway.dart';
@@ -83,6 +84,46 @@ void main() {
     expect(find.text('Check AI Metrics'), findsOneWidget);
     expect(find.textContaining('system metrics'), findsNothing);
     expect(find.byKey(const Key('admin_observability_tabs')), findsNothing);
+  });
+
+  testWidgets('manual check carries selected hierarchy scope to gateway', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = _BlockingObservabilityGateway();
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          hierarchyScope: const AdminHierarchyScopeIntent.orgUnit(
+            operatorId: 'op-a',
+            orgUnitId: 'ou-a',
+            operatorName: 'Demo Diner',
+            orgUnitName: 'Downtown',
+          ),
+          scopeLocationIds: const <String>{'loc-a', 'loc-b'},
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Demo Diner / Downtown'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('admin_observability_refresh_button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_observability_confirm_run')));
+    await tester.pump();
+
+    expect(gateway.fetchCount, equals(1));
+    expect(gateway.requests.single.operatorId, equals('op-a'));
+    expect(gateway.requests.single.locationId, isNull);
+    expect(
+      gateway.requests.single.locationIds,
+      equals(<String>{'loc-a', 'loc-b'}),
+    );
   });
 
   testWidgets('confirmed manual fetch renders six tabs + as-of strip', (

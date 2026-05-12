@@ -704,7 +704,7 @@ class _Header extends StatelessWidget {
     return AdminPageHeader(
       title: 'Support logs',
       subtitle:
-          'Translate recent backend requests into support-safe details. Filter with exact IDs when you need a precise lookup.',
+          'Translate recent backend requests into support-safe details. Use precise references only when support needs a targeted lookup.',
       leading: onBackToBusinessAccounts == null
           ? null
           : AdminBusinessAccountsBackButton(
@@ -836,6 +836,7 @@ class _RequestLogTab extends StatelessWidget {
         SliverToBoxAdapter(
           child: _FilterBar(
             filter: filter,
+            hierarchyScope: hierarchyScope,
             scopeLocationIds: scopeLocationIds,
             searchController: searchController,
             onFilterChanged: onFilterChanged,
@@ -1026,6 +1027,7 @@ class _ScopePill extends StatelessWidget {
 class _FilterBar extends StatelessWidget {
   const _FilterBar({
     required this.filter,
+    required this.hierarchyScope,
     required this.scopeLocationIds,
     required this.searchController,
     required this.onFilterChanged,
@@ -1033,6 +1035,7 @@ class _FilterBar extends StatelessWidget {
   });
 
   final RequestLogFilter filter;
+  final AdminHierarchyScopeIntent? hierarchyScope;
   final List<String>? scopeLocationIds;
   final TextEditingController searchController;
   final ValueChanged<RequestLogFilter> onFilterChanged;
@@ -1058,7 +1061,7 @@ class _FilterBar extends StatelessWidget {
             decoration: const InputDecoration(
               isDense: true,
               prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Search by request or retry ID',
+              hintText: 'Search by request or retry reference',
               border: OutlineInputBorder(),
             ),
           ),
@@ -1079,9 +1082,10 @@ class _FilterBar extends StatelessWidget {
               ),
               _StringFilterChip(
                 keyName: const Key('admin_debug_console_filter_operator'),
-                label: 'Operator',
+                label: 'Business',
                 value: filter.operatorId,
-                hint: 'Type an operator ID, or open this view from Operators',
+                displayValue: _businessFilterLabel(filter.operatorId),
+                hint: 'Type an exact business ID for support lookup',
                 onChanged: (next) =>
                     onFilterChanged(filter.copyWith(operatorId: next)),
               ),
@@ -1089,7 +1093,8 @@ class _FilterBar extends StatelessWidget {
                 keyName: const Key('admin_debug_console_filter_location'),
                 label: 'Location',
                 value: filter.locationId,
-                hint: 'Type a location ID, or open this view from a location',
+                displayValue: _locationFilterLabel(filter.locationId),
+                hint: 'Type an exact location ID for support lookup',
                 onChanged: (next) =>
                     onFilterChanged(filter.copyWith(locationId: next)),
               ),
@@ -1100,8 +1105,9 @@ class _FilterBar extends StatelessWidget {
                 ),
               _StringFilterChip(
                 keyName: const Key('admin_debug_console_filter_usage_class'),
-                label: 'Request use case ID',
+                label: 'Request type',
                 value: filter.usageClass,
+                displayValue: _requestTypeFilterLabel(filter.usageClass),
                 hint: 'advisor_qa, coach_qa, wf_pl',
                 onChanged: (next) =>
                     onFilterChanged(filter.copyWith(usageClass: next)),
@@ -1110,7 +1116,7 @@ class _FilterBar extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Tip: choose View logs from a business, org unit, or location to fill the exact filters automatically.',
+            'Tip: choose View logs from a business, org unit, or location to fill the scope filters automatically.',
             style: AppTextStyles.body12(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 10),
@@ -1124,6 +1130,29 @@ class _FilterBar extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String? _businessFilterLabel(String? value) {
+    if (value == null || value.isEmpty) return null;
+    final scope = hierarchyScope;
+    if (scope != null && value == scope.operatorId) {
+      return scope.operatorName ?? scope.displayLabel;
+    }
+    return 'Exact business filter';
+  }
+
+  String? _locationFilterLabel(String? value) {
+    if (value == null || value.isEmpty) return null;
+    final scope = hierarchyScope;
+    if (scope != null && value == scope.locationId) {
+      return scope.locationName ?? scope.displayLabel;
+    }
+    return 'Exact location filter';
+  }
+
+  String? _requestTypeFilterLabel(String? value) {
+    if (value == null || value.isEmpty) return null;
+    return adminRequestUseCaseLabel(value);
   }
 }
 
@@ -1208,6 +1237,7 @@ class _StringFilterChip extends StatefulWidget {
     required this.keyName,
     required this.label,
     required this.value,
+    this.displayValue,
     required this.hint,
     required this.onChanged,
   });
@@ -1215,6 +1245,7 @@ class _StringFilterChip extends StatefulWidget {
   final Key keyName;
   final String label;
   final String? value;
+  final String? displayValue;
   final String hint;
   final ValueChanged<String?> onChanged;
 
@@ -1228,7 +1259,7 @@ class _StringFilterChipState extends State<_StringFilterChip> {
     final v = widget.value;
     final label = (v == null || v.isEmpty)
         ? '${widget.label}: any'
-        : '${widget.label}: $v';
+        : '${widget.label}: ${widget.displayValue ?? v}';
     return InkWell(
       key: widget.keyName,
       onTap: () async {
@@ -1355,7 +1386,7 @@ class _RequestUseCaseKey extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Request use case ID key',
+            'Request type key',
             style: AppTextStyles.body13(
               color: AppColors.textPrimary,
             ).copyWith(fontWeight: FontWeight.w700),
@@ -1406,19 +1437,7 @@ class _KeyChip extends StatelessWidget {
         key: Key('admin_debug_console_use_case_filter_$id'),
         onPressed: onPressed,
         style: AdminButtonStyles.filter(active: active),
-        child: Text.rich(
-          TextSpan(
-            text: label,
-            children: <InlineSpan>[
-              TextSpan(
-                text: '  $id',
-                style: AppTextStyles.mono10(
-                  color: active ? AppColors.sunsetDark : AppColors.textMuted,
-                ),
-              ),
-            ],
-          ),
-        ),
+        child: Text(label),
       ),
     );
   }
@@ -1494,6 +1513,8 @@ class _RequestRow extends StatelessWidget {
     final canRevealFullContent =
         editingEnabled && optInOn && entry.fullContentPayload != null;
     final statusColor = _statusColor(entry.status);
+    final requestType = adminRequestUseCaseLabel(entry.usageClass);
+    final summary = _requestSummary(entry);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1520,8 +1541,8 @@ class _RequestRow extends StatelessWidget {
                   Expanded(
                     flex: 3,
                     child: Text(
-                      entry.requestId,
-                      style: AppTextStyles.mono11(
+                      requestType,
+                      style: AppTextStyles.body12(
                         color: AppColors.textPrimary,
                       ).copyWith(fontWeight: FontWeight.w600),
                       overflow: TextOverflow.ellipsis,
@@ -1530,8 +1551,8 @@ class _RequestRow extends StatelessWidget {
                   Expanded(
                     flex: 3,
                     child: Text(
-                      entry.idempotencyKey,
-                      style: AppTextStyles.mono10(
+                      summary,
+                      style: AppTextStyles.body12(
                         color: AppColors.textSecondary,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -1539,25 +1560,10 @@ class _RequestRow extends StatelessWidget {
                   ),
                   Expanded(
                     flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Text(
-                          adminRequestUseCaseLabel(entry.usageClass),
-                          style: AppTextStyles.body12(
-                            color: AppColors.textPrimary,
-                          ).copyWith(fontWeight: FontWeight.w700),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          entry.usageClass,
-                          style: AppTextStyles.mono8(
-                            color: AppColors.textMuted,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                    child: Text(
+                      _requestAge(entry.startedAt),
+                      style: AppTextStyles.body12(color: AppColors.textMuted),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   Container(
@@ -1596,6 +1602,8 @@ class _RequestRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
+                  _MetaRow(label: 'Request reference', value: entry.requestId),
+                  _MetaRow(label: 'Retry reference', value: entry.idempotencyKey),
                   _MetaRow(label: 'Operator ID', value: entry.operatorId),
                   _MetaRow(
                     label: 'Location ID',
@@ -1658,6 +1666,27 @@ class _RequestRow extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static String _requestSummary(RequestLogEntry entry) {
+    final meta = entry.requestMeta;
+    final value =
+        meta['summary'] ??
+        meta['route'] ??
+        meta['path'] ??
+        meta['method'] ??
+        entry.idempotencyKey;
+    final text = value.toString().trim();
+    if (text.isEmpty) return 'Recent support request';
+    return text;
+  }
+
+  static String _requestAge(DateTime startedAt) {
+    final elapsed = DateTime.now().toUtc().difference(startedAt.toUtc());
+    if (elapsed.inMinutes < 1) return 'just now';
+    if (elapsed.inHours < 1) return '${elapsed.inMinutes} min ago';
+    if (elapsed.inDays < 1) return '${elapsed.inHours} hr ago';
+    return '${elapsed.inDays} d ago';
   }
 }
 
@@ -1953,7 +1982,7 @@ class _SupportHelpFilterBar extends StatelessWidget {
             decoration: const InputDecoration(
               isDense: true,
               prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Search by request or retry ID',
+              hintText: 'Search by request or retry reference',
               border: OutlineInputBorder(),
             ),
           ),

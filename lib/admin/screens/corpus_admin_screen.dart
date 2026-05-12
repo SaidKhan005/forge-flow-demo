@@ -600,16 +600,13 @@ class _GraphCandidatesTab extends StatefulWidget {
   final String Function() newIdempotencyKey;
 
   /// When either is null the tab still renders the diff but disables
-  /// the commit button + shows the "Pick operator" banner. The host
-  /// in [admin_routes.dart] passes the demo tenant in demo mode and
-  /// leaves both null in live mode until the admin uses the picker
-  /// (Phase 11A.3a follow-up).
+  /// the commit button and asks the admin to choose a location scope.
   final String? targetOperatorId;
   final String? targetLocationId;
 
-  /// Phase 11A.3a follow-up - opens the operator picker. Null when
-  /// the host did not wire a picker (legacy test path); the banner
-  /// still renders, the button stays disabled.
+  /// Phase 11A.3a follow-up - opens the legacy operator picker when
+  /// a standalone host wires it. Shared admin setup hosts leave this
+  /// null and rely on the workspace scope pane instead.
   final VoidCallback? onPickOperator;
 
   /// "Business name - Location name" for the actively-picked target,
@@ -986,10 +983,15 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Choose the operator and location before applying '
-                          'relationship decisions. This keeps approvals '
-                          'attached to the right operator workspace for this '
-                          'session.',
+                          widget.onPickOperator == null
+                              ? 'Select a location in the Scope pane before '
+                                    'applying relationship decisions. This '
+                                    'keeps approvals attached to the right '
+                                    'business workspace.'
+                              : 'Choose the operator and location before '
+                                    'applying relationship decisions. This '
+                                    'keeps approvals attached to the right '
+                                    'operator workspace for this session.',
                           style: AppTextStyles.body13(
                             color: AppColors.textSecondary,
                           ),
@@ -997,19 +999,21 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: FilledButton.icon(
-                      key: const Key('admin_corpus_graph_pick_operator_button'),
-                      onPressed: (widget.onPickOperator == null || _busy)
-                          ? null
-                          : widget.onPickOperator,
-                      style: AdminButtonStyles.primary,
-                      icon: const Icon(Icons.swap_horiz, size: 16),
-                      label: const Text('Choose operator'),
+                  if (widget.onPickOperator != null) ...[
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilledButton.icon(
+                        key: const Key(
+                          'admin_corpus_graph_pick_operator_button',
+                        ),
+                        onPressed: _busy ? null : widget.onPickOperator,
+                        style: AdminButtonStyles.primary,
+                        icon: const Icon(Icons.swap_horiz, size: 16),
+                        label: const Text('Choose operator'),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

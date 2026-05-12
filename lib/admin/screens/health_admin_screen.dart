@@ -33,9 +33,11 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
+import '../admin_route_handoff.dart';
 import '../admin_human_labels.dart';
 import '../models/health_admin_models.dart';
 import '../services/health_admin_gateway.dart';
+import '../widgets/admin_hierarchy_scope_notice.dart';
 import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_run_check_controls.dart';
 
@@ -197,10 +199,14 @@ class HealthAdminScreen extends StatefulWidget {
   const HealthAdminScreen({
     super.key,
     required this.gateway,
+    this.hierarchyScope,
+    this.scopeLocationIds = const <String>{},
     @visibleForTesting this.now,
   });
 
   final HealthAdminGateway gateway;
+  final AdminHierarchyScopeIntent? hierarchyScope;
+  final Set<String> scopeLocationIds;
 
   /// Test-only clock injection so the "Last checked" timestamp is
   /// deterministic. Production uses [DateTime.now].
@@ -254,7 +260,13 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
       _loadError = null;
     });
     try {
-      final envelope = await widget.gateway.fetch();
+      final envelope = await widget.gateway.fetch(
+        HealthAdminFetchRequest(
+          operatorId: widget.hierarchyScope?.operatorId,
+          locationId: widget.hierarchyScope?.locationId,
+          locationIds: widget.scopeLocationIds,
+        ),
+      );
       if (!mounted) return;
       setState(() {
         _envelope = envelope;
@@ -306,6 +318,11 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
               loading: _loading || _refreshing,
             ),
             const SizedBox(height: 12),
+            if (widget.hierarchyScope != null)
+              AdminHierarchyScopeNotice(
+                message:
+                    'Running platform health checks while focused on ${widget.hierarchyScope!.displayLabel}. Advisor data, app service, and ecosystem checks are shared signals for the selected business context.',
+              ),
             if (_loadError != null)
               _ErrorBanner(
                 key: const Key('admin_health_load_error'),

@@ -204,16 +204,9 @@ class _OperatorLocationAdminScreenState
   }
 
   AdminOperatorLocationScopeIntent _scopeForBundle(OperatorAdminBundle bundle) {
-    final primaryLocation = bundle.primaryLocation;
-    final fallbackLocation = bundle.locations.isEmpty
-        ? null
-        : bundle.locations.first;
-    final location = primaryLocation ?? fallbackLocation;
     return AdminOperatorLocationScopeIntent(
       operatorId: bundle.operator.operatorId,
       operatorName: bundle.operator.businessName,
-      locationId: location?.locationId,
-      locationName: location?.name,
     );
   }
 

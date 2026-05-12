@@ -33,10 +33,12 @@ import '../../services/realtime/outbox_tripwire_evaluator.dart';
 import '../../theme/app_theme.dart';
 
 import '../admin_human_labels.dart';
+import '../admin_route_handoff.dart';
 import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
 import '../services/realtime_tripwire_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
+import '../widgets/admin_hierarchy_scope_notice.dart';
 import '../widgets/admin_run_check_controls.dart';
 
 class _TabSpec {
@@ -59,10 +61,14 @@ class ObservabilityAdminScreen extends StatefulWidget {
     super.key,
     required this.gateway,
     this.tripwireGateway,
+    this.hierarchyScope,
+    this.scopeLocationIds = const <String>{},
     @visibleForTesting this.now,
   });
 
   final ObservabilityAdminGateway gateway;
+  final AdminHierarchyScopeIntent? hierarchyScope;
+  final Set<String> scopeLocationIds;
 
   /// Phase 10a.4 — optional gateway for the Realtime bridge tripwire
   /// section. When wired, the manual run-check refreshes both the
@@ -145,6 +151,9 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
       final filter = _queryClassFilterController.text.trim();
       final request = ObservabilityFetchRequest(
         queryClassFilter: filter.isEmpty ? null : filter,
+        operatorId: widget.hierarchyScope?.operatorId,
+        locationId: widget.hierarchyScope?.locationId,
+        locationIds: widget.scopeLocationIds,
       );
       final envelope = await widget.gateway.fetch(request);
       if (!mounted) return;
@@ -217,6 +226,11 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
               loading: _loading || _refreshing,
             ),
             const SizedBox(height: 12),
+            if (widget.hierarchyScope != null)
+              AdminHierarchyScopeNotice(
+                message:
+                    'Showing AI usage, cost, and reliability for ${widget.hierarchyScope!.displayLabel}. Hosting and knowledge graph signals stay platform-wide when they are not stored per business.',
+              ),
             if (_loadError != null)
               _ErrorBanner(
                 key: const Key('admin_observability_load_error'),

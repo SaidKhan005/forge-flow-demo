@@ -29,6 +29,7 @@ import '../../theme/app_theme.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
+import '../admin_route_handoff.dart';
 import '../models/pricing_tier_admin_models.dart';
 import '../services/pricing_tier_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
@@ -39,6 +40,8 @@ class PricingTierAdminScreen extends StatefulWidget {
     required this.gateway,
     this.editingEnabled = true,
     this.idempotencyKeyFactory,
+    this.hierarchyScope,
+    this.scopeLocationIds = const <String>{},
   });
 
   final PricingTierAdminGateway gateway;
@@ -53,6 +56,8 @@ class PricingTierAdminScreen extends StatefulWidget {
   /// widget tests inject a deterministic counter so retries can be
   /// asserted.
   final String Function()? idempotencyKeyFactory;
+  final AdminHierarchyScopeIntent? hierarchyScope;
+  final Set<String> scopeLocationIds;
 
   @override
   State<PricingTierAdminScreen> createState() => _PricingTierAdminScreenState();
@@ -94,13 +99,19 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       setState(() {
         _bundles = bundles;
         _loading = false;
+        final visible = _visibleBundles;
+        final preferredOperatorId = widget.hierarchyScope?.operatorId;
+        if (preferredOperatorId != null &&
+            visible.any((b) => b.operatorId == preferredOperatorId)) {
+          _selectedOperatorId = preferredOperatorId;
+        }
         if (_selectedOperatorId != null &&
-            bundles.every((b) => b.operatorId != _selectedOperatorId)) {
+            visible.every((b) => b.operatorId != _selectedOperatorId)) {
           _selectedOperatorId = null;
         }
-        _selectedOperatorId ??= bundles.isEmpty
+        _selectedOperatorId ??= visible.isEmpty
             ? null
-            : bundles.first.operatorId;
+            : visible.first.operatorId;
       });
     } on PricingTierAdminGatewayError catch (error) {
       if (!mounted) return;
@@ -120,10 +131,45 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
   PricingOperatorBundle? get _selected {
     final id = _selectedOperatorId;
     if (id == null) return null;
-    for (final b in _bundles) {
+    for (final b in _visibleBundles) {
       if (b.operatorId == id) return b;
     }
     return null;
+  }
+
+  List<PricingOperatorBundle> get _visibleBundles {
+    final scope = widget.hierarchyScope;
+    if (scope == null) return _bundles;
+    return <PricingOperatorBundle>[
+      for (final bundle in _bundles)
+        if (bundle.operatorId == scope.operatorId) _bundleForScope(bundle),
+    ];
+  }
+
+  PricingOperatorBundle _bundleForScope(PricingOperatorBundle bundle) {
+    final scope = widget.hierarchyScope;
+    if (scope == null || scope.isBusinessScope) return bundle;
+    final scopedLocationIds = _scopeLocationIds(scope);
+    return PricingOperatorBundle(
+      operatorId: bundle.operatorId,
+      businessName: bundle.businessName,
+      subscriptionTier: bundle.subscriptionTier,
+      preferredCurrency: bundle.preferredCurrency,
+      primaryLocationId: bundle.primaryLocationId,
+      primaryLocationName: bundle.primaryLocationName,
+      suspended: bundle.suspended,
+      caps: bundle.caps
+          .where((cap) => scopedLocationIds.contains(cap.locationId))
+          .toList(growable: false),
+    );
+  }
+
+  Set<String> _scopeLocationIds(AdminHierarchyScopeIntent scope) {
+    final locationId = scope.locationId;
+    if (locationId != null && locationId.isNotEmpty) {
+      return <String>{locationId};
+    }
+    return widget.scopeLocationIds;
   }
 
   Future<void> _runAndRefresh(
@@ -198,13 +244,14 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
         message: _loadError!,
       );
     }
-    if (_bundles.isEmpty) {
+    final visibleBundles = _visibleBundles;
+    if (visibleBundles.isEmpty) {
       return Center(
         key: const Key('admin_pricing_empty'),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 380),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 380),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -226,7 +273,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     }
     return AdminMasterDetailLayout(
       master: _OperatorList(
-        bundles: _bundles,
+        bundles: visibleBundles,
         selectedOperatorId: _selectedOperatorId,
         onSelect: (id) => setState(() => _selectedOperatorId = id),
       ),
@@ -314,7 +361,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       context: context,
       builder: (_) => _UsageCapDialog(
         operatorId: bundle.operatorId,
-        primaryLocationId: bundle.primaryLocationId,
+        primaryLocationId: _defaultLocationId(bundle),
         idempotencyKey: _nextIdempotencyKey(),
       ),
     );
@@ -322,6 +369,17 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     await _runAndRefresh(() async {
       await widget.gateway.upsertUsageCap(command);
     }, successHint: 'Cap row added.');
+  }
+
+  String? _defaultLocationId(PricingOperatorBundle bundle) {
+    final scopeLocationId = widget.hierarchyScope?.locationId;
+    if (scopeLocationId != null && scopeLocationId.isNotEmpty) {
+      return scopeLocationId;
+    }
+    if (widget.scopeLocationIds.isNotEmpty) {
+      return widget.scopeLocationIds.first;
+    }
+    return bundle.primaryLocationId;
   }
 }
 

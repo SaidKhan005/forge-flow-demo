@@ -219,8 +219,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Operator: op-a'), findsOneWidget);
-    expect(find.text('Location: loc-a'), findsOneWidget);
+    expect(find.text('Business: Exact business filter'), findsOneWidget);
+    expect(find.text('Location: Exact location filter'), findsOneWidget);
     expect(
       find.byKey(const Key('admin_debug_console_row_req-op-a')),
       findsOneWidget,
@@ -661,7 +661,7 @@ void main() {
       find.byKey(const Key('admin_debug_console_row_req-coach')),
       findsOneWidget,
     );
-    expect(find.text('Request use case ID: coach_qa'), findsOneWidget);
+    expect(find.text('Request type: Coaching help'), findsOneWidget);
 
     await tester.tap(
       find.byKey(const Key('admin_debug_console_use_case_filter_coach_qa')),
@@ -676,7 +676,7 @@ void main() {
       find.byKey(const Key('admin_debug_console_row_req-coach')),
       findsOneWidget,
     );
-    expect(find.text('Request use case ID: any'), findsOneWidget);
+    expect(find.text('Request type: any'), findsOneWidget);
   });
 
   testWidgets('clearing a use case key queues refresh during in-flight load', (
@@ -716,7 +716,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Request use case ID: any'), findsOneWidget);
+    expect(find.text('Request type: any'), findsOneWidget);
     expect(gateway.requestedFilters, hasLength(1));
 
     gateway.holdRequests = false;

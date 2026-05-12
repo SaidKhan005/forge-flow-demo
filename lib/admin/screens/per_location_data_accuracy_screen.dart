@@ -242,27 +242,28 @@ class _PerLocationDataAccuracyScreenState
     if (result == null) return;
     setState(() => _actionError = null);
     try {
-      for (final row in rows) {
-        await widget.gateway.overrideDataAccuracy(
-          operatorId: row.operatorRef.operatorId,
-          locationId: row.operatorRef.locationId,
-          coversSourceLunch: result.coversSourceLunch,
-          coversSourceDinner: result.coversSourceDinner,
-          coversSourceLateNight: result.coversSourceLateNight,
-          wageSource: result.wageSource,
-          walkInHandlingMode: result.walkInHandlingMode,
-          actorUserId: widget.actorUserId,
-          actorIsForgeAdmin: widget.editingEnabled,
-          reasonNote: result.reasonNote,
-        );
-      }
+      final update = await widget.gateway.overrideDataAccuracyScope(
+        operatorId: scope.operatorId,
+        scopeType: _mutationScopeType(scope),
+        orgUnitId: scope.orgUnitId,
+        locationId: scope.locationId,
+        coversSourceLunch: result.coversSourceLunch,
+        coversSourceDinner: result.coversSourceDinner,
+        coversSourceLateNight: result.coversSourceLateNight,
+        wageSource: result.wageSource,
+        walkInHandlingMode: result.walkInHandlingMode,
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        reasonNote: result.reasonNote,
+      );
       await _refresh();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Applied covers and wage settings to ${rows.length} location'
-            '${rows.length == 1 ? '' : 's'}.',
+            'Applied covers and wage settings to '
+            '${update.affectedLocationCount} location'
+            '${update.affectedLocationCount == 1 ? '' : 's'}.',
           ),
         ),
       );
@@ -351,9 +352,10 @@ class _PerLocationDataAccuracyScreenState
   }) {
     if (scope == null) return true;
     if (scope.operatorId != operatorId) return false;
+    if (locationId == null) return true;
     final locationIds = widget.scopeLocationIds;
     if (locationIds != null && locationIds.isNotEmpty) {
-      return locationId != null && locationIds.contains(locationId);
+      return locationIds.contains(locationId);
     }
     return _scopePolicy.includesOperatorLocation(
       scope,
@@ -492,6 +494,19 @@ class _PerLocationDataAccuracyScreenState
         scope != null &&
         !scope.isLocationScope &&
         _visibleRows.isNotEmpty;
+  }
+
+  AdminDataAccuracyMutationScopeType _mutationScopeType(
+    AdminHierarchyScopeIntent scope,
+  ) {
+    switch (scope.scopeType) {
+      case AdminHierarchyScopeType.business:
+        return AdminDataAccuracyMutationScopeType.business;
+      case AdminHierarchyScopeType.orgUnit:
+        return AdminDataAccuracyMutationScopeType.orgUnit;
+      case AdminHierarchyScopeType.location:
+        return AdminDataAccuracyMutationScopeType.location;
+    }
   }
 }
 

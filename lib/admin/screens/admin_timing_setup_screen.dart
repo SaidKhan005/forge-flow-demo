@@ -4,7 +4,6 @@ import '../../theme/app_theme.dart';
 import '../admin_route_handoff.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
-import '../widgets/admin_hierarchy_scope_prompt.dart';
 import '../widgets/admin_responsive_layout.dart';
 
 class AdminTimingSetupScreen extends StatelessWidget {
@@ -40,12 +39,6 @@ class AdminTimingSetupScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    AdminHierarchyScopeBanner(
-                      scope: selectedScope,
-                      surfaceName: 'timing',
-                      onChangeScope: () {},
-                    ),
-                    const SizedBox(height: 14),
                     if (snapshot.connectionState != ConnectionState.done)
                       const LinearProgressIndicator(minHeight: 2),
                     if (snapshot.hasError)

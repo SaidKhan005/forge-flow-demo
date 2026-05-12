@@ -19,6 +19,7 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart'
@@ -49,9 +50,31 @@ class IntegrationAdminGatewayError implements Exception {
 }
 
 abstract class IntegrationAdminGateway {
-  Future<IntegrationBundle> list();
+  Future<IntegrationBundle> list({AdminIntegrationScopeFilter? scope});
 
   Future<RotateKeyResult> rotateKey(RotateKeyCommand command);
+}
+
+@immutable
+class AdminIntegrationScopeFilter {
+  const AdminIntegrationScopeFilter({
+    required this.operatorId,
+    this.locationId,
+    this.locationIds = const <String>{},
+  });
+
+  final String operatorId;
+  final String? locationId;
+  final Set<String> locationIds;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'operator_id': operatorId,
+      if (locationId != null && locationId!.isNotEmpty)
+        'location_id': locationId!,
+      if (locationIds.isNotEmpty) 'location_ids': locationIds.join(','),
+    };
+  }
 }
 
 /// Resolves the current actor's role to gate read-only access for
@@ -120,8 +143,12 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
   }
 
   @override
-  Future<IntegrationBundle> list() async {
-    final body = await _send(method: 'GET', path: listPath);
+  Future<IntegrationBundle> list({AdminIntegrationScopeFilter? scope}) async {
+    final body = await _send(
+      method: 'GET',
+      path: listPath,
+      queryParameters: scope?.toQueryParameters(),
+    );
     return _bundleFromJson(body);
   }
 
@@ -153,11 +180,12 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
   Future<Map<String, Object?>> _send({
     required String method,
     required String path,
+    Map<String, String>? queryParameters,
     Map<String, Object?>? jsonBody,
     String? idempotencyKey,
   }) async {
     final token = await bearerTokenProvider();
-    final uri = baseUri.resolve(path);
+    final uri = baseUri.resolve(path).replace(queryParameters: queryParameters);
     final request = http.Request(method, uri)
       ..headers['authorization'] = 'Bearer $token'
       ..headers['accept'] = 'application/json';
@@ -365,9 +393,6 @@ String? _defaultHealthSourceLabel({
   required bool? apiReachable,
 }) {
   if (apiReachable == null) return null;
-  if (rawStatusLabel.trim().toLowerCase() == 'documented') {
-    return 'Gateway reachability projection from vendor lifecycle';
-  }
   return 'Gateway API reachability check';
 }
 
@@ -455,6 +480,10 @@ String? _healthSourceLabelFromWire(String? value) {
     case 'mock_gateway':
     case 'mock':
       return 'Mocked gateway reachability seam';
+    case 'connector_connection':
+    case 'connection_status':
+    case 'connected_locations':
+      return 'Connected vendor location records';
     case 'lifecycle':
     case 'adapter_lifecycle':
       return 'Gateway reachability projection from vendor lifecycle';
@@ -533,7 +562,7 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
   KmsStubProvider get kmsProvider => _kmsProvider;
 
   @override
-  Future<IntegrationBundle> list() async {
+  Future<IntegrationBundle> list({AdminIntegrationScopeFilter? scope}) async {
     final keys = <ProviderKeyRow>[];
     for (final kind in ProviderKeyKind.values) {
       final row = _ledger[kind];

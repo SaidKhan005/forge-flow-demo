@@ -20,6 +20,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_auth_gate.dart';
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/integration_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/integration_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/integration_admin_gateway.dart';
@@ -127,7 +128,7 @@ void main() {
     expect(find.text('API pending'), findsWidgets);
     expect(find.text('Documented'), findsNothing);
     expect(
-      find.textContaining('Source: Gateway reachability projection'),
+      find.textContaining('Source: Gateway API reachability check'),
       findsWidgets,
     );
     expect(
@@ -140,6 +141,35 @@ void main() {
     );
     expect(find.textContaining('Secure storage ID:'), findsNothing);
     expect(find.textContaining('kms://'), findsNothing);
+  });
+
+  testWidgets('renders selected hierarchy context for vendor reachability', (
+    tester,
+  ) async {
+    final gateway = InMemoryIntegrationAdminGateway();
+    await tester.pumpWidget(
+      wrap(
+        Scaffold(
+          body: IntegrationAdminScreen(
+            gateway: gateway,
+            hierarchyScope: const AdminHierarchyScopeIntent.orgUnit(
+              operatorId: 'op-a',
+              orgUnitId: 'ou-1',
+              operatorName: 'Demo Diner',
+              orgUnitName: 'Downtown',
+            ),
+            scopeLocationIds: const <String>{'loc-a', 'loc-b'},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Demo Diner / Downtown'), findsOneWidget);
+    expect(
+      find.textContaining('Platform service keys remain shared ecosystem keys'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('groups vendor catalog rows using gateway category semantics', (

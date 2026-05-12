@@ -23,6 +23,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/health_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/health_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/health_admin_gateway.dart';
@@ -78,6 +79,44 @@ void main() {
     expect(gateway.fetchCount, equals(0));
     expect(find.byKey(const Key('admin_health_manual_prompt')), findsOneWidget);
     expect(find.byKey(const Key('admin_health_tabs')), findsNothing);
+  });
+
+  testWidgets('manual check carries selected hierarchy scope to gateway', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = _BlockingHealthGateway();
+    await tester.pumpWidget(
+      wrap(
+        HealthAdminScreen(
+          gateway: gateway,
+          hierarchyScope: const AdminHierarchyScopeIntent.orgUnit(
+            operatorId: 'op-a',
+            orgUnitId: 'ou-a',
+            operatorName: 'Demo Diner',
+            orgUnitName: 'Downtown',
+          ),
+          scopeLocationIds: const <String>{'loc-a', 'loc-b'},
+          now: () => DateTime.utc(2026, 5, 2, 12),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Demo Diner / Downtown'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('admin_health_refresh_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_health_confirm_run')));
+    await tester.pump();
+
+    expect(gateway.fetchCount, equals(1));
+    expect(gateway.requests.single.operatorId, equals('op-a'));
+    expect(gateway.requests.single.locationId, isNull);
+    expect(
+      gateway.requests.single.locationIds,
+      equals(<String>{'loc-a', 'loc-b'}),
+    );
   });
 
   testWidgets('confirmed manual check renders three tabs with dependencies', (
@@ -370,10 +409,14 @@ class _BlockingHealthGateway implements HealthAdminGateway {
   int fetchCount = 0;
   final List<Completer<HealthEnvelope>> _pending =
       <Completer<HealthEnvelope>>[];
+  final List<HealthAdminFetchRequest> requests = <HealthAdminFetchRequest>[];
 
   @override
-  Future<HealthEnvelope> fetch() {
+  Future<HealthEnvelope> fetch([
+    HealthAdminFetchRequest request = const HealthAdminFetchRequest(),
+  ]) {
     fetchCount += 1;
+    requests.add(request);
     final completer = Completer<HealthEnvelope>();
     _pending.add(completer);
     return completer.future;

@@ -64,10 +64,30 @@ class ObservabilityFetchRequest {
   const ObservabilityFetchRequest({
     this.costTelemetryLimit = kObservabilityCostTelemetryLimit,
     this.queryClassFilter,
+    this.operatorId,
+    this.locationId,
+    this.locationIds = const <String>{},
   });
 
   final int costTelemetryLimit;
   final String? queryClassFilter;
+  final String? operatorId;
+  final String? locationId;
+  final Set<String> locationIds;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'cost_telemetry_limit':
+          '${costTelemetryLimit.clamp(1, kObservabilityCostTelemetryLimit)}',
+      if (queryClassFilter != null && queryClassFilter!.isNotEmpty)
+        'query_class': queryClassFilter!,
+      if (operatorId != null && operatorId!.isNotEmpty)
+        'operator_id': operatorId!,
+      if (locationId != null && locationId!.isNotEmpty)
+        'location_id': locationId!,
+      if (locationIds.isNotEmpty) 'location_ids': locationIds.join(','),
+    };
+  }
 }
 
 abstract class ObservabilityAdminGateway {
@@ -108,12 +128,8 @@ class HttpObservabilityAdminGateway implements ObservabilityAdminGateway {
       1,
       kObservabilityCostTelemetryLimit,
     );
-    final query = <String, String>{
-      'cost_telemetry_limit': '$clampedLimit',
-      if (request.queryClassFilter != null &&
-          request.queryClassFilter!.isNotEmpty)
-        'query_class': request.queryClassFilter!,
-    };
+    final query = request.toQueryParameters()
+      ..['cost_telemetry_limit'] = '$clampedLimit';
     final uri = baseUri
         .resolve(observabilityPath)
         .replace(queryParameters: query);
@@ -205,11 +221,20 @@ class InMemoryObservabilityAdminGateway implements ObservabilityAdminGateway {
     if (filter != null && filter.isNotEmpty) {
       filtered = filtered.where((row) => row['query_class'] == filter);
     }
+    filtered = filtered.where((row) => _matchesScope(row, request));
     final preClamp = filtered.toList(growable: false);
     final clamped = preClamp.length > clampedLimit
         ? preClamp.sublist(0, clampedLimit)
         : preClamp;
     base['cost_telemetry'] = clamped;
+    for (final key in const <String>[
+      'top_expensive',
+      'dormancy',
+      'margins',
+      'cap_events',
+    ]) {
+      base[key] = _filteredScopeRows(base[key], request);
+    }
     base['cost_telemetry_meta'] = <String, Object?>{
       'total_count': preClamp.length,
       'truncated': preClamp.length > clampedLimit,
@@ -217,6 +242,35 @@ class InMemoryObservabilityAdminGateway implements ObservabilityAdminGateway {
     };
     return ObservabilityEnvelope.fromJson(base);
   }
+}
+
+List<Map<String, Object?>> _filteredScopeRows(
+  Object? raw,
+  ObservabilityFetchRequest request,
+) {
+  final rows =
+      (raw as List?)?.whereType<Map<Object?, Object?>>().map(
+        (row) => row.cast<String, Object?>(),
+      ) ??
+      const Iterable<Map<String, Object?>>.empty();
+  return rows.where((row) => _matchesScope(row, request)).toList();
+}
+
+bool _matchesScope(
+  Map<String, Object?> row,
+  ObservabilityFetchRequest request,
+) {
+  final operatorId = request.operatorId;
+  if (operatorId == null || operatorId.isEmpty) return true;
+  if (row['operator_id'] != operatorId) return false;
+  final rowLocationId = row['location_id'] as String?;
+  final requestedLocationId = request.locationId;
+  if (requestedLocationId != null && requestedLocationId.isNotEmpty) {
+    return rowLocationId == requestedLocationId;
+  }
+  if (request.locationIds.isEmpty) return true;
+  if (rowLocationId == null || rowLocationId.isEmpty) return true;
+  return request.locationIds.contains(rowLocationId);
 }
 
 /// Seed envelope used by the 11A.6 walkthrough when no production

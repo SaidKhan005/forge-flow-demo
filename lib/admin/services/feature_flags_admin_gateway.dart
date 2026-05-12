@@ -1,4 +1,4 @@
-﻿// Phase 11A.7 - Feature flags admin gateway.
+// Phase 11A.7 - Feature flags admin gateway.
 //
 // Translates the screen's commands into proxy
 // `/v1/admin/feature-flags/*` HTTP calls. The admin Flutter client
@@ -54,12 +54,43 @@ class FeatureFlagsAdminGatewayError implements Exception {
 abstract class FeatureFlagsAdminGateway {
   /// Lists every `feature_flags` row across all scopes, ordered for
   /// the admin grid (destructive flags first, then alphabetical).
-  Future<List<FeatureFlagAdminRow>> listFlags();
+  Future<List<FeatureFlagAdminRow>> listFlags({FeatureFlagScopeFilter? scope});
 
   /// Toggle one flag. Returns the post-toggle row (so the screen can
   /// re-render with the latest `updated_by` / `updated_at` without a
   /// separate refresh round-trip).
   Future<FeatureFlagAdminRow> toggleFlag(FeatureFlagToggleCommand command);
+}
+
+class FeatureFlagScopeFilter {
+  const FeatureFlagScopeFilter({
+    required this.operatorId,
+    this.locationId,
+    this.locationIds = const <String>{},
+  });
+
+  final String operatorId;
+  final String? locationId;
+  final Set<String> locationIds;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'operator_id': operatorId,
+      if (locationId != null && locationId!.isNotEmpty)
+        'location_id': locationId!,
+      if (locationIds.isNotEmpty) 'location_ids': locationIds.join(','),
+    };
+  }
+
+  bool includes(FeatureFlagAdminRow row) {
+    final rowOperatorId = row.operatorId;
+    final rowLocationId = row.locationId;
+    if (rowOperatorId == null && rowLocationId == null) return true;
+    if (rowOperatorId != operatorId) return false;
+    if (rowLocationId == null) return true;
+    if (locationId != null && rowLocationId == locationId) return true;
+    return locationIds.contains(rowLocationId);
+  }
 }
 
 class HttpFeatureFlagsAdminGateway implements FeatureFlagsAdminGateway {
@@ -82,8 +113,14 @@ class HttpFeatureFlagsAdminGateway implements FeatureFlagsAdminGateway {
   static const String togglePath = '/v1/admin/feature-flags/toggle';
 
   @override
-  Future<List<FeatureFlagAdminRow>> listFlags() async {
-    final body = await _send(method: 'GET', path: listPath);
+  Future<List<FeatureFlagAdminRow>> listFlags({
+    FeatureFlagScopeFilter? scope,
+  }) async {
+    final body = await _send(
+      method: 'GET',
+      path: listPath,
+      queryParameters: scope?.toQueryParameters(),
+    );
     final list = (body['flags'] as List?) ?? const [];
     return <FeatureFlagAdminRow>[
       for (final entry in list)
@@ -109,11 +146,12 @@ class HttpFeatureFlagsAdminGateway implements FeatureFlagsAdminGateway {
   Future<Map<String, Object?>> _send({
     required String method,
     required String path,
+    Map<String, String>? queryParameters,
     Map<String, Object?>? jsonBody,
     String? idempotencyKey,
   }) async {
     final token = await bearerTokenProvider();
-    final uri = baseUri.resolve(path);
+    final uri = baseUri.resolve(path).replace(queryParameters: queryParameters);
     final request = http.Request(method, uri)
       ..headers['authorization'] = 'Bearer $token'
       ..headers['accept'] = 'application/json';
@@ -186,8 +224,11 @@ class InMemoryFeatureFlagsAdminGateway implements FeatureFlagsAdminGateway {
       <String, FeatureFlagAdminRow>{};
 
   @override
-  Future<List<FeatureFlagAdminRow>> listFlags() async {
+  Future<List<FeatureFlagAdminRow>> listFlags({
+    FeatureFlagScopeFilter? scope,
+  }) async {
     final list = _flags.values.toList()
+      ..removeWhere((row) => scope != null && !scope.includes(row))
       ..sort((a, b) {
         // Destructive flags first so kill switches surface at the top
         // of the operator's view.

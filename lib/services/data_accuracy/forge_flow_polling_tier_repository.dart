@@ -177,12 +177,13 @@ class ForgeFlowPollingTierRepository extends OperatorScopedRepository {
         'operator_id': operatorId,
         'location_id': locationId,
       };
-      var sql = 'select '
+      var sql =
+          'select '
           'count(*)::int as assignment_count, '
           'coalesce(sum(monthly_price_cents), 0)::int as total_price_cents, '
           'coalesce(sum(vendor_api_cost_estimate_cents_monthly), 0)::int '
           'as total_cost_cents '
-          'from forge_flow_polling_tier_assignment '
+          'from effective_forge_flow_polling_tier_assignment_v '
           'where operator_id = @operator_id::uuid '
           'and location_id = @location_id::uuid '
           'and effective_until is null';
@@ -224,7 +225,7 @@ class ForgeFlowPollingTierRepository extends OperatorScopedRepository {
       'monthly_price_cents, vendor_api_cost_estimate_cents_monthly, '
       'effective_at, effective_until, '
       'assigned_by_admin_user_id, created_at '
-      'from forge_flow_polling_tier_assignment '
+      'from effective_forge_flow_polling_tier_assignment_v '
       'where operator_id = @operator_id::uuid '
       'and location_id = @location_id::uuid '
       'and effective_until is null',

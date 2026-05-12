@@ -322,7 +322,7 @@ class _PerLocationTierAssignmentTableState
 String _tierLabel(PollingTierKey tier) {
   switch (tier) {
     case PollingTierKey.standard:
-      return 'Standard';
+      return 'Regular';
     case PollingTierKey.premium:
       return 'Premium';
     case PollingTierKey.custom:

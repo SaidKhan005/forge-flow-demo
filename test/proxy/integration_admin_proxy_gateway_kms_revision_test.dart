@@ -111,7 +111,7 @@ void main() {
       final toast = vendors.firstWhere((vendor) => vendor['id'] == 'toast');
       expect(toast['category'], equals('pos'));
       expect(toast['api_reachable'], isFalse);
-      expect(toast['health_source'], equals('adapter_lifecycle'));
+      expect(toast['health_source'], equals('connector_connection'));
       expect(toast['unlock_state'], equals('api_pending'));
       expect(
         vendors.firstWhere(

@@ -22,6 +22,8 @@ import 'package:forge_and_flow/admin/services/pricing_tier_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
+  const demoWorkspaceOperatorId = '00000000-0000-4000-8000-000000000001';
+
   Widget wrap(Widget child) => MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: AppTheme.themeData,
@@ -29,8 +31,9 @@ void main() {
   );
 
   Future<void> chooseWorkspaceBusinessScope(WidgetTester tester) async {
-    const operatorId = '00000000-0000-4000-8000-000000000001';
-    final option = find.byKey(Key('admin_setup_scope_business_$operatorId'));
+    final option = find.byKey(
+      const Key('admin_setup_scope_business_$demoWorkspaceOperatorId'),
+    );
     await tester.ensureVisible(option);
     await tester.pumpAndSettle();
     await tester.tap(option);
@@ -273,7 +276,10 @@ void main() {
     (tester) async {
       final pricingGateway = InMemoryPricingTierAdminGateway(
         seed: <PricingOperatorBundle>[
-          seedBundle(operatorId: 'op-support', businessName: 'Support View Co'),
+          seedBundle(
+            operatorId: demoWorkspaceOperatorId,
+            businessName: 'Support View Co',
+          ),
         ],
       );
       final source = DemoAdminAuthSource(
@@ -321,7 +327,10 @@ void main() {
     (tester) async {
       final pricingGateway = InMemoryPricingTierAdminGateway(
         seed: <PricingOperatorBundle>[
-          seedBundle(operatorId: 'op-super', businessName: 'Super View Co'),
+          seedBundle(
+            operatorId: demoWorkspaceOperatorId,
+            businessName: 'Super View Co',
+          ),
         ],
       );
       final source = DemoAdminAuthSource.signedInAsSuperAdmin();

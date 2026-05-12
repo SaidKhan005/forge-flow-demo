@@ -154,6 +154,67 @@ void main() {
       });
     });
 
+    test(
+      'PUT scoped data accuracy writes through selected hierarchy scope',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeDataAccuracyAdminGateway();
+          final ctx = await spinUp(customGateway: gateway);
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'PUT',
+              ctx.baseUri.resolve(adminDataAccuracyScopedSettingsPath),
+              body: const <String, Object?>{
+                'operator_id': 'op-1',
+                'scope_type': 'org_unit',
+                'org_unit_id': 'ou-1',
+                'covers_source_lunch': 'manual',
+                'reason_note': 'Set lunch source for the region',
+              },
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.scopeOverrideCalls, equals(1));
+            expect(gateway.lastScopeType, equals('org_unit'));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['affected_location_count'], equals(0));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'PUT scoped polling assignment writes through selected hierarchy scope',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeDataAccuracyAdminGateway();
+          final ctx = await spinUp(customGateway: gateway);
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'PUT',
+              ctx.baseUri.resolve(adminPollingPricingScopedAssignmentsPath),
+              body: const <String, Object?>{
+                'operator_id': 'op-1',
+                'scope_type': 'business',
+                'tier_key': 'premium',
+                'reason_note': 'Move the business to premium polling',
+              },
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.scopeAssignCalls, equals(1));
+            expect(gateway.lastScopeType, equals('business'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
     test('CORS preflight allows polling-pricing write methods', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
@@ -203,7 +264,10 @@ class _SettableVerifier implements ProxyJwtVerifier {
 
 class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
   String? lastActorUserId;
+  String? lastScopeType;
   int assignTierCalls = 0;
+  int scopeOverrideCalls = 0;
+  int scopeAssignCalls = 0;
 
   @override
   Future<List<Map<String, Object?>>> listDataAccuracyRows({
@@ -240,6 +304,34 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
   }) async {
     lastActorUserId = actorUserId;
     return const <String, Object?>{'ok': true};
+  }
+
+  @override
+  Future<Map<String, Object?>> overrideDataAccuracyScope({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    String? coversSourceLunch,
+    String? coversSourceDinner,
+    String? coversSourceLateNight,
+    String? wageSource,
+    String? walkInHandlingMode,
+    String? reasonNote,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastScopeType = scopeType;
+    scopeOverrideCalls += 1;
+    return <String, Object?>{
+      'scope_type': scopeType,
+      'operator_id': operatorId,
+      if (orgUnitId != null) 'org_unit_id': orgUnitId,
+      if (locationId != null) 'location_id': locationId,
+      'affected_location_count': 0,
+      'rows': const <Map<String, Object?>>[],
+    };
   }
 
   @override
@@ -291,6 +383,34 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
     assignTierCalls += 1;
     lastActorUserId = actorUserId;
     return const <String, Object?>{'ok': true};
+  }
+
+  @override
+  Future<Map<String, Object?>> assignTierScope({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required String tierKey,
+    Map<String, int>? customCadencePerVendorSeconds,
+    int? monthlyPriceCentsOverride,
+    int? vendorApiCostEstimateCentsMonthlyOverride,
+    String? adminNotes,
+    String? reasonNote,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastScopeType = scopeType;
+    scopeAssignCalls += 1;
+    return <String, Object?>{
+      'scope_type': scopeType,
+      'operator_id': operatorId,
+      if (orgUnitId != null) 'org_unit_id': orgUnitId,
+      if (locationId != null) 'location_id': locationId,
+      'affected_location_count': 0,
+      'assignments': const <Map<String, Object?>>[],
+    };
   }
 
   @override

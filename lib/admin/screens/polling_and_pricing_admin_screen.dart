@@ -298,9 +298,10 @@ class _PollingAndPricingAdminScreenState
   }) {
     if (scope == null) return true;
     if (scope.operatorId != operatorId) return false;
+    if (locationId == null) return true;
     final locationIds = widget.scopeLocationIds;
     if (locationIds != null && locationIds.isNotEmpty) {
-      return locationId != null && locationIds.contains(locationId);
+      return locationIds.contains(locationId);
     }
     return _scopePolicy.includesOperatorLocation(
       scope,
@@ -436,28 +437,28 @@ class _PollingAndPricingAdminScreenState
     if (result == null) return;
     setState(() => _actionError = null);
     try {
-      for (final row in rows) {
-        await widget.gateway.assignTier(
-          operatorId: row.operatorRef.operatorId,
-          locationId: row.operatorRef.locationId,
-          tierKey: result.tierKey,
-          customCadencePerVendorSeconds: result.customCadence,
-          monthlyPriceCentsOverride: result.monthlyPriceCentsOverride,
-          vendorApiCostEstimateCentsMonthlyOverride:
-              result.vendorApiCostEstimateCentsMonthlyOverride,
-          adminNotes: result.adminNotes,
-          actorUserId: widget.actorUserId,
-          actorIsForgeAdmin: widget.editingEnabled,
-          reasonNote: result.reasonNote,
-        );
-      }
+      final update = await widget.gateway.assignTierScope(
+        operatorId: scope.operatorId,
+        scopeType: _mutationScopeType(scope),
+        orgUnitId: scope.orgUnitId,
+        locationId: scope.locationId,
+        tierKey: result.tierKey,
+        customCadencePerVendorSeconds: result.customCadence,
+        monthlyPriceCentsOverride: result.monthlyPriceCentsOverride,
+        vendorApiCostEstimateCentsMonthlyOverride:
+            result.vendorApiCostEstimateCentsMonthlyOverride,
+        adminNotes: result.adminNotes,
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        reasonNote: result.reasonNote,
+      );
       await _refresh();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Applied polling setup to ${rows.length} location'
-            '${rows.length == 1 ? '' : 's'}.',
+            'Applied polling setup to ${update.affectedLocationCount} '
+            'location${update.affectedLocationCount == 1 ? '' : 's'}.',
           ),
         ),
       );
@@ -745,6 +746,19 @@ class _PollingAndPricingAdminScreenState
         scope != null &&
         !scope.isLocationScope &&
         _filteredAssignments.isNotEmpty;
+  }
+
+  AdminDataAccuracyMutationScopeType _mutationScopeType(
+    AdminHierarchyScopeIntent scope,
+  ) {
+    switch (scope.scopeType) {
+      case AdminHierarchyScopeType.business:
+        return AdminDataAccuracyMutationScopeType.business;
+      case AdminHierarchyScopeType.orgUnit:
+        return AdminDataAccuracyMutationScopeType.orgUnit;
+      case AdminHierarchyScopeType.location:
+        return AdminDataAccuracyMutationScopeType.location;
+    }
   }
 }
 
@@ -1140,7 +1154,7 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
 String _tierLabel(PollingTierKey tier) {
   switch (tier) {
     case PollingTierKey.standard:
-      return 'Standard';
+      return 'Regular';
     case PollingTierKey.premium:
       return 'Premium';
     case PollingTierKey.custom:

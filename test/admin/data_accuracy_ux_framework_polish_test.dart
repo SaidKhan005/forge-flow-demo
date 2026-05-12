@@ -124,6 +124,9 @@ void main() {
                   eventType: 'admin.data_accuracy.override',
                   occurredAt: DateTime.utc(2026, 5, 5, 12),
                   actorUserId: '90000000-0000-0000-0000-000000000003',
+                  actorDisplayName: 'Amira Chen',
+                  actorRole: 'Super admin',
+                  actorEmail: 'amira@forgeflow.app',
                   operatorId: 'op-1',
                   locationId: 'loc-1',
                   diff: const <String, Object?>{
@@ -162,7 +165,10 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Applied data accuracy override'), findsOneWidget);
-        expect(find.text('Actor: Forge & Flow admin'), findsOneWidget);
+        expect(
+          find.text('Actor: Amira Chen - Super admin - amira@forgeflow.app'),
+          findsOneWidget,
+        );
         expect(
           find.text('Event key: admin.data_accuracy.override'),
           findsNothing,
@@ -220,12 +226,8 @@ void main() {
       expect(find.text('Lunch'), findsOneWidget);
       expect(find.text('Dinner'), findsOneWidget);
       expect(find.text('Late night'), findsOneWidget);
-      expect(
-        find.text(
-          'Covers are shown as lunch, dinner, and late night so support can scan each location without moving sideways.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('Covers and wage data accuracy'), findsOneWidget);
+      expect(find.textContaining('Covers are shown as'), findsNothing);
       expect(find.text('Vendor'), findsWidgets);
       expect(find.text('No override yet'), findsOneWidget);
       expect(find.textContaining('1969'), findsNothing);
@@ -364,7 +366,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Standard'), findsWidgets);
+      expect(find.text('Regular'), findsWidgets);
       expect(find.text('standard'), findsNothing);
     });
 

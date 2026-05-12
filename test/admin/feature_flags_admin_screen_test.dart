@@ -16,6 +16,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/feature_flags_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/feature_flags_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/feature_flags_admin_gateway.dart';
@@ -34,12 +35,14 @@ void main() {
     bool enabled = false,
     String kind = kFeatureFlagKindStandard,
     String? description,
+    String? operatorId,
+    String? locationId,
   }) {
     return FeatureFlagAdminRow(
       flagId: id,
       flagName: name,
-      operatorId: null,
-      locationId: null,
+      operatorId: operatorId,
+      locationId: locationId,
       enabled: enabled,
       kind: kind,
       description: description,
@@ -99,6 +102,63 @@ void main() {
     await tester.tap(find.byKey(const Key('admin_feature_flag_details_f-std')));
     await tester.pumpAndSettle();
     expect(find.text('Control ID: advisor_enabled'), findsOneWidget);
+  });
+
+  testWidgets('selected hierarchy scope filters visible launch controls', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final gateway = InMemoryFeatureFlagsAdminGateway(
+      seed: <FeatureFlagAdminRow>[
+        row(id: 'global', name: 'global_control'),
+        row(id: 'business', name: 'business_control', operatorId: 'op-a'),
+        row(
+          id: 'location-a',
+          name: 'location_control_a',
+          operatorId: 'op-a',
+          locationId: 'loc-a',
+        ),
+        row(
+          id: 'location-b',
+          name: 'location_control_b',
+          operatorId: 'op-a',
+          locationId: 'loc-b',
+        ),
+        row(
+          id: 'other-business',
+          name: 'other_business_control',
+          operatorId: 'op-b',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        FeatureFlagsAdminScreen(
+          gateway: gateway,
+          hierarchyScope: const AdminHierarchyScopeIntent.location(
+            operatorId: 'op-a',
+            locationId: 'loc-a',
+            operatorName: 'Demo Diner',
+            locationName: 'Harbor',
+          ),
+          scopeLocationIds: const <String>{'loc-a'},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Global Control'), findsOneWidget);
+    expect(find.text('Business Control'), findsOneWidget);
+    expect(find.text('Location Control A'), findsOneWidget);
+    expect(find.text('Location Control B'), findsNothing);
+    expect(find.text('Other Business Control'), findsNothing);
+    expect(find.textContaining('Demo Diner / Harbor'), findsOneWidget);
   });
 
   testWidgets('standard flag toggle flips the value and shows the SnackBar', (

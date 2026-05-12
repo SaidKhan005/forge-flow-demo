@@ -7032,6 +7032,8 @@ const String adminDataAccuracyRowsPath = '/v1/admin/data-accuracy/rows';
 const String adminDataAccuracySettingsPath = '/v1/admin/data-accuracy/settings';
 const String adminDataAccuracySettingsPrefix =
     '$adminDataAccuracySettingsPath/';
+const String adminDataAccuracyScopedSettingsPath =
+    '/v1/admin/data-accuracy/scoped-settings';
 const String adminDataAccuracyAuditHistoryPath =
     '/v1/admin/data-accuracy/audit-history';
 const String adminPollingPricingTierDefinitionsPath =
@@ -7042,6 +7044,8 @@ const String adminPollingPricingAssignmentsPath =
     '/v1/admin/polling-pricing/assignments';
 const String adminPollingPricingAssignmentsPrefix =
     '$adminPollingPricingAssignmentsPath/';
+const String adminPollingPricingScopedAssignmentsPath =
+    '/v1/admin/polling-pricing/scoped-assignments';
 const String adminPollingPricingMarginPath = '/v1/admin/polling-pricing/margin';
 const String adminPollingPricingMarginExportPath =
     '/v1/admin/polling-pricing/margin/export-csv';
@@ -7309,6 +7313,21 @@ abstract class DataAccuracyAdminProxyGateway {
     required String adminReason,
   });
 
+  Future<Map<String, Object?>> overrideDataAccuracyScope({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    String? coversSourceLunch,
+    String? coversSourceDinner,
+    String? coversSourceLateNight,
+    String? wageSource,
+    String? walkInHandlingMode,
+    String? reasonNote,
+    required String adminReason,
+  });
+
   Future<List<Map<String, Object?>>> listTierDefinitions({
     required String actorUserId,
     required String adminReason,
@@ -7334,6 +7353,21 @@ abstract class DataAccuracyAdminProxyGateway {
     required String actorUserId,
     required String operatorId,
     required String locationId,
+    required String tierKey,
+    Map<String, int>? customCadencePerVendorSeconds,
+    int? monthlyPriceCentsOverride,
+    int? vendorApiCostEstimateCentsMonthlyOverride,
+    String? adminNotes,
+    String? reasonNote,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>> assignTierScope({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
     required String tierKey,
     Map<String, int>? customCadencePerVendorSeconds,
     int? monthlyPriceCentsOverride,
@@ -7631,6 +7665,9 @@ abstract class IntegrationAdminProxyGateway {
   Future<Map<String, Object?>> listBundle({
     required String actorUserId,
     required String adminReason,
+    String? operatorId,
+    String? locationId,
+    List<String>? locationIds,
   });
 
   /// Rotate one provider key. The gateway hands the plaintext to its
@@ -7718,6 +7755,9 @@ abstract class FeatureFlagsAdminProxyGateway {
   Future<List<Map<String, Object?>>> listFlags({
     required String actorUserId,
     required String adminReason,
+    String? operatorId,
+    String? locationId,
+    List<String>? locationIds,
   });
 
   /// Toggle one flag's `enabled` bit by `flagId`. Returns the
@@ -7827,6 +7867,9 @@ abstract class ObservabilityAdminProxyGateway {
     required String adminReason,
     required int costTelemetryLimit,
     String? queryClassFilter,
+    String? operatorId,
+    String? locationId,
+    List<String>? locationIds,
   });
 }
 
@@ -14955,6 +14998,7 @@ bool _isAdminDataAccuracyPath(String path) {
   if (path == adminDataAccuracyRowsPath) return true;
   if (path == adminDataAccuracyAuditHistoryPath) return true;
   if (path.startsWith(adminDataAccuracySettingsPrefix)) return true;
+  if (path == adminDataAccuracyScopedSettingsPath) return true;
   if (path == adminPollingPricingTierDefinitionsPath ||
       path.startsWith(adminPollingPricingTierDefinitionsPrefix)) {
     return true;
@@ -14963,6 +15007,7 @@ bool _isAdminDataAccuracyPath(String path) {
       path.startsWith(adminPollingPricingAssignmentsPrefix)) {
     return true;
   }
+  if (path == adminPollingPricingScopedAssignmentsPath) return true;
   if (path == adminPollingPricingMarginPath ||
       path == adminPollingPricingMarginExportPath) {
     return true;
@@ -15027,18 +15072,26 @@ Future<void> _routeIntegrationsAdmin({
   final reasonPrefix = 'admin.integrations.$method:$actorLogId';
 
   if (method == 'GET' && path == adminIntegrationsListPath) {
+    final params = request.uri.queryParameters;
     final bundle = await gateway.listBundle(
       actorUserId: actorUserId,
       adminReason: '$reasonPrefix:list',
+      operatorId: _nonBlankString(params['operator_id']),
+      locationId: _nonBlankString(params['location_id']),
+      locationIds: _commaSeparatedQueryList(params['location_ids']),
     );
     _writeJson(response, 200, bundle);
     return;
   }
 
   if (method == 'GET' && path == adminIntegrationsStatusPath) {
+    final params = request.uri.queryParameters;
     final bundle = await gateway.listBundle(
       actorUserId: actorUserId,
       adminReason: '$reasonPrefix:status',
+      operatorId: _nonBlankString(params['operator_id']),
+      locationId: _nonBlankString(params['location_id']),
+      locationIds: _commaSeparatedQueryList(params['location_ids']),
     );
     _writeJson(response, 200, <String, Object?>{
       'vendor_connectors': bundle['vendor_connectors'],
@@ -15117,6 +15170,11 @@ bool _isAdminDataAccuracyOperation(String path, String method) {
   }
   if (method == 'PUT' &&
       path.startsWith(adminPollingPricingAssignmentsPrefix)) {
+    return true;
+  }
+  if (method == 'PUT' &&
+      (path == adminDataAccuracyScopedSettingsPath ||
+          path == adminPollingPricingScopedAssignmentsPath)) {
     return true;
   }
   if (method == 'POST' && path == adminPollingPricingMarginExportPath) {
@@ -15208,6 +15266,51 @@ Future<void> _routeDataAccuracyAdmin({
           );
         }
         return (statusCode: 200, payload: <String, Object?>{'row': row});
+      },
+    );
+    return;
+  }
+
+  if (method == 'PUT' && path == adminDataAccuracyScopedSettingsPath) {
+    final operatorId = _requireBodyString(body, 'operator_id');
+    final scopeType = _requireBodyString(body, 'scope_type');
+    final orgUnitId = _optionalBodyString(body, 'org_unit_id');
+    final locationId = _optionalBodyString(body, 'location_id');
+    final coversLunch = _optionalBodyString(body, 'covers_source_lunch');
+    final coversDinner = _optionalBodyString(body, 'covers_source_dinner');
+    final coversLateNight = _optionalBodyString(
+      body,
+      'covers_source_late_night',
+    );
+    final wageSource = _optionalBodyString(body, 'wage_source');
+    final walkInHandlingMode = _optionalBodyString(
+      body,
+      'walk_in_handling_mode',
+    );
+    final reasonNote = _optionalBodyString(body, 'reason_note');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.data_accuracy.scope_override',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final result = await gateway.overrideDataAccuracyScope(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          scopeType: scopeType,
+          orgUnitId: orgUnitId,
+          locationId: locationId,
+          coversSourceLunch: coversLunch,
+          coversSourceDinner: coversDinner,
+          coversSourceLateNight: coversLateNight,
+          wageSource: wageSource,
+          walkInHandlingMode: walkInHandlingMode,
+          reasonNote: reasonNote,
+          adminReason: '$reasonPrefix:scoped_settings:$operatorId:$scopeType',
+        );
+        return (statusCode: 200, payload: result);
       },
     );
     return;
@@ -15335,6 +15438,54 @@ Future<void> _routeDataAccuracyAdmin({
           statusCode: 200,
           payload: <String, Object?>{'assignment': assignment},
         );
+      },
+    );
+    return;
+  }
+
+  if (method == 'PUT' && path == adminPollingPricingScopedAssignmentsPath) {
+    final operatorId = _requireBodyString(body, 'operator_id');
+    final scopeType = _requireBodyString(body, 'scope_type');
+    final orgUnitId = _optionalBodyString(body, 'org_unit_id');
+    final locationId = _optionalBodyString(body, 'location_id');
+    final tierKey = _requireBodyString(body, 'tier_key');
+    final cadence = _optionalBodyPositiveIntMap(
+      body,
+      'custom_cadence_per_vendor_seconds',
+    );
+    final price = _optionalBodyNonNegativeInt(
+      body,
+      'monthly_price_cents_override',
+    );
+    final cost = _optionalBodyNonNegativeInt(
+      body,
+      'vendor_api_cost_estimate_cents_monthly_override',
+    );
+    final adminNotes = _optionalBodyString(body, 'admin_notes');
+    final reasonNote = _optionalBodyString(body, 'reason_note');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.polling_pricing.scope_assign_tier',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final result = await gateway.assignTierScope(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          scopeType: scopeType,
+          orgUnitId: orgUnitId,
+          locationId: locationId,
+          tierKey: tierKey,
+          customCadencePerVendorSeconds: cadence,
+          monthlyPriceCentsOverride: price,
+          vendorApiCostEstimateCentsMonthlyOverride: cost,
+          adminNotes: adminNotes,
+          reasonNote: reasonNote,
+          adminReason: '$reasonPrefix:scope_assignment:$operatorId:$scopeType',
+        );
+        return (statusCode: 200, payload: result);
       },
     );
     return;
@@ -15989,6 +16140,15 @@ Future<void> _routeObservabilityAdmin({
     return;
   }
   final params = request.uri.queryParameters;
+  final repeatedLocationIds = _nonBlankStrings(
+    request.uri.queryParametersAll['location_id'],
+  );
+  final scopedLocationIds = repeatedLocationIds.length > 1
+      ? repeatedLocationIds
+      : _commaSeparatedQueryList(params['location_ids']);
+  final scopedLocationId = repeatedLocationIds.length > 1
+      ? null
+      : _nonBlankString(params['location_id']);
   final limit = _clampedQueryInt(
     params['cost_telemetry_limit'],
     defaultValue: 100,
@@ -16000,6 +16160,9 @@ Future<void> _routeObservabilityAdmin({
     adminReason: 'admin.observability.GET:$actorUserId:fetch',
     costTelemetryLimit: limit,
     queryClassFilter: _nonBlankString(params['query_class']),
+    operatorId: _nonBlankString(params['operator_id']),
+    locationId: scopedLocationId,
+    locationIds: scopedLocationIds.isEmpty ? null : scopedLocationIds,
   );
   _writeJson(response, 200, payload);
 }
@@ -16029,9 +16192,13 @@ Future<void> _routeFeatureFlagsAdmin({
   final reasonPrefix = 'admin.feature_flags.$method:$actorUserId';
 
   if (method == 'GET' && path == adminFeatureFlagsListPath) {
+    final params = request.uri.queryParameters;
     final flags = await gateway.listFlags(
       actorUserId: actorUserId,
       adminReason: '$reasonPrefix:list',
+      operatorId: _nonBlankString(params['operator_id']),
+      locationId: _nonBlankString(params['location_id']),
+      locationIds: _commaSeparatedQueryList(params['location_ids']),
     );
     _writeJson(response, 200, <String, Object?>{'flags': flags});
     return;

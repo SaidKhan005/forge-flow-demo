@@ -981,6 +981,7 @@ ProxyProductionBindings buildProxyProductionBindings(
         config: config,
         accessTokenProvider: kmsTokenProvider,
       ),
+      adminWrapper: adminWrapper,
     ),
     // Phase 11A.4 — Resolves the verified Firebase UID into a
     // Postgres `users.user_id` (UUID) for audit attribution before
@@ -4047,7 +4048,7 @@ class RepositoryDataAccuracyAdminProxyGateway
         's.created_at, s.updated_at, s.updated_by '
         'from operators o '
         'join locations l on l.operator_id = o.operator_id '
-        'left join data_accuracy_settings s '
+        'left join effective_data_accuracy_settings_v s '
         'on s.operator_id = l.operator_id '
         'and s.location_id = l.location_id '
         'order by o.business_name asc, l.created_at asc',
@@ -4089,8 +4090,15 @@ class RepositoryDataAccuracyAdminProxyGateway
         'select event_id::text as event_id, event_type, occurred_at, '
         'actor_user_id::text as actor_user_id, actor_kind, '
         'operator_id::text as operator_id, location_id::text as location_id, '
-        'event_payload '
+        'event_payload, '
+        "coalesce(nullif(actor.display_name, ''), actor.email, "
+        'actor_user_id::text) as actor_display_name, '
+        'actor.email as actor_email, '
+        "coalesce(actor_role_row.display_name, actor_kind) as actor_role "
         'from auth_events_audit '
+        'left join users actor on actor.user_id = auth_events_audit.actor_user_id '
+        'left join roles actor_role_row '
+        'on actor_role_row.role_id = actor.primary_role_id '
         '$filter'
         'order by occurred_at desc '
         'limit 100',
@@ -4206,6 +4214,135 @@ class RepositoryDataAccuracyAdminProxyGateway
   }
 
   @override
+  Future<Map<String, Object?>> overrideDataAccuracyScope({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    String? coversSourceLunch,
+    String? coversSourceDinner,
+    String? coversSourceLateNight,
+    String? wageSource,
+    String? walkInHandlingMode,
+    String? reasonNote,
+    required String adminReason,
+  }) {
+    _validateScopePayload(
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+    );
+    _validateCoversSource(coversSourceLunch, 'covers_source_lunch');
+    _validateCoversSource(coversSourceDinner, 'covers_source_dinner');
+    _validateCoversSource(coversSourceLateNight, 'covers_source_late_night');
+    _validateWageSource(wageSource);
+    _validateWalkInHandlingMode(walkInHandlingMode);
+    return _adminWrapper.runAsSystem<Map<String, Object?>>((exec) async {
+      await _assertScopeExists(
+        exec,
+        operatorId: operatorId,
+        scopeType: scopeType,
+        orgUnitId: orgUnitId,
+        locationId: locationId,
+      );
+      final rows = await exec.query(
+        'insert into data_accuracy_scoped_overrides ('
+        'operator_id, scope_type, org_unit_id, location_id, '
+        'covers_source_lunch, covers_source_dinner, '
+        'covers_source_late_night, wage_source, '
+        'walk_in_handling_mode, updated_by) values ('
+        '@operator_id::uuid, @scope_type, @org_unit_id::uuid, '
+        '@location_id::uuid, @covers_lunch, @covers_dinner, '
+        '@covers_late_night, @wage_source, @walk_in_handling_mode, '
+        '@updated_by) '
+        'on conflict ('
+        'operator_id, scope_type, '
+        'coalesce(org_unit_id, '
+        "'00000000-0000-0000-0000-000000000000'::uuid), "
+        'coalesce(location_id, '
+        "'00000000-0000-0000-0000-000000000000'::uuid)) "
+        'do update set '
+        'covers_source_lunch = coalesce('
+        '@covers_lunch, data_accuracy_scoped_overrides.covers_source_lunch), '
+        'covers_source_dinner = coalesce('
+        '@covers_dinner, data_accuracy_scoped_overrides.covers_source_dinner), '
+        'covers_source_late_night = coalesce('
+        '@covers_late_night, '
+        'data_accuracy_scoped_overrides.covers_source_late_night), '
+        'wage_source = coalesce('
+        '@wage_source, data_accuracy_scoped_overrides.wage_source), '
+        'walk_in_handling_mode = coalesce('
+        '@walk_in_handling_mode, '
+        'data_accuracy_scoped_overrides.walk_in_handling_mode), '
+        'updated_at = now(), updated_by = @updated_by '
+        'returning override_id::text as override_id',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'scope_type': scopeType,
+          'org_unit_id': orgUnitId,
+          'location_id': locationId,
+          'covers_lunch': coversSourceLunch,
+          'covers_dinner': coversSourceDinner,
+          'covers_late_night': coversSourceLateNight,
+          'wage_source': wageSource,
+          'walk_in_handling_mode': walkInHandlingMode,
+          'updated_by': actorUserId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw const DataAccuracyAdminGatewayValidationError(
+          statusCode: 503,
+          code: 'scoped_data_accuracy_write_failed',
+          message: 'scoped data accuracy write returned no row',
+        );
+      }
+      final affectedRows = await _dataAccuracyRowsForScope(
+        exec,
+        operatorId: operatorId,
+        scopeType: scopeType,
+        orgUnitId: orgUnitId,
+        locationId: locationId,
+      );
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: scopeType == 'location' ? locationId : null,
+        eventType: 'admin.data_accuracy.scope_override',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'diff': <String, Object?>{
+            'scope_type': scopeType,
+            if (orgUnitId != null) 'org_unit_id': orgUnitId,
+            if (locationId != null) 'location_id': locationId,
+            'affected_location_count': affectedRows.length,
+            if (coversSourceLunch != null)
+              'covers_source_lunch': coversSourceLunch,
+            if (coversSourceDinner != null)
+              'covers_source_dinner': coversSourceDinner,
+            if (coversSourceLateNight != null)
+              'covers_source_late_night': coversSourceLateNight,
+            if (wageSource != null) 'wage_source': wageSource,
+            if (walkInHandlingMode != null)
+              'walk_in_handling_mode': walkInHandlingMode,
+          },
+          if (reasonNote != null) 'reason_note': reasonNote,
+          'admin_reason': adminReason,
+        },
+      );
+      return <String, Object?>{
+        'scope_type': scopeType,
+        'operator_id': operatorId,
+        if (orgUnitId != null) 'org_unit_id': orgUnitId,
+        if (locationId != null) 'location_id': locationId,
+        'affected_location_count': affectedRows.length,
+        'rows': affectedRows,
+      };
+    }, reason: adminReason);
+  }
+
+  @override
   Future<List<Map<String, Object?>>> listTierDefinitions({
     required String actorUserId,
     required String adminReason,
@@ -4260,13 +4397,12 @@ class RepositoryDataAccuracyAdminProxyGateway
         'a.monthly_price_cents, '
         'a.vendor_api_cost_estimate_cents_monthly, '
         'a.effective_at, a.effective_until, '
-        'a.assigned_by_admin_user_id, a.created_at '
+        'a.assigned_by_admin_user_id, a.created_at, a.admin_notes '
         'from operators o '
         'join locations l on l.operator_id = o.operator_id '
-        'left join forge_flow_polling_tier_assignment a '
+        'left join effective_forge_flow_polling_tier_assignment_v a '
         'on a.operator_id = l.operator_id '
         'and a.location_id = l.location_id '
-        'and a.effective_until is null '
         'order by o.business_name asc, l.created_at asc',
       );
       await _auditOn(
@@ -4400,6 +4536,133 @@ class RepositoryDataAccuracyAdminProxyGateway
   }
 
   @override
+  Future<Map<String, Object?>> assignTierScope({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required String tierKey,
+    Map<String, int>? customCadencePerVendorSeconds,
+    int? monthlyPriceCentsOverride,
+    int? vendorApiCostEstimateCentsMonthlyOverride,
+    String? adminNotes,
+    String? reasonNote,
+    required String adminReason,
+  }) {
+    _validateScopePayload(
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+    );
+    final tier = _validateTierKey(tierKey);
+    return _adminWrapper.runAsSystem<Map<String, Object?>>((exec) async {
+      await _assertScopeExists(
+        exec,
+        operatorId: operatorId,
+        scopeType: scopeType,
+        orgUnitId: orgUnitId,
+        locationId: locationId,
+      );
+      final definition = _definitionFor(tier);
+      final cadence =
+          customCadencePerVendorSeconds ??
+          Map<String, int>.from(
+            definition['polling_cadence_per_vendor_seconds'] as Map,
+          );
+      final price =
+          monthlyPriceCentsOverride ??
+          definition['default_monthly_price_cents'] as int?;
+      final cost =
+          vendorApiCostEstimateCentsMonthlyOverride ??
+          definition['vendor_api_cost_estimate_cents_monthly'] as int?;
+      await exec.execute(
+        'update forge_flow_polling_tier_scope_assignment '
+        'set effective_until = now() '
+        'where operator_id = @operator_id::uuid '
+        'and scope_type = @scope_type '
+        'and coalesce(org_unit_id, '
+        "'00000000-0000-0000-0000-000000000000'::uuid) = "
+        'coalesce(@org_unit_id::uuid, '
+        "'00000000-0000-0000-0000-000000000000'::uuid) "
+        'and coalesce(location_id, '
+        "'00000000-0000-0000-0000-000000000000'::uuid) = "
+        'coalesce(@location_id::uuid, '
+        "'00000000-0000-0000-0000-000000000000'::uuid) "
+        'and effective_until is null',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'scope_type': scopeType,
+          'org_unit_id': orgUnitId,
+          'location_id': locationId,
+        },
+      );
+      await exec.query(
+        'insert into forge_flow_polling_tier_scope_assignment ('
+        'operator_id, scope_type, org_unit_id, location_id, tier_key, '
+        'polling_cadence_per_vendor_seconds, monthly_price_cents, '
+        'vendor_api_cost_estimate_cents_monthly, admin_notes, '
+        'assigned_by_admin_user_id) values ('
+        '@operator_id::uuid, @scope_type, @org_unit_id::uuid, '
+        '@location_id::uuid, @tier_key, @cadence::jsonb, '
+        '@monthly_price_cents, @vendor_api_cost_estimate_cents_monthly, '
+        '@admin_notes, @admin_user_id) '
+        'returning assignment_id::text as assignment_id',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'scope_type': scopeType,
+          'org_unit_id': orgUnitId,
+          'location_id': locationId,
+          'tier_key': tier.wire,
+          'cadence': jsonEncode(cadence),
+          'monthly_price_cents': price,
+          'vendor_api_cost_estimate_cents_monthly': cost,
+          'admin_notes': adminNotes,
+          'admin_user_id': actorUserId,
+        },
+      );
+      final affectedRows = await _tierAssignmentsForScope(
+        exec,
+        operatorId: operatorId,
+        scopeType: scopeType,
+        orgUnitId: orgUnitId,
+        locationId: locationId,
+      );
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: scopeType == 'location' ? locationId : null,
+        eventType: 'admin.polling_pricing.scope_assign_tier',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'diff': <String, Object?>{
+            'scope_type': scopeType,
+            if (orgUnitId != null) 'org_unit_id': orgUnitId,
+            if (locationId != null) 'location_id': locationId,
+            'affected_location_count': affectedRows.length,
+            'tier_key': tier.wire,
+            'polling_cadence_per_vendor_seconds': cadence,
+            'monthly_price_cents': price,
+            'vendor_api_cost_estimate_cents_monthly': cost,
+            if (adminNotes != null) 'admin_notes': adminNotes,
+          },
+          if (reasonNote != null) 'reason_note': reasonNote,
+          'admin_reason': adminReason,
+        },
+      );
+      return <String, Object?>{
+        'scope_type': scopeType,
+        'operator_id': operatorId,
+        if (orgUnitId != null) 'org_unit_id': orgUnitId,
+        if (locationId != null) 'location_id': locationId,
+        'affected_location_count': affectedRows.length,
+        'assignments': affectedRows,
+      };
+    }, reason: adminReason);
+  }
+
+  @override
   Future<Map<String, Object?>> summarizeMargin({
     required String actorUserId,
     String? tierKey,
@@ -4514,7 +4777,7 @@ class RepositoryDataAccuracyAdminProxyGateway
       'covers_manual_entries, wage_source, '
       'walk_in_handling_mode, walk_in_manual_entries, '
       'created_at, updated_at, updated_by '
-      'from data_accuracy_settings '
+      'from effective_data_accuracy_settings_v '
       'where operator_id = @operator_id::uuid '
       'and location_id = @location_id::uuid',
       parameters: <String, Object?>{
@@ -4537,7 +4800,7 @@ class RepositoryDataAccuracyAdminProxyGateway
       'tier_key, polling_cadence_per_vendor_seconds, '
       'monthly_price_cents, vendor_api_cost_estimate_cents_monthly, '
       'effective_at, effective_until, assigned_by_admin_user_id, created_at '
-      'from forge_flow_polling_tier_assignment '
+      'from effective_forge_flow_polling_tier_assignment_v '
       'where operator_id = @operator_id::uuid '
       'and location_id = @location_id::uuid '
       'and effective_until is null',
@@ -4561,7 +4824,7 @@ class RepositoryDataAccuracyAdminProxyGateway
         'tier_key, polling_cadence_per_vendor_seconds, '
         'monthly_price_cents, vendor_api_cost_estimate_cents_monthly, '
         'effective_at, effective_until, assigned_by_admin_user_id, created_at '
-        'from forge_flow_polling_tier_assignment '
+        'from effective_forge_flow_polling_tier_assignment_v '
         'where effective_until is null ';
     if (tierKey != null) {
       sql += 'and tier_key = @tier_key ';
@@ -4590,6 +4853,155 @@ class RepositoryDataAccuracyAdminProxyGateway
       locationId: locationId,
       eventType: eventType,
       payload: <String, Object?>{'admin_reason': adminReason, ...payload},
+    );
+  }
+
+  Future<void> _assertScopeExists(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+  }) async {
+    final rows = await exec.query(
+      switch (scopeType) {
+        'business' =>
+          'select 1 from operators where operator_id = @operator_id::uuid limit 1',
+        'org_unit' =>
+          'select 1 from org_units where operator_id = @operator_id::uuid and id = @org_unit_id::uuid limit 1',
+        'location' =>
+          'select 1 from locations where operator_id = @operator_id::uuid and location_id = @location_id::uuid limit 1',
+        _ => 'select 0 where false',
+      },
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'org_unit_id': orgUnitId,
+        'location_id': locationId,
+      },
+    );
+    if (rows.isNotEmpty) return;
+    throw DataAccuracyAdminGatewayValidationError(
+      statusCode: 404,
+      code: 'unknown_hierarchy_scope',
+      message: 'selected hierarchy scope was not found',
+    );
+  }
+
+  Future<List<Map<String, Object?>>> _dataAccuracyRowsForScope(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+  }) async {
+    final filter = _scopeLocationFilter(
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+    );
+    final rows = await exec.query(
+      'select '
+      'o.operator_id::text as operator_id, '
+      'o.business_name, '
+      'l.location_id::text as location_id, '
+      'l.name as location_name, '
+      's.setting_id::text as setting_id, '
+      's.covers_source_lunch, s.covers_source_dinner, '
+      's.covers_source_late_night, s.covers_manual_entries, '
+      's.wage_source, s.walk_in_handling_mode, '
+      's.walk_in_manual_entries, '
+      's.created_at, s.updated_at, s.updated_by '
+      'from operators o '
+      'join locations l on l.operator_id = o.operator_id '
+      'left join effective_data_accuracy_settings_v s '
+      'on s.operator_id = l.operator_id '
+      'and s.location_id = l.location_id '
+      '${filter.sql} '
+      'order by o.business_name asc, l.created_at asc',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        ...filter.params,
+      },
+    );
+    return <Map<String, Object?>>[
+      for (final row in rows) _dataAccuracyRowJson(row),
+    ];
+  }
+
+  Future<List<Map<String, Object?>>> _tierAssignmentsForScope(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+  }) async {
+    final filter = _scopeLocationFilter(
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+    );
+    final rows = await exec.query(
+      'select '
+      'o.operator_id::text as operator_id, '
+      'o.business_name, '
+      'l.location_id::text as location_id, '
+      'l.name as location_name, '
+      'a.assignment_id::text as assignment_id, '
+      'a.tier_key, a.polling_cadence_per_vendor_seconds, '
+      'a.monthly_price_cents, '
+      'a.vendor_api_cost_estimate_cents_monthly, '
+      'a.effective_at, a.effective_until, '
+      'a.assigned_by_admin_user_id, a.created_at, a.admin_notes '
+      'from operators o '
+      'join locations l on l.operator_id = o.operator_id '
+      'left join effective_forge_flow_polling_tier_assignment_v a '
+      'on a.operator_id = l.operator_id '
+      'and a.location_id = l.location_id '
+      '${filter.sql} '
+      'order by o.business_name asc, l.created_at asc',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        ...filter.params,
+      },
+    );
+    return <Map<String, Object?>>[
+      for (final row in rows) _assignmentRowJson(row),
+    ];
+  }
+
+  ({String sql, Map<String, Object?> params}) _scopeLocationFilter({
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+  }) {
+    switch (scopeType) {
+      case 'business':
+        return (
+          sql: 'where o.operator_id = @operator_id::uuid',
+          params: const <String, Object?>{},
+        );
+      case 'org_unit':
+        return (
+          sql:
+              'join org_units selected_scope '
+              'on selected_scope.operator_id = l.operator_id '
+              'and selected_scope.id = @scope_org_unit_id::uuid '
+              'where o.operator_id = @operator_id::uuid '
+              'and l.org_unit_path <@ selected_scope.path',
+          params: <String, Object?>{'scope_org_unit_id': orgUnitId},
+        );
+      case 'location':
+        return (
+          sql:
+              'where o.operator_id = @operator_id::uuid '
+              'and l.location_id = @scope_location_id::uuid',
+          params: <String, Object?>{'scope_location_id': locationId},
+        );
+    }
+    throw DataAccuracyAdminGatewayValidationError(
+      statusCode: 400,
+      code: 'invalid_scope_type',
+      message: 'scope_type must be business, org_unit, or location',
     );
   }
 
@@ -4639,7 +5051,7 @@ class RepositoryDataAccuracyAdminProxyGateway
     return <String, Object?>{
       'operator_ref': _operatorRefJson(row),
       'assignment': row['assignment_id'] == null ? null : _assignmentJson(row),
-      'admin_notes': null,
+      'admin_notes': row['admin_notes'],
     };
   }
 
@@ -4670,6 +5082,9 @@ class RepositoryDataAccuracyAdminProxyGateway
       'occurred_at': _dateJson(row['occurred_at']),
       'actor_user_id': row['actor_user_id'],
       'actor_kind': row['actor_kind'] as String? ?? 'user',
+      'actor_display_name': row['actor_display_name'],
+      'actor_role': row['actor_role'],
+      'actor_email': row['actor_email'],
       'operator_id': row['operator_id'],
       'location_id': row['location_id'],
       'diff': _jsonMap(payload['diff']),
@@ -4911,6 +5326,26 @@ class RepositoryDataAccuracyAdminProxyGateway
             'walk_ins_tracked_separately',
       );
     }
+  }
+
+  static void _validateScopePayload({
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+  }) {
+    final valid = switch (scopeType) {
+      'business' => orgUnitId == null && locationId == null,
+      'org_unit' => orgUnitId != null && locationId == null,
+      'location' => locationId != null && orgUnitId == null,
+      _ => false,
+    };
+    if (valid) return;
+    throw const DataAccuracyAdminGatewayValidationError(
+      statusCode: 400,
+      code: 'invalid_scope_payload',
+      message:
+          'scope_type must be business, org_unit, or location with matching scope ids',
+    );
   }
 
   static PollingTierKey _validateTierKey(String value) {
@@ -5796,35 +6231,55 @@ class _GraphCandidateBundle {
   final List<Map<String, Object?>> edges;
 }
 
-/// Adapter status rows rendered by the admin Connected services screen.
+/// Vendor status rows rendered by the admin Connected services screen.
 ///
-/// These are read-only projections from the implemented adapter
-/// registries. They do not imply that connect, rotate, or disconnect
-/// routes are live for a vendor; lifecycle and setup copy carry that
-/// distinction.
-List<Map<String, Object?>> _buildIntegrationVendorConnectorStatuses() {
+/// The catalog still comes from the implemented adapter registry, but
+/// the live/unlock state is driven by API reachability recorded on
+/// `connector_connection`. Static adapter lifecycle must not unlock a
+/// vendor by itself.
+List<Map<String, Object?>> _buildIntegrationVendorConnectorStatuses({
+  Map<String, bool> apiReachableByVendor = const <String, bool>{},
+}) {
   final profiles = <integration.VendorCapabilityProfile>[
     ...vendor_status.kAdminVisibleVendorCapabilityProfiles,
   ];
   return <Map<String, Object?>>[
     for (final profile in profiles)
-      <String, Object?>{
-        'id': profile.vendorId,
-        'display_name': profile.displayName,
-        'category': _integrationCategoryWireKey(profile.category),
-        'api_reachable': _vendorApiReachableForLifecycle(profile.lifecycle),
-        'health_source': 'adapter_lifecycle',
-        'unlock_state': _vendorUnlockStateForLifecycle(profile.lifecycle),
-        'status_label': _apiReachabilityLabelForLifecycle(profile.lifecycle),
-        'detail_message': _vendorConnectorDetail(profile),
-      },
+      _vendorConnectorStatusJson(
+        profile: profile,
+        apiReachable: apiReachableByVendor[profile.vendorId] ?? false,
+      ),
   ];
 }
 
-String _vendorConnectorDetail(integration.VendorCapabilityProfile profile) {
+Map<String, Object?> _vendorConnectorStatusJson({
+  required integration.VendorCapabilityProfile profile,
+  required bool apiReachable,
+}) {
+  return <String, Object?>{
+    'id': profile.vendorId,
+    'display_name': profile.displayName,
+    'category': _integrationCategoryWireKey(profile.category),
+    'api_reachable': apiReachable,
+    'health_source': 'connector_connection',
+    'unlock_state': apiReachable ? 'unlocked' : 'api_pending',
+    'status_label': apiReachable ? 'API reachable' : 'API pending',
+    'detail_message': _vendorConnectorDetail(
+      profile,
+      apiReachable: apiReachable,
+    ),
+  };
+}
+
+String _vendorConnectorDetail(
+  integration.VendorCapabilityProfile profile, {
+  required bool apiReachable,
+}) {
   final pieces = <String>[
     '${_categoryLabel(profile.category)} adapter implemented.',
-    'Setup state: ${_setupStateLabel(profile.lifecycle)}.',
+    apiReachable
+        ? 'Live setup is unlocked because at least one location has a connected API record.'
+        : 'Live setup waits for a connected API record.',
     'Cadence: ${_webhookSupportLabel(profile.webhookSupport)}.',
   ];
   final covers = _coversLabel(profile);
@@ -5852,44 +6307,6 @@ String _integrationCategoryWireKey(integration.IntegrationCategory category) {
       return 'labor';
     case integration.IntegrationCategory.reservation:
       return 'reservation';
-  }
-}
-
-bool _vendorApiReachableForLifecycle(integration.VendorLifecycle lifecycle) {
-  switch (lifecycle) {
-    case integration.VendorLifecycle.documented:
-    case integration.VendorLifecycle.sandboxVerified:
-      return false;
-    case integration.VendorLifecycle.productionCredentialed:
-    case integration.VendorLifecycle.liveWithOperators:
-      return true;
-  }
-}
-
-String _vendorUnlockStateForLifecycle(integration.VendorLifecycle lifecycle) {
-  return _vendorApiReachableForLifecycle(lifecycle)
-      ? 'unlocked'
-      : 'api_pending';
-}
-
-String _apiReachabilityLabelForLifecycle(
-  integration.VendorLifecycle lifecycle,
-) {
-  return _vendorApiReachableForLifecycle(lifecycle)
-      ? 'API reachable'
-      : 'API pending';
-}
-
-String _setupStateLabel(integration.VendorLifecycle lifecycle) {
-  switch (lifecycle) {
-    case integration.VendorLifecycle.documented:
-      return 'production credentials pending';
-    case integration.VendorLifecycle.sandboxVerified:
-      return 'sandbox verified, production credentials pending';
-    case integration.VendorLifecycle.productionCredentialed:
-      return 'production credentials available';
-    case integration.VendorLifecycle.liveWithOperators:
-      return 'connected by at least one operator';
   }
 }
 
@@ -5984,22 +6401,34 @@ class RepositoryIntegrationAdminProxyGateway
     required KmsProvider kmsProvider,
     required AuthEventsAuditRepository auditRepository,
     required CloudRunAdminClient cloudRunAdminClient,
+    TenantTransactionWrapper? adminWrapper,
   }) : _credentials = providerCredentialsRepository,
        _kmsProvider = kmsProvider,
        _auditRepository = auditRepository,
-       _cloudRunAdminClient = cloudRunAdminClient;
+       _cloudRunAdminClient = cloudRunAdminClient,
+       _adminWrapper = adminWrapper;
 
   final ProviderCredentialsRepository _credentials;
   final KmsProvider _kmsProvider;
   final AuthEventsAuditRepository _auditRepository;
   final CloudRunAdminClient _cloudRunAdminClient;
+  final TenantTransactionWrapper? _adminWrapper;
 
   @override
   Future<Map<String, Object?>> listBundle({
     required String actorUserId,
     required String adminReason,
+    String? operatorId,
+    String? locationId,
+    List<String>? locationIds,
   }) async {
     final rows = await _credentials.listActive(adminReason: adminReason);
+    final apiReachableByVendor = await _readVendorApiReachability(
+      adminReason: adminReason,
+      operatorId: operatorId,
+      locationId: locationId,
+      locationIds: locationIds,
+    );
     final keysJson = <Map<String, Object?>>[
       for (final row in rows) row.toJson(),
     ];
@@ -6007,13 +6436,65 @@ class RepositoryIntegrationAdminProxyGateway
       actorUserId: actorUserId,
       eventType: 'admin.integrations.list',
       adminReason: adminReason,
-      payload: <String, Object?>{'provider_key_count': rows.length},
+      payload: <String, Object?>{
+        'provider_key_count': rows.length,
+        if (operatorId != null) 'operator_id': operatorId,
+        if (locationId != null) 'location_id': locationId,
+        if (locationIds != null && locationIds.isNotEmpty)
+          'location_ids': locationIds,
+      },
     );
     return <String, Object?>{
       'provider_keys': keysJson,
-      'vendor_connectors': _buildIntegrationVendorConnectorStatuses(),
+      'vendor_connectors': _buildIntegrationVendorConnectorStatuses(
+        apiReachableByVendor: apiReachableByVendor,
+      ),
       'fx_rate_source': _kIntegrationDefaultFxRateSource,
       'email_provider': _kIntegrationDefaultEmailProvider,
+    };
+  }
+
+  Future<Map<String, bool>> _readVendorApiReachability({
+    required String adminReason,
+    String? operatorId,
+    String? locationId,
+    List<String>? locationIds,
+  }) async {
+    final adminWrapper = _adminWrapper;
+    if (adminWrapper == null) return const <String, bool>{};
+    final rows = await adminWrapper.runAsSystem((exec) {
+      return exec.query(
+        'select vendor_id, '
+        'bool_or('
+        '  status = @connected_status '
+        '  and ('
+        '    last_error_at is null '
+        '    or last_sync_at is null '
+        '    or last_sync_at >= last_error_at'
+        '  )'
+        ') as api_reachable '
+        'from public.connector_connection '
+        'where (@operator_id::uuid is null or operator_id = @operator_id::uuid) '
+        'and (@location_id::uuid is null or location_id = @location_id::uuid) '
+        'and ('
+        '  @location_ids::text[] is null '
+        '  or location_id::text = any(@location_ids::text[])'
+        ') '
+        'group by vendor_id',
+        parameters: <String, Object?>{
+          'connected_status': 'connected',
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'location_ids': locationIds == null || locationIds.isEmpty
+              ? null
+              : locationIds,
+        },
+      );
+    }, reason: 'admin.integrations.vendor_api_reachability');
+    return <String, bool>{
+      for (final row in rows)
+        if (row['vendor_id'] is String)
+          row['vendor_id']! as String: row['api_reachable'] == true,
     };
   }
 
@@ -6237,9 +6718,21 @@ class RepositoryFeatureFlagsAdminProxyGateway
   Future<List<Map<String, Object?>>> listFlags({
     required String actorUserId,
     required String adminReason,
+    String? operatorId,
+    String? locationId,
+    List<String>? locationIds,
   }) async {
     final rows = await _flags.listFlags(adminReason: adminReason);
-    return <Map<String, Object?>>[for (final row in rows) row.toJson()];
+    return <Map<String, Object?>>[
+      for (final row in rows)
+        if (_featureFlagMatchesScope(
+          row,
+          operatorId: operatorId,
+          locationId: locationId,
+          locationIds: locationIds,
+        ))
+          row.toJson(),
+    ];
   }
 
   @override
@@ -6378,6 +6871,23 @@ class RepositoryFeatureFlagsAdminProxyGateway
         '}';
     return sha256.convert(utf8.encode(canonical)).toString();
   }
+}
+
+bool _featureFlagMatchesScope(
+  FeatureFlagRow row, {
+  required String? operatorId,
+  required String? locationId,
+  required List<String>? locationIds,
+}) {
+  if (operatorId == null || operatorId.isEmpty) return true;
+  if (row.operatorId == null && row.locationId == null) return true;
+  if (row.operatorId != operatorId) return false;
+  if (row.locationId == null) return true;
+  if (locationId != null && locationId.isNotEmpty) {
+    return row.locationId == locationId;
+  }
+  if (locationIds == null || locationIds.isEmpty) return true;
+  return locationIds.contains(row.locationId);
 }
 
 class RepositoryDebugConsoleAdminProxyGateway
@@ -6545,25 +7055,48 @@ class RepositoryObservabilityAdminProxyGateway
     required String adminReason,
     required int costTelemetryLimit,
     String? queryClassFilter,
+    String? operatorId,
+    String? locationId,
+    List<String>? locationIds,
   }) {
     return _adminWrapper.runAsSystem<Map<String, Object?>>((exec) async {
       final asOf = DateTime.now().toUtc();
+      final scopeParams = <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'location_ids': locationIds == null || locationIds.isEmpty
+            ? null
+            : locationIds,
+      };
       final costRows = await exec.query(
         _observabilityCostTelemetrySql,
         parameters: <String, Object?>{
           'query_class': queryClassFilter,
           'limit': costTelemetryLimit,
+          ...scopeParams,
         },
       );
       final costTotal = costRows.isEmpty
           ? 0
           : _adminInt(costRows.first['total_count']);
-      final cacheRows = await exec.query(_observabilityCacheHitSql);
-      final modelRows = await exec.query(_observabilityModelMixSql);
-      final batchRows = await exec.query(_observabilityBatchShareSql);
+      final cacheRows = await exec.query(
+        _observabilityCacheHitSql,
+        parameters: scopeParams,
+      );
+      final modelRows = await exec.query(
+        _observabilityModelMixSql,
+        parameters: scopeParams,
+      );
+      final batchRows = await exec.query(
+        _observabilityBatchShareSql,
+        parameters: scopeParams,
+      );
       final dormancyRows = await exec.query(
         _observabilityDormancySql,
-        parameters: <String, Object?>{'as_of': asOf.toIso8601String()},
+        parameters: <String, Object?>{
+          'as_of': asOf.toIso8601String(),
+          ...scopeParams,
+        },
       );
       final graphRows = await exec.query(_observabilityGraphSql);
       final graphRow = graphRows.isEmpty
@@ -6801,6 +7334,12 @@ with rows as (
   join public.operators o on o.operator_id = l.operator_id
   where l.period_start >= date_trunc('month', now() - interval '30 days')
     and (@query_class::text is null or l.query_class = @query_class)
+    and (@operator_id::uuid is null or l.operator_id = @operator_id::uuid)
+    and (@location_id::uuid is null or l.location_id = @location_id::uuid)
+    and (
+      @location_ids::text[] is null
+      or l.location_id::text = any(@location_ids::text[])
+    )
   group by
     l.operator_id,
     l.location_id,
@@ -6828,6 +7367,12 @@ select
   ) as hit_rate
 from public.usage_logs
 where period_start >= date_trunc('month', now() - interval '30 days')
+  and (@operator_id::uuid is null or operator_id = @operator_id::uuid)
+  and (@location_id::uuid is null or location_id = @location_id::uuid)
+  and (
+    @location_ids::text[] is null
+    or location_id::text = any(@location_ids::text[])
+  )
 group by query_class
 having sum(request_count) > 0
 order by query_class
@@ -6858,6 +7403,12 @@ select
   ) as sonnet_share
 from public.usage_logs
 where period_start >= date_trunc('month', now() - interval '30 days')
+  and (@operator_id::uuid is null or operator_id = @operator_id::uuid)
+  and (@location_id::uuid is null or location_id = @location_id::uuid)
+  and (
+    @location_ids::text[] is null
+    or location_id::text = any(@location_ids::text[])
+  )
 group by query_class
 having sum(request_count) > 0
 order by query_class
@@ -6873,6 +7424,12 @@ select
   ) as batch_share
 from public.usage_logs
 where period_start >= date_trunc('month', now() - interval '30 days')
+  and (@operator_id::uuid is null or operator_id = @operator_id::uuid)
+  and (@location_id::uuid is null or location_id = @location_id::uuid)
+  and (
+    @location_ids::text[] is null
+    or location_id::text = any(@location_ids::text[])
+  )
 group by query_class
 having sum(request_count) > 0
 order by query_class
@@ -6893,6 +7450,12 @@ select
   end as days_silent
 from public.operators o
 left join public.usage_logs l on l.operator_id = o.operator_id
+where (@operator_id::uuid is null or o.operator_id = @operator_id::uuid)
+  and (@location_id::uuid is null or l.location_id = @location_id::uuid)
+  and (
+    @location_ids::text[] is null
+    or l.location_id::text = any(@location_ids::text[])
+  )
 group by o.operator_id, o.business_name, o.subscription_tier
 order by last_active_at asc nulls first, o.business_name asc
 limit 200

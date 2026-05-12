@@ -39,9 +39,11 @@ import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
 
 import '../admin_button_styles.dart';
+import '../admin_route_handoff.dart';
 import '../admin_human_labels.dart';
 import '../models/integration_admin_models.dart';
 import '../services/integration_admin_gateway.dart';
+import '../widgets/admin_hierarchy_scope_notice.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart'
     show VendorCategory;
 
@@ -50,10 +52,14 @@ class IntegrationAdminScreen extends StatefulWidget {
     super.key,
     required this.gateway,
     this.editingEnabled = true,
+    this.hierarchyScope,
+    this.scopeLocationIds = const <String>{},
     this.idempotencyKeyFactory,
   });
 
   final IntegrationAdminGateway gateway;
+  final AdminHierarchyScopeIntent? hierarchyScope;
+  final Set<String> scopeLocationIds;
 
   /// When false, the screen hides every rotate affordance - used for
   /// the `ff_support` walkthrough path. The proxy enforces the same
@@ -101,7 +107,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
       _loadError = null;
     });
     try {
-      final bundle = await widget.gateway.list();
+      final bundle = await widget.gateway.list(scope: _scopeFilter);
       if (!mounted) return;
       setState(() {
         _bundle = bundle;
@@ -216,6 +222,11 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
           children: [
             const _Header(),
             const SizedBox(height: 14),
+            if (widget.hierarchyScope != null)
+              AdminHierarchyScopeNotice(
+                message:
+                    'Showing vendor API reachability for ${widget.hierarchyScope!.displayLabel}. Platform service keys remain shared ecosystem keys and are not stored per business.',
+              ),
             if (!widget.editingEnabled)
               const _ReadOnlyBanner(
                 key: Key('admin_integrations_readonly_banner'),
@@ -351,6 +362,16 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
       if (r.keyKind == kind) return r;
     }
     return null;
+  }
+
+  AdminIntegrationScopeFilter? get _scopeFilter {
+    final scope = widget.hierarchyScope;
+    if (scope == null) return null;
+    return AdminIntegrationScopeFilter(
+      operatorId: scope.operatorId,
+      locationId: scope.locationId,
+      locationIds: widget.scopeLocationIds,
+    );
   }
 }
 

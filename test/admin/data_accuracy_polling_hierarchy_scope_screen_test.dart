@@ -166,13 +166,14 @@ void main() {
     await tester.pumpAndSettle();
 
     final events = adminGateway.capturedAuditEvents
-        .where((event) => event.eventType == 'admin.data_accuracy.override')
+        .where(
+          (event) => event.eventType == 'admin.data_accuracy.scope_override',
+        )
         .toList();
-    expect(events, hasLength(2));
-    expect(events.map((event) => event.locationId).toSet(), <String>{
-      'loc-1a',
-      'loc-1b',
-    });
+    expect(events, hasLength(1));
+    expect(events.single.locationId, isNull);
+    expect(events.single.diff['scope_type'], equals('business'));
+    expect(events.single.diff['affected_location_count'], equals(2));
   });
 
   testWidgets('Data Accuracy location scope keeps location edit behavior', (
@@ -320,19 +321,16 @@ void main() {
 
     final events = adminGateway.capturedAuditEvents
         .where(
-          (event) => event.eventType == 'admin.polling_tier_assignment.assign',
+          (event) =>
+              event.eventType == 'admin.polling_tier_assignment.scope_assign',
         )
         .toList();
-    expect(events, hasLength(2));
-    expect(events.map((event) => event.locationId).toSet(), <String>{
-      'loc-1a',
-      'loc-1b',
-    });
-    for (final event in events) {
-      final costDiff =
-          event.diff['vendor_api_cost_estimate_cents_monthly']! as Map;
-      expect(costDiff['to'], 6000);
-    }
+    expect(events, hasLength(1));
+    expect(events.single.locationId, isNull);
+    expect(events.single.diff['scope_type'], equals('org_unit'));
+    expect(events.single.diff['org_unit_id'], equals('ou-north'));
+    expect(events.single.diff['affected_location_count'], equals(2));
+    expect(events.single.diff['vendor_api_cost_estimate_cents_monthly'], 6000);
   });
 
   testWidgets('Polling and pricing location scope keeps assignment action', (

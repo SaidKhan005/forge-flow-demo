@@ -104,7 +104,7 @@ class _TierDefinitionEditDialogState extends State<TierDefinitionEditDialog> {
       _costError = costCents == null ? 'Enter a cost in dollars' : null;
       _reasonError = reason.isEmpty ? 'Reason is required' : null;
       _cadenceError = cadenceEmptyForBakedTier
-          ? 'Standard / premium tiers require at least one vendor cadence.'
+          ? 'Regular / premium tiers require at least one vendor cadence.'
           : null;
     });
 
@@ -326,7 +326,7 @@ class _TierDefinitionEditDialogState extends State<TierDefinitionEditDialog> {
 String _tierLabel(PollingTierKey tier) {
   switch (tier) {
     case PollingTierKey.standard:
-      return 'Standard';
+      return 'Regular';
     case PollingTierKey.premium:
       return 'Premium';
     case PollingTierKey.custom:

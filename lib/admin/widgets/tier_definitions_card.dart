@@ -181,7 +181,7 @@ class _TierDefinitionSubcard extends StatelessWidget {
   static String _tierTitle(PollingTierKey tier) {
     switch (tier) {
       case PollingTierKey.standard:
-        return 'Standard';
+        return 'Regular';
       case PollingTierKey.premium:
         return 'Premium';
       case PollingTierKey.custom:
