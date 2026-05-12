@@ -14083,20 +14083,40 @@ Future<void> routeRequest(
             return;
           }
 
-          // HARD-H — optional Idempotency-Key on POST/PATCH/DELETE so
+          // HARD-H — required Idempotency-Key on POST/PATCH/DELETE so
           // retries collapse to one mutation + one audit row at the proxy.
-          // Header is OPTIONAL for back-compat (existing tests don't send
-          // it). When present + store is wired, `_runAdminIdempotent`
-          // handles reserve→complete against `admin_request_idempotency`.
-          final operatorLocationIdempotencyKey =
-              (request.headers.value('Idempotency-Key') ?? '').trim();
-          if (operatorLocationIdempotencyKey.length > 200) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'idempotency_key_too_long',
-              'message':
-                  'Idempotency-Key header must be 200 characters or fewer',
-            });
-            return;
+          // The caller-supplied `admin_reason` is the audit rationale; when a
+          // store is wired, `_runAdminIdempotent` handles reserve→complete
+          // against `admin_request_idempotency`.
+          String operatorLocationIdempotencyKey = '';
+          String? operatorLocationAdminReason;
+          if (request.method != 'GET') {
+            operatorLocationIdempotencyKey =
+                (request.headers.value('Idempotency-Key') ?? '').trim();
+            if (operatorLocationIdempotencyKey.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'missing_idempotency_key',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+            if (operatorLocationIdempotencyKey.length > 200) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_too_long',
+                'message':
+                    'Idempotency-Key header must be 200 characters or fewer',
+              });
+              return;
+            }
+            operatorLocationAdminReason = _nonBlankString(body['admin_reason']);
+            if (operatorLocationAdminReason == null) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'missing_admin_reason',
+                'message':
+                    'admin_reason is required on every admin operator/location write',
+              });
+              return;
+            }
           }
           try {
             await _routeOperatorLocationAdmin(
@@ -14107,6 +14127,7 @@ Future<void> routeRequest(
               actorUserId: actor.userId,
               body: body,
               idempotencyKey: operatorLocationIdempotencyKey,
+              adminReason: operatorLocationAdminReason,
               idempotencyStore: adminRequestIdempotencyStore,
             );
           } catch (error, stackTrace) {
@@ -14673,6 +14694,7 @@ Future<void> _routeOperatorLocationAdmin({
   required String actorUserId,
   required Map<String, Object?> body,
   String idempotencyKey = '',
+  String? adminReason,
   AdminRequestIdempotencyStore? idempotencyStore,
 }) async {
   final method = request.method;
@@ -14726,7 +14748,7 @@ Future<void> _routeOperatorLocationAdmin({
           primaryLocationName: locationName,
           primaryLocationTimezone: locationTimezone,
           primaryLocationRolloverHour: rolloverHour,
-          adminReason: '$reasonPrefix:onboard',
+          adminReason: adminReason!,
         );
         return (statusCode: 201, payload: bundle);
       },
@@ -14760,7 +14782,7 @@ Future<void> _routeOperatorLocationAdmin({
           subscriptionTier: _optionalBodyString(body, 'subscription_tier'),
           preferredCurrency: preferredCurrency,
           primaryLocationId: _optionalBodyString(body, 'primary_location_id'),
-          adminReason: '$reasonPrefix:patch:$operatorId',
+          adminReason: adminReason!,
         );
         if (patched == null) {
           return (
@@ -14804,13 +14826,13 @@ Future<void> _routeOperatorLocationAdmin({
           updated = await gateway.suspendOperator(
             actorUserId: actorUserId,
             operatorId: action.operatorId,
-            adminReason: '$reasonPrefix:suspend:${action.operatorId}',
+            adminReason: adminReason!,
           );
         } else {
           updated = await gateway.reactivateOperator(
             actorUserId: actorUserId,
             operatorId: action.operatorId,
-            adminReason: '$reasonPrefix:reactivate:${action.operatorId}',
+            adminReason: adminReason!,
           );
         }
         if (updated == null) {
@@ -14857,7 +14879,7 @@ Future<void> _routeOperatorLocationAdmin({
           address: address,
           timezone: timezone,
           businessDayRolloverHour: rolloverHour,
-          adminReason: '$reasonPrefix:add_location:$operatorId',
+          adminReason: adminReason!,
         );
         return (
           statusCode: 201,
@@ -14900,7 +14922,7 @@ Future<void> _routeOperatorLocationAdmin({
           address: _optionalBodyString(body, 'address'),
           timezone: timezone,
           businessDayRolloverHour: rolloverHour,
-          adminReason: '$reasonPrefix:patch_location:$locationId',
+          adminReason: adminReason!,
         );
         if (patched == null) {
           return (
@@ -14939,7 +14961,7 @@ Future<void> _routeOperatorLocationAdmin({
           actorUserId: actorUserId,
           operatorId: operatorId,
           locationId: locationId,
-          adminReason: '$reasonPrefix:remove_location:$locationId',
+          adminReason: adminReason!,
         );
         switch (result) {
           case AdminLocationRemovalResult.removed:

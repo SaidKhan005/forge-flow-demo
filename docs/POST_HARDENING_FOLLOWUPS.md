@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/_execution/2026-05-09_security_finding_w
 
 ## P0 — Production1 Migration Apply Gap
 
-**36 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605131010_admin_audit_logs_business_date.sql`; staging/preview
+**37 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605131020_admin_hierarchy_lifecycle_access_hardening.sql`; staging/preview
 apply evidence must stay attached to the runbook before any Production1 apply.
 
 | Migration | Origin | Staging |
@@ -74,8 +74,9 @@ apply evidence must stay attached to the runbook before any Production1 apply.
 | `202605121200_admin_hierarchy_scoped_data_polling.sql` | Admin hierarchy scoped Data Accuracy and Polling Setup overrides/effective views | code-ready |
 | `202605131000_admin_audit_log_actor_reason_contract.sql` | Admin audit-log actor-kind aliases plus required forge_admin admin_reason | code-ready |
 | `202605131010_admin_audit_logs_business_date.sql` | Admin audit-log restaurant-local business_date projection | code-ready |
+| `202605131020_admin_hierarchy_lifecycle_access_hardening.sql` | Admin hierarchy lifecycle access refresh, active uniqueness, and direct target guards | code-ready |
 
-**Action:** apply all 36 in next Production1 event per
+**Action:** apply all 37 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

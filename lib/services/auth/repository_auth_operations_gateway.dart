@@ -224,6 +224,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       locationId: command.locationId,
       actorUserId: command.actorUserId,
       eventType: 'auth.custom_role_created',
+      targetKind: 'role',
+      targetId: roleId,
       payload: <String, Object?>{
         'role_id': roleId,
         'role_key': roleKey,
@@ -275,6 +277,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         locationId: command.locationId,
         actorUserId: command.actorUserId,
         eventType: 'auth.custom_role_updated',
+        targetKind: 'role',
+        targetId: command.roleId,
         payload: <String, Object?>{
           'role_id': command.roleId,
           'permission_changes': permissionChanges,
@@ -323,6 +327,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         locationId: command.locationId,
         actorUserId: command.actorUserId,
         eventType: 'auth.custom_role_deleted',
+        targetKind: 'role',
+        targetId: command.roleId,
         payload: <String, Object?>{
           'role_id': command.roleId,
           if (command.reason != null) 'reason': command.reason,
@@ -663,6 +669,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       actorUserId: command.actorUserId,
       targetUserId: command.targetUserId,
       eventType: 'auth.role_grant_created',
+      targetKind: 'user_role',
+      targetId: id,
       payload: <String, Object?>{
         'user_role_id': id,
         'scope_type': scopeType.sqlKey,
@@ -695,6 +703,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         actorUserId: command.actorUserId,
         targetUserId: command.targetUserId,
         eventType: 'auth.role_grant_revoked',
+        targetKind: 'user_role',
+        targetId: command.userRoleId,
         payload: <String, Object?>{'user_role_id': command.userRoleId},
       );
     }
@@ -854,6 +864,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       locationId: command.locationId,
       actorUserId: command.actorUserId,
       eventType: 'auth.org_unit_created',
+      targetKind: 'org_unit',
+      targetId: orgUnitId,
       payload: <String, Object?>{
         'org_unit_id': orgUnitId,
         'parent_org_unit_id': command.parentOrgUnitId,
@@ -1014,6 +1026,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         locationId: command.locationId,
         actorUserId: command.actorUserId,
         eventType: 'auth.location_org_unit_moved',
+        targetKind: 'location',
+        targetId: command.targetLocationId,
         payload: <String, Object?>{
           'target_location_id': command.targetLocationId,
           'parent_org_unit_id': command.parentOrgUnitId,
@@ -1722,6 +1736,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     required String eventType,
     String? actorUserId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
   }) async {
     // User-initiated: every Team / user-management write on this
@@ -1735,6 +1751,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       actorKind: 'user',
       actorUserId: actorUserId,
       targetUserId: targetUserId,
+      targetKind: targetKind,
+      targetId: targetId,
       eventType: eventType,
       payload: payload,
     );

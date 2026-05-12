@@ -20,10 +20,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/auth/permission_effect.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/role_permissions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/roles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/user_roles_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/users_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
+import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
+import 'package:forge_and_flow/services/auth/repository_auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 
 const String _validOpId = '11111111-1111-1111-1111-111111111111';
@@ -281,10 +287,11 @@ void main() {
       expect(insertParams['location_id'], isNull);
       expect(insertParams['org_unit_id'], isNull);
       expect(
-        tx.executedSql.last,
-        equals(
+        tx.executedSql,
+        contains(
           'update users '
-          'set roles_version = roles_version + 1 '
+          'set roles_version = roles_version + 1, '
+          'permission_version = permission_version + 1 '
           'where user_id = @user_id::uuid',
         ),
       );
@@ -523,6 +530,38 @@ void main() {
     );
   });
 
+  group('RepositoryAuthOperationsGateway role audit targets', () {
+    test('createRole forwards role target metadata to audit fan-out', () async {
+      final auditRepository = _RecordingAuthEventsAuditRepository();
+      final pool = _RoleAdminPool(
+        returningRoleId: _validRoleId,
+        roleRows: <PostgresRow>[_customRoleRow()],
+      );
+      final gateway = _gatewayWithRolePool(
+        pool,
+        auditRepository: auditRepository,
+      );
+
+      final created = await gateway.createRole(
+        const TeamRoleCreateCommand(
+          actorUserId: _validUserId,
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          roleKey: 'manager_kitchen',
+          displayName: 'Kitchen Manager',
+          reason: 'Need a kitchen-specific management role',
+        ),
+      );
+
+      expect(created.role.roleId, equals(_validRoleId));
+      expect(auditRepository.events, hasLength(1));
+      final audit = auditRepository.events.single;
+      expect(audit.eventType, equals('auth.custom_role_created'));
+      expect(audit.targetKind, equals('role'));
+      expect(audit.targetId, equals(_validRoleId));
+    });
+  });
+
   group('ProxyAdminPermissionGuard (B19)', () {
     final fixedNow = DateTime.utc(2026, 4, 26, 12);
     final freshAt = fixedNow.subtract(const Duration(minutes: 1));
@@ -693,6 +732,84 @@ void main() {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
+
+RepositoryAuthOperationsGateway _gatewayWithRolePool(
+  _RoleAdminPool pool, {
+  required AuthEventsAuditRepository auditRepository,
+}) {
+  final wrapper = TenantTransactionWrapper(pool);
+  return RepositoryAuthOperationsGateway(
+    firebaseAdmin: const ScaffoldFailingFirebaseAdminAuthClient(),
+    usersRepository: UsersRepository(wrapper),
+    rolesRepository: RolesRepository(wrapper),
+    rolePermissionsRepository: RolePermissionsRepository(wrapper),
+    userRolesRepository: UserRolesRepository(wrapper),
+    authInvitesRepository: AuthInvitesRepository(wrapper),
+    auditRepository: auditRepository,
+  );
+}
+
+PostgresRow _customRoleRow() {
+  return <String, Object?>{
+    'role_id': _validRoleId,
+    'operator_id': _validOpId,
+    'role_key': 'manager_kitchen',
+    'display_name': 'Kitchen Manager',
+    'description': '',
+    'is_seeded': false,
+    'is_editable': true,
+    'created_at': DateTime.utc(2026, 4, 26, 12),
+    'updated_at': DateTime.utc(2026, 4, 26, 12),
+    'deleted_at': null,
+  };
+}
+
+class _RecordedAuditEvent {
+  const _RecordedAuditEvent({
+    required this.eventType,
+    required this.targetKind,
+    required this.targetId,
+  });
+
+  final String eventType;
+  final String? targetKind;
+  final String? targetId;
+}
+
+class _RecordingAuthEventsAuditRepository extends AuthEventsAuditRepository {
+  _RecordingAuthEventsAuditRepository()
+    : super(TenantTransactionWrapper(_RoleAdminPool()));
+
+  final List<_RecordedAuditEvent> events = <_RecordedAuditEvent>[];
+
+  @override
+  Future<String> insertEvent({
+    required String operatorId,
+    required String locationId,
+    required String eventType,
+    required String actorKind,
+    String? actorUserId,
+    String? actorServicePrincipalId,
+    String? targetUserId,
+    String? targetKind,
+    String? targetId,
+    Map<String, Object?> payload = const <String, Object?>{},
+    String? ip,
+    String? userAgent,
+    String? geoCountry,
+    String? requestId,
+    String? adminReason,
+  }) async {
+    events.add(
+      _RecordedAuditEvent(
+        eventType: eventType,
+        targetKind: targetKind,
+        targetId: targetId,
+      ),
+    );
+    return 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  }
+}
 
 class _RoleAdminPool implements PostgresPool {
   _RoleAdminPool({

@@ -7,8 +7,13 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_session_ledger_writer.dart';
@@ -294,6 +299,65 @@ void main() {
     });
   });
 
+  group('RepositoryOperatorLocationAdminProxyGateway audit targets', () {
+    test('patchOperator audits the operator target metadata', () async {
+      final auditRepository = _RecordingSystemAuditRepository();
+      final operatorsRepository = _FakeOperatorsRepository(
+        updatedOperator: _operatorRow(),
+      );
+      final gateway = _operatorLocationGateway(
+        operatorsRepository: operatorsRepository,
+        auditRepository: auditRepository,
+      );
+
+      final patched = await gateway.patchOperator(
+        actorUserId: 'admin-user',
+        operatorId: 'op-1',
+        businessName: 'Renamed Operator',
+        adminReason: 'Support-requested rename',
+      );
+
+      expect(patched, isNotNull);
+      expect(auditRepository.events, hasLength(1));
+      final audit = auditRepository.events.single;
+      expect(
+        audit.eventType,
+        equals('admin.operator_location.operator_patched'),
+      );
+      expect(audit.targetKind, equals('operator'));
+      expect(audit.targetId, equals('op-1'));
+    });
+
+    test('addLocation audits the location target metadata', () async {
+      final auditRepository = _RecordingSystemAuditRepository();
+      final locationsRepository = _FakeLocationsRepository(
+        insertedLocation: _locationRow(),
+      );
+      final gateway = _operatorLocationGateway(
+        locationsRepository: locationsRepository,
+        auditRepository: auditRepository,
+      );
+
+      final created = await gateway.addLocation(
+        actorUserId: 'admin-user',
+        operatorId: 'op-1',
+        parentOrgUnitId: 'org-1',
+        name: 'North',
+        address: '1 Main',
+        timezone: 'America/Toronto',
+        businessDayRolloverHour: 4,
+        adminReason: 'Adding a reopened location',
+      );
+
+      expect(created['location_id'], equals('loc-1'));
+      expect(auditRepository.events, hasLength(1));
+      final audit = auditRepository.events.single;
+      expect(audit.eventType, equals('admin.operator_location.location_added'));
+      expect(audit.targetKind, equals('location'));
+      expect(audit.targetId, equals('loc-1'));
+    });
+  });
+
   group('Cloud Run entrypoint wiring', () {
     test('passes pricing tier admin binding into routeRequest', () {
       final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
@@ -351,6 +415,150 @@ void main() {
       expect(source, contains("'feature_flags_admin': 'postgres'"));
     });
   });
+}
+
+RepositoryOperatorLocationAdminProxyGateway _operatorLocationGateway({
+  OperatorsRepository? operatorsRepository,
+  LocationsRepository? locationsRepository,
+  AuthEventsAuditRepository? auditRepository,
+}) {
+  return RepositoryOperatorLocationAdminProxyGateway(
+    operatorsRepository: operatorsRepository ?? _FakeOperatorsRepository(),
+    locationsRepository: locationsRepository ?? _FakeLocationsRepository(),
+    operatorAdminsRepository: _FakeOperatorAdminsRepository(),
+    authOperationsGateway: const ScaffoldFailingAuthOperationsGateway(),
+    auditRepository: auditRepository ?? _RecordingSystemAuditRepository(),
+  );
+}
+
+TenantTransactionWrapper _dummyTenantWrapper() {
+  return TenantTransactionWrapper(
+    _RecordingPostgresPool(
+      returningSessionId: '00000000-0000-4000-8000-000000000000',
+    ),
+  );
+}
+
+OperatorAdminRow _operatorRow() {
+  final now = DateTime.utc(2026, 5, 12, 12);
+  return OperatorAdminRow(
+    operatorId: 'op-1',
+    businessName: 'Renamed Operator',
+    ownerEmail: 'owner@example.test',
+    subscriptionTier: 'launch',
+    preferredCurrency: 'CAD',
+    primaryLocationId: 'loc-1',
+    suspendedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  );
+}
+
+LocationAdminRow _locationRow() {
+  final now = DateTime.utc(2026, 5, 12, 12);
+  return LocationAdminRow(
+    locationId: 'loc-1',
+    operatorId: 'op-1',
+    parentOrgUnitId: 'org-1',
+    name: 'North',
+    address: '1 Main',
+    timezone: 'America/Toronto',
+    businessDayRolloverHour: 4,
+    createdAt: now,
+    updatedAt: now,
+  );
+}
+
+class _FakeOperatorsRepository extends OperatorsRepository {
+  _FakeOperatorsRepository({this.updatedOperator})
+    : super(_dummyTenantWrapper());
+
+  final OperatorAdminRow? updatedOperator;
+
+  @override
+  Future<OperatorAdminRow?> updateOperator({
+    required String operatorId,
+    String? businessName,
+    String? ownerEmail,
+    String? subscriptionTier,
+    String? preferredCurrency,
+    String? primaryLocationId,
+    required String adminReason,
+  }) async {
+    return updatedOperator;
+  }
+}
+
+class _FakeLocationsRepository extends LocationsRepository {
+  _FakeLocationsRepository({this.insertedLocation})
+    : super(_dummyTenantWrapper());
+
+  final LocationAdminRow? insertedLocation;
+
+  @override
+  Future<LocationAdminRow> insertLocation({
+    required String operatorId,
+    required String parentOrgUnitId,
+    required String name,
+    required String address,
+    required String timezone,
+    required int businessDayRolloverHour,
+    required String adminReason,
+  }) async {
+    final row = insertedLocation;
+    if (row == null) throw StateError('insertedLocation not configured');
+    return row;
+  }
+}
+
+class _FakeOperatorAdminsRepository extends OperatorAdminsRepository {
+  _FakeOperatorAdminsRepository() : super(_dummyTenantWrapper());
+}
+
+class _RecordedSystemAuditEvent {
+  const _RecordedSystemAuditEvent({
+    required this.eventType,
+    required this.targetKind,
+    required this.targetId,
+  });
+
+  final String eventType;
+  final String? targetKind;
+  final String? targetId;
+}
+
+class _RecordingSystemAuditRepository extends AuthEventsAuditRepository {
+  _RecordingSystemAuditRepository() : super(_dummyTenantWrapper());
+
+  final List<_RecordedSystemAuditEvent> events = <_RecordedSystemAuditEvent>[];
+
+  @override
+  Future<String> insertSystemEvent({
+    required String eventType,
+    required String actorKind,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+    String? actorServicePrincipalId,
+    String? targetUserId,
+    String? targetKind,
+    String? targetId,
+    Map<String, Object?> payload = const <String, Object?>{},
+    String? ip,
+    String? userAgent,
+    String? geoCountry,
+    String? requestId,
+    required String adminReason,
+  }) async {
+    events.add(
+      _RecordedSystemAuditEvent(
+        eventType: eventType,
+        targetKind: targetKind,
+        targetId: targetId,
+      ),
+    );
+    return 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  }
 }
 
 class _RecordingPostgresPool implements PostgresPool {

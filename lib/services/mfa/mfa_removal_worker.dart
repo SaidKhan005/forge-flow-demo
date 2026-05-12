@@ -380,6 +380,7 @@ class MfaRemovalWorker {
           topic: 'auth.user.mfa_factor_removal_dead_lettered',
           payload: <String, Object?>{
             'event_id': request.requestId,
+            'request_id': request.requestId,
             'event_type': 'auth.user.mfa_factor_removal_dead_lettered',
             'occurred_at': now.toUtc().toIso8601String(),
             'operator_id': request.operatorId,

@@ -3402,6 +3402,8 @@ class RepositoryOperatorLocationAdminProxyGateway
       operatorId: result.operator.operatorId,
       locationId: result.location.locationId,
       eventType: 'admin.operator_location.onboarded',
+      targetKind: 'operator',
+      targetId: result.operator.operatorId,
       adminReason: adminReason,
       payload: <String, Object?>{
         'business_name': businessName,
@@ -3444,6 +3446,8 @@ class RepositoryOperatorLocationAdminProxyGateway
         operatorId: updated.operatorId,
         locationId: updated.primaryLocationId,
         eventType: 'admin.operator_location.operator_patched',
+        targetKind: 'operator',
+        targetId: updated.operatorId,
         adminReason: adminReason,
         payload: <String, Object?>{
           'changed_fields': <String>[
@@ -3475,6 +3479,8 @@ class RepositoryOperatorLocationAdminProxyGateway
         operatorId: updated.operatorId,
         locationId: updated.primaryLocationId,
         eventType: 'admin.operator_location.operator_suspended',
+        targetKind: 'operator',
+        targetId: updated.operatorId,
         adminReason: adminReason,
       );
     }
@@ -3497,6 +3503,8 @@ class RepositoryOperatorLocationAdminProxyGateway
         operatorId: updated.operatorId,
         locationId: updated.primaryLocationId,
         eventType: 'admin.operator_location.operator_reactivated',
+        targetKind: 'operator',
+        targetId: updated.operatorId,
         adminReason: adminReason,
       );
     }
@@ -3528,6 +3536,8 @@ class RepositoryOperatorLocationAdminProxyGateway
       operatorId: created.operatorId,
       locationId: created.locationId,
       eventType: 'admin.operator_location.location_added',
+      targetKind: 'location',
+      targetId: created.locationId,
       adminReason: adminReason,
       payload: <String, Object?>{
         'name': name,
@@ -3561,6 +3571,8 @@ class RepositoryOperatorLocationAdminProxyGateway
         operatorId: patched.operatorId,
         locationId: patched.locationId,
         eventType: 'admin.operator_location.location_patched',
+        targetKind: 'location',
+        targetId: patched.locationId,
         adminReason: adminReason,
         payload: <String, Object?>{
           'changed_fields': <String>[
@@ -3605,6 +3617,8 @@ class RepositoryOperatorLocationAdminProxyGateway
       operatorId: operatorId,
       locationId: locationId,
       eventType: 'admin.operator_location.location_removed',
+      targetKind: 'location',
+      targetId: locationId,
       adminReason: adminReason,
     );
     return AdminLocationRemovalResult.removed;
@@ -3617,6 +3631,8 @@ class RepositoryOperatorLocationAdminProxyGateway
     String? operatorId,
     String? locationId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
     // Admin operator-mgmt path: actor is a verified F&F admin JWT.
@@ -3626,6 +3642,8 @@ class RepositoryOperatorLocationAdminProxyGateway
       operatorId: operatorId,
       locationId: locationId,
       targetUserId: targetUserId,
+      targetKind: targetKind,
+      targetId: targetId,
       eventType: eventType,
       adminReason: adminReason,
       payload: <String, Object?>{'admin_reason': adminReason, ...payload},

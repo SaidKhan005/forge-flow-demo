@@ -699,11 +699,14 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     String? actorUserId,
     String? actorServicePrincipalId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
     String? userAgent,
     String? geoCountry,
     String? requestId,
+    String? adminReason,
   }) async {
     events.add(_AuditEvent(
       eventType: eventType,
@@ -722,6 +725,8 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     String? actorUserId,
     String? actorServicePrincipalId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
     String? userAgent,
@@ -749,11 +754,14 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     String? actorUserId,
     String? actorServicePrincipalId,
     String? targetUserId,
+    String? targetKind,
+    String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
     String? userAgent,
     String? geoCountry,
     String? requestId,
+    String? adminReason,
   }) async {
     events.add(_AuditEvent(
       eventType: eventType,
