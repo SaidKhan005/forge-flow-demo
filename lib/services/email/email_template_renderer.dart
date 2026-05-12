@@ -120,6 +120,37 @@ class EmailTemplateIds {
   /// `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md`.
   static const String vendorNowAvailable = 'vendor_now_available';
 
+  /// V1 status: WIRED via `NotificationEventFanout` for the
+  /// `notif.backfill.complete` event. Trigger site:
+  /// `tool/integration_sync_worker/backfill_dispatch.dart`'s
+  /// `markSucceeded`. Hook helper:
+  /// `tool/advisor_proxy/email_dispatch/notification_event_hooks.dart`
+  /// (`emitBackfillComplete`). Registered as part of the B3 hot-fix
+  /// slice (`docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`
+  /// Block B, B3) which closed the silent-failure path where the
+  /// hook referenced a template id that was not in `all`.
+  static const String backfillComplete = 'backfill_complete';
+
+  /// V1 status: WIRED via `NotificationEventFanout` for the
+  /// `notif.backfill.failed` event. Trigger site:
+  /// `tool/first_connect_backfill_worker/main.dart`'s
+  /// `RetryCappingBackfillJobStore.markFailed`. Hook helper:
+  /// `tool/advisor_proxy/email_dispatch/notification_event_hooks.dart`
+  /// (`emitBackfillFailed`). Registered as part of the B3 hot-fix
+  /// slice (see [backfillComplete]).
+  static const String backfillFailed = 'backfill_failed';
+
+  /// V1 status: WIRED via `NotificationEventFanout` for the
+  /// `notif.audit.anchor_failure` event. Trigger site:
+  /// `tool/audit_anchor/main.dart`'s `_runAnchorMode` /
+  /// `_runSweepMode` failure branches. Hook helper:
+  /// `tool/advisor_proxy/email_dispatch/notification_event_hooks.dart`
+  /// (`emitAuditAnchorFailure`). Registered as part of the B3
+  /// hot-fix slice (see [backfillComplete]). Operator-facing copy
+  /// avoids the words "anchor" and "hash chain" per the addendum's
+  /// plain-language directive.
+  static const String auditAnchorFailure = 'audit_anchor_failure';
+
   /// All V1 template ids in the order they appear in the slice doc.
   /// Runtime tests iterate this list to confirm every file renders
   /// with sample data.
@@ -133,6 +164,9 @@ class EmailTemplateIds {
     vendorConnectionAutoDisabled,
     tosVersionUpdatedNotice,
     vendorNowAvailable,
+    backfillComplete,
+    backfillFailed,
+    auditAnchorFailure,
   ];
 }
 
@@ -158,6 +192,12 @@ const Map<String, String> _subjectByTemplate = <String, String>{
       'Forge & Flow Terms of Service updated',
   EmailTemplateIds.vendorNowAvailable:
       '{{vendorName}} is ready to connect in Forge & Flow',
+  EmailTemplateIds.backfillComplete:
+      'Your {{vendorName}} historical sync is complete',
+  EmailTemplateIds.backfillFailed:
+      'Your {{vendorName}} historical sync needs attention',
+  EmailTemplateIds.auditAnchorFailure:
+      'A daily integrity check on your audit log did not complete',
 };
 
 class EmailTemplateRenderer {

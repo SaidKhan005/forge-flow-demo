@@ -9,10 +9,21 @@ repo_root_posix=$(printf '%s' "$repo_root" | tr '\\' '/')
 
 case "$repo_root_posix" in
   */.claude/worktrees/*|*/.codex_worktrees/*)
-    echo "[forge-flow pre-push] Refusing to push from an agent worktree:"
-    echo "  $repo_root"
-    echo "Push from the main repo after review/merge instead."
-    exit 1
+    branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || branch=""
+    case "$branch" in
+      claude/*|codex/*)
+        # Agent worktree pushing its own agent branch -- push allowed.
+        # Agents commit + push + open PR; main audits PR against contracts
+        # before merging to master. See workflow notes in CLAUDE.md.
+        ;;
+      *)
+        echo "[forge-flow pre-push] Refusing to push from an agent worktree on non-agent branch:"
+        echo "  $repo_root"
+        echo "  branch: ${branch:-<detached>}"
+        echo "Agent worktrees may only push claude/* or codex/* branches."
+        exit 1
+        ;;
+    esac
     ;;
 esac
 

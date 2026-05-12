@@ -63,6 +63,7 @@
 
 import 'package:forge_and_flow/domain/models/notification_event_catalog.dart';
 import 'package:forge_and_flow/domain/models/notification_preference.dart';
+import 'package:forge_and_flow/services/observability/log.dart';
 
 /// Roles a user holds within an operator. Mirrors the strings used
 /// in `notification_event_catalog.dart`'s [roleSatisfiesGate].
@@ -214,6 +215,35 @@ typedef NotificationEmailDispatchSeam = Future<void> Function(
   FanoutEmailPayload payload,
 );
 
+/// Structured-log emitter seam for the fanout's per-channel failure
+/// path. Production binds this to the proxy's [log] function so
+/// failures land as one JSON envelope per stdout line in Cloud
+/// Logging; tests pass a recording closure that captures every
+/// call without touching stdout.
+///
+/// The signature mirrors [log] exactly so the production binding is
+/// the one-liner `(severity, event, {fields}) => log(severity, event,
+/// fields: fields)`. The seam exists (rather than calling [log]
+/// directly) so the B3 hot-fix test plan can assert the swallow site
+/// fires a structured log line on every email-side dispatch failure.
+typedef NotificationFanoutLogSeam = void Function(
+  LogSeverity severity,
+  String event, {
+  Map<String, Object?> fields,
+});
+
+/// Default [NotificationFanoutLogSeam] - emits via the proxy's
+/// structured [log] function. Production callers may omit the seam
+/// in the constructor and inherit this binding; tests inject a
+/// recording closure.
+void defaultNotificationFanoutLogSeam(
+  LogSeverity severity,
+  String event, {
+  Map<String, Object?> fields = const <String, Object?>{},
+}) {
+  log(severity, event, fields: fields);
+}
+
 /// Per-event payload contributed by the trigger site. Carries the
 /// `templateData` map for email rendering plus the `title` / `body`
 /// strings used by push and inbox.
@@ -313,6 +343,7 @@ class NotificationEventFanout {
     required NotificationPushDispatchSeam pushDispatch,
     required NotificationEmailDispatchSeam emailDispatch,
     NotificationPushDispatchSeam? inboxDispatch,
+    NotificationFanoutLogSeam logSeam = defaultNotificationFanoutLogSeam,
     List<NotificationCatalogEntry> catalog = kNotificationCatalog,
   })  : _preferenceReadSeam = preferenceReadSeam,
         _userDirectory = userDirectory,
@@ -324,6 +355,7 @@ class NotificationEventFanout {
         // so the mobile-side FCM handler can route into
         // `app_notifications` rather than firing a system push.
         _inboxDispatch = inboxDispatch ?? pushDispatch,
+        _logSeam = logSeam,
         _catalogByKey = <String, NotificationCatalogEntry>{
           for (final entry in catalog) entry.eventKey: entry,
         };
@@ -333,6 +365,7 @@ class NotificationEventFanout {
   final NotificationPushDispatchSeam _pushDispatch;
   final NotificationEmailDispatchSeam _emailDispatch;
   final NotificationPushDispatchSeam _inboxDispatch;
+  final NotificationFanoutLogSeam _logSeam;
   final Map<String, NotificationCatalogEntry> _catalogByKey;
 
   /// Catalog entry for [eventKey], or null when the event is not
@@ -357,8 +390,18 @@ class NotificationEventFanout {
     if (entry == null) {
       // Unknown event_key. Skip silently rather than throwing so a
       // rolling deploy that introduces a new event without the
-      // catalog catches up cleanly. The trigger site logs the
-      // unknown key as part of its own structured log line.
+      // catalog catches up cleanly. B3 hot-fix: surface the skip
+      // as a structured log line so a stale catalog deploy is at
+      // least visible in Cloud Logging.
+      _logSeam(
+        LogSeverity.warning,
+        'notification.fanout.unknown_event_key',
+        fields: <String, Object?>{
+          'event_kind': envelope.eventKey,
+          'template_id': envelope.emailTemplateId,
+          'operator_id': operatorId,
+        },
+      );
       return NotificationFanoutOutcome(
         eventKey: envelope.eventKey,
         usersConsidered: 0,
@@ -441,12 +484,41 @@ class NotificationEventFanout {
               );
               inboxDispatched += 1;
           }
-        } catch (_) {
-          // Channel-side failure leaves the rest of the fanout
-          // intact. The seam-side UNIQUE indexes guarantee that a
-          // retried fanout call collapses to the same row, so
-          // skipped channels are picked up on the next trigger.
+        } catch (e, st) {
+          // B3 hot-fix (see
+          // `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`
+          // Block B, B3 and `c_email_notification_scenario_inventory.md`
+          // "Hook-only with missing templates"): the previous
+          // `catch (_)` swallowed every per-channel dispatch error
+          // silently, including the renderer's
+          // `ArgumentError: Unknown templateId` thrown when the
+          // email channel referenced a template id not in
+          // `EmailTemplateIds.all`. Operators never received the
+          // backfill / audit emails and the failure left no trace.
+          //
+          // Rebroadcast as a structured log line so future template
+          // misses (or any other seam failure) surface in Cloud
+          // Logging. We deliberately do NOT rethrow: push + inbox
+          // still need to flow for users whose preferences admit
+          // them, and the channel-side UNIQUE indexes mean a
+          // retried fanout call collapses to the same row.
           skipped += 1;
+          _logSeam(
+            LogSeverity.error,
+            channel == NotificationChannel.email
+                ? 'notification.fanout.email_render_failed'
+                : 'notification.fanout.channel_dispatch_failed',
+            fields: <String, Object?>{
+              'event_kind': envelope.eventKey,
+              'template_id': envelope.emailTemplateId,
+              'operator_id': operatorId,
+              'user_id': user.userId,
+              'channel': channel.wire,
+              'error.runtimeType': e.runtimeType.toString(),
+              'error_message': e.toString(),
+              'stack_first_frame': firstStackFrame(st),
+            },
+          );
         }
       }
     }
