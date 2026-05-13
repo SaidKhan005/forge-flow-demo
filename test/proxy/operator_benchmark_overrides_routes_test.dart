@@ -7,6 +7,7 @@ import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/services/baseline/benchmark_override_resolver.dart';
 
 import '../../tool/advisor_proxy/advisor_proxy.dart';
+import '../../tool/advisor_proxy/operator_benchmark_overrides_routes.dart';
 
 void main() {
   const operatorId = '22222222-2222-4222-8222-222222222222';
@@ -382,10 +383,6 @@ Future<({
   _FakeGateway gateway,
 })> _spinUp({required bool allowBaselineOverride}) async {
   final gateway = _FakeGateway();
-  final router = OperatorBenchmarkOverridesRouter(
-    gateway: gateway,
-    auditSink: _RecordingAuditSink(),
-  );
   final guard = ProxyRequestGuard(
     verifier: const _StaticVerifier(
       ProxyJwtClaims(
@@ -396,17 +393,62 @@ Future<({
       ),
     ),
   );
+  final permissionResolver = _StaticPermissionResolver(
+    allowBaselineOverride: allowBaselineOverride,
+  );
+  // Construct the router with the same closure-bound auth + permission
+  // bridges that `main.dart` builds in production. Tests then mount it
+  // via `tryHandle` ahead of `routeRequest` (sibling-file pre-check
+  // pattern shared with C-1 SendGrid + B8 audit-log-hierarchy).
+  final router = OperatorBenchmarkOverridesRouter(
+    gateway: gateway,
+    auditSink: _RecordingAuditSink(),
+    authResolver: (request) async {
+      try {
+        final scope = await guard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+        return OperatorBenchmarkOverridesActor(
+          userId: scope.userId,
+          operatorId: scope.operatorId,
+          locationId: scope.locationId,
+          roles: scope.roles.toSet(),
+          actorKind: scope.actorKind,
+        );
+      } on ProxyAuthError {
+        return null;
+      }
+    },
+    permissionGate: (actor) async {
+      try {
+        final snapshot = await permissionResolver.load(
+          OperatorContext(
+            userId: actor.userId,
+            operatorId: actor.operatorId,
+            locationId: actor.locationId,
+            roles: actor.roles.toList(),
+            actorKind: actor.actorKind,
+          ),
+        );
+        final effect =
+            snapshot.permissions[PermissionKeys.forgeflowBaselineOverride];
+        return effect == PermissionEffect.allow
+            ? OperatorBenchmarkOverridesPermissionEffect.allow
+            : OperatorBenchmarkOverridesPermissionEffect.deny;
+      } on Exception {
+        return OperatorBenchmarkOverridesPermissionEffect.unavailable;
+      }
+    },
+  );
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   // ignore: unawaited_futures
   server.listen((request) async {
-    await routeRequest(
-      request,
-      guard,
-      operatorBenchmarkOverridesRouter: router,
-      permissionSnapshotResolver: _StaticPermissionResolver(
-        allowBaselineOverride: allowBaselineOverride,
-      ),
-    );
+    if (await router.tryHandle(request)) {
+      return;
+    }
+    await routeRequest(request, guard);
   });
   final client = HttpClient();
   final baseUri = Uri.parse('http://${server.address.host}:${server.port}');

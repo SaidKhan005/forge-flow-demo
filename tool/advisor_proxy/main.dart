@@ -28,6 +28,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:forge_and_flow/auth/permission_effect.dart';
+import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart'
     show PackagePostgresPool;
@@ -67,6 +69,7 @@ import 'admin_email_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
 import 'advisor_response_cache.dart';
+import 'operator_benchmark_overrides_routes.dart';
 import 'integration_oauth_routes.dart';
 import 'integration_oauth_state_store.dart';
 import 'log.dart';
@@ -1224,6 +1227,91 @@ Future<void> _runProxy(List<String> args) async {
   final pepperRouter = PepperRouter(store: pepperStore, authGuard: authGuard);
   // endregion
 
+  // Lane B B6 — operator benchmark override hierarchy router. Mounted
+  // as a pre-check below so `routeRequest` never sees the
+  // `/v1/operator/benchmarks/overrides[/{id}]` URLs (advisor_proxy.dart
+  // is UNTOUCHED, preserving the bleed-stop ceiling). The router takes
+  // the inbound bearer token through the existing `authGuard` so we
+  // do not duplicate JWT verification; the `forgeflow.baseline.override`
+  // permission gate closes over the same
+  // `ProxyPermissionSnapshotResolver` the rest of routeRequest uses.
+  // The gateway is constructed in `proxy_bootstrap.dart` (over the
+  // tenant pool) so this file does not import `package:postgres`.
+  // Mirrors the C-1 SendGrid + B8 audit-log-hierarchy sibling-file
+  // decompose precedents.
+  final operatorBenchmarkOverridesRouter = OperatorBenchmarkOverridesRouter(
+    gateway: productionBindings.operatorBenchmarkOverridesGateway,
+    auditSink: productionBindings.operatorBenchmarkOverridesAuditSink,
+    authResolver: (request) async {
+      try {
+        final scope = await authGuard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+        return OperatorBenchmarkOverridesActor(
+          userId: scope.userId,
+          operatorId: scope.operatorId,
+          locationId: scope.locationId,
+          roles: scope.roles.toSet(),
+          actorKind: scope.actorKind,
+        );
+      } on ProxyAuthError {
+        return null;
+      }
+    },
+    permissionGate: (actor) async {
+      try {
+        final snapshot = await productionBindings.permissionSnapshotResolver
+            .load(
+              OperatorContext(
+                userId: actor.userId,
+                operatorId: actor.operatorId,
+                locationId: actor.locationId,
+                roles: actor.roles.toList(),
+                actorKind: actor.actorKind,
+              ),
+            );
+        final effect =
+            snapshot.permissions[PermissionKeys.forgeflowBaselineOverride];
+        if (effect == PermissionEffect.allow) {
+          return OperatorBenchmarkOverridesPermissionEffect.allow;
+        }
+        return OperatorBenchmarkOverridesPermissionEffect.deny;
+      } on Exception {
+        return OperatorBenchmarkOverridesPermissionEffect.unavailable;
+      }
+    },
+    unhandledErrorLogger: ({
+      required String method,
+      required String path,
+      required Object error,
+      required StackTrace stackTrace,
+    }) {
+      final errorText = error.toString().replaceAll(RegExp(r'\s+'), ' ');
+      final clipped = errorText.length > 500
+          ? '${errorText.substring(0, 500)}...'
+          : errorText;
+      final stackText = stackTrace.toString();
+      final firstNewline = stackText.indexOf('\n');
+      final firstFrame = firstNewline == -1
+          ? stackText
+          : stackText.substring(0, firstNewline);
+      log(
+        LogSeverity.error,
+        'proxy.unhandled_error',
+        fields: <String, Object?>{
+          'surface': 'operator_benchmark_overrides',
+          'method': method,
+          'path': path,
+          'error_type': error.runtimeType.toString(),
+          'error_message': clipped,
+          'stack_first_frame': firstFrame,
+        },
+      );
+    },
+  );
+
   // Phase 8 — wire the inbound integration chain (vendor credential
   // broker, 17 per-tenant adapter factories, signature verifiers,
   // RepositoryInboundWebhookGateway, RepositoryIntegrationRoutesGateway)
@@ -1593,6 +1681,24 @@ Future<void> _runProxy(List<String> args) async {
             return;
           }
           // endregion
+          // region: lane_b_b6_benchmark_overrides
+          // Lane B B6 — operator benchmark override hierarchy. Handles
+          // GET/POST /v1/operator/benchmarks/overrides and
+          // PATCH/DELETE /v1/operator/benchmarks/overrides/{id}. The
+          // router does its own JWT + role + permission + Idempotency-
+          // Key verification via the injected resolvers (closures over
+          // `authGuard` and `productionBindings.permissionSnapshotResolver`);
+          // returns false on non-matching paths so the existing
+          // dispatcher continues. advisor_proxy.dart is intentionally
+          // NOT touched (bleed-stop ceiling discipline) — the only
+          // mounting site is this pre-check. Mirrors the B8
+          // audit-log-hierarchy mount pattern (sibling file +
+          // `tryHandle` short-circuit) so reviewers see one idiom for
+          // every operator/admin sibling router.
+          if (await operatorBenchmarkOverridesRouter.tryHandle(request)) {
+            return;
+          }
+          // endregion
           await routeRequest(
             request,
             authGuard,
@@ -1676,8 +1782,6 @@ Future<void> _runProxy(List<String> args) async {
             // account routes. Without this binding the routes return
             // 503 operator_write_router_not_configured.
             operatorWriteRouter: productionBindings.operatorWriteRouter,
-            operatorBenchmarkOverridesRouter:
-                productionBindings.operatorBenchmarkOverridesRouter,
             // Operator Web W4.B - per-tenant audit-chain-anchor read
             // gateway for the operator-web Audit Log integrity badge.
             // Without this binding the route returns 503

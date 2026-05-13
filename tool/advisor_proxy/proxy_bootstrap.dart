@@ -110,6 +110,7 @@ import '../advisor_corpus/advisor_corpus.dart'
         graphifyEdgeCandidatesFileName,
         graphifyNodeCandidatesFileName;
 import 'advisor_proxy.dart';
+import 'operator_benchmark_overrides_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'connector_backfill_jobs_routes.dart';
 import 'anthropic_http_complete_fn.dart';
@@ -232,7 +233,8 @@ class ProxyProductionBindings {
     required this.passwordResetThrottleCounter,
     required this.operatorWriteRouter,
     required this.adminBusinessTimingRouter,
-    required this.operatorBenchmarkOverridesRouter,
+    required this.operatorBenchmarkOverridesGateway,
+    required this.operatorBenchmarkOverridesAuditSink,
     required this.auditChainAnchorsGateway,
     required this.connectorBackfillJobsRouter,
     required this.vendorLifecycleRecentlyAvailableRouter,
@@ -399,9 +401,28 @@ class ProxyProductionBindings {
   /// in the body (audited).
   final AdminBusinessTimingRouter adminBusinessTimingRouter;
 
-  /// B6 - operator benchmark override hierarchy. Uses the same tenant
-  /// pool and audit sink posture as account/business-timing writes.
-  final OperatorBenchmarkOverridesRouter operatorBenchmarkOverridesRouter;
+  /// B6 - operator benchmark override hierarchy gateway. The matching
+  /// [OperatorBenchmarkOverridesRouter] is constructed in `main.dart`
+  /// where the `ProxyRequestGuard` lives (so the auth resolver +
+  /// permission gate close over the same verified JWT path the rest
+  /// of the proxy uses). Mounting the router as a pre-check before
+  /// `routeRequest` keeps `tool/advisor_proxy/advisor_proxy.dart`
+  /// UNTOUCHED, preserving the `advisor_proxy_size_lint` bleed-stop
+  /// ceiling. Mirrors the C-1 SendGrid + B8 audit-log-hierarchy
+  /// sibling-file decomposition precedents.
+  ///
+  /// Production binding wraps [BenchmarkOverridesRepository] over the
+  /// tenant pool transaction wrapper. Every read/write routes through
+  /// `withTenant` so `SET LOCAL app.operator_id` engages and the
+  /// existing RLS policy on `public.benchmark_overrides` clamps to
+  /// the caller's operator.
+  final OperatorBenchmarkOverridesGateway operatorBenchmarkOverridesGateway;
+
+  /// B6 - operator benchmark override audit sink. Reuses the shared
+  /// [ProductionOperatorWriteAuditSink] so benchmark override mutations
+  /// hash-chain through the same `audit_logs` write path as business-
+  /// timing + account writes (single chain head per operator).
+  final OperatorWriteAuditSink operatorBenchmarkOverridesAuditSink;
 
   /// Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
   /// Backed by [PostgresAuditChainAnchorsGateway]; the route
@@ -826,11 +847,16 @@ ProxyProductionBindings buildProxyProductionBindings(
     auditSink: operatorBusinessTimingAuditSink,
     mutationListener: timingMutationListener,
   );
-  final operatorBenchmarkOverridesRouter = OperatorBenchmarkOverridesRouter(
-    gateway: RepositoryOperatorBenchmarkOverridesGateway(
-      repository: BenchmarkOverridesRepository(tenantWrapper),
-    ),
-    auditSink: operatorBusinessTimingAuditSink,
+  // B6 — operator benchmark override hierarchy. Gateway + audit sink
+  // are exposed so `main.dart` can construct the matching
+  // [OperatorBenchmarkOverridesRouter] with the bearer-token auth
+  // resolver and `forgeflow.baseline.override` permission gate closed
+  // over the proxy's `ProxyRequestGuard` + `ProxyPermissionSnapshotResolver`.
+  // The router itself is NOT built here because constructing it
+  // requires `authGuard`, which is a `main.dart`-scope value.
+  final operatorBenchmarkOverridesGateway =
+      RepositoryOperatorBenchmarkOverridesGateway(
+    repository: BenchmarkOverridesRepository(tenantWrapper),
   );
   // Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
   // Reuses the existing [ConnectorBackfillJobRepository] so the read
@@ -1354,7 +1380,8 @@ ProxyProductionBindings buildProxyProductionBindings(
     ),
     operatorWriteRouter: operatorWriteRouter,
     adminBusinessTimingRouter: adminBusinessTimingRouter,
-    operatorBenchmarkOverridesRouter: operatorBenchmarkOverridesRouter,
+    operatorBenchmarkOverridesGateway: operatorBenchmarkOverridesGateway,
+    operatorBenchmarkOverridesAuditSink: operatorBusinessTimingAuditSink,
     // Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
     // Runs through the tenant transaction wrapper so the per-tenant
     // RLS policy `audit_chain_anchors_per_tenant_select` clamps the
