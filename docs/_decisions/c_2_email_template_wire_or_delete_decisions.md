@@ -116,3 +116,32 @@ After operator picks per-draft:
 - C-2 does NOT touch `lib/auth/permission_keys.dart` (frozen).
 - C-2 does NOT add any migration.
 - C-2 does NOT write any `audit_logs UPDATE` rows.
+
+---
+
+## Operator picks — 2026-05-13
+
+Operator picked from the matrix in the format "keep 2fa, pos connection
+and vendor connection only" (after the C-2 matrix landed via PR #617).
+Translated to per-draft picks:
+
+| Draft | Email | Operator pick | Follow-up slice |
+|---|---|---|---|
+| **C** | `mfa_factor_changed_notice` (2FA) | **WIRE** | `C-2-C` — worker picks sub-path (wire from removal only vs. wire from both + enrollment hook) at spawn time. |
+| **D** | `vendor_sync_error_alert` (POS connection failing) | **WIRE** | `C-2-D` — requires the first-failure-of-outage detector (per-row email would spam on transients); no other sensible wire shape. |
+| **E** | `vendor_webhook_signature_alert` | **DELETE** | `C-2-Del` (bundled with G) — delete template + renderer constant + matrix row. Rely on Cloud Logging alerts. |
+| **F** | `vendor_connection_auto_disabled` | **WIRE** | `C-2-F` — worker pre-recommended **Path (b) ~400 LoC outbox enqueue** (lower scope than Path (a) ~600 LoC full fanout); confirm at spawn. |
+| **G** | `tos_version_updated_notice` | **DELETE** | `C-2-Del` (bundled with E) — delete template + renderer constant + matrix row. Rely on in-app accept-screen gate. |
+
+**Worker source for follow-ups:** parallel Claude lane session (or
+operator may re-pick at spawn time). This orchestrator session **does
+not spawn workers** for these follow-ups; we only record picks on
+master.
+
+**Plus orchestrator pre-approval** (operator's earlier "yes to all"):
+**C-7a** prep migration approved — additive `ADD COLUMN IF NOT EXISTS
+mfa_factors.recovery_codes_viewed_at timestamptz NULL` to unblock
+Codex's C-7 ("Adaptive 2FA button") which is currently
+data-contract-blocked. Mirrors the C-1a → C-1 pattern shipped earlier
+2026-05-13. Pure additive expand; idempotent; no live data risk
+("no business live yet" direction). New ledger row added.
