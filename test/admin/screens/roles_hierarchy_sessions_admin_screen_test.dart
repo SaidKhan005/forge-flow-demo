@@ -164,6 +164,7 @@ void main() {
         find.byKey(const Key('admin_rhs_org_unit_$kDemoDinerOrgUnitRoot')),
         findsOneWidget,
       );
+      expect(find.byKey(const Key('inheritance_tree')), findsOneWidget);
       expect(
         find.byKey(const Key('admin_rhs_org_unit_$kDemoDinerOrgUnitEast')),
         findsOneWidget,

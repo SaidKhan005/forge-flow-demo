@@ -94,6 +94,7 @@ void main() {
         find.byKey(const Key('operator_web_org_unit_tree')),
         findsOneWidget,
       );
+      expect(find.byKey(const Key('inheritance_tree')), findsOneWidget);
       expect(
         find.byKey(const Key('operator_web_hierarchy_subtitle')),
         findsOneWidget,
