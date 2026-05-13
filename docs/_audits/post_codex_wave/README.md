@@ -4,7 +4,7 @@ Table of contents for all per-PR audit docs + cross-cutting audits produced duri
 
 Wave ledger: `docs/_indices/WAVE_EXECUTION_LEDGER.md` (canonical for slice state). This file is a navigation aid; refresh on each housekeeping pass.
 
-Last refreshed: 2026-05-13 (bundle 30).
+Last refreshed: 2026-05-13 (bundle 40).
 
 ## Cross-cutting audits
 
@@ -13,6 +13,8 @@ Last refreshed: 2026-05-13 (bundle 30).
 | 2026-05-13 | [`wave_completion_deep_audit_2026_05_13.md`](wave_completion_deep_audit_2026_05_13.md) | Background deep audit covering 21 merged slices; 5 P1 + 4 P2 + 2 P3 findings deposited per the ledger-first hygiene rule |
 | 2026-05-13 | [`followups_doc_drift_cleanup_2026_05_13.md`](followups_doc_drift_cleanup_2026_05_13.md) | 3 mechanical fixes to `docs/POST_HARDENING_FOLLOWUPS.md` via PR #558 |
 | 2026-05-13 | [`final_housekeeping_sweep_2026_05_13.md`](final_housekeeping_sweep_2026_05_13.md) | Bundle 26 staging sweep — `docs/_indices/` doc trim + `CLAUDE_HANDOFF_PROMPT.md` + `CODEX_HANDOFF_PROMPT.md` refinements + this README index created |
+| 2026-05-13 | [`orchestrator_bundle_33_b10_1_fallout.md`](orchestrator_bundle_33_b10_1_fallout.md) | B10.1 fallout cleanup per A3.4 worker disclosures — bleed-stop ceiling raised 19,071 → 19,600; B10.1 carry-forward bare-catch typed at line 14109 |
+| 2026-05-13 | [`wave_closeout_checklist_DRAFT.md`](wave_closeout_checklist_DRAFT.md) | DRAFT — operator-approved closeout sequence launchpad (visual-test surface map + HP audit + migration apply queue + sign-off chain); PR #597 open for operator review |
 
 ## Per-PR audits — chronological
 
@@ -32,7 +34,7 @@ Verdict legend: ✅ approve-for-merge · 🔐 approve-pending-operator · 🚧 s
 | #495 | — | 🔍 | Pre-wave audit | [`pr_495_audit.md`](pr_495_audit.md) |
 | — | rollup | 🔍 | PR A + PR B rollup audit | [`pr_b_pr_a_rollup_audit.md`](pr_b_pr_a_rollup_audit.md) |
 
-### Lane A — Code Health (PRs #498-563)
+### Lane A — Code Health (PRs #498-581)
 
 | PR | Slice | Verdict | Topic | Audit doc |
 |---|---|---|---|---|
@@ -53,8 +55,10 @@ Verdict legend: ✅ approve-for-merge · 🔐 approve-pending-operator · 🚧 s
 | #563 | A3.2 | 🔐 | Bare-catch typing chunk 1 of 3 (Claude, salvaged) | [`pr_563_a3_2_bare_catch_typing_chunk_1_audit.md`](pr_563_a3_2_bare_catch_typing_chunk_1_audit.md) |
 | #571 | A11.1.b | 🔐 | Session-record gauge consumer wiring (Claude, first post-loop-mode-restart) | [`pr_571_a11_1_b_session_record_gauge_consumer_audit.md`](pr_571_a11_1_b_session_record_gauge_consumer_audit.md) |
 | #572 | A3.3 | 🔐 | Bare-catch typing chunk 2 of 3 (Claude, Option A continuation) | [`pr_572_a3_3_bare_catch_typing_chunk_2_audit.md`](pr_572_a3_3_bare_catch_typing_chunk_2_audit.md) |
+| #581 | A3.4 | 🔐 | Bare-catch typing chunk 3 of 3 — A3.x cluster CLOSED (Claude) | [`pr_581_a3_4_bare_catch_typing_chunk_3_audit.md`](pr_581_a3_4_bare_catch_typing_chunk_3_audit.md) |
+| #588 | housekeeping | ✅ | admin_cors_bootstrap_test sentinel-UUID snapshot fix (Claude sub-agent; closes Bundle 33 deferral) | [`pr_588_admin_cors_bootstrap_test_fix_audit.md`](pr_588_admin_cors_bootstrap_test_fix_audit.md) |
 
-### Lane B — Features (PRs #499-561)
+### Lane B — Features (PRs #499-594)
 
 | PR | Slice | Verdict | Topic | Audit doc |
 |---|---|---|---|---|
@@ -74,6 +78,10 @@ Verdict legend: ✅ approve-for-merge · 🔐 approve-pending-operator · 🚧 s
 | #568 | B9.3 | ✅ | Adaptive 2FA card 4-state machine + clock-skew (Codex) | [`pr_568_b9_3_adaptive_2fa_card_audit.md`](pr_568_b9_3_adaptive_2fa_card_audit.md) |
 | #573 | B5.b | 🔐 | Catalog tri-mirror amendment (Codex, B5 Option A deferred half) | [`pr_573_b5_b_catalog_tri_mirror_audit.md`](pr_573_b5_b_catalog_tri_mirror_audit.md) |
 | #576 | B10.1 | 🔐 | Vendor applicability plumbing (Codex, schema + RLS + admin/operator routes) | [`pr_576_b10_1_vendor_applicability_audit.md`](pr_576_b10_1_vendor_applicability_audit.md) |
+| #584 | B2.1 | 🔐 | Default Role catalog schema + publish + production wiring (Claude; send-back cycle on production sink) | [`pr_584_b2_1_default_role_catalog_audit.md`](pr_584_b2_1_default_role_catalog_audit.md) |
+| #586 | B11.2.b | 🔐 | RFC 9470 step-up wiring + production binding + client adapters + B9.2 clock-skew fix (Claude; **auth-critical, 20 sensitive routes**) | [`pr_586_b11_2_b_step_up_wiring_audit.md`](pr_586_b11_2_b_step_up_wiring_audit.md) |
+| #590 | B2.2 | 🔐 | Default Role catalog admin editor + operator-web Default badge (Claude; UI-only on top of B2.1; 2 honest gaps → B2.3/B2.4) | [`pr_590_b2_2_default_role_catalog_admin_editor_audit.md`](pr_590_b2_2_default_role_catalog_admin_editor_audit.md) |
+| #594 | B10.2 | 🔐 | Vendor applicability admin editor + operator-web wage authority binding (Codex; UI + binding on top of B10.1) | [`pr_594_b10_2_vendor_applicability_admin_audit.md`](pr_594_b10_2_vendor_applicability_admin_audit.md) |
 
 ### Lane C — Cross-Surface Parity
 
@@ -81,6 +89,9 @@ Verdict legend: ✅ approve-for-merge · 🔐 approve-pending-operator · 🚧 s
 |---|---|---|---|---|
 | #499 | C-8 | 🔐 | Notification preferences catalog completeness (Claude) | [`pr_499_c_8_notification_catalog_completeness_audit.md`](pr_499_c_8_notification_catalog_completeness_audit.md) |
 | #556 | C-10 | ✅ | Admin parity copy (Codex) | [`pr_556_c10_admin_parity_copy_audit.md`](pr_556_c10_admin_parity_copy_audit.md) |
+| #579 | C-3 | ✅ | Sign-in-security → My Account fold (Codex; -1196 LoC net delete) | [`pr_579_c_3_sign_in_security_to_my_account_audit.md`](pr_579_c_3_sign_in_security_to_my_account_audit.md) |
+| #580 | C-9 | 🔐 | Mobile inbox catalog rendering — `eventKey` resolution preferred over legacy `type` (Codex) | [`pr_580_c_9_mobile_inbox_catalog_audit.md`](pr_580_c_9_mobile_inbox_catalog_audit.md) |
+| #592 | C-4 | 🔐 | Master Demo → Live switch + 4th HP #2 reader-side carve-out (Codex; doctrine expansion specced by ledger row 81) | [`pr_592_c_4_demo_live_master_switch_audit.md`](pr_592_c_4_demo_live_master_switch_audit.md) |
 
 ## Conventions
 
