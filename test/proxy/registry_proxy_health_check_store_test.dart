@@ -214,7 +214,12 @@ void main() {
         Map<String, Object?> parameters = const <String, Object?>{},
       }) async {
         if (sql.contains('cypher(')) {
-          throw StateError('AGE not loaded');
+          // A3.3 (bb88f82b) narrowed the catch site at
+          // advisor_proxy.dart:5605 from `catch (_)` to
+          // `on Exception catch (_)`. StateError extends Error so escapes
+          // uncaught; the test's intent is to exercise the swallow-and-
+          // project-false path, which now requires an Exception subtype.
+          throw Exception('AGE not loaded');
         }
         return <Map<String, Object?>>[
           <String, Object?>{'ok': 1},
@@ -236,7 +241,10 @@ void main() {
         Map<String, Object?> parameters = const <String, Object?>{},
       }) async {
         if (sql.contains('<->')) {
-          throw StateError('vector operator missing');
+          // A3.3 (bb88f82b) narrowed catch site to `on Exception catch (_)`.
+          // StateError extends Error so escapes uncaught; use Exception to
+          // exercise the swallow-and-project-false path.
+          throw Exception('vector operator missing');
         }
         return const <Map<String, Object?>>[];
       }
