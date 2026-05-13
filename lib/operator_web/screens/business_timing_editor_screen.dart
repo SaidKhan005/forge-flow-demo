@@ -26,11 +26,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_business_timing_gateway.dart';
 import '../widgets/service_period_editor.dart';
+
+const String _kBusinessTimingEditPermission =
+    PermissionKeys.businessTimingConfigure;
 
 class BusinessTimingEditorScreen extends StatefulWidget {
   const BusinessTimingEditorScreen({
@@ -53,7 +57,7 @@ class BusinessTimingEditorScreen extends StatefulWidget {
   bool get canEdit =>
       session.roles.contains('operator_owner') ||
       session.roles.contains('operator_admin') ||
-      session.permissions.contains('business_timing.configure');
+      session.permissions.contains(_kBusinessTimingEditPermission);
 
   @override
   State<BusinessTimingEditorScreen> createState() =>

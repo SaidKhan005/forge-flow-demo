@@ -518,7 +518,8 @@ final perms = <String>{'team.users.view'};
 
     test('RAW_LITERAL pass fires on every permission-category prefix '
         '(team / admin / operator / product / forgeflow / barrio / '
-        'billing / integration / integrations / workflow)', () {
+        'account / business_timing / billing / integration / integrations / '
+        'workflow)', () {
       // Pin every category prefix the lint treats as a permission-key
       // shape. Each literal is on its own file so the per-line collapse
       // does not hide a missing prefix; the test fails loudly if a new
@@ -537,6 +538,10 @@ final perms = <String>{'team.users.view'};
             "final p = 'forgeflow.shift.view';",
         'lib/operator_web/screens/probe_barrio.dart':
             "final p = 'barrio.handbook.view';",
+        'lib/operator_web/screens/probe_account.dart':
+            "final p = 'account.configure';",
+        'lib/operator_web/screens/probe_business_timing.dart':
+            "final p = 'business_timing.configure';",
         'lib/operator_web/screens/probe_billing.dart':
             "final p = 'billing.invoice.view';",
         'lib/operator_web/screens/probe_integration.dart':
@@ -553,7 +558,7 @@ final perms = <String>{'team.users.view'};
         rawLiteralScanScope: const <String>{'lib/operator_web/'},
         rawLiteralFileAllowlist: const <String>{},
       ).run();
-      // One finding per probe file → ten findings total.
+      // One finding per probe file.
       expect(result.rawLiterals, hasLength(probes.length));
       // Every probe location is reported with `path:line` form so a
       // failing CI run points the operator at the offending line.

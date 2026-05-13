@@ -31,15 +31,17 @@
 //   - team.*          (14 keys) operator-self-service team management
 //                                (added 9.0a; consumed by 9.10 operator-
 //                                facing Settings → Team UX)
+//   - account.*       (1 key)   operator account settings
+//   - business_timing.* (1 key) business-timing settings
 //   - billing.*       (5 keys)  billing-related actions
 //   - integration.*   (9 keys)  integration management
 //   - integrations.*  (1 key)   Phase 8.0 vendor-connections category gate
 //   - workflow.*      (8 keys)  Phase 12 workflow capabilities (placeholder)
 //
-// Total: 99 keys (81 baseline + 13 team.* keys + 2 later admin
+// Total: 101 keys (81 baseline + 13 team.* keys + 2 later admin
 // keys added in 9.0Σ.h2/B41 + 1 integrations.configure added in
 // Phase 8.0 + 1 admin.users.reset_mfa_factors added in 11A.14 +
-// 1 team.audit_log.export added in 11W.5).
+// 1 team.audit_log.export added in 11W.5 + 2 B5.b settings keys).
 // Some keys are flagged MFA-required via PermissionKeys.requiresMfa;
 // the migration mirrors that in the permission_keys.requires_mfa
 // column.
@@ -163,6 +165,13 @@ class PermissionKeys {
   static const String teamAuditLogExport = 'team.audit_log.export';
   static const String teamSessionForceLogout = 'team.session.force_logout';
 
+  // account.* (1)
+  static const String accountConfigure = 'account.configure';
+
+  // business_timing.* (1)
+  static const String businessTimingConfigure =
+      'business_timing.configure';
+
   // ─── billing.* (5) ────────────────────────────────────────────────
   static const String billingInvoiceView = 'billing.invoice.view';
   static const String billingSubscriptionManage =
@@ -285,6 +294,8 @@ class PermissionKeys {
     teamAuditLogView,
     teamAuditLogExport,
     teamSessionForceLogout,
+    accountConfigure,
+    businessTimingConfigure,
     billingInvoiceView,
     billingSubscriptionManage,
     billingPaymentMethodManage,

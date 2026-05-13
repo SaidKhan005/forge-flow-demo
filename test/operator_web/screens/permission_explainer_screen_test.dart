@@ -3,9 +3,10 @@
 // Pins the parity contract section "Roles + Permission Explainer
 // (11W.2 + 11A.13 Roles tab)":
 //
-//   - 9 categories rendered in the locked order:
+//   - 11 categories rendered in the locked order:
 //     `product` -> `forgeflow` -> `barrio` -> `admin` -> `team` ->
-//     `billing` -> `integration` -> `integrations` -> `workflow`.
+//     `account` -> `business_timing` -> `billing` -> `integration` ->
+//     `integrations` -> `workflow`.
 //   - Every key in `PermissionKeys.all` appears under its category.
 //   - Description copy is verbatim from the catalog migration seed
 //     (no paraphrasing in the UI).
@@ -38,8 +39,8 @@ void main() {
     });
   }
 
-  group('Permission Explainer renders 9 categories in locked order', () {
-    testWidgets('renders all 9 category blocks in the locked sequence', (
+  group('Permission Explainer renders 11 categories in locked order', () {
+    testWidgets('renders all 11 category blocks in the locked sequence', (
       tester,
     ) async {
       await sizeViewport(tester, const Size(1280, 1600));
@@ -52,6 +53,8 @@ void main() {
         'barrio',
         'admin',
         'team',
+        'account',
+        'business_timing',
         'billing',
         'integration',
         'integrations',
@@ -140,6 +143,8 @@ void main() {
         'forgeflow.shift.view',
         'team.users.view',
         'team.roles.view',
+        'account.configure',
+        'business_timing.configure',
         'product.forgeflow.access',
         'integrations.configure',
       ];
@@ -203,6 +208,16 @@ void main() {
         'Configure inbound vendor connections (POS / labor / reservation) '
             'on the per-(operator, location) Vendor Connections admin '
             'surface.',
+      );
+      expect(
+        kPermissionExplainerDescriptions['account.configure'],
+        'Configure operator business account identity, locale, currency, '
+            'business-week, rollover-hour, and logo settings.',
+      );
+      expect(
+        kPermissionExplainerDescriptions['business_timing.configure'],
+        'Configure effective-dated business timing profiles, rollover-hour, '
+            'week-start, and service periods.',
       );
     });
   });

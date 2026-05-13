@@ -218,8 +218,9 @@ void main() {
       }
     });
 
-    test('PermissionKeys.all has 99 entries (81 baseline + 14 team.* + '
-        '3 later admin keys + 1 integrations.* key)', () {
+    test('PermissionKeys.all has 101 entries (81 baseline + 14 team.* + '
+        '3 later admin keys + 1 integrations.* key + 2 B5.b settings keys)',
+        () {
       // The 9.0a slice landed at 93 keys; the 9.0Σ.h2 slice
       // (2026-04-28) added admin.audit_privacy.read for the
       // advisor-conversation audit-privacy gate. B41 then added
@@ -232,10 +233,12 @@ void main() {
       // reset escalation, bringing the catalog to 98. The 11W.5
       // catalog reconciliation slice added team.audit_log.export to
       // back the Operator Web Audit Log CSV export gate, bringing
-      // the catalog to 99. This test tracks the running total so a
+      // the catalog to 99. B5.b added account.configure and
+      // business_timing.configure, bringing the catalog to 101. This
+      // test tracks the running total so a
       // future catalog addition that forgets to grow the count is
       // caught here.
-      expect(PermissionKeys.all.length, equals(99));
+      expect(PermissionKeys.all.length, equals(101));
     });
 
     test('team.* keys are NOT in requiresMfa (locked decision: no MFA gate '

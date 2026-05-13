@@ -729,7 +729,7 @@ void main() {
     });
 
     testWidgets(
-      'Permission Explainer renders all 9 catalog categories in the locked order',
+      'Permission Explainer renders all 11 catalog categories in the locked order',
       (tester) async {
         wideViewport(tester);
         final gateway = buildDemoGateway();
@@ -758,6 +758,8 @@ void main() {
           'barrio',
           'admin',
           'team',
+          'account',
+          'business_timing',
           'billing',
           'integration',
           'integrations',
