@@ -55,7 +55,7 @@ Triggers the `operator` gate: auth-critical, RLS-touching, schema-touching (migr
 | B4 | B4 | Codex | Small | Low | auto | B3 merged | assigned | — | Two-product taxonomy in role editor |
 | B5 | B5 | Codex | Medium | Medium | operator | — | assigned | — | Admin access-control + permission-key completeness |
 | B6 | B6 | Codex | Medium | Medium | operator | B10.1 merged | assigned | — | Benchmark override (hierarchy-inherited) |
-| B7.a | B7.a | Codex | Small | Medium | operator | — | assigned | — | Invite dialog hierarchy-scope bug fix |
+| B7.a | B7.a | Codex | Small | Medium | operator | — | audit-pending | #507 | Invite hierarchy-scope fix — escalated to operator (1 cited material finding: audit event rename leaves 3 consumers on old name; orchestrator-fix Option A ready) |
 | B8 | B8 | Claude | Medium | Medium | operator | — | assigned | — | Audit log hierarchy filter (ltree join) |
 | B9.1 | B9.1 | Codex | Small | Low | auto | — | assigned | — | `/sign-in-security` 301 redirect |
 | B9.2 | B9.2 | Codex | Medium | Medium | operator | B9.1 merged | assigned | — | My Account consolidation + Active Sessions |
