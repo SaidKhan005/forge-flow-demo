@@ -46,11 +46,12 @@ class _FakeRepo implements AppNotificationRepository {
     String restaurantId, {
     int limit = 20,
   }) async {
-    final filtered = _rows
-        .where((r) => r.restaurantId == restaurantId)
-        .map(_withRead)
-        .toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final filtered =
+        _rows
+            .where((r) => r.restaurantId == restaurantId)
+            .map(_withRead)
+            .toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return filtered.take(limit).toList();
   }
 
@@ -92,28 +93,30 @@ void main() {
     AppNotificationService.instance.resetForTest();
   });
 
-  test('emitPushDelivery persists the notification and ticks unread count',
-      () async {
-    final svc = AppNotificationService.instance;
-    await svc.start(restaurantId);
-    expect(svc.unreadCountNotifier.value, 0);
+  test(
+    'emitPushDelivery persists the notification and ticks unread count',
+    () async {
+      final svc = AppNotificationService.instance;
+      await svc.start(restaurantId);
+      expect(svc.unreadCountNotifier.value, 0);
 
-    await svc.emitPushDelivery(
-      restaurantId: restaurantId,
-      type: 'push_delivery',
-      eventKey: 'evt_1',
-      title: 'Hello',
-      body: 'Body',
-      businessDate: '2026-05-07',
-    );
+      await svc.emitPushDelivery(
+        restaurantId: restaurantId,
+        type: 'push_delivery',
+        eventKey: 'evt_1',
+        title: 'Hello',
+        body: 'Body',
+        businessDate: '2026-05-07',
+      );
 
-    final list = await svc.getNotifications(restaurantId);
-    expect(list, hasLength(1));
-    expect(list.single.type, 'push_delivery');
-    expect(list.single.eventKey, 'evt_1');
-    expect(list.single.readAt, isNull);
-    expect(svc.unreadCountNotifier.value, 1);
-  });
+      final list = await svc.getNotifications(restaurantId);
+      expect(list, hasLength(1));
+      expect(list.single.type, 'push_delivery');
+      expect(list.single.eventKey, 'evt_1');
+      expect(list.single.readAt, isNull);
+      expect(svc.unreadCountNotifier.value, 1);
+    },
+  );
 
   test('repeated emit with same event key dedupes through the repo', () async {
     final svc = AppNotificationService.instance;
@@ -193,6 +196,40 @@ void main() {
     final refreshed = await svc.getNotifications(restaurantId);
     expect(refreshed.every((n) => n.readAt != null), isTrue);
   });
+
+  test(
+    'rapid emit plus mark-read race leaves badge equal to unread rows',
+    () async {
+      final svc = AppNotificationService.instance;
+      await svc.start(restaurantId);
+      await svc.emitPushDelivery(
+        restaurantId: restaurantId,
+        type: 'push_delivery',
+        eventKey: 'seed',
+        title: 'Seed',
+        body: 'Seed',
+        businessDate: '2026-05-07',
+      );
+      final seed = (await svc.getNotifications(restaurantId)).single;
+
+      await Future.wait(<Future<void>>[
+        svc.markAsRead(seed.notificationId),
+        for (var i = 0; i < 5; i += 1)
+          svc.emitPushDelivery(
+            restaurantId: restaurantId,
+            type: 'push_delivery',
+            eventKey: 'burst_$i',
+            title: 'Burst $i',
+            body: 'Burst body $i',
+            businessDate: '2026-05-07',
+          ),
+      ]);
+
+      final refreshed = await svc.getNotifications(restaurantId);
+      expect(refreshed.where((n) => n.readAt == null), hasLength(5));
+      expect(svc.unreadCountNotifier.value, 5);
+    },
+  );
 
   test(
     'refreshUnreadCount hydrates the notifier when called without start',
