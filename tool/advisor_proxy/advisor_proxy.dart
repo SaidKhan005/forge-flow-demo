@@ -1341,7 +1341,10 @@ class ServicePrincipalJwtVerifier implements ProxyJwtVerifier {
     final dynamic decoded;
     try {
       decoded = jsonDecode(utf8.decode(bytes));
-    } catch (_) {
+    } on FormatException catch (_) {
+      // utf8.decode + jsonDecode both surface FormatException for malformed
+      // input; convert to the verifier-typed error so callers see a stable
+      // 401 rejection.
       throw ProxyJwtVerificationError(
         'service principal JWT $name is not valid JSON',
       );
@@ -1374,7 +1377,9 @@ class ServicePrincipalJwtVerifier implements ProxyJwtVerifier {
     if (remainder != 0) padded = padded + '=' * (4 - remainder);
     try {
       return Uint8List.fromList(base64Url.decode(padded));
-    } catch (_) {
+    } on FormatException catch (_) {
+      // base64Url.decode throws FormatException for malformed input; convert
+      // to the verifier-typed error so the composite returns a 401.
       throw ProxyJwtVerificationError(
         'service principal JWT $name is not valid base64url',
       );
@@ -1451,9 +1456,11 @@ class CompositeProxyJwtVerifier implements ProxyJwtVerifier {
     try {
       final claims = await verifier.verify(bearerToken);
       return _VerifierProbe.success(claims);
-    } catch (_) {
+    } on Exception catch (_) {
       // Swallow the verifier-specific error string here; the composite
-      // surfaces a single neutral message at the top of [verify].
+      // surfaces a single neutral message at the top of [verify]. Narrowed
+      // to Exception so genuine `Error`s (assertion failures, OOM, etc.)
+      // continue to propagate instead of being silently masked.
       return const _VerifierProbe.failure();
     }
   }
@@ -1683,7 +1690,11 @@ class PointyCastleRs256SignatureValidator
     final dynamic object;
     try {
       object = pc.ASN1Parser(bytes).nextObject();
-    } catch (_) {
+    } on Exception catch (_) {
+      // pointycastle's ASN1Parser throws a variety of internal Exception
+      // subtypes (ASN1Exception, RangeError-wrapping cases, etc.); collapse
+      // them all into a typed FormatException so the verifier surface stays
+      // uniform. `Error`s such as RangeError continue to propagate.
       throw FormatException('$name is not valid DER');
     }
     if (object is! pc.ASN1Sequence) {
@@ -1720,7 +1731,9 @@ class PointyCastleRs256SignatureValidator
           base64Decode(lines.sublist(1, lines.length - 1).join()),
         ),
       );
-    } catch (_) {
+    } on FormatException catch (_) {
+      // base64Decode raises FormatException for malformed input; surface a
+      // friendlier message so the verifier surface stays uniform.
       throw const FormatException('PEM body is not valid base64');
     }
   }
@@ -1811,7 +1824,9 @@ class FirebaseSecureTokenJwksSource implements JwksKeySource {
     final dynamic decoded;
     try {
       decoded = jsonDecode(body);
-    } catch (_) {
+    } on FormatException catch (_) {
+      // jsonDecode throws FormatException for malformed input; convert to
+      // the verifier-typed error so the verifier returns a 401.
       throw ProxyJwtVerificationError('JWKS response is not valid JSON');
     }
     if (decoded is! Map<String, dynamic>) {
@@ -1966,7 +1981,11 @@ class FirebaseProxyJwtVerifier implements ProxyJwtVerifier {
       // so the guard still returns 401, never a 500 leak. The
       // detailed StateError message stays in process logs.
       throw ProxyJwtVerificationError('signature verification unavailable');
-    } catch (_) {
+    } on Exception catch (_) {
+      // Cryptography backends throw a variety of Exception subtypes
+      // (FormatException, ArgumentError-like wrapped exceptions, opaque
+      // pointycastle failures, etc.). Collapse them into the verifier-typed
+      // rejection. `Error`s remain unmasked so test failures still surface.
       throw ProxyJwtVerificationError('signature verification failed');
     }
     if (!signatureValid) {
@@ -1996,13 +2015,15 @@ class FirebaseProxyJwtVerifier implements ProxyJwtVerifier {
     final String json;
     try {
       json = utf8.decode(bytes);
-    } catch (_) {
+    } on FormatException catch (_) {
+      // utf8.decode raises FormatException on invalid byte sequences.
       throw ProxyJwtVerificationError('JWT $name is not valid UTF-8');
     }
     final dynamic decoded;
     try {
       decoded = jsonDecode(json);
-    } catch (_) {
+    } on FormatException catch (_) {
+      // jsonDecode raises FormatException on malformed JSON.
       throw ProxyJwtVerificationError('JWT $name is not valid JSON');
     }
     if (decoded is! Map<String, dynamic>) {
@@ -2019,7 +2040,8 @@ class FirebaseProxyJwtVerifier implements ProxyJwtVerifier {
     }
     try {
       return Uint8List.fromList(base64Url.decode(padded));
-    } catch (_) {
+    } on FormatException catch (_) {
+      // base64Url.decode raises FormatException on malformed input.
       throw ProxyJwtVerificationError('JWT $name is not valid base64url');
     }
   }
@@ -2394,11 +2416,14 @@ const String kMaxTokensPerRequestEnvVar = 'MAX_TOKENS_PER_REQUEST';
 /// nothing and read the real process env.
 int resolveMaxTokensPerRequest({Map<String, String>? environment}) {
   String? raw;
+  // A3.2: bare catch retained — `Platform.environment` raises
+  // `UnsupportedError` (an `Error` subclass, not `Exception`) on
+  // stripped runtimes such as web/Flutter where the host platform
+  // does not expose process env. Narrowing to `on Exception` would
+  // re-throw the very failure mode this fallback exists to absorb.
   try {
     raw = (environment ?? Platform.environment)[kMaxTokensPerRequestEnvVar];
   } catch (_) {
-    // `Platform.environment` can throw on stripped runtimes; fall back
-    // to the safe default.
     return kMaxTokensPerRequestDefault;
   }
   if (raw == null) return kMaxTokensPerRequestDefault;
@@ -2630,12 +2655,14 @@ class ProxyUsageGuard {
         message: 'usage counter store unavailable',
         details: <String, Object?>{'tier_id': tier.id, 'reason': error.message},
       );
-    } catch (_) {
+    } on Exception catch (_) {
       // Any other store-side failure (timeout, network, parse, postgres
       // exception, etc.) also fails closed at 503. The reason is
       // intentionally generic — raw error contents may contain secrets,
       // connection strings, or stack-trace fragments and must not leak
-      // through the HTTP response.
+      // through the HTTP response. Narrowed to `Exception` so genuine
+      // `Error`s (assertion failures, OOM, type errors) continue to
+      // propagate instead of being silently masked behind a 503.
       throw UsageRefusal(
         code: 'usage_store_unavailable',
         statusCode: 503,
@@ -2708,8 +2735,9 @@ class ProxyUsageGuard {
         now: _now(),
         costCentsToAdd: costCentsToAdd,
       );
-    } catch (_) {
+    } on Exception catch (_) {
       // Swallow — see method docs. The next minute bucket recovers.
+      // Narrowed to `Exception` so genuine `Error`s continue to propagate.
     }
   }
 }
