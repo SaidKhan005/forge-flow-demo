@@ -25,10 +25,10 @@ import '../services/web_team_sessions_gateway.dart';
 import '../services/web_team_users_gateway.dart';
 import 'operator_web_auth_source.dart';
 
-class FirebaseOperatorWebAuthSource
+class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
     implements
         OperatorWebAuthSource,
-        OperatorWebAccountActions,
+        OperatorWebAccountMfaFreshnessGate,
         OperatorWebVendorConnectionsGatewayProvider,
         OperatorWebVendorLifecycleRecentlyAvailableGatewayProvider,
         OperatorWebAccountGatewayProvider,
@@ -124,9 +124,9 @@ class FirebaseOperatorWebAuthSource
        ),
        vendorLifecycleRecentlyAvailableGateway =
            OperatorWebVendorLifecycleRecentlyAvailableGatewayLive(
-         proxyBaseUri: proxyClient.baseUri,
-         idTokenProvider: authClient.currentIdToken,
-       ) {
+             proxyBaseUri: proxyClient.baseUri,
+             idTokenProvider: authClient.currentIdToken,
+           ) {
     // CODE_OPS_DEBT carry-over #1 — register this auth source as the
     // proxy client's listener for the `mfa_freshness_required` 403
     // redirect. The proxy client surfaces the `redirect_uri` payload
@@ -202,7 +202,7 @@ class FirebaseOperatorWebAuthSource
 
   @override
   final OperatorWebVendorLifecycleRecentlyAvailableGateway
-      vendorLifecycleRecentlyAvailableGateway;
+  vendorLifecycleRecentlyAvailableGateway;
 
   String? _currentSessionId;
 
@@ -462,6 +462,31 @@ class FirebaseOperatorWebAuthSource
       idToken: token,
       currentPassword: currentPassword,
       newPassword: newPassword,
+    );
+  }
+
+  @override
+  Future<void> requireFreshMfaForAccountSecurity({
+    required String actionLabel,
+  }) async {
+    final token = await _requireCurrentToken();
+    final authTime = _readAuthTime(token);
+    final now = DateTime.now().toUtc();
+    if (_isFreshForAccountMfa(authTime: authTime, now: now)) {
+      return;
+    }
+    const redirectUri = '/auth/login?reason=fresh_mfa_required';
+    final message =
+        'Please sign in again before $actionLabel. This protects '
+        'your account settings.';
+    onMfaFreshnessRedirect(
+      MfaFreshnessRedirectPayload(redirectUri: redirectUri, message: message),
+    );
+    throw OperatorWebProxyException(
+      code: MfaFreshnessRedirectPayload.errorCode,
+      message: message,
+      statusCode: 403,
+      redirectUri: redirectUri,
     );
   }
 
@@ -752,6 +777,45 @@ class FirebaseOperatorWebAuthSource
       phone: session.phone,
       mfaEnrolled: mfaEnrolled ?? session.mfaEnrolled,
     );
+  }
+
+  static const Duration _accountMfaFreshnessWindow = Duration(minutes: 5);
+  static const Duration _accountMfaFreshnessSkew = Duration(seconds: 60);
+
+  static DateTime? _readAuthTime(String idToken) {
+    final parts = idToken.split('.');
+    if (parts.length < 2) return null;
+    try {
+      final payload = utf8.decode(
+        base64Url.decode(base64Url.normalize(parts[1])),
+      );
+      final decoded = jsonDecode(payload);
+      if (decoded is! Map<String, Object?>) return null;
+      final seconds = _readAuthTimeSeconds(decoded['auth_time']);
+      if (seconds == null) return null;
+      return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
+    } on Object {
+      return null;
+    }
+  }
+
+  static int? _readAuthTimeSeconds(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  static bool _isFreshForAccountMfa({
+    required DateTime? authTime,
+    required DateTime now,
+  }) {
+    if (authTime == null) return false;
+    final utcNow = now.toUtc();
+    final earliest = utcNow.subtract(_accountMfaFreshnessWindow);
+    final latest = utcNow.add(_accountMfaFreshnessSkew);
+    return !authTime.toUtc().isBefore(earliest) &&
+        !authTime.toUtc().isAfter(latest);
   }
 
   static String _firstNonBlank(

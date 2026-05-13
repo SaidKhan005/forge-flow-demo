@@ -10,7 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/operator_web/account/operator_web_account_actions.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/screens/my_account_screen.dart';
+import 'package:forge_and_flow/operator_web/services/operator_web_team_gateway_providers.dart';
 import 'package:forge_and_flow/operator_web/services/web_account_gateway.dart';
+import 'package:forge_and_flow/operator_web/services/web_security_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -219,7 +221,7 @@ void main() {
     });
 
     testWidgets(
-      'session.mfaEnrolled=true initial state shows backup-codes CTA',
+      'session.mfaEnrolled=true initial state shows Manage methods CTA',
       (tester) async {
         await sizeViewport(tester, const Size(1024, 768));
         final session = sessionWithRole('operator_owner', mfaEnrolled: true);
@@ -228,7 +230,7 @@ void main() {
 
         expect(find.text('MFA: Enrolled'), findsOneWidget);
         expect(
-          find.byKey(const Key('account_section_mfa_view_backup_codes')),
+          find.byKey(const Key('account_section_mfa_manage')),
           findsOneWidget,
         );
         expect(
@@ -263,7 +265,7 @@ void main() {
       expect(find.byKey(const Key('mfa_enroll_dialog')), findsNothing);
       expect(find.text('MFA: Enrolled'), findsOneWidget);
       expect(
-        find.byKey(const Key('account_section_mfa_view_backup_codes')),
+        find.byKey(const Key('account_section_mfa_manage')),
         findsOneWidget,
       );
     });
@@ -295,6 +297,122 @@ void main() {
       await tester.tap(find.byKey(const Key('mfa_enroll_dialog_cancel')));
       await tester.pumpAndSettle();
       expect(find.text('MFA: Not enrolled'), findsOneWidget);
+    });
+
+    testWidgets('Manage methods can request and cancel 24-hour removal', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1024, 900));
+      final session = sessionWithRole('operator_owner', mfaEnrolled: true);
+      final actions = _FakeMfaAccountActions(now: () => DateTime.now().toUtc());
+
+      await pumpAccount(tester, session, actions: actions);
+
+      await tester.ensureVisible(
+        find.byKey(const Key('account_section_mfa_manage')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('account_section_mfa_manage')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('account_section_mfa_turn_off')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('account_section_mfa_request_removal_confirm')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('MFA: Removal requested'), findsOneWidget);
+      expect(
+        find.byKey(const Key('account_section_mfa_cancel_removal')),
+        findsOneWidget,
+      );
+      expect(actions.stepUpLabels, contains('removing 2FA'));
+
+      await tester.tap(
+        find.byKey(const Key('account_section_mfa_cancel_removal')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('MFA: Enrolled'), findsOneWidget);
+      expect(
+        find.byKey(const Key('account_section_mfa_manage')),
+        findsOneWidget,
+      );
+      expect(actions.stepUpLabels, contains('cancelling 2FA removal'));
+    });
+
+    testWidgets(
+      'Manage methods disables removal without server-backed factor state',
+      (tester) async {
+        await sizeViewport(tester, const Size(1024, 900));
+        final session = sessionWithRole('operator_owner', mfaEnrolled: true);
+        final actions = _FakeAccountActions();
+
+        await pumpAccount(tester, session, actions: actions);
+
+        await tester.ensureVisible(
+          find.byKey(const Key('account_section_mfa_manage')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('account_section_mfa_manage')));
+        await tester.pumpAndSettle();
+
+        final turnOff = tester.widget<OutlinedButton>(
+          find.byKey(const Key('account_section_mfa_turn_off')),
+        );
+        expect(turnOff.onPressed, isNull);
+        expect(
+          find.textContaining('confirms your authenticator with the server'),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('account_section_mfa_request_removal_dialog')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('Removable turns off after step-up when server drops factor', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1024, 900));
+      var now = DateTime.utc(2026, 5, 6, 12);
+      final session = sessionWithRole('operator_owner', mfaEnrolled: true);
+      final actions = _FakeMfaAccountActions(now: () => now);
+
+      await pumpAccount(tester, session, actions: actions);
+
+      await tester.ensureVisible(
+        find.byKey(const Key('account_section_mfa_manage')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('account_section_mfa_manage')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('account_section_mfa_turn_off')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('account_section_mfa_request_removal_confirm')),
+      );
+      await tester.pumpAndSettle();
+
+      now = now.add(const Duration(hours: 24, minutes: 1));
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pumpAndSettle();
+
+      expect(find.text('MFA: Ready to turn off'), findsOneWidget);
+      expect(
+        find.byKey(const Key('account_section_mfa_turn_off_final')),
+        findsOneWidget,
+      );
+
+      actions.securityGateway.completeDueRemovals();
+      await tester.tap(
+        find.byKey(const Key('account_section_mfa_turn_off_final')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('MFA: Not enrolled'), findsOneWidget);
+      expect(actions.stepUpLabels, contains('turning off 2FA'));
     });
   });
 
@@ -591,6 +709,129 @@ class _FakeAccountActions implements OperatorWebAccountActions {
         _sessionEntry('session-ipad', 'iPad app', city: 'Seattle'),
         _sessionEntry('session-chrome', 'Chrome on Windows', city: 'Boston'),
       ];
+}
+
+class _FakeMfaAccountActions extends _FakeAccountActions
+    implements
+        OperatorWebSecurityGatewayProvider,
+        OperatorWebAccountMfaFreshnessGate {
+  _FakeMfaAccountActions({required DateTime Function() now})
+    : securityGateway = _FakeSecurityGateway(now);
+
+  @override
+  final _FakeSecurityGateway securityGateway;
+
+  final List<String> stepUpLabels = <String>[];
+
+  @override
+  Future<void> requireFreshMfaForAccountSecurity({
+    required String actionLabel,
+  }) async {
+    stepUpLabels.add(actionLabel);
+  }
+}
+
+class _FakeSecurityGateway implements WebSecurityGateway {
+  _FakeSecurityGateway(DateTime Function() now) : _now = now {
+    _factors.add(
+      WebSecurityMfaFactor(
+        factorId: 'totp-db-factor',
+        factorType: 'totp',
+        enrolledAt: now().subtract(const Duration(days: 7)),
+        issuerLabel: 'Forge & Flow',
+      ),
+    );
+  }
+
+  final DateTime Function() _now;
+  final List<WebSecurityMfaFactor> _factors = <WebSecurityMfaFactor>[];
+  final List<WebSecurityMfaRemoval> _removals = <WebSecurityMfaRemoval>[];
+
+  void completeDueRemovals() {
+    final now = _now().toUtc();
+    final dueFactorIds = _removals
+        .where((removal) => !removal.executeAfter.isAfter(now))
+        .map((removal) => removal.factorId)
+        .toSet();
+    _factors.removeWhere((factor) => dueFactorIds.contains(factor.factorId));
+  }
+
+  @override
+  Future<WebSecurityFactorsListed> listFactors() async {
+    return WebSecurityFactorsListed(
+      factors: List<WebSecurityMfaFactor>.unmodifiable(_factors),
+      removalRequests: List<WebSecurityMfaRemoval>.unmodifiable(_removals),
+    );
+  }
+
+  @override
+  Future<WebSecurityRevokeFactorResult> revokeFactor({
+    required String factorId,
+    required String idempotencyKey,
+  }) async {
+    final executeAfter = _now().toUtc().add(const Duration(hours: 24));
+    final removal = WebSecurityMfaRemoval(
+      requestId: 'removal-1',
+      factorId: factorId,
+      status: 'pending',
+      executeAfter: executeAfter,
+    );
+    _removals.add(removal);
+    return WebSecurityRevokeFactorResult(
+      revoked: false,
+      requestId: removal.requestId,
+      executeAfter: executeAfter,
+    );
+  }
+
+  @override
+  Future<WebSecurityCancelRemovalResult> cancelFactorRemoval({
+    required String requestId,
+    required String idempotencyKey,
+  }) async {
+    _removals.removeWhere((removal) => removal.requestId == requestId);
+    return const WebSecurityCancelRemovalResult(cancelled: true);
+  }
+
+  @override
+  Future<WebSecurityTotpEnrollment> beginTotpEnrollment({
+    required String userEmail,
+    required String idempotencyKey,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<WebSecurityMfaFactor> confirmTotpEnrollment({
+    required String factorId,
+    required String oneTimeCode,
+    required String idempotencyKey,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<WebSecurityPasswordChangeResult> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    required String idempotencyKey,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<WebSecurityLoginHistoryListed> listLoginHistory() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<WebSecurityRecoveryRequestResult> requestMfaRecovery({
+    required String email,
+    String? reason,
+    required String idempotencyKey,
+  }) {
+    throw UnimplementedError();
+  }
 }
 
 AccountActiveSessionEntry _sessionEntry(

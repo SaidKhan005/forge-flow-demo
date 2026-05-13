@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:forge_and_flow/operator_web/account/operator_web_account_actions.dart';
 import 'package:forge_and_flow/operator_web/auth/firebase_operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_proxy_client.dart';
@@ -89,8 +90,82 @@ void main() {
       expect(source, isA<OperatorWebTeamSessionsGatewayProvider>());
       expect(source, isA<OperatorWebTeamAuditLogGatewayProvider>());
       expect(source, isA<OperatorWebSecurityGatewayProvider>());
+      expect(source, isA<OperatorWebAccountMfaFreshnessGate>());
       expect(source, isA<OperatorWebVendorConnectionsGatewayProvider>());
     });
+  });
+
+  group('FirebaseOperatorWebAuthSource My Account MFA freshness gate', () {
+    test('accepts a token with recent auth_time', () async {
+      final now = DateTime.now().toUtc();
+      final authClient = _StubFirebaseAuthClient()
+        ..currentToken = _idTokenWithAuthTime(
+          now.subtract(const Duration(minutes: 2)),
+        );
+      final source = FirebaseOperatorWebAuthSource(
+        authClient: authClient,
+        proxyClient: OperatorWebProxyClient(
+          baseUri: kProxyBase,
+          httpClient: MockClient((request) async => http.Response('{}', 200)),
+        ),
+      );
+      addTearDown(source.dispose);
+
+      await source.requireFreshMfaForAccountSecurity(
+        actionLabel: 'removing 2FA',
+      );
+    });
+
+    test('accepts a token within the account MFA clock-skew window', () async {
+      final now = DateTime.now().toUtc();
+      final authClient = _StubFirebaseAuthClient()
+        ..currentToken = _idTokenWithAuthTime(
+          now.add(const Duration(seconds: 30)),
+        );
+      final source = FirebaseOperatorWebAuthSource(
+        authClient: authClient,
+        proxyClient: OperatorWebProxyClient(
+          baseUri: kProxyBase,
+          httpClient: MockClient((request) async => http.Response('{}', 200)),
+        ),
+      );
+      addTearDown(source.dispose);
+
+      await source.requireFreshMfaForAccountSecurity(
+        actionLabel: 'removing 2FA',
+      );
+    });
+
+    test(
+      'stale auth_time signs out through the existing freshness listener',
+      () async {
+        final now = DateTime.now().toUtc();
+        final authClient = _StubFirebaseAuthClient()
+          ..currentToken = _idTokenWithAuthTime(
+            now.subtract(const Duration(minutes: 10)),
+          );
+        final source = FirebaseOperatorWebAuthSource(
+          authClient: authClient,
+          proxyClient: OperatorWebProxyClient(
+            baseUri: kProxyBase,
+            httpClient: MockClient((request) async => http.Response('{}', 200)),
+          ),
+        );
+        addTearDown(source.dispose);
+
+        await expectLater(
+          () => source.requireFreshMfaForAccountSecurity(
+            actionLabel: 'cancelling 2FA removal',
+          ),
+          throwsA(isA<OperatorWebProxyException>()),
+        );
+        await _waitFor(source, _isNeedsSignIn);
+
+        final state = source.current as OperatorWebNeedsSignIn;
+        expect(state.redirectUri, '/auth/login?reason=fresh_mfa_required');
+        expect(state.lastInfoMessage, contains('cancelling 2FA removal'));
+      },
+    );
   });
 
   group('FirebaseOperatorWebAuthSource performance posture', () {
@@ -349,6 +424,14 @@ bool _isNeedsSignIn(OperatorWebAuthState state) =>
 
 bool _isCompletedOrForbidden(OperatorWebAuthState state) =>
     state is OperatorWebCompleted || state is OperatorWebForbidden;
+
+String _idTokenWithAuthTime(DateTime authTime) {
+  String encode(Map<String, Object?> value) =>
+      base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+  final seconds = authTime.toUtc().millisecondsSinceEpoch ~/ 1000;
+  return '${encode(<String, Object?>{'alg': 'none'})}.'
+      '${encode(<String, Object?>{'auth_time': seconds})}.sig';
+}
 
 Future<void> _waitFor(
   FirebaseOperatorWebAuthSource source,
