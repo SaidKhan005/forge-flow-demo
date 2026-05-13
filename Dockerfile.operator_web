@@ -120,6 +120,9 @@ RUN printf '%s\n' \
         '    add_header Cache-Control "no-store, max-age=0" always;' \
         '    root /usr/share/nginx/html;' \
         '    index index.html;' \
+        '    location = /operator-web/sign-in-security {' \
+        '        return 301 "/my-account$is_args$args#security";' \
+        '    }' \
         '    location / {' \
         '        try_files $uri $uri/ /index.html;' \
         '    }' \
