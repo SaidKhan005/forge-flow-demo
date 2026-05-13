@@ -35,6 +35,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/default_role_catalog_versions_repository.dart';
 
 /// Stable canonical JSON for SHA-256 input. Sorted keys; preserves array
@@ -150,6 +151,98 @@ class NoopDefaultRoleCatalogAuditSink
     required DateTime occurredAt,
   }) async {
     // intentionally blank
+  }
+}
+
+/// Production [DefaultRoleCatalogAuditSink] backed by the admin-pool
+/// [AuthEventsAuditRepository]. The publish event is a cross-operator
+/// admin action (the catalog is shared methodology, not tenant-scoped
+/// data), so the row lands through the system path — no tenant context,
+/// no `operator_id` / `location_id`.
+///
+/// Posture mirrors the peer admin sinks (pricing, corpus, integration,
+/// graph candidates) — every cross-operator admin write records
+/// `actor_kind = 'forge_admin'` per the CLAUDE.md actor taxonomy + the
+/// 2026-05-13 `admin_audit_log_actor_reason_contract` migration, which
+/// makes `forge_admin` a valid value and pairs it with the mandatory
+/// `admin_reason` CHECK. `insertSystemEvent` then fans the event into
+/// the hash-chained `public.audit_logs` table per the
+/// `audit_logs_cutover_enabled` flag, so the catalog publish receives
+/// the same SHA-256 chain integrity as every other admin write.
+///
+/// Audit failures are swallowed and surfaced via the caller-supplied
+/// [onError] hook. Same discipline as
+/// [ProductionHandoffAuditSink] / [_ProductionWageRoleRowsAuditSink]:
+/// the catalog row has already committed by the time the sink is
+/// called (the route dispatcher invokes the sink AFTER
+/// `repository.publishVersion(...)` resolves), and we do not want a
+/// downstream observability failure to surface as a 5xx after a
+/// successful publish.
+///
+/// Lives in `tool/advisor_proxy/` next to the router definition (mirror
+/// of B11.1's `ProductionHandoffAuditSink` colocation). The class does
+/// not import `package:postgres` directly — the
+/// [AuthEventsAuditRepository] dependency wraps the connection pool
+/// behind its own seam, so the production sink stays compatible with
+/// the `lib/admin/services/` placement option called out in the
+/// briefing without crossing the postgres-import lint boundary.
+class ProductionDefaultRoleCatalogAuditSink
+    implements DefaultRoleCatalogAuditSink {
+  ProductionDefaultRoleCatalogAuditSink({
+    required AuthEventsAuditRepository auditRepository,
+    void Function(Object error, StackTrace stackTrace)? onError,
+  })  : _auditRepository = auditRepository,
+        _onError = onError;
+
+  final AuthEventsAuditRepository _auditRepository;
+  final void Function(Object error, StackTrace stackTrace)? _onError;
+
+  /// `auth_events_audit.event_type` for default-role-catalog publish.
+  /// Mirrors the slice-spec wording in
+  /// `docs/_execution/lane_b_features/03_execution_slices.md` so a
+  /// dashboard query can correlate the catalog version with the
+  /// publishing super_admin.
+  static const String kEventType = 'auth.default_role_catalog.published';
+
+  /// `audit_logs.target_kind` value for the catalog row. The target
+  /// is the new catalog version (`subject_id = versionId`); the
+  /// blast-radius count + payload SHA-256 carry inside the payload
+  /// jsonb so dashboards can join across publishes without re-parsing
+  /// the catalog rows.
+  static const String kTargetKind = 'default_role_catalog_version';
+
+  @override
+  Future<void> recordPublished({
+    required String versionId,
+    required int versionNumber,
+    required String payloadSha256,
+    required String publishedByUserId,
+    required int blastRadiusOperatorCount,
+    required String? notes,
+    required DateTime occurredAt,
+  }) async {
+    try {
+      await _auditRepository.insertSystemEvent(
+        eventType: kEventType,
+        actorKind: 'forge_admin',
+        actorUserId: publishedByUserId,
+        targetKind: kTargetKind,
+        targetId: versionId,
+        payload: <String, Object?>{
+          'version_id': versionId,
+          'version_number': versionNumber,
+          'payload_sha256': payloadSha256,
+          'published_by_user_id': publishedByUserId,
+          'blast_radius_operator_count': blastRadiusOperatorCount,
+          if (notes != null) 'notes': notes,
+          'occurred_at': occurredAt.toUtc().toIso8601String(),
+        },
+        adminReason:
+            'auth.default_role_catalog.publish:version_$versionNumber',
+      );
+    } catch (error, stackTrace) {
+      _onError?.call(error, stackTrace);
+    }
   }
 }
 

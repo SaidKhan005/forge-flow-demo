@@ -28,6 +28,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/services/business_timing/production_operator_write_audit_sink.dart';
 import 'package:forge_and_flow/services/business_timing/repository_operator_write_gateways.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/default_role_catalog_versions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/feature_flags_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/graph_repository.dart';
@@ -232,6 +233,7 @@ class ProxyProductionBindings {
     required this.notificationPreferencesRouter,
     required this.wageRoleRowsRouter,
     required this.authHandoffRouter,
+    required this.defaultRoleCatalogAdminRouter,
     required this.passwordResetEmailShortCounter,
     required this.passwordResetIpCounter,
     required this.permissionVersionChecker,
@@ -433,6 +435,26 @@ class ProxyProductionBindings {
   /// (tenant pool, per-tenant RLS) and [ProductionHandoffAuditSink]
   /// for the hash-chained audit_logs fan-out.
   final AuthHandoffRouter authHandoffRouter;
+
+  /// Lane B B2.1 — F&F-admin default Role catalog router. Handles:
+  ///
+  ///   GET  /v1/admin/auth/role-catalogs           {super_admin, ff_support}
+  ///   POST /v1/admin/auth/role-catalogs/publish   super_admin only
+  ///
+  /// The publish route is transactional supersede-then-insert against
+  /// `public.default_role_catalog_versions` (admin pool / `runAsSystem`
+  /// — the catalog is shared methodology, not tenant-scoped data) and
+  /// emits one `auth.default_role_catalog.published` event with
+  /// `actor_kind = 'forge_admin'`. The event fans into the hash-chained
+  /// `public.audit_logs` table through
+  /// [ProductionDefaultRoleCatalogAuditSink] over the admin-pool
+  /// [AuthEventsAuditRepository] so the publish carries the same
+  /// SHA-256 chain integrity as every other cross-operator admin write.
+  /// The dispatcher in `advisor_proxy.dart` resolves the Firebase UID
+  /// to a Postgres `users.user_id` via the shared
+  /// [IntegrationAdminActorResolver] before invoking the sink so the
+  /// audit row's `actor_user_id` is the verified UUID.
+  final DefaultRoleCatalogAdminRouter defaultRoleCatalogAdminRouter;
 
   /// B1.S8 — per-email 5-min short-window rolling counter for the
   /// password-reset / magic-link request endpoint. Keyed by
@@ -790,6 +812,34 @@ ProxyProductionBindings buildProxyProductionBindings(
         log(
           LogSeverity.error,
           'proxy.auth_handoff_audit_failed',
+          fields: <String, Object?>{
+            'error_type': error.runtimeType.toString(),
+            'error_message': error.toString(),
+            'stack_first_frame': firstStackFrame(stackTrace),
+          },
+        );
+      },
+    ),
+  );
+  // Lane B B2.1 — F&F-admin default Role catalog router. Backed by
+  // the admin-pool `DefaultRoleCatalogVersionsRepository` (every call
+  // routes through `runAsSystem` because the catalog is shared
+  // methodology — no `operator_id`, no tenant RLS), and by
+  // [ProductionDefaultRoleCatalogAuditSink] over the admin-pool
+  // [AuthEventsAuditRepository] so the publish event lands one
+  // `auth.default_role_catalog.published` row with
+  // `actor_kind = 'forge_admin'` and fans out to the hash-chained
+  // `public.audit_logs` per the `audit_logs_cutover_enabled` flag.
+  // Audit failures are logged but never surface as 5xx — the catalog
+  // row has already committed by the time the sink fires.
+  final defaultRoleCatalogAdminRouter = DefaultRoleCatalogAdminRouter(
+    repository: DefaultRoleCatalogVersionsRepository(adminWrapper),
+    auditSink: ProductionDefaultRoleCatalogAuditSink(
+      auditRepository: adminAudit,
+      onError: (error, stackTrace) {
+        log(
+          LogSeverity.error,
+          'proxy.default_role_catalog_audit_failed',
           fields: <String, Object?>{
             'error_type': error.runtimeType.toString(),
             'error_message': error.toString(),
@@ -1188,6 +1238,11 @@ ProxyProductionBindings buildProxyProductionBindings(
     notificationPreferencesRouter: notificationPreferencesRouter,
     wageRoleRowsRouter: wageRoleRowsRouter,
     authHandoffRouter: authHandoffRouter,
+    // Lane B B2.1 — default Role catalog admin router. Without this
+    // binding the GET /v1/admin/auth/role-catalogs and
+    // POST /v1/admin/auth/role-catalogs/publish routes return 503
+    // default_role_catalog_admin_not_configured.
+    defaultRoleCatalogAdminRouter: defaultRoleCatalogAdminRouter,
     // Slice A11.1 — production session-record gauge. Single shared
     // instance per proxy process; the route handler increments it on
     // every 2xx from POST /v1/auth/session/login, the deep-health

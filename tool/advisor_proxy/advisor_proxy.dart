@@ -251,6 +251,7 @@ export 'admin_default_role_catalog_routes.dart'
         DefaultRoleCatalogAuditSink,
         DefaultRoleCatalogRouteResult,
         NoopDefaultRoleCatalogAuditSink,
+        ProductionDefaultRoleCatalogAuditSink,
         RecordingDefaultRoleCatalogAuditSink,
         canonicalRoleCatalogJson,
         computeRoleCatalogPayloadSha256,
