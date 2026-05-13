@@ -19,8 +19,10 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 import '../../auth/mfa_freshness_redirect_listener.dart';
+import '../auth/step_up_challenge_handler.dart';
 import 'operator_web_proxy_client.dart';
 
 /// Operator-scoped business-identity surface. The frontend gateway
@@ -60,13 +62,26 @@ class HttpWebAccountGateway
     required OperatorWebProxyClient client,
     required Future<String?> Function() idTokenProvider,
     DateTime Function()? now,
+    StepUpChallengeReauthHook? stepUpReauthHook,
   }) : _client = client,
        _idTokenProvider = idTokenProvider,
-       _now = now ?? DateTime.now;
+       _now = now ?? DateTime.now,
+       _stepUpReauthHook =
+           stepUpReauthHook ?? const NoopStepUpChallengeReauthHook();
 
   final OperatorWebProxyClient _client;
   final Future<String?> Function() _idTokenProvider;
   final DateTime Function() _now;
+
+  /// B11.2.b — server-side step-up reauth driver. When the proxy
+  /// returns a step-up 401 challenge on revoke / MFA-remove / etc.,
+  /// the gateway calls `hook.resolveFreshAuth(offer)`, gets a fresh
+  /// ID token, and replays the original request with
+  /// `Step-Up-Challenge-Id` as a request HEADER (addendum A1: never
+  /// a URL param). When the hook is the [NoopStepUpChallengeReauthHook]
+  /// (default), the gateway surfaces the 401 unchanged so the screen
+  /// layer can fall back to its existing failure UX.
+  final StepUpChallengeReauthHook _stepUpReauthHook;
 
   /// Operator-scoped route. The unit-test contract pins this string.
   static const String operatorAccountPath = '/v1/operator/account';
@@ -78,6 +93,21 @@ class HttpWebAccountGateway
   static const Duration _freshMfaWindow = Duration(hours: 1);
   static const String _freshMfaRedirectUri =
       '/auth/login?reason=fresh_mfa_required';
+
+  /// B11.2.b deep-audit P1 fix — clock-skew tolerance for the
+  /// `_requireFreshMfaToken` `auth_time > now` rejection branch.
+  /// Without this window, legitimate client/server clock drift (any
+  /// browser whose local clock is even a few seconds ahead of the
+  /// proxy) trips the "auth_time is in the future" guard and forces a
+  /// spurious re-auth. ±60s is the same skew tolerance Identity
+  /// Platform applies to its own server-side ID token validation and
+  /// is the standard JWT skew window (RFC 7519 §4.1.4 leeway).
+  ///
+  /// Tokens with auth_time MORE than 60s in the future are still
+  /// rejected — that's a clock the operator must fix, or a malicious
+  /// token with a forged future stamp.
+  @visibleForTesting
+  static const Duration freshMfaClockSkewWindow = Duration(seconds: 60);
 
   @override
   Future<AccountIdentity> getAccount() async {
@@ -153,6 +183,25 @@ class HttpWebAccountGateway
     _requireFreshMfaToken(token);
     var revokedCount = 0;
     for (final sessionId in ids) {
+      final revoked = await _revokeOnceWithStepUp(
+        sessionId: sessionId,
+        token: token,
+      );
+      if (revoked) revokedCount += 1;
+    }
+    return AccountSessionSignOutOthersResult(revokedCount: revokedCount);
+  }
+
+  /// Issues one revoke + drives the B11.2.b step-up flow when the
+  /// proxy returns a 401 challenge. Returns true when the revoke
+  /// succeeded (either on the first try OR on the post-step-up
+  /// replay). Re-throws non-step-up errors verbatim.
+  Future<bool> _revokeOnceWithStepUp({
+    required String sessionId,
+    required String token,
+    String? stepUpChallengeId,
+  }) async {
+    try {
       final response = await _client.postJson(
         revokeSessionPath,
         idToken: token,
@@ -160,14 +209,41 @@ class HttpWebAccountGateway
           'session_id': sessionId,
           'reason': 'my_account.sign_out_other_sessions',
         },
+        extraHeaders: stepUpChallengeId == null
+            ? const <String, String>{}
+            : <String, String>{
+                // Addendum A1: the challenge id is a REQUEST HEADER
+                // value. Never appended to revokeSessionPath as a
+                // URL parameter.
+                kStepUpChallengeIdHeader: stepUpChallengeId,
+              },
       );
-      final revoked =
-          _readBool(response.body['revoked']) ??
+      return _readBool(response.body['revoked']) ??
           _readBool(response.body['ok']) ??
           true;
-      if (revoked) revokedCount += 1;
+    } on OperatorWebProxyException catch (failure) {
+      final offer = StepUpChallengeOffer.tryParse(
+        statusCode: failure.statusCode ?? 0,
+        headers: failure.responseHeaders ?? const <String, String>{},
+        body: failure.responseBody ?? const <String, Object?>{},
+      );
+      if (offer == null) rethrow;
+      // Already replaying once — don't loop. The proxy returned
+      // another challenge on the replay (TTL expired, etc.) so
+      // surface to the caller.
+      if (stepUpChallengeId != null) rethrow;
+      final freshToken = await _stepUpReauthHook.resolveFreshAuth(offer);
+      if (freshToken == null || freshToken.isEmpty) {
+        // User cancelled the fresh-auth flow — surface the original
+        // 401 so the screen layer renders its existing failure UX.
+        rethrow;
+      }
+      return _revokeOnceWithStepUp(
+        sessionId: sessionId,
+        token: freshToken,
+        stepUpChallengeId: offer.challengeId,
+      );
     }
-    return AccountSessionSignOutOthersResult(revokedCount: revokedCount);
   }
 
   Future<String> _requireToken(String message) async {
@@ -184,9 +260,23 @@ class HttpWebAccountGateway
   void _requireFreshMfaToken(String idToken) {
     final authTime = _readAuthTime(idToken);
     final now = _now().toUtc();
-    if (authTime == null ||
-        authTime.isAfter(now) ||
-        now.difference(authTime) > _freshMfaWindow) {
+    if (authTime == null) {
+      throw const AccountSessionFreshMfaRequiredException();
+    }
+    // B11.2.b deep-audit P1 fix — apply ±60s skew tolerance to the
+    // "auth_time in the future" guard. Without this a client whose
+    // browser clock is even a few seconds ahead of the proxy trips
+    // the freshness gate spuriously. Tokens MORE than 60s ahead are
+    // still rejected — that's an unusable clock OR a forged stamp.
+    if (authTime.isAfter(now.add(freshMfaClockSkewWindow))) {
+      throw const AccountSessionFreshMfaRequiredException();
+    }
+    // Past direction is unchanged — the freshness window itself
+    // already absorbs small drift, and a stale auth_time MUST trigger
+    // re-auth regardless of clock skew. The window is computed
+    // against `now` (not `now + skew`) so an early-by-skew client
+    // cannot stretch the effective freshness budget.
+    if (authTime.isBefore(now) && now.difference(authTime) > _freshMfaWindow) {
       throw const AccountSessionFreshMfaRequiredException();
     }
   }

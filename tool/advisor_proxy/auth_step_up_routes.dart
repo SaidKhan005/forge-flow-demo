@@ -102,6 +102,11 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/step_up_challenges_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+
 /// RFC 9470 §4 error code that gates the step-up flow.
 const String kStepUpErrorCode = 'insufficient_user_authentication';
 
@@ -994,4 +999,196 @@ class StepUpChallengeRouter {
 /// the canonical implementation rather than re-rolling SHA-256.
 String hashStepUpChallengeIdForAudit(String challengeId) {
   return sha256.convert(utf8.encode(challengeId)).toString();
+}
+
+// ─── B11.2.b production bindings ────────────────────────────────────
+//
+// The classes below are the production implementations of the abstract
+// seams defined above. They wrap [StepUpChallengesRepository]
+// (Postgres-backed; lib/infrastructure/persistence/postgres) and the
+// hash-chained [AuditLogsRepository], and live next to the seams they
+// implement so a reviewer sees the interface, the in-memory recording
+// fake (in tests), and the production binding in one file. Mirrors the
+// B11.1 idiom (`RepositoryHandoffCodesGateway` + `ProductionHandoffAuditSink`).
+
+/// Production gateway backed by the Postgres repository. Wired into
+/// the proxy via `proxy_bootstrap.dart`.
+class RepositoryStepUpChallengesGateway implements StepUpChallengesGateway {
+  RepositoryStepUpChallengesGateway({required this.repository});
+
+  final StepUpChallengesRepository repository;
+
+  @override
+  Future<String> emit({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String routePath,
+    required String requiredAcr,
+    required int requiredFreshnessSeconds,
+    required Duration challengeTtl,
+    required String sourceActorKind,
+    required String? sourceDeviceFingerprint,
+  }) =>
+      repository.emit(
+        operatorId: operatorId,
+        locationId: locationId,
+        userId: userId,
+        routePath: routePath,
+        requiredAcr: requiredAcr,
+        requiredFreshnessSeconds: requiredFreshnessSeconds,
+        challengeTtl: challengeTtl,
+        sourceActorKind: sourceActorKind,
+        sourceDeviceFingerprint: sourceDeviceFingerprint,
+      );
+
+  @override
+  Future<StepUpChallengeConsumed?> consume({
+    required String callerOperatorId,
+    required String callerLocationId,
+    required String callerUserId,
+    required String callerRoutePath,
+    required String challengeId,
+  }) async {
+    final row = await repository.consume(
+      callerOperatorId: callerOperatorId,
+      callerLocationId: callerLocationId,
+      callerUserId: callerUserId,
+      callerRoutePath: callerRoutePath,
+      challengeId: challengeId,
+    );
+    if (row == null) return null;
+    return StepUpChallengeConsumed(
+      challengeId: row.challengeId,
+      operatorId: row.operatorId,
+      locationId: row.locationId,
+      userId: row.userId,
+      routePath: row.routePath,
+      requiredAcr: row.requiredAcr,
+      requiredFreshnessSeconds: row.requiredFreshnessSeconds,
+      consumedAt: row.consumedAt,
+    );
+  }
+
+  @override
+  Future<StepUpChallengeState?> lookupForReplayCheck({
+    required String callerOperatorId,
+    required String challengeId,
+  }) async {
+    final state = await repository.lookupForReplayCheck(
+      challengeId: challengeId,
+    );
+    if (state == null) return null;
+    return StepUpChallengeState(
+      operatorId: state.operatorId,
+      userId: state.userId,
+      routePath: state.routePath,
+      expiresAt: state.expiresAt,
+      consumedAt: state.consumedAt,
+    );
+  }
+}
+
+/// Production audit sink fan-out to the hash-chained `audit_logs`
+/// table. Mirrors `ProductionHandoffAuditSink` (B11.1). Failures are
+/// swallowed and surfaced via the structured logger so an audit-write
+/// outage cannot 5xx a request whose challenge already committed.
+///
+/// `target_id` carries the SHA-256 hex hash of the challenge_id (never
+/// the raw id) so the audit chain is not a token-leak vector.
+class ProductionStepUpAuditSink implements StepUpAuditSink {
+  ProductionStepUpAuditSink({
+    required TenantTransactionWrapper tenantWrapper,
+    AuditLogsRepository auditLogsRepository = const AuditLogsRepository(),
+    void Function(Object error, StackTrace stackTrace)? onError,
+  })  : _tenantWrapper = tenantWrapper,
+        _auditLogsRepository = auditLogsRepository,
+        _onError = onError;
+
+  final TenantTransactionWrapper _tenantWrapper;
+  final AuditLogsRepository _auditLogsRepository;
+  final void Function(Object error, StackTrace stackTrace)? _onError;
+
+  @override
+  Future<void> recordChallengeEmitted({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String actorKind,
+    required String challengeId,
+    required String routePath,
+    required String requiredAcr,
+    required int requiredFreshnessSeconds,
+    required String reason,
+    required DateTime occurredAt,
+  }) async {
+    final hashed = hashStepUpChallengeIdForAudit(challengeId);
+    try {
+      final ctx = TenantContext(
+        operatorId: operatorId,
+        locationId: locationId,
+        userId: actorUserId,
+      );
+      await _tenantWrapper.runInTenantContext(ctx, (exec) async {
+        await _auditLogsRepository.writeRow(
+          exec,
+          operatorId: operatorId,
+          locationId: locationId,
+          occurredAt: occurredAt,
+          actorKind: actorKind == 'user' ? 'user' : actorKind,
+          actorUserId: actorUserId,
+          targetKind: 'auth.step_up_challenge',
+          targetId: hashed,
+          action: 'auth.step_up_challenge.required',
+          payload: <String, Object?>{
+            'route_path': routePath,
+            'required_acr': requiredAcr,
+            'required_freshness_seconds': requiredFreshnessSeconds,
+            'reason': reason,
+            'challenge_id_hash': hashed,
+          },
+        );
+      });
+    } on Exception catch (error, stackTrace) {
+      // Audit write is best-effort post-commit. Surface via onError so
+      // the structured logger captures the failure; never re-throw.
+      _onError?.call(error, stackTrace);
+    }
+  }
+
+  @override
+  Future<void> recordChallengeConsumed({
+    required StepUpChallengeConsumed row,
+    required DateTime occurredAt,
+  }) async {
+    final hashed = hashStepUpChallengeIdForAudit(row.challengeId);
+    try {
+      final ctx = TenantContext(
+        operatorId: row.operatorId,
+        locationId: row.locationId,
+        userId: row.userId,
+      );
+      await _tenantWrapper.runInTenantContext(ctx, (exec) async {
+        await _auditLogsRepository.writeRow(
+          exec,
+          operatorId: row.operatorId,
+          locationId: row.locationId,
+          occurredAt: occurredAt,
+          actorKind: 'user',
+          actorUserId: row.userId,
+          targetKind: 'auth.step_up_challenge',
+          targetId: hashed,
+          action: 'auth.step_up_challenge.consumed',
+          payload: <String, Object?>{
+            'route_path': row.routePath,
+            'required_acr': row.requiredAcr,
+            'required_freshness_seconds': row.requiredFreshnessSeconds,
+            'challenge_id_hash': hashed,
+          },
+        );
+      });
+    } on Exception catch (error, stackTrace) {
+      _onError?.call(error, stackTrace);
+    }
+  }
 }

@@ -33,6 +33,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/feature_flags_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/graph_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/handoff_codes_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/step_up_challenges_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
@@ -233,6 +234,7 @@ class ProxyProductionBindings {
     required this.notificationPreferencesRouter,
     required this.wageRoleRowsRouter,
     required this.authHandoffRouter,
+    required this.stepUpChallengeRouter,
     required this.defaultRoleCatalogAdminRouter,
     required this.passwordResetEmailShortCounter,
     required this.passwordResetIpCounter,
@@ -435,6 +437,27 @@ class ProxyProductionBindings {
   /// (tenant pool, per-tenant RLS) and [ProductionHandoffAuditSink]
   /// for the hash-chained audit_logs fan-out.
   final AuthHandoffRouter authHandoffRouter;
+
+  /// Lane B B11.2.b — RFC 9470 step-up challenge router. The proxy
+  /// invokes [StepUpChallengeRouter.dispatch] for every sensitive
+  /// route (registered in `kStepUpSensitiveRoutes`) BEFORE the handler
+  /// dispatches the underlying business work. When the caller's JWT
+  /// `auth_time` is stale, the router persists a one-shot challenge
+  /// row in `public.auth_step_up_challenges` and returns 401 +
+  /// `WWW-Authenticate: Bearer error="insufficient_user_authentication",
+  /// acr_values="urn:mfa", max_age=300`. The client re-authenticates,
+  /// replays the original request with `Step-Up-Challenge-Id`, and
+  /// the router atomically consumes the row (one-shot). Backed by
+  /// [RepositoryStepUpChallengesGateway] over
+  /// [StepUpChallengesRepository] (tenant pool, per-tenant RLS) and
+  /// [ProductionStepUpAuditSink] for the hash-chained
+  /// `auth.step_up_challenge.required` / `auth.step_up_challenge.consumed`
+  /// audit_logs fan-out.
+  ///
+  /// Addendum A1 (B11 token-in-URL prohibition): the `Step-Up-
+  /// Challenge-Id` value MUST flow through the request header — never
+  /// a URL parameter — and never appears in a redirect URL.
+  final StepUpChallengeRouter stepUpChallengeRouter;
 
   /// Lane B B2.1 — F&F-admin default Role catalog router. Handles:
   ///
@@ -812,6 +835,36 @@ ProxyProductionBindings buildProxyProductionBindings(
         log(
           LogSeverity.error,
           'proxy.auth_handoff_audit_failed',
+          fields: <String, Object?>{
+            'error_type': error.runtimeType.toString(),
+            'error_message': error.toString(),
+            'stack_first_frame': firstStackFrame(stackTrace),
+          },
+        );
+      },
+    ),
+  );
+  // Lane B B11.2.b — RFC 9470 step-up challenge router. Tenant pool +
+  // per-tenant RLS policy on `auth_step_up_challenges`. The audit sink
+  // fans `auth.step_up_challenge.required` /
+  // `auth.step_up_challenge.consumed` events into the hash-chained
+  // `public.audit_logs` table through the same tenant transaction
+  // wrapper so the audit row's operator_id matches the SET LOCAL GUC.
+  // The opaque challenge_id never appears in audit payloads (SHA-256
+  // hex hash only). The router is constructed here (not inline in
+  // `routeRequest`) so the same instance is reused across every
+  // request — the in-process gateway has no per-request state.
+  final stepUpChallengeRouter = StepUpChallengeRouter(
+    gateway: RepositoryStepUpChallengesGateway(
+      repository: StepUpChallengesRepository(tenantWrapper),
+    ),
+    auditSink: ProductionStepUpAuditSink(
+      tenantWrapper: tenantWrapper,
+      auditLogsRepository: auditLogsRepository,
+      onError: (error, stackTrace) {
+        log(
+          LogSeverity.error,
+          'proxy.auth_step_up_audit_failed',
           fields: <String, Object?>{
             'error_type': error.runtimeType.toString(),
             'error_message': error.toString(),
@@ -1238,6 +1291,12 @@ ProxyProductionBindings buildProxyProductionBindings(
     notificationPreferencesRouter: notificationPreferencesRouter,
     wageRoleRowsRouter: wageRoleRowsRouter,
     authHandoffRouter: authHandoffRouter,
+    // Lane B B11.2.b — RFC 9470 step-up challenge router. Without this
+    // binding the step-up gate inside `routeRequest` short-circuits to
+    // pass-through (legacy "no step-up" mode) so existing tests stay
+    // green; production wires the router and every sensitive route
+    // (registered in `kStepUpSensitiveRoutes`) is gated.
+    stepUpChallengeRouter: stepUpChallengeRouter,
     // Lane B B2.1 — default Role catalog admin router. Without this
     // binding the GET /v1/admin/auth/role-catalogs and
     // POST /v1/admin/auth/role-catalogs/publish routes return 503

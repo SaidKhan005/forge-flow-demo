@@ -83,6 +83,8 @@ import '../advisor_corpus/advisor_corpus.dart'
 import 'audit_chain_anchors_routes.dart';
 import 'admin_default_role_catalog_routes.dart';
 import 'auth_handoff_routes.dart';
+import 'auth_step_up_gate.dart';
+import 'auth_step_up_routes.dart';
 import 'health_operation_budget.dart';
 import 'log.dart';
 import 'business_scope_routes.dart';
@@ -241,6 +243,34 @@ export 'auth_handoff_routes.dart'
         authHandoffCodesMintPath,
         authHandoffRedeemPath,
         hashAuthHandoffRequest;
+// Lane B B11.2.b — RFC 9470 step-up challenge wiring + production
+// binding. Re-export the surface the proxy bootstrap + tests need to
+// reference. The router lookup (`StepUpChallengeRouter.dispatch`) is
+// called once per request inside `routeRequest` BEFORE any sensitive
+// handler runs (see the step-up gate just below the scope-resolution
+// helper). The `Step-Up-Challenge-Id` header is the ONLY token-bearing
+// path; the value is NEVER read from URL parameters per addendum A1.
+export 'auth_step_up_routes.dart'
+    show
+        NoopStepUpAuditSink,
+        ProductionStepUpAuditSink,
+        RepositoryStepUpChallengesGateway,
+        StepUpAuditSink,
+        StepUpChallengeRouter,
+        StepUpChallengesGateway,
+        StepUpDispatchAdmit,
+        StepUpDispatchChallenge,
+        StepUpDispatchReject,
+        StepUpDispatchResult,
+        StepUpPolicy,
+        StepUpRouteSpec,
+        buildWwwAuthenticateHeader,
+        hashStepUpChallengeIdForAudit,
+        kStepUpChallengeIdHeader,
+        kStepUpErrorCode,
+        kStepUpSensitiveRoutes,
+        kStepUpWwwAuthenticateHeader,
+        lookupStepUpRoute;
 // Lane B B2.1 — default role catalog admin routes. The catalog is a
 // global F&F-wide table (no operator_id); the publish route gates on
 // super_admin only and emits a hash-chained audit row with the
@@ -8842,6 +8872,13 @@ Future<void> routeRequest(
   // Optional: when null the two routes return 503 so existing tests
   // do not need to plumb the router through every call site.
   AuthHandoffRouter? authHandoffRouter,
+  // Lane B B11.2.b - RFC 9470 step-up challenge router. Optional:
+  // when null the step-up gate short-circuits to pass-through (legacy
+  // "no step-up" mode) so existing tests stay green. Production wires
+  // the router and every route in `kStepUpSensitiveRoutes` is gated
+  // BEFORE the underlying business handler runs. Step-Up-Challenge-Id
+  // flows through the HEADER ONLY (addendum A1).
+  StepUpChallengeRouter? stepUpChallengeRouter,
   // Lane B B2.1 - default Role catalog admin routes (publish + list).
   // Optional: when null the two routes return 503 so existing tests
   // do not need to plumb the router through every call site.
@@ -8996,6 +9033,29 @@ Future<void> routeRequest(
         if (request.method == 'GET' &&
             (path == healthPath || path == readinessPath)) {
           _writeJson(response, 200, <String, Object?>{'status': 'ok'});
+          return;
+        }
+
+        // Lane B B11.2.b — RFC 9470 step-up challenge gate. Runs BEFORE
+        // every sensitive route handler. See
+        // `auth_step_up_routes.dart::runStepUpGate` for the full
+        // contract; in short the gate intercepts when the route is in
+        // `kStepUpSensitiveRoutes`, resolves operator scope, and
+        // dispatches the router. Step-Up-Challenge-Id flows through
+        // the HEADER ONLY (addendum A1). When `stepUpChallengeRouter`
+        // is null the gate skips entirely (legacy "no step-up" mode).
+        if (stepUpChallengeRouter != null &&
+            stepUpChallengeRouter.isSensitive(
+              method: request.method,
+              path: path,
+            ) &&
+            await runStepUpGate(
+              request: request,
+              path: path,
+              authGuard: authGuard,
+              router: stepUpChallengeRouter,
+              now: clock,
+            )) {
           return;
         }
 

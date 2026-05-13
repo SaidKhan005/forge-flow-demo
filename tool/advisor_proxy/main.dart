@@ -1692,6 +1692,13 @@ Future<void> _runProxy(List<String> args) async {
             // R3 §2 stretch goal.
             sessionRecordIncompleteGauge:
                 productionBindings.sessionRecordIncompleteGauge,
+            // Lane B B11.2.b — RFC 9470 step-up challenge router.
+            // Without this binding the step-up gate at the head of
+            // routeRequest skips entirely (legacy "no step-up" mode)
+            // and sensitive routes admit any verified bearer token
+            // regardless of auth_time freshness. Production wires the
+            // router; every route in `kStepUpSensitiveRoutes` is gated.
+            stepUpChallengeRouter: productionBindings.stepUpChallengeRouter,
           );
         } catch (error, stack) {
           log(
