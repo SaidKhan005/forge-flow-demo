@@ -94,22 +94,22 @@ void main() {
     );
     expect(find.text('Vendor connector catalog'), findsOneWidget);
     expect(
-      find.textContaining('Business vendor setup stays per location'),
+      find.textContaining('Review global provider health and platform keys'),
       findsOneWidget,
     );
     expect(
       find.textContaining('model, embedding, database, and email providers'),
       findsOneWidget,
     );
-    expect(
-      find.textContaining('can reach the vendor API for live setup'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('global vendor API health'), findsOneWidget);
     expect(
       find.textContaining('per-location vendor connections'),
       findsOneWidget,
     );
-    expect(find.textContaining('Vendor integrations'), findsOneWidget);
+    expect(
+      find.textContaining('operator edits live on Operator Web'),
+      findsWidgets,
+    );
     expect(
       find.byKey(const Key('admin_integrations_vendor_group_pos')),
       findsOneWidget,

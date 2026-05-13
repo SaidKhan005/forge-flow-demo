@@ -290,7 +290,7 @@ class _PerLocationDataAccuracyScreenState
               AdminPageHeader(
                 title: 'Covers and Wage Data Accuracy',
                 subtitle:
-                    'Review cover sources, wage sources, walk-ins, and audit history for the selected scope.',
+                    'Operator edits live on Operator Web; this view is for F&F support to review covers, wages, walk-ins, and audit history.',
                 leading: widget.onBackToBusinessAccounts == null
                     ? null
                     : AdminBusinessAccountsBackButton(
@@ -1162,7 +1162,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View only: data accuracy overrides require ecosystem admin access.',
+              'Operator edits live on Operator Web; this view is for F&F support.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),

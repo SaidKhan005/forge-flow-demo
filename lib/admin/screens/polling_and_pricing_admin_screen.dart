@@ -576,7 +576,7 @@ class _PollingAndPricingAdminScreenState
               AdminPageHeader(
                 title: 'Polling Setup',
                 subtitle:
-                    'Set vendor polling tiers, estimate cost, and review margin for the selected scope.',
+                    'This surface is for F&F admins only — operators cannot see it. Set vendor polling tiers, cost basis, and margin.',
                 leading: widget.onBackToBusinessAccounts == null
                     ? null
                     : AdminBusinessAccountsBackButton(
@@ -1253,7 +1253,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View only: tier definitions and assignments require ecosystem admin access.',
+              'This surface is for F&F admins only — operators cannot see it.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
