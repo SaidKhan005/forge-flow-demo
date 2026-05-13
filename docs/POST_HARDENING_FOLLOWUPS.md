@@ -586,6 +586,88 @@ for clearing as Phase 11A.8/.9/.10 land.
   `operator_web_auth_source.dart` are intentional (password reset
   flows are handled by Firebase action links by design), NOT gaps.
 
+## Refactor phase scope (queued from 2026-05-13 post-Codex wave closeout)
+
+Captured 2026-05-13 from the C-12 wave closeout audit
+(`docs/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`). Both
+items are governance-level decisions plus extraction work that the
+post-Codex wave touched but did not resolve. The operator scoped them
+into an upcoming refactor phase rather than a standalone slice; this
+section is the holding pen until that phase opens.
+
+### R-1 — Operator-web ceiling lint + `my_account_screen.dart` decomposition
+
+**Source:** `wave_audit_operator_web_admin_ux.md` finding F-OW-1; closeout
+M-2.
+
+`lib/operator_web/screens/my_account_screen.dart` reached 2,051 LoC during
+the wave (PR #624 set a soft ceiling of 1,665; C-7 PR #636 then added to it
+without enforcement). The ceiling exists only in a per-PR audit doc, not in
+any lint or governance doc, and the screen is becoming the operator-web
+equivalent of `advisor_proxy.dart` — a god-screen accumulating MFA,
+sessions, profile, and security panes that are conceptually separate.
+
+Refactor phase work:
+
+1. Codify the operator-web ceiling in `tool/operator_web_size_lint.dart`,
+   mirroring `tool/advisor_proxy_size_lint.dart` shape (single max-lines
+   constant per target file, fails build above ceiling).
+2. Decompose `my_account_screen.dart` into sibling files
+   (`my_account_security_pane.dart`, `my_account_mfa_pane.dart`,
+   `my_account_sessions_pane.dart`, `my_account_profile_pane.dart`).
+3. Keep the parent screen as a thin tab-host that mounts the panes.
+
+Out of scope: any behavior change. Pure structural extraction + lint
+codification.
+
+### R-2 — `advisor_proxy.dart` bleed-stop discipline + helper extraction
+
+**Source:** `wave_audit_proxy_bleed_stop.md` finding W-1; closeout M-3.
+
+The post-Codex wave raised `kAdvisorProxyMaxLines` three times
+(19,071 → 19,600 → 19,700 → 19,900) in five hours of wall time, a
+cumulative +941 LoC growth on the monolith. The lint's authoritative
+docstring at `tool/advisor_proxy_size_lint.dart:64-80` says explicitly
+*"the monolith MUST shrink, not grow"* — the wave ratcheted the wrong
+way three times. CI was dark, so each raise landed unchallenged.
+
+The proximate cause of three of those raises (B10.1, B2.1, C-4) is the
+**hybrid sibling pattern** where the router class lives in a sibling
+file but the dispatcher block at `routeRequest` still carries 60-120
+lines of local-state setup (`_resolveOperatorContextOrWrite`,
+`_readJsonBody`, `_writeJson`, `_maybeWriteDependencyTimeout`,
+`_logProxyUnhandled`, `authGuard`, `businessScopeGateway`). The
+helpers are file-local to `advisor_proxy.dart`, so dispatcher blocks
+cannot move out without first promoting those helpers to sibling
+status.
+
+Refactor phase work:
+
+1. Promote the request-envelope helpers to a new
+   `tool/advisor_proxy/route_helpers.dart` sibling — exported, file-
+   private elements lifted as module-private with explicit `@visibleForTesting`
+   where tests already depend on them.
+2. Migrate the wave's three hybrid dispatchers (B2.1, B11.2, C-4) to
+   the Pattern A pre-check shape (`router.tryHandle(HttpRequest)`
+   returning `Future<bool>`), moving their dispatcher blocks fully
+   out of `routeRequest`.
+3. Lower `kAdvisorProxyMaxLines` to match the new monolith size with
+   ~200 lines of forward headroom (re-instate ratchet discipline).
+4. Codify in CLAUDE.md or a doctrine doc: **ceiling raises require
+   explicit operator approval like auth-critical / RLS-touching /
+   schema-touching / proxy-touching slices.** Without operator gate,
+   the doctrine's "must shrink" intent has no enforcement.
+
+Out of scope: route-logic changes; per-route auth posture changes; any
+new routes. Pure structural extraction + discipline restoration.
+
+### R-3 — Bundle: refactor phase opens after both above are scoped
+
+Sequencing note: R-1 and R-2 are independent (operator-web vs proxy)
+but both compete for "structural extraction without behavior change"
+attention. The refactor phase doc (TBD location) will sequence them
+when it opens. Operator gate on the phase opening.
+
 ## Closeout — Phase 8 plug-and-play V1 onboarding (2026-05-07)
 
 End-to-end V1 plug-and-play onboarding for all 17 vendors landed via
