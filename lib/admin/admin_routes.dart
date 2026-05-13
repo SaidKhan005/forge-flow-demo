@@ -281,7 +281,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/pricing',
     icon: Icons.tune_outlined,
     section: AdminRouteSection.ai,
-    subtitle: 'Review AI plans and set usage limits by operator and location.',
+    badge: 'Admin only',
+    subtitle:
+        'This surface is for F&F admins only — operators cannot see it. Review AI plans and usage limits.',
     builder: _buildPricing,
   ),
   AdminRoute(
@@ -290,7 +292,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/corpus',
     icon: Icons.menu_book_outlined,
     section: AdminRouteSection.ai,
-    subtitle: 'Upload, review, publish, and restore advisor knowledge content.',
+    badge: 'Admin only',
+    subtitle:
+        'This surface is for F&F admins only — operators cannot see it. Publish advisor knowledge content.',
     builder: _buildCorpus,
   ),
   AdminRoute(
@@ -299,7 +303,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/integrations',
     icon: Icons.extension_outlined,
     section: AdminRouteSection.serviceSetup,
-    subtitle: 'Check provider status and rotate service keys safely.',
+    badge: 'Global health',
+    subtitle:
+        'Review global provider health and platform service keys; operator edits live on Operator Web.',
     builder: _buildIntegrations,
   ),
   AdminRoute(
@@ -308,7 +314,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/health',
     icon: Icons.monitor_heart_outlined,
     section: AdminRouteSection.systemMonitoring,
-    subtitle: 'Run a read-only system check before investigating live issues.',
+    badge: 'Admin only',
+    subtitle:
+        'This surface is for F&F admins only — operators cannot see it. Run read-only system checks.',
     builder: _buildHealth,
   ),
   AdminRoute(
@@ -317,7 +325,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/feature-flags',
     icon: Icons.flag_outlined,
     section: AdminRouteSection.serviceSetup,
-    subtitle: 'Control staged features without shipping a new build.',
+    badge: 'Admin only',
+    subtitle:
+        'This surface is for F&F admins only — operators cannot see it. Control staged features.',
     builder: _buildFeatureFlags,
   ),
   AdminRoute(
@@ -326,8 +336,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/debug',
     icon: Icons.bug_report_outlined,
     section: AdminRouteSection.systemMonitoring,
+    badge: 'Admin only',
     subtitle:
-        'Search recent operator requests and inspect support-safe details.',
+        'This surface is for F&F admins only — operators cannot see it. Inspect support-safe request details.',
     builder: _buildDebugConsole,
   ),
   AdminRoute(
@@ -336,7 +347,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/observability',
     icon: Icons.insights_outlined,
     section: AdminRouteSection.ai,
-    subtitle: 'Review advisor usage, cost, limits, and model activity.',
+    badge: 'Admin only',
+    subtitle:
+        'This surface is for F&F admins only — operators cannot see it. Review advisor usage, cost, and model activity.',
     builder: _buildObservability,
   ),
   AdminRoute(
@@ -345,9 +358,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/data-accuracy',
     icon: Icons.fact_check_outlined,
     section: AdminRouteSection.operations,
-    badge: 'Work in progress',
+    badge: 'Read-only view',
     subtitle:
-        'Review cover sources, wage sources, walk-ins, and audit history.',
+        'Operator edits live on Operator Web; this view is for F&F support.',
     builder: _buildDataAccuracy,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -358,8 +371,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/polling-pricing',
     icon: Icons.payments_outlined,
     section: AdminRouteSection.operations,
-    badge: 'Work in progress',
-    subtitle: 'Set vendor polling tiers, estimate cost, and review margin.',
+    badge: 'Admin only',
+    subtitle:
+        'This surface is for F&F admins only — operators cannot see it. Operator Web reads the published tier status.',
     builder: _buildPollingPricing,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -370,7 +384,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/admin/vendor-integrations',
     icon: Icons.link_outlined,
     section: AdminRouteSection.operations,
-    subtitle: 'Connect, test, and manage vendors for the selected scope.',
+    badge: 'Read-only view',
+    subtitle:
+        'Operator edits live on Operator Web; this support view is location-scoped.',
     builder: _buildVendorIntegrations,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,

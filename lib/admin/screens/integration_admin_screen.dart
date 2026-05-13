@@ -311,7 +311,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Grouped by the operational system each vendor feeds. Status reflects whether F&F can reach the vendor API for live setup; location-level connect, test, and disconnect controls stay on Vendor integrations.',
+                  'Grouped by the operational system each vendor feeds. Status reflects global vendor API health; operator edits live on Operator Web.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 10),
@@ -390,7 +390,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Manage platform service keys and global provider health. Business vendor setup stays per location in Business Accounts.',
+          'Review global provider health and platform keys. Operator edits live on Operator Web; this view is for F&F support.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -417,7 +417,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View only: ecosystem admin access is required to manage service keys.',
+              'Operator edits live on Operator Web; this view is for F&F support. Global provider health stays here.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
           ),
