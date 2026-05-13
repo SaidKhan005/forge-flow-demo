@@ -61,17 +61,9 @@ void main() {
         'integrationConsoleUrl':
             'https://app.forgeflow.app/admin/integrations',
         'escalationWindowHumanReadable': '4 hours',
-        'failedSignatureCount': '12',
-        'observationWindowHumanReadable': '15 minutes',
-        'rateLimitWindowHumanReadable': '1 hour',
         'disabledAtHumanReadable': '2026-05-04 12:30 UTC',
         'strikeCount': '3',
         'lastErrorSummary': 'invalid_grant',
-        'publishedAtHumanReadable': '2026-05-04',
-        'effectiveAtHumanReadable': '2026-06-03',
-        'changeSummary': 'Updated data-processing terms.',
-        'versionLabel': '2026-06-03',
-        'tosUrl': 'https://forgeflow.app/legal/tos',
         // B3 hot-fix templates (backfill complete / failed,
         // audit anchor failure).
         'completionTimestampHumanReadable': '2026-05-04 17:42 UTC',
@@ -264,24 +256,31 @@ void main() {
       // (`backfill_complete`, `backfill_failed`, `audit_anchor_failure`)
       // that had hooks calling NotificationEventFanout but no
       // registered template id, so the email channel silently
-      // no-op'd. Source:
-      // `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md` V1.E
-      // + addendum B3/C3.
-      expect(EmailTemplateIds.all, hasLength(10));
+      // no-op'd. C-2-Del (2026-05-13) deleted
+      // `vendor_webhook_signature_alert` (E) +
+      // `tos_version_updated_notice` (G) per the C-2 operator picks
+      // (Cloud Logging alerts cover signature failures; in-app
+      // accept-screen gate covers TOS updates).
+      // Source: `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md`
+      // V1.E + addendum B3/C3 + C-2 decision matrix.
+      expect(EmailTemplateIds.all, hasLength(8));
       expect(EmailTemplateIds.all, contains('operator_invite_first_admin'));
       expect(EmailTemplateIds.all, isNot(contains('operator_admin_invite')));
       expect(EmailTemplateIds.all, isNot(contains('password_reset_request')));
+      expect(
+        EmailTemplateIds.all,
+        isNot(contains('vendor_webhook_signature_alert')),
+      );
+      expect(
+        EmailTemplateIds.all,
+        isNot(contains('tos_version_updated_notice')),
+      );
       expect(EmailTemplateIds.all, contains('mfa_factor_changed_notice'));
       expect(EmailTemplateIds.all, contains('vendor_sync_error_alert'));
       expect(
         EmailTemplateIds.all,
-        contains('vendor_webhook_signature_alert'),
-      );
-      expect(
-        EmailTemplateIds.all,
         contains('vendor_connection_auto_disabled'),
       );
-      expect(EmailTemplateIds.all, contains('tos_version_updated_notice'));
       expect(EmailTemplateIds.all, contains('vendor_now_available'));
       expect(EmailTemplateIds.all, contains('backfill_complete'));
       expect(EmailTemplateIds.all, contains('backfill_failed'));

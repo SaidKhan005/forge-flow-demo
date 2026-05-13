@@ -499,13 +499,15 @@ void main() {
       );
     });
 
-    test('flags all 5 C-2 deferred templates explicitly', () {
+    test('flags the 3 remaining C-2 deferred templates explicitly', () {
+      // C-2-Del (2026-05-13) deleted `vendor_webhook_signature_alert`
+      // (Draft E) + `tos_version_updated_notice` (Draft G) per the
+      // operator picks recorded on master via PR #619. Remaining
+      // deferred drafts: C, D, F.
       const deferredIds = <String>[
         'mfa_factor_changed_notice',
         'vendor_sync_error_alert',
-        'vendor_webhook_signature_alert',
         'vendor_connection_auto_disabled',
-        'tos_version_updated_notice',
       ];
       for (final id in deferredIds) {
         final entries =
@@ -515,6 +517,19 @@ void main() {
             reason: '$id should be deferred per C-2 matrix');
         expect(entries.single.deferralReason, isNotNull);
       }
+    });
+
+    test('does not contain the C-2-Del deleted templates', () {
+      // Pinning test: `vendor_webhook_signature_alert` +
+      // `tos_version_updated_notice` were deleted via C-2-Del.
+      expect(
+        inventory.where((s) => s.templateId == 'vendor_webhook_signature_alert'),
+        isEmpty,
+      );
+      expect(
+        inventory.where((s) => s.templateId == 'tos_version_updated_notice'),
+        isEmpty,
+      );
     });
 
     test('B3 fanout wired surfaces are present and wired', () {
