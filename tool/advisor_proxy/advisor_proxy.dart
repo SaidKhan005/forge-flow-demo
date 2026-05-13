@@ -9004,7 +9004,11 @@ Future<void> routeRequest(
           ProxyHealthStatus status;
           try {
             status = await healthCheckStore.check();
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: `healthCheckStore.check()` wraps arbitrary registry
+            // producers + dep probes (PgException / TimeoutException /
+            // IOException / FormatException / any Exception). Narrow to
+            // `Exception` so `Error`s keep propagating per C4.
             _writeJson(response, 503, <String, Object?>{
               ...const ProxyHealthStatus(
                 postgresOk: false,
@@ -9615,7 +9619,10 @@ Future<void> routeRequest(
               estimate: estimate,
               now: clock().toUtc(),
             );
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: `accountingStore.startRequest` surfaces PgException,
+            // TimeoutException, IOException, closed-pool wraps. Narrow to
+            // `Exception` so `Error`s keep propagating per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'accounting_store_unavailable',
               'message': 'proxy accounting store unavailable',
@@ -9699,7 +9706,10 @@ Future<void> routeRequest(
                 fallbackUsed: 'none',
                 decision: AcquireDecision.allow,
               );
-            } catch (_) {
+            } on Exception catch (_) {
+              // A3.4: `llmProvider.complete` surfaces TimeoutException,
+              // IOException, HttpException, FormatException, provider-
+              // specific Exception subtypes. Narrow so `Error`s propagate.
               _writeJson(response, 503, <String, Object?>{
                 'error': 'llm_provider_unavailable',
                 'message': 'LLM provider unavailable',
@@ -9803,7 +9813,9 @@ Future<void> routeRequest(
               estimate: finalEstimate,
               now: clock().toUtc(),
             );
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: same accounting-store surface as startRequest (see
+            // above); `Error`s propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'accounting_store_unavailable',
               'message': 'proxy accounting store unavailable',
@@ -9830,7 +9842,9 @@ Future<void> routeRequest(
               responsePayload: responsePayload,
               now: clock().toUtc(),
             );
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: same accounting-store surface (completeRequest variant);
+            // `Error`s propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'accounting_store_unavailable',
               'message': 'proxy accounting store unavailable',
@@ -9892,7 +9906,10 @@ Future<void> routeRequest(
               'error': 'account_info_unavailable',
               'message': 'account info is unavailable; please retry',
             });
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: typed `AccountInfoUnavailable` caught above (→ 404). This
+            // catches gateway transport/storage Exceptions (PgException /
+            // TimeoutException / IOException); `Error`s propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'account_info_unavailable',
               'message': 'account info is unavailable; please retry',
@@ -9921,7 +9938,10 @@ Future<void> routeRequest(
           try {
             final snapshot = await permissionSnapshotResolver.load(scope);
             _writeJson(response, 200, snapshot.toJson());
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: permission-snapshot Postgres surface (PgException /
+            // TimeoutException / IOException / closed-pool wraps); `Error`s
+            // propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'permission_snapshot_unavailable',
               'message': 'permission snapshot is unavailable; please retry',
@@ -10412,7 +10432,11 @@ Future<void> routeRequest(
                         'too many password-reset requests; please wait before retrying',
                   },
                 );
-              } catch (_) {
+              } on Exception catch (_) {
+                // A3.4: typed throttle caught above. Password-reset gateway
+                // transport/storage Exceptions (PgException / TimeoutException
+                // / IOException / SendGrid HttpException) land here; cache the
+                // 503 so idempotent retries replay; `Error`s propagate per C4.
                 return CachedProxyResponse(
                   statusCode: 503,
                   body: const <String, Object?>{
@@ -10513,7 +10537,11 @@ Future<void> routeRequest(
                     'message': 'Upstream dependency timed out; please retry',
                   },
                 );
-              } catch (_) {
+              } on Exception catch (_) {
+                // A3.4: typed rejection + DependencyTimeoutException caught
+                // above. Remaining gateway transport/storage Exceptions
+                // (PgException / IOException / FormatException / crypto)
+                // cached as 503; `Error`s propagate per C4.
                 return CachedProxyResponse(
                   statusCode: 503,
                   body: const <String, Object?>{
@@ -10683,7 +10711,11 @@ Future<void> routeRequest(
               if (error.retryAfter != null)
                 'retry_after': error.retryAfter!.toUtc().toIso8601String(),
             });
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: typed `MfaRecoveryRequestRejected` caught above. Gateway
+            // transport/storage Exceptions (PgException / TimeoutException /
+            // IOException / SendGrid HttpException) land here; `Error`s
+            // propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'mfa_recovery_request_unavailable',
               'message': 'MFA recovery request is unavailable; please retry',
@@ -11042,7 +11074,11 @@ Future<void> routeRequest(
             _writeJson(response, 200, issued.toJson());
           } on ServicePrincipalJwtIssueRejected catch (error) {
             _writeJson(response, error.statusCode, error.toJson());
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: typed `ServicePrincipalJwtIssueRejected` caught above.
+            // Issuance-gateway transport/signer Exceptions (PgException /
+            // TimeoutException / IOException / FormatException / crypto)
+            // land here; `Error`s propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'service_principal_issuance_unavailable',
               'message':
@@ -12563,7 +12599,11 @@ Future<void> routeRequest(
               'message': 'refresh-token revoke is unavailable; please retry',
             });
             return;
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: typed `FirebaseAdminAuthError` caught above. Firebase REST
+            // transport/parse Exceptions (IOException / TimeoutException /
+            // FormatException / HttpException) land here; `Error`s propagate
+            // per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'refresh_token_revoke_unavailable',
               'message': 'refresh-token revoke is unavailable; please retry',
@@ -12617,7 +12657,10 @@ Future<void> routeRequest(
               'error': error.code,
               'message': error.message,
             });
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: typed `AuthOperationRejected` caught above; gateway
+            // Postgres surface (PgException / TimeoutException / IOException
+            // / closed-pool wraps) lands here; `Error`s propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'auth_sessions_unavailable',
               'message': 'active sessions are unavailable; please retry',
@@ -12666,7 +12709,10 @@ Future<void> routeRequest(
           ProxyPermissionSnapshot snapshot;
           try {
             snapshot = await permissionSnapshotResolver.load(scope);
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: permission-snapshot Postgres surface (PgException /
+            // TimeoutException / IOException / closed-pool wraps); `Error`s
+            // propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'permission_snapshot_unavailable',
               'message': 'permissions are unavailable; please retry',
@@ -12709,7 +12755,10 @@ Future<void> routeRequest(
               'error': error.code,
               'message': error.message,
             });
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: typed `AuthOperationRejected` caught above; gateway
+            // Postgres surface (PgException / TimeoutException / IOException
+            // / closed-pool wraps); `Error`s propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'team_sessions_unavailable',
               'message': 'team active sessions are unavailable; please retry',
@@ -12759,7 +12808,9 @@ Future<void> routeRequest(
           ProxyPermissionSnapshot snapshot;
           try {
             snapshot = await permissionSnapshotResolver.load(scope);
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: same permission-snapshot surface (see above); `Error`s
+            // propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'permission_snapshot_unavailable',
               'message': 'permissions are unavailable; please retry',
@@ -12798,7 +12849,10 @@ Future<void> routeRequest(
                 'location_id': locationId,
               };
               _writeJson(response, 200, outgoing);
-            } catch (_) {
+            } on Exception catch (_) {
+              // A3.4: integrations-projection Postgres surface (PgException /
+              // TimeoutException / IOException / closed-pool wraps); `Error`s
+              // propagate per C4.
               _writeJson(response, 503, <String, Object?>{
                 'error': 'integrations_projection_unavailable',
                 'message': 'vendor connections are unavailable; please retry',
@@ -12864,7 +12918,9 @@ Future<void> routeRequest(
           ProxyPermissionSnapshot exportSnapshot;
           try {
             exportSnapshot = await permissionSnapshotResolver.load(scope);
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: same permission-snapshot surface (see above); `Error`s
+            // propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'permission_snapshot_unavailable',
               'message': 'permissions are unavailable; please retry',
@@ -12974,10 +13030,12 @@ Future<void> routeRequest(
               // rather than buffering the whole response.
               await response.flush();
             }
-          } catch (_) {
-            // Mid-stream failure: best we can do is finish the response
-            // so the operator's browser stops waiting. The CSV will be
-            // truncated but the headers and column row already shipped.
+          } on Exception catch (_) {
+            // A3.4: paged CSV export streaming loop. Surface: gateway
+            // (PgException / TimeoutException / IOException) + response.flush
+            // (HttpException / SocketException on client disconnect) +
+            // row-render FormatException. Best-effort close — CSV truncates
+            // but headers already shipped; `Error`s propagate per C4.
           }
           await response.close();
           return;
@@ -13054,7 +13112,10 @@ Future<void> routeRequest(
               'error': error.code,
               'message': error.message,
             });
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: typed `AuthOperationRejected` caught above; gateway
+            // Postgres surface (PgException / TimeoutException / IOException
+            // / closed-pool wraps); `Error`s propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'auth_audit_log_unavailable',
               'message': 'audit log is unavailable; please retry',
@@ -13422,7 +13483,10 @@ Future<void> routeRequest(
               operatorId: scope.operatorId,
               locationId: scope.locationId,
             );
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: `authSessionLedgerWriter.recordRefresh` Postgres write
+            // surface (PgException / TimeoutException / IOException /
+            // closed-pool wraps); `Error`s propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'auth_session_ledger_unavailable',
               'message': 'auth session ledger is unavailable; please retry',
@@ -13492,7 +13556,10 @@ Future<void> routeRequest(
               locationId: scope.locationId,
               reason: reason,
             );
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: `authSessionLedgerWriter.revokeSession` Postgres write +
+            // optional Firebase admin call (PgException / TimeoutException /
+            // IOException / FirebaseAdminAuthError); `Error`s propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'auth_session_ledger_unavailable',
               'message': 'auth session ledger is unavailable; please retry',
@@ -13550,7 +13617,10 @@ Future<void> routeRequest(
               locationId: scope.locationId,
               reason: reason,
             );
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: `authSessionLedgerWriter.revokeAllSessionsForUser` multi-
+            // row transaction (PgException / TimeoutException / IOException /
+            // closed-pool wraps); `Error`s propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'auth_session_ledger_unavailable',
               'message': 'auth session ledger is unavailable; please retry',
@@ -13650,7 +13720,10 @@ Future<void> routeRequest(
                       'admin.integrations.${request.method}:'
                       '$firebaseUidLookup:resolve_actor',
                 );
-          } catch (_) {
+          } on Exception catch (_) {
+            // A3.4: `integrationAdminActorResolver.resolveActorUserId`
+            // Postgres lookup surface (PgException / TimeoutException /
+            // IOException / closed-pool wraps); `Error`s propagate per C4.
             _writeJson(response, 503, <String, Object?>{
               'error': 'integration_admin_actor_resolve_failed',
               'message': 'actor resolution is unavailable; please retry',
@@ -14419,7 +14492,9 @@ Future<void> routeRequest(
                         'admin.feature_flags.${request.method}:'
                         '$firebaseUidLookup:resolve_actor',
                   );
-            } catch (_) {
+            } on Exception catch (_) {
+              // A3.4: same `integrationAdminActorResolver` surface (see
+              // above); `Error`s propagate per C4.
               _writeJson(response, 503, <String, Object?>{
                 'error': 'feature_flags_actor_resolve_failed',
                 'message': 'actor resolution is unavailable; please retry',
@@ -16628,7 +16703,10 @@ Future<void> _routeCorpusAdmin({
     List<int> bytes;
     try {
       bytes = const Base64Decoder().convert(base64);
-    } catch (_) {
+    } on FormatException {
+      // A3.4: `Base64Decoder().convert` throws only `FormatException` on
+      // malformed input — narrowest possible typing; `Error`s propagate
+      // per C4.
       throw const _AdminInputError(
         statusCode: 400,
         code: 'invalid_content_base64',
