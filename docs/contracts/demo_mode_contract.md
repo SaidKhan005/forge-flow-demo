@@ -5,7 +5,7 @@
 **Scope:** Mobile (Forge & Flow + Barrio flavors), Admin Console, Operator Web Console.
 
 This contract codifies the writer-side-switch architecture, lists the
-two intentional reader-side carve-outs, and defines the rules for
+four intentional reader-side carve-outs, and defines the rules for
 adding new demo-aware code.
 
 ---
@@ -231,10 +231,11 @@ boundary:
 
 ## Intentional reader-side carve-outs
 
-Three compile-time `kDemoMode` carve-outs exist in the operator-app
-(mobile) codebase. All are documented inline with
-`// kDemoMode carve-out:` comments and listed here so future audits
-don't re-flag them.
+Four reader-side carve-outs exist in the operator-app (mobile)
+codebase. Carve-outs #1-#3 are compile-time `kDemoMode` branches and
+are documented inline with `// kDemoMode carve-out:` comments.
+Carve-out #4 is a runtime `demo_mode_state` UI fold with no
+`kDemoMode` branch.
 
 ### Carve-out #1: Login screen "Use demo operator" button
 
@@ -324,6 +325,39 @@ don't re-flag them.
   `is_demo = true` for the active scope, but the build flag adds a
   belt-and-braces guarantee that release builds never ship the
   affordances. No replacement slice is currently scheduled.
+
+### Carve-out #4: Settings screen master Demo -> Live switch
+
+- **Location:** `lib/screens/settings/settings_demo_live_switch.dart`
+  and `lib/screens/settings_screen.dart` (the Settings -> Data tab
+  "Integrations" fold).
+- **What it does:** Renders an operator-facing switch whose value is
+  computed from `DemoModeStateNotifier.snapshot.hasDemoCategories`.
+  Turning it off calls
+  `POST /v1/operators/{operator_id}/locations/{location_id}/demo-mode-master-switch`,
+  which flips every existing `demo_mode_state.is_demo = true` row for
+  that location to `false` through the proxy and tenant-scoped
+  Postgres repository. Turning it on is refused by the client, and the
+  proxy rejects any Live -> Demo request with HTTP 409 and the
+  operator-facing detail "live data has arrived".
+- **Why exempt:** This is the documented operator gate for Decision
+  #6. It is intentionally reader-visible because the operator needs a
+  clear, audited one-way handoff from fixture/demo facts to live vendor
+  facts. It does not read `kDemoMode`, does not create a `demo_*`
+  table, does not fork reader repositories, and does not alter the
+  existing auto-flip-on-first-backfill behavior.
+- **Relationship to runtime demo state:** The switch is a UI fold over
+  the same Postgres `demo_mode_state` rows that drive
+  `DemoModeBanner`. The source of truth remains
+  `(operator_id, location_id, category).is_demo`.
+- **Operator gate:** Merge and production use require explicit
+  operator approval. Runtime mutation is limited to operator owner /
+  operator admin roles, requires an `Idempotency-Key` reserved and
+  completed in `public.proxy_requests`, and is append-audited as
+  `demo_mode.master_switch_to_live`.
+- **What would replace it:** Nothing planned for V1. Future work may
+  move the same one-way action to Operator Web, but it must keep the
+  same proxy/repository path and Live -> Demo refusal.
 
 ---
 

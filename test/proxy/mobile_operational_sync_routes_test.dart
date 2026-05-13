@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/services/integration/demo_mode_state.dart';
+import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 
 import '../../tool/advisor_proxy/advisor_proxy.dart';
 
@@ -23,9 +25,15 @@ void main() {
         HttpClient client,
         Uri baseUri,
         _FakeMobileOperationalSyncGateway gateway,
+        _FakeDemoModeMasterSwitchGateway demoSwitchGateway,
       })
     >
-    spinUp({ProxyJwtClaims? claims, bool gatewayConfigured = true}) async {
+    spinUp({
+      ProxyJwtClaims? claims,
+      bool gatewayConfigured = true,
+      bool demoSwitchConfigured = true,
+      _FakeDemoModeMasterSwitchGateway? demoSwitchGateway,
+    }) async {
       final verifier = _SettableVerifier(
         claims ??
             const ProxyJwtClaims(
@@ -37,6 +45,12 @@ void main() {
       );
       final guard = ProxyRequestGuard(verifier: verifier);
       final gateway = _FakeMobileOperationalSyncGateway();
+      final switchGateway =
+          demoSwitchGateway ?? _FakeDemoModeMasterSwitchGateway();
+      final demoSwitchRouter = DemoModeMasterSwitchRouter(
+        gateway: switchGateway,
+        now: () => DateTime.utc(2026, 5, 13, 12),
+      );
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       // ignore: unawaited_futures
       server.listen((request) async {
@@ -45,6 +59,9 @@ void main() {
             request,
             guard,
             mobileOperationalSyncGateway: gatewayConfigured ? gateway : null,
+            demoModeMasterSwitchRouter: demoSwitchConfigured
+                ? demoSwitchRouter
+                : null,
           );
         } catch (_) {
           try {
@@ -60,6 +77,7 @@ void main() {
         client: client,
         baseUri: baseUri,
         gateway: gateway,
+        demoSwitchGateway: switchGateway,
       );
     }
 
@@ -321,34 +339,37 @@ void main() {
       });
     });
 
-    test('PATCH service-period settings rejects malformed business date', () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp();
-        try {
-          final response = await _httpRequest(
-            ctx.client,
-            'PATCH',
-            ctx.baseUri.resolve(
-              '/v1/operators/op-1/locations/loc-1/'
-              'data_accuracy_service_period_settings',
-            ),
-            body: const <String, Object?>{
-              'service_period_key': 'breakfast',
-              'covers_source': 'vendor',
-              'wage_source': 'vendor_per_employee',
-              'effective_at_business_date': 'May 7 2026',
-            },
-          );
-          expect(response.statusCode, 400);
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], 'invalid_effective_at_business_date');
-          expect(ctx.gateway.calls, isEmpty);
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+    test(
+      'PATCH service-period settings rejects malformed business date',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '/v1/operators/op-1/locations/loc-1/'
+                'data_accuracy_service_period_settings',
+              ),
+              body: const <String, Object?>{
+                'service_period_key': 'breakfast',
+                'covers_source': 'vendor',
+                'wage_source': 'vendor_per_employee',
+                'effective_at_business_date': 'May 7 2026',
+              },
+            );
+            expect(response.statusCode, 400);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], 'invalid_effective_at_business_date');
+            expect(ctx.gateway.calls, isEmpty);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test(
       'PATCH service-period settings rejects URL scope different from bearer',
@@ -571,6 +592,144 @@ void main() {
         }
       });
     });
+
+    test(
+      'POST demo master switch flips demo rows and replays durable idem key',
+      () async {
+        await withRealHttp(() async {
+          final demoSwitchGateway = _FakeDemoModeMasterSwitchGateway();
+          final ctx = await spinUp(demoSwitchGateway: demoSwitchGateway);
+          try {
+            final uri = ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/demo-mode-master-switch',
+            );
+            final first = await _httpRequest(
+              ctx.client,
+              'POST',
+              uri,
+              idempotencyKey: 'idem-demo-live',
+              body: const <String, Object?>{'target_mode': 'live'},
+            );
+            expect(first.statusCode, 200);
+            final body = jsonDecode(first.body) as Map<String, Object?>;
+            expect(body['flipped_count'], 2);
+            expect(first.body, contains('"is_demo":false'));
+
+            final replay = await _httpRequest(
+              ctx.client,
+              'POST',
+              uri,
+              idempotencyKey: 'idem-demo-live',
+              body: const <String, Object?>{'target_mode': 'live'},
+            );
+            expect(replay.statusCode, 200);
+            expect(ctx.demoSwitchGateway.calls, <String>[
+              'flip:op-1:loc-1:user-1:2026-05-13T12:00:00.000Z',
+            ]);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+
+          final restarted = await spinUp(demoSwitchGateway: demoSwitchGateway);
+          try {
+            final uri = restarted.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/demo-mode-master-switch',
+            );
+            final replay = await _httpRequest(
+              restarted.client,
+              'POST',
+              uri,
+              idempotencyKey: 'idem-demo-live',
+              body: const <String, Object?>{'target_mode': 'live'},
+            );
+            expect(replay.statusCode, 200);
+            final body = jsonDecode(replay.body) as Map<String, Object?>;
+            expect(body['flipped_count'], 2);
+            expect(demoSwitchGateway.calls, <String>[
+              'flip:op-1:loc-1:user-1:2026-05-13T12:00:00.000Z',
+            ]);
+          } finally {
+            restarted.client.close(force: true);
+            await restarted.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('POST demo master switch rejects live to demo', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final uri = ctx.baseUri.resolve(
+            '/v1/operators/op-1/locations/loc-1/demo-mode-master-switch',
+          );
+          final response = await _httpRequest(
+            ctx.client,
+            'POST',
+            uri,
+            idempotencyKey: 'idem-live-demo',
+            body: const <String, Object?>{'target_mode': 'demo'},
+          );
+          expect(response.statusCode, 409);
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], 'live_to_demo_refused');
+          expect(body['message'], contains('live data has arrived'));
+          expect(ctx.demoSwitchGateway.calls, isEmpty);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      'POST demo master switch requires operator write role and idem key',
+      () async {
+        await withRealHttp(() async {
+          final noRole = await spinUp(
+            claims: const ProxyJwtClaims(
+              userId: 'user-1',
+              operatorId: 'op-1',
+              locationId: 'loc-1',
+              roles: <String>['location_manager'],
+            ),
+          );
+          try {
+            final uri = noRole.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/demo-mode-master-switch',
+            );
+            final forbidden = await _httpRequest(
+              noRole.client,
+              'POST',
+              uri,
+              idempotencyKey: 'idem-forbidden',
+            );
+            expect(forbidden.statusCode, 403);
+          } finally {
+            noRole.client.close(force: true);
+            await noRole.server.close(force: true);
+          }
+
+          final missingIdem = await spinUp();
+          try {
+            final uri = missingIdem.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/demo-mode-master-switch',
+            );
+            final response = await _httpRequest(
+              missingIdem.client,
+              'POST',
+              uri,
+            );
+            expect(response.statusCode, 400);
+            expect(response.body, contains('idempotency_key_missing'));
+          } finally {
+            missingIdem.client.close(force: true);
+            await missingIdem.server.close(force: true);
+          }
+        });
+      },
+    );
   });
 }
 
@@ -896,6 +1055,76 @@ class _FakeMobileOperationalSyncGateway
   }
 }
 
+class _FakeDemoModeMasterSwitchGateway implements DemoModeMasterSwitchGateway {
+  final List<String> calls = <String>[];
+  final Map<String, DemoModeMasterSwitchResult> _responses =
+      <String, DemoModeMasterSwitchResult>{};
+  final Map<String, String> _hashes = <String, String>{};
+  bool alreadyLive = false;
+
+  @override
+  Future<DemoModeMasterSwitchResult> flipAllDemoRowsToLive({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required DateTime flippedAt,
+    required String idempotencyKey,
+    required String requestBodyHash,
+  }) async {
+    final key = '$operatorId|$locationId|$idempotencyKey';
+    final storedHash = _hashes[key];
+    if (storedHash != null && storedHash != requestBodyHash) {
+      throw const DemoModeMasterSwitchRejected(
+        code: 'idempotency_key_conflict',
+        message: 'Idempotency-Key was already used for another request',
+        statusCode: 409,
+      );
+    }
+    final stored = _responses[key];
+    if (stored != null) return stored;
+    calls.add(
+      'flip:$operatorId:$locationId:$actorUserId:'
+      '${flippedAt.toUtc().toIso8601String()}',
+    );
+    if (alreadyLive) {
+      return const DemoModeMasterSwitchResult(
+        flippedCount: 0,
+        records: <DemoModeRecord>[
+          DemoModeRecord(
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            category: IntegrationCategory.pos,
+            isDemo: false,
+          ),
+        ],
+      );
+    }
+    alreadyLive = true;
+    final result = DemoModeMasterSwitchResult(
+      flippedCount: 2,
+      records: <DemoModeRecord>[
+        DemoModeRecord(
+          operatorId: operatorId,
+          locationId: locationId,
+          category: IntegrationCategory.labor,
+          isDemo: false,
+          flippedToLiveAt: flippedAt,
+        ),
+        DemoModeRecord(
+          operatorId: operatorId,
+          locationId: locationId,
+          category: IntegrationCategory.pos,
+          isDemo: false,
+          flippedToLiveAt: flippedAt,
+        ),
+      ],
+    );
+    _hashes[key] = requestBodyHash;
+    _responses[key] = result;
+    return result;
+  }
+}
+
 Future<_HttpResult> _httpGet(
   HttpClient client,
   Uri uri, {
@@ -914,9 +1143,13 @@ Future<_HttpResult> _httpRequest(
   Uri uri, {
   String authorization = 'Bearer token',
   Map<String, Object?> body = const <String, Object?>{},
+  String? idempotencyKey,
 }) async {
   final request = await client.openUrl(method, uri);
   request.headers.set(HttpHeaders.authorizationHeader, authorization);
+  if (idempotencyKey != null) {
+    request.headers.set('Idempotency-Key', idempotencyKey);
+  }
   if (body.isNotEmpty) {
     final encoded = utf8.encode(jsonEncode(body));
     request.headers.contentType = ContentType.json;

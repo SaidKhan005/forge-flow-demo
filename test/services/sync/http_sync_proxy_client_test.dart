@@ -169,6 +169,52 @@ void main() {
     },
   );
 
+  test(
+    'switchDemoModeToLive posts scoped route with idempotency key',
+    () async {
+      late http.Request seen;
+      final client = HttpSyncProxyClient(
+        proxyBaseUri: Uri.parse('https://proxy.example/base/'),
+        idTokenProvider: () async => 'token-1',
+        httpClient: http_testing.MockClient((request) async {
+          seen = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'demo_mode_states': <Object?>[
+                <String, Object?>{
+                  'operator_id': 'op',
+                  'location_id': 'loc',
+                  'category': 'pos',
+                  'is_demo': false,
+                  'flipped_to_live_at': '2026-05-13T12:00:00Z',
+                },
+              ],
+              'flipped_count': 1,
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      final states = await client.switchDemoModeToLive(
+        operatorId: 'op',
+        locationId: 'loc',
+        idempotencyKey: 'idem-demo-live',
+      );
+
+      expect(seen.method, 'POST');
+      expect(
+        seen.url.path,
+        '/base/v1/operators/op/locations/loc/demo-mode-master-switch',
+      );
+      expect(seen.headers['authorization'], 'Bearer token-1');
+      expect(seen.headers['idempotency-key'], 'idem-demo-live');
+      expect(jsonDecode(seen.body), <String, Object?>{'target_mode': 'live'});
+      expect(states.single.isDemo, isFalse);
+    },
+  );
+
   test('parses open snapshots, timing config, and aux snapshots', () async {
     final requests = <String>[];
     final fullUrls = <String>[];
@@ -258,8 +304,7 @@ void main() {
                         // Theme H#4 / H#5 — proxy emits the full server
                         // payload; the mobile client must consume every
                         // field below, not just the legacy 4.
-                        'server_id':
-                            'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
+                        'server_id': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
                         'role_name': 'Line Cook',
                         'labor_bucket': 'boh',
                         'hourly_rate': '18.25',

@@ -204,6 +204,17 @@ class FirstBackfillStatusSnapshot {
   bool get isSucceeded => status == 'succeeded' || status == 'completed';
 }
 
+/// Write client for the C-4 master Demo -> Live switch. Kept separate
+/// from [SyncProxyClient] so existing read-only test fakes do not need
+/// to grow a mutation method.
+abstract class DemoModeMasterSwitchClient {
+  Future<List<DemoModeRecord>> switchDemoModeToLive({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+  });
+}
+
 /// Vendor-agnostic mobile sync surface.
 ///
 /// The production implementation talks to the proxy
