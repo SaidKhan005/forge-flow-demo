@@ -84,27 +84,118 @@ typedef EmailBrandWrapperSource = String Function();
 class EmailTemplateIds {
   EmailTemplateIds._();
 
+  /// V1 status: WIRED (admin test-connection fixture only — NOT a
+  /// production invite email path). Consumer:
+  /// `tool/advisor_proxy/admin_email_routes.dart` (the
+  /// `POST /v1/admin/integrations/email/test` route renders this
+  /// template with sample data and sends it directly through
+  /// `EmailProvider.send`, bypassing `email_outbox`). The real
+  /// production invite path uses the Firebase Identity Platform
+  /// password-reset action-link template (see
+  /// `lib/services/auth/repository_auth_operations_gateway.dart:463`'s
+  /// `firebaseAdmin.sendPasswordResetEmail` call) per addendum B4
+  /// resolution path 1 ("keep Firebase as the production invite
+  /// email"). A2.2 deleted the companion `operator_admin_invite.md`
+  /// template + its id entry but PRESERVED this template because the
+  /// admin test route is its live consumer. C-2 confirms the
+  /// preservation: deleting this template would break the SendGrid
+  /// connectivity test surface with no replacement. Source:
+  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`.
   static const String operatorInviteFirstAdmin =
       'operator_invite_first_admin';
+
+  /// V1 status: TEMPLATE ONLY. Wire deferred per C-2 operator
+  /// decision: no clear server-side "MFA factor changed" emission
+  /// site exists today. MFA enrollment (`lib/services/mfa/mfa_enrollment_service.dart`)
+  /// is a client-side seam — the server only sees `mfa_factors`
+  /// rows after Firebase confirms TOTP enrollment, with no per-event
+  /// "factor changed" hook surface. MFA removal (`lib/services/mfa/mfa_removal_worker.dart`)
+  /// already emits to the `event_outbox` topic
+  /// `auth.user.mfa_factor_removed` and the in-app inbox via
+  /// `AppNotificationService.emitMfaAuthenticatorRemoved` — wiring
+  /// email here means deciding whether email duplicates the existing
+  /// inbox emit (UX-driven) and adding a recipient-resolution path
+  /// (the worker holds `userId` but not the user's email). C-2 ships
+  /// no wire; operator decision pending. Source:
+  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+  /// Draft C.
   static const String mfaFactorChangedNotice = 'mfa_factor_changed_notice';
+
+  /// V1 status: TEMPLATE ONLY. Wire deferred per C-2 operator
+  /// decision: no production "sustained sync failure" aggregator
+  /// exists today. The polling tier emits per-tick `connector_sync_log`
+  /// rows (`event_kind = 'auth_refresh' / 'auth_refresh_failed'`)
+  /// but does not detect "first failure of a new outage" — wiring a
+  /// per-row email would spam the operator on every transient hiccup.
+  /// The OAuth refresh worker (`tool/oauth_refresh_worker/main.dart`)
+  /// covers the auto-disable cap path, which `vendorConnectionAutoDisabled`
+  /// owns. C-2 ships no wire; operator decision pending on either
+  /// (a) build a new "first-failure-of-outage" detector, or
+  /// (b) delete and rely on the existing `error` chip on the
+  /// Connected services card (`lib/admin/screens/integration_admin_screen.dart`).
+  /// Source: `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+  /// Draft D.
   static const String vendorSyncErrorAlert = 'vendor_sync_error_alert';
+
+  /// V1 status: TEMPLATE ONLY. Wire deferred per C-2 operator
+  /// decision: webhook signature verification is distributed across
+  /// 20+ per-vendor verifier files under
+  /// `lib/integrations/{pos,reservation,labor}/*_webhook_signature_verifier.dart`
+  /// with no centralized aggregator. Wiring email requires a new
+  /// "failed signatures within window" counter per `(operator, vendor)`
+  /// — needs a new table/index OR a Redis/memory ring buffer, plus
+  /// a rate-limit window (the template hardcodes `{{rateLimitWindowHumanReadable}}`
+  /// suggesting per-vendor throttle). C-2 ships no wire; operator
+  /// decision pending on whether the operational signal is worth the
+  /// new aggregator infrastructure. Source:
+  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+  /// Draft E.
   static const String vendorWebhookSignatureAlert =
       'vendor_webhook_signature_alert';
 
-  /// V1 status: TEMPLATE ONLY. Phase 8 lean cut 2 explicitly defers
+  /// V1 status: TEMPLATE ONLY. Phase 8 lean cut 2 explicitly deferred
   /// the OAuth-refresh-cron emitter that would enqueue an
   /// `email_outbox` row when a vendor connection auto-disables on
-  /// 3 consecutive refresh failures. The template file ships
-  /// production-ready so the future `9.8.email` follow-up can wire
-  /// the emitter without touching templates; until then the
-  /// operator sees the `error` state in the admin Connected
-  /// services card. Source: `docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
-  /// 8.0 deliverables block ("Email alert wiring to `9.8.email`
-  /// deferred") and the V1 explicit non-goals list ("3-strike
-  /// auto-disable email wiring" — `project_v1_lean_cut_2_2026_05_03.md`
-  /// round 2).
+  /// 3 consecutive refresh failures (see
+  /// `lib/services/integration/oauth_refresh_cron.dart:36-44` and
+  /// the lean-cut block in
+  /// `docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
+  /// 8.0 deliverables — "Email alert wiring to `9.8.email` deferred").
+  /// C-2 reviewed reversal: the auto-disable trigger site IS clean
+  /// (`tool/oauth_refresh_worker/main.dart:1196` + `:1226` both call
+  /// `gateway.autoDisableConnection`, well-bounded for a single
+  /// fanout-hook insertion). BUT: the worker is a Cloud Run binary
+  /// with no current `NotificationEventFanout` dependency wired in
+  /// its `WorkerRuntime` bootstrap. Wiring email here requires either
+  /// (a) constructing a full fanout instance + recipient-resolution
+  /// path in the worker (substantial new dependency wiring), or
+  /// (b) a direct-enqueue path through `EmailOutboxEnqueueRepository`
+  /// + an `OperatorAdminEmailLookup` seam (parallel to
+  /// `VendorLifecycleNotificationDispatcher`'s pattern). C-2 ships
+  /// no wire; operator decision pending on (a) vs (b) and on
+  /// whether the V1 lean-cut decision should be reversed now (vs
+  /// post-launch when alert volume justifies it). Source:
+  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+  /// Draft F.
   static const String vendorConnectionAutoDisabled =
       'vendor_connection_auto_disabled';
+
+  /// V1 status: TEMPLATE ONLY. Wire deferred per C-2 operator
+  /// decision: no production INSERT path into `public.tos_versions`
+  /// exists in the codebase today. The runtime acceptance gate
+  /// (`lib/operator_web/screens/tos_accept_screen.dart`) reads
+  /// `tos_versions` but never writes; the schema migration
+  /// (`db/migrations/202605040100_phase_9_8_tos_versions.sql`)
+  /// ships the table with no seed data; the operator-self-served TOS
+  /// contract (`docs/contracts/operator_self_served_tos_contract.md`)
+  /// explicitly defers the publish workflow. Wiring email requires
+  /// the publish workflow to exist FIRST — until then there is no
+  /// trigger site to hook. C-2 ships no wire; operator decision
+  /// pending on either (a) defer until publish workflow ships, or
+  /// (b) delete and rely on the runtime accept-screen gate as the
+  /// sole TOS-update operator signal. Source:
+  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+  /// Draft G.
   static const String tosVersionUpdatedNotice = 'tos_version_updated_notice';
 
   /// V1 status: WIRED. Phase 8 lifecycle fan-out worker
