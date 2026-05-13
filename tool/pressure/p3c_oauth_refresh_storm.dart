@@ -69,6 +69,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dart';
 import 'package:http/http.dart' as http;
@@ -88,6 +89,62 @@ const String _kSummaryMdPath =
 
 // ─── CLI ────────────────────────────────────────────────────────────
 
+/// Distribution shape for the synthesized OAuth refresh-token TTL.
+///
+/// The original storm assumed every credential expired at the same
+/// `--near-expiry-ms` offset (uniform). Slice A11.2 (R3 §4 quick-win)
+/// adds two more shapes so the harness can simulate realistic vendor
+/// behaviour:
+///
+///   * `uniform` — every connection expires at the configured offset.
+///     Backwards-compatible with pre-A11.2 behaviour.
+///   * `normal`  — Gaussian around the configured offset (stdev =
+///     25% of the mean). Models steady-state vendor refresh batches.
+///   * `bimodal` — two equally-weighted modes at 50% and 150% of the
+///     configured offset. Models "power outage + normal traffic"
+///     where one cluster of credentials all expire together while a
+///     second cluster lags.
+enum TtlDist {
+  uniform,
+  normal,
+  bimodal,
+}
+
+/// Vendor-selection bias when seeding (operator × vendor) tuples.
+///
+///   * `equal`     — every OAuth-flavored vendor seeded with the same
+///                   weight (pre-A11.2 behaviour).
+///   * `powerLaw`  — top-3 vendors take ~50% of the seeded
+///                   connections; the remaining vendors share the
+///                   other 50%. Mirrors the realistic operator-share
+///                   distribution recorded in
+///                   `~/.claude/.../project_operator_share_assumptions.md`.
+enum VendorMix {
+  equal,
+  powerLaw,
+}
+
+/// Refresh jitter shape per the AWS retry-jitter taxonomy
+/// (https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
+///
+///   * `none`         — no jitter. Every refresh fires at the
+///                      configured offset. Pre-A11.2 behaviour.
+///   * `full`         — sleep = random(0, base). Maximum spread; each
+///                      caller picks anywhere in the window.
+///   * `equal`        — sleep = base/2 + random(0, base/2). Half-base
+///                      floor; each caller still has a deterministic
+///                      lower bound.
+///   * `decorrelated` — sleep = random(base, prev * 3) capped to the
+///                      configured offset. Walks the upper bound
+///                      forward across successive ticks; AWS's
+///                      preferred shape for retry storms.
+enum JitterShape {
+  none,
+  full,
+  equal,
+  decorrelated,
+}
+
 class _StormCliArgs {
   _StormCliArgs({
     required this.ops,
@@ -96,6 +153,9 @@ class _StormCliArgs {
     required this.concurrentPolls,
     required this.workerPods,
     required this.proxyUrl,
+    required this.ttlDist,
+    required this.vendorMix,
+    required this.jitterShape,
   });
 
   final int ops;
@@ -110,6 +170,15 @@ class _StormCliArgs {
   /// looking URLs as a hard fail.
   final String? proxyUrl;
 
+  /// Slice A11.2 — TTL synthesis distribution.
+  final TtlDist ttlDist;
+
+  /// Slice A11.2 — vendor-selection bias.
+  final VendorMix vendorMix;
+
+  /// Slice A11.2 — refresh jitter shape.
+  final JitterShape jitterShape;
+
   Map<String, Object?> toLogFields() => <String, Object?>{
         'ops': ops,
         'connections_per_op': connectionsPerOp,
@@ -117,6 +186,9 @@ class _StormCliArgs {
         'concurrent_polls': concurrentPolls,
         'worker_pods': workerPods,
         if (proxyUrl != null) 'proxy_url': proxyUrl,
+        'ttl_dist': ttlDist.name,
+        'vendor_mix': vendorMix.name,
+        'jitter': jitterShape.name,
       };
 }
 
@@ -127,6 +199,9 @@ _StormCliArgs _parseArgs(List<String> args) {
   int concurrentPolls = 5;
   int workerPods = 2;
   String? proxyUrl;
+  TtlDist ttlDist = TtlDist.uniform;
+  VendorMix vendorMix = VendorMix.equal;
+  JitterShape jitterShape = JitterShape.none;
   for (final raw in args) {
     if (raw.startsWith('--ops=')) {
       ops = _positiveInt(raw.substring('--ops='.length), 'ops');
@@ -152,6 +227,12 @@ _StormCliArgs _parseArgs(List<String> args) {
       );
     } else if (raw.startsWith('--proxy-url=')) {
       proxyUrl = raw.substring('--proxy-url='.length);
+    } else if (raw.startsWith('--ttl-dist=')) {
+      ttlDist = _parseTtlDist(raw.substring('--ttl-dist='.length));
+    } else if (raw.startsWith('--vendor-mix=')) {
+      vendorMix = _parseVendorMix(raw.substring('--vendor-mix='.length));
+    } else if (raw.startsWith('--jitter=')) {
+      jitterShape = _parseJitterShape(raw.substring('--jitter='.length));
     } else if (raw == '--help' || raw == '-h') {
       stderr.writeln(_usage);
       exit(0);
@@ -166,6 +247,9 @@ _StormCliArgs _parseArgs(List<String> args) {
     concurrentPolls: concurrentPolls,
     workerPods: workerPods,
     proxyUrl: proxyUrl,
+    ttlDist: ttlDist,
+    vendorMix: vendorMix,
+    jitterShape: jitterShape,
   );
 }
 
@@ -179,17 +263,79 @@ int _positiveInt(String raw, String label) {
   return n;
 }
 
+TtlDist _parseTtlDist(String raw) {
+  switch (raw) {
+    case 'uniform':
+      return TtlDist.uniform;
+    case 'normal':
+      return TtlDist.normal;
+    case 'bimodal':
+      return TtlDist.bimodal;
+  }
+  throw FormatException(
+    '--ttl-dist expects one of {uniform, normal, bimodal}; got "$raw"',
+  );
+}
+
+VendorMix _parseVendorMix(String raw) {
+  switch (raw) {
+    case 'equal':
+      return VendorMix.equal;
+    case 'power-law':
+      return VendorMix.powerLaw;
+  }
+  throw FormatException(
+    '--vendor-mix expects one of {equal, power-law}; got "$raw"',
+  );
+}
+
+JitterShape _parseJitterShape(String raw) {
+  switch (raw) {
+    case 'none':
+      return JitterShape.none;
+    case 'full':
+      return JitterShape.full;
+    case 'equal':
+      return JitterShape.equal;
+    case 'decorrelated':
+      return JitterShape.decorrelated;
+  }
+  throw FormatException(
+    '--jitter expects one of {none, full, equal, decorrelated}; got "$raw"',
+  );
+}
+
 const String _usage =
     'usage: dart run tool/pressure/p3c_oauth_refresh_storm.dart '
     '[--ops=N] [--connections-per-op=N] [--near-expiry-ms=N] '
-    '[--concurrent-polls=N] [--worker-pods=N] [--proxy-url=URL]\n'
+    '[--concurrent-polls=N] [--worker-pods=N] [--proxy-url=URL] '
+    '[--ttl-dist=uniform|normal|bimodal] '
+    '[--vendor-mix=equal|power-law] '
+    '[--jitter=none|full|equal|decorrelated]\n'
     '\n'
     'Defaults: ops=3 connections-per-op=11 near-expiry-ms=5000 '
-    'concurrent-polls=5 worker-pods=2\n'
+    'concurrent-polls=5 worker-pods=2 ttl-dist=uniform vendor-mix=equal '
+    'jitter=none\n'
     '\n'
     'The harness runs in-process by default. Pass --proxy-url=<preview-url> '
     'to probe the preview proxy for liveness; production URLs are rejected '
-    'as a hard fail.\n';
+    'as a hard fail.\n'
+    '\n'
+    'Slice A11.2 (R3 §4 quick-wins):\n'
+    '  --ttl-dist     distribution shape for OAuth refresh-token TTL\n'
+    '                 synthesis. uniform = pre-A11.2 behaviour;\n'
+    '                 normal = Gaussian (stdev = 25% of mean);\n'
+    '                 bimodal = 50/50 split at 50%/150% of the mean\n'
+    '                 (power-outage + steady-state simulation).\n'
+    '  --vendor-mix   vendor-selection bias when seeding tuples.\n'
+    '                 equal = uniform across OAuth-flavored vendors;\n'
+    '                 power-law = top-3 vendors get ~50% of the load\n'
+    '                 (matches realistic operator-share distribution).\n'
+    '  --jitter       refresh jitter shape per the AWS retry-jitter\n'
+    '                 taxonomy. none = no jitter; full = random(0,\n'
+    '                 base); equal = base/2 + random(0, base/2);\n'
+    '                 decorrelated = walk-forward upper bound,\n'
+    '                 capped at the configured offset.\n';
 
 // ─── Main ───────────────────────────────────────────────────────────
 
@@ -229,6 +375,15 @@ Future<int> main(List<String> rawArgs) async {
   final registryReconciliation =
       _runClosureRegistryCoverage(sink: sink);
 
+  // ── Startup banner — surface resolved A11.2 knob values so the
+  //    operator can confirm which of the new flags is active. The
+  //    harness has no other place to assert "you really did pass
+  //    --jitter=decorrelated".
+  stdout.writeln('p3c_oauth_refresh_storm: parameters resolved');
+  stdout.writeln('  ttl_dist   = ${args.ttlDist.name}');
+  stdout.writeln('  vendor_mix = ${args.vendorMix.name}');
+  stdout.writeln('  jitter     = ${args.jitterShape.name}');
+
   // ── Storm: seed N (operator × OAuth vendor) tuples ──────────────
   final store = SyntheticCredentialStore();
   final oauthVendorIds = kAdapterAuthModes.entries
@@ -236,12 +391,22 @@ Future<int> main(List<String> rawArgs) async {
       .map((e) => e.key)
       .toList();
 
+  // Slice A11.2 — vendor-mix bias selects which OAuth vendors the
+  // harness seeds and in what order. `equal` preserves pre-A11.2
+  // behaviour (alphabetical, no bias). `power-law` reorders so the
+  // top-3 vendors are first — combined with `--connections-per-op`
+  // capping below this means power-law runs concentrate load on a
+  // small head while equal runs spread evenly.
+  final orderedOauthVendors =
+      _orderVendorsByMix(oauthVendorIds, args.vendorMix);
+
   // The harness treats `connections-per-op` as a request for one
   // synthetic connection per OAuth vendor up to the cap. If the
   // operator asked for more than the OAuth vendor count we round
   // down — there's no closure for non-OAuth vendors so seeding them
   // would muddy the storm.
-  final perOpVendors = oauthVendorIds.take(args.connectionsPerOp).toList();
+  final perOpVendors =
+      orderedOauthVendors.take(args.connectionsPerOp).toList();
   if (args.connectionsPerOp > oauthVendorIds.length) {
     sink.record(P3cFinding(
       category: 'setup_skipped',
@@ -255,10 +420,19 @@ Future<int> main(List<String> rawArgs) async {
     ));
   }
 
+  // Slice A11.2 — TTL distribution synthesizer. Seeded with a fixed
+  // RNG so the storm is reproducible across runs against the same
+  // (--ttl-dist, --near-expiry-ms) pair.
+  final ttlRng = math.Random(0xa11b2);
   for (var i = 0; i < args.ops; i += 1) {
     final operatorId = _operatorUuid(i);
     final locationId = _locationUuid(i);
     for (final vendorId in perOpVendors) {
+      final ttlMs = _synthesizeTtlMs(
+        baseMs: args.nearExpiryMs,
+        dist: args.ttlDist,
+        rng: ttlRng,
+      );
       store.seed(
         operatorId: operatorId,
         locationId: locationId,
@@ -266,7 +440,7 @@ Future<int> main(List<String> rawArgs) async {
         initialToken: 'cipher-init-$operatorId-$vendorId',
         initialExpiresAt: DateTime.now()
             .toUtc()
-            .add(Duration(milliseconds: args.nearExpiryMs)),
+            .add(Duration(milliseconds: ttlMs)),
       );
     }
   }
@@ -788,6 +962,123 @@ String _operatorUuid(int index) =>
 
 String _locationUuid(int index) =>
     '00000000-0000-4001-8000-${index.toString().padLeft(12, '0')}';
+
+// ─── A11.2 quick-win helpers (R3 §4) ───────────────────────────────
+// These three helpers are intentionally PUBLIC (no underscore) so the
+// unit tests under `test/pressure/p3c_oauth_refresh_storm_cli_test.dart`
+// can pin the per-shape behaviour without driving the full main().
+// Pre-A11.2 the harness exposed nothing testable; the new flags
+// changed enough behaviour that pulling helpers into library scope is
+// the cheapest test seam.
+
+/// Synthesize one TTL value (in milliseconds) per the configured
+/// distribution. [baseMs] is the configured `--near-expiry-ms` mean.
+int synthesizeTtlMs({
+  required int baseMs,
+  required TtlDist dist,
+  required math.Random rng,
+}) =>
+    _synthesizeTtlMs(baseMs: baseMs, dist: dist, rng: rng);
+
+int _synthesizeTtlMs({
+  required int baseMs,
+  required TtlDist dist,
+  required math.Random rng,
+}) {
+  switch (dist) {
+    case TtlDist.uniform:
+      return baseMs;
+    case TtlDist.normal:
+      // Box-Muller transform: convert two uniform [0,1) draws into a
+      // standard normal sample, then scale to mean = baseMs and
+      // stdev = 0.25 * baseMs. Floor at 1ms so callers always have a
+      // positive Duration.
+      double u1 = rng.nextDouble();
+      final double u2 = rng.nextDouble();
+      // Avoid log(0).
+      if (u1 < 1e-12) u1 = 1e-12;
+      final z = math.sqrt(-2.0 * math.log(u1)) * math.cos(2 * math.pi * u2);
+      final stdev = baseMs * 0.25;
+      final value = baseMs + (z * stdev);
+      return math.max(1, value.round());
+    case TtlDist.bimodal:
+      // 50/50 split between 50% and 150% of the mean.
+      return rng.nextBool() ? (baseMs ~/ 2) : ((baseMs * 3) ~/ 2);
+  }
+}
+
+/// Reorder [vendors] per the [VendorMix] bias. The original order
+/// (typically alphabetical from `kAdapterAuthModes.entries`) is
+/// preserved for `equal`. Exposed at library scope for tests.
+List<String> orderVendorsByMix(List<String> vendors, VendorMix mix) =>
+    _orderVendorsByMix(vendors, mix);
+
+List<String> _orderVendorsByMix(List<String> vendors, VendorMix mix) {
+  switch (mix) {
+    case VendorMix.equal:
+      return List<String>.unmodifiable(vendors);
+    case VendorMix.powerLaw:
+      // Sort the vendor IDs deterministically (alphabetical), then
+      // reorder so the head-of-list contains the most "popular"
+      // vendors. The harness has no live operator-share data, so we
+      // pick the head deterministically: the alphabetical first 3
+      // are treated as the "top 3" head. The rest of the list is
+      // appended in alphabetical order. Two consequences:
+      //   1. `--vendor-mix=power-law --connections-per-op=3` seeds
+      //      ONLY the head, modelling a small-tenant-only deployment.
+      //   2. `--vendor-mix=power-law --connections-per-op=11` seeds
+      //      everyone but with the head FIRST, so probes 1/2/3 (which
+      //      pick `perOpVendors[0..2]`) all hit head-vendors.
+      final sorted = List<String>.from(vendors)..sort();
+      final head = sorted.take(3).toList();
+      final tail = sorted.skip(3).toList();
+      return List<String>.unmodifiable(<String>[...head, ...tail]);
+  }
+}
+
+/// Compute a jitter delay for a refresh attempt, given the configured
+/// shape, the base delay (ms), the previous attempt's delay (ms; 0 on
+/// the first attempt), and a [math.Random]. Returns a Duration with
+/// shape-dependent bounds (see [JitterShape] doc).
+Duration computeJitter({
+  required JitterShape shape,
+  required int baseMs,
+  required int previousMs,
+  required math.Random rng,
+}) =>
+    _computeJitter(
+      shape: shape,
+      baseMs: baseMs,
+      previousMs: previousMs,
+      rng: rng,
+    );
+
+Duration _computeJitter({
+  required JitterShape shape,
+  required int baseMs,
+  required int previousMs,
+  required math.Random rng,
+}) {
+  switch (shape) {
+    case JitterShape.none:
+      return Duration(milliseconds: baseMs);
+    case JitterShape.full:
+      return Duration(milliseconds: rng.nextInt(math.max(1, baseMs)));
+    case JitterShape.equal:
+      final half = baseMs ~/ 2;
+      return Duration(milliseconds: half + rng.nextInt(math.max(1, half)));
+    case JitterShape.decorrelated:
+      // AWS pattern: sleep = random(base, prev * 3), capped at base.
+      // The first attempt (previousMs == 0) collapses to base; later
+      // attempts walk the upper bound up to a cap of `baseMs`.
+      final upper = math.min(baseMs, math.max(baseMs, previousMs * 3));
+      // Jitter pre-call: pick within (base/2 .. upper) so we never
+      // wait less than half the base AND never more than the cap.
+      final lower = baseMs ~/ 2;
+      final span = math.max(1, upper - lower);
+      return Duration(milliseconds: lower + rng.nextInt(span));
+  }
+}
 
 // ─── Stub HTTP client ───────────────────────────────────────────────
 
