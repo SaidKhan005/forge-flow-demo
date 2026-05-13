@@ -1,0 +1,11 @@
+# A5+A8 audit_logs UPDATE lint allowlist.
+#
+# This list is intentionally narrow: each non-comment line is a repository
+# relative SQL path where a historical UPDATE against public.audit_logs is
+# allowed. New entries require operator review because audit_logs is the
+# hash-chain evidence table.
+#
+# Approved retrospectively by the A5 schema-versioning audit: the column was
+# net-new and not part of the row_hash payload at apply time. Do not extend
+# without a paired operator-gated audit note.
+db/migrations/202605131010_admin_audit_logs_business_date.sql

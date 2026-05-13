@@ -76,11 +76,13 @@ jobs:
 
       - run: flutter pub get
 
-      - name: postgres-import / index-leading-column / permission-key / migration-cutoff / release-dart-defines / actions-pinning lints
+      - name: postgres-import / index-leading-column / permission-key / migration / release-dart-defines / actions-pinning lints
         run: |
           dart run tool/postgres_import_lint.dart && \
           dart run tool/index_leading_column_lint.dart && \
           dart run tool/permission_key_lint.dart && \
           dart run tool/migration_cutoff_lint.dart && \
+          dart run tool/audit_logs_update_lint.dart && \
+          dart run tool/migration_drift_scanner.dart --require-expand-contract && \
           dart run tool/release_dart_defines_lint.dart && \
           dart run tool/actions_pinning_lint.dart
