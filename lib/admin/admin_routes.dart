@@ -29,6 +29,7 @@ import 'models/pricing_tier_admin_models.dart';
 import 'screens/admin_timing_setup_screen.dart';
 import 'screens/corpus_admin_screen.dart';
 import 'screens/debug_console_admin_screen.dart';
+import 'screens/default_role_catalog_admin_screen.dart';
 import 'screens/feature_flags_admin_screen.dart';
 import 'screens/health_admin_screen.dart';
 import 'screens/integration_admin_screen.dart';
@@ -47,6 +48,7 @@ import 'services/audited_support_actions_admin_gateway.dart';
 import 'services/corpus_admin_gateway.dart';
 import 'services/data_accuracy_admin_gateway.dart';
 import 'services/debug_console_admin_gateway.dart';
+import 'services/default_role_catalog_admin_gateway.dart';
 import 'services/demo_audited_support_actions_admin_gateway.dart';
 import 'services/demo_members_admin_gateway.dart';
 import 'services/demo_roles_hierarchy_sessions_admin_gateway.dart';
@@ -201,6 +203,13 @@ const String kAdminFeatureFlagsRouteId = 'feature_flags';
 /// Canonical Debug console route ID (11A.5).
 const String kAdminDebugConsoleRouteId = 'debug';
 
+/// Lane B B2.2 — Default Role catalog admin editor route ID. F&F
+/// internal-only surface that lists every published version of the
+/// `default_role_catalog_versions` table, lets a `super_admin` author
+/// a draft, and publishes a new version via the B2.1 admin gateway.
+/// `ff_support` lands on the read-only branch.
+const String kAdminDefaultRoleCatalogRouteId = 'default-role-catalog';
+
 /// Canonical Observability route ID (Phase 11A.6). The Observability
 /// surface is the cost-telemetry / dormancy / margin / cap-event /
 /// graph / Cloud-Run dashboard. The /health envelope viewer is owned
@@ -329,6 +338,18 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     subtitle:
         'This surface is for F&F admins only — operators cannot see it. Control staged features.',
     builder: _buildFeatureFlags,
+  ),
+  AdminRoute(
+    id: kAdminDefaultRoleCatalogRouteId,
+    title: 'Default roles',
+    path: '/default-roles',
+    icon: Icons.shield_outlined,
+    section: AdminRouteSection.serviceSetup,
+    badge: 'Admin only',
+    subtitle:
+        'This surface is for F&F admins only — operators cannot see it. '
+        'Edit the starter role catalog every business begins with.',
+    builder: _buildDefaultRoleCatalog,
   ),
   AdminRoute(
     id: kAdminDebugConsoleRouteId,
@@ -1125,6 +1146,40 @@ Widget _buildFeatureFlags(BuildContext context) {
           return buildScreen(canEdit: canEdit);
         },
       );
+    },
+  );
+}
+
+/// Lane B B2.2 — Default Role catalog admin editor route builder.
+/// Reads the gateway from [AdminConsoleServicesScope]; demo + widget
+/// tests fall back to the seeded in-memory gateway. Edit affordances
+/// are gated on `super_admin`; `ff_support` lands on the read-only
+/// branch (the proxy enforces the same gate server-side via
+/// [kDefaultRoleCatalogAdminWriteRoles]).
+Widget _buildDefaultRoleCatalog(BuildContext context) {
+  final gateway =
+      AdminConsoleServicesScope.defaultRoleCatalogAdminGatewayOf(context);
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  Widget buildScreen({required bool canEdit}) {
+    return DefaultRoleCatalogAdminScreen(
+      gateway: gateway,
+      editingEnabled: canEdit,
+    );
+  }
+
+  if (source == null) {
+    return buildScreen(canEdit: true);
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session =
+          state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit =
+          session != null && session.roles.contains('super_admin');
+      return buildScreen(canEdit: canEdit);
     },
   );
 }
@@ -2395,6 +2450,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.healthGateway,
     this.observabilityGateway,
     this.featureFlagsGateway,
+    this.defaultRoleCatalogAdminGateway,
     this.debugConsoleGateway,
     this.dataAccuracyAdminGateway,
     this.membersAdminGateway,
@@ -2465,6 +2521,12 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// catalog so the walkthrough exercises the toggle / DANGER paths
   /// without hitting Postgres.
   final FeatureFlagsAdminGateway? featureFlagsGateway;
+
+  /// Lane B B2.2 - Default Role catalog admin gateway. Optional; the
+  /// default fallback is the seeded in-memory gateway shared with the
+  /// demo walkthrough so the click path renders without the Cloud Run
+  /// admin proxy.
+  final DefaultRoleCatalogAdminGateway? defaultRoleCatalogAdminGateway;
 
   /// Phase 11A.5 - debug console admin gateway. Optional; the default
   /// fallback is a seeded in-memory gateway with the per-operator
@@ -2555,6 +2617,15 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.featureFlagsGateway ?? _defaultFeatureFlagsDemoGateway;
   }
 
+  static DefaultRoleCatalogAdminGateway defaultRoleCatalogAdminGatewayOf(
+    BuildContext context,
+  ) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.defaultRoleCatalogAdminGateway ??
+        _defaultRoleCatalogAdminDemoGateway;
+  }
+
   static DebugConsoleAdminGateway debugConsoleGatewayOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
@@ -2608,6 +2679,8 @@ class AdminConsoleServicesScope extends InheritedWidget {
       healthGateway != oldWidget.healthGateway ||
       observabilityGateway != oldWidget.observabilityGateway ||
       featureFlagsGateway != oldWidget.featureFlagsGateway ||
+      defaultRoleCatalogAdminGateway !=
+          oldWidget.defaultRoleCatalogAdminGateway ||
       debugConsoleGateway != oldWidget.debugConsoleGateway ||
       dataAccuracyAdminGateway != oldWidget.dataAccuracyAdminGateway ||
       membersAdminGateway != oldWidget.membersAdminGateway ||
@@ -2969,6 +3042,14 @@ final DebugConsoleAdminGateway _defaultDebugConsoleDemoGateway =
       seed: kDebugConsoleDemoEntries,
       optInSeed: kDebugConsoleDemoOptIns,
     );
+
+/// Lane B B2.2 fallback Default Role catalog admin gateway. The
+/// in-memory implementation persists nothing across runs; the
+/// walkthrough lands on the genesis state (no current version) so the
+/// click path exercises the empty-state copy + the first-publish flow
+/// end-to-end without the Cloud Run admin proxy.
+final DefaultRoleCatalogAdminGateway _defaultRoleCatalogAdminDemoGateway =
+    InMemoryDefaultRoleCatalogAdminGateway();
 
 /// Phase 8 spine-bridge Lane .C fallback data accuracy + polling/pricing
 /// admin gateway. Mirrors the two demo operators on `_defaultDemoGateway`

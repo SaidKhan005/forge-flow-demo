@@ -42,6 +42,7 @@ import 'admin/services/admin_vendor_connections_gateway.dart';
 import 'admin/services/corpus_admin_gateway.dart';
 import 'admin/services/data_accuracy_admin_gateway.dart';
 import 'admin/services/debug_console_admin_gateway.dart';
+import 'admin/services/default_role_catalog_admin_gateway.dart';
 import 'admin/services/feature_flags_admin_gateway.dart';
 import 'admin/services/health_admin_gateway.dart';
 import 'admin/services/integration_admin_gateway.dart';
@@ -155,6 +156,9 @@ Future<void> main() async {
     final featureFlagsGateway = gateway == null
         ? null
         : _resolveFeatureFlagsAdminGateway(authBinding.authClient);
+    final defaultRoleCatalogAdminGateway = gateway == null
+        ? null
+        : _resolveDefaultRoleCatalogAdminGateway(authBinding.authClient);
     final debugConsoleGateway = gateway == null
         ? null
         : _resolveDebugConsoleAdminGateway(authBinding.authClient);
@@ -188,6 +192,7 @@ Future<void> main() async {
         healthGateway: healthGateway,
         observabilityGateway: observabilityGateway,
         featureFlagsGateway: featureFlagsGateway,
+        defaultRoleCatalogAdminGateway: defaultRoleCatalogAdminGateway,
         debugConsoleGateway: debugConsoleGateway,
         membersAdminGateway: membersAdminGateway,
         rolesHierarchySessionsAdminGateway: rolesHierarchySessionsAdminGateway,
@@ -402,6 +407,35 @@ FeatureFlagsAdminGateway? _resolveFeatureFlagsAdminGateway(
   return HttpFeatureFlagsAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+  );
+}
+
+/// Lane B B2.2 — Default Role catalog admin gateway. The publish
+/// route requires an `Idempotency-Key` header; the resolver builds a
+/// monotonically-increasing UTC microsecond + counter string. Demo
+/// mode falls back to the seeded in-memory gateway in
+/// `admin_routes.dart`.
+int _defaultRoleCatalogIdempotencyCounter = 0;
+String _mintDefaultRoleCatalogIdempotencyKey() {
+  _defaultRoleCatalogIdempotencyCounter += 1;
+  final micros = DateTime.now().toUtc().microsecondsSinceEpoch;
+  return 'admin-default-role-catalog-$micros-'
+      '$_defaultRoleCatalogIdempotencyCounter';
+}
+
+DefaultRoleCatalogAdminGateway? _resolveDefaultRoleCatalogAdminGateway(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpDefaultRoleCatalogAdminGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+    idempotencyKeyProvider: _mintDefaultRoleCatalogIdempotencyKey,
   );
 }
 

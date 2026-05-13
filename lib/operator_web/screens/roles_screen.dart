@@ -403,7 +403,7 @@ class _RolesScreenState extends State<RolesScreen> {
               ),
               OperatorWebSummaryItem(
                 icon: Icons.verified_outlined,
-                label: 'Seeded',
+                label: 'Default',
                 value: seeded.length.toString(),
                 helper: 'Forge & Flow defaults',
               ),
@@ -437,10 +437,10 @@ class _RolesScreenState extends State<RolesScreen> {
           const SizedBox(height: 18),
           _RoleGroup(
             key: const Key('operator_web_roles_seeded_group'),
-            title: 'Seeded roles (${seeded.length})',
+            title: 'Default roles (${seeded.length})',
             subtitle:
                 'Standard roles Forge & Flow ships with. Read-only on your '
-                'operator. Use a custom role when you need a different mix.',
+                'business. Use a custom role when you need a different mix.',
             roles: seeded,
             busyRoleIds: _busyRoleIds,
             canWrite: false,
@@ -666,7 +666,12 @@ class _RoleTile extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         _RoleBadge(
-                          label: role.isSeeded ? 'Seeded' : 'Custom',
+                          // Lane B B2.2 — seeded roles surface as the
+                          // Forge & Flow "Default" catalog rather than
+                          // engineering-flavored "Seeded". The plain-
+                          // English wording mirrors the B2.2 admin
+                          // catalog editor surface.
+                          label: role.isSeeded ? 'Default' : 'Custom',
                           color: role.isSeeded
                               ? AppColors.peacockDark
                               : AppColors.sunsetDark,
@@ -680,6 +685,29 @@ class _RoleTile extends StatelessWidget {
                         ],
                       ],
                     ),
+                    if (role.isSeeded) ...<Widget>[
+                      const SizedBox(height: 4),
+                      Text(
+                        // Lane B B2.2 — operator-facing annotation for
+                        // catalog-sourced roles. The catalog version's
+                        // published_at timestamp is NOT surfaced by the
+                        // operator-web role-read endpoint today
+                        // (`web_team_roles_gateway.dart` only carries
+                        // role_id / role_key / display_name / is_seeded
+                        // / is_editable / permissions), so this slice
+                        // ships the badge + an attribution line and
+                        // flags the date gap for a future backend
+                        // slice that surfaces the catalog version on
+                        // each seeded role row.
+                        'Managed by Forge & Flow',
+                        key: Key(
+                          'operator_web_role_default_annotation_${role.roleId}',
+                        ),
+                        style: AppTextStyles.mono10(
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 2),
                     Text(
                       role.roleKey,

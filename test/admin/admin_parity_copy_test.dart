@@ -65,6 +65,9 @@ void main() {
         kAdminFeatureFlagsRouteId,
         kAdminDebugConsoleRouteId,
         kAdminObservabilityRouteId,
+        // Lane B B2.2 — Default Role catalog admin editor is an
+        // ecosystem-only surface; same Admin-only badge contract.
+        kAdminDefaultRoleCatalogRouteId,
       ]) {
         final route = routeById(routeId);
         expect(route.badge, 'Admin only', reason: routeId);
