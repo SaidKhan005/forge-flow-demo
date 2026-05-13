@@ -47,6 +47,7 @@ import '../../infrastructure/persistence/postgres/repositories/mfa_factors_repos
 import '../../infrastructure/persistence/postgres/repositories/users_repository.dart';
 import '../../infrastructure/persistence/postgres/tenant_context.dart';
 import '../auth/firebase_admin_auth_client.dart';
+import 'mfa_factor_changed_notice_dispatcher.dart';
 
 class MfaRemovalWorkerResult {
   const MfaRemovalWorkerResult({
@@ -75,6 +76,7 @@ class MfaRemovalWorker {
     required AuthEventsAuditRepository auditRepository,
     required FirebaseAdminAuthClient firebaseAdmin,
     EventOutboxRepository? eventOutboxRepository,
+    MfaFactorChangedNoticeDispatcher? factorChangedNoticeDispatcher,
     DateTime Function()? now,
     bool Function()? shouldStop,
     this.workerOwner = 'mfa-removal-worker',
@@ -84,6 +86,7 @@ class MfaRemovalWorker {
        _auditRepository = auditRepository,
        _firebaseAdmin = firebaseAdmin,
        _eventOutboxRepository = eventOutboxRepository,
+       _factorChangedNoticeDispatcher = factorChangedNoticeDispatcher,
        _now = now ?? DateTime.now,
        _shouldStop = shouldStop ?? _defaultShouldStop;
 
@@ -93,6 +96,15 @@ class MfaRemovalWorker {
   final AuthEventsAuditRepository _auditRepository;
   final FirebaseAdminAuthClient _firebaseAdmin;
   final EventOutboxRepository? _eventOutboxRepository;
+
+  /// C-2-C wire — optional `mfa_factor_changed_notice` email
+  /// dispatcher. When wired the worker enqueues one `email_outbox`
+  /// row addressed to the user whose factor was removed inside the
+  /// same `markCompleted + audit + outbox` transaction. The seam is
+  /// optional so existing tests (and the degraded-but-launchable
+  /// worker mode) keep running when the dispatcher is not bound.
+  final MfaFactorChangedNoticeDispatcher? _factorChangedNoticeDispatcher;
+
   final DateTime Function() _now;
   final bool Function() _shouldStop;
   final String workerOwner;
@@ -189,6 +201,29 @@ class MfaRemovalWorker {
         requireOperatorId: request.operatorId,
         adminReason: 'system.mfa_factor_removal_worker_firebase_uid',
       );
+      // C-2-C wire — resolve the user's email + display name BEFORE
+      // entering the completion transaction. A failure here must not
+      // fail the removal (the user's MFA still needs to be revoked
+      // regardless of email reachability) so we tolerate a null
+      // contact and let the dispatcher short-circuit inside the body.
+      UserContactProjection? userContact;
+      if (_factorChangedNoticeDispatcher != null) {
+        try {
+          userContact = await _usersRepository.findUserContactSystem(
+            userId: request.userId,
+            requireOperatorId: request.operatorId,
+            adminReason: 'system.mfa_factor_changed_notice_recipient_lookup',
+          );
+        } catch (_) {
+          // Contact lookup failure is non-fatal — the worker still
+          // completes the row, audit + event_outbox still fire, just
+          // the email side is skipped. The next tick is not retried
+          // for the email alone (the completion is a one-shot per
+          // request), which is the right posture: a missing email is
+          // not actionable by retrying the lookup.
+          userContact = null;
+        }
+      }
       await _firebaseAdmin.clearMfaEnrollments(uid: firebaseUid);
       await _mfaFactorsRepository.revokeTotpFactor(
         operatorId: request.operatorId,
@@ -269,6 +304,38 @@ class MfaRemovalWorker {
               'factor_id': request.factorId,
             },
           );
+          // C-2-C wire — enqueue the `mfa_factor_changed_notice`
+          // email inside the same atomic-completion transaction so
+          // the email_outbox row + audit row + completion update
+          // commit (or roll back) together. The dispatcher seam is
+          // optional; when unbound (degraded-but-launchable mode,
+          // existing tests) the worker behaves exactly as it did
+          // before. The pre-resolved [userContact] is null when the
+          // upstream lookup returned no row OR the email was
+          // redacted; the dispatcher short-circuits cleanly in both
+          // cases.
+          final dispatcher = _factorChangedNoticeDispatcher;
+          if (dispatcher != null && userContact != null) {
+            await dispatcher.dispatchForRemoval(
+              exec,
+              operatorId: request.operatorId,
+              locationId: request.locationId,
+              userId: request.userId,
+              factorId: request.factorId,
+              // The worker only revokes TOTP factors and active
+              // recovery code factors. The dispatcher branches on
+              // the kind for the operator-facing copy; we pass
+              // `'totp'` here because the per-row trigger is the
+              // TOTP revocation. Recovery-code revocation is a
+              // side-effect of the same request, not a separate
+              // user-visible factor change.
+              factorKind: 'totp',
+              factorLabel: '',
+              recipientEmail: userContact.email,
+              recipientDisplayName: userContact.displayName,
+              removedAt: now,
+            );
+          }
           return _RowOutcome.completed;
         },
       );

@@ -66,6 +66,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
+import 'package:forge_and_flow/services/mfa/mfa_factor_changed_notice_dispatcher.dart';
 import 'package:forge_and_flow/services/mfa/mfa_removal_worker.dart';
 
 const String _operatorId = '11111111-1111-4111-8111-111111111111';
@@ -545,6 +546,179 @@ void main() {
     );
 
     test(
+      'C-2-C wire — dispatcher is invoked inside the atomic completion '
+      'transaction when bound and the user contact resolves',
+      () async {
+        final removalRepo = _RemovalRequestsFake(
+          records: <MfaFactorRemovalRequestRecord>[
+            _due(requestId: _requestIdA, factorId: _factorIdA),
+          ],
+        );
+        final auditRepo = _AuditFake();
+        final outbox = _EventOutboxFake();
+        final dispatcherCalls = <_DispatcherCall>[];
+        final dispatcher = MfaFactorChangedNoticeDispatcher(
+          outboxEnqueue: (
+            exec, {
+            required String operatorId,
+            required String userId,
+            required String recipientEmail,
+            required String? recipientDisplayName,
+            required String templateId,
+            required Map<String, String> templateData,
+          }) async {
+            dispatcherCalls.add(_DispatcherCall(
+              recipientEmail: recipientEmail,
+              templateId: templateId,
+              templateData: templateData,
+            ));
+          },
+          auditEmit: (
+            exec, {
+            required String operatorId,
+            required String locationId,
+            required String userId,
+            required String eventType,
+            required Map<String, Object?> payload,
+          }) async {
+            // The dispatcher emits its own audit row via this seam.
+            // Append it onto the shared audit recorder so the
+            // existing "events list" assertions still hold.
+            auditRepo.events.add(_AuditEvent(
+              eventType: eventType,
+              actorKind: 'system',
+              payload: payload,
+            ));
+          },
+          accountSecurityUrl:
+              'https://app.forgeflow.app/account/security',
+          now: () => DateTime.utc(2026, 5, 1, 13, 30),
+        );
+
+        final worker = MfaRemovalWorker(
+          removalRequestsRepository: removalRepo,
+          mfaFactorsRepository: _MfaFactorsFake(),
+          usersRepository: _UsersFake(
+            firebaseUid: 'fb-uid',
+            contact: const UserContactProjection(
+              userId: _userId,
+              email: 'pat@acme.test',
+              displayName: 'Pat GM',
+            ),
+          ),
+          auditRepository: auditRepo,
+          firebaseAdmin: _FirebaseAdminFake(),
+          eventOutboxRepository: outbox,
+          factorChangedNoticeDispatcher: dispatcher,
+          now: () => DateTime.utc(2026, 5, 1, 13),
+        );
+
+        final result = await worker.processDue();
+
+        expect(result.completed, equals(1));
+        expect(result.failed, equals(0));
+        expect(dispatcherCalls, hasLength(1));
+        expect(dispatcherCalls.single.recipientEmail, equals('pat@acme.test'));
+        expect(
+          dispatcherCalls.single.templateId,
+          equals('mfa_factor_changed_notice'),
+        );
+        expect(
+          dispatcherCalls.single.templateData['recipientName'],
+          equals('Pat GM'),
+        );
+        // Two audit rows in total: the existing
+        // `mfa_factor_revocation_completed` event AND the
+        // dispatcher's `mfa_factor_changed_email_enqueued` event.
+        expect(auditRepo.events, hasLength(2));
+        expect(
+          auditRepo.events.map((e) => e.eventType).toSet(),
+          equals(<String>{
+            'mfa_factor_revocation_completed',
+            'mfa_factor_changed_email_enqueued',
+          }),
+        );
+        // The legacy `auth.user.mfa_factor_removed` event_outbox row
+        // is still written (the dispatcher does not replace it).
+        expect(outbox.enqueued, hasLength(1));
+        expect(
+          outbox.enqueued.single.topic,
+          equals('auth.user.mfa_factor_removed'),
+        );
+      },
+    );
+
+    test(
+      'C-2-C wire — dispatcher short-circuits when the user contact '
+      'lookup returns null (no email row, no dispatcher invocation)',
+      () async {
+        final removalRepo = _RemovalRequestsFake(
+          records: <MfaFactorRemovalRequestRecord>[
+            _due(requestId: _requestIdA, factorId: _factorIdA),
+          ],
+        );
+        final auditRepo = _AuditFake();
+        final outbox = _EventOutboxFake();
+        final dispatcherCalls = <_DispatcherCall>[];
+        final dispatcher = MfaFactorChangedNoticeDispatcher(
+          outboxEnqueue: (
+            exec, {
+            required String operatorId,
+            required String userId,
+            required String recipientEmail,
+            required String? recipientDisplayName,
+            required String templateId,
+            required Map<String, String> templateData,
+          }) async {
+            dispatcherCalls.add(_DispatcherCall(
+              recipientEmail: recipientEmail,
+              templateId: templateId,
+              templateData: templateData,
+            ));
+          },
+          auditEmit: (
+            exec, {
+            required String operatorId,
+            required String locationId,
+            required String userId,
+            required String eventType,
+            required Map<String, Object?> payload,
+          }) async {},
+          accountSecurityUrl:
+              'https://app.forgeflow.app/account/security',
+          now: () => DateTime.utc(2026, 5, 1, 13, 30),
+        );
+
+        final worker = MfaRemovalWorker(
+          removalRequestsRepository: removalRepo,
+          mfaFactorsRepository: _MfaFactorsFake(),
+          // No contact row available (redacted user, missing row, etc.)
+          usersRepository: _UsersFake(
+            firebaseUid: 'fb-uid',
+            contact: null,
+          ),
+          auditRepository: auditRepo,
+          firebaseAdmin: _FirebaseAdminFake(),
+          eventOutboxRepository: outbox,
+          factorChangedNoticeDispatcher: dispatcher,
+          now: () => DateTime.utc(2026, 5, 1, 13),
+        );
+
+        final result = await worker.processDue();
+
+        // Removal still completes; only the email enqueue is skipped.
+        expect(result.completed, equals(1));
+        expect(dispatcherCalls, isEmpty);
+        // Just the legacy revocation audit, no dispatcher audit.
+        expect(auditRepo.events, hasLength(1));
+        expect(
+          auditRepo.events.single.eventType,
+          equals('mfa_factor_revocation_completed'),
+        );
+      },
+    );
+
+    test(
       'shouldStop predicate breaks the per-row loop between rows',
       () async {
         final removalRepo = _RemovalRequestsFake(
@@ -840,10 +1014,11 @@ class _MfaFactorsFake extends MfaFactorsRepository {
 }
 
 class _UsersFake extends UsersRepository {
-  _UsersFake({required this.firebaseUid})
+  _UsersFake({required this.firebaseUid, this.contact})
       : super(TenantTransactionWrapper(_NoopPool()));
 
   final String firebaseUid;
+  final UserContactProjection? contact;
 
   @override
   Future<String> firebaseUidForUserSystem({
@@ -860,6 +1035,15 @@ class _UsersFake extends UsersRepository {
     required String adminReason,
   }) async {
     return null;
+  }
+
+  @override
+  Future<UserContactProjection?> findUserContactSystem({
+    required String userId,
+    required String adminReason,
+    String? requireOperatorId,
+  }) async {
+    return contact;
   }
 }
 
@@ -1086,4 +1270,16 @@ class _NoopPool implements PostgresPool {
   Future<PostgresTransaction> beginTransaction() {
     throw UnimplementedError();
   }
+}
+
+class _DispatcherCall {
+  const _DispatcherCall({
+    required this.recipientEmail,
+    required this.templateId,
+    required this.templateData,
+  });
+
+  final String recipientEmail;
+  final String templateId;
+  final Map<String, String> templateData;
 }

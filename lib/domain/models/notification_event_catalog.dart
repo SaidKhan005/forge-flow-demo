@@ -25,7 +25,7 @@ enum NotificationRoleGate {
 
 /// Categorization for the on-screen grouping. Plain English labels
 /// land alongside in `kNotificationCategoryLabels`.
-enum NotificationCategory { backfill, vendor, audit, shift, plan }
+enum NotificationCategory { backfill, vendor, audit, shift, plan, security }
 
 /// Stable role-key lists. Mirror the operator-web auth source role
 /// strings. Kept here (not in `lib/auth/permission_keys.dart`) because
@@ -159,6 +159,24 @@ const List<NotificationCatalogEntry> kNotificationCatalog =
     roleGate: NotificationRoleGate.managerOnly,
     defaultChannels: <String>{'push'},
   ),
+  // Security - any signed-in actor (the recipient is the user whose
+  // factor changed, not every user in the operator). The fanout
+  // worker does not drive this event; the MFA removal worker dispatches
+  // a single-recipient email directly via
+  // [MfaFactorChangedNoticeDispatcher]. The catalog entry is kept so
+  // the operator-web Notifications screen can later render a "MFA
+  // changes" row for the affected user, and so the canonical
+  // `event_key` lives in one place.
+  NotificationCatalogEntry(
+    eventKey: 'notif.mfa.factor_changed',
+    title: 'Your two-factor settings changed',
+    description: 'A two-factor method on your account was added or '
+        'removed. If this was not you, sign in and review your account '
+        'security right away.',
+    category: NotificationCategory.security,
+    roleGate: NotificationRoleGate.any,
+    defaultChannels: <String>{'email', 'inbox'},
+  ),
 ];
 
 const Map<NotificationCategory, String> kNotificationCategoryLabels =
@@ -168,6 +186,7 @@ const Map<NotificationCategory, String> kNotificationCategoryLabels =
   NotificationCategory.audit: 'Audit and integrity',
   NotificationCategory.shift: 'Live shift',
   NotificationCategory.plan: 'Weekly plan',
+  NotificationCategory.security: 'Account security',
 };
 
 /// All channel wire values surfaced in the UI. Order matters - this

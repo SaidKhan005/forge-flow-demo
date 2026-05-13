@@ -174,6 +174,22 @@ class UserAuthLookupRow {
   final String? firebaseUid;
 }
 
+/// C-2-C wire — narrow projection of `users` for the MFA removal
+/// worker's email enqueue path. Carries the columns the dispatcher
+/// stitches into the `email_outbox` row (recipient email + the
+/// preferred salutation).
+class UserContactProjection {
+  const UserContactProjection({
+    required this.userId,
+    required this.email,
+    this.displayName,
+  });
+
+  final String userId;
+  final String email;
+  final String? displayName;
+}
+
 class EmailConflictUsageRow {
   const EmailConflictUsageRow({
     required this.userId,
@@ -785,6 +801,76 @@ class UsersRepository extends OperatorScopedRepository {
       columnAlias: 'firebase_uid',
       missingMessage: 'users lookup returned no firebase_uid for target user',
     );
+  }
+
+  /// System/background lookup for the user's contact (`email` +
+  /// optional `display_name`) by [userId]. Used by the MFA removal
+  /// worker (C-2-C wire) to address the
+  /// `mfa_factor_changed_notice` email. Runs on the admin pool
+  /// because the worker has no live operator session.
+  ///
+  /// Code-health L3 (C5 cross-tenant scan): when [requireOperatorId]
+  /// is supplied the WHERE adds `operator_id = $N` so a system-pool
+  /// read cannot accidentally walk every tenant's `users` rows. The
+  /// MFA removal worker always passes the row's `operator_id` so
+  /// the read stays scoped to the request's tenant.
+  ///
+  /// Returns null when the row is missing, soft-deleted, or has a
+  /// redacted email (GDPR redaction rewrites `email` to
+  /// `redacted-<user_id>@deleted.local`; the dispatcher short-
+  /// circuits on a blank/redacted address anyway, but null-here
+  /// keeps the read path explicit).
+  Future<UserContactProjection?> findUserContactSystem({
+    required String userId,
+    required String adminReason,
+    String? requireOperatorId,
+  }) {
+    return withSystem<UserContactProjection?>((exec) async {
+      final operatorPredicate = requireOperatorId == null
+          ? ''
+          : 'and operator_id = @operator_id::uuid ';
+      final rows = await exec.query(
+        'select user_id::text as user_id, '
+        'email, '
+        "coalesce(nullif(display_name, ''), "
+        "nullif(trim(concat_ws(' ', first_name, last_name)), ''), "
+        'null) as display_name '
+        'from users '
+        'where user_id = @user_id::uuid '
+        'and deleted_at is null '
+        "and status != 'deleted' "
+        '$operatorPredicate'
+        'limit 1',
+        parameters: <String, Object?>{
+          'user_id': userId,
+          if (requireOperatorId != null) 'operator_id': requireOperatorId,
+        },
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final resolvedUserId = row['user_id'];
+      final email = row['email'];
+      final displayName = row['display_name'];
+      if (resolvedUserId is! String ||
+          resolvedUserId.isEmpty ||
+          email is! String ||
+          email.isEmpty) {
+        return null;
+      }
+      // Skip GDPR-redacted addresses so the dispatcher does not
+      // enqueue an email to `redacted-<uuid>@deleted.local`. The
+      // redaction template lives in `redactPii` above; matching the
+      // exact suffix here keeps the read robust to future schema
+      // changes that move the marker domain.
+      if (email.endsWith('@deleted.local')) return null;
+      return UserContactProjection(
+        userId: resolvedUserId,
+        email: email,
+        displayName: displayName is String && displayName.isNotEmpty
+            ? displayName
+            : null,
+      );
+    }, reason: adminReason);
   }
 
   /// System/background lookup for Firebase UID. Workers run outside a live

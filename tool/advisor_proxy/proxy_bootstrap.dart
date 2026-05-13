@@ -91,6 +91,7 @@ import 'package:forge_and_flow/services/auth/repository_password_change_gateway.
 import 'package:forge_and_flow/services/auth/repository_password_history_check.dart';
 import 'package:forge_and_flow/services/mfa/firebase_mfa_enrollment_service.dart';
 import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client.dart';
+import 'package:forge_and_flow/services/mfa/mfa_factor_changed_notice_dispatcher.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_removal_worker.dart';
@@ -1119,6 +1120,38 @@ ProxyProductionBindings buildProxyProductionBindings(
       auditRepository: adminAudit,
       firebaseAdmin: firebaseAdmin,
       eventOutboxRepository: adminEventOutbox,
+      // C-2-C wire — `mfa_factor_changed_notice` email enqueue. The
+      // dispatcher runs inside the worker's atomic completion
+      // transaction; the on-executor enqueue + audit seams commit
+      // atomically with `markCompleted + audit + outbox`. The
+      // account-security URL is the production operator-web deeplink
+      // for the account settings page (matches the renderer sample
+      // data; a future slice may parameterize per-flavor when the
+      // F&F operator-web flavor splits).
+      factorChangedNoticeDispatcher: MfaFactorChangedNoticeDispatcher(
+        outboxEnqueue: postgresMfaFactorChangedNoticeEnqueue,
+        auditEmit: (
+          exec, {
+          required String operatorId,
+          required String locationId,
+          required String userId,
+          required String eventType,
+          required Map<String, Object?> payload,
+        }) async {
+          await adminAudit.insertSystemEventOn(
+            exec,
+            eventType: eventType,
+            actorKind: 'system',
+            operatorId: operatorId,
+            locationId: locationId,
+            targetUserId: userId,
+            payload: payload,
+            adminReason: 'system.mfa_factor_changed_notice_audit',
+          );
+        },
+        accountSecurityUrl:
+            'https://app.forgeflow.app/account/security',
+      ),
     ),
     mobilePushTokenGateway: mobilePushTokenGateway,
     mobilePushSelfTestGateway: mobilePushSelfTestGateway,
