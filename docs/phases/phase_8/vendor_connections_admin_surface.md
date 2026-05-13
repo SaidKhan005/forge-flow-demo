@@ -563,6 +563,6 @@ This surface ships as part of `8.0` framework slice. Acceptance:
 - `docs/phases/phase_8/vendor_master_list.md` — vendor list, partnership applications, source URLs.
 - `docs/phases/phase_8R/phase_8R_official_reservation_connector_plan.md` — reservation cards plug into this surface.
 - `docs/phases/phase_8S/phase_8S_scheduling_connector_plan.md` — scheduling cards plug into this surface.
-- `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md` — Phase 8.5 finance integrations follow the same dual-surface hosting pattern (different widget tree, same two consoles).
+- `docs/archive/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md` — Phase 8.5 finance integrations follow the same dual-surface hosting pattern (different widget tree, same two consoles).
 - `docs/contracts/hardening_rls_and_repository_pattern_contract.md` — RLS / OperatorScopedRepository pattern that connection state follows.
 - `docs/contracts/auth_permission_key_catalog.md` — `integrations.configure` permission key (added by `8.0`).

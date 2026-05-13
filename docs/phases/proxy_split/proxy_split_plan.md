@@ -75,7 +75,7 @@ Reviewer's call when the split phase opens.
   noted in POST_HARDENING_FOLLOWUPS P3. That has its own debt curve;
   separate phase doc when sequenced.
 - AI-freeze items (placeholder prompt strings at lines 9105-9106).
-  Tracked under `docs/phases/phase_11b/phase_11b_advisor_ux_plan.md`
+  Tracked under `docs/archive/phases/phase_11b/phase_11b_advisor_ux_plan.md`
   "Freeze-thaw pre-conditions" — they unfreeze on the AI lane, not
   the proxy-split lane.
 

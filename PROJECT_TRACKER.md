@@ -1,12 +1,18 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-12. Post-Codex wave kicked off: admin hierarchy
-overhaul closed (12 slices on master); Step 3+4+5+6+7 planning
-trilogy in PR #497 (lane plans, code-health audits, indices, ledger,
-handoff prompts). Codex + Claude lane executors run against
-`docs/_indices/WAVE_EXECUTION_LEDGER.md`. AI-paused phases unchanged.
-Prior CI billing block (pre-2026-05-08) cleared.
-Owner: You · Execution: We think, Claude codes
+Updated: 2026-05-13. **Post-Codex wave CLOSED** (PR #638 closeout + 6
+follow-up PRs: #639/#640/#641/#642/#643/#644 + Phase 2 archive in this
+PR). Wave artifacts archived to `docs/archive/_audits/post_codex_wave_2026-05-13/`.
+Forward plan: `docs/_indices/NEXT_WAVE_PLAN.md` (the demo → tag →
+refactor → re-test → mutate pipeline). Next wave is all-Claude
+(Codex out of quota); workflow is executor-agnostic per CLAUDE.md
+"Workflow" section.
+
+Phases retired to `docs/archive/phases/` 2026-05-13: `phase_10b`,
+`phase_11b`, `phase_12_workflow_platform`, `phase_8_5_external_integrations`
+(all paused per V1 lean cut — no V1 launch dependency).
+
+Owner: You · Execution: We think, agents code (orchestrator-audited).
 
 Routing map only. This file shows **only what is left**. Completed phases /
 slices live in `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`. Stale
@@ -39,19 +45,22 @@ normative in `CLAUDE.md`.
 Prefer `.mcp.json` servers for orientation: `forgeflow_docs`,
 `forgeflow_sqlite_schema`, `graphify`.
 
-## Indices (post-Codex wave routing)
-
-Single canonical entry points for each agent's work-track. Open the relevant
-index BEFORE dispatching any post-Codex-wave slice.
+## Indices (current state)
 
 | Index | Audience | Purpose |
 | --- | --- | --- |
-| `docs/_indices/CLAUDE_LANE_INDEX.md` | Claude (orchestrator + Claude lane agents) | Routes every Claude-assigned lane (A1/A3/A4/A7/A10 + B1/B2/B8/B11 + C-EmailsNotifs) |
-| `docs/_indices/CODEX_LANE_INDEX.md` | Codex (Codex lane agents) | Routes every Codex-assigned lane (A2/A5/A6/A8/A9 + B3-B7/B9/B10 + C-Admin/C-OpsWeb/C-Mobile) |
-| `docs/_indices/README.md` | Either | Explains the index pattern + update cadence |
+| `docs/_indices/NEXT_WAVE_PLAN.md` | All | Forward roadmap: demo-validate → tag → refactor → re-test → mutate pipeline. Each step operator-gated. |
+| `docs/_indices/WAVE_EXECUTION_LEDGER.md` | Reference (frozen) | Post-Codex wave's slice ledger. **CLOSED 2026-05-13.** Historical only. Next wave gets its own ledger. |
+| `docs/_indices/CLAUDE_HANDOFF_PROMPT.md` | Operator (paste-ready) | Master prompt for a fresh Claude executor session. Encodes the executor-as-mini-orchestrator pattern. |
+| `docs/_indices/CODEX_HANDOFF_PROMPT.md` | Operator (paste-ready) | Same shape for Codex. Both encode the SAME workflow (CLAUDE.md "Workflow" section); the handoff prompts are executor-specific scaffolding for the same underlying loop. |
+| `docs/_indices/README.md` | All | Explains the index pattern + when to read which doc. |
 
-Wave bundle (Step 3 lane plans + Step 4 code-health deep audits): PR #497.
-Authority anchor: parked-plan Step 6 (locked 2026-05-12).
+Note: `CLAUDE_LANE_INDEX.md` + `CODEX_LANE_INDEX.md` (post-Codex wave's
+per-lane scope routers) retired to `docs/archive/_indices/` 2026-05-13
+along with the rest of the wave's closed artifacts. The handoff prompts
+above are the active operator-paste-ready surface; per-slice scope lives
+in `docs/_execution/<lane>/03_execution_slices.md` or inline in this
+tracker per "Phase Doc Hygiene" in CLAUDE.md.
 
 ## Hard Product Rule - Hierarchy-Scoped Settings
 

@@ -60,9 +60,9 @@ Current live groups:
 - `docs/phases/phase_9_8/`
 - `docs/phases/phase_10a/`
 - `docs/phases/phase_10_5/`
-- `docs/phases/phase_10b/`
+- `docs/archive/phases/phase_10b/`
 - `docs/phases/phase_11a/`
-- `docs/phases/phase_11b/`
+- `docs/archive/phases/phase_11b/`
 
 ## 5. Archive
 

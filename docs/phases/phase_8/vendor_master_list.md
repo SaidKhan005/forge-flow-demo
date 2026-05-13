@@ -15,7 +15,7 @@ This list covers **inbound** integrations only — POS, Reservations, and Schedu
 
 Out of scope for this list:
 
-- **Outbound finance integrations** (QuickBooks Online Accounting, Xero, Bill.com / MarginEdge, Plaid) — see `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`.
+- **Outbound finance integrations** (QuickBooks Online Accounting, Xero, Bill.com / MarginEdge, Plaid) — see `docs/archive/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`.
 - **Third-party / online ordering** (DoorDash, Uber Eats, Skip the Dishes, Deliverect, Tacit, Onfleet, OLO, Urban Piper, Otter) — deferred until post-launch.
 
 ## Classification methodology
@@ -359,7 +359,7 @@ Research conducted 2026-05-03 by parallel agents against official vendor develop
 - `docs/phases/phase_8/vendor_connections_admin_surface.md` — admin-console UX spec.
 - `docs/phases/phase_8R/phase_8R_official_reservation_connector_plan.md` — Phase 8R plan (reservation adapters).
 - `docs/phases/phase_8S/phase_8S_scheduling_connector_plan.md` — Phase 8.S plan (scheduling adapters).
-- `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md` — sibling outbound-integrations lane.
+- `docs/archive/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md` — sibling outbound-integrations lane.
 - `docs/archive/phases/phase_8_gate/` — original Phase 8 readiness gate (Toast/Square/Clover/7shifts).
 - `docs/archive/phases/7_55j/` — pre-Phase-8 integration audit and capability-checklist template.
 - `docs/archive/phases/7_55n/phase_7_55n_12_vendor_live_data_capability_audit.md` — original live-data capability audit.
