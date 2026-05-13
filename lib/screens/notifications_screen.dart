@@ -7,6 +7,7 @@
 // Opened from the notification icon in the AppShell top bar.
 
 import 'package:flutter/material.dart';
+import '../domain/models/notification_event_catalog.dart';
 import '../services/app_notification_service.dart';
 import '../services/restaurant_scope_service.dart';
 import '../domain/models/app_notification.dart';
@@ -55,7 +56,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _markTileAsRead(AppNotification notification) async {
     if (notification.readAt != null) return;
-    await AppNotificationService.instance.markAsRead(notification.notificationId);
+    await AppNotificationService.instance.markAsRead(
+      notification.notificationId,
+    );
     await _load();
   }
 
@@ -204,8 +207,9 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _accentFor(notification.type);
-    final icon = _iconFor(notification.type);
+    final presentation = _presentationFor(notification);
+    final accent = presentation.accent;
+    final icon = presentation.icon;
     final relative = _formatRelativeTime(notification.createdAt);
     final isUnread = notification.readAt == null;
     final tile = Padding(
@@ -261,18 +265,20 @@ class _NotificationTile extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Expanded(
                                         child: Text(
-                                          notification.title,
-                                          style: AppTextStyles.body14(
-                                            color: AppColors.textPrimary,
-                                          ).copyWith(
-                                            fontWeight: isUnread
-                                                ? FontWeight.w600
-                                                : FontWeight.w500,
-                                          ),
+                                          presentation.title,
+                                          style:
+                                              AppTextStyles.body14(
+                                                color: AppColors.textPrimary,
+                                              ).copyWith(
+                                                fontWeight: isUnread
+                                                    ? FontWeight.w600
+                                                    : FontWeight.w500,
+                                              ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -290,7 +296,7 @@ class _NotificationTile extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    notification.body,
+                                    presentation.body,
                                     style: AppTextStyles.body13(
                                       color: AppColors.textSecondary,
                                     ),
@@ -316,27 +322,162 @@ class _NotificationTile extends StatelessWidget {
   }
 }
 
-Color _accentFor(String type) {
-  switch (type) {
+class _NotificationPresentation {
+  const _NotificationPresentation({
+    required this.title,
+    required this.body,
+    required this.icon,
+    required this.accent,
+  });
+
+  final String title;
+  final String body;
+  final IconData icon;
+  final Color accent;
+}
+
+class _FallbackCopy {
+  const _FallbackCopy({required this.title, required this.body});
+
+  final String title;
+  final String body;
+}
+
+const _kLegacyNotificationCopy = <String, _FallbackCopy>{
+  'new_week_snapshot': _FallbackCopy(
+    title: 'New Weekly Plan Locked',
+    body: 'A new weekly operating plan is now active.',
+  ),
+  'cycle_rollover': _FallbackCopy(
+    title: 'Target Cycle Refreshed',
+    body: 'A new 60-day target cycle is now active.',
+  ),
+  'mfa_authenticator_removed': _FallbackCopy(
+    title: 'Authenticator App Removed',
+    body:
+        'Two-factor authentication was removed. Add a new authenticator app if this was unexpected.',
+  ),
+};
+
+const _kTemplateOnlyNotificationCopy = <String, _FallbackCopy>{
+  'tos_version_updated_notice': _FallbackCopy(
+    title: 'Terms of Service updated',
+    body:
+        'Forge & Flow published updated Terms of Service. Review and accept them on Operator Web the next time you sign in.',
+  ),
+  'notif.tos.version_updated': _FallbackCopy(
+    title: 'Terms of Service updated',
+    body:
+        'Forge & Flow published updated Terms of Service. Review and accept them on Operator Web the next time you sign in.',
+  ),
+};
+
+final Map<String, NotificationCatalogEntry> _kCatalogByEventKey =
+    <String, NotificationCatalogEntry>{
+      for (final entry in kNotificationCatalog) entry.eventKey: entry,
+    };
+
+_NotificationPresentation _presentationFor(AppNotification notification) {
+  final key = _presentationKeyFor(notification);
+  final fallback = _fallbackCopyFor(notification, key);
+  final rawTitle = notification.title.trim();
+  final rawBody = notification.body.trim();
+  return _NotificationPresentation(
+    title: _usesGenericTitle(rawTitle) ? fallback.title : rawTitle,
+    body: rawBody.isEmpty ? fallback.body : rawBody,
+    icon: _iconFor(key),
+    accent: _accentFor(key),
+  );
+}
+
+String _presentationKeyFor(AppNotification notification) {
+  final eventKey = notification.eventKey.trim();
+  final type = notification.type.trim();
+  if (_kCatalogByEventKey.containsKey(eventKey) ||
+      _kTemplateOnlyNotificationCopy.containsKey(eventKey)) {
+    return eventKey;
+  }
+  if (_kLegacyNotificationCopy.containsKey(type) ||
+      _kCatalogByEventKey.containsKey(type) ||
+      _kTemplateOnlyNotificationCopy.containsKey(type)) {
+    return type;
+  }
+  return eventKey.isNotEmpty ? eventKey : type;
+}
+
+_FallbackCopy _fallbackCopyFor(AppNotification notification, String key) {
+  final catalog = _kCatalogByEventKey[key];
+  if (catalog != null) {
+    return _FallbackCopy(title: catalog.title, body: catalog.description);
+  }
+  final templateOnly = _kTemplateOnlyNotificationCopy[key];
+  if (templateOnly != null) return templateOnly;
+  final legacy = _kLegacyNotificationCopy[key];
+  if (legacy != null) return legacy;
+  final rawTitle = notification.title.trim();
+  final rawBody = notification.body.trim();
+  return _FallbackCopy(
+    title: rawTitle.isEmpty ? 'Notification' : rawTitle,
+    body: rawBody,
+  );
+}
+
+bool _usesGenericTitle(String title) {
+  if (title.isEmpty) return true;
+  final normalized = title.toLowerCase();
+  return normalized == 'notification' ||
+      normalized == 'forge & flow' ||
+      normalized == 'forge and flow';
+}
+
+Color _accentFor(String key) {
+  switch (key) {
     case 'new_week_snapshot':
+    case 'notif.plan.updated':
       return AppColors.peacockDark;
     case 'cycle_rollover':
+    case 'notif.vendor.now_available':
+    case 'notif.star.override':
       return AppColors.sunsetDark;
     case 'mfa_authenticator_removed':
+    case 'notif.backfill.failed':
+    case 'notif.audit.anchor_failure':
+    case 'notif.shift.stale':
       return AppColors.warning;
+    case 'notif.backfill.complete':
+      return AppColors.positive;
+    case 'tos_version_updated_notice':
+    case 'notif.tos.version_updated':
+      return AppColors.textSecondary;
     default:
       return AppColors.textSecondary;
   }
 }
 
-IconData _iconFor(String type) {
-  switch (type) {
+IconData _iconFor(String key) {
+  switch (key) {
     case 'new_week_snapshot':
+    case 'notif.plan.updated':
       return Icons.event_available_rounded;
     case 'cycle_rollover':
       return Icons.cached_rounded;
     case 'mfa_authenticator_removed':
       return Icons.lock_reset_rounded;
+    case 'notif.backfill.complete':
+      return Icons.cloud_done_rounded;
+    case 'notif.backfill.failed':
+      return Icons.cloud_off_rounded;
+    case 'notif.vendor.now_available':
+      return Icons.storefront_rounded;
+    case 'notif.audit.anchor_failure':
+      return Icons.gpp_bad_rounded;
+    case 'notif.shift.stale':
+      return Icons.schedule_rounded;
+    case 'notif.star.override':
+      return Icons.star_half_rounded;
+    case 'tos_version_updated_notice':
+    case 'notif.tos.version_updated':
+      return Icons.description_rounded;
     default:
       return Icons.notifications_outlined;
   }

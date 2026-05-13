@@ -7,22 +7,32 @@
 //   3. The service-layer mark-as-read + mark-all-as-read flows the screen
 //      delegates to land on the underlying repository.
 //
-// Why we don't fully boot the screen + sqlite stack here: the production
+// Most tests avoid fully booting the screen + sqlite stack: the production
 // screen pulls a splash-icon asset and resolves the active restaurant
-// through the SQLite singleton. The widget round-trip is exercised in
-// the runtime acceptance harness; this test focuses on the
-// service-contract pieces a unit test can prove cheaply.
+// through the SQLite singleton. C-9 adds one fake-backed widget pass for
+// catalog rendering, while the rest focus on service-contract pieces a
+// unit test can prove cheaply.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/domain/models/app_notification.dart';
+import 'package:forge_and_flow/domain/models/notification_event_catalog.dart';
+import 'package:forge_and_flow/domain/models/restaurant_location.dart';
 import 'package:forge_and_flow/domain/repositories/app_notification_repository.dart';
+import 'package:forge_and_flow/domain/repositories/restaurant_scope_repository.dart';
+import 'package:forge_and_flow/screens/notifications_screen.dart';
 import 'package:forge_and_flow/services/app_notification_service.dart';
+import 'package:forge_and_flow/services/restaurant_scope_service.dart';
+import 'package:forge_and_flow/theme/app_theme.dart';
 
 class _FakeRepo implements AppNotificationRepository {
   final List<AppNotification> _rows = <AppNotification>[];
   final Map<String, String> _readAt = <String, String>{};
+
+  void seed(AppNotification notification) {
+    _rows.add(notification);
+  }
 
   AppNotification _withRead(AppNotification source) {
     final read = _readAt[source.notificationId];
@@ -56,11 +66,12 @@ class _FakeRepo implements AppNotificationRepository {
     String restaurantId, {
     int limit = 20,
   }) async {
-    final filtered = _rows
-        .where((r) => r.restaurantId == restaurantId)
-        .map(_withRead)
-        .toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final filtered =
+        _rows
+            .where((r) => r.restaurantId == restaurantId)
+            .map(_withRead)
+            .toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return filtered.take(limit).toList();
   }
 
@@ -92,6 +103,26 @@ class _FakeRepo implements AppNotificationRepository {
   }
 }
 
+class _FakeRestaurantScopeRepository implements RestaurantScopeRepository {
+  const _FakeRestaurantScopeRepository(this.restaurantId);
+
+  final String restaurantId;
+
+  @override
+  Future<String> getActiveRestaurantId() async => restaurantId;
+
+  @override
+  Future<RestaurantLocation> getOrCreateActiveRestaurant() async {
+    return RestaurantLocation(
+      restaurantId: restaurantId,
+      displayName: 'Brio Main Street',
+      businessTimezone: 'America/St_Johns',
+      createdAt: '2026-05-07T00:00:00.000Z',
+      updatedAt: '2026-05-07T00:00:00.000Z',
+    );
+  }
+}
+
 void main() {
   const restaurantId = 'demo_restaurant_001';
   late _FakeRepo repo;
@@ -104,10 +135,21 @@ void main() {
 
   tearDown(() {
     AppNotificationService.instance.resetForTest();
+    RestaurantScopeService.instance.resetForTest();
   });
 
-  testWidgets('AppBar exposes Mark all as read action with done_all icon',
-      (tester) async {
+  Future<void> sizeViewport(WidgetTester tester, Size size) async {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+  }
+
+  testWidgets('AppBar exposes Mark all as read action with done_all icon', (
+    tester,
+  ) async {
     // Render an isolated stand-in for the AppBar action. The production
     // screen wires the same callback to AppNotificationService.markAllAsRead,
     // verified by the service-level tests.
@@ -139,10 +181,7 @@ void main() {
     Widget tile({required bool isUnread, required String label}) {
       return Opacity(
         opacity: isUnread ? 1.0 : 0.6,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Text(label),
-        ),
+        child: Padding(padding: const EdgeInsets.all(8), child: Text(label)),
       );
     }
 
@@ -166,36 +205,102 @@ void main() {
       ),
     );
     final read = tester.widget<Opacity>(
-      find.ancestor(
-        of: find.text('ReadTile'),
-        matching: find.byType(Opacity),
-      ),
+      find.ancestor(of: find.text('ReadTile'), matching: find.byType(Opacity)),
     );
     expect(unread.opacity, 1.0);
     expect(read.opacity, 0.6);
   });
 
-  test('service.markAsRead delegates to repository and updates badge',
-      () async {
-    final svc = AppNotificationService.instance;
-    await svc.start(restaurantId);
-    await svc.emitPushDelivery(
-      restaurantId: restaurantId,
-      type: 'push_delivery',
-      eventKey: 'evt_1',
-      title: 'A',
-      body: 'B',
-      businessDate: '2026-05-07',
-    );
-    expect(svc.unreadCountNotifier.value, 1);
+  testWidgets(
+    'C-9 renders catalog fanout and TOS inbox rows with fallback copy',
+    (tester) async {
+      await sizeViewport(tester, const Size(900, 1800));
+      RestaurantScopeService.instance.overrideRepositoryForTest(
+        const _FakeRestaurantScopeRepository(restaurantId),
+      );
 
-    final list = await svc.getNotifications(restaurantId);
-    await svc.markAsRead(list.single.notificationId);
+      var offset = 0;
+      for (final entry in kNotificationCatalog) {
+        repo.seed(
+          AppNotification(
+            notificationId: '${restaurantId}_${entry.eventKey}',
+            restaurantId: restaurantId,
+            type: 'push_delivery',
+            eventKey: entry.eventKey,
+            title: 'Notification',
+            body: '',
+            businessDate: '2026-05-07',
+            createdAt:
+                '2026-05-07T10:${offset.toString().padLeft(2, '0')}:00.000Z',
+          ),
+        );
+        offset += 1;
+      }
+      repo.seed(
+        const AppNotification(
+          notificationId: '${restaurantId}_tos_version_updated_notice',
+          restaurantId: restaurantId,
+          type: 'tos_version_updated_notice',
+          eventKey: 'tos_version_updated_notice',
+          title: 'Notification',
+          body: '',
+          businessDate: '2026-05-07',
+          createdAt: '2026-05-07T11:00:00.000Z',
+        ),
+      );
 
-    expect(svc.unreadCountNotifier.value, 0);
-    final after = await svc.getNotifications(restaurantId);
-    expect(after.single.readAt, isNotNull);
-  });
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.themeData,
+          home: const NotificationsScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      for (final entry in kNotificationCatalog) {
+        expect(
+          find.text(entry.title),
+          findsOneWidget,
+          reason: 'C-9 inbox should render ${entry.eventKey}',
+        );
+        expect(find.text(entry.description), findsOneWidget);
+      }
+      expect(find.text('Terms of Service updated'), findsOneWidget);
+      expect(
+        find.text(
+          'Forge & Flow published updated Terms of Service. Review and accept '
+          'them on Operator Web the next time you sign in.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(Switch), findsNothing);
+    },
+  );
+
+  test(
+    'service.markAsRead delegates to repository and updates badge',
+    () async {
+      final svc = AppNotificationService.instance;
+      await svc.start(restaurantId);
+      await svc.emitPushDelivery(
+        restaurantId: restaurantId,
+        type: 'push_delivery',
+        eventKey: 'evt_1',
+        title: 'A',
+        body: 'B',
+        businessDate: '2026-05-07',
+      );
+      expect(svc.unreadCountNotifier.value, 1);
+
+      final list = await svc.getNotifications(restaurantId);
+      await svc.markAsRead(list.single.notificationId);
+
+      expect(svc.unreadCountNotifier.value, 0);
+      final after = await svc.getNotifications(restaurantId);
+      expect(after.single.readAt, isNotNull);
+    },
+  );
 
   test('service.markAllAsRead drops the badge to zero', () async {
     final svc = AppNotificationService.instance;
