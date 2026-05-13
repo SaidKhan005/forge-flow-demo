@@ -57,7 +57,7 @@ Triggers the `operator` gate: auth-critical, RLS-touching, schema-touching (migr
 | B6 | B6 | Codex | Medium | Medium | operator | B10.1 merged | assigned | — | Benchmark override (hierarchy-inherited) |
 | B7.a | B7.a | Codex | Small | Medium | operator | — | merged | #507 | Invite hierarchy-scope fix — operator approved 2026-05-12; Option A consumer-label follow-up applied by orchestrator |
 | B8 | B8 | Claude | Medium | Medium | operator | — | assigned | — | Audit log hierarchy filter (ltree join) |
-| B9.1 | B9.1 | Codex | Small | Low | auto | — | assigned | — | `/sign-in-security` 301 redirect |
+| B9.1 | B9.1 | Codex | Small | Low | auto | — | merged | #510 | `/sign-in-security` 301 redirect on both dockerfiles |
 | B9.2 | B9.2 | Codex | Medium | Medium | operator | B9.1 merged | assigned | — | My Account consolidation + Active Sessions |
 | B9.3 | B9.3 | Codex | Small | Low | auto | B9.2 merged | assigned | — | Adaptive 2FA button (4 states) |
 | B10.1 | B10.1 | Codex | Medium | Medium | operator | — | assigned | — | `vendor_applicability` table + repository + routes |
