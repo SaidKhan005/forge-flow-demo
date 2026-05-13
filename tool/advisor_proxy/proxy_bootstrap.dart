@@ -4084,9 +4084,18 @@ class RepositoryPricingTierAdminProxyGateway
     String? locationId,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
-    // Admin operator-mgmt path: actor is a verified F&F admin JWT.
+    // Admin operator-mgmt path: actor is a verified F&F admin JWT
+    // (super_admin role gated by `kFfPricingAdminWriteRoles` /
+    // `kFfPricingAdminReadRoles` in `advisor_proxy.dart`). Per the
+    // CLAUDE.md actor taxonomy (`user` = real human end-user,
+    // `forge_admin` = F&F support / super_admin acting
+    // cross-operator) the cross-operator fan-out must record
+    // `actor_kind = 'forge_admin'` so the hash-chained `audit_logs`
+    // row carries honest attribution. Mirrors the B1.b (PR #500) fix
+    // to `RepositoryOperatorLocationAdminProxyGateway._audit`;
+    // peer-bug sweep (deep-audit finding #1) closed under B1.c.
     return _auditRepository.insertSystemEvent(
-      actorKind: 'user',
+      actorKind: 'forge_admin',
       actorUserId: actorUserId,
       operatorId: operatorId,
       locationId: locationId,
@@ -5639,9 +5648,18 @@ class RepositoryCorpusAdminProxyGateway implements CorpusAdminProxyGateway {
     required String adminReason,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
-    // Admin path: actor is a verified F&F admin JWT.
+    // Admin corpus-mgmt path: actor is a verified F&F admin JWT
+    // (super_admin role gated by `kFfCorpusAdminWriteRoles` /
+    // `kFfCorpusAdminReadRoles` in `advisor_proxy.dart`). Per the
+    // CLAUDE.md actor taxonomy (`user` = real human end-user,
+    // `forge_admin` = F&F support / super_admin acting
+    // cross-operator) the cross-operator fan-out must record
+    // `actor_kind = 'forge_admin'` so the hash-chained `audit_logs`
+    // row carries honest attribution. Mirrors the B1.b (PR #500) fix
+    // to `RepositoryOperatorLocationAdminProxyGateway._audit`;
+    // peer-bug sweep (deep-audit finding #1) closed under B1.c.
     return _auditRepository.insertSystemEvent(
-      actorKind: 'user',
+      actorKind: 'forge_admin',
       actorUserId: actorUserId,
       eventType: eventType,
       adminReason: adminReason,
@@ -6288,9 +6306,19 @@ class RepositoryGraphCandidatesProxyGateway
     String? locationId,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
-    // Admin graph-mgmt path: actor is a verified F&F admin JWT.
+    // Admin graph-mgmt path: actor is a verified F&F admin JWT
+    // (super_admin role gated by `kFfCorpusAdminWriteRoles` /
+    // `kFfCorpusAdminReadRoles` in `advisor_proxy.dart` — graph
+    // candidates share the corpus admin gate). Per the CLAUDE.md
+    // actor taxonomy (`user` = real human end-user, `forge_admin` =
+    // F&F support / super_admin acting cross-operator) the
+    // cross-operator fan-out must record `actor_kind = 'forge_admin'`
+    // so the hash-chained `audit_logs` row carries honest
+    // attribution. Mirrors the B1.b (PR #500) fix to
+    // `RepositoryOperatorLocationAdminProxyGateway._audit`; peer-bug
+    // sweep (deep-audit finding #1) closed under B1.c.
     return _auditRepository.insertSystemEvent(
-      actorKind: 'user',
+      actorKind: 'forge_admin',
       actorUserId: actorUserId,
       operatorId: operatorId,
       locationId: locationId,
@@ -6746,9 +6774,18 @@ class RepositoryIntegrationAdminProxyGateway
     required String adminReason,
     Map<String, Object?> payload = const <String, Object?>{},
   }) {
-    // Admin path: actor is a verified F&F admin JWT.
+    // Admin integrations-mgmt path: actor is a verified F&F admin
+    // JWT (super_admin role gated by `kFfIntegrationAdminWriteRoles` /
+    // `kFfIntegrationAdminReadRoles` in `advisor_proxy.dart`). Per
+    // the CLAUDE.md actor taxonomy (`user` = real human end-user,
+    // `forge_admin` = F&F support / super_admin acting
+    // cross-operator) the cross-operator fan-out must record
+    // `actor_kind = 'forge_admin'` so the hash-chained `audit_logs`
+    // row carries honest attribution. Mirrors the B1.b (PR #500) fix
+    // to `RepositoryOperatorLocationAdminProxyGateway._audit`;
+    // peer-bug sweep (deep-audit finding #1) closed under B1.c.
     return _auditRepository.insertSystemEvent(
-      actorKind: 'user',
+      actorKind: 'forge_admin',
       actorUserId: actorUserId,
       eventType: eventType,
       adminReason: adminReason,

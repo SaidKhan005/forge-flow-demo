@@ -189,7 +189,12 @@ and contract tests pass.
 - Tests at `test/advisor_proxy_bootstrap_test.dart:372, :396` pin `patchOperator` +
   `addLocation` only.
 
-- **P1 — B1.b-1 (peer-bug not closed)**: Four other admin gateways in the same file have
+- **P1 — B1.b-1 (peer-bug not closed)** — **RESOLVED 2026-05-13 by B1.c
+  (peer-bug sweep flips all four `_audit` helpers to `actorKind:
+  'forge_admin'` + adds 4 audit-chain integrity test cases at
+  `test/advisor_proxy_bootstrap_test.dart`).**
+
+  Four other admin gateways in the same file have
   identical pattern — `_audit` helper with comment "*Admin path: actor is a verified F&F
   admin JWT*" but body writes `actorKind: 'user'`. The PR #500 audit doc explicitly
   flagged the first one (4015) as "*peer bug B1.c candidate*" with "*Recommend either

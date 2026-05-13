@@ -7,10 +7,18 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+import 'package:forge_and_flow/infrastructure/cloud_run/cloud_run_admin_client.dart';
+import 'package:forge_and_flow/infrastructure/kms/kms_provider.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/graph_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/provider_credentials_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/usage_caps_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
@@ -421,6 +429,186 @@ void main() {
     );
   });
 
+  // Slice B1.c — peer-bug sweep for B1.b (PR #500). Four sibling
+  // admin gateways in `tool/advisor_proxy/proxy_bootstrap.dart`
+  // historically wrote `actorKind: 'user'` to the audit log even
+  // though the surrounding `// Admin … path: actor is a verified F&F
+  // admin JWT.` comment confirmed the caller path is gated by the
+  // `super_admin`-only role sets in `advisor_proxy.dart` (e.g.
+  // `kFfPricingAdminWriteRoles`, `kFfCorpusAdminWriteRoles`,
+  // `kFfIntegrationAdminWriteRoles`). Per the CLAUDE.md actor
+  // taxonomy (`user` = real human end-user, `forge_admin` = F&F
+  // support / super_admin acting cross-operator) every audit row
+  // these gateways write must carry `actor_kind = 'forge_admin'` so
+  // both `auth_events_audit` and (post-cutover) the hash-chained
+  // `audit_logs` table record honest attribution. The deep audit
+  // (`docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md`
+  // finding #1) flagged the four sites:
+  //   - `RepositoryPricingTierAdminProxyGateway._audit`
+  //   - `RepositoryCorpusAdminProxyGateway._audit`
+  //   - `RepositoryGraphCandidatesProxyGateway._audit`
+  //   - `RepositoryIntegrationAdminProxyGateway._audit`
+  // Pinning each one against a recording-fake audit repository
+  // guards against an accidental flip back to `'user'` that would
+  // mislabel the admin actor in the global audit chain.
+  group('B1.c — admin gateway actorKind peer-bug sweep', () {
+    test(
+      'RepositoryPricingTierAdminProxyGateway records '
+      'actor_kind=forge_admin on listOperatorsWithCaps',
+      () async {
+        final auditRepository = _RecordingSystemAuditRepository();
+        final gateway = RepositoryPricingTierAdminProxyGateway(
+          operatorsRepository: _StubOperatorsRepository(),
+          locationsRepository: _StubLocationsRepository(),
+          usageCapsRepository: _StubUsageCapsRepository(),
+          orgUnitsRepository: _StubOrgUnitsRepository(),
+          auditRepository: auditRepository,
+        );
+
+        await gateway.listOperatorsWithCaps(
+          actorUserId: 'admin-user',
+          adminReason: 'List operators for pricing console',
+        );
+
+        expect(auditRepository.events, hasLength(1));
+        expect(
+          auditRepository.events.single.eventType,
+          equals('admin.pricing.list'),
+        );
+        expect(
+          auditRepository.events.single.actorKind,
+          equals('forge_admin'),
+        );
+      },
+    );
+
+    test(
+      'RepositoryCorpusAdminProxyGateway records '
+      'actor_kind=forge_admin on listVersions',
+      () async {
+        final auditRepository = _RecordingSystemAuditRepository();
+        final gateway = RepositoryCorpusAdminProxyGateway(
+          corpusRepository: _StubCorpusRepository(),
+          auditRepository: auditRepository,
+        );
+
+        await gateway.listVersions(
+          actorUserId: 'admin-user',
+          adminReason: 'List corpus versions for admin console',
+        );
+
+        expect(auditRepository.events, hasLength(1));
+        expect(
+          auditRepository.events.single.eventType,
+          equals('admin.corpus.list'),
+        );
+        expect(
+          auditRepository.events.single.actorKind,
+          equals('forge_admin'),
+        );
+      },
+    );
+
+    test(
+      'RepositoryGraphCandidatesProxyGateway records '
+      'actor_kind=forge_admin on listGraphCandidates',
+      () async {
+        // The graph candidates gateway loads two artifacts off disk:
+        //   1. The graphify candidate bundle (manifest JSON +
+        //      node/edge JSONL) under `<repoRoot>/<candidatesDir>/`.
+        //   2. The corpus manifest YAML at
+        //      `<repoRoot>/docs/Knowledge_graph_docs/corpus_manifest.yaml`.
+        // To exercise the audit path without standing up real
+        // Graphify output, we materialize empty-but-valid versions
+        // of both into a temporary repo root. Empty inputs route to
+        // zero candidates and `_audit('admin.corpus.graph_candidates.list')`
+        // still fires.
+        final tempRoot = await Directory.systemTemp.createTemp(
+          'b1c_graph_audit_',
+        );
+        try {
+          final candidatesDir = Directory(
+            p.join(tempRoot.path, _kGraphifyCandidatesOutputDir),
+          );
+          await candidatesDir.create(recursive: true);
+          await File(
+            p.join(candidatesDir.path, _kGraphifyCandidateManifestFile),
+          ).writeAsString('{}');
+          await File(
+            p.join(candidatesDir.path, _kGraphifyNodeCandidatesFile),
+          ).writeAsString('');
+          await File(
+            p.join(candidatesDir.path, _kGraphifyEdgeCandidatesFile),
+          ).writeAsString('');
+          final corpusManifestFile = File(
+            p.join(tempRoot.path, _kCorpusManifestPath),
+          );
+          await corpusManifestFile.parent.create(recursive: true);
+          await corpusManifestFile.writeAsString(
+            "corpus_root: '.'\ndocuments: []\n",
+          );
+
+          final auditRepository = _RecordingSystemAuditRepository();
+          final gateway = RepositoryGraphCandidatesProxyGateway(
+            graphRepository: GraphRepository(_dummyTenantWrapper()),
+            auditRepository: auditRepository,
+            repoRoot: tempRoot,
+          );
+
+          await gateway.listGraphCandidates(
+            actorUserId: 'admin-user',
+            adminReason: 'List graph candidates for admin console',
+          );
+
+          expect(auditRepository.events, hasLength(1));
+          expect(
+            auditRepository.events.single.eventType,
+            equals('admin.corpus.graph_candidates.list'),
+          );
+          expect(
+            auditRepository.events.single.actorKind,
+            equals('forge_admin'),
+          );
+        } finally {
+          await tempRoot.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'RepositoryIntegrationAdminProxyGateway records '
+      'actor_kind=forge_admin on listBundle',
+      () async {
+        final auditRepository = _RecordingSystemAuditRepository();
+        final gateway = RepositoryIntegrationAdminProxyGateway(
+          providerCredentialsRepository: _StubProviderCredentialsRepository(),
+          kmsProvider: _UnusedKmsProvider(),
+          auditRepository: auditRepository,
+          cloudRunAdminClient: _UnusedCloudRunAdminClient(),
+          // adminWrapper intentionally null — `_readVendorApiReachability`
+          // short-circuits to an empty map when the wrapper is absent,
+          // which keeps the test off the Postgres path while still
+          // driving the gateway through `_audit`.
+        );
+
+        await gateway.listBundle(
+          actorUserId: 'admin-user',
+          adminReason: 'List integrations bundle for admin console',
+        );
+
+        expect(auditRepository.events, hasLength(1));
+        expect(
+          auditRepository.events.single.eventType,
+          equals('admin.integrations.list'),
+        );
+        expect(
+          auditRepository.events.single.actorKind,
+          equals('forge_admin'),
+        );
+      },
+    );
+  });
+
   group('Cloud Run entrypoint wiring', () {
     test('passes pricing tier admin binding into routeRequest', () {
       final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
@@ -697,5 +885,119 @@ class _RecordingPostgresTransaction implements PostgresTransaction {
   @override
   Future<void> rollback() async {
     rolledBack = true;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// B1.c — peer-bug sweep helpers.
+//
+// The four targeted gateways live in
+// `tool/advisor_proxy/proxy_bootstrap.dart` and pull in real
+// repositories. The tests below need to drive each gateway's lightest
+// audit-emitting method without touching Postgres, KMS, or Cloud Run.
+// The stubs here override the one or two repository methods each
+// gateway actually calls in that path (`listOperators`,
+// `listAllLocations`, `listAllCaps`, `listAllRootsAsAdmin`,
+// `listVersions`, `listActive`) and return empty results so the audit
+// row is the only observable side-effect.
+// ---------------------------------------------------------------------------
+
+/// Filenames mirrored from
+/// `tool/advisor_corpus/advisor_corpus.dart`. Hard-coded here so the
+/// proxy-bootstrap test does not have to depend on the advisor_corpus
+/// tool package; if those constants ever drift the graph-candidates
+/// test will fail loudly with a missing-file error.
+const String _kGraphifyCandidatesOutputDir = 'graphify-out/candidates';
+const String _kGraphifyNodeCandidatesFile = 'graphify_node_candidates.jsonl';
+const String _kGraphifyEdgeCandidatesFile = 'graphify_edge_candidates.jsonl';
+const String _kGraphifyCandidateManifestFile =
+    'graphify_candidate_manifest.json';
+const String _kCorpusManifestPath =
+    'docs/Knowledge_graph_docs/corpus_manifest.yaml';
+
+class _StubOperatorsRepository extends OperatorsRepository {
+  _StubOperatorsRepository() : super(_dummyTenantWrapper());
+
+  @override
+  Future<List<OperatorAdminRow>> listOperators({
+    required String adminReason,
+  }) async {
+    return const <OperatorAdminRow>[];
+  }
+}
+
+class _StubLocationsRepository extends LocationsRepository {
+  _StubLocationsRepository() : super(_dummyTenantWrapper());
+
+  @override
+  Future<List<LocationAdminRow>> listAllLocations({
+    required String adminReason,
+  }) async {
+    return const <LocationAdminRow>[];
+  }
+}
+
+class _StubUsageCapsRepository extends UsageCapsRepository {
+  _StubUsageCapsRepository() : super(_dummyTenantWrapper());
+
+  @override
+  Future<List<UsageCapAdminRow>> listAllCaps({
+    required String adminReason,
+  }) async {
+    return const <UsageCapAdminRow>[];
+  }
+}
+
+class _StubOrgUnitsRepository extends OrgUnitsRepository {
+  _StubOrgUnitsRepository() : super(_dummyTenantWrapper());
+}
+
+class _StubCorpusRepository extends CorpusRepository {
+  _StubCorpusRepository() : super(_dummyTenantWrapper());
+
+  @override
+  Future<List<CorpusVersionRow>> listVersions({
+    required String adminReason,
+  }) async {
+    return const <CorpusVersionRow>[];
+  }
+}
+
+class _StubProviderCredentialsRepository
+    extends ProviderCredentialsRepository {
+  _StubProviderCredentialsRepository() : super(_dummyTenantWrapper());
+
+  @override
+  Future<List<ProviderCredentialRow>> listActive({
+    required String adminReason,
+  }) async {
+    return const <ProviderCredentialRow>[];
+  }
+}
+
+/// `listBundle` never touches KMS, but the gateway's constructor
+/// requires a non-null [KmsProvider]. This stub throws if the bundle
+/// path ever inadvertently exercises the rotation flow.
+class _UnusedKmsProvider implements KmsProvider {
+  @override
+  Future<KmsWriteResult> writeSecret({
+    required String logicalKeyKind,
+    required String plaintext,
+  }) async {
+    throw StateError(
+      'B1.c listBundle test must not exercise KmsProvider.writeSecret',
+    );
+  }
+}
+
+/// `listBundle` never forces a Cloud Run revision, but the gateway's
+/// constructor requires a non-null [CloudRunAdminClient]. This stub
+/// throws if the bundle path ever inadvertently triggers a restart.
+class _UnusedCloudRunAdminClient implements CloudRunAdminClient {
+  @override
+  Future<String> forceNewRevision({required String reason}) async {
+    throw StateError(
+      'B1.c listBundle test must not exercise CloudRunAdminClient.forceNewRevision',
+    );
   }
 }
