@@ -103,11 +103,11 @@ Triggers the `operator` gate: auth-critical, RLS-touching, schema-touching (migr
 ## Counts
 
 - Total slices: **61** (+ L_A1 + L_A2 + C-1a added 2026-05-13 — B8 + C-1 prereqs per operator's Path A picks; + C-2-C / C-2-D / C-2-F / C-2-Del / C-7a added 2026-05-13 — C-2 operator picks + C-7 data-contract unblocker; + B8.b added 2026-05-13 — B8 operator-web parity deferral acceptance; + C-2-D-binding added 2026-05-13 — C-2-D production wire follow-up)
-- Claude owner: **37** (A0/A3.1/A3.2/A3.3/A3.4/A4.1/A4.2/A7.1/A10.1/A11.1/A11.1.b/A11.2/L_A1/L_A2 + B1.a/B1.b/B1.c/B2.1/B2.2/B2.3/B2.4/B8/B8.b/B11.1/B11.2/B11.2.b + C-1/C-1a/C-2/C-2-C/C-2-D/C-2-D-binding/C-2-F/C-2-Del/C-7a/C-8/C-11) — plus orchestrator A0/C-12
-- Codex owner: **22** (A2.1/A2.2/A5+A8/A6.1/A9.1 + B3/B4/B5/B5.b/B6/B7.a/B9.1/B9.2/B9.3/B10.1/B10.2 + C-3/C-4/C-5/C-6/C-7/C-9/C-10)
+- Claude owner: **36** (A3.1/A3.2/A3.3/A3.4/A4.1/A4.2/A7.1/A10.1/A11.1/A11.1.b/A11.2/L_A1/L_A2 + B1.a/B1.b/B1.c/B2.1/B2.2/B2.3/B2.4/B8/B8.b/B11.1/B11.2/B11.2.b + C-1/C-1a/C-2/C-2-C/C-2-D/C-2-D-binding/C-2-F/C-2-Del/C-7a/C-8/C-11) — A0 is orchestrator-owned (verification probe), not double-counted here
+- Codex owner: **23** (A2.1/A2.2/A5+A8/A6.1/A9.1 + B3/B4/B5/B5.b/B6/B7.a/B9.1/B9.2/B9.3/B10.1/B10.2 + C-3/C-4/C-5/C-6/C-7/C-9/C-10)
 - Orchestrator owner: **2** (A0 verification probe, C-12 closeout)
 - Auto-merge gate: **20** (A11.1.b is auto, observability-only; B2.3/B2.4 are auto, read-only admin observability + operator-web read-only)
-- Operator gate: **34** (A3.3 + A3.4 are operator — proxy-touching; L_A1 + L_A2 + C-1a are operator — schema-touching migrations)
+- Operator gate: **41** (A3.3 + A3.4 are operator — proxy-touching; L_A1 + L_A2 + C-1a + C-7a are operator — schema-touching migrations; bumped 2026-05-13 C-12 closeout reconciling against wave additions per `wave_audit_doc_drift.md` F2)
 
 ## Update protocol
 
