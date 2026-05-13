@@ -27,6 +27,7 @@ import 'package:flutter/material.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../services/auth/auth_operations_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
+import '../auth/operator_web_handoff_redeem_gateway.dart';
 import '../account/operator_web_account_actions.dart';
 import '../services/business_timing_gateway.dart';
 import '../services/http_business_timing_read_gateway.dart';
@@ -158,12 +159,95 @@ class _OperatorWebInitialRoute {
   }
 }
 
+class _OperatorWebHandoffLanding {
+  const _OperatorWebHandoffLanding({required this.code, required this.navId});
+
+  final String code;
+  final String? navId;
+
+  static _OperatorWebHandoffLanding? parse(Uri uri) {
+    if (_OperatorWebInitialRoute._normalizePath(uri.path) != '/handoff') {
+      return null;
+    }
+    final code = uri.queryParameters['code']?.trim();
+    if (code == null || code.isEmpty) {
+      return const _OperatorWebHandoffLanding(code: '', navId: null);
+    }
+    return _OperatorWebHandoffLanding(
+      code: code,
+      navId: _navIdFromRaw(uri.queryParameters['nav']),
+    );
+  }
+}
+
+class _OperatorWebHandoffRouteTarget {
+  const _OperatorWebHandoffRouteTarget({
+    required this.navId,
+    this.scrollMyAccountSecurity = false,
+    this.editBusinessTiming = false,
+  });
+
+  final String navId;
+  final bool scrollMyAccountSecurity;
+  final bool editBusinessTiming;
+}
+
 Uri _safeBaseUri() {
   try {
     return Uri.base;
   } catch (_) {
     return Uri(path: '/');
   }
+}
+
+_OperatorWebHandoffRouteTarget _handoffTargetFromPath(
+  String? targetPath, {
+  String? fallbackNavId,
+}) {
+  final parsed = targetPath == null ? null : Uri.tryParse(targetPath.trim());
+  final rawPath = parsed?.path ?? targetPath ?? '';
+  final normalizedPath = _OperatorWebInitialRoute._normalizePath(rawPath);
+  final fragment = (parsed?.fragment ?? '').toLowerCase();
+  if (normalizedPath == '/security' ||
+      normalizedPath == '/sign-in-security' ||
+      (normalizedPath == '/my-account' && fragment == 'security')) {
+    return const _OperatorWebHandoffRouteTarget(
+      navId: kOperatorWebNavMyAccount,
+      scrollMyAccountSecurity: true,
+    );
+  }
+  if (normalizedPath == '/business-timing' ||
+      normalizedPath == '/business-timing-editor') {
+    return const _OperatorWebHandoffRouteTarget(
+      navId: kOperatorWebNavBusinessSetup,
+      editBusinessTiming: true,
+    );
+  }
+  final fromPath = _navIdFromRaw(normalizedPath.replaceFirst('/', ''));
+  final navId = fromPath ?? fallbackNavId ?? kOperatorWebDefaultNavId;
+  return _OperatorWebHandoffRouteTarget(navId: navId);
+}
+
+String? _navIdFromRaw(String? raw) {
+  final normalized = raw?.trim().toLowerCase().replaceAll('-', '_');
+  return switch (normalized) {
+    'account' => kOperatorWebNavAccount,
+    'my_account' => kOperatorWebNavMyAccount,
+    'business_setup' => kOperatorWebNavBusinessSetup,
+    'business_timing_editor' => kOperatorWebNavBusinessSetup,
+    'members' => kOperatorWebNavMembers,
+    'roles' => kOperatorWebNavRoles,
+    'locations' => kOperatorWebNavLocations,
+    'sessions' => kOperatorWebNavSessions,
+    'audit_log' => kOperatorWebNavAuditLog,
+    'vendor_connections' => kOperatorWebNavVendorConnections,
+    'data_accuracy' => kOperatorWebNavDataAccuracy,
+    'notifications' => kOperatorWebNavNotifications,
+    'wage_authority' => kOperatorWebNavWageAuthority,
+    'schedule' => kOperatorWebNavSchedule,
+    'security' || 'sign_in_security' => kOperatorWebNavMyAccount,
+    _ => null,
+  };
 }
 
 /// Top-level router widget for the operator-web console. Drop in
@@ -204,6 +288,10 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   late String _selectedNavId;
   bool _busy = false;
   bool _scrollMyAccountSecurityOnFirstBuild = false;
+  late final _OperatorWebHandoffLanding? _handoffLanding;
+  bool _handoffRedeemStarted = false;
+  bool _handoffRedeemComplete = false;
+  String? _handoffRedeemError;
 
   /// Sub-route name within the Roles surface. `null` means the list
   /// view (`/roles`); other values mirror the parity-contract paths
@@ -236,9 +324,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   void initState() {
     super.initState();
     _state = widget.source.current;
+    final initialUri = widget.initialUri ?? _safeBaseUri();
+    _handoffLanding = _OperatorWebHandoffLanding.parse(initialUri);
+    final initialNavId = _handoffLanding?.navId ?? widget.initialNavId;
     final initialRoute = _OperatorWebInitialRoute.resolve(
-      initialNavId: widget.initialNavId,
-      initialUri: widget.initialUri ?? _safeBaseUri(),
+      initialNavId: initialNavId,
+      initialUri: initialUri,
     );
     _selectedNavId = initialRoute.navId;
     _scrollMyAccountSecurityOnFirstBuild =
@@ -247,10 +338,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       if (!mounted) return;
       setState(() => _state = next);
       _syncManagementScopesForState(next);
+      _maybeStartHandoffRedeem();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _syncManagementScopesForState(_state);
+      _maybeStartHandoffRedeem();
     });
   }
 
@@ -264,10 +357,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         if (!mounted) return;
         setState(() => _state = next);
         _syncManagementScopesForState(next);
+        _maybeStartHandoffRedeem();
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _syncManagementScopesForState(_state);
+        _maybeStartHandoffRedeem();
       });
     }
   }
@@ -276,6 +371,73 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   void dispose() {
     _subscription.cancel();
     super.dispose();
+  }
+
+  void _maybeStartHandoffRedeem() {
+    final landing = _handoffLanding;
+    if (landing == null ||
+        _handoffRedeemStarted ||
+        _handoffRedeemComplete ||
+        landing.code.isEmpty ||
+        _state is! OperatorWebCompleted) {
+      return;
+    }
+    final gateway = _handoffRedeemGateway;
+    if (gateway == null) {
+      setState(() {
+        _handoffRedeemStarted = true;
+        _handoffRedeemError =
+            'Handoff is unavailable in this Operator Web build.';
+      });
+      return;
+    }
+    setState(() {
+      _handoffRedeemStarted = true;
+      _handoffRedeemError = null;
+    });
+    unawaited(_redeemHandoff(landing, gateway));
+  }
+
+  Future<void> _redeemHandoff(
+    _OperatorWebHandoffLanding landing,
+    OperatorWebHandoffRedeemGateway gateway,
+  ) async {
+    try {
+      final redeemed = await gateway.redeemHandoffCode(code: landing.code);
+      if (!mounted) return;
+      final target = _handoffTargetFromPath(
+        redeemed.targetPath,
+        fallbackNavId: landing.navId,
+      );
+      setState(() {
+        _selectedNavId = target.navId;
+        _scrollMyAccountSecurityOnFirstBuild = target.scrollMyAccountSecurity;
+        _editingBusinessTiming = target.editBusinessTiming;
+        _handoffRedeemComplete = true;
+        _handoffRedeemError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _handoffRedeemError = _handoffRedeemErrorText(error);
+      });
+    }
+  }
+
+  String _handoffRedeemErrorText(Object error) {
+    if (error is OperatorWebHandoffRedeemRejected) {
+      if (error.code == 'handoff_code_unusable') {
+        return 'This handoff link has expired or was already used.';
+      }
+      if (error.code == 'wrong_operator') {
+        return 'This handoff link belongs to a different business.';
+      }
+      if (error.code == 'no_id_token' || error.statusCode == 401) {
+        return 'Sign in again to complete the handoff.';
+      }
+      return error.message;
+    }
+    return 'Could not complete the handoff. Please try again.';
   }
 
   Future<T> _withBusy<T>(Future<T> Function() task) async {
@@ -728,9 +890,15 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         session: session,
         onSignOut: widget.source.signOut,
       ),
-      OperatorWebCompleted(:final session) => _buildPostOnboardingShell(
-        session,
-      ),
+      OperatorWebCompleted(:final session) =>
+        _handoffLanding != null && !_handoffRedeemComplete
+            ? _HandoffLandingSurface(
+                errorMessage: _handoffLanding.code.isEmpty
+                    ? 'This handoff link is missing its code.'
+                    : _handoffRedeemError,
+                onSignOut: widget.source.signOut,
+              )
+            : _buildPostOnboardingShell(session),
     };
   }
 
@@ -1056,6 +1224,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       ? (widget.source as OperatorWebAccountGatewayProvider).accountGateway
       : null;
 
+  OperatorWebHandoffRedeemGateway? get _handoffRedeemGateway =>
+      widget.source is OperatorWebHandoffRedeemGatewayProvider
+      ? (widget.source as OperatorWebHandoffRedeemGatewayProvider)
+            .handoffRedeemGateway
+      : null;
+
   WebBusinessTimingGateway? get _webBusinessTimingGateway =>
       widget.source is OperatorWebBusinessTimingWriteGatewayProvider
       ? (widget.source as OperatorWebBusinessTimingWriteGatewayProvider)
@@ -1346,6 +1520,121 @@ class _LoadingSplash extends StatelessWidget {
           child: CircularProgressIndicator(
             strokeWidth: 2,
             color: AppColors.sunsetDark,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HandoffLandingSurface extends StatelessWidget {
+  const _HandoffLandingSurface({
+    required this.errorMessage,
+    required this.onSignOut,
+  });
+
+  final String? errorMessage;
+  final Future<void> Function() onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    final error = errorMessage;
+    return Scaffold(
+      backgroundColor: AppColors.backgroundDeep,
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              child: Container(
+                key: const Key('operator_web_handoff_landing_surface'),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundSurface,
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          error == null
+                              ? Icons.open_in_new_rounded
+                              : Icons.link_off_rounded,
+                          size: 18,
+                          color: error == null
+                              ? AppColors.sunsetDark
+                              : AppColors.negative,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            error == null
+                                ? 'Opening Operator Web'
+                                : 'Handoff link unavailable',
+                            style: AppTextStyles.mono15(
+                              color: AppColors.textPrimary,
+                              weight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    if (error == null)
+                      Row(
+                        children: [
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Redeeming the one-time handoff code.',
+                              style: AppTextStyles.body13(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      Text(
+                        error,
+                        style: AppTextStyles.body13(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        height: 42,
+                        child: OutlinedButton(
+                          key: const Key('operator_web_handoff_signout'),
+                          onPressed: () => onSignOut(),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.sunsetDark,
+                            side: const BorderSide(
+                              color: AppColors.sunsetDark,
+                              width: 1,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                          child: const Text('Sign out'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),

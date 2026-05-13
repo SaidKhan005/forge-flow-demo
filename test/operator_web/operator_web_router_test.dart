@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/operator_web/auth/operator_web_handoff_redeem_gateway.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/router/operator_web_router.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -357,6 +358,80 @@ void main() {
       expect(find.byKey(const Key('account_section_security')), findsOneWidget);
     });
 
+    testWidgets('/handoff redeems code and routes to returned target', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final gateway = _FakeOperatorWebHandoffGateway(
+        result: const OperatorWebHandoffRedeemResult(
+          userId: 'user-1',
+          operatorId: 'operator-1',
+          locationId: 'location-1',
+          targetPath: '/wage-authority',
+        ),
+      );
+      final source = _HandoffDemoOperatorWebSource(gateway);
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialUri: Uri.parse(
+              'https://app.forgeflow.app/handoff?code=CODE123&nav=my_account',
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(gateway.codes, <String>['CODE123']);
+      expect(find.byKey(const Key('wage_authority_screen')), findsOneWidget);
+      expect(
+        find.byKey(const Key('operator_web_account_screen')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('/handoff missing code fails closed before routing', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final gateway = _FakeOperatorWebHandoffGateway(
+        result: const OperatorWebHandoffRedeemResult(
+          userId: 'user-1',
+          operatorId: 'operator-1',
+          locationId: 'location-1',
+          targetPath: '/wage-authority',
+        ),
+      );
+      final source = _HandoffDemoOperatorWebSource(gateway);
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialUri: Uri.parse(
+              'https://app.forgeflow.app/handoff?nav=roles',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.codes, isEmpty);
+      expect(
+        find.byKey(const Key('operator_web_handoff_landing_surface')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('This handoff link is missing its code.'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('side nav switches body to vendor-connections screen', (
       tester,
     ) async {
@@ -552,4 +627,29 @@ void main() {
       expect(source.current, isA<OperatorWebSignedOut>());
     });
   });
+}
+
+class _HandoffDemoOperatorWebSource extends DemoOperatorWebAuthSource
+    implements OperatorWebHandoffRedeemGatewayProvider {
+  _HandoffDemoOperatorWebSource(this.handoffRedeemGateway)
+    : super(initial: OperatorWebCompleted(session: kDemoOperatorWebSession));
+
+  @override
+  final OperatorWebHandoffRedeemGateway handoffRedeemGateway;
+}
+
+class _FakeOperatorWebHandoffGateway
+    implements OperatorWebHandoffRedeemGateway {
+  _FakeOperatorWebHandoffGateway({required this.result});
+
+  final OperatorWebHandoffRedeemResult result;
+  final List<String> codes = <String>[];
+
+  @override
+  Future<OperatorWebHandoffRedeemResult> redeemHandoffCode({
+    required String code,
+  }) async {
+    codes.add(code);
+    return result;
+  }
 }

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'dart:convert';
 
 import 'package:provider/provider.dart';
@@ -8,6 +8,7 @@ import '../models/app_data_status.dart';
 import '../services/app_data_status_service.dart';
 import '../services/auth/account_info_gateway.dart';
 import '../services/auth/auth_operations_gateway.dart';
+import '../services/auth/handoff_code_gateway.dart';
 import '../services/auth/password_change_gateway.dart';
 import '../services/mfa/mfa_operations_gateway.dart';
 import '../services/shift_service.dart';
@@ -25,7 +26,7 @@ import 'settings/settings_pointer_row.dart';
 import 'settings/settings_timing_authority_section.dart';
 import 'settings/settings_wage_authority_section.dart';
 
-/// W3.A — mobile Settings is a 3-tab read-only mirror of the operator
+/// W3.A â€” mobile Settings is a 3-tab read-only mirror of the operator
 /// web console. `kDemoMode` toggles demo-only rows (Data reset + Demo
 /// date) without changing the production layout. Defined as a top-
 /// level const so widget tests can flip it via `--dart-define`.
@@ -56,8 +57,9 @@ class SettingsScreen extends StatefulWidget {
   final PasswordChangeGateway? passwordChangeGateway;
   final MfaOperationsGateway? mfaOperationsGateway;
   final MfaActorContext? mfaActor;
+  final HandoffCodeGateway? handoffCodeGateway;
 
-  /// Phase 9.UX.5 — self-service Active Sessions surface in the
+  /// Phase 9.UX.5 â€” self-service Active Sessions surface in the
   /// Account tab. Production passes the proxy-backed gateway; demo /
   /// preview shells set [allowDemoActiveSessionsFallback] so the
   /// walkthrough click path completes without a backend.
@@ -74,6 +76,7 @@ class SettingsScreen extends StatefulWidget {
     this.passwordChangeGateway,
     this.mfaOperationsGateway,
     this.mfaActor,
+    this.handoffCodeGateway,
     this.authOperationsGateway,
     this.activeSessionsActor,
     this.allowDemoActiveSessionsFallback = false,
@@ -165,7 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     final session = authNotifier?.session;
     final showAccount = session != null;
-    // W3.A — Team / Diagnostics / Advisor tabs are gone. The Operator
+    // W3.A â€” Team / Diagnostics / Advisor tabs are gone. The Operator
     // Web console owns Team management + advisor admin. Mobile mirrors
     // the read-only essentials in 3 tabs.
     final effectiveTeamActor = widget.teamActor;
@@ -239,12 +242,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       viewOnly: true,
                     ),
                   ),
-                  const SliverToBoxAdapter(
+                  SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: SettingsPointerRow(
-                        label: 'Manage two-factor security on Operator Web',
-                        opWebPath: 'security',
+                        label: 'Manage two-factor security on Ops Web',
+                        opWebPath: 'my-account#security',
+                        navId: 'my_account',
+                        handoffCodeGateway: widget.handoffCodeGateway,
                       ),
                     ),
                   ),
@@ -258,12 +263,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       viewOnly: true,
                     ),
                   ),
-                  const SliverToBoxAdapter(
+                  SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: SettingsPointerRow(
-                        label: 'Manage account on Operator Web',
-                        opWebPath: 'my_account',
+                        label: 'Manage Account on Ops Web',
+                        opWebPath: 'my-account',
+                        navId: 'my_account',
+                        handoffCodeGateway: widget.handoffCodeGateway,
                       ),
                     ),
                   ),
@@ -285,12 +292,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       viewOnly: true,
                     ),
                   ),
-                  const SliverToBoxAdapter(
+                  SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: SettingsPointerRow(
-                        label: 'Manage active sessions on Operator Web',
+                        label: 'Manage active sessions on Ops Web',
                         opWebPath: 'sessions',
+                        navId: 'sessions',
+                        handoffCodeGateway: widget.handoffCodeGateway,
                       ),
                     ),
                   ),
@@ -325,12 +334,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         restaurantId: restaurant.restaurantId,
                       ),
                     ),
-                    const SliverToBoxAdapter(
+                    SliverToBoxAdapter(
                       child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: SettingsPointerRow(
-                          label: 'Manage business timing on Operator Web',
-                          opWebPath: 'business_setup',
+                          label: 'Manage Timing on Ops Web',
+                          opWebPath: 'business-setup',
+                          navId: 'business_setup',
+                          handoffCodeGateway: widget.handoffCodeGateway,
                         ),
                       ),
                     ),
@@ -344,15 +355,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       viewOnly: true,
                     ),
                   ),
-                  const SliverToBoxAdapter(
+                  SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: SettingsPointerRow(
-                        label: 'Manage wage setup on Operator Web',
-                        // Wage authority editor on Operator Web is
-                        // queued for W3.D — pre-stage as coming soon
-                        // so the pointer shape is consistent today.
-                        opWebPath: '',
+                        label: 'Manage Wage on Ops Web',
+                        opWebPath: 'wage-authority',
+                        navId: 'wage_authority',
+                        handoffCodeGateway: widget.handoffCodeGateway,
                       ),
                     ),
                   ),
@@ -375,7 +385,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'Switch this location from demo facts to live vendor facts.',
                     child: const SettingsDemoLiveSwitch(),
                   ),
-                  // Phase 10a.UX.1 — per-table last-sync timestamps
+                  // Phase 10a.UX.1 â€” per-table last-sync timestamps
                   // surfacing the realtime push channel from the
                   // operator's perspective. Renders "Never" until the
                   // shell-mounted RealtimeSubscription delivers a
@@ -458,10 +468,10 @@ bool _isAdminTier(TeamScopeActor? actor) {
       actor.actorRoles.contains('ff_support');
 }
 
-/// W3.A — F&F support gate. The Data alignment section in the Data tab
+/// W3.A â€” F&F support gate. The Data alignment section in the Data tab
 /// surfaces canonical-fact diagnostics that only super_admin /
 /// ff_support actors should see. Operators (owner / manager / etc.)
-/// stay out — the section is removed from their Data tab.
+/// stay out â€” the section is removed from their Data tab.
 bool _isFFAccount(TeamScopeActor? actor) {
   if (actor == null) return false;
   return actor.actorRoles.contains('super_admin') ||
