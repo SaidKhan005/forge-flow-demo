@@ -1100,7 +1100,9 @@ class AuthEventLabels {
       case 'auth.invite_created':
         return 'Invite created';
       case 'auth.invite_revoked':
-        return 'Invite revoked';
+        return 'Invite cancelled';
+      case 'invite.cancel':
+        return 'Invite cancelled';
       case 'auth.invite_accepted':
         return 'Invite accepted';
       case 'auth.user_suspended':
