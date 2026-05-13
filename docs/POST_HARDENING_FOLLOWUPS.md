@@ -82,6 +82,48 @@ apply evidence must stay attached to the runbook before any Production1 apply.
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 
+## P1 — B11.1 Idempotency-Store Convention (deep-audit follow-up)
+
+**Origin:** Wave completion deep audit 2026-05-13
+(`docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md` finding #4).
+B11.1 (PR #512, merged 2026-05-12) introduced `handoff_codes` — operator-scoped
+mint/redeem ledger with 60s TTL. The deep audit flagged that the
+**idempotency-store convention is not yet codified**: subsequent slices
+(B11.2's `auth_step_up_challenges`, future `handoff_code`-shaped tables) have
+mirrored the idiom by hand, with no shared abstraction, no lint enforcing
+the shape (PK+operator_id+TTL+consumed_at+RLS+operator-leading indexes),
+and no convention doc.
+
+**Why this is a followup, not a slice yet:** no current slice in the ledger
+touches the surface. The convention is best codified the next time a slice
+adds a third idempotency-store table (or sooner if drift becomes apparent).
+A new lint enforcing the shape can ship alongside that slice.
+
+**Scope when a slice picks this up:**
+1. Doc the convention in `docs/contracts/hardening_rls_and_repository_pattern_contract.md`
+   (or a new contract doc) — shape: `(opaque_id text PK, operator_id uuid, ...)`
+   + RLS via `app_current_operator()` wrapper + operator-leading B-tree
+   indexes + TTL CHECK + base64-url id shape CHECK + idempotent DDL.
+2. Add a lint at `tool/idempotency_store_convention_lint.dart` that scans
+   `db/migrations/*.sql` for tables matching the shape and fails CI when
+   any of the 6 invariants are missing.
+3. Optionally extract a shared Dart abstraction (`IdempotencyStoreGateway<T>`)
+   that future stores bind to (mirror `OperatorScopedRepository<T>` pattern).
+
+**Lock until then:** new idempotency-store tables landing before this slice
+must mirror the B11.1 / B11.2 idiom by hand; orchestrator audit must spot-check
+the 6 invariants against the migration on every such slice.
+
+## P1 — Doc-Drift + Nits Batch (deep-audit P2/P3 holding line)
+
+**Origin:** Wave completion deep audit 2026-05-13. The audit's P2 doc-drift
+items (4) and P3 nits (2) do not warrant their own ledger rows; they get
+fixed opportunistically when someone is next in the relevant file.
+
+**Reference:** `docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md`
+sections P2 + P3 (full enumeration with file:line + suggested action per
+item). Pick up alongside any unrelated slice that touches those files.
+
 ## P1 — Soak Heap-Snapshot Uploader: swap GCS → Azure Blob (A11.2 follow-up)
 
 **Origin:** A11.2 (PR #537, merged 2026-05-13 at `8463d56b`) added a
