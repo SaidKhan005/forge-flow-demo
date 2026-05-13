@@ -7,12 +7,17 @@ This audit complements Lane A's parallel lens-audit (A1/A3/A4/A5/A6/A7/A8/A9/A10
 by going DEEP on scaffolds specifically per decision C4 in
 `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`.
 
-**Original read-only audit. No code paths were modified during Step 4.**
+**Original Step 4 audit was read-only.** Later A2 execution notes below
+record implementation updates after code changes land.
 
 A2.1 execution note (2026-05-12): the original inventory remains the
 baseline audit. This addendum records the narrow A2.1 implementation
 verdicts and caller proof before the two delete-only widget files were
 removed on branch `codex/a2-1-dead-placeholder-sweep`.
+
+A2.2 execution note: the email scaffold rows below were updated after the
+A2.2 implementation deleted two superseded Markdown templates plus their
+renderer ids/subjects and removed the stale B3 hook TODO.
 
 ## A2.1 Execution Matrix
 
@@ -149,20 +154,20 @@ Status updates since that inventory was written: the three "Hook-only
 exist under `tool/advisor_proxy/email_templates/` (verified) AND the
 ids are now registered in `EmailTemplateIds.all` at
 `lib/services/email/email_template_renderer.dart:157-170` (lines 132-152
-document the wire). One stale FOLLOW-UP comment remains in the hook
-file pointing at the now-shipped templates.
+document the wire). A2.2 removed the stale FOLLOW-UP comment in the hook
+file that pointed at those now-shipped templates.
 
 | Surface | Location (file:line) | Type | Wire-or-delete recommendation | Owner | Effort |
 |---|---|---|---|---|---|
-| `operator_admin_invite.md` template | `tool/advisor_proxy/email_templates/operator_admin_invite.md` + `lib/services/email/email_template_renderer.dart:89` (id) + `:180` (subject) | Template-only — active invite path reuses Firebase password-reset email; no enqueuer wires this SendGrid template | **Delete in `code_health.email_scaffold_sweep`** (per addendum B4 the dual-invite path question is the relevant decision; if the operator chooses Firebase-only, delete this template + the id; if SendGrid-side invite, wire an enqueuer). C3 lane owns the decision. | C3 email lane | S |
+| `operator_admin_invite.md` template | Deleted in A2.2 from `tool/advisor_proxy/email_templates/operator_admin_invite.md`; `EmailTemplateIds.operatorAdminInvite` id + subject removed from `lib/services/email/email_template_renderer.dart` | Resolved — active invite path continues to reuse Firebase password-reset email; no SendGrid invite enqueuer was introduced. | **Done in A2.2.** Future SendGrid-side invite work would be a new product decision, not a remaining scaffold delete. | A2.2 | Done |
 | `operator_invite_first_admin.md` template | `tool/advisor_proxy/email_templates/operator_invite_first_admin.md` + `lib/services/email/email_template_renderer.dart:87-88` (id) + `:177-178` (subject) | Template-only on the invite side; also reused (with fixture data) by the `/v1/admin/integrations/email/test` admin smoke path at `tool/advisor_proxy/admin_email_routes.dart:59-64` | **Keep — anchored to admin-test send.** Used by the admin "Test connection" path; do NOT delete. Mark the doc comment to make this clear (template is reused as the smoke fixture, not unwired). | C3 email lane | XS |
-| `password_reset_request.md` template | `tool/advisor_proxy/email_templates/password_reset_request.md` + `lib/services/email/email_template_renderer.dart:90` (id) + `:181-182` (subject) | Template-only — all real password-reset emails come from Firebase Identity Platform action-link template, NOT this SendGrid Markdown | **Delete in `code_health.email_scaffold_sweep`.** The Firebase email is the wire-template; this Markdown has no enqueuer and never will. Removing it also drops the misleading "Reset your Forge & Flow password" subject from `_subjectByTemplate`. | C3 email lane | XS |
+| `password_reset_request.md` template | Deleted in A2.2 from `tool/advisor_proxy/email_templates/password_reset_request.md`; `EmailTemplateIds.passwordResetRequest` id + subject removed from `lib/services/email/email_template_renderer.dart` | Resolved — all real password-reset emails come from Firebase Identity Platform action-link templates, not SendGrid Markdown. | **Done in A2.2.** Firebase remains the wire-template for password reset. | A2.2 | Done |
 | `mfa_factor_changed_notice.md` template | `tool/advisor_proxy/email_templates/mfa_factor_changed_notice.md` + `lib/services/email/email_template_renderer.dart:91` (id) + `:183-184` (subject) | Template-only — no enqueuer in the codebase; phase 9.8 deferred per V1 lean cut | **Wire by `mfa.factor_changed.notify` slice or delete in `code_health.email_scaffold_sweep`.** MFA factor changes are a security-sensitive event (today: only in-app inbox at `lib/services/app_notification_service.dart:114-134`); not emailing the account owner when MFA changes is a real gap. Recommend WIRE: emit from `lib/screens/settings/settings_mfa_section.dart:582` site through a new fanout hook. | C3 email lane | M |
 | `vendor_sync_error_alert.md` template | `tool/advisor_proxy/email_templates/vendor_sync_error_alert.md` + `lib/services/email/email_template_renderer.dart:92` (id) + `:185-186` (subject) | Template-only — Phase 8 lean cut deferred this; OAuth-refresh-cron at `lib/services/integration/oauth_refresh_cron.dart` flips `error` but no enqueue | **Wire by `phase_8.email_alert.sync_error` slice or delete in `code_health.email_scaffold_sweep`.** Operators only learn about sustained vendor sync failure by visiting Connected services. Recommend WIRE — this is the "no scaffold" doctrine's strongest case (operator-visible gap with the template already drafted). | C3 email lane | M |
 | `vendor_webhook_signature_alert.md` template | `tool/advisor_proxy/email_templates/vendor_webhook_signature_alert.md` + `lib/services/email/email_template_renderer.dart:93-94` (id) + `:187-188` (subject) | Template-only — no observation-window detector in inbound webhook handler; pressure test exercises verifier but not alert | **Wire by `phase_8.email_alert.webhook_signature` slice or delete.** Same call as `vendor_sync_error_alert`. WIRE recommended — security alert is high-value. | C3 email lane | M |
 | `vendor_connection_auto_disabled.md` template | `tool/advisor_proxy/email_templates/vendor_connection_auto_disabled.md` + `lib/services/email/email_template_renderer.dart:108-109` (id) + `:189-190` (subject) | Template-only — `OAuthRefreshCron` flips `connection.status = 'error'` after 3 consecutive failures but does not enqueue; explicitly deferred at renderer line 96-107 + project_v1_lean_cut_2_2026_05_03.md round 2 | **Wire by `phase_8.email_alert.auto_disabled` slice or delete.** The deferral was explicit (V1 lean cut round 2). Recommend WIRE — auto-disabling a vendor without notifying the operator is exactly the silent-failure shape addendum B3 hot-fixed. | C3 email lane | M |
 | `tos_version_updated_notice.md` template | `tool/advisor_proxy/email_templates/tos_version_updated_notice.md` + `lib/services/email/email_template_renderer.dart:110` (id) + `:191-192` (subject) | Template-only — TOS schema (`db/migrations/202605040100_phase_9_8_tos_versions.sql`) + accept gate (`lib/operator_web/screens/tos_accept_screen.dart`) ship but no published-notice email | **Wire by `phase_9_8.tos.published_email` slice OR keep — anchored to deferred-by-design** per `docs/contracts/operator_self_served_tos_contract.md`. Operator decision: TOS-on-sign-in gate IS the notification today. If the deferral stands, mark the template id with a doc anchor analogous to the `vendorConnectionAutoDisabled` renderer block (lines 96-107). | C3 email lane | XS (anchor) or M (wire) |
-| Stale FOLLOW-UP comment in hooks | `tool/advisor_proxy/email_dispatch/notification_event_hooks.dart:59-64` | TODO comment says "FOLLOW-UP: ship the template; until it lands the email channel silently no-ops on render failure" — but the three templates shipped per addendum B3 | **Delete in `code_health.email_scaffold_sweep` (XS).** Stale comment misrepresents current state; remove the FOLLOW-UP block to reduce future-reader confusion. | C3 email lane | XS |
+| Stale FOLLOW-UP comment in hooks | Removed in A2.2 from `tool/advisor_proxy/email_dispatch/notification_event_hooks.dart` | Resolved — B3 templates are shipped, registered, and tested; the stale TODO no longer appears. | **Done in A2.2.** | A2.2 | Done |
 
 ### 2.2 Admin console tiles + screens (`lib/admin/**`)
 
@@ -369,9 +374,9 @@ deletes all four artifacts together so the codebase grows by zero
 | `rotateWebhookSigningSecret` gateway method (Section 2.2) | Backend method that nobody calls; runbook path works today. |
 | Flutter-side `ProxyServicePrincipalIssuanceGateway` (Section 2.2 + 2.5) | Client code that has no caller. Proxy route stays. |
 | `tool/vector_index_health/main.dart` placeholder snapshot (Section 2.5) | P3 in POST_HARDENING_FOLLOWUPS; CLI; operators never see it. |
-| Stale FOLLOW-UP comment in `notification_event_hooks.dart` (Section 2.1) | 6-line stale comment after B3 hot-fix. |
-| `password_reset_request.md` template (Section 2.1) | Markdown file ships, no enqueuer ever. |
-| `operator_admin_invite.md` template (Section 2.1) | Same shape. |
+| Stale FOLLOW-UP comment in `notification_event_hooks.dart` (Section 2.1) | Resolved in A2.2 — stale B3 template-missing comment removed. |
+| `password_reset_request.md` template (Section 2.1) | Resolved in A2.2 — Markdown file plus renderer id/subject deleted; Firebase action-link remains authoritative. |
+| `operator_admin_invite.md` template (Section 2.1) | Resolved in A2.2 — Markdown file plus renderer id/subject deleted; Firebase invite bootstrap remains authoritative. |
 | `_kAdminSharePreview` flag — confirmed working (Section 2.7) | Listed for completeness; KEEP. |
 
 ---
@@ -424,14 +429,14 @@ Decide each row per the C3 lane's per-feature audit.
 - Wire path for `mfa_factor_changed_notice`:
   - `lib/screens/settings/settings_mfa_section.dart:582` (add email
     enqueue beside the inbox emit)
-- Delete path for `password_reset_request.md`,
-  `operator_admin_invite.md` if operator confirms Firebase-only:
-  - `tool/advisor_proxy/email_templates/*.md` (delete 2 files)
-  - `lib/services/email/email_template_renderer.dart` (remove ids +
-    subjects)
+- A2.2 completed the delete path for `password_reset_request.md` and
+  `operator_admin_invite.md`:
+  - `tool/advisor_proxy/email_templates/*.md` (2 files deleted)
+  - `lib/services/email/email_template_renderer.dart` (ids + subjects
+    removed)
 - Keep `tos_version_updated_notice`: anchor renderer doc-comment to
   `operator_self_served_tos_contract.md`. OR wire alongside Slice 1.
-- Delete stale FOLLOW-UP comment in
+- A2.2 removed the stale FOLLOW-UP comment in
   `notification_event_hooks.dart:59-64`.
 
 **Dependencies**:

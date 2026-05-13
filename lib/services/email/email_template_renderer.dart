@@ -79,15 +79,13 @@ typedef EmailTemplateSource = String Function(String templateId);
 typedef EmailBrandWrapperSource = String Function();
 
 /// Locked V1 template ids. Adding a new template means: drop the
-/// .md file alongside the existing eight, add the id + subject
+/// .md file alongside the existing templates, add the id + subject
 /// pattern here, and ship a renderer test.
 class EmailTemplateIds {
   EmailTemplateIds._();
 
   static const String operatorInviteFirstAdmin =
       'operator_invite_first_admin';
-  static const String operatorAdminInvite = 'operator_admin_invite';
-  static const String passwordResetRequest = 'password_reset_request';
   static const String mfaFactorChangedNotice = 'mfa_factor_changed_notice';
   static const String vendorSyncErrorAlert = 'vendor_sync_error_alert';
   static const String vendorWebhookSignatureAlert =
@@ -156,8 +154,6 @@ class EmailTemplateIds {
   /// with sample data.
   static const List<String> all = <String>[
     operatorInviteFirstAdmin,
-    operatorAdminInvite,
-    passwordResetRequest,
     mfaFactorChangedNotice,
     vendorSyncErrorAlert,
     vendorWebhookSignatureAlert,
@@ -176,10 +172,6 @@ class EmailTemplateIds {
 const Map<String, String> _subjectByTemplate = <String, String>{
   EmailTemplateIds.operatorInviteFirstAdmin:
       'Welcome to Forge & Flow — set up your account',
-  EmailTemplateIds.operatorAdminInvite:
-      '{{inviterName}} invited you to join {{businessName}}',
-  EmailTemplateIds.passwordResetRequest:
-      'Reset your Forge & Flow password',
   EmailTemplateIds.mfaFactorChangedNotice:
       'Your Forge & Flow MFA has been updated',
   EmailTemplateIds.vendorSyncErrorAlert:

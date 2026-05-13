@@ -1,6 +1,6 @@
 // Phase 9.8 email-provider slice — EmailTemplateRenderer tests.
 //
-// Loads the actual 8 V1 templates + brand wrapper from
+// Loads the actual V1 templates + brand wrapper from
 // `tool/advisor_proxy/email_templates/` and asserts each renders
 // with sample data. Also covers:
 //
@@ -128,16 +128,16 @@ void main() {
 
     test('missing variable raises MissingTemplateVariableError', () {
       final renderer = rendererFromDisk();
-      final data = sampleData()..remove('businessName');
+      final data = sampleData()..remove('vendorName');
       expect(
         () => renderer.render(
-          templateId: EmailTemplateIds.operatorAdminInvite,
+          templateId: EmailTemplateIds.vendorNowAvailable,
           templateData: data,
         ),
         throwsA(isA<MissingTemplateVariableError>()
-            .having((e) => e.variableName, 'variableName', 'businessName')
+            .having((e) => e.variableName, 'variableName', 'vendorName')
             .having((e) => e.templateId, 'templateId',
-                EmailTemplateIds.operatorAdminInvite)),
+                EmailTemplateIds.vendorNowAvailable)),
       );
     });
 
@@ -153,10 +153,10 @@ void main() {
       );
       expect(
         renderer.subjectFor(
-          EmailTemplateIds.operatorAdminInvite,
+          EmailTemplateIds.vendorNowAvailable,
           data,
         ),
-        'Pat Manager invited you to join Acme Bistro',
+        'Toast is ready to connect in Forge & Flow',
       );
     });
 
@@ -255,22 +255,22 @@ void main() {
   });
 
   group('EmailTemplateIds.all', () {
-    test('lists the V1 templates from the slice doc + V1.E fan-out '
-        'template + B3 hot-fix templates', () {
-      // Phase 9.8 shipped 8 V1 templates; Phase 8 V1.E added a 9th
-      // (`vendor_now_available`) for the lifecycle-promotion fan-out.
+    test('lists the live repo-owned templates from the slice doc + V1.E '
+        'fan-out template + B3 hot-fix templates', () {
+      // A2.2 deleted the Firebase-superseded password reset and
+      // operator-admin invite Markdown copies. Phase 8 V1.E added
+      // `vendor_now_available` for the lifecycle-promotion fan-out.
       // B3 hot-fix (2026-05-12) added 3 more
       // (`backfill_complete`, `backfill_failed`, `audit_anchor_failure`)
       // that had hooks calling NotificationEventFanout but no
       // registered template id, so the email channel silently
       // no-op'd. Source:
       // `docs/_execution/2026-05-06_v1_closure_dispatch_plan.md` V1.E
-      // + `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`
-      // Block B, B3.
-      expect(EmailTemplateIds.all, hasLength(12));
+      // + addendum B3/C3.
+      expect(EmailTemplateIds.all, hasLength(10));
       expect(EmailTemplateIds.all, contains('operator_invite_first_admin'));
-      expect(EmailTemplateIds.all, contains('operator_admin_invite'));
-      expect(EmailTemplateIds.all, contains('password_reset_request'));
+      expect(EmailTemplateIds.all, isNot(contains('operator_admin_invite')));
+      expect(EmailTemplateIds.all, isNot(contains('password_reset_request')));
       expect(EmailTemplateIds.all, contains('mfa_factor_changed_notice'));
       expect(EmailTemplateIds.all, contains('vendor_sync_error_alert'));
       expect(

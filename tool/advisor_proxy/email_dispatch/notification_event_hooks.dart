@@ -56,9 +56,6 @@ const String kNotifAuditAnchorFailureKey = 'notif.audit.anchor_failure';
 
 /// Email template id for the backfill-complete copy. The on-disk
 /// template lives at `tool/advisor_proxy/email_templates/<id>.md`.
-/// FOLLOW-UP: ship the template; until it lands the email channel
-/// silently no-ops on render failure (the renderer logs through the
-/// existing email_outbox status state machine).
 const String kBackfillCompleteEmailTemplateId = 'backfill_complete';
 const String kBackfillFailedEmailTemplateId = 'backfill_failed';
 const String kAuditAnchorFailureEmailTemplateId = 'audit_anchor_failure';

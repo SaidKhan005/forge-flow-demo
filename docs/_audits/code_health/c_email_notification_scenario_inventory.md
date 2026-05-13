@@ -1,7 +1,10 @@
 # C — Email + Notification Scenario Inventory
 
 Created 2026-05-12 as the test-plan catalog for the upcoming post-codex-wave
-pressure-test pass. **Read-only audit.** No code paths were modified.
+pressure-test pass. The initial 2026-05-12 pass was a **read-only audit**
+where no code paths were modified. A2.2 updated this inventory to reflect
+implementation decisions: two superseded Markdown templates and renderer ids
+were deleted, and B3-shipped fanout templates were reclassified as wired.
 
 Scope: every email and every in-app / push / inbox notification site
 in the Forge & Flow codebase, plus the F&F admin / proxy paths that
@@ -45,11 +48,11 @@ Line numbers verified at audit time and may drift as code changes.
 | Sender code path (request) | `lib\services\auth\password_reset_request_gateway.dart:122` (`RepositoryPasswordResetRequestGateway.requestReset` → calls `firebaseAdmin.sendPasswordResetEmail` at line 148). Proxy route registered via `tool\advisor_proxy\advisor_proxy.dart` (path `/v1/auth/password/reset/request`). Client gateway: `lib\services\auth\proxy_password_reset_gateway.dart`. |
 | Sender code path (confirm) | `lib\services\auth\password_reset_confirm_gateway.dart` + `lib\services\auth\proxy_password_reset_gateway.dart` (`POST /v1/auth/password/reset/confirm`). |
 | Recipient | Operator-owned email; **always** called (whether the email matches an active account or not — privacy-preserving silent-succeed when Firebase returns `EMAIL_NOT_FOUND`). |
-| Payload / template | **Firebase Identity Platform action-link template** (HTML rendered by Firebase, NOT a SendGrid send through `email_outbox`). Subject is the Firebase project's configured "Password reset" template; see `docs\runbooks\firebase_auth_email_templates_production1.md` + `scripts\configure_firebase_auth_email_action_url.ps1`. The repo's own `password_reset_request.md` template under `tool\advisor_proxy\email_templates\` is **template-only** today — no enqueuer wires it. |
+| Payload / template | **Firebase Identity Platform action-link template** (HTML rendered by Firebase, NOT a SendGrid send through `email_outbox`). Subject is the Firebase project's configured "Password reset" template; see `docs\runbooks\firebase_auth_email_templates_production1.md` + `scripts\configure_firebase_auth_email_action_url.ps1`. A2.2 deleted the repo-owned `password_reset_request.md` Markdown copy because the Firebase template is the only password-reset email path. |
 | Target action / URL | Action-link `https://forgeflow.app/auth/action?mode=resetPassword&oobCode=…&apiKey=…&continueUrl=…` (lives in `scripts\configure_firebase_auth_email_action_url.ps1`). |
 | Loopback | `web\auth\action\index.html` handles both `verifyEmail` and `resetPassword`. On mobile UA detection, it builds the deep-link `forgeflow://reset-password?mode=resetPassword&oobCode=...` and bounces to the app (`web\auth\action\index.html:443-446`). The Flutter side intercepts via `lib\services\auth\password_reset_deep_link_source.dart` → `lib\screens\auth\password_reset_deep_link_handler.dart` → `lib\screens\auth\password_reset_confirm_screen.dart`, then submits the new password through `proxy_password_reset_gateway.confirmReset`. Web users complete the form in `index.html` directly. |
 | Test coverage | `test\services\auth\password_reset_request_gateway_test.dart`; `test\services\auth\password_reset_confirm_gateway_test.dart`; `test\services\auth\password_reset_end_to_end_test.dart`; `test\services\auth\proxy_password_reset_gateway_test.dart`; `test\screens\auth\password_reset_request_screen_test.dart`; `test\screens\auth\password_reset_confirm_screen_test.dart`; `test\screens\auth\password_reset_deep_link_handler_test.dart`; `test\web_auth_action_page_test.dart`. Throttling: `test\services\auth\magic_link_rate_limit_test.dart`; lockout integration: `test\proxy\auth_lockout_routes_test.dart`. |
-| Notes | The internal `password_reset_request` Markdown template under `tool\advisor_proxy\email_templates\` is **template-only** today (no enqueuer wires it via `email_outbox`). All real password-reset emails come from the Firebase Identity Platform template. Subject + body wording for the wire-template are in the Firebase project config, not in repo Markdown. Pressure scenarios that exercise the deep-link bounce and the privacy-preserving "always-call-Firebase" path are the priority. |
+| Notes | A2.2 delete decision: the internal `password_reset_request` Markdown template and `EmailTemplateIds.passwordResetRequest` entry were removed. All real password-reset emails come from the Firebase Identity Platform template. Subject + body wording for the wire-template are in the Firebase project config, not in repo Markdown. Pressure scenarios that exercise the deep-link bounce and the privacy-preserving "always-call-Firebase" path are the priority. |
 
 ## 1.b Auth — Email Verification action link
 
@@ -75,11 +78,11 @@ Line numbers verified at audit time and may drift as code changes.
 | Trigger | F&F admin or operator owner submits `POST /v1/admin/auth/invites` (operator-owner bootstrap) or `POST /v1/auth/operators/.../users/invite` (operator-admin invite) via Operator Web Members screen or Admin Members screen. |
 | Sender code path | `lib\services\auth\repository_auth_operations_gateway.dart:364-485` (`createInvite`). At line **463** it calls `firebaseAdmin.sendPasswordResetEmail(email: command.email)` after `usersRepository.insertInvitedUser` + `authInvitesRepository.insertInvite`. Proxy callers: `tool\advisor_proxy\proxy_bootstrap.dart:3374` (operator-owner bootstrap) and `tool\advisor_proxy\advisor_proxy.dart:10839` (admin members invite). |
 | Recipient | The invited team member's email (operator-owner, operator-admin, location-manager, etc., depending on `roleId`). |
-| Payload / template | **Same Firebase password-reset action-link template** as Auth #1 above. The repo carries TWO additional Markdown templates intended for V1 — `operator_invite_first_admin.md` and `operator_admin_invite.md` — but they are **template-only**; the active invite path reuses the Firebase reset email (so the recipient lands on the same `web/auth/action` page and chooses a first password). Subject lines in `email_template_renderer.dart` (`Welcome to Forge & Flow — set up your account` and `{{inviterName}} invited you to join {{businessName}}`) are not yet on the wire. |
+| Payload / template | **Same Firebase password-reset action-link template** as Auth #1 above. A2.2 deleted the unwired `operator_admin_invite.md` SendGrid copy and its `EmailTemplateIds.operatorAdminInvite` entry. The repo still carries `operator_invite_first_admin.md` because the admin email test route uses it as a direct SendGrid connectivity fixture; it is not the production invite path. |
 | Target action / URL | Same action-link as Auth #1 → `web\auth\action\index.html` → either form-fill on web or deep-link `forgeflow://reset-password?...` on mobile. |
 | Loopback | Invited user picks a password, signs in. `lib\infrastructure\persistence\postgres\repositories\invited_user_activation_repository.dart:45-153` (`acceptPendingInviteAfterLogin`) flips `users.status = 'active'`, marks `auth_invites.accepted_at`, writes `auth.invite_accepted` audit row. |
 | Test coverage | `test\infrastructure\persistence\postgres\repositories\auth_invites_repository_test.dart`; `test\proxy_auth_operations_route_test.dart`; `test\proxy_auth_operations_route_grants_test.dart`; `test\admin\services\members_admin_gateway_test.dart`; `test\admin\screens\members_admin_screen_test.dart`; `test\operator_web\screens\members_screen_test.dart`; `test\user_lifecycle_test.dart`; `test\operator_web\screens\permission_explainer_screen_test.dart`. **No test** asserts the "invite-via-reset-email" path through `firebaseAdmin.sendPasswordResetEmail` end-to-end (it is mocked at the boundary). |
-| Notes | Invites carry 7-day TTL (`lib\services\auth\user_invite_service.dart:71`). Pressure scenarios to plan: retry of `createInvite` after Firebase send (idempotency via `proxy_requests` UNIQUE), partial failure where Firebase succeeds but Postgres rolls back, expired invite acceptance, double-accept race. The locked `operator_admin_invite` Markdown template should be tested for render fidelity even though it's template-only today (CI test `test\services\email\email_template_renderer_test.dart` iterates `EmailTemplateIds.all`). |
+| Notes | Invites carry 7-day TTL (`lib\services\auth\user_invite_service.dart:71`). Pressure scenarios to plan: retry of `createInvite` after Firebase send (idempotency via `proxy_requests` UNIQUE), partial failure where Firebase succeeds but Postgres rolls back, expired invite acceptance, double-accept race. A2.2 resolves the `operator_admin_invite` dual-path scaffold by keeping Firebase as the production invite email and deleting the unused SendGrid Markdown/id. |
 
 ---
 
@@ -188,11 +191,11 @@ Line numbers verified at audit time and may drift as code changes.
 | Sender code path | Hook helpers live at `tool\advisor_proxy\email_dispatch\notification_event_hooks.dart:71` (`emitBackfillComplete`) and `:114` (`emitBackfillFailed`). Trigger sites declared at the hook doc strings: `tool\integration_sync_worker\backfill_dispatch.dart` (`markSucceeded`) and `tool\first_connect_backfill_worker\main.dart` (`RetryCappingBackfillJobStore.markFailed`). Both call into `NotificationEventFanout.fanOut`. |
 | Recipient | All users in the operator who satisfy role gate `any` and whose preference matrix admits the channel (push / email / inbox). Default channels: `push`, `email`. |
 | Payload — push | Complete: title `Historical sync complete`, body `Your 60-day historical seed has finished and the connector is now live.` Failed: title `Historical sync needs attention`, body `Your 60-day historical seed could not finish. We will retry automatically and let you know if it needs you.` |
-| Payload — email | Templates `backfill_complete` / `backfill_failed` — **template Markdown files do NOT exist** in `tool\advisor_proxy\email_templates\` (see template ids `kBackfillCompleteEmailTemplateId` / `kBackfillFailedEmailTemplateId` in `notification_event_hooks.dart:62-63`; `EmailTemplateIds.all` does NOT include them). Email channel silently no-ops on render failure today. **Hook-only.** |
+| Payload — email | Templates `backfill_complete` / `backfill_failed` are present in `tool\advisor_proxy\email_templates\`, registered in `EmailTemplateIds.all`, and emitted through the B3 `NotificationEventFanout` hook path. **Wired.** |
 | Target action / Deeplink | Optional, supplied per call. Trigger sites pass null today. |
 | Loopback | Operator opens inbox → finds backfill complete / failed entry → taps → routed to integration screen. |
 | Test coverage | `test\services\email\notification_event_hooks_test.dart`; `test\services\email\notification_event_fanout_test.dart`; `test\tool\integration_sync_worker\backfill_dispatch_notification_hook_test.dart`; `test\services\backfill\backfill_dispatch_audit_emission_test.dart`. |
-| Notes | Push + inbox WIRED; email path **template-missing** (renderer would throw `ArgumentError: Template source has no entry for backfill_complete`). Pressure plan: add the two templates OR guard the email channel before pressure-testing. |
+| Notes | A2.2 inventory reconciliation: the prior hook-only/template-missing note is stale on current master because B3 shipped the Markdown files, renderer ids, hook tests, and trigger-site tests. Pressure testing can include the email channel for these two events. |
 
 ---
 
@@ -205,10 +208,10 @@ Line numbers verified at audit time and may drift as code changes.
 | Sender code path | Hook: `tool\advisor_proxy\email_dispatch\notification_event_hooks.dart:158` (`emitAuditAnchorFailure`). Trigger sites: `tool\audit_anchor\main.dart`. Fanout via `NotificationEventFanout.fanOut`. |
 | Recipient | Operator owners + admins (role gate: `adminOnly`). Default channels: `push`, `email`. |
 | Payload — push | Title `Audit chain anchor needs review`, body `A daily audit-log integrity anchor did not land. This never blocks operations, but the team should know.` |
-| Payload — email | Template id `audit_anchor_failure` — **template Markdown does NOT exist** (`EmailTemplateIds.all` does not include it). **Hook-only / template-missing.** |
+| Payload — email | Template id `audit_anchor_failure` is present in `tool\advisor_proxy\email_templates\`, registered in `EmailTemplateIds.all`, and emitted through the B3 `NotificationEventFanout` hook path. **Wired.** |
 | Target action | None hardcoded; operator-web admin would open the Audit log screen (`lib\operator_web\screens\audit_log_screen.dart`). |
 | Test coverage | `test\services\email\notification_event_hooks_test.dart`; `test\proxy\audit_chain_anchors_routes_test.dart`; `test\infrastructure\persistence\postgres\audit_anchor_cron_schedule_test.dart`. |
-| Notes | Same template gap as backfill events. Push channel WIRED; email needs template before pressure-test. |
+| Notes | A2.2 inventory reconciliation: the prior template gap is stale on current master because B3 shipped the Markdown file, renderer id, hook test, and audit-anchor trigger-site test. Pressure testing can include the email channel. |
 
 ---
 
@@ -417,16 +420,16 @@ Line numbers verified at audit time and may drift as code changes.
 | Password reset (self-serve) | Wired | Firebase action-link | – | – |
 | Email verification | Firebase-only | Firebase action-link | – | – |
 | Operator-admin invite | Wired (reuses reset link) | Firebase action-link | – | – |
-| `operator_admin_invite.md` SendGrid copy | **Template-only** | locked Markdown | – | – |
-| `operator_invite_first_admin.md` SendGrid copy | **Template-only** (also used by admin test route) | locked Markdown | – | – |
+| `operator_admin_invite.md` SendGrid copy | Deleted in A2.2 | removed; Firebase invite email remains authoritative | – | – |
+| `operator_invite_first_admin.md` SendGrid copy | Wired (admin test route only) | direct SendGrid test fixture | – | – |
 | `mfa_factor_changed_notice` | **Template-only** | locked Markdown | – | – |
 | MFA authenticator removed | Wired | – | – | inbox |
 | `notif.vendor.now_available` | **Wired** | SendGrid via outbox | fanout | fanout |
 | `vendor_sync_error_alert` | **Template-only** | locked Markdown | – | – |
 | `vendor_webhook_signature_alert` | **Template-only** | locked Markdown | – | – |
 | `vendor_connection_auto_disabled` | **Template-only** | locked Markdown | – | – |
-| `notif.backfill.complete` / `.failed` | **Hook-only** (email template missing) | template-id refs nothing | wired | wired |
-| `notif.audit.anchor_failure` | **Hook-only** (email template missing) | template-id refs nothing | wired | wired |
+| `notif.backfill.complete` / `.failed` | **Wired** | SendGrid via fanout | wired | wired |
+| `notif.audit.anchor_failure` | **Wired** | SendGrid via fanout | wired | wired |
 | Admin "Test connection" SendGrid send | Wired | direct send (no outbox) | – | – |
 | Admin-initiated password reset | Wired | Firebase action-link | – | – |
 | `tos_version_updated_notice` | **Template-only** | locked Markdown | – | – |
@@ -449,7 +452,7 @@ Use this to scope the upcoming wave — informational only; not a binding plan.
 1. **Wired SendGrid path** (vendor-now-available): outbox claim race, 3-strike retry exhaustion, render-time `MissingTemplateVariableError`, fanout-vs-email idempotency on retry.
 2. **Firebase action-link paths** (password reset, invites, admin reset): privacy-preserving latency floor (`350ms` in `password_reset_request_gateway.dart:116`), action-page web-vs-mobile branching, oobCode single-use semantics, repeated submit of the same `idempotencyKey`.
 3. **Push runtime**: token register failure when feature flag is on but migration not applied, FCM 5xx storm, cold-start `getInitialMessage` vs. mounted-too-late race (the `MobilePushIntentDiskStore` flow at `mobile_push_notification_service.dart:53-110`).
-4. **Hook-only events** (backfill, audit anchor): land the missing Markdown templates OR document the suppression posture before stress-testing the email channel.
+4. **B3 fanout events** (backfill, audit anchor): include email-channel pressure now that A2.2 reconciled the inventory to the shipped Markdown templates + renderer ids.
 5. **Inbox bell**: badge math under rapid `emitPushDelivery` + `markAsRead` + dedupe collision; concurrent restaurant-scope switch.
 6. **Template-only stack**: add a CI assertion that every `EmailTemplateIds.all` entry round-trips through `_subjectByTemplate` + the renderer with sample data (already in `test\services\email\email_template_renderer_test.dart`, but worth pinning each variable map). Surface the un-enqueued templates so they don't drift.
 
@@ -478,7 +481,7 @@ Senders / dispatchers:
 Catalog / templates:
 
 - `lib\domain\models\notification_event_catalog.dart` — event registry.
-- `tool\advisor_proxy\email_templates\` — 9 V1 Markdown templates + `_brand_wrapper.html`.
+- `tool\advisor_proxy\email_templates\` — 10 repo-owned Markdown templates + `_brand_wrapper.html`.
 
 Persistence:
 
