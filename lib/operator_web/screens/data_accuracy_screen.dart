@@ -36,6 +36,7 @@ import 'package:flutter/material.dart';
 
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_data_accuracy_gateway.dart';
+import '../services/web_vendor_applicability_gateway.dart';
 import '../widgets/covers_historical_seed_card.dart';
 import '../widgets/covers_manual_entry_card.dart';
 import '../widgets/covers_source_toggle.dart';
@@ -109,6 +110,7 @@ class DataAccuracyScreen extends StatefulWidget {
     this.gateway,
     this.initialSettings,
     this.dataAccuracyGateway,
+    this.vendorApplicabilityGateway,
     this.businessDateIso = '2026-05-05',
     this.tierStatus,
     this.walkInModeOverride,
@@ -133,6 +135,9 @@ class DataAccuracyScreen extends StatefulWidget {
   /// saves to the server-owned data_accuracy_settings row for the
   /// selected operator/location.
   final OperatorWebDataAccuracyGateway? dataAccuracyGateway;
+
+  /// B10.2 read-only gateway for current vendor_applicability wage rows.
+  final WebVendorApplicabilityGateway? vendorApplicabilityGateway;
 
   final String businessDateIso;
 
@@ -172,6 +177,11 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   int _settingsLoadGeneration = 0;
   int _settingsSaveGeneration = 0;
   DataAccuracySettings? _lastSettings;
+  bool _wageApplicabilityLoading = false;
+  String? _wageApplicabilityError;
+  List<WebVendorApplicabilityRow> _wageApplicabilityRows =
+      const <WebVendorApplicabilityRow>[];
+  int _wageApplicabilityLoadGeneration = 0;
 
   // Keyed `data_accuracy_service_period_settings` rows (server-owned;
   // mobile mirrors them through operational sync). The screen reads
@@ -205,9 +215,11 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     _gateway = widget.gateway ?? InMemoryVendorConnectionsGateway();
     _applySettingsSeed(widget.initialSettings);
     _settingsLoading = widget.dataAccuracyGateway != null;
+    _wageApplicabilityLoading = widget.vendorApplicabilityGateway != null;
     _servicePeriodsLoading = widget.dataAccuracyGateway != null;
     _loadBundle();
     _loadSettings();
+    _loadWageApplicability();
     _loadServicePeriodSettings();
   }
 
@@ -239,7 +251,9 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     if (oldWidget.gateway != widget.gateway ||
         oldWidget.locationId != widget.locationId ||
         oldWidget.session.operatorId != widget.session.operatorId ||
-        oldWidget.dataAccuracyGateway != widget.dataAccuracyGateway) {
+        oldWidget.dataAccuracyGateway != widget.dataAccuracyGateway ||
+        oldWidget.vendorApplicabilityGateway !=
+            widget.vendorApplicabilityGateway) {
       _gateway = widget.gateway ?? InMemoryVendorConnectionsGateway();
       setState(() {
         _loading = true;
@@ -247,6 +261,9 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _settingsLoading = widget.dataAccuracyGateway != null;
         _settingsLoadError = null;
         _settingsSaveError = null;
+        _wageApplicabilityLoading = widget.vendorApplicabilityGateway != null;
+        _wageApplicabilityError = null;
+        _wageApplicabilityRows = const <WebVendorApplicabilityRow>[];
         _servicePeriodsLoading = widget.dataAccuracyGateway != null;
         _servicePeriodLoadError = null;
         _servicePeriodSaveError = null;
@@ -254,6 +271,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       });
       _loadBundle();
       _loadSettings();
+      _loadWageApplicability();
       _loadServicePeriodSettings();
     }
   }
@@ -281,6 +299,42 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       setState(() {
         _settingsLoading = false;
         _settingsLoadError = 'Could not load data accuracy settings: $error';
+      });
+    }
+  }
+
+  Future<void> _loadWageApplicability() async {
+    final gateway = widget.vendorApplicabilityGateway;
+    if (gateway == null) {
+      _wageApplicabilityLoading = false;
+      return;
+    }
+    final generation = ++_wageApplicabilityLoadGeneration;
+    try {
+      final rows = await gateway.list(settingKind: 'wage');
+      final currentEnabled =
+          rows
+              .where(
+                (row) =>
+                    row.settingKind == 'wage' &&
+                    row.enabled &&
+                    row.effectiveUntil == null,
+              )
+              .toList(growable: false)
+            ..sort((a, b) => a.vendorSlug.compareTo(b.vendorSlug));
+      if (!mounted || generation != _wageApplicabilityLoadGeneration) return;
+      setState(() {
+        _wageApplicabilityRows = currentEnabled;
+        _wageApplicabilityLoading = false;
+        _wageApplicabilityError = null;
+      });
+    } catch (error) {
+      if (!mounted || generation != _wageApplicabilityLoadGeneration) return;
+      setState(() {
+        _wageApplicabilityRows = const <WebVendorApplicabilityRow>[];
+        _wageApplicabilityLoading = false;
+        _wageApplicabilityError =
+            'Could not load wage vendor applicability: $error';
       });
     }
   }
@@ -683,6 +737,12 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             value: _wageSource,
             onChanged: _handleWageSourceChanged,
             bundle: _bundle,
+            vendorApplicabilityBound: widget.vendorApplicabilityGateway != null,
+            vendorApplicabilityLoading: _wageApplicabilityLoading,
+            vendorApplicabilityError: _wageApplicabilityError,
+            applicableWageVendorSlugs: _wageApplicabilityRows
+                .map((row) => row.vendorSlug)
+                .toList(growable: false),
           ),
           const SizedBox(height: 14),
           CoversSourceToggle(

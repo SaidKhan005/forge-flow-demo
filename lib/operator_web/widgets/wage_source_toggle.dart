@@ -31,14 +31,24 @@ class WageSourceToggle extends StatelessWidget {
     required this.value,
     required this.onChanged,
     required this.bundle,
+    this.vendorApplicabilityBound = false,
+    this.vendorApplicabilityLoading = false,
+    this.vendorApplicabilityError,
+    this.applicableWageVendorSlugs = const <String>[],
   });
 
   final WageSource value;
   final ValueChanged<WageSource> onChanged;
   final VendorConnectionsBundle? bundle;
+  final bool vendorApplicabilityBound;
+  final bool vendorApplicabilityLoading;
+  final String? vendorApplicabilityError;
+  final List<String> applicableWageVendorSlugs;
 
   @override
   Widget build(BuildContext context) {
+    final vendorSelectable =
+        !vendorApplicabilityBound || applicableWageVendorSlugs.isNotEmpty;
     return _DataAccuracyCard(
       cardKey: const Key('data_accuracy_wage_source_card'),
       icon: Icons.payments_outlined,
@@ -53,13 +63,10 @@ class WageSourceToggle extends StatelessWidget {
           _RadioRow(
             rowKey: const Key('wage_source_radio_vendor'),
             selected: value == WageSource.vendor,
+            enabled: vendorSelectable,
             label:
                 'Use labor vendor\'s reported wages and dollars when available',
-            body:
-                'Read labor dollars from your scheduling system when it '
-                'reports them. Forge & Flow falls back to target wage x hours '
-                'when the system does not expose dollars (we will tell you '
-                'when that happens on the dashboard).',
+            body: _vendorCopy(vendorSelectable),
             onTap: () => onChanged(WageSource.vendor),
           ),
           const SizedBox(height: 10),
@@ -77,6 +84,14 @@ class WageSourceToggle extends StatelessWidget {
             onTap: () => onChanged(WageSource.manualMix),
           ),
           const SizedBox(height: 14),
+          if (vendorApplicabilityBound) ...[
+            _VendorApplicabilityStatus(
+              loading: vendorApplicabilityLoading,
+              error: vendorApplicabilityError,
+              slugs: applicableWageVendorSlugs,
+            ),
+            const SizedBox(height: 14),
+          ],
           VendorRelativityLabel(
             setting: VendorRelativitySetting.wage,
             bundle: bundle,
@@ -84,6 +99,19 @@ class WageSourceToggle extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _vendorCopy(bool vendorSelectable) {
+    if (vendorApplicabilityBound && !vendorSelectable) {
+      return 'No current wage vendor is enabled for this location yet. Use the manual mix until F&F enables one.';
+    }
+    final suffix = vendorApplicabilityBound
+        ? ' Current wage vendors: ${_slugList(applicableWageVendorSlugs)}.'
+        : '';
+    return 'Read labor dollars from your scheduling system when it reports them. '
+        'Forge & Flow falls back to target wage x hours when the system does not '
+        'expose dollars (we will tell you when that happens on the dashboard).'
+        '$suffix';
   }
 }
 
@@ -155,6 +183,7 @@ class _RadioRow extends StatelessWidget {
   const _RadioRow({
     required this.rowKey,
     required this.selected,
+    this.enabled = true,
     required this.label,
     required this.body,
     required this.onTap,
@@ -162,6 +191,7 @@ class _RadioRow extends StatelessWidget {
 
   final Key rowKey;
   final bool selected;
+  final bool enabled;
   final String label;
   final String body;
   final VoidCallback onTap;
@@ -170,7 +200,7 @@ class _RadioRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       key: rowKey,
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(6),
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -194,7 +224,11 @@ class _RadioRow extends StatelessWidget {
                   ? Icons.radio_button_checked
                   : Icons.radio_button_unchecked,
               size: 18,
-              color: selected ? AppColors.sunsetDark : AppColors.textMuted,
+              color: !enabled
+                  ? AppColors.textMuted.withValues(alpha: 0.55)
+                  : selected
+                  ? AppColors.sunsetDark
+                  : AppColors.textMuted,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -203,12 +237,20 @@ class _RadioRow extends StatelessWidget {
                 children: [
                   Text(
                     label,
-                    style: AppTextStyles.body14(color: AppColors.textPrimary),
+                    style: AppTextStyles.body14(
+                      color: enabled
+                          ? AppColors.textPrimary
+                          : AppColors.textMuted,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     body,
-                    style: AppTextStyles.body13(color: AppColors.textPrimary),
+                    style: AppTextStyles.body13(
+                      color: enabled
+                          ? AppColors.textPrimary
+                          : AppColors.textMuted,
+                    ),
                   ),
                 ],
               ),
@@ -218,4 +260,74 @@ class _RadioRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _VendorApplicabilityStatus extends StatelessWidget {
+  const _VendorApplicabilityStatus({
+    required this.loading,
+    required this.error,
+    required this.slugs,
+  });
+
+  final bool loading;
+  final String? error;
+  final List<String> slugs;
+
+  @override
+  Widget build(BuildContext context) {
+    final isError = error != null;
+    final message = loading
+        ? 'Checking wage vendor options...'
+        : isError
+        ? error!
+        : slugs.isEmpty
+        ? 'No enabled wage vendor is current. Manual mix stays available.'
+        : 'Enabled wage vendors: ${_slugList(slugs)}';
+    return Container(
+      key: const Key('wage_source_vendor_applicability_status'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isError ? AppColors.warningBadgeBg : AppColors.cardGlow,
+        border: Border.all(
+          color: isError ? AppColors.warning : AppColors.borderSubtle,
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          if (loading)
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.sunsetDark,
+              ),
+            )
+          else
+            Icon(
+              isError ? Icons.warning_amber_rounded : Icons.fact_check_outlined,
+              size: 16,
+              color: isError ? AppColors.warning : AppColors.textSecondary,
+            ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body12(
+                color: isError ? AppColors.warning : AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _slugList(List<String> slugs) {
+  final unique = slugs.toSet().toList()..sort();
+  if (unique.isEmpty) return 'none';
+  return unique.join(', ');
 }

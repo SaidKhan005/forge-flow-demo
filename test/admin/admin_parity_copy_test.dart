@@ -5,6 +5,7 @@ import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/screens/integration_admin_screen.dart';
 import 'package:forge_and_flow/admin/screens/per_location_data_accuracy_screen.dart';
 import 'package:forge_and_flow/admin/screens/polling_and_pricing_admin_screen.dart';
+import 'package:forge_and_flow/admin/screens/vendor_applicability_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/data_accuracy_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/integration_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -38,6 +39,15 @@ void main() {
     test('route table labels read-only and admin-only tiles honestly', () {
       expect(routeById(kAdminDataAccuracyRouteId).badge, 'Read-only view');
       expect(routeById(kAdminDataAccuracyRouteId).subtitle, crossSurfaceCopy);
+      expect(routeById(kAdminVendorApplicabilityRouteId).badge, 'Admin only');
+      expect(
+        routeById(kAdminVendorApplicabilityRouteId).path,
+        '/vendor-applicability',
+      );
+      expect(
+        routeById(kAdminVendorApplicabilityRouteId).subtitle,
+        contains('choose which vendors can power wage, covers, and polling'),
+      );
       expect(
         routeById(kAdminVendorIntegrationsRouteId).badge,
         'Read-only view',
@@ -73,6 +83,21 @@ void main() {
         expect(route.badge, 'Admin only', reason: routeId);
         expect(route.subtitle, contains(adminOnlyCopy), reason: routeId);
       }
+    });
+
+    testWidgets('vendor applicability route builds reachable admin page', (
+      tester,
+    ) async {
+      final route = routeById(kAdminVendorApplicabilityRouteId);
+
+      expect(route.visibleInNav, isTrue);
+      expect(route.section, AdminRouteSection.operations);
+
+      await tester.pumpWidget(wrap(Builder(builder: route.builder)));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VendorApplicabilityAdminScreen), findsOneWidget);
+      expect(find.text('Vendor Applicability'), findsWidgets);
     });
 
     testWidgets('data accuracy read-only mode names Operator Web ownership', (
