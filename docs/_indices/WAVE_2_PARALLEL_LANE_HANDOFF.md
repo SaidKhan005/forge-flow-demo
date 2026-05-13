@@ -173,20 +173,68 @@ coordination space.**
   `state = assigned` rows owned by `Claude2`, stop and announce
   "no remaining Claude2-assigned slices; awaiting operator direction."
 
-# Caps awareness — protect your token budget
+# Caps awareness — protect your token budget (CRITICAL)
 
-You have lower usage caps than the main orchestrator's session.
-Prioritize:
+You have lower usage caps than the main orchestrator's session. Both
+sessions share this discipline; for you it is non-negotiable.
 
-- **Fully shipping ONE lane before starting another.** Don't fan out
-  across multiple lanes at once — finish + ship + audit one PR, then
-  pick the next.
-- **Dispatching worker agents instead of doing implementation directly.**
-  Workers run in their own context windows; their token usage doesn't
-  hit your cap. You spend your cap on orchestration + audit + ledger
-  updates only.
-- **Compact aggressively** between lanes — start each new lane with a
-  fresh context if possible.
+## 1. Orchestrate-don't-implement (the cap multiplier)
+
+Every code change goes through a **worker agent dispatched in a worktree**
+via the Agent tool. Worker agents run in their OWN context window —
+their token usage does NOT hit your session cap. You spend tokens on:
+
+- Writing worker prompts.
+- Auditing PRs.
+- Merging (auto-gate) or relaying to main orchestrator (operator-gate).
+
+**No inline implementation edits to slice work.** Doc tweaks ≤10 lines
+are the only carve-out.
+
+## 2. 70% cap throttle
+
+When you cross ~70% session usage, **STOP dispatching new workers**.
+Finish auditing what's already in flight. Merge or escalate. Then
+compact + announce you're handing off until next session.
+
+The failure mode to avoid: 4 workers dispatched, 1 audit done, cap hits
+mid-audit-2, 2 PRs unaudited, operator stranded.
+
+## 3. Bundle Lane U aggressively
+
+Lane U (UX polish, 7 slices, 14 Ops Console + 7 Mobile screens) is
+explicitly bundle-eligible. **Default to fat bundles under cap pressure:**
+
+- 7 thin PRs = 7 audits = 7× your cap spend.
+- 2 fat PRs = 2 audits = 2× your cap spend.
+- Workers don't care — fresh context per dispatch either way.
+
+Suggested bundling: one worker for "Ops Console screens U-1..U-4" + one
+worker for "Mobile screens U-5..U-7", or even tighter if scope holds.
+
+## 4. Compact between batches
+
+Not just between lanes — after every merged PR or every audit-and-merge
+cycle, compact. Long contexts cost more (cache misses, replay). Short
+post-compact context is cheap.
+
+## 5. Audit by grep, not by re-reading
+
+When auditing a PR, use `gh pr diff <n>` + targeted grep against cited
+file:line ranges. Don't re-read whole files unless the audit turns up a
+seam that needs broader inspection.
+
+## 6. Standard token discipline
+
+- `rg` first when symbol/filename/literal is known.
+- Offset reads on large docs (offset + limit), not full reads.
+- Don't re-read what you just read.
+- Tail tests — `flutter test test/<specific-dir>` not the whole suite.
+
+## 7. Fully ship ONE lane at a time
+
+Don't fan out across U + V + D simultaneously. Finish + ship + audit
+one lane's PRs, then pick the next. Keeps your audit context narrow.
 
 # Operator-gated lanes (your lanes)
 
@@ -201,11 +249,28 @@ For operator-gated slices:
 3. Push the audit doc. Main orchestrator picks it up + pings the operator.
 4. You do NOT merge. Wait.
 
+# Phase gating — when you start
+
+The main orchestrator runs the 7-phase pipeline. Your work slots in at
+**Phase 2** (Wave 2 execution), but lanes U/V/D are cleared to start as
+soon as **Phase 0 (local stack smoke test) passes**, in parallel with
+Phase 1 walkthrough. The main orchestrator confirms Phase 0 clearance
+via the WAVE_2_LEDGER.md commit history (look for the "Phase 0 clean —
+Claude2 cleared for U/V/D" marker).
+
+**Lane M-Poll waits** until Phase 1 walkthrough is complete (it touches
+the demo-live switch surface and walkthrough may amend its scope).
+
 # First action
 
-Read the required docs in order. Then announce: "I've read the docs.
-Picking up lane <X> first because <reason>. Dispatching a worker agent
-in 30 seconds." Then proceed.
+Read the required docs in order. Check the most recent commits to
+`docs/_indices/WAVE_2_LEDGER.md` for the Phase 0 clearance marker.
+
+- **If cleared:** announce "Phase 0 cleared. Picking up lane <U/V/D>
+  first because <reason>. Dispatching a worker agent in 30 seconds."
+  Then proceed.
+- **If NOT yet cleared:** announce "Phase 0 not yet cleared. Holding.
+  Will re-check in 30 minutes." Compact your context to minimum + wait.
 
 If at any point you're blocked, stop and write a note to
 `docs/_audits/wave_2/scope_clarifications.md` rather than guess.
