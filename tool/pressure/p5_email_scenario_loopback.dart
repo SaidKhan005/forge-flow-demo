@@ -30,9 +30,10 @@
 //      business name, etc. — exact set depends on template).
 //
 // For each DEFERRED scenario (per the C-2 decision matrix — drafts C, D,
-// E, F, G), the harness emits ONE structured "deferred" log line citing
-// the matrix row and skips cleanly. This keeps the harness honest about
-// what it CAN exercise versus what is template-only.
+// F; drafts E + G were DELETED via C-2-Del 2026-05-13), the harness
+// emits ONE structured "deferred" log line citing the matrix row and
+// skips cleanly. This keeps the harness honest about what it CAN
+// exercise versus what is template-only.
 //
 // Env-gated-inert posture
 // -----------------------
@@ -233,14 +234,6 @@ List<EmailLoopbackScenario> emailLoopbackInventory() => const <EmailLoopbackScen
             'operator decision pending.',
       ),
       EmailLoopbackScenario(
-        templateId: 'vendor_webhook_signature_alert',
-        expectedSubject: 'Suspicious webhook activity from',
-        status: EmailLoopbackStatus.deferred,
-        deferralReason:
-            'C-2 matrix Draft E — no centralized failed-signature '
-            'counter; operator decision pending.',
-      ),
-      EmailLoopbackScenario(
         templateId: 'vendor_connection_auto_disabled',
         // Subject: "{{vendorName}} connection disabled"
         expectedSubject: 'connection disabled',
@@ -250,15 +243,10 @@ List<EmailLoopbackScenario> emailLoopbackInventory() => const <EmailLoopbackScen
             'wiring; operator decision pending on Path (a) full fanout '
             'vs Path (b) direct enqueue.',
       ),
-      EmailLoopbackScenario(
-        templateId: 'tos_version_updated_notice',
-        expectedSubject: 'Forge & Flow Terms of Service updated',
-        status: EmailLoopbackStatus.deferred,
-        deferralReason:
-            'C-2 matrix Draft G — no production INSERT path into '
-            'tos_versions; publish workflow deferred per '
-            'operator_self_served_tos_contract.md.',
-      ),
+      // C-2-Del (2026-05-13) deleted `vendor_webhook_signature_alert`
+      // (Draft E) and `tos_version_updated_notice` (Draft G) per
+      // operator picks (rely on Cloud Logging + in-app TOS gate).
+      // No inventory rows needed; templates no longer exist.
       // ----- Firebase-managed (NOT a SendGrid loopback target) -----
       EmailLoopbackScenario(
         templateId: 'firebase_password_reset',

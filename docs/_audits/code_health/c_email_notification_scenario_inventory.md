@@ -5,6 +5,10 @@ pressure-test pass. The initial 2026-05-12 pass was a **read-only audit**
 where no code paths were modified. A2.2 updated this inventory to reflect
 implementation decisions: two superseded Markdown templates and renderer ids
 were deleted, and B3-shipped fanout templates were reclassified as wired.
+C-2-Del (2026-05-13) deleted two more — `vendor_webhook_signature_alert`
+(Draft E) and `tos_version_updated_notice` (Draft G) — per the C-2 operator
+picks (Cloud Logging covers signature failures; in-app accept-screen gate
+covers TOS updates).
 
 Scope: every email and every in-app / push / inbox notification site
 in the Forge & Flow codebase, plus the F&F admin / proxy paths that
@@ -158,16 +162,16 @@ Line numbers verified at audit time and may drift as code changes.
 | Test coverage | Renderer-only. |
 | Notes | Deferred per Phase 8 lean cut (`lib\services\email\email_template_renderer.dart:108-110` doc). |
 
-### 4.c Vendor webhook signature alert (template-only)
+### 4.c Vendor webhook signature alert — **DELETED via C-2-Del (2026-05-13)**
 
 | Field | Value |
 | --- | --- |
 | Category | Vendor lifecycle |
-| Trigger | N failed webhook signature verifications within an observation window (intended for the inbound webhook handler to detect). |
-| Sender code path | **No enqueuer in the codebase.** Template-only. |
-| Payload / template | Subject `Suspicious webhook activity from {{vendorName}}`. Template: `tool\advisor_proxy\email_templates\vendor_webhook_signature_alert.md`. Variables: `recipientName`, `vendorName`, `failedSignatureCount`, `observationWindowHumanReadable`, `integrationConsoleUrl`, `rateLimitWindowHumanReadable`. |
-| Test coverage | Renderer-only; webhook-signature verification itself has unit tests under `test\integrations\**\*_webhook_signature_verifier_test.dart`. |
-| Notes | Pressure test `tool\pressure\p3a_webhook_flood.dart` exercises the verifier but not the alert path (no emitter). |
+| Trigger | N failed webhook signature verifications within an observation window. |
+| Sender code path | C-2-Del deleted the template (`vendor_webhook_signature_alert.md`) + `EmailTemplateIds.vendorWebhookSignatureAlert` constant + subject map entry + pressure inventory row. Per operator pick (C-2 matrix Draft E), Cloud Logging alerts cover signature failures; signature-verifier unit tests cover the verifier itself. No centralized failed-signature counter was built. |
+| Payload / template | Removed. |
+| Test coverage | Renderer suite no longer iterates this id; webhook-signature verification itself retains unit tests under `test\integrations\**\*_webhook_signature_verifier_test.dart`. |
+| Notes | If adversarial webhook activity is observed post-launch, the operator can re-instate the template + build a centralized counter at that point. Source: `docs\_decisions\c_2_email_template_wire_or_delete_decisions.md` Draft E. |
 
 ### 4.d Vendor connection auto-disabled (template-only)
 
@@ -247,7 +251,7 @@ Line numbers verified at audit time and may drift as code changes.
 
 ---
 
-## 8. TOS / Account — `tos_version_updated_notice` (template-only)
+## 8. TOS / Account — `tos_version_updated_notice` — **DELETED via C-2-Del (2026-05-13)**
 
 ### 8.a TOS version published
 
@@ -255,12 +259,12 @@ Line numbers verified at audit time and may drift as code changes.
 | --- | --- |
 | Category | TOS / Account |
 | Trigger | F&F admin publishes a new TOS version row in `tos_versions` (migration `db\migrations\202605040100_phase_9_8_tos_versions.sql`). |
-| Sender code path | **No enqueuer in the codebase.** Template-only. The runtime gate that forces re-acceptance is in `lib\operator_web\screens\tos_accept_screen.dart` + `lib\operator_web\auth\operator_web_auth_source.dart` + `lib\operator_web\router\operator_web_router.dart`; the email side is deferred per `docs\contracts\operator_self_served_tos_contract.md`. |
-| Payload / template | Subject `Forge & Flow Terms of Service updated`. Template: `tool\advisor_proxy\email_templates\tos_version_updated_notice.md`. Variables: `recipientName`, `publishedAtHumanReadable`, `effectiveAtHumanReadable`, `changeSummary`, `versionLabel`, `tosUrl`. |
+| Sender code path | C-2-Del deleted the template (`tos_version_updated_notice.md`) + `EmailTemplateIds.tosVersionUpdatedNotice` constant + subject map entry + pressure inventory row. Per operator pick (C-2 matrix Draft G), the runtime gate at `lib\operator_web\screens\tos_accept_screen.dart` is the sole TOS-update operator signal — operators are required to accept the new version the next time they sign in. The email channel is removed. |
+| Payload / template | Removed. |
 | Target action | Operators sign in next time and hit the TOS-accept screen. |
 | Loopback | TOS-accept screen lives at `lib\operator_web\screens\tos_accept_screen.dart`; acceptance is gated by the operator-web auth source `OperatorWebTosGateway`. |
-| Test coverage | Renderer-only. Acceptance gate: `test\operator_web\operator_web_router_test.dart`; `test\operator_web\onboarding_screens_test.dart`. |
-| Notes | The TOS schema + acceptance gate ship; the *notice* email does not. **Template-only.** |
+| Test coverage | Acceptance gate: `test\operator_web\operator_web_router_test.dart`; `test\operator_web\onboarding_screens_test.dart`. Renderer suite no longer iterates this id. |
+| Notes | If a TOS publish workflow ships later, the template can be re-added alongside it. Source: `docs\_decisions\c_2_email_template_wire_or_delete_decisions.md` Draft G. |
 
 ---
 
@@ -426,13 +430,13 @@ Line numbers verified at audit time and may drift as code changes.
 | MFA authenticator removed | Wired | – | – | inbox |
 | `notif.vendor.now_available` | **Wired** | SendGrid via outbox | fanout | fanout |
 | `vendor_sync_error_alert` | **Template-only** | locked Markdown | – | – |
-| `vendor_webhook_signature_alert` | **Template-only** | locked Markdown | – | – |
+| `vendor_webhook_signature_alert` | Deleted in C-2-Del | removed; Cloud Logging alerts cover signature failures | – | – |
 | `vendor_connection_auto_disabled` | **Template-only** | locked Markdown | – | – |
 | `notif.backfill.complete` / `.failed` | **Wired** | SendGrid via fanout | wired | wired |
 | `notif.audit.anchor_failure` | **Wired** | SendGrid via fanout | wired | wired |
 | Admin "Test connection" SendGrid send | Wired | direct send (no outbox) | – | – |
 | Admin-initiated password reset | Wired | Firebase action-link | – | – |
-| `tos_version_updated_notice` | **Template-only** | locked Markdown | – | – |
+| `tos_version_updated_notice` | Deleted in C-2-Del | removed; in-app accept-screen gate covers TOS updates | – | – |
 | New weekly plan snapshot (inbox) | Wired | – | – | inbox |
 | 60-day cycle rollover (inbox) | Wired | – | – | inbox |
 | `notif.shift.stale` | Catalog-only (future) | – | – | – |
@@ -481,7 +485,7 @@ Senders / dispatchers:
 Catalog / templates:
 
 - `lib\domain\models\notification_event_catalog.dart` — event registry.
-- `tool\advisor_proxy\email_templates\` — 10 repo-owned Markdown templates + `_brand_wrapper.html`.
+- `tool\advisor_proxy\email_templates\` — 8 repo-owned Markdown templates + `_brand_wrapper.html` (C-2-Del removed `vendor_webhook_signature_alert.md` + `tos_version_updated_notice.md` on 2026-05-13).
 
 Persistence:
 

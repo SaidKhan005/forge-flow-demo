@@ -137,22 +137,6 @@ class EmailTemplateIds {
   /// Draft D.
   static const String vendorSyncErrorAlert = 'vendor_sync_error_alert';
 
-  /// V1 status: TEMPLATE ONLY. Wire deferred per C-2 operator
-  /// decision: webhook signature verification is distributed across
-  /// 20+ per-vendor verifier files under
-  /// `lib/integrations/{pos,reservation,labor}/*_webhook_signature_verifier.dart`
-  /// with no centralized aggregator. Wiring email requires a new
-  /// "failed signatures within window" counter per `(operator, vendor)`
-  /// — needs a new table/index OR a Redis/memory ring buffer, plus
-  /// a rate-limit window (the template hardcodes `{{rateLimitWindowHumanReadable}}`
-  /// suggesting per-vendor throttle). C-2 ships no wire; operator
-  /// decision pending on whether the operational signal is worth the
-  /// new aggregator infrastructure. Source:
-  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
-  /// Draft E.
-  static const String vendorWebhookSignatureAlert =
-      'vendor_webhook_signature_alert';
-
   /// V1 status: TEMPLATE ONLY. Phase 8 lean cut 2 explicitly deferred
   /// the OAuth-refresh-cron emitter that would enqueue an
   /// `email_outbox` row when a vendor connection auto-disables on
@@ -179,24 +163,6 @@ class EmailTemplateIds {
   /// Draft F.
   static const String vendorConnectionAutoDisabled =
       'vendor_connection_auto_disabled';
-
-  /// V1 status: TEMPLATE ONLY. Wire deferred per C-2 operator
-  /// decision: no production INSERT path into `public.tos_versions`
-  /// exists in the codebase today. The runtime acceptance gate
-  /// (`lib/operator_web/screens/tos_accept_screen.dart`) reads
-  /// `tos_versions` but never writes; the schema migration
-  /// (`db/migrations/202605040100_phase_9_8_tos_versions.sql`)
-  /// ships the table with no seed data; the operator-self-served TOS
-  /// contract (`docs/contracts/operator_self_served_tos_contract.md`)
-  /// explicitly defers the publish workflow. Wiring email requires
-  /// the publish workflow to exist FIRST — until then there is no
-  /// trigger site to hook. C-2 ships no wire; operator decision
-  /// pending on either (a) defer until publish workflow ships, or
-  /// (b) delete and rely on the runtime accept-screen gate as the
-  /// sole TOS-update operator signal. Source:
-  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
-  /// Draft G.
-  static const String tosVersionUpdatedNotice = 'tos_version_updated_notice';
 
   /// V1 status: WIRED. Phase 8 lifecycle fan-out worker
   /// (`tool/advisor_proxy/email_dispatch/vendor_lifecycle_notification_dispatcher.dart`)
@@ -247,9 +213,7 @@ class EmailTemplateIds {
     operatorInviteFirstAdmin,
     mfaFactorChangedNotice,
     vendorSyncErrorAlert,
-    vendorWebhookSignatureAlert,
     vendorConnectionAutoDisabled,
-    tosVersionUpdatedNotice,
     vendorNowAvailable,
     backfillComplete,
     backfillFailed,
@@ -267,12 +231,8 @@ const Map<String, String> _subjectByTemplate = <String, String>{
       'Your Forge & Flow MFA has been updated',
   EmailTemplateIds.vendorSyncErrorAlert:
       'Forge & Flow could not sync from {{vendorName}}',
-  EmailTemplateIds.vendorWebhookSignatureAlert:
-      'Suspicious webhook activity from {{vendorName}}',
   EmailTemplateIds.vendorConnectionAutoDisabled:
       '{{vendorName}} connection disabled',
-  EmailTemplateIds.tosVersionUpdatedNotice:
-      'Forge & Flow Terms of Service updated',
   EmailTemplateIds.vendorNowAvailable:
       '{{vendorName}} is ready to connect in Forge & Flow',
   EmailTemplateIds.backfillComplete:
