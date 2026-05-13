@@ -152,13 +152,15 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
-`202605131030_b11_1_auth_handoff_codes.sql`, including the later cron
+`202605131400_b11_2_auth_step_up_challenges.sql`, including the later cron
 maintenance, KMS flag seed, PII erasure, retention sweep, admin hierarchy
 lifecycle, scoped Data Accuracy/Polling, lifecycle access hardening,
-audit-log actor/reason/business-date migrations, and the Lane B B11.1
+audit-log actor/reason/business-date migrations, the Lane B B11.1
 mobile→web redemption-code handoff that replaces the legacy decision-#5
-JWT-in-URL path (addendum A1) — all of which move shared operations-
-console support surfaces.
+JWT-in-URL path (addendum A1), and the Lane B B11.2 RFC 9470 step-up
+challenge ledger that gates account/MFA/role/billing/vendor-applicability
+mutations on a fresh interactive sign-in — all of which move shared
+operations-console support surfaces.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin
