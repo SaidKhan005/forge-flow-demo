@@ -33,7 +33,7 @@ Triggers the `operator` gate: auth-critical, RLS-touching, schema-touching (migr
 | A2.2 | Slice A2.2 | Codex | Medium | Medium | operator | A2.1 merged | assigned | — | Email pipeline wire-or-delete |
 | A3.1 | Slice A3.1 | Claude | Medium | Medium | operator | A0 merged | assigned | — | Monolith seam-map + bleed-stop lint |
 | A3.2 | Slice A3.2 | Claude | Medium | Medium | operator | A3.1 merged | assigned | — | Bare-catch tail chunk 1 of 3 |
-| A4.1 | Slice A4.1 | Claude | Small | Low | auto | A0 merged | assigned | — | Performance audit pass |
+| A4.1 | Slice A4.1 | Claude | Small | Low | auto | A0 merged | merged | #517 | Performance audit pass — 3 ranked recs delivered for A4.2 (Postgres pool 4→20, shift_dashboard ticker coalescing, healthProducerConcurrency wiring) |
 | A4.2 | Slice A4.2 | Claude | Medium | Medium | operator | A4.1 merged | assigned | — | Perf fixes if found (incl. Postgres pool 4→20) |
 | A5+A8 | Slice A5+A8 | Codex | Medium | Medium | operator | A0 merged | assigned | — | Schema versioning + `audit_logs` UPDATE lint |
 | A6.1 | Slice A6.1 | Codex | Small | Low | auto | — | merged | #498 | Proxy health UI honesty pass |
