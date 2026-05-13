@@ -34,15 +34,30 @@ abstract class WebAccountGateway {
   Future<AccountIdentity> patchAccount(AccountIdentityPatch patch);
 }
 
+/// User-scoped account session surface for My Account. Reuses the
+/// existing Phase 9 active-session proxy routes; there is deliberately
+/// no My Account-only proxy route here.
+abstract class WebAccountSessionGateway {
+  /// Lists the signed-in operator user's own sessions.
+  Future<AccountActiveSessionsListed> listActiveSessions();
+
+  /// Revokes every supplied session id using the existing single-session
+  /// revoke route. Callers exclude the current session before invoking this.
+  Future<AccountSessionSignOutOthersResult> signOutOtherSessions({
+    required Iterable<String> sessionIds,
+  });
+}
+
 /// Default implementation. Wraps [OperatorWebProxyClient.patchJson]
 /// so token, idempotency-key, and error-mapping logic is shared with
 /// the rest of the operator-web HTTP surface.
-class HttpWebAccountGateway implements WebAccountGateway {
+class HttpWebAccountGateway
+    implements WebAccountGateway, WebAccountSessionGateway {
   HttpWebAccountGateway({
     required OperatorWebProxyClient client,
     required Future<String?> Function() idTokenProvider,
-  })  : _client = client,
-        _idTokenProvider = idTokenProvider;
+  }) : _client = client,
+       _idTokenProvider = idTokenProvider;
 
   final OperatorWebProxyClient _client;
   final Future<String?> Function() _idTokenProvider;
@@ -50,22 +65,20 @@ class HttpWebAccountGateway implements WebAccountGateway {
   /// Operator-scoped route. The unit-test contract pins this string.
   static const String operatorAccountPath = '/v1/operator/account';
 
+  /// Existing self-service auth-session routes. These stay user-scoped and
+  /// avoid `/v1/admin/*` or any B9.2-only schema additions.
+  static const String activeSessionsPath = '/v1/auth/sessions';
+  static const String revokeSessionPath = '/v1/auth/session/revoke';
+
   @override
   Future<AccountIdentity> getAccount() async {
     if (operatorAccountPath.contains('/admin/')) {
       throw const _AdminRouteForbidden();
     }
-    final token = await _idTokenProvider();
-    if (token == null || token.trim().isEmpty) {
-      throw const OperatorWebProxyException(
-        code: 'unauthenticated',
-        message: 'Sign in again to load your business account.',
-      );
-    }
-    final response = await _client.getJson(
-      operatorAccountPath,
-      idToken: token,
+    final token = await _requireToken(
+      'Sign in again to load your business account.',
     );
+    final response = await _client.getJson(operatorAccountPath, idToken: token);
     return AccountIdentity.fromJson(response.body);
   }
 
@@ -77,13 +90,9 @@ class HttpWebAccountGateway implements WebAccountGateway {
       // guarantees this, but the assertion makes route drift loud.
       throw const _AdminRouteForbidden();
     }
-    final token = await _idTokenProvider();
-    if (token == null || token.trim().isEmpty) {
-      throw const OperatorWebProxyException(
-        code: 'unauthenticated',
-        message: 'Sign in again to update your business account.',
-      );
-    }
+    final token = await _requireToken(
+      'Sign in again to update your business account.',
+    );
     final response = await _client.patchJson(
       operatorAccountPath,
       idToken: token,
@@ -91,6 +100,78 @@ class HttpWebAccountGateway implements WebAccountGateway {
     );
     return AccountIdentity.fromJson(response.body);
   }
+
+  @override
+  Future<AccountActiveSessionsListed> listActiveSessions() async {
+    if (activeSessionsPath.contains('/admin/')) {
+      throw const _AdminRouteForbidden();
+    }
+    final token = await _requireToken(
+      'Sign in again to load your active sessions.',
+    );
+    final response = await _client.getJson(activeSessionsPath, idToken: token);
+    final raw = response.body['sessions'];
+    if (raw is! List) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_active_sessions',
+        message: 'The proxy returned an incomplete active sessions list.',
+      );
+    }
+    return AccountActiveSessionsListed(
+      sessions: List<AccountActiveSessionEntry>.unmodifiable(
+        raw.map(AccountActiveSessionEntry.fromJson),
+      ),
+    );
+  }
+
+  @override
+  Future<AccountSessionSignOutOthersResult> signOutOtherSessions({
+    required Iterable<String> sessionIds,
+  }) async {
+    if (revokeSessionPath.contains('/admin/')) {
+      throw const _AdminRouteForbidden();
+    }
+    final ids = <String>{
+      for (final sessionId in sessionIds)
+        if (sessionId.trim().isNotEmpty) sessionId.trim(),
+    }.toList(growable: false);
+    if (ids.isEmpty) {
+      return const AccountSessionSignOutOthersResult(revokedCount: 0);
+    }
+    final token = await _requireToken(
+      'Sign in again before signing out other sessions.',
+    );
+    var revokedCount = 0;
+    for (final sessionId in ids) {
+      final response = await _client.postJson(
+        revokeSessionPath,
+        idToken: token,
+        body: <String, Object?>{
+          'session_id': sessionId,
+          'reason': 'my_account.sign_out_other_sessions',
+        },
+      );
+      final revoked =
+          _readBool(response.body['revoked']) ??
+          _readBool(response.body['ok']) ??
+          true;
+      if (revoked) revokedCount += 1;
+    }
+    return AccountSessionSignOutOthersResult(revokedCount: revokedCount);
+  }
+
+  Future<String> _requireToken(String message) async {
+    final token = await _idTokenProvider();
+    if (token == null || token.trim().isEmpty) {
+      throw OperatorWebProxyException(
+        code: 'unauthenticated',
+        message: message,
+      );
+    }
+    return token.trim();
+  }
+
+  static bool? _readBool(Object? value) => value is bool ? value : null;
 }
 
 /// Patch payload for [WebAccountGateway.patchAccount]. Every field
@@ -198,6 +279,81 @@ class AccountIdentity {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
   }
+}
+
+@immutable
+class AccountActiveSessionsListed {
+  const AccountActiveSessionsListed({required this.sessions});
+
+  final List<AccountActiveSessionEntry> sessions;
+}
+
+/// A user-scoped active-session row for the My Account card. Raw IP
+/// addresses are intentionally omitted; the UI only receives city/country
+/// geo hints.
+@immutable
+class AccountActiveSessionEntry {
+  const AccountActiveSessionEntry({
+    required this.sessionId,
+    required this.lastActiveAt,
+    required this.createdAt,
+    this.deviceLabel,
+    this.userAgent,
+    this.deviceFingerprint,
+    this.geoCity,
+    this.geoCountry,
+  });
+
+  final String sessionId;
+  final DateTime lastActiveAt;
+  final DateTime createdAt;
+  final String? deviceLabel;
+  final String? userAgent;
+  final String? deviceFingerprint;
+  final String? geoCity;
+  final String? geoCountry;
+
+  static AccountActiveSessionEntry fromJson(Object? raw) {
+    if (raw is! Map) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_active_session',
+        message: 'The proxy returned a malformed active session row.',
+      );
+    }
+    final json = Map<String, Object?>.from(raw);
+    final sessionId = AccountIdentity._readString(json['session_id']);
+    final lastActiveAtRaw =
+        AccountIdentity._readString(json['last_seen_at']) ??
+        AccountIdentity._readString(json['last_active_at']);
+    final createdAtRaw = AccountIdentity._readString(json['created_at']);
+    if (sessionId == null || lastActiveAtRaw == null || createdAtRaw == null) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_active_session',
+        message: 'The proxy returned an incomplete active session row.',
+      );
+    }
+    return AccountActiveSessionEntry(
+      sessionId: sessionId,
+      lastActiveAt: _parseUtc(lastActiveAtRaw),
+      createdAt: _parseUtc(createdAtRaw),
+      deviceLabel: AccountIdentity._readString(json['device_label']),
+      userAgent: AccountIdentity._readString(json['user_agent']),
+      deviceFingerprint: AccountIdentity._readString(
+        json['device_fingerprint'],
+      ),
+      geoCity: AccountIdentity._readString(json['geo_city']),
+      geoCountry: AccountIdentity._readString(json['geo_country']),
+    );
+  }
+
+  static DateTime _parseUtc(String value) => DateTime.parse(value).toUtc();
+}
+
+@immutable
+class AccountSessionSignOutOthersResult {
+  const AccountSessionSignOutOthersResult({required this.revokedCount});
+
+  final int revokedCount;
 }
 
 class _AdminRouteForbidden implements Exception {

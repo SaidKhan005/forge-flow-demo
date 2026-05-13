@@ -1,26 +1,19 @@
 // Phase 11W.7 / Wave A2 - Operator Web My Account screen.
 //
 // "My account" is the operator-user-facing surface (sign-in identity,
-// security, terms). Sibling to AccountScreen, which owns the
-// business-identity surface (business name, logo, currency, locale,
+// security, MFA, and active sessions). Sibling to AccountScreen, which
+// owns the business-identity surface (business name, logo, currency, locale,
 // week-start, rollover hour).
 //
-// Four sections, all of them read-mostly at V1 per
-// `project_v1_lean_scope_cut.md`:
+// Four sections per Lane B9.2:
 //
 //   * Profile   — display name, email, phone, business. Read-only.
 //                 Phone edits route to the operator mobile app.
+//   * Security  — password change and sign-in audit-log entry point.
 //   * MFA       — enrollment status (read off `session.mfaEnrolled`)
-//                 + Enroll / View backup codes. Demo-mode enrolment
-//                 is tracked locally; live wiring lands in
-//                 `11W.0.live` against the existing Phase 9 MFA
-//                 routes.
-//   * Password  — Change password modal. Demo-mode submit shows a
-//                 transient toast; live wiring lands in `11W.0.live`
-//                 against the existing Phase 9 password rotation
-//                 route.
-//   * T&Cs      — accepted version + date + View current T&Cs in a
-//                 read-only scrollable dialog.
+//                 + Enroll / View backup codes.
+//   * Active Sessions — current and other device sessions with a
+//                 "sign out all other sessions" action.
 //
 // Backend reuse: every mutation is designed to flow through the
 // existing Phase 9 auth tables and the existing audit log. No new
@@ -30,8 +23,8 @@
 // pattern Phase 11A used).
 //
 // Permission gate: keys off `session.roles`. Operator owners and
-// admins get the full surface; location managers see Profile + T&Cs
-// read-only and the MFA / Password buttons render disabled with
+// admins get the full security surface; location managers see Profile
+// and Active Sessions and the MFA / Password buttons render disabled with
 // tooltip copy ("Only operator admins can change MFA"). Mirrors the
 // gate the Phase 9 proxy enforces server-side — the UI is the
 // friendly-error layer.
@@ -61,6 +54,9 @@ import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../account/operator_web_account_actions.dart';
 import '../auth/operator_web_auth_source.dart';
+import '../services/operator_web_proxy_client.dart';
+import '../services/operator_web_url_launcher.dart';
+import '../services/web_account_gateway.dart';
 
 /// V1 My account screen. The router renders this at
 /// `kOperatorWebNavMyAccount` once onboarding completes.
@@ -88,14 +84,11 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
   Timer? _passwordToastTimer;
   static const Duration _kToastVisibleDuration = Duration(seconds: 4);
 
-  // V1 hardcoded T&Cs acceptance metadata. The accepted version + date
-  // come from the same fixture the onboarding T&Cs click-through wrote
-  // against; on live wiring the proxy returns these in the
-  // `tos_acceptances` row for the operator. Hardcoded here so the demo
-  // + tests have a stable fixture; replaced by a real read-through in
-  // `11W.0.live`.
-  static const String _acceptedTosVersionLabel = 'v1.0';
-  static const String _acceptedTosAcceptedOn = '2026-04-15';
+  List<AccountActiveSessionEntry> _activeSessions =
+      const <AccountActiveSessionEntry>[];
+  bool _activeSessionsLoading = false;
+  String? _activeSessionsError;
+  bool _signingOutOtherSessions = false;
 
   // Layout breakpoint for the Profile section's 2-column wrap. Sized
   // so that:
@@ -112,6 +105,9 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
   void initState() {
     super.initState();
     _mfaEnrolled = widget.session.mfaEnrolled;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadActiveSessions();
+    });
   }
 
   @override
@@ -122,6 +118,10 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     // → true that has happened in this widget's lifetime.
     if (widget.session.mfaEnrolled && !_mfaEnrolled) {
       _mfaEnrolled = true;
+    }
+    if (oldWidget.actions != widget.actions ||
+        oldWidget.session.uid != widget.session.uid) {
+      _loadActiveSessions();
     }
   }
 
@@ -135,7 +135,9 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     final roles = widget.session.roles;
     return roles.contains('operator_owner') ||
         roles.contains('operator_admin') ||
-        widget.session.permissions.contains(PermissionKeys.integrationsConfigure);
+        widget.session.permissions.contains(
+          PermissionKeys.integrationsConfigure,
+        );
   }
 
   String get _readOnlyTooltipMfa =>
@@ -222,11 +224,138 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     }
   }
 
-  Future<void> _handleViewTos() async {
-    await showDialog<void>(
+  Future<void> _loadActiveSessions() async {
+    final actions = widget.actions;
+    if (actions == null) {
+      setState(() {
+        _activeSessions = const <AccountActiveSessionEntry>[];
+        _activeSessionsLoading = false;
+        _activeSessionsError = null;
+      });
+      return;
+    }
+    setState(() {
+      _activeSessionsLoading = true;
+      _activeSessionsError = null;
+    });
+    try {
+      final listed = await actions.listAccountActiveSessions();
+      if (!mounted) return;
+      setState(() {
+        _activeSessions = listed.sessions;
+        _activeSessionsLoading = false;
+      });
+    } on OperatorWebProxyException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _activeSessionsLoading = false;
+        _activeSessionsError = _friendlyAccountSessionError(error);
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _activeSessionsLoading = false;
+        _activeSessionsError = 'Could not load active sessions: $error';
+      });
+    }
+  }
+
+  Future<void> _handleSignOutOtherSessions() async {
+    final actions = widget.actions;
+    if (actions == null || _signingOutOtherSessions) return;
+    final currentId = actions.currentAccountSessionId;
+    if (currentId == null || currentId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Refresh this page before signing out other sessions.'),
+        ),
+      );
+      return;
+    }
+    final otherSessionIds = _activeSessions
+        .where((session) => session.sessionId != currentId)
+        .map((session) => session.sessionId)
+        .toList(growable: false);
+    if (otherSessionIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No other active sessions to sign out.')),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => const _ViewTosDialog(),
+      builder: (_) => AlertDialog(
+        key: const Key('account_active_sessions_confirm_dialog'),
+        title: const Text('Sign out all other sessions?'),
+        content: const Text(
+          'This keeps this device signed in and signs out every other browser '
+          'or device listed here. You may be asked to sign in again before '
+          'the change goes through.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('account_active_sessions_confirm_cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('account_active_sessions_confirm_submit'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sign out all other sessions'),
+          ),
+        ],
+      ),
     );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _signingOutOtherSessions = true;
+      _activeSessionsError = null;
+    });
+    try {
+      final result = await actions.signOutOtherAccountSessions(
+        sessionIds: otherSessionIds,
+      );
+      if (!mounted) return;
+      setState(() {
+        _activeSessions = _activeSessions
+            .where((session) => session.sessionId == currentId)
+            .toList(growable: false);
+        _signingOutOtherSessions = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.revokedCount == 1
+                ? 'Signed out 1 other session.'
+                : 'Signed out ${result.revokedCount} other sessions.',
+          ),
+        ),
+      );
+    } on OperatorWebProxyException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _signingOutOtherSessions = false;
+        _activeSessionsError = _friendlyAccountSessionError(error);
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _signingOutOtherSessions = false;
+        _activeSessionsError = 'Could not sign out other sessions: $error';
+      });
+    }
+  }
+
+  String _friendlyAccountSessionError(OperatorWebProxyException error) {
+    if (error.isMfaFreshnessRedirect) {
+      return 'Please sign in again to continue. This protects your account '
+          'before changing active sessions.';
+    }
+    return error.message;
+  }
+
+  Future<void> _handleOpenAuditLog() {
+    return openOperatorWebRedirect('/audit-log');
   }
 
   @override
@@ -245,14 +374,23 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                 icon: Icons.person_outline,
                 title: 'My account',
                 subtitle:
-                    'Your profile, sign-in security, password, and accepted '
-                    'terms live here. Business-wide defaults stay on the '
-                    'Business account tab.',
+                    'Your profile, sign-in security, MFA, and active sessions '
+                    'live here. Business-wide defaults stay on the Business '
+                    'account tab.',
               ),
               const SizedBox(height: 18),
               _ProfileSection(
                 session: widget.session,
                 twoColumn: twoColumnProfile,
+                onAuditLog: _handleOpenAuditLog,
+              ),
+              const SizedBox(height: 14),
+              _SecuritySection(
+                canWrite: _canWriteAccount,
+                readOnlyTooltip: _readOnlyTooltipPassword,
+                toastMessage: _passwordToast,
+                onChangePassword: _handleChangePassword,
+                onAuditLog: _handleOpenAuditLog,
               ),
               const SizedBox(height: 14),
               _MfaSection(
@@ -261,19 +399,18 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                 readOnlyTooltip: _readOnlyTooltipMfa,
                 onEnroll: _handleEnrollMfa,
                 onViewBackupCodes: _handleViewBackupCodes,
+                onAuditLog: _handleOpenAuditLog,
               ),
               const SizedBox(height: 14),
-              _PasswordSection(
-                canWrite: _canWriteAccount,
-                readOnlyTooltip: _readOnlyTooltipPassword,
-                toastMessage: _passwordToast,
-                onChangePassword: _handleChangePassword,
-              ),
-              const SizedBox(height: 14),
-              _TosSection(
-                acceptedVersionLabel: _acceptedTosVersionLabel,
-                acceptedOn: _acceptedTosAcceptedOn,
-                onViewTos: _handleViewTos,
+              _ActiveSessionsSection(
+                sessions: _activeSessions,
+                currentSessionId: widget.actions?.currentAccountSessionId,
+                loading: _activeSessionsLoading,
+                errorMessage: _activeSessionsError,
+                signingOutOthers: _signingOutOtherSessions,
+                onRetry: _loadActiveSessions,
+                onSignOutOthers: _handleSignOutOtherSessions,
+                onAuditLog: _handleOpenAuditLog,
               ),
             ],
           ),
@@ -330,6 +467,8 @@ class _SectionCard extends StatelessWidget {
     required this.title,
     required this.headerExplainer,
     required this.child,
+    required this.auditLinkKey,
+    required this.onAuditLog,
     this.statusBadge,
   });
 
@@ -338,6 +477,8 @@ class _SectionCard extends StatelessWidget {
   final String title;
   final String headerExplainer;
   final Widget child;
+  final Key auditLinkKey;
+  final VoidCallback onAuditLog;
   final Widget? statusBadge;
 
   @override
@@ -376,6 +517,22 @@ class _SectionCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           child,
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: AppColors.borderSubtle),
+          const SizedBox(height: 10),
+          TextButton.icon(
+            key: auditLinkKey,
+            onPressed: onAuditLog,
+            icon: const Icon(Icons.history, size: 16),
+            label: const Text('View audit log'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.sunsetDark,
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              textStyle: AppTextStyles.mono11(color: AppColors.sunsetDark),
+            ),
+          ),
         ],
       ),
     );
@@ -383,10 +540,15 @@ class _SectionCard extends StatelessWidget {
 }
 
 class _ProfileSection extends StatelessWidget {
-  const _ProfileSection({required this.session, required this.twoColumn});
+  const _ProfileSection({
+    required this.session,
+    required this.twoColumn,
+    required this.onAuditLog,
+  });
 
   final OperatorWebSession session;
   final bool twoColumn;
+  final VoidCallback onAuditLog;
 
   @override
   Widget build(BuildContext context) {
@@ -425,6 +587,8 @@ class _ProfileSection extends StatelessWidget {
           'change either, ask Forge & Flow support to issue a new invite '
           'for the new email. Phone changes happen in the operator '
           'mobile app under Settings → Account.',
+      auditLinkKey: const Key('account_section_profile_audit_log_link'),
+      onAuditLog: onAuditLog,
       child: twoColumn
           ? Wrap(
               key: const Key('account_section_profile_two_column'),
@@ -482,6 +646,7 @@ class _MfaSection extends StatelessWidget {
     required this.readOnlyTooltip,
     required this.onEnroll,
     required this.onViewBackupCodes,
+    required this.onAuditLog,
   });
 
   final bool enrolled;
@@ -489,6 +654,7 @@ class _MfaSection extends StatelessWidget {
   final String readOnlyTooltip;
   final VoidCallback onEnroll;
   final VoidCallback onViewBackupCodes;
+  final VoidCallback onAuditLog;
 
   @override
   Widget build(BuildContext context) {
@@ -506,6 +672,8 @@ class _MfaSection extends StatelessWidget {
           'every sign-in, in addition to your password. We strongly '
           'recommend keeping it on for every operator user.',
       statusBadge: badge,
+      auditLinkKey: const Key('account_section_mfa_audit_log_link'),
+      onAuditLog: onAuditLog,
       child: enrolled
           ? _ActionRow(
               actionKey: const Key('account_section_mfa_view_backup_codes'),
@@ -532,29 +700,32 @@ class _MfaSection extends StatelessWidget {
   }
 }
 
-class _PasswordSection extends StatelessWidget {
-  const _PasswordSection({
+class _SecuritySection extends StatelessWidget {
+  const _SecuritySection({
     required this.canWrite,
     required this.readOnlyTooltip,
     required this.toastMessage,
     required this.onChangePassword,
+    required this.onAuditLog,
   });
 
   final bool canWrite;
   final String readOnlyTooltip;
   final String? toastMessage;
   final VoidCallback onChangePassword;
+  final VoidCallback onAuditLog;
 
   @override
   Widget build(BuildContext context) {
     return _SectionCard(
-      cardKey: const Key('account_section_password'),
+      cardKey: const Key('account_section_security'),
       icon: Icons.lock_outline,
-      title: 'Password',
+      title: 'Security',
       headerExplainer:
-          'A strong password is one of the simplest things you can do to '
-          'keep your business data safe. Mix letters, numbers, and a '
-          'symbol, and don\'t reuse it from another site.',
+          'A strong password and recent sign-in history help protect your '
+          'operator account. Password changes may ask you to sign in again.',
+      auditLinkKey: const Key('account_section_security_audit_log_link'),
+      onAuditLog: onAuditLog,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -604,55 +775,273 @@ class _PasswordSection extends StatelessWidget {
   }
 }
 
-class _TosSection extends StatelessWidget {
-  const _TosSection({
-    required this.acceptedVersionLabel,
-    required this.acceptedOn,
-    required this.onViewTos,
+class _ActiveSessionsSection extends StatelessWidget {
+  const _ActiveSessionsSection({
+    required this.sessions,
+    required this.currentSessionId,
+    required this.loading,
+    required this.errorMessage,
+    required this.signingOutOthers,
+    required this.onRetry,
+    required this.onSignOutOthers,
+    required this.onAuditLog,
   });
 
-  final String acceptedVersionLabel;
-  final String acceptedOn;
-  final VoidCallback onViewTos;
+  final List<AccountActiveSessionEntry> sessions;
+  final String? currentSessionId;
+  final bool loading;
+  final String? errorMessage;
+  final bool signingOutOthers;
+  final VoidCallback onRetry;
+  final VoidCallback onSignOutOthers;
+  final VoidCallback onAuditLog;
 
   @override
   Widget build(BuildContext context) {
+    final currentId = currentSessionId;
+    final otherSessionCount = currentId == null
+        ? 0
+        : sessions.where((session) => session.sessionId != currentId).length;
+    final canSignOutOthers =
+        currentId != null &&
+        otherSessionCount > 0 &&
+        !loading &&
+        !signingOutOthers;
+    final signOutButton = OutlinedButton.icon(
+      key: const Key('account_active_sessions_sign_out_others'),
+      onPressed: canSignOutOthers ? onSignOutOthers : null,
+      icon: signingOutOthers
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.logout, size: 16),
+      label: Text(
+        signingOutOthers ? 'Signing out...' : 'Sign out all other sessions',
+      ),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.sunsetDark,
+        disabledForegroundColor: AppColors.textMuted,
+        side: BorderSide(
+          color: canSignOutOthers
+              ? AppColors.sunsetDark
+              : AppColors.borderSubtle,
+          width: 1,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+      ),
+    );
     return _SectionCard(
-      cardKey: const Key('account_section_tos'),
-      icon: Icons.gavel_outlined,
-      title: 'Terms and conditions',
+      cardKey: const Key('account_section_active_sessions'),
+      icon: Icons.devices_other_outlined,
+      title: 'Active Sessions',
       headerExplainer:
-          'These are the terms you agreed to when you signed in for the '
-          'first time. They cover what data Forge & Flow reads from your '
-          'systems, where we store it, and how to revoke access.',
+          'Review browsers and devices signed in to your operator account. '
+          'This device stays signed in when you sign out the others.',
+      statusBadge: _StatusBadge(
+        key: const Key('account_active_sessions_count_badge'),
+        label: '${sessions.length} active',
+        color: AppColors.textMuted,
+      ),
+      auditLinkKey: const Key('account_section_active_sessions_audit_log_link'),
+      onAuditLog: onAuditLog,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Accepted $acceptedVersionLabel on $acceptedOn',
-            key: const Key('account_section_tos_accepted_line'),
-            style: AppTextStyles.body13(color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              key: const Key('account_section_tos_view'),
-              onPressed: onViewTos,
-              icon: const Icon(
-                Icons.description_outlined,
-                size: 16,
-                color: AppColors.sunsetDark,
+          if (loading)
+            const _AccountInlineState(
+              stateKey: Key('account_active_sessions_loading'),
+              icon: Icons.sync,
+              message: 'Loading active sessions...',
+            )
+          else if (errorMessage != null)
+            _AccountInlineError(message: errorMessage!, onRetry: onRetry)
+          else if (sessions.isEmpty)
+            const _AccountInlineState(
+              stateKey: Key('account_active_sessions_empty'),
+              icon: Icons.devices_other_outlined,
+              message: 'No active sessions are available for this account.',
+            )
+          else ...[
+            for (var i = 0; i < sessions.length; i++) ...[
+              _ActiveSessionRow(
+                session: sessions[i],
+                isCurrent: sessions[i].sessionId == currentSessionId,
               ),
-              label: const Text('View current T&Cs'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.sunsetDark,
-                side: const BorderSide(color: AppColors.sunsetDark, width: 1),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
-              ),
+              if (i != sessions.length - 1) const SizedBox(height: 10),
+            ],
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: canSignOutOthers
+                  ? signOutButton
+                  : Tooltip(
+                      message: currentId == null
+                          ? 'Refresh this page before signing out other sessions.'
+                          : otherSessionCount == 0
+                          ? 'Only other sessions can be signed out from here.'
+                          : 'Finish the current session action first.',
+                      child: signOutButton,
+                    ),
             ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ActiveSessionRow extends StatelessWidget {
+  const _ActiveSessionRow({required this.session, required this.isCurrent});
+
+  final AccountActiveSessionEntry session;
+  final bool isCurrent;
+
+  @override
+  Widget build(BuildContext context) {
+    final title =
+        session.deviceLabel ??
+        session.deviceFingerprint ??
+        session.userAgent ??
+        'Unknown device';
+    final geo = [
+      if (session.geoCity != null) session.geoCity,
+      if (session.geoCountry != null) session.geoCountry,
+    ].whereType<String>().join(', ');
+    final lastActive = 'Last active ${_formatDateTime(session.lastActiveAt)}';
+    final meta = geo.isEmpty ? lastActive : '$lastActive - $geo';
+    return Container(
+      key: Key('account_active_sessions_row_${session.sessionId}'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.computer, size: 18, color: AppColors.sunsetDark),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: AppTextStyles.body13(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    if (isCurrent) ...[
+                      const SizedBox(width: 8),
+                      _StatusBadge(
+                        key: Key(
+                          'account_active_sessions_this_device_'
+                          '${session.sessionId}',
+                        ),
+                        label: 'This device',
+                        color: AppColors.positive,
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  meta,
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Started ${_formatDateTime(session.createdAt)}',
+                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatDateTime(DateTime value) {
+    final local = value.toLocal();
+    return '${local.year}-${_two(local.month)}-${_two(local.day)} '
+        '${_two(local.hour)}:${_two(local.minute)}';
+  }
+
+  static String _two(int value) => value.toString().padLeft(2, '0');
+}
+
+class _AccountInlineState extends StatelessWidget {
+  const _AccountInlineState({
+    required this.stateKey,
+    required this.icon,
+    required this.message,
+  });
+
+  final Key stateKey;
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: stateKey,
+      children: [
+        Icon(icon, size: 16, color: AppColors.textMuted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            message,
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccountInlineError extends StatelessWidget {
+  const _AccountInlineError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('account_active_sessions_error'),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.negative.withValues(alpha: 0.08),
+        border: Border.all(
+          color: AppColors.negative.withValues(alpha: 0.30),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, size: 16, color: AppColors.negative),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body13(color: AppColors.negative),
+            ),
+          ),
+          TextButton(
+            key: const Key('account_active_sessions_retry'),
+            onPressed: onRetry,
+            child: const Text('Retry'),
           ),
         ],
       ),
@@ -1201,78 +1590,6 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
                         : const Text('Update password'),
                   ),
                 ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ViewTosDialog extends StatelessWidget {
-  const _ViewTosDialog();
-
-  @override
-  Widget build(BuildContext context) {
-    final body = DemoOperatorWebAuthSource.kDemoTosVersion.bodyMarkdown;
-    final version = DemoOperatorWebAuthSource.kDemoTosVersion.version;
-    // Sized to fit inside the smallest tablet viewport (768×1024)
-    // minus shell chrome (header 64 + 28 padding * 2) — capping at
-    // ~80% of the viewport height keeps the dialog from clipping.
-    final viewportHeight = MediaQuery.of(context).size.height;
-    final dialogMaxHeight = (viewportHeight * 0.85).clamp(360.0, 600.0);
-    return Dialog(
-      key: const Key('view_tos_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: 560, maxHeight: dialogMaxHeight),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Terms and conditions',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Version ${version.versionNumber} • effective '
-                '${version.effectiveDate.toIso8601String().split('T').first}',
-                style: AppTextStyles.body12(color: AppColors.textMuted),
-              ),
-              const SizedBox(height: 12),
-              Flexible(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.cardGlow,
-                    border: Border.all(color: AppColors.borderSubtle, width: 1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: SingleChildScrollView(
-                    key: const Key('view_tos_dialog_scroll'),
-                    child: SelectableText(
-                      body,
-                      style: AppTextStyles.body13(color: AppColors.textPrimary),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton(
-                  key: const Key('view_tos_dialog_close'),
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.sunset,
-                    foregroundColor: AppColors.backgroundSurface,
-                  ),
-                  child: const Text('Close'),
-                ),
               ),
             ],
           ),

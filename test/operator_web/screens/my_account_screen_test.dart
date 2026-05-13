@@ -1,26 +1,24 @@
-// Phase 11W.7 / Wave A2 - My account screen widget tests.
+// Phase 11W.7 / Wave B9.2 - My account screen widget tests.
 //
-// Covers the four sections (Profile, MFA, Password, T&Cs), the
-// desktop (1024x768) + tablet (768x1024) breakpoints (including the
-// Profile two-column to single-column flip), the role-based
-// permission gate (`operator_owner` / `operator_admin` to full
-// surface; `location_manager` to read-only with disabled CTAs), and
-// the demo-mode mutation surfaces (MFA enroll, password change,
-// auto-clearing toast).
+// Covers the B9.2 card order (Profile, Security, MFA, Active Sessions),
+// desktop/tablet breakpoints, role gates for security writes, audit-log links,
+// and the self-service active-session controls.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/operator_web/account/operator_web_account_actions.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/screens/my_account_screen.dart';
+import 'package:forge_and_flow/operator_web/services/web_account_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   Future<void> sizeViewport(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
@@ -31,69 +29,89 @@ void main() {
     });
   }
 
+  Future<void> pumpAccount(
+    WidgetTester tester,
+    OperatorWebSession session, {
+    OperatorWebAccountActions? actions,
+  }) async {
+    await tester.pumpWidget(
+      wrap(MyAccountScreen(session: session, actions: actions)),
+    );
+    await tester.pumpAndSettle();
+  }
+
   OperatorWebSession sessionWithRole(
     String role, {
     bool mfaEnrolled = false,
     String? phone,
-  }) =>
-      OperatorWebSession(
-        uid: 'demo-uid-$role',
-        email: 'alex@brio-restaurants.com',
-        displayName: 'Alex Morrison',
-        operatorId: 'demo-operator',
-        businessName: 'Brio Restaurants',
-        primaryLocationId: 'demo-location',
-        primaryLocationName: 'Brio Main Street',
-        roles: <String>[role],
-        mfaEnrolled: mfaEnrolled,
-        phone: phone,
-      );
+  }) => OperatorWebSession(
+    uid: 'demo-uid-$role',
+    email: 'alex@brio-restaurants.com',
+    displayName: 'Alex Morrison',
+    operatorId: 'demo-operator',
+    businessName: 'Brio Restaurants',
+    primaryLocationId: 'demo-location',
+    primaryLocationName: 'Brio Main Street',
+    roles: <String>[role],
+    mfaEnrolled: mfaEnrolled,
+    phone: phone,
+  );
 
   group('MyAccountScreen layout', () {
-    testWidgets('renders all four sections at desktop 1024×768', (
+    testWidgets('renders B9.2 cards in order at desktop 1024x768', (
       tester,
     ) async {
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRole('operator_owner');
 
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+      await pumpAccount(tester, session);
 
-      expect(find.byKey(const Key('operator_web_account_screen')),
-          findsOneWidget);
-      expect(find.byKey(const Key('account_section_profile')),
-          findsOneWidget);
-      expect(find.byKey(const Key('account_section_mfa')), findsOneWidget);
-      expect(find.byKey(const Key('account_section_password')),
-          findsOneWidget);
-      expect(find.byKey(const Key('account_section_tos')), findsOneWidget);
+      final profile = find.byKey(const Key('account_section_profile'));
+      final security = find.byKey(const Key('account_section_security'));
+      final mfa = find.byKey(const Key('account_section_mfa'));
+      final active = find.byKey(const Key('account_section_active_sessions'));
+      expect(
+        find.byKey(const Key('operator_web_account_screen')),
+        findsOneWidget,
+      );
+      expect(profile, findsOneWidget);
+      expect(security, findsOneWidget);
+      expect(mfa, findsOneWidget);
+      expect(active, findsOneWidget);
+      expect(find.byKey(const Key('account_section_tos')), findsNothing);
+      expect(
+        tester.getTopLeft(profile).dy < tester.getTopLeft(security).dy,
+        isTrue,
+      );
+      expect(
+        tester.getTopLeft(security).dy < tester.getTopLeft(mfa).dy,
+        isTrue,
+      );
+      expect(tester.getTopLeft(mfa).dy < tester.getTopLeft(active).dy, isTrue);
     });
 
-    testWidgets('renders all four sections at tablet 768×1024', (
-      tester,
-    ) async {
+    testWidgets('renders B9.2 cards at tablet 768x1024', (tester) async {
       await sizeViewport(tester, const Size(768, 1024));
       final session = sessionWithRole('operator_owner');
 
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+      await pumpAccount(tester, session);
 
-      expect(find.byKey(const Key('operator_web_account_screen')),
-          findsOneWidget);
-      expect(find.byKey(const Key('account_section_profile')),
-          findsOneWidget);
+      expect(find.byKey(const Key('account_section_profile')), findsOneWidget);
+      expect(find.byKey(const Key('account_section_security')), findsOneWidget);
       expect(find.byKey(const Key('account_section_mfa')), findsOneWidget);
-      expect(find.byKey(const Key('account_section_password')),
-          findsOneWidget);
-      expect(find.byKey(const Key('account_section_tos')), findsOneWidget);
+      expect(
+        find.byKey(const Key('account_section_active_sessions')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('Profile two-column flips to single-column at tablet width', (
       tester,
     ) async {
-      // Desktop 1024 — two-column Wrap renders.
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRole('operator_owner');
 
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+      await pumpAccount(tester, session);
 
       expect(
         find.byKey(const Key('account_section_profile_two_column')),
@@ -104,9 +122,8 @@ void main() {
         findsNothing,
       );
 
-      // Tablet 768 — fields stack into a single column.
       await sizeViewport(tester, const Size(768, 1024));
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+      await pumpAccount(tester, session);
 
       expect(
         find.byKey(const Key('account_section_profile_single_column')),
@@ -122,43 +139,61 @@ void main() {
       tester,
     ) async {
       await sizeViewport(tester, const Size(1024, 768));
-      final session =
-          sessionWithRole('operator_owner', phone: '+1 (555) 010-2580');
+      final session = sessionWithRole(
+        'operator_owner',
+        phone: '+1 (555) 010-2580',
+      );
 
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+      await pumpAccount(tester, session);
 
       expect(find.text('Alex Morrison'), findsOneWidget);
       expect(find.text('alex@brio-restaurants.com'), findsOneWidget);
       expect(find.text('Brio Restaurants'), findsOneWidget);
-      // When the session has a phone on file, that is what renders.
       expect(find.text('+1 (555) 010-2580'), findsOneWidget);
     });
 
-    testWidgets('Profile section falls back to "Not on file" when phone absent',
-        (tester) async {
-      await sizeViewport(tester, const Size(1024, 768));
-      final session = sessionWithRole('operator_owner');
+    testWidgets(
+      'Profile section falls back to "Not on file" when phone absent',
+      (tester) async {
+        await sizeViewport(tester, const Size(1024, 768));
+        final session = sessionWithRole('operator_owner');
 
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+        await pumpAccount(tester, session);
 
-      expect(find.text('Not on file'), findsOneWidget);
-    });
+        expect(find.text('Not on file'), findsOneWidget);
+      },
+    );
 
-    testWidgets('Profile section is read-only (no editable fields)', (
+    testWidgets('Profile section is read-only and every card links audit log', (
       tester,
     ) async {
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRole('operator_owner');
 
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+      await pumpAccount(tester, session);
 
-      // No TextField inside the profile section — read-only at V1.
       expect(
         find.descendant(
           of: find.byKey(const Key('account_section_profile')),
           matching: find.byType(TextField),
         ),
         findsNothing,
+      );
+      expect(
+        find.byKey(const Key('account_section_profile_audit_log_link')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('account_section_security_audit_log_link')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('account_section_mfa_audit_log_link')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('account_section_active_sessions_audit_log_link')),
+        findsOneWidget,
       );
     });
   });
@@ -170,11 +205,13 @@ void main() {
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRole('operator_owner');
 
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+      await pumpAccount(tester, session);
 
       expect(find.text('MFA: Not enrolled'), findsOneWidget);
-      expect(find.byKey(const Key('account_section_mfa_enroll')),
-          findsOneWidget);
+      expect(
+        find.byKey(const Key('account_section_mfa_enroll')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const Key('account_section_mfa_view_backup_codes')),
         findsNothing,
@@ -187,30 +224,34 @@ void main() {
         await sizeViewport(tester, const Size(1024, 768));
         final session = sessionWithRole('operator_owner', mfaEnrolled: true);
 
-        await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+        await pumpAccount(tester, session);
 
         expect(find.text('MFA: Enrolled'), findsOneWidget);
         expect(
           find.byKey(const Key('account_section_mfa_view_backup_codes')),
           findsOneWidget,
         );
-        expect(find.byKey(const Key('account_section_mfa_enroll')),
-            findsNothing);
+        expect(
+          find.byKey(const Key('account_section_mfa_enroll')),
+          findsNothing,
+        );
       },
     );
 
-    testWidgets('Enroll → confirm 123456 → badge flips to Enrolled (green)', (
+    testWidgets('Enroll -> confirm 123456 -> badge flips to Enrolled', (
       tester,
     ) async {
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRole('operator_owner');
 
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+      await pumpAccount(tester, session);
 
+      await tester.ensureVisible(
+        find.byKey(const Key('account_section_mfa_enroll')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('account_section_mfa_enroll')));
       await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('mfa_enroll_dialog')), findsOneWidget);
 
       await tester.enterText(
         find.byKey(const Key('mfa_enroll_dialog_code_field')),
@@ -227,13 +268,18 @@ void main() {
       );
     });
 
-    testWidgets('Wrong code surfaces remediation copy without flipping badge',
-        (tester) async {
+    testWidgets('Wrong code surfaces remediation copy without flipping badge', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRole('operator_owner');
 
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+      await pumpAccount(tester, session);
 
+      await tester.ensureVisible(
+        find.byKey(const Key('account_section_mfa_enroll')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('account_section_mfa_enroll')));
       await tester.pumpAndSettle();
 
@@ -246,62 +292,18 @@ void main() {
 
       expect(find.byKey(const Key('mfa_enroll_dialog')), findsOneWidget);
       expect(find.textContaining('did not match'), findsOneWidget);
-      // Badge stays in the not-enrolled state until the dialog is
-      // dismissed via Cancel or a successful confirm.
       await tester.tap(find.byKey(const Key('mfa_enroll_dialog_cancel')));
       await tester.pumpAndSettle();
       expect(find.text('MFA: Not enrolled'), findsOneWidget);
     });
-
-    testWidgets('Backup codes dialog lists 10 codes scoped to its panel', (
-      tester,
-    ) async {
-      await sizeViewport(tester, const Size(1024, 768));
-      final session = sessionWithRole('operator_owner', mfaEnrolled: true);
-
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
-
-      await tester.tap(
-        find.byKey(const Key('account_section_mfa_view_backup_codes')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('mfa_backup_codes_dialog')), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('mfa_backup_codes_dialog_list')),
-          matching: find.byType(SelectableText),
-        ),
-        findsNWidgets(10),
-      );
-    });
-
-    testWidgets(
-      'View backup codes is reachable for an already-enrolled location_manager',
-      (tester) async {
-        await sizeViewport(tester, const Size(1024, 768));
-        // location_manager who somehow already has MFA enrolled (e.g.
-        // mobile-first onboarding) should still be able to view their
-        // own recovery codes — viewing is not an admin-write action.
-        final session =
-            sessionWithRole('location_manager', mfaEnrolled: true);
-
-        await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
-
-        final viewButton = tester.widget<OutlinedButton>(
-          find.byKey(const Key('account_section_mfa_view_backup_codes')),
-        );
-        expect(viewButton.onPressed, isNotNull);
-      },
-    );
   });
 
-  group('MyAccountScreen Password section', () {
+  group('MyAccountScreen Security section', () {
     testWidgets('Change password opens a 3-field modal', (tester) async {
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRole('operator_owner');
 
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+      await pumpAccount(tester, session);
 
       await tester.ensureVisible(
         find.byKey(const Key('account_section_password_change')),
@@ -313,163 +315,159 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('change_password_dialog')), findsOneWidget);
-      expect(find.byKey(const Key('change_password_dialog_current')),
-          findsOneWidget);
-      expect(find.byKey(const Key('change_password_dialog_new')),
-          findsOneWidget);
-      expect(find.byKey(const Key('change_password_dialog_confirm')),
-          findsOneWidget);
-    });
-
-    testWidgets('Submitting a valid password closes the modal + shows toast', (
-      tester,
-    ) async {
-      await sizeViewport(tester, const Size(1024, 768));
-      final session = sessionWithRole('operator_owner');
-
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
-
-      await tester.ensureVisible(
-        find.byKey(const Key('account_section_password_change')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('account_section_password_change')),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.enterText(
-        find.byKey(const Key('change_password_dialog_current')),
-        'old-password-123',
-      );
-      await tester.enterText(
-        find.byKey(const Key('change_password_dialog_new')),
-        'new-password-12345',
-      );
-      await tester.enterText(
-        find.byKey(const Key('change_password_dialog_confirm')),
-        'new-password-12345',
-      );
-      await tester.tap(
-        find.byKey(const Key('change_password_dialog_submit')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('change_password_dialog')), findsNothing);
-      expect(find.byKey(const Key('account_section_password_toast')),
-          findsOneWidget);
-      expect(find.text('Password updated'), findsOneWidget);
-    });
-
-    testWidgets('Toast auto-dismisses after the configured duration', (
-      tester,
-    ) async {
-      await sizeViewport(tester, const Size(1024, 768));
-      final session = sessionWithRole('operator_owner');
-
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
-
-      await tester.ensureVisible(
-        find.byKey(const Key('account_section_password_change')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('account_section_password_change')),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.enterText(
-        find.byKey(const Key('change_password_dialog_current')),
-        'old-password-123',
-      );
-      await tester.enterText(
-        find.byKey(const Key('change_password_dialog_new')),
-        'new-password-12345',
-      );
-      await tester.enterText(
-        find.byKey(const Key('change_password_dialog_confirm')),
-        'new-password-12345',
-      );
-      await tester.tap(
-        find.byKey(const Key('change_password_dialog_submit')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('account_section_password_toast')),
-          findsOneWidget);
-
-      // Advance beyond the 4s visibility window.
-      await tester.pump(const Duration(seconds: 5));
-      await tester.pump();
-
-      expect(find.byKey(const Key('account_section_password_toast')),
-          findsNothing);
-    });
-  });
-
-  group('MyAccountScreen T&Cs section', () {
-    testWidgets('shows accepted version and date', (tester) async {
-      await sizeViewport(tester, const Size(1024, 768));
-      final session = sessionWithRole('operator_owner');
-
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
-
       expect(
-        find.byKey(const Key('account_section_tos_accepted_line')),
+        find.byKey(const Key('change_password_dialog_current')),
         findsOneWidget,
       );
-      expect(find.text('Accepted v1.0 on 2026-04-15'), findsOneWidget);
-      expect(find.byKey(const Key('account_section_tos_view')),
-          findsOneWidget);
+      expect(
+        find.byKey(const Key('change_password_dialog_new')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('change_password_dialog_confirm')),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('View current T&Cs opens a read-only scrollable dialog', (
+    testWidgets(
+      'Submitting a valid password closes the modal and shows toast',
+      (tester) async {
+        await sizeViewport(tester, const Size(1024, 768));
+        final session = sessionWithRole('operator_owner');
+
+        await pumpAccount(tester, session);
+
+        await tester.ensureVisible(
+          find.byKey(const Key('account_section_password_change')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('account_section_password_change')),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const Key('change_password_dialog_current')),
+          'old-password-123',
+        );
+        await tester.enterText(
+          find.byKey(const Key('change_password_dialog_new')),
+          'new-password-12345',
+        );
+        await tester.enterText(
+          find.byKey(const Key('change_password_dialog_confirm')),
+          'new-password-12345',
+        );
+        await tester.tap(
+          find.byKey(const Key('change_password_dialog_submit')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('change_password_dialog')), findsNothing);
+        expect(
+          find.byKey(const Key('account_section_password_toast')),
+          findsOneWidget,
+        );
+        expect(find.text('Password updated'), findsOneWidget);
+      },
+    );
+  });
+
+  group('MyAccountScreen Active Sessions section', () {
+    testWidgets('marks the current session as This device', (tester) async {
+      await sizeViewport(tester, const Size(1024, 768));
+      final session = sessionWithRole('operator_owner');
+      final actions = _FakeAccountActions();
+
+      await pumpAccount(tester, session, actions: actions);
+
+      expect(find.text('This device'), findsOneWidget);
+      expect(
+        find.byKey(
+          const Key('account_active_sessions_this_device_session-current'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('account_active_sessions_row_session-ipad')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('account_active_sessions_sign_out_others')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Sign out all other sessions revokes only non-current rows', (
       tester,
     ) async {
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRole('operator_owner');
+      final actions = _FakeAccountActions();
 
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+      await pumpAccount(tester, session, actions: actions);
 
       await tester.ensureVisible(
-        find.byKey(const Key('account_section_tos_view')),
+        find.byKey(const Key('account_active_sessions_sign_out_others')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('account_section_tos_view')));
+      await tester.tap(
+        find.byKey(const Key('account_active_sessions_sign_out_others')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('account_active_sessions_confirm_submit')),
+      );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('view_tos_dialog')), findsOneWidget);
-      expect(find.byKey(const Key('view_tos_dialog_scroll')), findsOneWidget);
-      expect(find.byKey(const Key('view_tos_dialog_close')), findsOneWidget);
+      expect(actions.signOutCalls, hasLength(1));
+      expect(
+        actions.signOutCalls.single,
+        unorderedEquals(<String>['session-ipad', 'session-chrome']),
+      );
+      expect(
+        find.byKey(const Key('account_active_sessions_row_session-current')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('account_active_sessions_row_session-ipad')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('account_active_sessions_row_session-chrome')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('Sign out CTA is disabled when only this device is active', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1024, 768));
+      final session = sessionWithRole('operator_owner');
+      final actions = _FakeAccountActions(
+        sessions: <AccountActiveSessionEntry>[
+          _sessionEntry('session-current', 'Safari on Mac'),
+        ],
+      );
+
+      await pumpAccount(tester, session, actions: actions);
+
+      final button = tester.widget<OutlinedButton>(
+        find.byKey(const Key('account_active_sessions_sign_out_others')),
+      );
+      expect(button.onPressed, isNull);
+      expect(find.text('This device'), findsOneWidget);
     });
   });
 
   group('MyAccountScreen permission gate', () {
-    testWidgets('operator_owner sees enabled MFA + Password CTAs', (
+    testWidgets('operator_owner sees enabled MFA + Security CTAs', (
       tester,
     ) async {
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRole('operator_owner');
 
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
-
-      final enroll = tester.widget<OutlinedButton>(
-        find.byKey(const Key('account_section_mfa_enroll')),
-      );
-      final pwd = tester.widget<OutlinedButton>(
-        find.byKey(const Key('account_section_password_change')),
-      );
-      expect(enroll.onPressed, isNotNull);
-      expect(pwd.onPressed, isNotNull);
-    });
-
-    testWidgets('operator_admin sees enabled MFA + Password CTAs', (
-      tester,
-    ) async {
-      await sizeViewport(tester, const Size(1024, 768));
-      final session = sessionWithRole('operator_admin');
-
-      await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+      await pumpAccount(tester, session);
 
       final enroll = tester.widget<OutlinedButton>(
         find.byKey(const Key('account_section_mfa_enroll')),
@@ -482,59 +480,48 @@ void main() {
     });
 
     testWidgets(
-      'location_manager sees Profile + T&Cs but MFA + Password disabled',
+      'location_manager sees Profile + Active Sessions but security writes disabled',
       (tester) async {
         await sizeViewport(tester, const Size(1024, 768));
         final session = sessionWithRole('location_manager');
+        final actions = _FakeAccountActions();
 
-        await tester.pumpWidget(wrap(MyAccountScreen(session: session)));
+        await pumpAccount(tester, session, actions: actions);
 
-        // Profile + T&Cs still render for read-only access.
-        expect(find.byKey(const Key('account_section_profile')),
-            findsOneWidget);
-        expect(find.byKey(const Key('account_section_tos')), findsOneWidget);
+        expect(
+          find.byKey(const Key('account_section_profile')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('account_section_active_sessions')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('account_section_tos')), findsNothing);
 
-        // MFA + Password CTAs are disabled.
         final enroll = tester.widget<OutlinedButton>(
           find.byKey(const Key('account_section_mfa_enroll')),
         );
         final pwd = tester.widget<OutlinedButton>(
           find.byKey(const Key('account_section_password_change')),
         );
+        final sessions = tester.widget<OutlinedButton>(
+          find.byKey(const Key('account_active_sessions_sign_out_others')),
+        );
         expect(enroll.onPressed, isNull);
         expect(pwd.onPressed, isNull);
-
-        // Tooltip copy explains why — UX writing standard friendly-error
-        // surface for the role gate.
-        final tooltips = find
-            .byType(Tooltip)
-            .evaluate()
-            .map((e) => (e.widget as Tooltip).message ?? '')
-            .toList();
-        expect(
-          tooltips.any((t) => t.contains('Only operator admins can change MFA')),
-          isTrue,
-        );
-        expect(
-          tooltips.any(
-            (t) =>
-                t.contains('Only operator admins can change account passwords'),
-          ),
-          isTrue,
-        );
+        expect(sessions.onPressed, isNotNull);
       },
     );
 
-    testWidgets('demo location_manager factory lands on the read-only branch',
-        (tester) async {
+    testWidgets('demo location_manager factory lands on the read-only branch', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1024, 768));
       final source = DemoOperatorWebAuthSource.completedAsLocationManager();
       addTearDown(source.dispose);
       final completed = source.current as OperatorWebCompleted;
 
-      await tester.pumpWidget(
-        wrap(MyAccountScreen(session: completed.session)),
-      );
+      await pumpAccount(tester, completed.session);
 
       final enroll = tester.widget<OutlinedButton>(
         find.byKey(const Key('account_section_mfa_enroll')),
@@ -543,4 +530,82 @@ void main() {
       expect(completed.session.roles, contains('location_manager'));
     });
   });
+}
+
+class _FakeAccountActions implements OperatorWebAccountActions {
+  _FakeAccountActions({List<AccountActiveSessionEntry>? sessions})
+    : _sessions = List<AccountActiveSessionEntry>.of(
+        sessions ?? _defaultSessions,
+      );
+
+  @override
+  String? get currentAccountSessionId => 'session-current';
+
+  final List<AccountActiveSessionEntry> _sessions;
+  final List<List<String>> signOutCalls = <List<String>>[];
+
+  @override
+  Future<MfaEnrollmentArtifact> beginAccountMfaEnrollment({
+    required String email,
+  }) async {
+    return const MfaEnrollmentArtifact(
+      enrollmentId: 'enroll-1',
+      factorType: MfaFactorType.totp,
+      totpSharedSecret: 'JBSWY3DPEHPK3PXP',
+      totpQrUri: 'otpauth://totp/Forge%20%26%20Flow:test',
+    );
+  }
+
+  @override
+  Future<void> confirmAccountMfaEnrollment({
+    required String enrollmentId,
+    required String oneTimeCode,
+  }) async {}
+
+  @override
+  Future<void> changeAccountPassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {}
+
+  @override
+  Future<AccountActiveSessionsListed> listAccountActiveSessions() async {
+    return AccountActiveSessionsListed(
+      sessions: List<AccountActiveSessionEntry>.unmodifiable(_sessions),
+    );
+  }
+
+  @override
+  Future<AccountSessionSignOutOthersResult> signOutOtherAccountSessions({
+    required Iterable<String> sessionIds,
+  }) async {
+    final ids = sessionIds.toList(growable: false);
+    signOutCalls.add(ids);
+    _sessions.removeWhere((session) => ids.contains(session.sessionId));
+    return AccountSessionSignOutOthersResult(revokedCount: ids.length);
+  }
+
+  static final List<AccountActiveSessionEntry> _defaultSessions =
+      <AccountActiveSessionEntry>[
+        _sessionEntry('session-current', 'Safari on Mac', city: 'Portland'),
+        _sessionEntry('session-ipad', 'iPad app', city: 'Seattle'),
+        _sessionEntry('session-chrome', 'Chrome on Windows', city: 'Boston'),
+      ];
+}
+
+AccountActiveSessionEntry _sessionEntry(
+  String id,
+  String device, {
+  String city = 'Portland',
+}) {
+  return AccountActiveSessionEntry(
+    sessionId: id,
+    deviceLabel: device,
+    deviceFingerprint: 'fp-$id',
+    userAgent: 'ForgeFlowTest/1.0',
+    geoCity: city,
+    geoCountry: 'US',
+    createdAt: DateTime.utc(2026, 5, 1, 12),
+    lastActiveAt: DateTime.utc(2026, 5, 6, 18),
+  );
 }

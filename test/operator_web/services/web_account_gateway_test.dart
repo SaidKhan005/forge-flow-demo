@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:forge_and_flow/auth/mfa_freshness_redirect_listener.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_proxy_client.dart';
 import 'package:forge_and_flow/operator_web/services/web_account_gateway.dart';
 
@@ -43,6 +44,7 @@ void main() {
 
     HttpWebAccountGateway buildGateway({
       String? token = 'demo-id-token',
+      MfaFreshnessRedirectListener? freshnessListener,
     }) {
       var index = 0;
       final mock = MockClient((request) async {
@@ -60,6 +62,7 @@ void main() {
         baseUri: Uri.parse('https://proxy.test/'),
         httpClient: mock,
         idempotencyKeyFactory: () => 'idem-key-fixture',
+        mfaFreshnessRedirectListener: freshnessListener,
       );
       return HttpWebAccountGateway(
         client: client,
@@ -69,8 +72,21 @@ void main() {
 
     test('uses operator-scoped path (never /admin/)', () {
       expect(HttpWebAccountGateway.operatorAccountPath, '/v1/operator/account');
+      expect(HttpWebAccountGateway.activeSessionsPath, '/v1/auth/sessions');
+      expect(
+        HttpWebAccountGateway.revokeSessionPath,
+        '/v1/auth/session/revoke',
+      );
       expect(
         HttpWebAccountGateway.operatorAccountPath.contains('/admin/'),
+        isFalse,
+      );
+      expect(
+        HttpWebAccountGateway.activeSessionsPath.contains('/admin/'),
+        isFalse,
+      );
+      expect(
+        HttpWebAccountGateway.revokeSessionPath.contains('revoke-all'),
         isFalse,
       );
     });
@@ -78,26 +94,137 @@ void main() {
     // 11W.7 ops-debt - GET /v1/operator/account companion. The
     // Settings shell hydrates the AccountScreen by GETting the
     // operator row before letting the user PATCH it.
-    test('GET hits /v1/operator/account with Bearer auth + parses 200',
-        () async {
-      final gateway = buildGateway();
-      final identity = await gateway.getAccount();
-      expect(capturedRequests, hasLength(1));
-      final request = capturedRequests.single;
-      expect(request.method, 'GET');
-      expect(request.url.path, '/v1/operator/account');
-      expect(request.headers['authorization'], 'Bearer demo-id-token');
-      expect(identity.operatorId, 'op-1');
-      expect(identity.businessName, 'Brio Restaurants');
-    });
+    test(
+      'GET hits /v1/operator/account with Bearer auth + parses 200',
+      () async {
+        final gateway = buildGateway();
+        final identity = await gateway.getAccount();
+        expect(capturedRequests, hasLength(1));
+        final request = capturedRequests.single;
+        expect(request.method, 'GET');
+        expect(request.url.path, '/v1/operator/account');
+        expect(request.headers['authorization'], 'Bearer demo-id-token');
+        expect(identity.operatorId, 'op-1');
+        expect(identity.businessName, 'Brio Restaurants');
+      },
+    );
+
+    test(
+      'active sessions GET uses existing self-service route + parses 200',
+      () async {
+        sequenceBodies = <Map<String, Object?>>[
+          <String, Object?>{
+            'sessions': <Map<String, Object?>>[
+              <String, Object?>{
+                'session_id': 'session-current',
+                'device_label': 'Safari on Mac',
+                'user_agent': 'Mozilla/5.0',
+                'device_fingerprint': 'fp-current',
+                'geo_city': 'Portland',
+                'geo_country': 'US',
+                'ip': '203.0.113.10',
+                'created_at': '2026-05-01T12:00:00.000Z',
+                'last_seen_at': '2026-05-06T18:00:00.000Z',
+              },
+            ],
+          },
+        ];
+        final gateway = buildGateway();
+
+        final listed = await gateway.listActiveSessions();
+
+        expect(capturedRequests, hasLength(1));
+        final request = capturedRequests.single;
+        expect(request.method, 'GET');
+        expect(request.url.path, '/v1/auth/sessions');
+        expect(request.headers['authorization'], 'Bearer demo-id-token');
+        expect(listed.sessions, hasLength(1));
+        final session = listed.sessions.single;
+        expect(session.sessionId, 'session-current');
+        expect(session.deviceLabel, 'Safari on Mac');
+        expect(session.geoCity, 'Portland');
+        expect(session.lastActiveAt.isUtc, isTrue);
+      },
+    );
+
+    test(
+      'signOutOtherSessions revokes each supplied id via single revoke route',
+      () async {
+        sequenceStatuses = <int>[200, 200];
+        sequenceBodies = <Map<String, Object?>>[
+          <String, Object?>{'ok': true},
+          <String, Object?>{'revoked': true},
+        ];
+        final gateway = buildGateway();
+
+        final result = await gateway.signOutOtherSessions(
+          sessionIds: <String>[' session-a ', 'session-a', '', 'session-b'],
+        );
+
+        expect(result.revokedCount, 2);
+        expect(capturedRequests, hasLength(2));
+        expect(
+          capturedRequests.map((request) => request.url.path),
+          everyElement(equals('/v1/auth/session/revoke')),
+        );
+        expect(
+          capturedRequests.any(
+            (request) => request.url.path.contains('revoke-all'),
+          ),
+          isFalse,
+        );
+        for (final request in capturedRequests) {
+          expect(request.method, 'POST');
+          expect(request.headers['idempotency-key'], 'idem-key-fixture');
+          expect(request.headers['authorization'], 'Bearer demo-id-token');
+          final json = jsonDecode(request.body) as Map<String, Object?>;
+          expect(json['reason'], 'my_account.sign_out_other_sessions');
+        }
+        final firstBody =
+            jsonDecode(capturedRequests.first.body) as Map<String, Object?>;
+        final secondBody =
+            jsonDecode(capturedRequests.last.body) as Map<String, Object?>;
+        expect(firstBody['session_id'], 'session-a');
+        expect(secondBody['session_id'], 'session-b');
+      },
+    );
+
+    test(
+      'signOutOtherSessions propagates fresh-MFA redirect from proxy',
+      () async {
+        sequenceStatuses = <int>[403];
+        sequenceBodies = <Map<String, Object?>>[
+          <String, Object?>{
+            'error': 'mfa_freshness_required',
+            'message': 'fresh authentication is required',
+            'redirect_uri': '/auth/login?reason=fresh_mfa_required',
+          },
+        ];
+        final listener = RecordingMfaFreshnessRedirectListener();
+        final gateway = buildGateway(freshnessListener: listener);
+
+        await expectLater(
+          () => gateway.signOutOtherSessions(sessionIds: <String>['session-a']),
+          throwsA(
+            isA<OperatorWebProxyException>().having(
+              (error) => error.isMfaFreshnessRedirect,
+              'isMfaFreshnessRedirect',
+              isTrue,
+            ),
+          ),
+        );
+        expect(listener.events, hasLength(1));
+        expect(
+          listener.events.single.redirectUri,
+          '/auth/login?reason=fresh_mfa_required',
+        );
+      },
+    );
 
     test('GET surfaces 503 as a typed OperatorWebProxyException', () async {
       sequenceStatuses = <int>[503];
       sequenceBodies = <Map<String, Object?>>[
-        <String, Object?>{
-          'error': 'account_unavailable',
-          'message': 'offline',
-        },
+        <String, Object?>{'error': 'account_unavailable', 'message': 'offline'},
       ];
       final gateway = buildGateway();
       await expectLater(
@@ -152,9 +279,7 @@ void main() {
 
     test('clearLogo serializes logoUrl: null distinct from omission', () async {
       final gateway = buildGateway();
-      await gateway.patchAccount(
-        const AccountIdentityPatch(clearLogo: true),
-      );
+      await gateway.patchAccount(const AccountIdentityPatch(clearLogo: true));
       final json =
           jsonDecode(capturedRequests.single.body) as Map<String, Object?>;
       expect(json.containsKey('logoUrl'), isTrue);
@@ -163,8 +288,7 @@ void main() {
 
     test('parses 200 response into AccountIdentity', () async {
       final gateway = buildGateway();
-      final identity =
-          await gateway.patchAccount(const AccountIdentityPatch());
+      final identity = await gateway.patchAccount(const AccountIdentityPatch());
       expect(identity.operatorId, 'op-1');
       expect(identity.businessName, 'Brio Restaurants');
       expect(identity.logoUrl, 'https://cdn.brio.example/logo.png');
@@ -189,8 +313,7 @@ void main() {
         },
       ];
       final gateway = buildGateway();
-      final identity =
-          await gateway.patchAccount(const AccountIdentityPatch());
+      final identity = await gateway.patchAccount(const AccountIdentityPatch());
       expect(identity.logoUrl, isNull);
     });
 

@@ -6,6 +6,8 @@
 // importing a Firebase or HTTP implementation directly.
 
 import '../auth/operator_web_auth_source.dart';
+import '../services/operator_web_team_gateway_providers.dart';
+import '../services/web_account_gateway.dart';
 
 abstract class OperatorWebAccountActions {
   Future<MfaEnrollmentArtifact> beginAccountMfaEnrollment({
@@ -21,4 +23,42 @@ abstract class OperatorWebAccountActions {
     required String currentPassword,
     required String newPassword,
   });
+
+  String? get currentAccountSessionId {
+    if (this is OperatorWebTeamSessionsGatewayProvider) {
+      return (this as OperatorWebTeamSessionsGatewayProvider).currentSessionId;
+    }
+    return null;
+  }
+
+  Future<AccountActiveSessionsListed> listAccountActiveSessions() async {
+    final gateway = _accountSessionGateway;
+    if (gateway == null) {
+      return const AccountActiveSessionsListed(
+        sessions: <AccountActiveSessionEntry>[],
+      );
+    }
+    return gateway.listActiveSessions();
+  }
+
+  Future<AccountSessionSignOutOthersResult> signOutOtherAccountSessions({
+    required Iterable<String> sessionIds,
+  }) async {
+    final gateway = _accountSessionGateway;
+    if (gateway == null) {
+      return const AccountSessionSignOutOthersResult(revokedCount: 0);
+    }
+    return gateway.signOutOtherSessions(sessionIds: sessionIds);
+  }
+
+  WebAccountSessionGateway? get _accountSessionGateway {
+    if (this is OperatorWebAccountGatewayProvider) {
+      final gateway =
+          (this as OperatorWebAccountGatewayProvider).accountGateway;
+      if (gateway is WebAccountSessionGateway) {
+        return gateway as WebAccountSessionGateway;
+      }
+    }
+    return null;
+  }
 }
