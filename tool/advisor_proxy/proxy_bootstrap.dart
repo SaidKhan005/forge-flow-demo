@@ -31,6 +31,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/feature_flags_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/graph_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/handoff_codes_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
@@ -227,6 +228,7 @@ class ProxyProductionBindings {
     required this.vendorLifecycleRecentlyAvailableRouter,
     required this.notificationPreferencesRouter,
     required this.wageRoleRowsRouter,
+    required this.authHandoffRouter,
     required this.passwordResetEmailShortCounter,
     required this.passwordResetIpCounter,
     required this.permissionVersionChecker,
@@ -417,6 +419,15 @@ class ProxyProductionBindings {
   /// discipline as every other operator write. Wired through
   /// [RepositoryWageRoleRowsGateway] over [WageRoleRowsRepository].
   final WageRoleRowsRouter wageRoleRowsRouter;
+
+  /// Lane B B11.1 — auth handoff (mobile→web) mint + redeem router.
+  /// Handles POST /v1/auth/handoff/codes (mint, Idempotency-Key
+  /// required) and POST /v1/auth/handoff/redeem (atomic UPDATE …
+  /// RETURNING; 410 on replay; 403 on wrong operator). Backed by
+  /// [RepositoryHandoffCodesGateway] over [HandoffCodesRepository]
+  /// (tenant pool, per-tenant RLS) and [ProductionHandoffAuditSink]
+  /// for the hash-chained audit_logs fan-out.
+  final AuthHandoffRouter authHandoffRouter;
 
   /// B1.S8 — per-email 5-min short-window rolling counter for the
   /// password-reset / magic-link request endpoint. Keyed by
@@ -742,6 +753,34 @@ ProxyProductionBindings buildProxyProductionBindings(
   final notificationPreferencesRouter = NotificationPreferencesRouter(
     gateway: RepositoryNotificationPreferencesGateway(
       repository: NotificationPreferencesRepository(tenantWrapper),
+    ),
+  );
+  // Lane B B11.1 — auth handoff (mobile→web) mint + redeem router.
+  // Tenant pool + per-tenant RLS policy on `handoff_codes`. The audit
+  // sink fans `auth.handoff.code_created` / `auth.handoff.redeemed`
+  // events into the hash-chained `public.audit_logs` table through
+  // the same tenant transaction wrapper the rest of the proxy uses,
+  // so the audit row's operator_id matches the SET LOCAL GUC and the
+  // chain stays per-(operator, chain_date)-bounded. The opaque code
+  // never appears in audit payloads (SHA-256 hex hash only).
+  final authHandoffRouter = AuthHandoffRouter(
+    gateway: RepositoryHandoffCodesGateway(
+      repository: HandoffCodesRepository(tenantWrapper),
+    ),
+    auditSink: ProductionHandoffAuditSink(
+      tenantWrapper: tenantWrapper,
+      auditLogsRepository: auditLogsRepository,
+      onError: (error, stackTrace) {
+        log(
+          LogSeverity.error,
+          'proxy.auth_handoff_audit_failed',
+          fields: <String, Object?>{
+            'error_type': error.runtimeType.toString(),
+            'error_message': error.toString(),
+            'stack_first_frame': firstStackFrame(stackTrace),
+          },
+        );
+      },
     ),
   );
   // Phase 8 W5.A.1 - operator-scoped wage role rows write router.
@@ -1111,6 +1150,7 @@ ProxyProductionBindings buildProxyProductionBindings(
         vendorLifecycleRecentlyAvailableRouter,
     notificationPreferencesRouter: notificationPreferencesRouter,
     wageRoleRowsRouter: wageRoleRowsRouter,
+    authHandoffRouter: authHandoffRouter,
   );
 }
 

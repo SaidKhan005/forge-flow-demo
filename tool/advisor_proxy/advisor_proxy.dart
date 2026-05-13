@@ -81,6 +81,7 @@ import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 import '../advisor_corpus/advisor_corpus.dart'
     show CorpusManifest, defaultManifestPath;
 import 'audit_chain_anchors_routes.dart';
+import 'auth_handoff_routes.dart';
 import 'health_operation_budget.dart';
 import 'log.dart';
 import 'business_scope_routes.dart';
@@ -217,6 +218,24 @@ export 'weekly_plan_routes.dart'
         forecastContextsResource,
         weeklyPlanLockPermissionKey,
         weeklyPlanSnapshotsResource;
+// Lane B B11.1 — auth handoff (mobile→web) mint + redeem routes.
+// The opaque code travels in the response body of the mint endpoint
+// and the request body of the redeem endpoint — never as a URL
+// parameter to the proxy. See addendum A1 in
+// `docs/_execution/lane_b_features/01_product_rule_and_ia.md`.
+export 'auth_handoff_routes.dart'
+    show
+        AuthHandoffRouteRejected,
+        AuthHandoffRouter,
+        HandoffAuditSink,
+        HandoffCodesGateway,
+        HandoffMintIdempotencyCache,
+        NoopHandoffAuditSink,
+        ProductionHandoffAuditSink,
+        RepositoryHandoffCodesGateway,
+        authHandoffCodesMintPath,
+        authHandoffRedeemPath,
+        hashAuthHandoffRequest;
 
 /// Default in-memory idempotency cache shared by the password
 /// change / reset request / reset confirm routes when the route
@@ -8508,6 +8527,10 @@ Future<void> routeRequest(
   // returns a typed 503 so the Audit Log screen renders the unknown
   // badge state without crashing.
   AuditChainAnchorsGateway? auditChainAnchorsGateway,
+  // Lane B B11.1 - mobile→web auth handoff (mint + redeem) router.
+  // Optional: when null the two routes return 503 so existing tests
+  // do not need to plumb the router through every call site.
+  AuthHandoffRouter? authHandoffRouter,
   // B1.A3 — permission_version revoke-forces-logout. Optional for
   // back-compat with existing tests + scaffolds. When null the per-request
   // DB check is skipped and only the JWT claim version gate applies.
@@ -9775,6 +9798,92 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'mobile_push_self_test_unavailable',
               'message': 'mobile push self-test is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Lane B B11.1 — auth handoff (mobile→web) mint + redeem.
+        // Mobile mints a code via POST /v1/auth/handoff/codes; web
+        // redeems atomically via POST /v1/auth/handoff/redeem. The
+        // opaque code travels in the response body of the mint
+        // endpoint and the request body of the redeem endpoint —
+        // never as a URL parameter to the proxy (addendum A1 in
+        // `docs/_execution/lane_b_features/01_product_rule_and_ia.md`).
+        // Mint requires an Idempotency-Key header per CLAUDE.md
+        // "Proxy & API Conventions"; redeem does not (a redeem is a
+        // single side-effect that the predicate naturally idempotents
+        // in the negative direction).
+        if (AuthHandoffRouter.matches(path, request.method)) {
+          if (authHandoffRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_handoff_router_not_configured',
+              'message':
+                  'route requires an AuthHandoffRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          String? handoffIdemKey;
+          if (path == authHandoffCodesMintPath) {
+            handoffIdemKey =
+                request.headers.value('Idempotency-Key')?.trim();
+            if (handoffIdemKey == null || handoffIdemKey.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_missing',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+            if (handoffIdemKey.length > 200) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_too_long',
+                'message':
+                    'Idempotency-Key header must be 200 characters or fewer',
+              });
+              return;
+            }
+          }
+          Map<String, Object?> handoffBody;
+          try {
+            handoffBody = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+          try {
+            final result = await authHandoffRouter.handle(
+              method: request.method,
+              path: path,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              actorUserId: scope.userId,
+              idempotencyKey: handoffIdemKey,
+              body: handoffBody,
+              now: clock,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'auth_handoff',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_handoff_unavailable',
+              'message':
+                  'handoff code service is unavailable; please retry',
             });
           }
           return;
