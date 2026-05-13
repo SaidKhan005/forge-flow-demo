@@ -586,6 +586,95 @@ for clearing as Phase 11A.8/.9/.10 land.
   `operator_web_auth_source.dart` are intentional (password reset
   flows are handled by Firebase action links by design), NOT gaps.
 
+## Wave bugs surfaced 2026-05-13 by local apply (P1 — would block Production1)
+
+Surfaced while applying the wave's 125 migrations against a fresh local
+Postgres for happy-state demo validation (see
+[`runbooks/local_full_stack_setup_runbook.md`](../runbooks/local_full_stack_setup_runbook.md)).
+Both are CI-dark-era misses — CI was gated to `workflow_dispatch` only since
+2026-05-12, so neither was caught at PR time. Each would fail on staging or
+Production1 with the same error.
+
+### W-1 — Legacy fact tables referenced but never created
+
+**Migrations affected** (5):
+
+- `db/migrations/202605061700_phase_8_timing_provenance_shift_records.sql`
+  (`shift_records`)
+- `db/migrations/202605061701_phase_8_data_accuracy_service_period_settings.sql`
+  (`shift_records`)
+- `db/migrations/202605080000_phase_8_timing_provenance_fk_posture.sql`
+  (`shift_records`)
+- `db/migrations/202605080600_phase_8_idempotency_location_id_rekey.sql`
+  (`shift_records`, `cover_facts`, `labor_punches`, `reservation_facts`)
+
+**Failure mode:** `ERROR: relation "public.shift_records" does not exist`
+(and the same shape for the other three tables) when the migration runs
+`ALTER TABLE` or `CREATE INDEX`.
+
+**Root cause:** Phase 8 framework writes vendor data into the existing SQLite
+fact tables per HP #1 (`Phase 8 = pure transport swap — vendor connectors
+write existing SQLite tables only; cleanup is 7.57/7.58/7.61`). The Phase 8
+Postgres migrations were authored assuming Postgres-side counterparts exist,
+but no migration ever runs `CREATE TABLE public.shift_records` (or the
+three sibling tables). They're SQLite-only today.
+
+**Fix path:**
+
+1. A new Phase 8 base-schema migration must `CREATE TABLE public.shift_records (...)`,
+   `public.cover_facts (...)`, `public.labor_punches (...)`,
+   `public.reservation_facts (...)` BEFORE any subsequent migration alters
+   them. Schema should match the columns SQLite uses today (at minimum:
+   `operator_id uuid not null`, `location_id uuid not null`, `vendor_id text`,
+   `vendor_entity_id text`, `business_date date`, plus the fact-specific
+   columns).
+2. Lex-order: the new migration must sort before
+   `202605061700_phase_8_timing_provenance_shift_records.sql`. Suggested name:
+   `db/migrations/202605061650_phase_8_legacy_fact_tables_postgres_create.sql`.
+3. Operator-gate: schema-touching, so the slice prompt MUST be
+   `[operator-approval-required]`.
+
+**Local workaround in place:** minimal stubs (no fact-shape columns; just
+the columns the migrations reference) — see step 6 of the local setup
+runbook. The stubs let migrations succeed; they stay empty because demo
+writes go to SQLite per HP #1.
+
+### W-2 — `partman_maintenance_hourly_cron.sql` dollar-quote nesting
+
+**Migration:** `db/migrations/202605081100_partman_maintenance_hourly_cron.sql`
+
+**Failure mode:** `psql: ERROR: syntax error at or near "select" ...
+LINE 16: '$$select public.run_maintenance(p_analyze := true)$$, ...`
+
+**Root cause:** the migration wraps a `raise notice` block inside `do $$ ...
+$$;`. The notice text contains `$$select public.run_maintenance(p_analyze := true)$$`
+inside a single-quoted string. PostgreSQL's dollar-quote lexer does NOT
+respect single-quote string boundaries — it sees the inner `$$` and
+terminates the outer `do $$` block early. The rest of the body becomes
+top-level statements that fail to parse.
+
+**Fix path:** change the outer block delimiter to a unique tag, e.g.:
+
+```sql
+do $partman$
+declare ...
+begin
+  ...
+end
+$partman$;
+```
+
+Single-character edit (line 50 + line 106 of the migration). No
+behavioral change.
+
+**Local workaround in place:** `sed` patch into a temp file at apply
+time — see step 8 of the local setup runbook.
+
+**Impact:** the unpatched migration will fail the very first time it
+runs on staging or Production1 (already in the pending apply queue per
+`runbooks/phase_9_production1_migration_apply_runbook.md`). Must be
+fixed in-tree before the Production1 apply.
+
 ## Advisory-lock posture — reconciled 2026-05-13
 
 Captured 2026-05-13 closing the C-12 wave closeout audit's finding O-5
