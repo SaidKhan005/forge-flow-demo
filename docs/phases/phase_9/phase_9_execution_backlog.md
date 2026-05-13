@@ -146,7 +146,7 @@ Do not re-open stale findings unless the repo regresses:
   `location_id` to the fact/webhook idempotency keys and switch all 17
   vendor sinks to a DO UPDATE WHERE `vendor_modified_at >=` guard. The
   follow-up queue now continues through
-  `202605131600_b2_1_default_role_catalog_versions.sql`, including permission-cache,
+  `202605131700_c_1a_email_event_provider_id.sql`, including permission-cache,
   webhook-secret, demo-counter, audit-anchor, auth-version,
   OAuth-refresh-lock, outbox NOTIFY split hardening, cron maintenance,
   KMS flag seeding, PII erasure, retention sweep, and admin hierarchy
@@ -164,10 +164,15 @@ Do not re-open stale findings unless the repo regresses:
   `app_current_operator()`), and the Lane B B2.1 Default Role catalog
   versions table (global F&F-wide catalog with the
   `operators.default_role_catalog_version_id` pointer; admin-pool
-  BYPASSRLS posture, no RLS).
+  BYPASSRLS posture, no RLS), and the Lane C C-1a `email_event`
+  prep migration (adds `provider_event_id text` plus a partial
+  UNIQUE INDEX `WHERE provider_event_id IS NOT NULL` so the C-1
+  SendGrid Event Webhook receiver can rely on Postgres-enforced
+  dedupe via `ON CONFLICT (provider_event_id) DO NOTHING`; pure
+  additive expand, no RLS change).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605131600_b2_1_default_role_catalog_versions.sql`.
+  `202605131700_c_1a_email_event_provider_id.sql`.
 
 ## Remaining Live-Closeout Gates
 
