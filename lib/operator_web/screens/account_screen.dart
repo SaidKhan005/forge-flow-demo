@@ -20,6 +20,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
@@ -31,7 +32,7 @@ const Set<String> _kAccountEditRoles = <String>{
   'operator_admin',
 };
 
-const String _kAccountEditPermission = 'account.configure';
+const String _kAccountEditPermission = PermissionKeys.accountConfigure;
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key, required this.session, this.gateway});

@@ -321,20 +321,20 @@ const String kPermTwo = 'admin.two';
     // operator-self-service widget directories + `settings_screen.dart`
     // and flags raw permission-shaped literals.
 
-    const _keysSrcWithCatalogConst = '''
+    const keysSrcWithCatalogConst = '''
 class PermissionKeys {
   static const String teamUsersView = 'team.users.view';
   static const Set<String> all = <String>{teamUsersView};
 }
 ''';
-    const _catalogWithTeamUsersView = '''
+    const catalogWithTeamUsersView = '''
 | `team.users.view` | desc | — |
 ''';
 
     test('flags RAW_LITERAL — raw permission-shaped string in '
         'operator_web widget', () {
       final result = PermissionKeyLintRunner(
-        permissionKeysSource: _keysSrcWithCatalogConst,
+        permissionKeysSource: keysSrcWithCatalogConst,
         referenceFiles: <String, String>{
           'lib/operator_web/screens/foo_screen.dart': '''
 import 'package:flutter/material.dart';
@@ -345,7 +345,7 @@ class FooScreen {
 }
 ''',
         },
-        catalogMarkdown: _catalogWithTeamUsersView,
+        catalogMarkdown: catalogWithTeamUsersView,
         rawLiteralScanScope: const <String>{'lib/operator_web/'},
         rawLiteralFileAllowlist: const <String>{},
       ).run();
@@ -354,7 +354,7 @@ class FooScreen {
       expect(finding.dottedKey, 'team.users.view');
       expect(
         finding.location,
-        'lib/operator_web/screens/foo_screen.dart:6',
+        'lib/operator_web/screens/foo_screen.dart:5',
       );
       // The other passes stay clean — the test fixture defines
       // teamUsersView in the catalog and references it via
@@ -368,7 +368,7 @@ class FooScreen {
     test('accepts a `PermissionKeys.<name>` reference — no RAW_LITERAL',
         () {
       final result = PermissionKeyLintRunner(
-        permissionKeysSource: _keysSrcWithCatalogConst,
+        permissionKeysSource: keysSrcWithCatalogConst,
         referenceFiles: <String, String>{
           'lib/operator_web/screens/foo_screen.dart': '''
 import 'package:flutter/material.dart';
@@ -380,7 +380,7 @@ class FooScreen {
 }
 ''',
         },
-        catalogMarkdown: _catalogWithTeamUsersView,
+        catalogMarkdown: catalogWithTeamUsersView,
         rawLiteralScanScope: const <String>{'lib/operator_web/'},
         rawLiteralFileAllowlist: const <String>{},
       ).run();
@@ -395,7 +395,7 @@ class FooScreen {
       // The alias has no string literal in the right-hand side so the
       // RAW_LITERAL pass must not flag it.
       final result = PermissionKeyLintRunner(
-        permissionKeysSource: _keysSrcWithCatalogConst,
+        permissionKeysSource: keysSrcWithCatalogConst,
         referenceFiles: <String, String>{
           'lib/operator_web/screens/foo_screen.dart': '''
 import '../../auth/permission_keys.dart';
@@ -408,7 +408,7 @@ class FooScreen {
 }
 ''',
         },
-        catalogMarkdown: _catalogWithTeamUsersView,
+        catalogMarkdown: catalogWithTeamUsersView,
         rawLiteralScanScope: const <String>{'lib/operator_web/'},
         rawLiteralFileAllowlist: const <String>{},
       ).run();
@@ -418,7 +418,7 @@ class FooScreen {
     test('honours the per-line `// ignore-permission-key-lint:` '
         'escape hatch', () {
       final result = PermissionKeyLintRunner(
-        permissionKeysSource: _keysSrcWithCatalogConst,
+        permissionKeysSource: keysSrcWithCatalogConst,
         referenceFiles: <String, String>{
           'lib/operator_web/screens/foo_screen.dart': '''
 class FooScreen {
@@ -427,7 +427,7 @@ class FooScreen {
 }
 ''',
         },
-        catalogMarkdown: _catalogWithTeamUsersView,
+        catalogMarkdown: catalogWithTeamUsersView,
         rawLiteralScanScope: const <String>{'lib/operator_web/'},
         rawLiteralFileAllowlist: const <String>{},
       ).run();
@@ -437,7 +437,7 @@ class FooScreen {
     test('honours the file-level allowlist — explainer catalog + demo '
         'fixture files are exempt', () {
       final result = PermissionKeyLintRunner(
-        permissionKeysSource: _keysSrcWithCatalogConst,
+        permissionKeysSource: keysSrcWithCatalogConst,
         referenceFiles: <String, String>{
           'lib/operator_web/screens/permission_explainer_screen.dart': '''
 const Map<String, String> kPermissionExplainerDescriptions =
@@ -446,7 +446,7 @@ const Map<String, String> kPermissionExplainerDescriptions =
 };
 ''',
         },
-        catalogMarkdown: _catalogWithTeamUsersView,
+        catalogMarkdown: catalogWithTeamUsersView,
         rawLiteralScanScope: const <String>{'lib/operator_web/'},
         rawLiteralFileAllowlist: const <String>{
           'lib/operator_web/screens/permission_explainer_screen.dart',
@@ -461,13 +461,13 @@ const Map<String, String> kPermissionExplainerDescriptions =
       // pass MUST ignore it. (The orphan / catalog passes still apply
       // — but with an empty key set they have nothing to flag here.)
       final result = PermissionKeyLintRunner(
-        permissionKeysSource: _keysSrcWithCatalogConst,
+        permissionKeysSource: keysSrcWithCatalogConst,
         referenceFiles: <String, String>{
           'lib/services/some_service.dart': '''
 final perm = 'team.users.view';
 ''',
         },
-        catalogMarkdown: _catalogWithTeamUsersView,
+        catalogMarkdown: catalogWithTeamUsersView,
         rawLiteralScanScope: const <String>{'lib/operator_web/'},
         rawLiteralFileAllowlist: const <String>{},
       ).run();
@@ -480,14 +480,14 @@ final perm = 'team.users.view';
       // dotted identifiers that share the literal shape but whose first
       // segment is not in `_permissionCategoryPrefixes` must pass.
       final result = PermissionKeyLintRunner(
-        permissionKeysSource: _keysSrcWithCatalogConst,
+        permissionKeysSource: keysSrcWithCatalogConst,
         referenceFiles: <String, String>{
           'lib/operator_web/screens/foo_screen.dart': '''
 final pkg = 'package.flutter.material';
 final url = 'api.v1.endpoint';
 ''',
         },
-        catalogMarkdown: _catalogWithTeamUsersView,
+        catalogMarkdown: catalogWithTeamUsersView,
         rawLiteralScanScope: const <String>{'lib/operator_web/'},
         rawLiteralFileAllowlist: const <String>{},
       ).run();
@@ -497,13 +497,13 @@ final url = 'api.v1.endpoint';
     test('RAW_LITERAL pass scans the named single-file scope entry '
         '(settings_screen.dart)', () {
       final result = PermissionKeyLintRunner(
-        permissionKeysSource: _keysSrcWithCatalogConst,
+        permissionKeysSource: keysSrcWithCatalogConst,
         referenceFiles: <String, String>{
           'lib/screens/settings_screen.dart': '''
 final perms = <String>{'team.users.view'};
 ''',
         },
-        catalogMarkdown: _catalogWithTeamUsersView,
+        catalogMarkdown: catalogWithTeamUsersView,
         rawLiteralScanScope: const <String>{
           'lib/screens/settings_screen.dart',
         },
@@ -518,7 +518,8 @@ final perms = <String>{'team.users.view'};
 
     test('RAW_LITERAL pass fires on every permission-category prefix '
         '(team / admin / operator / product / forgeflow / barrio / '
-        'billing / integration / integrations / workflow)', () {
+        'account / business_timing / billing / integration / integrations / '
+        'workflow)', () {
       // Pin every category prefix the lint treats as a permission-key
       // shape. Each literal is on its own file so the per-line collapse
       // does not hide a missing prefix; the test fails loudly if a new
@@ -537,6 +538,10 @@ final perms = <String>{'team.users.view'};
             "final p = 'forgeflow.shift.view';",
         'lib/operator_web/screens/probe_barrio.dart':
             "final p = 'barrio.handbook.view';",
+        'lib/operator_web/screens/probe_account.dart':
+            "final p = 'account.configure';",
+        'lib/operator_web/screens/probe_business_timing.dart':
+            "final p = 'business_timing.configure';",
         'lib/operator_web/screens/probe_billing.dart':
             "final p = 'billing.invoice.view';",
         'lib/operator_web/screens/probe_integration.dart':
@@ -547,9 +552,9 @@ final perms = <String>{'team.users.view'};
             "final p = 'workflow.run';",
       };
       final result = PermissionKeyLintRunner(
-        permissionKeysSource: _keysSrcWithCatalogConst,
+        permissionKeysSource: keysSrcWithCatalogConst,
         referenceFiles: probes,
-        catalogMarkdown: _catalogWithTeamUsersView,
+        catalogMarkdown: catalogWithTeamUsersView,
         rawLiteralScanScope: const <String>{'lib/operator_web/'},
         rawLiteralFileAllowlist: const <String>{},
       ).run();
