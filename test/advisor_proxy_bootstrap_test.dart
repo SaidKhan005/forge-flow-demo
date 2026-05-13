@@ -236,6 +236,27 @@ void main() {
         bindings.firstConnectionBackfillEnqueueGateway,
         isA<RepositoryFirstConnectionBackfillEnqueueGateway>(),
       );
+      // Lane B B2.1 — default Role catalog admin router. The
+      // production bootstrap MUST wire a non-null router whose audit
+      // sink is the production sink, not the noop. Without this the
+      // catalog publish route would 503 in production (the dispatcher
+      // returns 503 when `defaultRoleCatalogAdminRouter` is null) and
+      // the slice's stated audit deliverable would be silently
+      // unmet. The two expectations pin both invariants together so a
+      // future regression that drops the production wiring back to
+      // [NoopDefaultRoleCatalogAuditSink] fails this test loudly.
+      expect(
+        bindings.defaultRoleCatalogAdminRouter,
+        isA<DefaultRoleCatalogAdminRouter>(),
+      );
+      expect(
+        bindings.defaultRoleCatalogAdminRouter.auditSink,
+        isA<ProductionDefaultRoleCatalogAuditSink>(),
+      );
+      expect(
+        bindings.defaultRoleCatalogAdminRouter.auditSink,
+        isNot(isA<NoopDefaultRoleCatalogAuditSink>()),
+      );
       expect(
         bindings.integrationCategoryResolver(
           'toast',

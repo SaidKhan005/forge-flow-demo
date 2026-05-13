@@ -146,7 +146,7 @@ Do not re-open stale findings unless the repo regresses:
   `location_id` to the fact/webhook idempotency keys and switch all 17
   vendor sinks to a DO UPDATE WHERE `vendor_modified_at >=` guard. The
   follow-up queue now continues through
-  `202605131500_b5_b_catalog_tri_mirror.sql`, including permission-cache,
+  `202605131600_b2_1_default_role_catalog_versions.sql`, including permission-cache,
   webhook-secret, demo-counter, audit-anchor, auth-version,
   OAuth-refresh-lock, outbox NOTIFY split hardening, cron maintenance,
   KMS flag seeding, PII erasure, retention sweep, and admin hierarchy
@@ -161,10 +161,13 @@ Do not re-open stale findings unless the repo regresses:
   on sensitive proxy routes when caller's `auth_time` is stale), and
   the Lane B B10.1 vendor applicability table (global defaults plus
   operator overrides for wage/covers/polling vendor settings, RLS via
-  `app_current_operator()`).
+  `app_current_operator()`), and the Lane B B2.1 Default Role catalog
+  versions table (global F&F-wide catalog with the
+  `operators.default_role_catalog_version_id` pointer; admin-pool
+  BYPASSRLS posture, no RLS).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605131500_b5_b_catalog_tri_mirror.sql`.
+  `202605131600_b2_1_default_role_catalog_versions.sql`.
 
 ## Remaining Live-Closeout Gates
 

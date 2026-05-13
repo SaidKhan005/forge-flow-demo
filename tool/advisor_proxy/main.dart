@@ -1674,6 +1674,14 @@ Future<void> _runProxy(List<String> args) async {
             // router. Without this binding the POST/DELETE routes
             // return 503 wage_role_rows_router_not_configured.
             wageRoleRowsRouter: productionBindings.wageRoleRowsRouter,
+            // Slice B2.1 — F&F-admin Default Role catalog publish +
+            // history routes. Without this binding the routes return
+            // 503 default_role_catalog_admin_not_configured. The router
+            // is constructed in `buildProxyProductionBindings` and wraps
+            // the production audit sink (auth_events_audit + audit_logs
+            // hash-chained INSERT, actor_kind='forge_admin').
+            defaultRoleCatalogAdminRouter:
+                productionBindings.defaultRoleCatalogAdminRouter,
             // Slice A11.1 — production session-record completeness
             // gauge. Increments
             // proxy.session_record.incomplete{route, missing_field} on
