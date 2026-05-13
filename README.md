@@ -1,173 +1,466 @@
 # Forge & Flow
 
-Flutter prototype for labor coaching and shift decision support.
+Restaurant operations system that compares the locked plan against live service,
+explains the gap, and teaches the operator what to do next. Built as a Flutter
+client + Dart Cloud Run proxy + Postgres (CMK-encrypted) system of record, with
+per-vendor adapters feeding canonical operational facts.
 
-The current product flow is:
+The product pipeline:
 
-`POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Benchmark Snapshot -> TargetCycle + DemandForecastContext -> SchedulePlan -> WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn`
+```
+POS + Labor + Reservation
+  -> Canonical Operational Facts (ShiftRecord / OpenShiftSnapshot / ReservationBookSnapshot)
+  -> 60-Day Benchmark Snapshot
+  -> TargetCycle (locks for 60 days) + DemandForecastContext
+  -> SchedulePlan -> WeeklyPlanSnapshot (locks for one business week)
+  -> Shift (live) -> Variance -> History -> Learn
+```
 
-## Main Surfaces
+Source: `docs/contracts/core_app_architecture.md` (Tier-2 contract; Layers 1-12
+of Phase 7.55 are canonical).
 
-- `This Week`: diagnose what matters first right now
-- `History`: show what has repeated across tracked weeks
-- `Learn`: teach recurring leaks, benchmark patterns, and coaching focus
-- `Baseline`: manage benchmark/star-shift selection and target context
-- `Schedule` and `Shift`: operational planning and in-shift teaching surfaces
+---
 
-## Repo Guide
+## Surfaces (what runs where)
 
-- [PROJECT_TRACKER.md](PROJECT_TRACKER.md): active roadmap, current prompt, and next execution block
-- [docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md](docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md): archived tracker history
-- [docs/DATA_ALIGNMENT_TRACKER.md](docs/DATA_ALIGNMENT_TRACKER.md): active alignment notes and current source-of-truth watchpoints
-- [docs/archive/README.md](docs/archive/README.md): archived trackers, completed phase docs, and background reference material
-- [docs/archive/reference/REFACTOR_AND_DECOUPLING.MD](docs/archive/reference/REFACTOR_AND_DECOUPLING.MD): archived Phase 7.5 alignment contract
-- [docs/CODEX_PROMPT_GENERATION_STANDARD.md](docs/CODEX_PROMPT_GENERATION_STANDARD.md): operating standard for Codex planning, Claude prompt generation, verification, and tracker ownership
-- [docs/archive/phases/phase_7_52_execution_plan.md](docs/archive/phases/phase_7_52_execution_plan.md): archived Phase 7.52 cleanup, private-build, and Barrio shell contract
-- [docs/archive/phases/phase_8_gate/](docs/archive/phases/phase_8_gate/README.md): archived Phase 8 readiness gate artifacts (vendor profiles, source ownership, replay evidence, signoff)
-- [jim_taylor_labor_model_deep_dive.md](docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md): local teaching/model reference used throughout the app
+Forge & Flow ships **four** runtime surfaces, three of them web. Each compiles
+from its own Dart entrypoint and ships as its own Cloud Run service:
 
-## Current Status
+| Surface | Entrypoint | Hostname (production) | Cloud Run service (staging) | Used by |
+|---|---|---|---|---|
+| Operator mobile app (ForgeFlow flavor) | [lib/main_forgeflow.dart](lib/main_forgeflow.dart) | (mobile app stores) | n/a | Operators on phone / tablet |
+| Operator mobile app (Barrio flavor) | [lib/main_barrio.dart](lib/main_barrio.dart) | (paused) | n/a | Barrio private build (frozen — see `memory/project_barrio_paused.md`) |
+| Operator Web Console | [lib/main_operator_web.dart](lib/main_operator_web.dart) | `app.forgeflow.app` | `forge-flow-operator-web` | Operator onboarding + own-operator web |
+| F&F Operations Console (admin) | [lib/main_admin.dart](lib/main_admin.dart) | `admin.forgeflow.app` | `forge-flow-admin-console` | F&F super-admin + support (cross-operator) |
+| Advisor proxy / backend | [lib/main.dart](lib/main.dart) (proxy entry) | `proxy.forgeflow.app` | `forge-flow-staging-proxy` | All clients (auth-gated REST) |
 
-Active work routes through [PROJECT_TRACKER.md](PROJECT_TRACKER.md). Snapshot as of 2026-05-08:
+Two-console framing detail: `memory/project_two_console_framing.md`.
 
-- V1 launch prep: production cutover gates `cutover.0`–`cutover.5` and the operator punchlist. See `docs/_execution/2026-05-06_v1_operator_punchlist_execution.md`.
-- Phase 8 spine-bridge fanout is well underway: 17 INTEGRATE adapters at lifecycle `documented`; per-vendor Postgres sinks landed; `*.live.sandbox` lanes fire as vendor credentials arrive (rolling, parallel, doesn't block V1).
-- Phase 11a advisor infrastructure: live cloud Postgres host is Azure Database for PostgreSQL Flexible Server (`Canada Central`, PG 16) with Apache AGE, pgvector, and `pg_diskann` (locked 2026-04-26).
-- Phase 7.55 architecture (Layers 1–12) is canonical; see [docs/contracts/core_app_architecture.md](docs/contracts/core_app_architecture.md).
-- Demo mode is a writer-side switch (HP #2): same SQLite tables, same reads, same UI under `kDemoMode=true` or vendor-live. See [docs/contracts/demo_mode_contract.md](docs/contracts/demo_mode_contract.md).
+### Main product surfaces (inside the operator app)
 
-Earlier phases (7.5 alignment, 7.52/7.53/7.54, 7.55o extraction, 7.61 driver-key gate, Phase 8 gate) are complete; their artifacts live under `docs/archive/`.
+- **This Week** — what matters first, right now.
+- **Shift** — operational, in-shift teaching surface.
+- **Schedule** — labor planning vs. forecast.
+- **History** — recurring patterns across closed weeks.
+- **Learn** — coaching focus drawn from closed evidence.
+- **Baseline** — benchmark/star-shift selection and target-cycle context.
 
-## Local Development
+---
+
+## Architecture (high level)
+
+- **Flutter client** (mobile + web) speaks only to the proxy. Vendor payload
+  shape never reaches the UI; canonical facts do.
+- **Local SQLite** caches read models and demo-mode data. Same tables in demo
+  and production; demo is a writer-side switch (Hard Promise #2 — see
+  `docs/contracts/demo_mode_contract.md`).
+- **Dart proxy on Cloud Run** brokers all auth, all writes (idempotent, keyed
+  in `proxy_requests`), all LLM / embedding calls (no BYO-key), and all
+  per-vendor integration adapters.
+- **Azure Database for PostgreSQL Flexible Server** (Canada Central, PG 16,
+  CMK-encrypted) is the operator-scoped system of record. Extensions: Apache
+  AGE, pgvector, pg_diskann, pg_cron, pg_partman, pg_stat_statements,
+  pgcrypto. `TIMESTAMPTZ` everywhere + denormalized `business_date`.
+  `pgmq` is **not** available — use `FOR UPDATE SKIP LOCKED` or Cloud Tasks.
+- **Firebase Auth** is identity. Custom claims (`is_super_admin`,
+  `is_ff_support`) gate the admin console; operator hierarchy / per-location
+  RLS gates everything else.
+- **Per-operator RLS-ready schema** from day one. App code uses
+  `OperatorScopedRepository<T>` (primary defense); Postgres RLS is backup.
+  Every fact-table B-tree index leads with `operator_id`.
+- **AI infra is general-purpose** — `LLMProvider`, `EmbeddingProvider`,
+  `RerankProvider`, `DataSourceProvider`, `IntegrationProvider`. Advisor
+  (Phase 11b) and future Workflow Platform (Phase 12) reuse the same plumbing.
+
+Deeper guides:
+
+- [docs/contracts/core_app_architecture.md](docs/contracts/core_app_architecture.md) — canonical Layer 1-12 contract.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — plain-English + technical walkthrough.
+- [docs/contracts/integration_spine_architecture_contract.md](docs/contracts/integration_spine_architecture_contract.md) — vendor adapter spine.
+- [docs/contracts/hardening_rls_and_repository_pattern_contract.md](docs/contracts/hardening_rls_and_repository_pattern_contract.md) — RLS + repository discipline.
+- [docs/contracts/phase_7_55_time_boundary_contract.md](docs/contracts/phase_7_55_time_boundary_contract.md) — timestamp + business-date rules.
+
+---
+
+## Environments
+
+Forge & Flow has three runtime tiers. Each is fully isolated at the Cloud Run
+service, Secret Manager namespace, and (for production) the database level.
+
+| Tier | GCP project | Postgres | Secret Manager prefix | Purpose |
+|---|---|---|---|---|
+| **Preview** | `forge-flow-staging` | shared staging (default) or isolated preview DB | `forge-flow-staging-` (default) or `forge-flow-preview-` | Per-branch / per-PR end-to-end proof before shared staging |
+| **Staging** | `forge-flow-staging` | shared staging Postgres | `forge-flow-staging-` | Release-candidate validation; shared across team |
+| **Production1** | `forge-flow-production1` | `forge-flow-production1-pg-cmk` (CMK + UAMI) | `forge-flow-production-` | Live operator traffic, gated by `cutover.*` runbooks |
+
+Region for everything: `northamerica-northeast2` (Toronto).
+
+Preview is the safety net: it uses separate Cloud Run service names derived
+from `-PreviewName`, so shared staging users are never routed onto branch
+revisions. Detail: [runbooks/preview_environment_runbook.md](runbooks/preview_environment_runbook.md).
+
+---
+
+## Local development
+
+### Prerequisites
+
+- Flutter stable (Dart 3.x). `flutter doctor` clean.
+- For Cloud Run / proxy work: `gcloud` CLI, Google Cloud SDK,
+  `Cloud SDK` installed at `%LOCALAPPDATA%\Google\Cloud SDK`.
+- For local Postgres dev: Docker Desktop (optional — `docker-compose.dev.yml`
+  spins up PG 16 + AGE + pgvector at `localhost:5432`).
+- A unified, **non-repo** secrets file at
+  `$HOME\.forge_flow\secrets\runtime\forge_flow.secrets.ps1`. The dev
+  launchers source this; no provider keys live in the repo.
+
+### Operator mobile app (ForgeFlow / Barrio)
+
+```powershell
+# Loads $HOME\.forge_flow\secrets\runtime\forge_flow.secrets.ps1 and passes
+# the local dev-only ANTHROPIC_API_KEY as a --dart-define. Production
+# provider keys remain server-side only.
+scripts\run_flutter_dev.ps1 -App forgeflow
+scripts\run_flutter_dev.ps1 -App barrio      # paused; uses lib/main_barrio.dart
+
+# Wire to a real Firebase Auth + deployed proxy instead of in-memory fixtures:
+scripts\run_flutter_dev.ps1 -App forgeflow -UseFirebaseAuth
+```
+
+Plain Flutter without the launcher:
 
 ```bash
 flutter pub get
-flutter run
+flutter run --flavor forgeflow -t lib/main_forgeflow.dart
+flutter run --flavor barrio    -t lib/main_barrio.dart
 flutter test
 ```
 
-## Android Flavor Commands
+If multiple devices are connected, pass `-d <deviceId>` (or `-Device chrome`
+for the launcher).
 
-Current Android flavors:
-
-- `forgeflow`
-- `barrio`
-
-Basic cleanup and dependency refresh:
+### Operator Web Console (`app.forgeflow.app`)
 
 ```bash
-flutter clean
-flutter pub get
+flutter build web `
+  --target=lib/main_operator_web.dart `
+  --output=build/operator_web `
+  --dart-define=OPERATOR_WEB_DEMO_AUTH=true
+
+# Or run directly in Chrome with demo auth:
+flutter run -t lib/main_operator_web.dart -d chrome `
+  --dart-define=OPERATOR_WEB_DEMO_AUTH=true
 ```
 
-Run either flavor on a connected device or emulator:
+Live operator-web auth (magic link, password set, MFA, T&Cs) wires through the
+deployed proxy — pass `--dart-define=OPERATOR_WEB_PROXY_BASE_URI=...`.
 
-```bash
-flutter run --flavor forgeflow -t lib/main_forgeflow.dart
-flutter run --flavor barrio -t lib/main_barrio.dart
-```
-
-Local dev with the Anthropic Settings check enabled:
+### F&F Operations Console (`admin.forgeflow.app`)
 
 ```powershell
-scripts/run_flutter_dev.ps1 -App forgeflow
-scripts/run_flutter_dev.ps1 -App barrio
+# Default = LIVE Firebase admin auth against staging (mirrors Cloud Run prod).
+scripts\run_admin_console_dev.ps1
+
+# Demo mode for the 11A.0 walkthrough (super.admin@ / support@ / operator@):
+scripts\run_admin_console_dev.ps1 -DemoMode
+
+# Point at a non-default proxy:
+scripts\run_admin_console_dev.ps1 -AdminProxyBaseUri http://localhost:8080
 ```
 
-That launcher reads `$HOME\.forge_flow\secrets\runtime\forge_flow.secrets.ps1` and passes the
-local dev-only `ANTHROPIC_API_KEY` as a Flutter `--dart-define`. Production
-provider keys remain server-side only.
-
-If multiple devices are connected, specify one explicitly:
+### Local Postgres (optional)
 
 ```bash
-flutter run --flavor forgeflow -t lib/main_forgeflow.dart -d <deviceId>
-flutter run --flavor barrio -t lib/main_barrio.dart -d <deviceId>
+docker compose -f docker-compose.dev.yml up --build
+# Apply migrations in lexicographic order:
+psql "postgres://forge:dev@localhost:5432/forge" \
+     -v ON_ERROR_STOP=1 \
+     -f db/migrations/202604250000_advisor_roles.sql
+# ...continue with the rest of db/migrations/*.sql in lex order.
 ```
 
-Build APKs:
+After editing migrations:
 
 ```bash
-flutter build apk --flavor forgeflow -t lib/main_forgeflow.dart --debug
-flutter build apk --flavor forgeflow -t lib/main_forgeflow.dart --release
-
-flutter build apk --flavor barrio -t lib/main_barrio.dart --debug
-flutter build apk --flavor barrio -t lib/main_barrio.dart --release
+dart run tool/migration_drift_scanner.dart --fix --strict-docs
+dart run tool/migration_cutoff_lint.dart
 ```
 
-Build Android App Bundles:
+### Mobile build outputs
+
+| Metric | Typical size |
+|---|---|
+| Local workspace (`build/` + `.dart_tool/`) | ~4-5 GB |
+| Debug APK | ~150-160 MB |
+| Release split APK (per ABI) | ~20-25 MB |
 
 ```bash
+flutter build apk       --flavor forgeflow -t lib/main_forgeflow.dart --release
 flutter build appbundle --flavor forgeflow -t lib/main_forgeflow.dart --release
-flutter build appbundle --flavor barrio -t lib/main_barrio.dart --release
+flutter clean   # reclaim ~5 GB of build cache
 ```
 
-Clean the Android Gradle build directly if needed:
+APK output: `build/app/outputs/flutter-apk/`.
 
-```bash
-cd android
-./gradlew clean
-cd ..
+---
+
+## Deploys
+
+All deploy scripts are PowerShell. They source the same unified secrets file
+the dev launchers use, sync Secret Manager, build the container via Cloud
+Build, deploy to Cloud Run, then verify Ready revision + `/readyz` + CORS
+preflight + Browser Use smoke (when applicable).
+
+Authority on which target a script defaults to: read the script header — every
+script defaults to staging and requires explicit `-Project` / `-SecretPrefix`
+flags to target Production1.
+
+### Preview (per branch / per PR)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\deploy_preview_stack.ps1 `
+  -PreviewName ux-nav `
+  -SkipApiEnable `
+  -SkipSecretManagerSync
 ```
 
-Typical APK output path:
+Creates `forge-flow-preview-ux-nav-admin` and `forge-flow-preview-ux-nav-proxy`
+on `forge-flow-staging`. Uses `-MinInstances 0` (cheap when idle). Default
+secret prefix is `forge-flow-staging-` (runtime-isolated; shared staging DB —
+safe for read-only smoke only). Pass `-SecretPrefix forge-flow-preview-` for
+a fully data-isolated preview after preview secrets are provisioned.
 
-- `build/app/outputs/flutter-apk/`
+For saturated-DB previews, add `-DeferProxyStartupDatabase -ProxyMaxInstances 1`
+so the proxy binds HTTP and passes `/readyz` without opening startup-only
+Postgres connections. Detail: [runbooks/preview_environment_runbook.md](runbooks/preview_environment_runbook.md).
 
-Important note:
+Cleanup when the PR closes:
 
-- the repo currently has Android flavor names and source folders in place, but `pubspec.yaml` still contains one shared `flutter_launcher_icons` block and one shared `flutter_native_splash` block
-- until flavor-specific generator config files are added, icon and splash generation still behaves like a single-brand setup
-- the two flavors now use separate Dart entrypoints:
-  - `lib/main_forgeflow.dart`
-  - `lib/main_barrio.dart`
-
-## Build Size and Local Disk Usage
-
-Local workspace size, debug build size, and release package size are three different things:
-
-| Metric | What it measures | Typical size |
-|---|---|---|
-| Local workspace (`build/` + `.dart_tool/`) | Cached build artifacts, intermediate outputs, debug symbols | ~4–5 GB |
-| Debug APK | Unstripped, unoptimized, includes debug overhead | ~150–160 MB |
-| Release split APK (per ABI) | Shipped payload, stripped, tree-shaken, compressed | ~20–25 MB |
-
-`flutter clean` removes cached build artifacts and reclaims local disk space. It does not change the shipped release size — that is controlled by asset declarations, code tree-shaking, and release build flags.
-
-Cleanup commands:
-
-```bash
-flutter clean          # removes build/ and .dart_tool/
-flutter pub get        # re-fetches dependencies after clean
-cd android && ./gradlew clean && cd ..   # cleans Android Gradle cache directly
+```powershell
+gcloud run services delete forge-flow-preview-ux-nav-admin `
+  --project forge-flow-staging --region northamerica-northeast2
+gcloud run services delete forge-flow-preview-ux-nav-proxy `
+  --project forge-flow-staging --region northamerica-northeast2
 ```
 
-## Flavor Asset Containment
+### Staging
+
+Promote only after preview passes. Rebase onto `origin/master`, run local
+gates, then:
+
+```powershell
+# Shared staging proxy:
+powershell -ExecutionPolicy Bypass -File scripts\deploy_staging_proxy.ps1
+
+# F&F Operations Console (admin):
+powershell -ExecutionPolicy Bypass -File scripts\deploy_admin_console.ps1 `
+  -AdminProxyBaseUri https://forge-flow-staging-proxy-XXXXX-XX.a.run.app
+
+# Operator Web Console:
+powershell -ExecutionPolicy Bypass -File scripts\deploy_operator_web.ps1 `
+  -ProxyBaseUri https://forge-flow-staging-proxy-XXXXX-XX.a.run.app
+```
+
+Then verify Cloud Run Ready + 100% traffic + `/readyz` + CORS + Browser Use
+smoke + the performance probe:
+
+```powershell
+dart run tool\perf_gate\staging_console_probe.dart `
+  --run `
+  --admin-url=<admin-url> `
+  --proxy-url=<proxy-url> `
+  --admin-revision=<rev> --proxy-revision=<rev> `
+  --label=<branch-or-pr> `
+  --write-json=build\perf_gate\<label>.json `
+  --enforce-budgets
+```
+
+### Production1
+
+Production deploys are **gated** by the cutover runbooks, not date-driven, and
+never originate from a preview branch. Required before any production deploy:
+
+- PR merged to `master`.
+- Production unfreeze explicitly approved.
+- Production migration drift checked (lex-cutoff list in
+  `runbooks/phase_9_production1_migration_apply_runbook.md`).
+- Production secrets, service principals, and the static-egress allowlist
+  confirmed.
+
+The same deploy scripts accept production overrides — pass `-Project
+forge-flow-production1`, `-SecretPrefix forge-flow-production-`,
+`-ServiceAccount`, `-VpcConnector ff-prod1-proxy-egress`, and the production
+Firebase google-services path. Authority:
+
+- [docs/phases/phase_production_cutover/phase_production_cutover_plan.md](docs/phases/phase_production_cutover/phase_production_cutover_plan.md)
+- [runbooks/cutover_0_preflight_runbook.md](runbooks/cutover_0_preflight_runbook.md)
+- [runbooks/phase_9_production1_migration_apply_runbook.md](runbooks/phase_9_production1_migration_apply_runbook.md)
+- [runbooks/proxy_redeploy_reset_confirm_account_info_runbook.md](runbooks/proxy_redeploy_reset_confirm_account_info_runbook.md)
+- [runbooks/v1_operator_launch_punchlist_runbook.md](runbooks/v1_operator_launch_punchlist_runbook.md)
+
+Background workers (separate Cloud Run jobs / services):
+
+```
+scripts\deploy_audit_anchor_job.ps1                # daily Azure Blob anchor of hash-chained audit log
+scripts\deploy_first_connect_backfill_worker.ps1   # first-connect vendor backfill
+scripts\deploy_integration_sync_worker.ps1         # ongoing vendor sync
+scripts\deploy_oauth_refresh_worker.ps1            # OAuth token refresh
+```
+
+---
+
+## Demo mode
+
+`--dart-define=kDemoMode=true` flips the writer to `MockReplayDataSourceProvider`
+and seeds the same SQLite tables production reads (`shift_records`,
+`week_records`, `restaurant_locations`, `target_cycles`, etc.) under
+`DemoScope.restaurantId = 'demo_restaurant_001'`. Reader paths, services,
+widgets, and the UI never branch on `kDemoMode` — Hard Promise #2.
+
+Three sanctioned reader-side carve-outs (do not remove without an explicit
+replacement plan):
+
+1. Login screen `_demoOperatorSignInEnabled` — adds an additive "Use demo
+   operator" button below regular sign-in.
+2. `app_data_status_service.dart` — renders `DEMO` instead of `CURRENT` on the
+   data-status badge.
+3. Settings screen `_kDemoMode` — gates two demo-only sections ("Data reset"
+   and "Demo date"). Hidden in production.
+
+Per-(operator, location, category) demo state lives in the Postgres
+`demo_mode_state` table; `DemoModeFlipPolicy.evaluateFlip` flips `is_demo =
+false` after the first vendor connection backfills ≥1 record. Detail:
+[docs/contracts/demo_mode_contract.md](docs/contracts/demo_mode_contract.md).
+
+---
+
+## Vendor integrations
+
+17 INTEGRATE adapters across POS / Labor / Reservation, all at lifecycle =
+`documented`. Each `*.live.sandbox` / `*.live.prod` slice fires when vendor
+credentials arrive — does **not** block V1 launch.
+
+- POS: Lightspeed K-Series, Toast, Clover, Oracle Simphony, Aloha NCR Voyix,
+  Square, Revel.
+- Labor: ADP, 7shifts, QuickBooks Time, Humanity, Agendrix, Push Operations.
+- Reservation: Libro, OpenTable, Tock, SevenRooms.
+
+Per-vendor docs: [docs/integrations/](docs/integrations/README.md). Tracker:
+`docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`. Wave 1 (needed
+for launch UX) = Lightspeed K-Series + Libro + QuickBooks Time.
+
+---
+
+## Current status
+
+Active work routes through [PROJECT_TRACKER.md](PROJECT_TRACKER.md). Snapshot
+as of 2026-05-12:
+
+**V1 launch path — three workstreams remaining:**
+
+1. **Operator-blocked (no engineering):**
+   - Firebase Auth action-domain switch (`auth.feflow.org` → production).
+   - Apply 2 remaining Production1 migrations (first-connect-backfill jobs +
+     11W.7 operator account fields). 18 of 20 already staging-verified.
+   - Seed operator-authored T&C content into `tos_versions`.
+   - Sandbox creds for Wave 1 trio (Lightspeed K-Series, Libro, QuickBooks Time).
+2. **Cutover gates (sequence-gated, not date-gated):** `cutover.0` preflight →
+   `cutover.1` corpus load → `cutover.0b` Tier-M perf gate → `cutover.2` first
+   operator onboarding → `cutover.3` traffic switch → `cutover.4` 7-day
+   stability watch → `cutover.5` post-launch hardening.
+3. **Engineering still in scope:** `11A.8/.9/.10` (Support audit,
+   cross-operator reads, operator impersonation), `9.8` inbound vendor T&Cs
+   code lane, `business-timing-live` full hierarchy + settings lanes,
+   connected-device E2E + push delivery proof.
+
+**Paused** (do not touch unless tracker says otherwise):
+
+- AI phases: `11b*`, `12.*`, `11A.3.x`, `11A.11`, `9.8` advisor portion, `10b`.
+- Outward-vendor: `8.5`, `11W.9`.
+- Barrio: `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart`.
+
+**Recently shipped** (2026-05-06 → 2026-05-12; see
+`docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`):
+
+- Production1 runtime live (Cloud Run + Firebase + Postgres-CMK + production
+  DNS).
+- Phase 8 plug-and-play V1 onboarding engineering-complete (PRs #280-#301).
+- Admin hierarchy + settings overhaul closed (12 slices on master).
+- Post-audit remediation wave (PRs #417-#426 merged 2026-05-08).
+
+---
+
+## Repo guide
+
+- [PROJECT_TRACKER.md](PROJECT_TRACKER.md) — active routing; "only what is left."
+- [docs/POST_HARDENING_FOLLOWUPS.md](docs/POST_HARDENING_FOLLOWUPS.md) — open P0-P3 items.
+- [docs/DATA_ALIGNMENT_TRACKER.md](docs/DATA_ALIGNMENT_TRACKER.md) — current source-of-truth watchpoints.
+- [docs/contracts/](docs/contracts/) — Tier-2 binding rules (`core_app_architecture.md`, `demo_mode_contract.md`, RLS contract, etc.).
+- [docs/phases/](docs/phases/) — active phase plans.
+- [docs/archive/](docs/archive/README.md) — closed phases + retired references.
+- [runbooks/](runbooks/) — operator-facing runbooks (preview, cutover, audit anchor, GDPR erasure, PITR drill, on-call).
+- [docs/CODEX_PROMPT_GENERATION_STANDARD.md](docs/CODEX_PROMPT_GENERATION_STANDARD.md) — Codex / Claude parallel-lane operating standard.
+- [docs/integrations/](docs/integrations/README.md) — per-vendor adapter docs.
+
+Authority order when sources conflict (lowest number wins):
+
+1. The active prompt.
+2. `docs/contracts/core_app_architecture.md`.
+3. `docs/contracts/**` (other Tier-2 contracts).
+4. `PROJECT_TRACKER.md`, `docs/DATA_ALIGNMENT_TRACKER.md`, `docs/POST_HARDENING_FOLLOWUPS.md`.
+5. The active phase doc named in the prompt.
+6. `CLAUDE.md`.
+
+`docs/archive/**` is history — ignore unless explicitly named.
+
+---
+
+## Testing
+
+- `flutter test` runs the smallest set that proves the seam.
+- `dart analyze` whenever the prompt requires verification.
+- `docs/KNOWN_FAILING_TESTS.md` lists pre-existing failures — treat as expected,
+  not regressions.
+- Runtime acceptance (advisory pattern, reviewer judgment):
+  [docs/contracts/slice_runtime_acceptance_contract.md](docs/contracts/slice_runtime_acceptance_contract.md).
+- Browser-exposed slices use Codex-driven Browser Use evidence per
+  [runbooks/browser_use_codex_acceptance_workflow.md](runbooks/browser_use_codex_acceptance_workflow.md).
+
+---
+
+## Asset containment (mobile flavors)
 
 The repo has two asset directories:
 
-- `assets/images/` — shared assets used by ForgeFlow and/or both flavors (launcher icons, splash images, logo)
-- `assets/internal/barrio/` — Barrio-private runtime assets (background photos, handbook icon)
+- `assets/images/` — shared assets used by ForgeFlow and/or both flavors.
+- `assets/internal/barrio/` — Barrio-private runtime assets.
 
-Barrio-private **non-runtime** reference material (`branding/`, `inspiration/` subdirectories) is stored under `assets/internal/barrio/` on disk but is **not** declared in `pubspec.yaml` subdirectory listings and is therefore **not bundled** into any APK.
+Flutter does not support flavor-conditional asset bundling, so **ForgeFlow
+APKs currently include Barrio-private runtime assets** (~1.1 MB). The
+ForgeFlow Dart entrypoint never references them; they are dead payload.
+Eliminating this requires extracting Barrio into a separate Flutter package
+(out of scope for current optimization work).
 
-### Known limitation: Flutter does not support flavor-conditional asset bundling
+Non-runtime reference material under `assets/internal/barrio/branding/` and
+`/inspiration/` is on disk but **not** declared in `pubspec.yaml` and **not**
+bundled into either flavor.
 
-Flutter's `pubspec.yaml` asset declarations apply globally to all build flavors. There is no built-in mechanism to conditionally include or exclude asset directories per flavor. This means:
-
-- **ForgeFlow APKs currently include Barrio-private runtime assets** (~1.1 MB of background images + handbook icon)
-- This is a Flutter toolchain limitation, not a configuration oversight
-- The ForgeFlow Dart entrypoint never references or loads these assets — they are dead payload in ForgeFlow builds
-- Eliminating this would require extracting Barrio into a separate Flutter package with its own asset declarations, which is a larger restructure outside the scope of the current optimization block
-
-### What is contained
-
-- Barrio non-runtime reference assets (`branding/`, `inspiration/`) are **not bundled** in either flavor
-- All Barrio-private runtime assets are consolidated under `assets/internal/barrio/`, clearly separated from shared assets
-- `handbook_icon.png` was moved out of `assets/images/` into `assets/internal/barrio/` since it is only used by Barrio screens
+---
 
 ## Notes
 
-- Vendor selection for Phase 8 connectors is locked: 17 INTEGRATE adapters across POS / Labor / Reservation. Folder catalog: [docs/integrations/](docs/integrations/README.md).
-- Demo mode (`--dart-define=kDemoMode=true`) writes to the same SQLite tables as production via `MockReplayDataSourceProvider`; reader paths do not branch.
-- `BaselineData` remains as a temporary compatibility bridge for Baseline, Schedule, and Learn; persisted `ActiveTargetProfile` is the canonical authority.
+- `kDemoMode` is a writer-side switch (HP #2). Same tables, same reads, same
+  UI under demo or vendor-live.
+- `BaselineData` remains as a temporary compatibility bridge for Baseline,
+  Schedule, and Learn; persisted `ActiveTargetProfile` is the canonical
+  authority.
+- Service-layer split: `lib/data/` is frozen legacy (delete-only).
+  `lib/services/` = runtime orchestration; `lib/domain/services/` = pure
+  formulas (no I/O); `lib/state/` = state holders; `lib/dev/` = demo + dev
+  only.
+- Service principals (non-human actors) authenticate with `sp:`-prefixed
+  JWTs; `audit_logs.actor_kind` is never NULL. Audit log is hash-chained
+  (SHA-256 via `pgcrypto`), partitioned per-operator/day, anchored daily to
+  Azure Blob.
+- `$HOME\.forge_flow\secrets\runtime\forge_flow.secrets.ps1` is the canonical
+  private env loader (lives outside the repo).
