@@ -418,8 +418,9 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
           factors: visibleFactors,
           removalRequests: _removalRequests,
           onRevoke: widget.viewOnly || _busyRevoke ? null : _onRevoke,
-          onCancelRemoval:
-              widget.viewOnly || _busyCancelRemoval ? null : _onCancelRemoval,
+          onCancelRemoval: widget.viewOnly || _busyCancelRemoval
+              ? null
+              : _onCancelRemoval,
         ),
         if (!widget.viewOnly) ...[
           const SettingsRowDivider(),
@@ -431,7 +432,8 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
               busy: _busyEnroll,
               onPressed: () => _onBeginEnrollment(),
             ),
-          if (_enrollStage == _EnrollmentStage.scanning && _pendingSetup != null)
+          if (_enrollStage == _EnrollmentStage.scanning &&
+              _pendingSetup != null)
             _MfaScanRow(
               setup: _pendingSetup!,
               codeController: _codeController,
@@ -1093,6 +1095,17 @@ class DemoMfaOperationsGateway implements MfaOperationsGateway {
   }
 
   @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
+  ) {
+    throw const MfaOperationRejected(
+      code: 'unsupported_client_operation',
+      message: 'Recovery-code viewed state is managed by Operator Web.',
+      statusCode: 400,
+    );
+  }
+
+  @override
   Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
     MfaCancelFactorRemovalCommand command,
   ) async {
@@ -1152,6 +1165,13 @@ class _UnavailableMfaOperationsGateway implements MfaOperationsGateway {
   @override
   Future<MfaRevokeFactorCompleted> revokeFactor(
     MfaRevokeFactorCommand command,
+  ) {
+    throw _rejected();
+  }
+
+  @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
   ) {
     throw _rejected();
   }

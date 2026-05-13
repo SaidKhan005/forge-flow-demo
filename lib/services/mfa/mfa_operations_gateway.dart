@@ -65,6 +65,7 @@ class MfaFactorSummary {
     required this.enrolledAt,
     required this.issuerLabel,
     this.lastUsedAt,
+    this.recoveryCodesViewedAt,
     this.canRevoke = true,
   });
 
@@ -72,6 +73,7 @@ class MfaFactorSummary {
   final String factorType;
   final DateTime enrolledAt;
   final DateTime? lastUsedAt;
+  final DateTime? recoveryCodesViewedAt;
   final String issuerLabel;
   final bool canRevoke;
 }
@@ -88,6 +90,30 @@ class MfaListFactorsCommand {
   final String operatorId;
   final String locationId;
   final String authorizationIdToken;
+}
+
+class MfaMarkRecoveryCodesViewedCommand {
+  const MfaMarkRecoveryCodesViewedCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    this.authorizationIdToken = '',
+    required this.factorId,
+    required this.idempotencyKey,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String authorizationIdToken;
+  final String factorId;
+  final String idempotencyKey;
+}
+
+class MfaMarkRecoveryCodesViewedCompleted {
+  const MfaMarkRecoveryCodesViewedCompleted({required this.viewedAt});
+
+  final DateTime viewedAt;
 }
 
 class MfaListFactorsCompleted {
@@ -224,6 +250,10 @@ abstract class MfaOperationsGateway {
 
   Future<MfaRevokeFactorCompleted> revokeFactor(MfaRevokeFactorCommand command);
 
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
+  );
+
   Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
     MfaCancelFactorRemovalCommand command,
   );
@@ -253,6 +283,13 @@ class ScaffoldFailingMfaOperationsGateway implements MfaOperationsGateway {
   @override
   Future<MfaRevokeFactorCompleted> revokeFactor(
     MfaRevokeFactorCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
   ) {
     throw StateError(_message);
   }
@@ -373,6 +410,7 @@ class RepositoryMfaOperationsGateway implements MfaOperationsGateway {
           factorType: record.factorType,
           enrolledAt: record.enrolledAt,
           lastUsedAt: record.lastUsedAt,
+          recoveryCodesViewedAt: record.recoveryCodesViewedAt,
           issuerLabel:
               (record.factorMetadata['issuer'] as String?) ?? 'Forge & Flow',
         ),
@@ -519,6 +557,58 @@ class RepositoryMfaOperationsGateway implements MfaOperationsGateway {
       ),
       executeAfter: requests.first.executeAfter,
     );
+  }
+
+  @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
+  ) async {
+    final factorId = command.factorId.trim();
+    final idempotencyKey = command.idempotencyKey.trim();
+    if (factorId.isEmpty) {
+      throw const MfaOperationRejected(
+        code: 'missing_factor_id',
+        message: 'MFA factor id is required.',
+        statusCode: 400,
+      );
+    }
+    if (idempotencyKey.isEmpty) {
+      throw const MfaOperationRejected(
+        code: 'missing_idempotency_key',
+        message: 'Idempotency-Key header is required.',
+        statusCode: 400,
+      );
+    }
+    final result = await _mfaFactorsRepository.markRecoveryCodesViewed(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      userId: command.actorUserId,
+      factorId: factorId,
+      viewedAt: _now().toUtc(),
+    );
+    if (result == null) {
+      throw const MfaOperationRejected(
+        code: 'mfa_factor_not_found',
+        message: 'Authenticator app was not found for this account.',
+        statusCode: 404,
+      );
+    }
+    if (result.changed) {
+      await _auditRepository.insertEvent(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorKind: 'user',
+        actorUserId: command.actorUserId,
+        targetUserId: command.actorUserId,
+        eventType: 'auth.mfa_recovery_codes_viewed',
+        payload: <String, Object?>{
+          'factor_id': factorId,
+          'viewed_at': result.viewedAt.toUtc().toIso8601String(),
+          'idempotency_key_present': true,
+        },
+      );
+    }
+    return MfaMarkRecoveryCodesViewedCompleted(viewedAt: result.viewedAt);
   }
 
   @override

@@ -725,6 +725,13 @@ class _CountingMfaOperationsGateway implements MfaOperationsGateway {
   }
 
   @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
+  ) async {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
     MfaCancelFactorRemovalCommand command,
   ) async {

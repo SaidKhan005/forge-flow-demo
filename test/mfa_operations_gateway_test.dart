@@ -94,6 +94,64 @@ void main() {
     });
 
     test(
+      'markRecoveryCodesViewed writes latest timestamp and audits without code values',
+      () async {
+        final mfaRepo = _RecordingMfaFactorsRepository();
+        final auditRepo = _RecordingAuditRepository();
+        final nowValues = <DateTime>[
+          DateTime.utc(2026, 5, 6, 12),
+          DateTime.utc(2026, 5, 6, 12, 1),
+        ];
+        final gateway = RepositoryMfaOperationsGateway(
+          enrollmentService: const _SuccessfulEnrollmentService(),
+          mfaFactorsRepository: mfaRepo,
+          auditRepository: auditRepo,
+          now: () => nowValues.removeAt(0),
+        );
+
+        final first = await gateway.markRecoveryCodesViewed(
+          const MfaMarkRecoveryCodesViewedCommand(
+            actorUserId: _userId,
+            operatorId: _operatorId,
+            locationId: _locationId,
+            factorId: 'totp-db-factor',
+            idempotencyKey: 'idem-view-codes',
+          ),
+        );
+        final fresh = await gateway.markRecoveryCodesViewed(
+          const MfaMarkRecoveryCodesViewedCommand(
+            actorUserId: _userId,
+            operatorId: _operatorId,
+            locationId: _locationId,
+            factorId: 'totp-db-factor',
+            idempotencyKey: 'idem-view-codes-2',
+          ),
+        );
+
+        expect(first.viewedAt, equals(DateTime.utc(2026, 5, 6, 12)));
+        expect(fresh.viewedAt, equals(DateTime.utc(2026, 5, 6, 12, 1)));
+        expect(mfaRepo.recoveryCodesViewedCalls, equals(2));
+        expect(auditRepo.events, hasLength(2));
+        expect(
+          auditRepo.events.map((event) => event.eventType),
+          everyElement(equals('auth.mfa_recovery_codes_viewed')),
+        );
+        expect(
+          auditRepo.events.map((event) => event.actorKind),
+          everyElement(equals('user')),
+        );
+        expect(
+          auditRepo.events.first.payload.keys,
+          unorderedEquals(<String>[
+            'factor_id',
+            'viewed_at',
+            'idempotency_key_present',
+          ]),
+        );
+      },
+    );
+
+    test(
       'listFactors degrades when MFA removal queue table is absent',
       () async {
         final enrolledAt = DateTime.utc(2026, 4, 30, 12);
@@ -619,6 +677,8 @@ class _RecordingMfaFactorsRepository extends MfaFactorsRepository {
   final ensuredFirebaseUids = <String>[];
   int revokedRecoveryCodeRows = 0;
   int listActiveTotpCalls = 0;
+  int recoveryCodesViewedCalls = 0;
+  DateTime? recoveryCodesViewedAt;
 
   @override
   Future<MfaEnrollmentPersistenceResult> insertTotpEnrollment({
@@ -677,6 +737,23 @@ class _RecordingMfaFactorsRepository extends MfaFactorsRepository {
     revokedRecoveryCodeRows += 1;
     return 3;
   }
+
+  @override
+  Future<MfaRecoveryCodesViewedResult?> markRecoveryCodesViewed({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String factorId,
+    required DateTime viewedAt,
+  }) async {
+    recoveryCodesViewedCalls += 1;
+    if (factorId != 'totp-db-factor') return null;
+    recoveryCodesViewedAt = viewedAt.toUtc();
+    return MfaRecoveryCodesViewedResult(
+      viewedAt: recoveryCodesViewedAt!,
+      changed: true,
+    );
+  }
 }
 
 class _PersistedEnrollment {
@@ -708,11 +785,9 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     String? requestId,
     String? adminReason,
   }) async {
-    events.add(_AuditEvent(
-      eventType: eventType,
-      actorKind: actorKind,
-      payload: payload,
-    ));
+    events.add(
+      _AuditEvent(eventType: eventType, actorKind: actorKind, payload: payload),
+    );
     return 'event-1';
   }
 
@@ -734,11 +809,9 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     String? requestId,
     required String adminReason,
   }) async {
-    events.add(_AuditEvent(
-      eventType: eventType,
-      actorKind: actorKind,
-      payload: payload,
-    ));
+    events.add(
+      _AuditEvent(eventType: eventType, actorKind: actorKind, payload: payload),
+    );
     return 'event-1';
   }
 
@@ -763,11 +836,9 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     String? requestId,
     String? adminReason,
   }) async {
-    events.add(_AuditEvent(
-      eventType: eventType,
-      actorKind: actorKind,
-      payload: payload,
-    ));
+    events.add(
+      _AuditEvent(eventType: eventType, actorKind: actorKind, payload: payload),
+    );
     return 'event-1';
   }
 }

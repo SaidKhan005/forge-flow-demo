@@ -24,6 +24,7 @@ class MfaCardState {
     required this.headline,
     required this.body,
     required this.primaryButtonLabel,
+    required this.primaryButtonTooltip,
     required this.primaryActionKey,
     required this.factorCount,
     this.primaryFactor,
@@ -38,6 +39,7 @@ class MfaCardState {
   final String headline;
   final String body;
   final String primaryButtonLabel;
+  final String primaryButtonTooltip;
   final String primaryActionKey;
   final int factorCount;
   final WebSecurityMfaFactor? primaryFactor;
@@ -63,6 +65,7 @@ class MfaCardState {
       headline: headline,
       body: body,
       primaryButtonLabel: primaryButtonLabel,
+      primaryButtonTooltip: primaryButtonTooltip,
       primaryActionKey: primaryActionKey,
       factorCount: factorCount,
       primaryFactor: primaryFactor,
@@ -312,7 +315,9 @@ class MfaCardController extends ChangeNotifier {
           body:
               'Turn on 2FA so signing in requires your password and a '
               'one-time code from your authenticator app.',
-          primaryButtonLabel: 'Turn on 2FA',
+          primaryButtonLabel: 'Enable two-factor sign-in',
+          primaryButtonTooltip:
+              'Start authenticator setup for this sign-in account.',
           primaryActionKey: 'account_section_mfa_enroll',
           factorCount: 0,
         );
@@ -320,14 +325,50 @@ class MfaCardController extends ChangeNotifier {
         final factorCopy = factorCount == 1
             ? '1 method is enrolled.'
             : '$factorCount methods are enrolled.';
+        final recoveryCodesViewed =
+            primaryFactor?.recoveryCodesViewedAt != null;
+        if (!recoveryCodesViewed) {
+          return MfaCardState(
+            stage: MfaCardStage.enrolled,
+            badgeLabel: 'MFA: Enrolled',
+            headline: 'Save your recovery codes',
+            body:
+                '$factorCopy View your recovery codes before adding more '
+                'sign-in methods or changing 2FA settings.',
+            primaryButtonLabel: 'View recovery codes',
+            primaryButtonTooltip:
+                'Open the one-time recovery codes for this account.',
+            primaryActionKey: 'account_section_mfa_view_recovery_codes',
+            factorCount: factorCount,
+            primaryFactor: primaryFactor,
+          );
+        }
+        if (factorCount == 1) {
+          return MfaCardState(
+            stage: MfaCardStage.enrolled,
+            badgeLabel: 'MFA: Enrolled',
+            headline: 'Add a backup sign-in method',
+            body:
+                '$factorCopy Recovery codes have been viewed. Add another '
+                'method so one lost device does not block sign-in.',
+            primaryButtonLabel: 'Add another method',
+            primaryButtonTooltip:
+                'Start setup for another two-factor sign-in method.',
+            primaryActionKey: 'account_section_mfa_add_method',
+            factorCount: factorCount,
+            primaryFactor: primaryFactor,
+          );
+        }
         return MfaCardState(
           stage: MfaCardStage.enrolled,
           badgeLabel: 'MFA: Enrolled',
           headline: 'Two-step verification is on',
           body:
-              '$factorCopy You can view backup codes or request removal from '
-              'Manage methods.',
-          primaryButtonLabel: 'Manage methods',
+              '$factorCopy Recovery codes have been viewed. You can manage '
+              'methods or request removal from this account.',
+          primaryButtonLabel: 'Manage two-factor sign-in',
+          primaryButtonTooltip:
+              'Open 2FA management for methods, recovery codes, and removal.',
           primaryActionKey: 'account_section_mfa_manage',
           factorCount: factorCount,
           primaryFactor: primaryFactor,
@@ -341,7 +382,9 @@ class MfaCardController extends ChangeNotifier {
           body:
               'We wait 24 hours before turning off 2FA so that if someone '
               'got into your account, you have time to stop them.',
-          primaryButtonLabel: 'Cancel removal',
+          primaryButtonLabel: 'Manage two-factor sign-in',
+          primaryButtonTooltip:
+              'Cancel the pending 2FA removal or review account protection.',
           primaryActionKey: 'account_section_mfa_cancel_removal',
           factorCount: factorCount,
           primaryFactor: primaryFactor,
@@ -355,7 +398,9 @@ class MfaCardController extends ChangeNotifier {
           body:
               'The 24-hour wait has passed. Turn off 2FA to complete the '
               'server check with a fresh sign-in.',
-          primaryButtonLabel: 'Turn off 2FA',
+          primaryButtonLabel: 'Manage two-factor sign-in',
+          primaryButtonTooltip:
+              'Complete the requested 2FA removal after fresh sign-in.',
           primaryActionKey: 'account_section_mfa_turn_off_final',
           factorCount: factorCount,
           primaryFactor: primaryFactor,

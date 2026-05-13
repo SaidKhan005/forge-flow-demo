@@ -245,10 +245,27 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     // Backup codes are the operator's own MFA recovery artifact —
     // any role with MFA enrolled should be able to view them. Not
     // gated on `canWriteAccount`.
+    final actions = widget.actions;
+    final factorId = _mfaController.state.primaryFactor?.factorId;
+    if (actions != null && factorId != null) {
+      try {
+        await actions.markAccountMfaRecoveryCodesViewed(factorId: factorId);
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not record recovery-code view: $error'),
+          ),
+        );
+        return;
+      }
+    }
+    if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (_) => const _BackupCodesDialog(),
     );
+    await _mfaController.refresh();
   }
 
   Future<void> _handleMfaPrimaryAction() async {
@@ -256,7 +273,14 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
       case MfaCardStage.notEnrolled:
         await _handleEnrollMfa();
       case MfaCardStage.enrolled:
-        await _handleManageMfa();
+        switch (_mfaController.state.primaryActionKey) {
+          case 'account_section_mfa_view_recovery_codes':
+            await _handleViewBackupCodes();
+          case 'account_section_mfa_add_method':
+            await _handleManageMfa();
+          default:
+            await _handleManageMfa();
+        }
       case MfaCardStage.removalRequested:
         await _handleCancelMfaRemoval();
       case MfaCardStage.removable:
@@ -890,7 +914,7 @@ class _MfaSection extends StatelessWidget {
             body: state.body,
             buttonLabel: state.busy ? 'Working...' : state.primaryButtonLabel,
             onPressed: canPress && !state.busy ? onPrimaryAction : null,
-            disabledTooltip: canPress ? null : readOnlyTooltip,
+            tooltip: canPress ? state.primaryButtonTooltip : readOnlyTooltip,
           ),
           if (state.errorMessage != null) ...[
             const SizedBox(height: 10),
@@ -906,7 +930,11 @@ class _MfaSection extends StatelessWidget {
   }
 
   bool get _canPressPrimary {
-    if (state.stage == MfaCardStage.enrolled) return true;
+    if (state.stage == MfaCardStage.enrolled) {
+      return state.primaryActionKey == 'account_section_mfa_view_recovery_codes'
+          ? true
+          : canWrite;
+    }
     return canWrite;
   }
 
@@ -977,7 +1005,7 @@ class _SecuritySection extends StatelessWidget {
                 'characters and not match one of your last five passwords.',
             buttonLabel: 'Change password',
             onPressed: canWrite ? onChangePassword : null,
-            disabledTooltip: canWrite ? null : readOnlyTooltip,
+            tooltip: canWrite ? null : readOnlyTooltip,
           ),
           if (toastMessage != null) ...[
             const SizedBox(height: 10),
@@ -1564,7 +1592,7 @@ class _ActionRow extends StatelessWidget {
     required this.body,
     required this.buttonLabel,
     required this.onPressed,
-    this.disabledTooltip,
+    this.tooltip,
   });
 
   final Key actionKey;
@@ -1572,7 +1600,7 @@ class _ActionRow extends StatelessWidget {
   final String body;
   final String buttonLabel;
   final VoidCallback? onPressed;
-  final String? disabledTooltip;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -1609,9 +1637,9 @@ class _ActionRow extends StatelessWidget {
         const SizedBox(height: 10),
         Align(
           alignment: Alignment.centerLeft,
-          child: onPressed == null && disabledTooltip != null
-              ? Tooltip(message: disabledTooltip!, child: button)
-              : button,
+          child: tooltip == null
+              ? button
+              : Tooltip(message: tooltip!, child: button),
         ),
       ],
     );

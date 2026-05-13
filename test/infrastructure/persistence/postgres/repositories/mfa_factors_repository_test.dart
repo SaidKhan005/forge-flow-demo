@@ -659,6 +659,40 @@ void main() {
       expect(rows, isEmpty);
     });
   });
+
+  group('MfaFactorsRepository.markRecoveryCodesViewed', () {
+    test(
+      'updates recovery_codes_viewed_at to the supplied latest view time',
+      () async {
+        final viewedAt = DateTime.utc(2026, 5, 6, 12);
+        final pool = _MfaFactorsPool(
+          recoveryCodesViewedUpdateRows: <PostgresRow>[
+            <String, Object?>{'recovery_codes_viewed_at': viewedAt},
+          ],
+        );
+        final repo = MfaFactorsRepository(TenantTransactionWrapper(pool));
+
+        final result = await repo.markRecoveryCodesViewed(
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+          factorId: _factorTotpA,
+          viewedAt: viewedAt,
+        );
+
+        expect(result, isNotNull);
+        expect(result!.viewedAt, equals(viewedAt));
+        expect(result.changed, isTrue);
+        final updateSql = pool.transactions.single.executedSql.firstWhere(
+          (s) => s.contains('update mfa_factors'),
+        );
+        expect(updateSql, contains('set recovery_codes_viewed_at'));
+        expect(updateSql, contains("factor_type = 'totp'"));
+        expect(updateSql, contains('revoked_at is null'));
+        expect(updateSql, isNot(contains('recovery_codes_viewed_at is null')));
+      },
+    );
+  });
 }
 
 /// Recording fake `PostgresPool` shaped for the MfaFactorsRepository
@@ -681,6 +715,7 @@ class _MfaFactorsPool implements PostgresPool {
     this.existingTotpRowsByFirebaseUid = const <PostgresRow>[],
     this.totpListRows = const <PostgresRow>[],
     this.recoveryListRows = const <PostgresRow>[],
+    this.recoveryCodesViewedUpdateRows = const <PostgresRow>[],
     this.updateAffectedRows = 0,
   });
 
@@ -688,6 +723,7 @@ class _MfaFactorsPool implements PostgresPool {
   final List<PostgresRow> existingTotpRowsByFirebaseUid;
   final List<PostgresRow> totpListRows;
   final List<PostgresRow> recoveryListRows;
+  final List<PostgresRow> recoveryCodesViewedUpdateRows;
   final int updateAffectedRows;
   final List<_MfaFactorsTransaction> transactions = <_MfaFactorsTransaction>[];
 
@@ -698,6 +734,7 @@ class _MfaFactorsPool implements PostgresPool {
       existingTotpRowsByFirebaseUid: existingTotpRowsByFirebaseUid,
       totpListRows: totpListRows,
       recoveryListRows: recoveryListRows,
+      recoveryCodesViewedUpdateRows: recoveryCodesViewedUpdateRows,
       updateAffectedRows: updateAffectedRows,
     );
     transactions.add(tx);
@@ -711,6 +748,7 @@ class _MfaFactorsTransaction extends PostgresTransaction {
     required this.existingTotpRowsByFirebaseUid,
     required this.totpListRows,
     required this.recoveryListRows,
+    required this.recoveryCodesViewedUpdateRows,
     required this.updateAffectedRows,
   });
 
@@ -718,6 +756,7 @@ class _MfaFactorsTransaction extends PostgresTransaction {
   final List<PostgresRow> existingTotpRowsByFirebaseUid;
   final List<PostgresRow> totpListRows;
   final List<PostgresRow> recoveryListRows;
+  final List<PostgresRow> recoveryCodesViewedUpdateRows;
   final int updateAffectedRows;
 
   final List<String> executedSql = <String>[];
@@ -740,6 +779,10 @@ class _MfaFactorsTransaction extends PostgresTransaction {
       return <PostgresRow>[
         <String, Object?>{'factor_id': id},
       ];
+    }
+    if (sql.contains('update mfa_factors') &&
+        sql.contains('recovery_codes_viewed_at')) {
+      return recoveryCodesViewedUpdateRows;
     }
     if (sql.contains('from mfa_factors')) {
       // ensureTotpFactorForFirebaseUid probe — filters

@@ -25,22 +25,36 @@ void main() {
 
         await controller.refresh();
         expect(controller.state.stage, MfaCardStage.notEnrolled);
-        expect(controller.state.primaryButtonLabel, 'Turn on 2FA');
+        expect(
+          controller.state.primaryButtonLabel,
+          'Enable two-factor sign-in',
+        );
 
         gateway.addFactor();
         await controller.markEnrollmentConfirmed();
         expect(controller.state.stage, MfaCardStage.enrolled);
-        expect(controller.state.primaryButtonLabel, 'Manage methods');
+        expect(controller.state.primaryButtonLabel, 'View recovery codes');
+
+        gateway.setRecoveryCodesViewed();
+        await controller.refresh();
+        expect(controller.state.primaryButtonLabel, 'Add another method');
 
         await controller.requestRemoval();
         expect(controller.state.stage, MfaCardStage.removalRequested);
         expect(controller.state.headline, contains('24h 0m'));
+        expect(
+          controller.state.primaryButtonLabel,
+          'Manage two-factor sign-in',
+        );
         expect(actions.stepUpLabels, contains('removing 2FA'));
 
         now = now.add(const Duration(hours: 24, minutes: 1));
         await controller.refresh();
         expect(controller.state.stage, MfaCardStage.removable);
-        expect(controller.state.primaryButtonLabel, 'Turn off 2FA');
+        expect(
+          controller.state.primaryButtonLabel,
+          'Manage two-factor sign-in',
+        );
         expect(
           controller.state.primaryActionKey,
           'account_section_mfa_turn_off_final',
@@ -50,6 +64,33 @@ void main() {
         await controller.turnOffAfterGrace();
         expect(controller.state.stage, MfaCardStage.notEnrolled);
         expect(actions.stepUpLabels, contains('turning off 2FA'));
+      },
+    );
+
+    test(
+      'uses Manage label once multiple viewed methods are enrolled',
+      () async {
+        final now = DateTime.utc(2026, 5, 6, 12);
+        final gateway = _FakeSecurityGateway(now: () => now)
+          ..addFactor(recoveryCodesViewed: true)
+          ..addFactor(factorId: 'factor-2', recoveryCodesViewed: true);
+        final actions = _FakeAccountActions(gateway);
+        final controller = MfaCardController(
+          initialMfaEnrolled: true,
+          actions: actions,
+          now: () => now,
+        );
+        addTearDown(controller.dispose);
+
+        await controller.refresh();
+
+        expect(controller.state.stage, MfaCardStage.enrolled);
+        expect(controller.state.factorCount, 2);
+        expect(
+          controller.state.primaryButtonLabel,
+          'Manage two-factor sign-in',
+        );
+        expect(controller.state.primaryActionKey, 'account_section_mfa_manage');
       },
     );
 
@@ -176,14 +217,33 @@ class _FakeSecurityGateway implements WebSecurityGateway {
   final List<WebSecurityMfaRemoval> removals = <WebSecurityMfaRemoval>[];
   var _removalSeq = 0;
 
-  void addFactor() {
+  void addFactor({
+    String factorId = 'factor-1',
+    bool recoveryCodesViewed = false,
+  }) {
     factors.add(
       WebSecurityMfaFactor(
-        factorId: 'factor-1',
+        factorId: factorId,
         factorType: 'totp',
         enrolledAt: _now(),
+        recoveryCodesViewedAt: recoveryCodesViewed ? _now() : null,
         issuerLabel: 'Forge & Flow',
       ),
+    );
+  }
+
+  void setRecoveryCodesViewed({String factorId = 'factor-1'}) {
+    final index = factors.indexWhere((factor) => factor.factorId == factorId);
+    if (index == -1) return;
+    final factor = factors[index];
+    factors[index] = WebSecurityMfaFactor(
+      factorId: factor.factorId,
+      factorType: factor.factorType,
+      enrolledAt: factor.enrolledAt,
+      lastUsedAt: factor.lastUsedAt,
+      recoveryCodesViewedAt: _now(),
+      issuerLabel: factor.issuerLabel,
+      canRevoke: factor.canRevoke,
     );
   }
 
@@ -222,6 +282,18 @@ class _FakeSecurityGateway implements WebSecurityGateway {
       revoked: false,
       requestId: removal.requestId,
       executeAfter: executeAfter,
+    );
+  }
+
+  @override
+  Future<WebSecurityRecoveryCodesViewedResult> markRecoveryCodesViewed({
+    required String factorId,
+    required String idempotencyKey,
+  }) async {
+    setRecoveryCodesViewed(factorId: factorId);
+    final factor = factors.firstWhere((factor) => factor.factorId == factorId);
+    return WebSecurityRecoveryCodesViewedResult(
+      viewedAt: factor.recoveryCodesViewedAt!,
     );
   }
 

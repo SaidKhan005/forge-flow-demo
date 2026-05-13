@@ -7261,6 +7261,8 @@ const String authMfaTotpConfirmPath = '/v1/auth/mfa/totp/confirm';
 const String authMfaRecoveryRequestPath = '/v1/auth/mfa/recovery/request';
 const String authMfaFactorsListPath = '/v1/auth/mfa/factors/list';
 const String authMfaFactorsRevokePath = '/v1/auth/mfa/factors/revoke';
+const String authMfaRecoveryCodesViewedPath =
+    '/v1/auth/mfa/recovery-codes/viewed';
 const String authMfaFactorsRemovalCancelPath =
     '/v1/auth/mfa/factors/removal/cancel';
 const String authMobilePushTokenRegisterPath =
@@ -11091,6 +11093,9 @@ Future<void> routeRequest(
                       'last_used_at': factor.lastUsedAt
                           ?.toUtc()
                           .toIso8601String(),
+                      'recovery_codes_viewed_at': factor.recoveryCodesViewedAt
+                          ?.toUtc()
+                          .toIso8601String(),
                       'issuer_label': factor.issuerLabel,
                       'can_revoke': factor.canRevoke,
                     },
@@ -11111,6 +11116,66 @@ Future<void> routeRequest(
                     },
                 ],
               });
+              return;
+            }
+
+            if (request.method == 'POST' &&
+                path == authMfaRecoveryCodesViewedPath) {
+              final idempotencyKey = request.headers
+                  .value('Idempotency-Key')
+                  ?.trim();
+              if (idempotencyKey == null || idempotencyKey.isEmpty) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_idempotency_key',
+                  'message': 'Idempotency-Key header is required',
+                });
+                return;
+              }
+              if (idempotencyKey.length > 200) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'idempotency_key_too_long',
+                  'message':
+                      'Idempotency-Key header must be 200 characters or fewer',
+                });
+                return;
+              }
+              final factorId = _nonBlankString(body['factor_id']);
+              if (factorId == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_factor_id',
+                  'message': 'request body must include factor_id',
+                });
+                return;
+              }
+              final cached = await (authIdempotencyCache ??
+                      _defaultAuthIdempotencyCache)
+                  .runOrReplay(
+                route: authMfaRecoveryCodesViewedPath,
+                key: idempotencyKey,
+                compute: () async {
+                  final completed = await mfaOperationsGateway
+                      .markRecoveryCodesViewed(
+                        MfaMarkRecoveryCodesViewedCommand(
+                          actorUserId: scope.userId,
+                          operatorId: scope.operatorId,
+                          locationId: scope.locationId,
+                          authorizationIdToken: authorizationIdToken,
+                          factorId: factorId,
+                          idempotencyKey: idempotencyKey,
+                        ),
+                      );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'recovery_codes_viewed_at': completed.viewedAt
+                          .toUtc()
+                          .toIso8601String(),
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
               return;
             }
 
@@ -11327,8 +11392,7 @@ Future<void> routeRequest(
                   .value('Idempotency-Key')
                   ?.trim(),
               limitQueryParam: request.uri.queryParameters['limit'],
-              versionIdQueryParam:
-                  request.uri.queryParameters['version_id'],
+              versionIdQueryParam: request.uri.queryParameters['version_id'],
               body: catalogBody,
             );
             _writeJson(response, result.statusCode, result.body);
@@ -18889,6 +18953,7 @@ bool _isMfaOperation(String path, String method) {
   return path == authMfaTotpBeginPath ||
       path == authMfaTotpConfirmPath ||
       path == authMfaFactorsListPath ||
+      path == authMfaRecoveryCodesViewedPath ||
       path == authMfaFactorsRevokePath ||
       path == authMfaFactorsRemovalCancelPath;
 }
