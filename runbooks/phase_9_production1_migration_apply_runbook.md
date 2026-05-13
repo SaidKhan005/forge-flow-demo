@@ -49,7 +49,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (40 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (41 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -90,6 +90,7 @@ Pending follow-up scope (40 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605131020_admin_hierarchy_lifecycle_access_hardening.sql`
 - `db/migrations/202605131030_b11_1_auth_handoff_codes.sql`
 - `db/migrations/202605131400_b11_2_auth_step_up_challenges.sql`
+- `db/migrations/202605131500_b10_1_vendor_applicability.sql`
 - `db/migrations/202605131500_b5_b_catalog_tri_mirror.sql`
 
 Out of scope:

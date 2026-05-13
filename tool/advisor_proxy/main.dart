@@ -1603,6 +1603,8 @@ Future<void> _runProxy(List<String> args) async {
             pricingTierAdminGateway: productionBindings.pricingTierAdminGateway,
             dataAccuracyAdminGateway:
                 productionBindings.dataAccuracyAdminGateway,
+            vendorApplicabilityGateway:
+                productionBindings.vendorApplicabilityGateway,
             corpusAdminGateway: productionBindings.corpusAdminGateway,
             graphCandidatesGateway: productionBindings.graphCandidatesGateway,
             integrationAdminGateway: productionBindings.integrationAdminGateway,

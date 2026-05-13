@@ -31,7 +31,7 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**40 migrations pending Production1 apply** (chronological). The queue now
+**41 migrations pending Production1 apply** (chronological). The queue now
 runs through `202605131500_b5_b_catalog_tri_mirror.sql`; staging/preview
 apply evidence must stay attached to the runbook before any Production1 apply.
 
@@ -77,9 +77,10 @@ apply evidence must stay attached to the runbook before any Production1 apply.
 | `202605131020_admin_hierarchy_lifecycle_access_hardening.sql` | Admin hierarchy lifecycle access refresh, active uniqueness, and direct target guards | code-ready |
 | `202605131030_b11_1_auth_handoff_codes.sql` | Lane B B11.1 mobile→web handoff code mint/redeem (operator-scoped, RLS, 60s TTL, addendum A1 — replaces JWT-in-URL) | code-ready |
 | `202605131400_b11_2_auth_step_up_challenges.sql` | Lane B B11.2 RFC 9470 step-up challenge ledger (operator-scoped, RLS, 5-minute TTL, route+user binding for replay protection) | code-ready |
+| `202605131500_b10_1_vendor_applicability.sql` | Lane B B10.1 vendor applicability temporal table (global defaults + operator overrides, RLS via app_current_operator, JSONB schema guarded in app code) | code-ready |
 | `202605131500_b5_b_catalog_tri_mirror.sql` | Lane B B5.b account/timing permission catalog tri-mirror (`account.configure`, `business_timing.configure`) plus owner/admin grants | code-ready |
 
-**Action:** apply all 40 in next Production1 event per
+**Action:** apply all 41 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 
