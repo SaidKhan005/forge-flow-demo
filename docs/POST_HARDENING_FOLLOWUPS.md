@@ -586,6 +586,49 @@ for clearing as Phase 11A.8/.9/.10 land.
   `operator_web_auth_source.dart` are intentional (password reset
   flows are handled by Firebase action links by design), NOT gaps.
 
+## Advisory-lock posture — reconciled 2026-05-13
+
+Captured 2026-05-13 closing the C-12 wave closeout audit's finding O-5
+(`docs/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`) and the
+Migrations + Schema dimension's finding 5
+(`docs/_audits/post_codex_wave/wave_audit_migrations_schema.md`).
+
+**The finding:** V1 lean-cut #2 (project memory, locked 2026-05-03) listed
+"OAuth refresh advisory lock" under *"What got pulled back"* with the trim
+verdict *"Drop. One cron instance + low frequency = zero contention at V1
+scale."* But two wave-scope migrations restored advisory-lock infrastructure:
+
+- `db/migrations/202605070200_audit_anchor_advisory_lock_infra.sql`
+- `db/migrations/202605080900_oauth_refresh_advisory_lock.sql`
+
+And `lib/services/integration/oauth_refresh_cron.dart` carries the comment
+*"pg_advisory_lock is now RESTORED per J4 race fix"*. The audit asked: memory
+needs updating OR migrations need reverting.
+
+**Reconciliation chosen — migrations stay, memory updated.** The J4
+race-condition investigation (referenced in `oauth_refresh_cron.dart`) found
+that some vendor token endpoints (Squarespace, certain Clover environments)
+auto-revoke the earlier token when a second refresh fires before the first
+commits. Two Cloud Run pods hitting the same near-expiry window can race; the
+advisory lock serialises concurrent refresh per `(operator_id, vendor_id)`.
+Transaction-scoped — releases on commit / rollback. The lean-cut's "one cron
+instance" assumption did not survive contact with multi-pod Cloud Run deploys.
+The audit-anchor advisory-lock infra is the same root cause shape (multi-pod
+serialisation) for the daily anchor publisher.
+
+**Memory doc updated** at `~/.claude/projects/.../memory/project_v1_lean_cut_2_2026_05_03.md`
+(user-private, outside the repo). The lean-cut #2 entry now carries an
+inline *"RESTORED 2026-05-13"* annotation pointing at a new
+*"What got restored (after closer review)"* table that names both
+restorations + their authority anchors (the migration files + the code
+comment in `oauth_refresh_cron.dart`).
+
+**No further code action.** Both migrations stay in the apply queue for
+Production1; the runtime comment in `oauth_refresh_cron.dart` is the
+authoritative rationale; the lean-cut principle ("don't reach for advisory
+locks speculatively") still holds for new code — these two restorations
+have concrete contention evidence + migration-resident rationale.
+
 ## Refactor phase scope (queued from 2026-05-13 post-Codex wave closeout)
 
 Captured 2026-05-13 from the C-12 wave closeout audit
