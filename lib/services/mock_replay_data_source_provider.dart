@@ -10,7 +10,7 @@
 // interface so `kDemoMode = true` -> this provider, `kDemoMode = false`
 // -> a vendor provider, with no other code-path branching.
 
-import '../data/mock_integration_replay_seed.dart';
+import '../dev/mock_integration_replay_seed.dart';
 import '../domain/services/advisor_provider_constants.dart';
 import '../domain/services/data_source_provider.dart';
 

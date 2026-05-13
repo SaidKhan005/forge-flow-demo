@@ -17,7 +17,7 @@
 // History keeps its single-card metric shape — this service only
 // reconciles the underlying lever id + LeverCardData identity.
 
-import '../data/app_defaults.dart';
+import '../domain/constants/app_defaults.dart';
 import '../models/history_pattern_record.dart';
 import 'history_teaching_analyzer.dart';
 

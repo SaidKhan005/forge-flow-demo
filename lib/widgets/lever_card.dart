@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../data/app_defaults.dart';
+import '../domain/constants/app_defaults.dart';
 import '../utils/formatters.dart';
 
 /// Renders the deep Primary Driver card. Pass a non-null [data] for one of

@@ -12,7 +12,7 @@
 // Groups A, B, and E are no longer skipped.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/app_defaults.dart';
+import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/services/shift_data_source.dart';
 import 'package:forge_and_flow/services/shift_service.dart';

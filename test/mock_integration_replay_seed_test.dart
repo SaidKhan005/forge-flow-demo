@@ -9,7 +9,7 @@
 // - SQLite seed integration
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
+import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/domain/services/distribution_weight_builder.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 

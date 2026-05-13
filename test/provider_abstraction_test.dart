@@ -5,7 +5,7 @@
 // the adapters take injected gateway callbacks so tests can use fakes.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
+import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/domain/services/advisor_model_routing.dart';
 import 'package:forge_and_flow/domain/services/advisor_provider_constants.dart';
 import 'package:forge_and_flow/domain/services/llm_provider.dart';

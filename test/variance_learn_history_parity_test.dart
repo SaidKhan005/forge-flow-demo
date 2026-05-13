@@ -28,7 +28,7 @@
 // Findings F-3 / F-7 for the original divergence map.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/app_defaults.dart';
+import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/fixture_seed_data.dart';
 import 'package:forge_and_flow/models/learn_benchmark_context.dart';
 import 'package:forge_and_flow/services/history_pattern_builder.dart';

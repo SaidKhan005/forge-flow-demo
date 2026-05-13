@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../state/active_target_profile_notifier.dart';
 import 'package:forge_and_flow/services/benchmark_tracker_read_service.dart';
-import '../data/app_defaults.dart';
+import '../domain/constants/app_defaults.dart';
 import '../dev/demo_fixture_data.dart';
 import '../domain/models/active_target_profile.dart';
 import '../widgets/app_screen_header.dart';

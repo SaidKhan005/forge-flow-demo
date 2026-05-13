@@ -9,8 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/learn_benchmark_context_service.dart';
-import '../../data/app_defaults.dart';
-import '../../data/cross_axis_pair_catalog.dart';
+import '../../domain/constants/app_defaults.dart';
+import '../../domain/constants/cross_axis_pair_catalog.dart';
 import '../../services/shift_data_source.dart';
 import '../../models/cross_axis_pair_record.dart';
 import '../../models/history_pattern_record.dart';

@@ -24,7 +24,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:forge_and_flow/data/app_defaults.dart';
+import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/domain/models/closed_shift_input.dart';
 import 'package:forge_and_flow/domain/models/target_snapshot.dart';

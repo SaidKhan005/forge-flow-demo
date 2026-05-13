@@ -8,7 +8,7 @@
 //     field is wired without disturbing the single-axis path.
 //   * A bucket where both `cplh_*` and `splh_*` lever ids fire is
 //     classified into the matching cell from
-//     `lib/data/cross_axis_pair_catalog.dart`. Records contributed
+//     `lib/domain/constants/cross_axis_pair_catalog.dart`. Records contributed
 //     by the bucket roll into the cell's `count` and `topDayparts`.
 //   * Tie-break ordering on the returned list is deterministic
 //     (`count` desc, `pairId` asc).
@@ -19,7 +19,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/cross_axis_pair_catalog.dart';
+import 'package:forge_and_flow/domain/constants/cross_axis_pair_catalog.dart';
 import 'package:forge_and_flow/models/history_pattern_record.dart';
 import 'package:forge_and_flow/models/learn_benchmark_context.dart';
 import 'package:forge_and_flow/services/history_teaching_analyzer.dart';
@@ -448,7 +448,7 @@ void main() {
 
     test('cross_axis_pair_catalog.dart contains zero em dashes (U+2014)', () {
       // Em-dash ban — depth-wave addendum, depth_wave_plan hard gate #4.
-      final file = File('lib/data/cross_axis_pair_catalog.dart');
+      final file = File('lib/domain/constants/cross_axis_pair_catalog.dart');
       expect(file.existsSync(), isTrue,
           reason: 'cross_axis_pair_catalog.dart must exist at expected path');
       final bytes = file.readAsBytesSync();

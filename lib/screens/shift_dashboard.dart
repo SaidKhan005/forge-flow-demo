@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 import '../theme/app_theme.dart';
-import '../data/app_defaults.dart';
+import '../domain/constants/app_defaults.dart';
 import '../domain/models/restaurant_location.dart';
 import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';

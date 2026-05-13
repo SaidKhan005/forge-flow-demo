@@ -4,7 +4,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 
-import '../data/app_defaults.dart';
+import '../domain/constants/app_defaults.dart';
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/metric_provenance.dart';
 import '../domain/models/open_shift_snapshot.dart';

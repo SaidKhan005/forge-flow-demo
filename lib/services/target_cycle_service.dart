@@ -57,7 +57,7 @@ import 'app_notification_service.dart';
 import 'baseline_authority_service.dart';
 import 'baseline_manager_service.dart';
 import 'baseline_selection_analytics_service.dart';
-import '../data/app_defaults.dart';
+import '../domain/constants/app_defaults.dart';
 import 'wage_standard_context_service.dart';
 
 /// Thrown when a manager override is denied by [TargetCyclePolicy] rules.

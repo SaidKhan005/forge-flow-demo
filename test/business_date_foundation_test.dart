@@ -8,7 +8,7 @@
 // E. ShiftService close path persists businessDate from ClosedShiftInput
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
+import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/shift_record_dao.dart';

@@ -15,8 +15,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/dev/fixture_seed_data.dart';
-import 'package:forge_and_flow/data/app_defaults.dart';
-import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
+import 'package:forge_and_flow/domain/constants/app_defaults.dart';
+import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/models/week_record.dart';
 import 'package:forge_and_flow/services/daypart_evidence_visibility_policy.dart';

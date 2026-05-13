@@ -48,7 +48,7 @@ both.
 
 The 16 lowercase snake_case ids minted by `LaborModel.determineLever`
 match 1:1 with `LeverCards.all`
-([app_defaults.dart:434](../../lib/data/app_defaults.dart)) and the
+([app_defaults.dart:434](../../lib/domain/constants/app_defaults.dart)) and the
 priority-order list at
 [labor_model.dart:131](../../lib/services/labor_model.dart):
 
@@ -68,7 +68,7 @@ priority-order list at
 `'on_model'` — placeholder for `ShiftRecord` rows constructed from open
 snapshots
 ([current_week_state.dart:61](../../lib/models/current_week_state.dart),
-[mock_integration_replay_seed.dart:314](../../lib/data/mock_integration_replay_seed.dart),
+[mock_integration_replay_seed.dart:314](../../lib/dev/mock_integration_replay_seed.dart),
 [fixture_seed_data.dart:116-149, :576](../../lib/dev/fixture_seed_data.dart)).
 Stored as `'ON_MODEL'` in upper-snake form. **Never** returned by
 `determineLever`.
@@ -130,7 +130,7 @@ across a storage-form boundary.
   exactly two places:
   - [`shift_service.dart:330`](../../lib/services/shift_service.dart) —
     closing a `ShiftFact` into a `ShiftRecord` (`fact.primaryLeverId.toUpperCase()`).
-  - [`mock_integration_replay_seed.dart:364`](../../lib/data/mock_integration_replay_seed.dart) —
+  - [`mock_integration_replay_seed.dart:364`](../../lib/dev/mock_integration_replay_seed.dart) —
     seeding closed `ShiftRecord` rows for replay (`lever.toUpperCase()`).
   No other producer is allowed to call `.toUpperCase()` on a lever id
   for storage. The upper-snake → lowercase transform is owned solely
@@ -139,7 +139,7 @@ across a storage-form boundary.
   sites:
   - [`current_week_state.dart:61`](../../lib/models/current_week_state.dart) —
     `shiftRecordFromSnapshot` (open / projected rows).
-  - [`mock_integration_replay_seed.dart:314`](../../lib/data/mock_integration_replay_seed.dart) —
+  - [`mock_integration_replay_seed.dart:314`](../../lib/dev/mock_integration_replay_seed.dart) —
     seed open shifts for replay.
   - [`fixture_seed_data.dart:116-149, :576`](../../lib/dev/fixture_seed_data.dart) —
     dev fixture open / projected rows.
@@ -212,7 +212,7 @@ form difference at the `ShiftRecord` boundary).
   `LaborModel.determineLever` calls
   ([`shift_service.dart:129/197`, `:448/545`, `:805/859`](../../lib/services/shift_service.dart);
   [`shift_data_source.dart:89/111`](../../lib/services/shift_data_source.dart);
-  [`mock_integration_replay_seed.dart:410/468`](../../lib/data/mock_integration_replay_seed.dart)).
+  [`mock_integration_replay_seed.dart:410/468`](../../lib/dev/mock_integration_replay_seed.dart)).
   Both fields therefore carry one of the 16 catalog ids in lowercase
   form — never `'on_model'`, never upper-snake. Differences between
   the two for the same week are legitimate when their aggregation

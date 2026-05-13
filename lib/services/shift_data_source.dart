@@ -8,7 +8,7 @@ import '../models/week_data.dart';
 import '../models/week_record.dart';
 import 'history_pattern_builder.dart';
 import 'labor_model.dart';
-import '../data/app_defaults.dart';
+import '../domain/constants/app_defaults.dart';
 import '../dev/demo_fixture_data.dart';
 import 'mock_replay_data_source_provider.dart';
 import 'shift_service.dart';

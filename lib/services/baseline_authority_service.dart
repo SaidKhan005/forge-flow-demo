@@ -33,7 +33,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
-import '../data/app_defaults.dart';
+import '../domain/constants/app_defaults.dart';
 import 'labor_model.dart';
 
 // ─── OPZ validation result ────────────────────────────────────────────────────

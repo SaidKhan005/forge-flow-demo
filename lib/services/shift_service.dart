@@ -65,8 +65,8 @@ import 'daypart_plan_allocator.dart';
 import 'history_pattern_builder.dart';
 import 'labor_model.dart';
 import '../infrastructure/persistence/sqlite/sqlite_database.dart';
-import '../data/app_defaults.dart'; // MeridianConfig for blended-wage zero-hour fallback only
-import '../data/mock_integration_replay_seed.dart';
+import '../domain/constants/app_defaults.dart'; // MeridianConfig for blended-wage zero-hour fallback only
+import '../dev/mock_integration_replay_seed.dart';
 import 'wage_standard_context_service.dart';
 
 class ShiftService {

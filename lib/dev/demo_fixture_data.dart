@@ -26,11 +26,11 @@
 //     `BaselineRangeGraphModel`
 //
 // Runtime defaults / lever metadata / pure value types live in
-// `lib/data/app_defaults.dart` (extracted in 7.57.1a).
+// `lib/domain/constants/app_defaults.dart` (extracted in 7.57.1a).
 
 import 'package:flutter/foundation.dart';
 
-import '../data/app_defaults.dart';
+import '../domain/constants/app_defaults.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../services/baseline_authority_service.dart';
 import '../services/labor_model.dart';

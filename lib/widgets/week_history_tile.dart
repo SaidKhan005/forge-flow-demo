@@ -4,7 +4,7 @@
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../data/app_defaults.dart';
+import '../domain/constants/app_defaults.dart';
 import '../models/week_record.dart';
 import '../utils/formatters.dart';
 

@@ -4,7 +4,7 @@
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../data/app_defaults.dart'; // LeverCards
+import '../domain/constants/app_defaults.dart'; // LeverCards
 import '../models/week_record.dart';
 import '../services/labor_model.dart';
 import '../utils/formatters.dart';

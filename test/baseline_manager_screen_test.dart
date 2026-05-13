@@ -4,7 +4,7 @@ import 'package:forge_and_flow/state/active_target_profile_notifier.dart';
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/database_helper.dart';
 import 'package:forge_and_flow/services/demand_forecast_context_service.dart';
-import 'package:forge_and_flow/data/app_defaults.dart';
+import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/models/baseline_candidate_shift.dart';

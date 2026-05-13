@@ -3,7 +3,7 @@
 // One entry per cell in the cross-axis matrix that the analyzer
 // observes recurring across the closed-shift history window. The
 // `pairId` matches a `CrossAxisPairData.id` in
-// `lib/data/cross_axis_pair_catalog.dart`; consumers resolve the
+// `lib/domain/constants/cross_axis_pair_catalog.dart`; consumers resolve the
 // catalog entry through `CrossAxisPairs.lookup`.
 //
 // Authority: `docs/contracts/phase_7_58_primary_driver_contract.md`

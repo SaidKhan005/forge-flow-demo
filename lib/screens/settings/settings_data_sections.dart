@@ -11,7 +11,7 @@ import 'package:provider/provider.dart';
 import '../../auth/password_policy.dart';
 import '../../auth/auth_session.dart';
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
-import '../../data/mock_integration_replay_seed.dart';
+import '../../dev/mock_integration_replay_seed.dart';
 import '../../models/app_data_status.dart';
 import '../../services/auth/account_info_gateway.dart';
 import '../../services/auth/password_change_gateway.dart';
