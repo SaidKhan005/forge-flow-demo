@@ -1144,7 +1144,7 @@ class BackfillWorkerLoop {
 typedef WorkerPoolFactory = PostgresPool Function(String connectionString);
 
 /// Default pool factory mirrors the audit_anchor pattern.
-// Honor POSTGRES_POOL_MAX_CONNECTIONS env override; falls back to default 4.
+// Honor POSTGRES_POOL_MAX_CONNECTIONS env override; falls back to default 20.
 PostgresPool _defaultPoolFactory(String connectionString) =>
     PackagePostgresPool.fromUrl(
       connectionString,

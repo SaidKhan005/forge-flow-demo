@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
@@ -57,6 +58,31 @@ class ShiftDashboard extends StatefulWidget {
 class _ShiftDashboardState extends State<ShiftDashboard> {
   String? _selectedServicePeriodId;
 
+  /// A4.2 (R2) per `docs/_audits/code_health/a4_performance_audit.md`:
+  /// one shared 30-second ticker drives every wall-clock-dependent
+  /// widget on the screen (`_LiveClock`, `_ShiftPeriodSelector`,
+  /// `_DaypartScaffoldSection`, `_TimeIntoServiceHeader`). Before the
+  /// coalesce each widget owned its own `Timer.periodic` — four timers,
+  /// four independent tick offsets, four `setState` calls per cycle.
+  /// Now: one timer fires; all four widgets rebuild on the same vsync
+  /// via `ValueListenableBuilder<DateTime>`. The ticker is passed to
+  /// each consumer through its constructor (avoids the
+  /// `Provider<Listenable>` debug check from the `provider` package and
+  /// keeps the wiring explicit).
+  late final _ShiftDashboardTicker _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = _ShiftDashboardTicker();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
   void _setSelectedServicePeriodId(String? next) {
     if (_selectedServicePeriodId == next) return;
     setState(() => _selectedServicePeriodId = next);
@@ -109,7 +135,11 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
           );
         }
         return FadingHeaderShell(
-          header: _ShiftHeader(readModel: rm, freshness: notifier.freshness),
+          header: _ShiftHeader(
+            readModel: rm,
+            freshness: notifier.freshness,
+            ticker: _ticker,
+          ),
           child: RefreshIndicator(
             color: AppColors.sunset,
             onRefresh: refreshBoth,
@@ -120,6 +150,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
                   child: _ShiftPeriodSelector(
                     selectedPeriodId: _selectedServicePeriodId,
                     onChanged: _setSelectedServicePeriodId,
+                    ticker: _ticker,
                   ),
                 ),
                 // Phase 8.0 V1 lean cut 2 — DataSourceHealthPill
@@ -209,7 +240,10 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
   List<Widget> _servicePeriodSlivers(String selectedPeriodId) {
     return [
       SliverToBoxAdapter(
-        child: _TimeIntoServiceHeader(selectedPeriodId: selectedPeriodId),
+        child: _TimeIntoServiceHeader(
+          selectedPeriodId: selectedPeriodId,
+          ticker: _ticker,
+        ),
       ),
       SliverMainAxisGroup(
         slivers: [
@@ -218,7 +252,10 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
             delegate: const StickySectionDelegate('SERVICE PERIOD'),
           ),
           SliverToBoxAdapter(
-            child: _DaypartScaffoldSection(selectedPeriodId: selectedPeriodId),
+            child: _DaypartScaffoldSection(
+              selectedPeriodId: selectedPeriodId,
+              ticker: _ticker,
+            ),
           ),
         ],
       ),
@@ -231,7 +268,12 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
 class _ShiftHeader extends StatelessWidget {
   final ShiftDashboardReadModel readModel;
   final CurrentStateFreshness? freshness;
-  const _ShiftHeader({required this.readModel, this.freshness});
+  final ValueListenable<DateTime> ticker;
+  const _ShiftHeader({
+    required this.readModel,
+    required this.ticker,
+    this.freshness,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -240,7 +282,7 @@ class _ShiftHeader extends StatelessWidget {
         'Restaurant';
     return AppScreenHeader(
       title: restaurantName,
-      trailing: const _LiveClock(),
+      trailing: _LiveClock(ticker: ticker),
       bottom: _ShiftHeaderMeta(
         day: readModel.day,
         businessDate: readModel.businessDate,
@@ -331,61 +373,95 @@ class _ShiftHeaderMeta extends StatelessWidget {
   }
 }
 
-// ─── Live clock ─────────────────────────────────────────────────────────────
+// ─── Shared 30s ticker (A4.2 R2) ────────────────────────────────────────────
 
-/// Ticking wall-clock display for the Shift header.
+/// Default cadence shared by the four wall-clock-driven widgets on the
+/// shift dashboard. Each widget previously owned its own
+/// `Timer.periodic(30s)` and called `setState(() {})` on every tick;
+/// after A4.2 R2 they all share [_ShiftDashboardTicker] and rebuild
+/// inside `ValueListenableBuilder<DateTime>` instead.
+const Duration _kShiftDashboardTickInterval = Duration(seconds: 30);
+
+/// One owner of the periodic timer + one [ValueListenable] feed for the
+/// four shift-dashboard widgets that need a wall-clock pulse:
+/// `_LiveClock`, `_ShiftPeriodSelector`, `_DaypartScaffoldSection`,
+/// `_TimeIntoServiceHeader`.
 ///
-/// Shows the current time formatted as `h:mm AM/PM`. Ticks every 30 seconds.
-/// Uses [ShiftDashboard.clockOverride] when set (test seam), otherwise
-/// [DateTime.now].
-///
-/// This is display-only — it does not determine business date, shift status,
-/// or daypart. Those remain snapshot-driven through the read model.
-class _LiveClock extends StatefulWidget {
-  const _LiveClock();
-
-  @override
-  State<_LiveClock> createState() => _LiveClockState();
-}
-
-class _LiveClockState extends State<_LiveClock> {
-  late DateTime _now;
-  Timer? _timer;
-
-  DateTime _currentTime() => (ShiftDashboard.clockOverride ?? DateTime.now)();
-
-  @override
-  void initState() {
-    super.initState();
-    _now = _currentTime();
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
-      setState(() => _now = _currentTime());
+/// Owned by [_ShiftDashboardState]; constructed in `initState`,
+/// disposed in `dispose`, and passed to each consumer widget via
+/// constructor so the `provider` package's `Provider<Listenable>` debug
+/// check is avoided (the consumers opt into rebuilds via
+/// `ValueListenableBuilder`, not `context.watch`). Reads honor
+/// [ShiftDashboard.clockOverride] the same way the prior per-widget
+/// timers did, so existing test seams continue to work without
+/// modification.
+class _ShiftDashboardTicker extends ValueNotifier<DateTime> {
+  _ShiftDashboardTicker({
+    Duration interval = _kShiftDashboardTickInterval,
+  })  : _interval = interval,
+        super(_currentTime()) {
+    _timer = Timer.periodic(_interval, (_) {
+      value = _currentTime();
     });
   }
+
+  final Duration _interval;
+  Timer? _timer;
+
+  static DateTime _currentTime() =>
+      (ShiftDashboard.clockOverride ?? DateTime.now)();
 
   @override
   void dispose() {
     _timer?.cancel();
+    _timer = null;
     super.dispose();
   }
+}
+
+// ─── Live clock ─────────────────────────────────────────────────────────────
+
+/// Ticking wall-clock display for the Shift header.
+///
+/// Shows the current time formatted as `h:mm AM/PM`. Rebuilds whenever
+/// the shared [_ShiftDashboardTicker] (provided at the dashboard root)
+/// fires — every 30 seconds in production. Uses
+/// [ShiftDashboard.clockOverride] when set (test seam), otherwise
+/// [DateTime.now]; both read paths are funneled through the shared
+/// ticker.
+///
+/// This is display-only — it does not determine business date, shift status,
+/// or daypart. Those remain snapshot-driven through the read model.
+///
+/// A4.2 (R2): previously owned its own `Timer.periodic(30s)`; now
+/// listens to the dashboard-wide ticker (passed in via constructor)
+/// via `ValueListenableBuilder`.
+class _LiveClock extends StatelessWidget {
+  final ValueListenable<DateTime> ticker;
+  const _LiveClock({required this.ticker});
 
   @override
   Widget build(BuildContext context) {
-    final hour = _now.hour % 12 == 0 ? 12 : _now.hour % 12;
-    final minute = _now.minute.toString().padLeft(2, '0');
-    final amPm = _now.hour >= 12 ? 'PM' : 'AM';
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          '$hour:$minute',
-          style: AppTextStyles.mono16(color: AppColors.textPrimary),
-        ),
-        const SizedBox(width: 4),
-        Text(amPm, style: AppTextStyles.mono10(color: AppColors.textMuted)),
-      ],
+    return ValueListenableBuilder<DateTime>(
+      valueListenable: ticker,
+      builder: (context, now, _) {
+        final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
+        final minute = now.minute.toString().padLeft(2, '0');
+        final amPm = now.hour >= 12 ? 'PM' : 'AM';
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$hour:$minute',
+              style: AppTextStyles.mono16(color: AppColors.textPrimary),
+            ),
+            const SizedBox(width: 4),
+            Text(amPm, style: AppTextStyles.mono10(color: AppColors.textMuted)),
+          ],
+        );
+      },
     );
   }
 }
@@ -761,80 +837,69 @@ class _TeachingTakeaway extends StatelessWidget {
 /// Whole Day stays selected by default and remains the authoritative
 /// rollup; selecting a period opens that period's live lens without
 /// changing the whole-day path.
-class _ShiftPeriodSelector extends StatefulWidget {
+class _ShiftPeriodSelector extends StatelessWidget {
   final String? selectedPeriodId;
   final ValueChanged<String?> onChanged;
+  final ValueListenable<DateTime> ticker;
 
   const _ShiftPeriodSelector({
     required this.selectedPeriodId,
     required this.onChanged,
+    required this.ticker,
   });
 
-  @override
-  State<_ShiftPeriodSelector> createState() => _ShiftPeriodSelectorState();
-}
-
-class _ShiftPeriodSelectorState extends State<_ShiftPeriodSelector> {
-  static const Duration _tickInterval = Duration(seconds: 30);
-  Timer? _ticker;
-
-  @override
-  void initState() {
-    super.initState();
-    _ticker = Timer.periodic(_tickInterval, (_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _ticker?.cancel();
-    super.dispose();
-  }
-
+  // A4.2 (R2): rebuilds are driven by the dashboard-wide ticker
+  // (constructor-injected from `_ShiftDashboardState`), not a local
+  // `Timer.periodic`. Keeps the "ACTIVE NOW" chip accurate across
+  // service-period boundaries without owning its own timer.
   @override
   Widget build(BuildContext context) {
-    final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
-    final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
-    final definitions = ServicePeriodDefinitionResolver.ordered(
-      periodNotifier?.definitions ??
-          ServicePeriodDefinitionResolver.demoDefinitions,
-    );
-    final cutoff =
-        periodNotifier?.businessDayStartLocalTime ??
-        _defaultBusinessDayStartLocalTime;
-    final localNow = _restaurantLocalNow(restaurant);
-    final activeId = localNow == null
-        ? null
-        : resolveActiveServicePeriodId(
-            localNow: localNow,
-            businessDayStartLocalTime: cutoff,
-            definitions: definitions,
-          );
+    return ValueListenableBuilder<DateTime>(
+      valueListenable: ticker,
+      builder: (context, _, __) {
+        final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
+        final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
+        final definitions = ServicePeriodDefinitionResolver.ordered(
+          periodNotifier?.definitions ??
+              ServicePeriodDefinitionResolver.demoDefinitions,
+        );
+        final cutoff =
+            periodNotifier?.businessDayStartLocalTime ??
+            _defaultBusinessDayStartLocalTime;
+        final localNow = _restaurantLocalNow(restaurant);
+        final activeId = localNow == null
+            ? null
+            : resolveActiveServicePeriodId(
+                localNow: localNow,
+                businessDayStartLocalTime: cutoff,
+                definitions: definitions,
+              );
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _PeriodPill(
-              label: 'Whole Day',
-              selected: widget.selectedPeriodId == null,
-              onTap: () => widget.onChanged(null),
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _PeriodPill(
+                  label: 'Whole Day',
+                  selected: selectedPeriodId == null,
+                  onTap: () => onChanged(null),
+                ),
+                for (final definition in definitions) ...[
+                  const SizedBox(width: 8),
+                  _PeriodPill(
+                    label: definition.label,
+                    selected: selectedPeriodId == definition.id,
+                    activeNow: activeId == definition.id,
+                    onTap: () => onChanged(definition.id),
+                  ),
+                ],
+              ],
             ),
-            for (final definition in definitions) ...[
-              const SizedBox(width: 8),
-              _PeriodPill(
-                label: definition.label,
-                selected: widget.selectedPeriodId == definition.id,
-                activeNow: activeId == definition.id,
-                onTap: () => widget.onChanged(definition.id),
-              ),
-            ],
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -925,117 +990,105 @@ class _PeriodPill extends StatelessWidget {
 /// surfaces — the scaffold refuses to fall back to the device clock,
 /// matching the boundary monitor's contract refusal.
 ///
-/// Has its own `Timer.periodic` (default 30s) so the chip stays
+/// A4.2 (R2): rebuilds are driven by the dashboard-wide
+/// [_ShiftDashboardTicker] (provided at the dashboard root) instead of
+/// a local `Timer.periodic`. The shared ticker fires once every 30s
+/// and fans out to every wall-clock-dependent widget so the chip stays
 /// accurate when the operator parks on the daypart view across a
 /// service-period boundary (e.g. Lunch → no-period → Dinner).
-class _DaypartScaffoldSection extends StatefulWidget {
+class _DaypartScaffoldSection extends StatelessWidget {
   final String selectedPeriodId;
+  final ValueListenable<DateTime> ticker;
 
-  const _DaypartScaffoldSection({required this.selectedPeriodId});
-
-  @override
-  State<_DaypartScaffoldSection> createState() =>
-      _DaypartScaffoldSectionState();
-}
-
-class _DaypartScaffoldSectionState extends State<_DaypartScaffoldSection> {
-  /// Refresh interval for the active-period chip. Matches the live
-  /// header clock's 30-second cadence so both stay in sync.
-  static const Duration _tickInterval = Duration(seconds: 30);
-
-  Timer? _ticker;
-
-  @override
-  void initState() {
-    super.initState();
-    _ticker = Timer.periodic(_tickInterval, (_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _ticker?.cancel();
-    super.dispose();
-  }
+  const _DaypartScaffoldSection({
+    required this.selectedPeriodId,
+    required this.ticker,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
-    final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
+    return ValueListenableBuilder<DateTime>(
+      valueListenable: ticker,
+      builder: (context, _, __) {
+        final restaurant =
+            context.watch<RestaurantScopeNotifier?>()?.restaurant;
+        final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
 
-    final definitions =
-        periodNotifier?.definitions ??
-        ServicePeriodDefinitionResolver.demoDefinitions;
-    final cutoff =
-        periodNotifier?.businessDayStartLocalTime ??
-        _defaultBusinessDayStartLocalTime;
-    final localNow = _restaurantLocalNow(restaurant);
-    final activeId = localNow == null
-        ? null
-        : resolveActiveServicePeriodId(
-            localNow: localNow,
-            businessDayStartLocalTime: cutoff,
-            definitions: definitions,
-          );
-    final ordered = ServicePeriodDefinitionResolver.ordered(definitions);
-    ServicePeriodDefinition? selectedDefinition;
-    for (final definition in ordered) {
-      if (definition.id == widget.selectedPeriodId) {
-        selectedDefinition = definition;
-        break;
-      }
-    }
-    final buckets = periodNotifier?.buckets;
-    final missingTimezone = periodNotifier?.missingTimezone ?? false;
+        final definitions =
+            periodNotifier?.definitions ??
+            ServicePeriodDefinitionResolver.demoDefinitions;
+        final cutoff =
+            periodNotifier?.businessDayStartLocalTime ??
+            _defaultBusinessDayStartLocalTime;
+        final localNow = _restaurantLocalNow(restaurant);
+        final activeId = localNow == null
+            ? null
+            : resolveActiveServicePeriodId(
+                localNow: localNow,
+                businessDayStartLocalTime: cutoff,
+                definitions: definitions,
+              );
+        final ordered = ServicePeriodDefinitionResolver.ordered(definitions);
+        ServicePeriodDefinition? selectedDefinition;
+        for (final definition in ordered) {
+          if (definition.id == selectedPeriodId) {
+            selectedDefinition = definition;
+            break;
+          }
+        }
+        final buckets = periodNotifier?.buckets;
+        final missingTimezone = periodNotifier?.missingTimezone ?? false;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (missingTimezone)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [AppColors.backgroundMid, AppColors.cardGlow],
-                  ),
-                  border: Border.all(
-                    color: AppColors.borderSubtle.withValues(alpha: 0.7),
-                    width: 1,
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (missingTimezone)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [AppColors.backgroundMid, AppColors.cardGlow],
+                      ),
+                      border: Border.all(
+                        color: AppColors.borderSubtle.withValues(alpha: 0.7),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      'Restaurant timezone is not configured. Per-period '
+                      'metrics are unavailable until Settings is completed.',
+                      style:
+                          AppTextStyles.body13(color: AppColors.textSecondary),
+                    ),
                   ),
                 ),
-                child: Text(
-                  'Restaurant timezone is not configured. Per-period '
-                  'metrics are unavailable until Settings is completed.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+              if (selectedDefinition == null)
+                Text(
+                  'Selected service period is unavailable.',
+                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                )
+              else ...[
+                _DaypartScaffoldCard(
+                  definition: selectedDefinition,
+                  isActive: selectedDefinition.id == activeId,
+                  bucket: buckets?[selectedDefinition.id],
+                  primaryLeverCard: periodNotifier?.primaryLeverCardFor(
+                    selectedDefinition.id,
+                  ),
+                  missingTimezone: missingTimezone,
                 ),
-              ),
-            ),
-          if (selectedDefinition == null)
-            Text(
-              'Selected service period is unavailable.',
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            )
-          else ...[
-            _DaypartScaffoldCard(
-              definition: selectedDefinition,
-              isActive: selectedDefinition.id == activeId,
-              bucket: buckets?[selectedDefinition.id],
-              primaryLeverCard: periodNotifier?.primaryLeverCardFor(
-                selectedDefinition.id,
-              ),
-              missingTimezone: missingTimezone,
-            ),
-            const SizedBox(height: 8),
-          ],
-        ],
-      ),
+                const SizedBox(height: 8),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -1308,78 +1361,68 @@ DateTime? _restaurantLocalNow(RestaurantLocation? restaurant) {
 /// is active (between Lunch and Dinner) or when the restaurant has no
 /// usable IANA timezone.
 ///
-/// Owns its own 30-second ticker so the elapsed display stays current
-/// without a snapshot refresh.
-class _TimeIntoServiceHeader extends StatefulWidget {
+/// A4.2 (R2): rebuilds via the dashboard-wide [_ShiftDashboardTicker]
+/// (provided at the dashboard root) instead of a local
+/// `Timer.periodic`. The shared 30s pulse keeps the elapsed display
+/// current without owning its own timer or a snapshot refresh.
+class _TimeIntoServiceHeader extends StatelessWidget {
   final String selectedPeriodId;
+  final ValueListenable<DateTime> ticker;
 
-  const _TimeIntoServiceHeader({required this.selectedPeriodId});
-
-  @override
-  State<_TimeIntoServiceHeader> createState() => _TimeIntoServiceHeaderState();
-}
-
-class _TimeIntoServiceHeaderState extends State<_TimeIntoServiceHeader> {
-  static const Duration _tickInterval = Duration(seconds: 30);
-  Timer? _ticker;
-
-  @override
-  void initState() {
-    super.initState();
-    _ticker = Timer.periodic(_tickInterval, (_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _ticker?.cancel();
-    super.dispose();
-  }
+  const _TimeIntoServiceHeader({
+    required this.selectedPeriodId,
+    required this.ticker,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
-    final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
-    final definitions =
-        periodNotifier?.definitions ??
-        ServicePeriodDefinitionResolver.demoDefinitions;
-    final cutoff =
-        periodNotifier?.businessDayStartLocalTime ??
-        _defaultBusinessDayStartLocalTime;
-    final localNow = _restaurantLocalNow(restaurant);
-    if (localNow == null) return const SizedBox.shrink();
-    final interval = resolveActiveServicePeriodInterval(
-      localNow: localNow,
-      businessDayStartLocalTime: cutoff,
-      definitions: definitions,
-    );
-    if (interval == null) return const SizedBox.shrink();
-    if (interval.definition.id != widget.selectedPeriodId) {
-      return const SizedBox.shrink();
-    }
-    final elapsedMinutes = localNow.difference(interval.start).inMinutes;
-    if (elapsedMinutes < 0) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: AppColors.sunset,
-              shape: BoxShape.circle,
-            ),
+    return ValueListenableBuilder<DateTime>(
+      valueListenable: ticker,
+      builder: (context, _, __) {
+        final restaurant =
+            context.watch<RestaurantScopeNotifier?>()?.restaurant;
+        final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
+        final definitions =
+            periodNotifier?.definitions ??
+            ServicePeriodDefinitionResolver.demoDefinitions;
+        final cutoff =
+            periodNotifier?.businessDayStartLocalTime ??
+            _defaultBusinessDayStartLocalTime;
+        final localNow = _restaurantLocalNow(restaurant);
+        if (localNow == null) return const SizedBox.shrink();
+        final interval = resolveActiveServicePeriodInterval(
+          localNow: localNow,
+          businessDayStartLocalTime: cutoff,
+          definitions: definitions,
+        );
+        if (interval == null) return const SizedBox.shrink();
+        if (interval.definition.id != selectedPeriodId) {
+          return const SizedBox.shrink();
+        }
+        final elapsedMinutes = localNow.difference(interval.start).inMinutes;
+        if (elapsedMinutes < 0) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: AppColors.sunset,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${interval.definition.label} · ${_formatElapsed(elapsedMinutes)} in',
+                style: AppTextStyles.mono12(color: AppColors.sunsetDark),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Text(
-            '${interval.definition.label} · ${_formatElapsed(elapsedMinutes)} in',
-            style: AppTextStyles.mono12(color: AppColors.sunsetDark),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

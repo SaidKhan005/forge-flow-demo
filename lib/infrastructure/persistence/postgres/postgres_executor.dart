@@ -28,7 +28,10 @@
 //   * `kPostgresDefaultMaxConnectionsPerPool` — production
 //     `PackagePostgresPool.fromUrl` keeps a per-process pool so
 //     Cloud Run does not open a new Postgres session for every request.
-//     PF4 hardening: bumped from 4 → 20. Each Cloud Run instance
+//     PF4 hardening + A4.2 (R1 from `docs/_audits/code_health/a4_performance_audit.md`):
+//     bumped the in-process fallback default from 4 → 20 so a Cloud Run
+//     service that forgets the env-var pin no longer silently regresses
+//     to a pool of 4. Each Cloud Run instance
 //     handles concurrent requests; the prior default of 4 was a
 //     throughput ceiling under burst traffic (load tests showed pool
 //     exhaustion at ~10 rps per instance).  Azure DB Flexible Server
@@ -52,7 +55,7 @@ import '../../../services/observability/log.dart';
 
 const Duration kPostgresPerStatementTimeout = Duration(seconds: 5);
 const Duration kPostgresAcquireConnectionTimeout = Duration(seconds: 10);
-const int kPostgresDefaultMaxConnectionsPerPool = 4;
+const int kPostgresDefaultMaxConnectionsPerPool = 20;
 
 /// Env var name for the per-deployment pool size override. When set
 /// to a positive integer at or below
