@@ -29,17 +29,72 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 10. Every backend phase ships operator-facing UX before phase close. Phase docs include a `Frontend Exposure` section. UX-exposing slices include a demo-mode walkthrough; Codex returns `FOLLOW-UP NEEDED` if missing.
 11. Hierarchy-scoped settings are mandatory. Business/operator values inherit downward through org units to locations; lower configured scopes override higher scopes. Every settings, roles, timing, pricing, accuracy, security, support, and future configuration surface must show selected scope, inherited source, and effective value, or document why the capability is backend-only/gated/incomplete. Integrations are location-editable only because vendor connections are location-bound.
 
-## Workflow
+## Workflow (executor-agnostic)
 
-- Phase loop: Claude proposes prompts → worktrees implement → Codex reviews → Claude fixes → Codex updates docs. Graph refresh is manual-only when the operator asks for it.
-- Parallel lanes: Codex on master; Claude in `.claude/worktrees/<lane>`. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
-- Between batches: master audits the just-merged batch, leans docs, archives closed material, and emits the next prompts.
+This is the repo's default workflow regardless of which executor is running
+(Claude only, Codex only, or both in parallel). The operator may run out of
+quota on one and switch to the other; the workflow stays the same.
+
+### Pattern
+
+- **Orchestrator** (the operator's main chat session) drives planning, prompt
+  emission, audit, merge. Single owner of trackers + ledgers.
+- **Executors** (Claude lane and/or Codex lane sessions) work in isolated
+  `.claude/worktrees/<lane>/` (or `.codex/worktrees/<lane>/`) and never edit
+  trackers, ledgers, audit docs, or each other's files. Their contract is
+  `branch → implement → self-audit → commit + push → open PR → STOP`.
+- **Worker agents** dispatched by either an executor or the orchestrator via
+  the Agent tool use the same `worktree → PR → STOP` shape. No auto-merge.
+- **Audit** by the orchestrator against contracts + slice intent. Pattern B
+  table (worker self-audit + executor independent audit, both with file:line
+  citations) is non-negotiable in every PR body.
+- **Merge** by the orchestrator only when audit is clean. Auth-critical,
+  RLS-touching, schema-touching, and proxy-touching slices require explicit
+  operator approval regardless of audit verdict.
+- **Between batches:** orchestrator audits the just-merged batch, leans
+  docs, archives closed material, and emits the next prompts.
+
+### Routing
+
+- Forward plan: `docs/_indices/NEXT_WAVE_PLAN.md`.
+- Per-wave slice ledger: `docs/_indices/<wave>_EXECUTION_LEDGER.md` (the
+  current wave's is `WAVE_EXECUTION_LEDGER.md`; CLOSED 2026-05-13).
+- Paste-ready executor prompts: `docs/_indices/CLAUDE_HANDOFF_PROMPT.md` and
+  `docs/_indices/CODEX_HANDOFF_PROMPT.md`. Both encode the same workflow;
+  use whichever matches your active executor.
+- Per-slice scope: `docs/_execution/<lane>/03_execution_slices.md` (or
+  inline in the tracker if `< 1 week AND < 5 files`).
+- Prompt-shape rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md` (named for
+  legacy reasons; applies to both Claude and Codex agent prompts).
+
+### House rules
+
 - After `db/migrations/*.sql` changes: `tool/migration_drift_scanner.dart --fix --strict-docs` then `tool/migration_cutoff_lint.dart`.
-- Runtime acceptance (advisory pattern, not CI-enforced — reviewer judgment): `docs/contracts/slice_runtime_acceptance_contract.md`; browser slices use `runbooks/browser_use_codex_acceptance_workflow.md` (Codex-driven, out-of-repo — no harness binary lives here).
+- Runtime acceptance (advisory pattern, not CI-enforced — reviewer judgment): `docs/contracts/slice_runtime_acceptance_contract.md`; browser slices use `runbooks/browser_use_codex_acceptance_workflow.md` (named for legacy reasons; applies to whichever executor exercises browser flows).
 - Feature lens audit: use `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` before broad feature work, settings work, route/schema changes, runtime-exposed behavior, or any implementation where hidden plumbing may matter.
 - Main chat is read-only across worktrees when worktrees are running. Tracker/memory/coordination edits on master OK.
 - Don't broaden scope. Don't update trackers during implementation unless asked. Report `Links updated: yes/no` if docs move.
-- **Agent-led slices: no auto-merge.** When work is delegated to a worktree agent, the agent's contract is `commit + push + open PR → STOP`. The agent must not merge, must not run `--no-verify` to bypass hooks, and must not update trackers. The orchestrator (main chat) audits the PR diff against contracts + slice intent, dispatches a follow-up agent if material gaps, and merges only when clean. Audit artifacts live in `docs/_audits/<wave>/pr_<n>_<topic>.md`. Auth-critical, RLS-touching, schema-touching, and proxy-touching slices require explicit operator approval before merge regardless of audit verdict. Detail: `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Agent-Led Slices".
+- Graph refresh (graphify) is manual-only when the operator asks for it.
+
+### Agent-led slices — hard rule
+
+When work is delegated to a worktree agent (whether by an executor or the
+orchestrator), the agent's contract is **`commit + push + open PR → STOP`**.
+The agent MUST NOT merge, MUST NOT run `--no-verify` to bypass hooks, and
+MUST NOT update trackers. The orchestrator audits the PR diff against
+contracts + slice intent, dispatches a follow-up agent if material gaps,
+and merges only when clean. Audit artifacts live in
+`docs/_audits/<wave>/pr_<n>_<topic>.md`. Detail:
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Agent-Led Slices".
+
+### Ceiling-raise rule (R-2 from post-Codex wave closeout)
+
+Bleed-stop ceiling raises (e.g., `tool/advisor_proxy_size_lint.dart`'s
+`kAdvisorProxyMaxLines`) require explicit operator approval, same gate as
+auth-critical / RLS-touching / schema-touching / proxy-touching slices.
+The doctrine "the monolith MUST shrink, not grow" only holds if raises
+are gated. Detail: `docs/POST_HARDENING_FOLLOWUPS.md` "Refactor phase
+scope" R-2.
 
 ## Review Loop (user pastes an Execution Report)
 

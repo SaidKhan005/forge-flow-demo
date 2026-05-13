@@ -428,7 +428,7 @@ on the same key → 409 `idempotency_key_conflict`. Coverage:
 ### P1 — `advisor_proxy.dart:9105-9106` hardcoded prompt placeholders ⏸️ DEFERRED (AI freeze)
 
 Moved to phase_11b plan freeze-thaw checklist (2026-05-08). See
-`docs/phases/phase_11b/phase_11b_advisor_ux_plan.md` "Freeze-thaw
+`docs/archive/phases/phase_11b/phase_11b_advisor_ux_plan.md` "Freeze-thaw
 pre-conditions (must close before unfreezing 11b)".
 
 ### P1 — Demo-mode banner promised by architecture but never wired ✅ FIXED 2026-05-08 ([#426](https://github.com/SaidKhan005/forge-flow-demo/pull/426) — slice `8.demo-mode-banner`)

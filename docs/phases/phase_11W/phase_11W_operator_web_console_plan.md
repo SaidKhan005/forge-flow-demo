@@ -241,7 +241,7 @@ MVP launch state = `11W.0`/`11W.7`/`11W.8` complete + Phase 8 Wave 1+2+3 complet
 - `docs/phases/phase_8/vendor_connections_admin_surface.md` — vendor-connections widget design (dual-surface hosting section).
 - `docs/phases/phase_8R/phase_8R_official_reservation_connector_plan.md` — reservation adapters.
 - `docs/phases/phase_8S/phase_8S_scheduling_connector_plan.md` — scheduling adapters.
-- `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md` — outbound integrations.
+- `docs/archive/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md` — outbound integrations.
 - `docs/phases/phase_9/phase_9_auth_plan.md` — auth + roles + permissions backend that Phase 11W consumes.
 - `docs/contracts/auth_permission_key_catalog.md` — permission keys.
 - `docs/contracts/hardening_rls_and_repository_pattern_contract.md` — RLS / OperatorScopedRepository.

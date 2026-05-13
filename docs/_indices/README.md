@@ -1,43 +1,78 @@
 # Indices
 
-Single canonical entry points for orchestrator + executor coordination on the post-Codex wave.
+Single canonical entry points for orchestrator + executor coordination.
+The workflow is executor-agnostic per CLAUDE.md "Workflow" section —
+Claude lanes, Codex lanes, or both run the same underlying pattern.
 
 ## What lives here
 
 | File | Audience | Purpose |
 |---|---|---|
-| `WAVE_EXECUTION_LEDGER.md` | All — single source of truth | Per-slice state machine (assigned → in-progress → audit-pending → merged). Every state change writes here. |
-| `CLAUDE_HANDOFF_PROMPT.md` | Operator (paste-ready) | Master prompt to paste into a fresh Claude lane executor session. Encodes the executor-as-mini-orchestrator loop. |
-| `CODEX_HANDOFF_PROMPT.md` | Operator (paste-ready) | Master prompt to paste into a fresh Codex executor session. Same shape as the Claude side. |
-| `CLAUDE_LANE_INDEX.md` | Reference only | Lane-level scope + cross-lane consumption matrix. Slice-level truth lives in the ledger. |
-| `CODEX_LANE_INDEX.md` | Reference only | Same for Codex. |
+| `NEXT_WAVE_PLAN.md` | All | Forward roadmap — the demo-validate → tag → refactor → re-test → mutate pipeline + cross-references to wave bugs, refactor scope, and runbooks. |
+| `WAVE_EXECUTION_LEDGER.md` | Reference (frozen) | The post-Codex wave's slice state machine. CLOSED 2026-05-13. Next wave opens its own ledger when it starts. |
+| `CLAUDE_HANDOFF_PROMPT.md` | Operator (paste-ready) | Master prompt to paste into a fresh Claude executor session. Encodes the executor-as-mini-orchestrator pattern. |
+| `CODEX_HANDOFF_PROMPT.md` | Operator (paste-ready) | Same shape for Codex. Both handoff prompts encode the SAME workflow (CLAUDE.md "Workflow"); executor-specific scaffolding only. |
 
-These docs ROUTE, they do NOT duplicate per-slice state. The ledger is canonical for state; the lane indices give the lane-level scope context.
+## Workflow is executor-agnostic
+
+The underlying pattern (worktree + agent + audit + PR + merge) is the
+same whether the active executor is Claude, Codex, or both running in
+parallel. The operator may run out of quota on one and switch — workflow
+is unaffected.
+
+Authority for the workflow: [`CLAUDE.md`](../../CLAUDE.md) "Workflow"
+section.
+
+Prompt-shape rules: [`docs/CODEX_PROMPT_GENERATION_STANDARD.md`](../CODEX_PROMPT_GENERATION_STANDARD.md)
+(named for legacy reasons; the rules apply to ALL agent prompts
+regardless of executor).
 
 ## Authority
 
-- Slice state: `WAVE_EXECUTION_LEDGER.md` is canonical (everything else is a pointer or context).
-- Per-slice scope: `docs/_execution/lane_<x>_<name>/03_execution_slices.md`.
+- Slice state: the current wave's ledger is canonical (everything else
+  is a pointer or context). When closed, the ledger is frozen and the
+  next wave opens its own.
+- Per-slice scope: `docs/_execution/lane_<x>_<name>/03_execution_slices.md`,
+  or inline in `PROJECT_TRACKER.md` per "Phase Doc Hygiene" in CLAUDE.md
+  (`slice < 1 week AND < 5 files`).
 - Per-slice authority: follows `CLAUDE.md` Authority Order.
-- Wave bundle origin: PR #497 (Step 3 + Step 4 wave) — locked 2026-05-12, then evolved per merges.
+- Wave-specific lane-assignment artifacts (e.g., the post-Codex wave's
+  `CLAUDE_LANE_INDEX` + `CODEX_LANE_INDEX`) retire to
+  `docs/archive/_indices/` when the wave closes.
 
 ## When to read
 
-- **Orchestrator (Claude main chat)**: read the ledger first to find what's audit-pending or merged. Lane indices are reference.
-- **Fresh Claude lane executor**: paste `CLAUDE_HANDOFF_PROMPT.md` as your first session message. It tells you to read the ledger and pick the first slice.
+- **Orchestrator** (operator's main chat): read `NEXT_WAVE_PLAN.md` for
+  the forward plan; the wave's ledger for closed state; the handoff
+  prompts only when bootstrapping a new executor.
+- **Fresh Claude executor**: paste `CLAUDE_HANDOFF_PROMPT.md` as your
+  first session message.
 - **Fresh Codex executor**: paste `CODEX_HANDOFF_PROMPT.md`.
-- **Operator**: open the ledger to see what's where. Use the lane indices only when you need the lane's scope at-a-glance.
+- **Operator**: `PROJECT_TRACKER.md` at repo root is the highest-level
+  router; this directory is the second hop.
 
 ## What does NOT live here
 
 - Slice-level execution details — `docs/_execution/lane_<x>_<name>/03_execution_slices.md`.
-- Audit findings — `docs/_audits/code_health/` (deep-audit per-lane) + `docs/_audits/post_codex_wave/` (per-PR audits + the audit doc index README).
+- Audit findings — `docs/_audits/code_health/` (deep-audit per-lane) + `docs/_audits/post_codex_wave/` (12 institutional-knowledge files; closed wave's 84 per-PR audits archived to `docs/archive/_audits/post_codex_wave_2026-05-13/`).
 - Decision rationale — `docs/_decisions/`.
-- Tracker truth — `PROJECT_TRACKER.md` (lifecycle-of-record across phases; the wave ledger is a sub-tracker of this).
-- Per-PR audit verdicts — `docs/_audits/post_codex_wave/`.
+- Tracker truth — `PROJECT_TRACKER.md` (lifecycle-of-record across phases).
 
 ## Update cadence
 
-- Slice state change (merged, audit-pending, etc.) → orchestrator updates `WAVE_EXECUTION_LEDGER.md` only. Lane indices are not touched per-slice.
-- New slice added → orchestrator adds a row to the ledger AND a one-line entry in the relevant lane index "Lane assignments" table if the slice opens a new lane.
-- Handoff prompts → updated only when the cross-cutting workflow changes (e.g., today's salvage discipline + 3-block worker brief refinements).
+- Slice state change (merged, audit-pending, etc.) → orchestrator
+  updates the current wave's ledger only.
+- New slice added → orchestrator adds a row to the ledger.
+- Handoff prompts → updated only when the cross-cutting workflow
+  changes (rare).
+- `NEXT_WAVE_PLAN.md` → updated when the operator pivots the forward
+  sequencing or when a step closes.
+
+## Closed-wave reference
+
+Post-Codex wave's lane-assignment indices archived 2026-05-13:
+
+- `docs/archive/_indices/CLAUDE_LANE_INDEX_2026-05-13.md`
+- `docs/archive/_indices/CODEX_LANE_INDEX_2026-05-13.md`
+
+See `docs/archive/_indices/README.md` for the archive map.

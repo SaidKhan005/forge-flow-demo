@@ -395,7 +395,7 @@ Initial integrations needed for Phase 12 flagship workflows:
 - **Bill.com or MarginEdge** — AP/invoicing (~3 weeks)
 - **Plaid** — banking feed for cash reconciliation (optional, ~2 weeks)
 
-Plan: `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`.
+Plan: `docs/archive/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`.
 
 ## Phase 12 Workflow Platform Program (NEW)
 
@@ -427,7 +427,7 @@ Sub-slices:
   inventory recommender, vendor recon, customer feedback synthesis,
   performance reviews, marketing drafts, etc.) ~1-3 weeks each.
 
-Plan: `docs/phases/phase_12_workflow_platform/phase_12_workflow_platform_plan.md`.
+Plan: `docs/archive/phases/phase_12_workflow_platform/phase_12_workflow_platform_plan.md`.
 
 ## Infrastructure Lock
 

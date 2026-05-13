@@ -561,7 +561,7 @@ After this phase closes:
   — admin onboarding flow that `cutover.2` consumes
 - `docs/phases/phase_9_8/phase_9_8_compliance_and_legal_plan.md` —
   T&Cs surface that `cutover.2` records acceptance against
-- `docs/phases/phase_11b/phase_11b_advisor_ux_plan.md` — UX phase
+- `docs/archive/phases/phase_11b/phase_11b_advisor_ux_plan.md` — UX phase
   whose acceptance gates `cutover.0`
 - `https://github.com/safishamsi/graphify/tree/v5` - source repo for
   the Graphify-assisted corpus graph review pattern consumed by

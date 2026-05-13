@@ -2732,7 +2732,7 @@ Rules:
 
 - POS/labor plan: `docs/archive/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
 - Reservation plan: `docs/archive/phases/phase_8R/phase_8R_official_reservation_connector_plan.md`
-- External integrations plan: `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`
+- External integrations plan: `docs/archive/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`
 
 ## 20. Shared State Roadmap
 
@@ -3023,7 +3023,7 @@ trigger occurs
 
 ### Where It Lives
 
-- Workflow plan: `docs/phases/phase_12_workflow_platform/phase_12_workflow_platform_plan.md`
+- Workflow plan: `docs/archive/phases/phase_12_workflow_platform/phase_12_workflow_platform_plan.md`
 - Service-principal foundation: `db/migrations/202604280004_phase_9_0sigma_d_service_principals.sql`
 
 ## 23. Deployment, Secrets, And Environments
@@ -3553,12 +3553,12 @@ This guide was synthesized from:
 - `docs/contracts/event_outbox_contract.md`
 - `docs/archive/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
 - `docs/archive/phases/phase_8R/phase_8R_official_reservation_connector_plan.md`
-- `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`
+- `docs/archive/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`
 - `docs/phases/phase_9/phase_9_auth_plan.md`
 - `docs/archive/phases/phase_10a/phase_10a_shared_state_v1_plan.md`
 - `docs/phases/phase_11a/phase_11a_decision_register.md`
 - `docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md`
-- `docs/phases/phase_12_workflow_platform/phase_12_workflow_platform_plan.md`
+- `docs/archive/phases/phase_12_workflow_platform/phase_12_workflow_platform_plan.md`
 - `runbooks/phase_9_production1_migration_apply_runbook.md`
 - `runbooks/audit_chain_verify_runbook.md`
 - `runbooks/gdpr_erasure_runbook.md`

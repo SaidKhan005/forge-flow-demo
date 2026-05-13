@@ -34,7 +34,7 @@ Use the built-in `worker` role for each slice sub-agent.
 ### Read order (every batch)
 
 1. `docs/_indices/WAVE_EXECUTION_LEDGER.md` — find the next `assigned` slices where `Owner = Codex` and `Dependency = merged` (or `—`). Pick 1-3 that have **no file overlap** with each other. These become your next batch.
-2. `docs/_indices/CODEX_LANE_INDEX.md` — confirm each lane's scope, audit anchor, decision authority.
+2. `docs/archive/_indices/CODEX_LANE_INDEX_2026-05-13.md` — confirm each lane's scope, audit anchor, decision authority.
 3. The lane's `03_execution_slices.md` — slice-level depth.
 4. `CLAUDE.md` — durable repo rules. Read once per session.
 
