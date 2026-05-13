@@ -52,6 +52,7 @@ import 'package:flutter/services.dart';
 
 import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
+import '../account/mfa_card_controller.dart';
 import '../account/operator_web_account_actions.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
@@ -71,11 +72,7 @@ class MyAccountScreen extends StatefulWidget {
 }
 
 class _MyAccountScreenState extends State<MyAccountScreen> {
-  // Demo-mode MFA enrollment state. Initialised from
-  // `session.mfaEnrolled` (the proxy's projection) and flipped
-  // locally by the in-screen Enroll dialog. `11W.0.live` swaps the
-  // local flip for a real proxy round-trip + a fresh session.
-  late bool _mfaEnrolled;
+  late MfaCardController _mfaController;
 
   // Demo-mode toast under the Password section. Auto-clears after
   // [_kToastVisibleDuration] so the surface doesn't accumulate stale
@@ -104,7 +101,9 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
   @override
   void initState() {
     super.initState();
-    _mfaEnrolled = widget.session.mfaEnrolled;
+    _mfaController = _buildMfaController();
+    _mfaController.addListener(_onMfaControllerChanged);
+    _mfaController.start();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _loadActiveSessions();
     });
@@ -116,19 +115,41 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     // Re-sync the demo-mode flag when the parent rebuilds with a new
     // session (e.g. role-switch in tests). Preserves a flip-from-false
     // → true that has happened in this widget's lifetime.
-    if (widget.session.mfaEnrolled && !_mfaEnrolled) {
-      _mfaEnrolled = true;
-    }
     if (oldWidget.actions != widget.actions ||
         oldWidget.session.uid != widget.session.uid) {
+      _mfaController.removeListener(_onMfaControllerChanged);
+      _mfaController.dispose();
+      _mfaController = _buildMfaController();
+      _mfaController.addListener(_onMfaControllerChanged);
+      _mfaController.start();
       _loadActiveSessions();
+    } else {
+      _mfaController.update(
+        sessionMfaEnrolled: widget.session.mfaEnrolled,
+        actions: widget.actions,
+      );
     }
   }
 
   @override
   void dispose() {
     _passwordToastTimer?.cancel();
+    _mfaController.removeListener(_onMfaControllerChanged);
+    _mfaController.dispose();
     super.dispose();
+  }
+
+  MfaCardController _buildMfaController() {
+    return MfaCardController(
+      initialMfaEnrolled: widget.session.mfaEnrolled,
+      actions: widget.actions,
+      autoSync: true,
+    );
+  }
+
+  void _onMfaControllerChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   bool get _canWriteAccount {
@@ -182,7 +203,7 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     );
     if (!mounted) return;
     if (confirmed == true) {
-      setState(() => _mfaEnrolled = true);
+      await _mfaController.markEnrollmentConfirmed();
     }
   }
 
@@ -194,6 +215,81 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
       context: context,
       builder: (_) => const _BackupCodesDialog(),
     );
+  }
+
+  Future<void> _handleMfaPrimaryAction() async {
+    switch (_mfaController.state.stage) {
+      case MfaCardStage.notEnrolled:
+        await _handleEnrollMfa();
+      case MfaCardStage.enrolled:
+        await _handleManageMfa();
+      case MfaCardStage.removalRequested:
+        await _handleCancelMfaRemoval();
+      case MfaCardStage.removable:
+        await _mfaController.turnOffAfterGrace();
+    }
+  }
+
+  Future<void> _handleManageMfa() async {
+    final choice = await showDialog<_MfaManageChoice>(
+      context: context,
+      builder: (_) =>
+          _MfaManageDialog(canRequestRemoval: _canRequestMfaRemoval),
+    );
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case _MfaManageChoice.backupCodes:
+        await _handleViewBackupCodes();
+      case _MfaManageChoice.requestRemoval:
+        await _handleRequestMfaRemoval();
+    }
+  }
+
+  Future<void> _handleRequestMfaRemoval() async {
+    if (!_canRequestMfaRemoval) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        key: const Key('account_section_mfa_request_removal_dialog'),
+        title: const Text('Turn off 2FA?'),
+        content: const Text(
+          'We wait 24 hours before turning off 2FA so that if someone got '
+          'into your account, you have time to stop them. You may be asked '
+          'to sign in again before the request is accepted.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('account_section_mfa_request_removal_cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep 2FA on'),
+          ),
+          FilledButton(
+            key: const Key('account_section_mfa_request_removal_confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.negative,
+              foregroundColor: AppColors.backgroundSurface,
+            ),
+            child: const Text('Request removal'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _mfaController.requestRemoval();
+  }
+
+  Future<void> _handleCancelMfaRemoval() async {
+    if (!_canWriteAccount) return;
+    await _mfaController.cancelRemoval();
+  }
+
+  bool get _canRequestMfaRemoval {
+    final mfaState = _mfaController.state;
+    return _canWriteAccount &&
+        mfaState.canRequestRemoval &&
+        !mfaState.loading &&
+        !mfaState.busy;
   }
 
   Future<void> _handleChangePassword() async {
@@ -394,11 +490,10 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
               ),
               const SizedBox(height: 14),
               _MfaSection(
-                enrolled: _mfaEnrolled,
+                state: _mfaController.state,
                 canWrite: _canWriteAccount,
                 readOnlyTooltip: _readOnlyTooltipMfa,
-                onEnroll: _handleEnrollMfa,
-                onViewBackupCodes: _handleViewBackupCodes,
+                onPrimaryAction: _handleMfaPrimaryAction,
                 onAuditLog: _handleOpenAuditLog,
               ),
               const SizedBox(height: 14),
@@ -641,28 +736,27 @@ class _ProfileField extends StatelessWidget {
 
 class _MfaSection extends StatelessWidget {
   const _MfaSection({
-    required this.enrolled,
+    required this.state,
     required this.canWrite,
     required this.readOnlyTooltip,
-    required this.onEnroll,
-    required this.onViewBackupCodes,
+    required this.onPrimaryAction,
     required this.onAuditLog,
   });
 
-  final bool enrolled;
+  final MfaCardState state;
   final bool canWrite;
   final String readOnlyTooltip;
-  final VoidCallback onEnroll;
-  final VoidCallback onViewBackupCodes;
+  final VoidCallback onPrimaryAction;
   final VoidCallback onAuditLog;
 
   @override
   Widget build(BuildContext context) {
     final badge = _StatusBadge(
       key: const Key('account_section_mfa_badge'),
-      label: enrolled ? 'MFA: Enrolled' : 'MFA: Not enrolled',
-      color: enrolled ? AppColors.positive : AppColors.textMuted,
+      label: state.badgeLabel,
+      color: _badgeColor(state.stage),
     );
+    final canPress = _canPressPrimary;
     return _SectionCard(
       cardKey: const Key('account_section_mfa'),
       icon: Icons.shield_outlined,
@@ -674,29 +768,54 @@ class _MfaSection extends StatelessWidget {
       statusBadge: badge,
       auditLinkKey: const Key('account_section_mfa_audit_log_link'),
       onAuditLog: onAuditLog,
-      child: enrolled
-          ? _ActionRow(
-              actionKey: const Key('account_section_mfa_view_backup_codes'),
-              header: 'View backup codes',
-              body:
-                  'Backup codes are one-time-use codes you can sign in with '
-                  'if you lose your phone or authenticator app. Save them '
-                  'somewhere safe.',
-              buttonLabel: 'View backup codes',
-              onPressed: onViewBackupCodes,
-            )
-          : _ActionRow(
-              actionKey: const Key('account_section_mfa_enroll'),
-              header: 'Turn on extra sign-in security',
-              body:
-                  'When you turn this on, you\'ll need a 6-digit code from '
-                  'your phone every time you sign in from a new device. '
-                  'We\'ll walk you through setup.',
-              buttonLabel: 'Enroll MFA',
-              onPressed: canWrite ? onEnroll : null,
-              disabledTooltip: canWrite ? null : readOnlyTooltip,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (state.loading) ...[
+            const LinearProgressIndicator(
+              minHeight: 2,
+              color: AppColors.sunsetDark,
+              backgroundColor: AppColors.borderSubtle,
             ),
+            const SizedBox(height: 10),
+          ],
+          _ActionRow(
+            actionKey: Key(state.primaryActionKey),
+            header: state.headline,
+            body: state.body,
+            buttonLabel: state.busy ? 'Working...' : state.primaryButtonLabel,
+            onPressed: canPress && !state.busy ? onPrimaryAction : null,
+            disabledTooltip: canPress ? null : readOnlyTooltip,
+          ),
+          if (state.errorMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              state.errorMessage!,
+              key: const Key('account_section_mfa_error'),
+              style: AppTextStyles.body13(color: AppColors.negative),
+            ),
+          ],
+        ],
+      ),
     );
+  }
+
+  bool get _canPressPrimary {
+    if (state.stage == MfaCardStage.enrolled) return true;
+    return canWrite;
+  }
+
+  static Color _badgeColor(MfaCardStage stage) {
+    switch (stage) {
+      case MfaCardStage.notEnrolled:
+        return AppColors.textMuted;
+      case MfaCardStage.enrolled:
+        return AppColors.positive;
+      case MfaCardStage.removalRequested:
+        return AppColors.warning;
+      case MfaCardStage.removable:
+        return AppColors.negative;
+    }
   }
 }
 
@@ -1133,6 +1252,90 @@ class _ActionRow extends StatelessWidget {
 }
 
 // ─── Modals ─────────────────────────────────────────────────────────
+
+enum _MfaManageChoice { backupCodes, requestRemoval }
+
+class _MfaManageDialog extends StatelessWidget {
+  const _MfaManageDialog({required this.canRequestRemoval});
+
+  final bool canRequestRemoval;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      key: const Key('account_section_mfa_manage_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Manage 2FA',
+                style: AppTextStyles.display20(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                canRequestRemoval
+                    ? 'Two-step verification is on. You can view backup '
+                          'codes or request removal if you need to replace '
+                          'your authenticator.'
+                    : 'Two-step verification is on. You can view backup '
+                          'codes now. Removal is available after this card '
+                          'confirms your authenticator with the server.',
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                key: const Key('account_section_mfa_view_backup_codes'),
+                onPressed: () =>
+                    Navigator.of(context).pop(_MfaManageChoice.backupCodes),
+                icon: const Icon(Icons.key_outlined, size: 16),
+                label: const Text('View backup codes'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.sunsetDark,
+                  side: const BorderSide(color: AppColors.sunsetDark),
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                key: const Key('account_section_mfa_turn_off'),
+                onPressed: canRequestRemoval
+                    ? () => Navigator.of(
+                        context,
+                      ).pop(_MfaManageChoice.requestRemoval)
+                    : null,
+                icon: const Icon(Icons.shield_outlined, size: 16),
+                label: const Text('Turn off 2FA'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.negative,
+                  disabledForegroundColor: AppColors.textMuted,
+                  side: BorderSide(
+                    color: canRequestRemoval
+                        ? AppColors.negative
+                        : AppColors.borderSubtle,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  key: const Key('account_section_mfa_manage_close'),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Done'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _MfaEnrollDialog extends StatefulWidget {
   const _MfaEnrollDialog({
