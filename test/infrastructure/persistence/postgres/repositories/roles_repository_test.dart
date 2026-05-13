@@ -148,14 +148,19 @@ void main() {
             'BYPASSRLS path should engage',
       );
       // Visibility ORDER BY shape — globals first, then by role_key.
+      // B2.4 aliased `roles` to `r` (so the LEFT JOIN to
+      // `default_role_catalog_versions` can project version metadata
+      // onto each row) — assertions accept the qualified column
+      // names that result.
       final selectSql = tx.executedSql.firstWhere(
-        (s) => s.contains('from roles'),
+        (s) => s.contains('from roles r'),
       );
-      expect(selectSql, contains('where deleted_at is null'));
+      expect(selectSql, contains('where r.deleted_at is null'));
       expect(
         selectSql,
         contains(
-          'order by case when operator_id is null then 0 else 1 end, role_key',
+          'order by case when r.operator_id is null then 0 else 1 end, '
+          'r.role_key',
         ),
       );
     });
