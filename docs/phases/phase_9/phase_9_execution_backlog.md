@@ -146,18 +146,22 @@ Do not re-open stale findings unless the repo regresses:
   `location_id` to the fact/webhook idempotency keys and switch all 17
   vendor sinks to a DO UPDATE WHERE `vendor_modified_at >=` guard. The
   follow-up queue now continues through
-  `202605131030_b11_1_auth_handoff_codes.sql` for permission-cache,
+  `202605131400_b11_2_auth_step_up_challenges.sql` for permission-cache,
   webhook-secret, demo-counter, audit-anchor, auth-version,
   OAuth-refresh-lock, outbox NOTIFY split hardening, cron maintenance,
   KMS flag seeding, PII erasure, retention sweep, and admin hierarchy
   lifecycle/scoped settings, lifecycle access hardening, audit-log
-  actor/reason/business-date gates, plus the Lane B B11.1 mobile→web
+  actor/reason/business-date gates, the Lane B B11.1 mobile→web
   redemption-code handoff (operator-scoped, 60s TTL, RLS via the
   `app_current_operator()` wrapper — replaces the legacy
-  decision-#5 JWT-in-URL handoff per addendum A1).
+  decision-#5 JWT-in-URL handoff per addendum A1), and the Lane B
+  B11.2 RFC 9470 step-up challenge ledger (operator-scoped, 5-minute
+  TTL, route+user-bound replay protection — emits 401 +
+  `WWW-Authenticate: Bearer error="insufficient_user_authentication"`
+  on sensitive proxy routes when caller's `auth_time` is stale).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605131030_b11_1_auth_handoff_codes.sql`.
+  `202605131400_b11_2_auth_step_up_challenges.sql`.
 
 ## Remaining Live-Closeout Gates
 
