@@ -41,6 +41,13 @@ export 'operator_web_vendor_connections_resolver.dart'
 export 'operator_web_data_accuracy_gateway.dart'
     show OperatorWebDataAccuracyGateway, OperatorWebHttpDataAccuracyGateway;
 
+export 'operator_web_benchmarks_gateway.dart'
+    show
+        DemoOperatorWebBenchmarksGateway,
+        OperatorWebBenchmarksGateway,
+        OperatorWebBenchmarksGatewayProvider,
+        OperatorWebHttpBenchmarksGateway;
+
 export 'web_vendor_applicability_gateway.dart'
     show
         HttpWebVendorApplicabilityGateway,

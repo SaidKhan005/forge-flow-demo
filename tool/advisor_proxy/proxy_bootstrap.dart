@@ -20,6 +20,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_login_attempts_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/benchmark_overrides_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_backfill_job_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/forecast_context_repository.dart'
@@ -231,6 +232,7 @@ class ProxyProductionBindings {
     required this.passwordResetThrottleCounter,
     required this.operatorWriteRouter,
     required this.adminBusinessTimingRouter,
+    required this.operatorBenchmarkOverridesRouter,
     required this.auditChainAnchorsGateway,
     required this.connectorBackfillJobsRouter,
     required this.vendorLifecycleRecentlyAvailableRouter,
@@ -396,6 +398,10 @@ class ProxyProductionBindings {
   /// super_admin or ff_support role; writes require an `admin_reason`
   /// in the body (audited).
   final AdminBusinessTimingRouter adminBusinessTimingRouter;
+
+  /// B6 - operator benchmark override hierarchy. Uses the same tenant
+  /// pool and audit sink posture as account/business-timing writes.
+  final OperatorBenchmarkOverridesRouter operatorBenchmarkOverridesRouter;
 
   /// Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
   /// Backed by [PostgresAuditChainAnchorsGateway]; the route
@@ -819,6 +825,12 @@ ProxyProductionBindings buildProxyProductionBindings(
     businessTimingGateway: operatorBusinessTimingWriteGateway,
     auditSink: operatorBusinessTimingAuditSink,
     mutationListener: timingMutationListener,
+  );
+  final operatorBenchmarkOverridesRouter = OperatorBenchmarkOverridesRouter(
+    gateway: RepositoryOperatorBenchmarkOverridesGateway(
+      repository: BenchmarkOverridesRepository(tenantWrapper),
+    ),
+    auditSink: operatorBusinessTimingAuditSink,
   );
   // Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
   // Reuses the existing [ConnectorBackfillJobRepository] so the read
@@ -1342,6 +1354,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     ),
     operatorWriteRouter: operatorWriteRouter,
     adminBusinessTimingRouter: adminBusinessTimingRouter,
+    operatorBenchmarkOverridesRouter: operatorBenchmarkOverridesRouter,
     // Operator Web W4.B - per-tenant audit-chain-anchor read gateway.
     // Runs through the tenant transaction wrapper so the per-tenant
     // RLS policy `audit_chain_anchors_per_tenant_select` clamps the

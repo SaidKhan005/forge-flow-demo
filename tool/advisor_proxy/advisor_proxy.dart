@@ -55,6 +55,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postg
     show PostgresPoolGaugeSnapshot;
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/benchmark_overrides_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_connection_list_repository.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
@@ -93,6 +94,7 @@ import 'demo_mode_master_switch_routes.dart';
 import 'mobile_push_notifications.dart';
 import 'notification_preferences_routes.dart';
 import 'admin_business_timing_routes.dart';
+import 'operator_benchmark_overrides_routes.dart';
 import 'operator_routes.dart';
 import 'wage_role_rows_routes.dart';
 import 'proxy_idempotency_cache.dart';
@@ -141,6 +143,13 @@ export 'admin_business_timing_routes.dart'
         AdminBusinessTimingRouter,
         adminBusinessTimingProfilesPathPrefix,
         kAdminBusinessTimingRoles;
+export 'operator_benchmark_overrides_routes.dart'
+    show
+        OperatorBenchmarkOverridesGateway,
+        OperatorBenchmarkOverridesRouter,
+        RepositoryOperatorBenchmarkOverridesGateway,
+        operatorBenchmarkOverridesPath,
+        operatorBenchmarkOverridesPrefix;
 export 'notification_preferences_routes.dart'
     show
         NotificationPreferencesRouter,
@@ -8845,6 +8854,7 @@ Future<void> routeRequest(
   // call site.
   OperatorWriteRouter? operatorWriteRouter,
   AdminBusinessTimingRouter? adminBusinessTimingRouter,
+  OperatorBenchmarkOverridesRouter? operatorBenchmarkOverridesRouter,
   // Wave W2.D - operator-scoped read of connector_backfill_jobs.
   // Optional: when null the read route returns 503 so existing tests
   // do not need to plumb the router through every call site.
@@ -15146,6 +15156,145 @@ Future<void> routeRequest(
               'error': 'vendor_applicability_unavailable',
               'message':
                   'vendor applicability lookup is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // B6 - operator benchmark override hierarchy. Shares the
+        // owner/admin role gate and Idempotency-Key discipline with
+        // the operator write router, but lives in its own route seam
+        // so benchmark-specific validation stays local.
+        if (OperatorBenchmarkOverridesRouter.matches(path, request.method)) {
+          if (operatorBenchmarkOverridesRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'operator_benchmark_overrides_not_configured',
+              'message':
+                  'route requires an OperatorBenchmarkOverridesRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          if (scope.operatorId.isEmpty || scope.locationId.isEmpty) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'benchmark overrides require tenant scope',
+            });
+            return;
+          }
+          if (!scope.roles.any(kOperatorWriteRoles.contains)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'forbidden',
+              'message': 'operator owner or operator admin role is required',
+              'required_roles': kOperatorWriteRoles.toList(),
+            });
+            return;
+          }
+          if (permissionSnapshotResolver == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'permission_snapshot_not_configured',
+              'message':
+                  'route requires a ProxyPermissionSnapshotResolver to be installed',
+            });
+            return;
+          }
+          ProxyPermissionSnapshot snapshot;
+          try {
+            snapshot = await permissionSnapshotResolver.load(scope);
+          } on Exception catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'permission_snapshot_unavailable',
+              'message': 'permissions are unavailable; please retry',
+            });
+            return;
+          }
+          final overrideEffect =
+              snapshot.permissions[PermissionKeys.forgeflowBaselineOverride];
+          if (overrideEffect != PermissionEffect.allow) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'forbidden',
+              'message':
+                  'forgeflow.baseline.override permission is required to manage benchmark overrides',
+              'permission_key': PermissionKeys.forgeflowBaselineOverride,
+            });
+            return;
+          }
+          final isReadOnly = OperatorBenchmarkOverridesRouter.isReadOnly(
+            path,
+            request.method,
+          );
+          String idempotencyKey;
+          Map<String, Object?> requestBody;
+          if (isReadOnly) {
+            idempotencyKey = '';
+            requestBody = const <String, Object?>{};
+          } else {
+            final headerKey = request.headers.value('Idempotency-Key')?.trim();
+            if (headerKey == null || headerKey.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_missing',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+            if (headerKey.length > 200) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_too_long',
+                'message':
+                    'Idempotency-Key header must be 200 characters or fewer',
+              });
+              return;
+            }
+            final bodyResult = await readOperatorJsonBody(request);
+            if (bodyResult.errorStatus != null) {
+              _writeJson(
+                response,
+                bodyResult.errorStatus!,
+                bodyResult.errorBody!,
+              );
+              return;
+            }
+            idempotencyKey = headerKey;
+            requestBody = bodyResult.body!;
+          }
+          try {
+            final result = await operatorBenchmarkOverridesRouter.handle(
+              method: request.method,
+              path: path,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              actorUserId: scope.userId,
+              actorKind: scope.actorKind,
+              idempotencyKey: idempotencyKey,
+              body: requestBody,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            if (error is BenchmarkOverridesInputError) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'benchmark_override_invalid',
+                'message': error.message,
+                'field': error.field,
+              });
+              return;
+            }
+            _logProxyUnhandled(
+              surface: 'operator_benchmark_overrides',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'operator_benchmark_overrides_unavailable',
+              'message':
+                  'benchmark overrides are unavailable; please retry',
             });
           }
           return;

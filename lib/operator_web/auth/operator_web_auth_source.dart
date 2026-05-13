@@ -37,6 +37,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../services/operator_web_benchmarks_gateway.dart';
+
 /// Identity payload for an authenticated operator-web user. Carries
 /// only what the shell + screens need; not a full Firebase user
 /// object.
@@ -463,7 +465,8 @@ class MfaEnrollmentArtifact {
 
 /// Demo source — drives the full onboarding click path with a single
 /// fixture operator. Walkthrough copy assumes this source.
-class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
+class DemoOperatorWebAuthSource
+    implements OperatorWebAuthSource, OperatorWebBenchmarksGatewayProvider {
   DemoOperatorWebAuthSource({OperatorWebAuthState? initial})
     : _state = initial ?? const OperatorWebSignedOut() {
     _controller.add(_state);
@@ -559,6 +562,10 @@ class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
   final StreamController<OperatorWebAuthState> _controller =
       StreamController<OperatorWebAuthState>.broadcast();
   OperatorWebAuthState _state;
+
+  @override
+  final OperatorWebBenchmarksGateway benchmarksGateway =
+      DemoOperatorWebBenchmarksGateway();
 
   @override
   Stream<OperatorWebAuthState> get stream => _controller.stream;

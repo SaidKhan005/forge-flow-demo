@@ -37,6 +37,7 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
         OperatorWebBusinessTimingWriteGatewayProvider,
         OperatorWebDataAccuracyGatewayProvider,
         OperatorWebVendorApplicabilityGatewayProvider,
+        OperatorWebBenchmarksGatewayProvider,
         OperatorWebTeamUsersGatewayProvider,
         OperatorWebTeamRolesGatewayProvider,
         OperatorWebTeamHierarchyGatewayProvider,
@@ -89,6 +90,10 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
        ),
        vendorApplicabilityGateway = HttpWebVendorApplicabilityGateway(
          proxyBaseUri: proxyClient.baseUri,
+         idTokenProvider: authClient.currentIdToken,
+       ),
+       benchmarksGateway = OperatorWebHttpBenchmarksGateway(
+         client: proxyClient,
          idTokenProvider: authClient.currentIdToken,
        ),
        teamUsersGateway = WebTeamUsersGatewayLive(
@@ -186,6 +191,9 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
 
   @override
   final WebVendorApplicabilityGateway vendorApplicabilityGateway;
+
+  @override
+  final OperatorWebBenchmarksGateway benchmarksGateway;
 
   @override
   final WebTeamUsersGateway teamUsersGateway;
