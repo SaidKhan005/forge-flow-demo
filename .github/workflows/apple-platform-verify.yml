@@ -1,11 +1,16 @@
 name: Apple Platform Verification
 
+# Cost discipline: macos-15 runners are billed at ~10× the Linux rate.
+# Auto-running this workflow on every push/PR was the dominant Actions
+# spend (3 macOS jobs × every commit). Gated to manual dispatch only.
+# Trigger from the Actions tab before merging anything that touches:
+#   - ios/** or macos/**
+#   - Firebase plists (ios/Runner/Firebase/GoogleService-Info-*.plist)
+#   - test/auth_session_test.dart, test/mfa_test.dart,
+#     test/proxy_mfa_operations_gateway_test.dart
+#   - any Apple-platform-specific Flutter code path
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
 
 jobs:
   macos-host-tests:
