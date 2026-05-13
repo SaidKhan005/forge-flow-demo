@@ -1,38 +1,43 @@
 # Indices
 
-Single canonical entry points for each agent's work-track.
+Single canonical entry points for orchestrator + executor coordination on the post-Codex wave.
 
 ## What lives here
 
 | File | Audience | Purpose |
 |---|---|---|
-| `CLAUDE_LANE_INDEX.md` | Claude (orchestrator + Claude lane agents) | Routes every Claude-assigned lane to its plan, audit, and live-state |
-| `CODEX_LANE_INDEX.md` | Codex (Codex lane agents) | Routes every Codex-assigned lane to its plan, audit, and live-state |
+| `WAVE_EXECUTION_LEDGER.md` | All — single source of truth | Per-slice state machine (assigned → in-progress → audit-pending → merged). Every state change writes here. |
+| `CLAUDE_HANDOFF_PROMPT.md` | Operator (paste-ready) | Master prompt to paste into a fresh Claude lane executor session. Encodes the executor-as-mini-orchestrator loop. |
+| `CODEX_HANDOFF_PROMPT.md` | Operator (paste-ready) | Master prompt to paste into a fresh Codex executor session. Same shape as the Claude side. |
+| `CLAUDE_LANE_INDEX.md` | Reference only | Lane-level scope + cross-lane consumption matrix. Slice-level truth lives in the ledger. |
+| `CODEX_LANE_INDEX.md` | Reference only | Same for Codex. |
 
-These indices ROUTE, they do NOT duplicate. Every lane row points at the lane plan in `docs/_execution/lane_<x>_<name>/`, the relevant code-health audit in `docs/_audits/code_health/`, and the decision authority in `docs/_decisions/`.
+These docs ROUTE, they do NOT duplicate per-slice state. The ledger is canonical for state; the lane indices give the lane-level scope context.
 
 ## Authority
 
-- Lane assignments locked in `~/.claude/projects/.../memory/project_parked_post_codex_plan.md` (parked plan Step 6) and confirmed by operator during 2026-05-12 unpark.
-- Wave content (slices, sequencing, scope) locked in PR #497 (Step 3 + Step 4 wave bundle).
-- Per-slice authority follows `CLAUDE.md` Authority Order.
+- Slice state: `WAVE_EXECUTION_LEDGER.md` is canonical (everything else is a pointer or context).
+- Per-slice scope: `docs/_execution/lane_<x>_<name>/03_execution_slices.md`.
+- Per-slice authority: follows `CLAUDE.md` Authority Order.
+- Wave bundle origin: PR #497 (Step 3 + Step 4 wave) — locked 2026-05-12, then evolved per merges.
 
 ## When to read
 
-- **Orchestrator (Claude main chat)**: before dispatching any work, open the relevant lane index to find the slice's plan + audit pointers.
-- **Lane agent (Claude or Codex)**: open your lane index FIRST, then follow its pointers into the wave bundle.
-- **Operator**: open either lane index to see what's assigned, what's live, what's blocked.
+- **Orchestrator (Claude main chat)**: read the ledger first to find what's audit-pending or merged. Lane indices are reference.
+- **Fresh Claude lane executor**: paste `CLAUDE_HANDOFF_PROMPT.md` as your first session message. It tells you to read the ledger and pick the first slice.
+- **Fresh Codex executor**: paste `CODEX_HANDOFF_PROMPT.md`.
+- **Operator**: open the ledger to see what's where. Use the lane indices only when you need the lane's scope at-a-glance.
 
 ## What does NOT live here
 
-- Slice-level execution details — those live in `docs/_execution/lane_<x>_<name>/03_execution_slices.md`.
-- Audit findings — those live in `docs/_audits/code_health/`.
-- Decision rationale — that lives in `docs/_decisions/`.
-- Tracker truth — that's `PROJECT_TRACKER.md`.
-- Per-PR audit verdicts — those live in `docs/_audits/post_codex_wave/`.
+- Slice-level execution details — `docs/_execution/lane_<x>_<name>/03_execution_slices.md`.
+- Audit findings — `docs/_audits/code_health/` (deep-audit per-lane) + `docs/_audits/post_codex_wave/` (per-PR audits + the audit doc index README).
+- Decision rationale — `docs/_decisions/`.
+- Tracker truth — `PROJECT_TRACKER.md` (lifecycle-of-record across phases; the wave ledger is a sub-tracker of this).
+- Per-PR audit verdicts — `docs/_audits/post_codex_wave/`.
 
 ## Update cadence
 
-- Lane assignment changes → update the relevant index.
-- Slice completion → update the lane index "live state" column (assigned → in-progress → complete).
-- New lane added → add a row to both indices (one as "owned", one as "cross-reference").
+- Slice state change (merged, audit-pending, etc.) → orchestrator updates `WAVE_EXECUTION_LEDGER.md` only. Lane indices are not touched per-slice.
+- New slice added → orchestrator adds a row to the ledger AND a one-line entry in the relevant lane index "Lane assignments" table if the slice opens a new lane.
+- Handoff prompts → updated only when the cross-cutting workflow changes (e.g., today's salvage discipline + 3-block worker brief refinements).
