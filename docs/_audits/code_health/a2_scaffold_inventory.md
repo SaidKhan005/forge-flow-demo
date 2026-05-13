@@ -7,7 +7,24 @@ This audit complements Lane A's parallel lens-audit (A1/A3/A4/A5/A6/A7/A8/A9/A10
 by going DEEP on scaffolds specifically per decision C4 in
 `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`.
 
-**Read-only audit. No code paths were modified.**
+**Original read-only audit. No code paths were modified during Step 4.**
+
+A2.1 execution note (2026-05-12): the original inventory remains the
+baseline audit. This addendum records the narrow A2.1 implementation
+verdicts and caller proof before the two delete-only widget files were
+removed on branch `codex/a2-1-dead-placeholder-sweep`.
+
+## A2.1 Execution Matrix
+
+| Surface | Evidence checked | A2.1 verdict | Action |
+|---|---|---|---|
+| `DeferredAdminScreenPlaceholder` | `rg "DeferredAdminScreenPlaceholder\|deferred_admin_screen_placeholder" lib test` matched only `lib/admin/widgets/deferred_admin_screen_placeholder.dart`; admin route sweep found no `placeholder: true` production route in `lib/admin/admin_routes.dart`. | Delete. Dead deferred-route widget with no callers. | Removed `lib/admin/widgets/deferred_admin_screen_placeholder.dart`. |
+| `DeferredScreenPlaceholder` | `rg "DeferredScreenPlaceholder\|deferred_screen_placeholder" lib test` matched only `lib/operator_web/widgets/deferred_screen_placeholder.dart`; operator-web nav sweep found no `placeholder: true` production nav item in `lib/operator_web/router/operator_web_router.dart`. | Delete. Dead deferred-route widget with no callers. | Removed `lib/operator_web/widgets/deferred_screen_placeholder.dart`. |
+| Tests exclusively covering the deleted widgets | `rg --files test \| rg "deferred|placeholder|admin|operator_web"` plus symbol search found no test importing either deleted widget. | Keep test tree unchanged. | No exclusive tests existed to delete. |
+| `MetricCardNotYetAvailable` | `lib/widgets/metric_card_not_yet_available.dart:26`, `test/widgets/metric_card_not_yet_available_test.dart:8`, and live provenance references in `lib/domain/models/metric_provenance.dart:45` / `lib/screens/shift_dashboard.dart:540`. | Keep. Honest unavailable-metric state per Metric Honesty Doctrine, not dead placeholder plumbing. | No code edit. |
+| `PrestonLeeModelComingSoonScreen` | `lib/internal/barrio/screens/preston_lee_model_coming_soon_screen.dart:12`, routed by `lib/internal/barrio/routes/barrio_route_map.dart:59`, and covered by `test/barrio_shell_widget_test.dart:83`. | Keep. Barrio is paused, and this screen stays inside the internal Barrio boundary. | No code edit. |
+| Admin route placeholder plumbing | `lib/admin/admin_routes.dart:121`, `lib/admin/admin_shell.dart:277`, `:803`, `:853`; `rg "placeholder:\s*true" lib/admin lib/operator_web test` found only test fixture uses in `test/admin/data_accuracy_ux_framework_polish_test.dart`. | Follow-up. Dead-looking route plumbing is outside A2.1's explicit delete-only files. | Flagged for later A2 cleanup; not edited. |
+| Operator-web nav placeholder plumbing | `lib/operator_web/widgets/web_app_shell.dart:25`, `:32`, `:640`; no production `OperatorWebNavItem` sets `placeholder: true`. | Follow-up. Dead-looking nav chip plumbing is outside A2.1's explicit delete-only files. | Flagged for later A2 cleanup; not edited. |
 
 Line numbers verified at audit time and may drift as code changes. All
 paths are absolute under
