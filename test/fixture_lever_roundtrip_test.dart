@@ -26,8 +26,8 @@
 // `determineLever` after `7.58.4`.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/app_defaults.dart';
-import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
+import 'package:forge_and_flow/domain/constants/app_defaults.dart';
+import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/dev/fixture_seed_data.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
@@ -36,7 +36,7 @@ import 'package:forge_and_flow/services/labor_model.dart';
 import 'package:forge_and_flow/services/shift_data_source.dart';
 
 // ── Mock-replay-seed target standards (must mirror the constants at
-// `lib/data/mock_integration_replay_seed.dart` lines 76-81). The seed
+// `lib/dev/mock_integration_replay_seed.dart` lines 76-81). The seed
 // keeps them private; this duplication is intentional pinning.
 const double _seedTargetCPLH = 4.58;
 const double _seedTargetSPLH = 180.0;

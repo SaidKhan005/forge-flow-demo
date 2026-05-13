@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../data/app_defaults.dart';
-import '../data/mock_integration_replay_seed.dart';
+import '../domain/constants/app_defaults.dart';
+import '../dev/mock_integration_replay_seed.dart';
 import '../models/data_alignment_audit_check.dart';
 import '../models/data_alignment_audit_snapshot.dart';
 import '../models/data_alignment_drift_check.dart';

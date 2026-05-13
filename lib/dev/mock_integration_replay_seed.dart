@@ -420,7 +420,7 @@ class MockIntegrationReplaySeed {
   /// week) and the frozen month + 60-day dollar-impact windows by filtering
   /// [historicalPool] (all historical shifts seeded so far, including this
   /// week's). Mirrors the runtime `_buildWeekRecord` capture in
-  /// `lib/data/shift_service.dart` so demo history shows the same
+  /// `lib/services/shift_service.dart` so demo history shows the same
   /// 4-row Dollar Impact view the live Variance card would have shown.
   static WeekRecord _deriveWeekRecord(
     String weekId,
@@ -490,7 +490,7 @@ class MockIntegrationReplaySeed {
     // Variance card would have shown the moment this week closed, plus
     // the close timestamp itself. Reuses the same window math the
     // runtime path uses; see `_buildWeekRecord` and
-    // `_accumulateDollarImpact` in `lib/data/shift_service.dart`.
+    // `_accumulateDollarImpact` in `lib/services/shift_service.dart`.
     final closedAt = shifts
         .map((s) => s.businessDate)
         .whereType<String>()

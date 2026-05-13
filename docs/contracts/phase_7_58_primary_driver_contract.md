@@ -60,7 +60,7 @@ A null optional input silently skips that axis — no fallback, no
 synthesis, no zero-treated-as-real.
 
 The 16 lever ids enumerated above match the 16 entries in
-`LeverCards.all` at `lib/data/app_defaults.dart:434`. There is also
+`LeverCards.all` at `lib/domain/constants/app_defaults.dart:434`. There is also
 a 17th sentinel id, `on_model`, that is **never** returned by
 `determineLever` — it is reserved for non-closed `ShiftRecord` rows
 constructed from open snapshots (`CurrentWeekState.shiftRecordFromSnapshot`
@@ -262,7 +262,7 @@ Surfaces NOT named above (`week_history_tile.dart`, `variance_week_projection_re
 
 ### Cross-axis pair catalog
 
-A sibling catalog `lib/data/cross_axis_pair_catalog.dart` parallels
+A sibling catalog `lib/domain/constants/cross_axis_pair_catalog.dart` parallels
 `LeverCards` in shape. Each entry is a `CrossAxisPairData` with the
 same field set (`metric` / `whatHappened` / `whatToDo` /
 `teachingNote` / `shortLabel` / `isFavorable`). The 16-card single-axis

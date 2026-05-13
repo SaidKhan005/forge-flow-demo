@@ -22,7 +22,7 @@
 //     `BaselineRecommendationSignals`, `BaselineRangeGraphModel`,
 //     `OpzValidation`, `BaselineRangeValidation`
 
-import '../domain/canonical_day_order.dart';
+import '../canonical_day_order.dart';
 
 // ─── Restaurant configuration ─────────────────────────────────────────────────
 

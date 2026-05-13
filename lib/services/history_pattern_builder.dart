@@ -10,7 +10,7 @@
 // HistoryTeachingAnalyzer and LearnTeachingAnalyzer until 7.55k.5 /
 // 7.55k.6 migrate them.
 
-import '../data/app_defaults.dart';
+import '../domain/constants/app_defaults.dart';
 import '../models/history_pattern_record.dart';
 import '../models/shift_record.dart';
 import '../services/closed_timing_label_resolver.dart';

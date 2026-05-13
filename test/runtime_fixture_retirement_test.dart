@@ -13,7 +13,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
+import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/services/mock_replay_data_source_provider.dart';
 import 'package:forge_and_flow/services/shift_data_source.dart';
 import 'package:forge_and_flow/forge_flow_app.dart';

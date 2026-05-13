@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/active_target_profile_notifier.dart';
-import '../../data/app_defaults.dart';
+import '../../domain/constants/app_defaults.dart';
 import '../../services/labor_model.dart';
 import '../../services/restaurant_timing_config_read_service.dart';
 import '../../services/shift_data_source.dart';

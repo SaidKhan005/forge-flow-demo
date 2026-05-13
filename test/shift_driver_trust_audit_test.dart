@@ -11,7 +11,7 @@
 // G. Shift PRIMARY DRIVER teaching section remains hidden (Phase 10.5)
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/app_defaults.dart';
+import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';

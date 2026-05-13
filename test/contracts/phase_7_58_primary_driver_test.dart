@@ -21,7 +21,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:forge_and_flow/data/app_defaults.dart';
+import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/models/variance_week_projection_row.dart';
 import 'package:forge_and_flow/services/labor_model.dart';

@@ -19,7 +19,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
-import 'package:forge_and_flow/data/app_defaults.dart';
+import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/services/target_cycle_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';

@@ -5,7 +5,7 @@
 // baseline_manager_screen.dart so the calendar, day detail, and
 // shell files can share them by public name. Semantics unchanged.
 
-import '../../data/app_defaults.dart';
+import '../../domain/constants/app_defaults.dart';
 import '../../models/baseline_candidate_shift.dart';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────

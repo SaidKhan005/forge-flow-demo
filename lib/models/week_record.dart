@@ -1,6 +1,6 @@
 // A completed week stored in SQLite. Used for History tab.
 
-import '../data/app_defaults.dart';
+import '../domain/constants/app_defaults.dart';
 
 class WeekRecord {
   final int? id;

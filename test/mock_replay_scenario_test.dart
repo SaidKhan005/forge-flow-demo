@@ -13,7 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import 'package:forge_and_flow/services/demand_forecast_context_service.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
-import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
+import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/services/schedule_plan_read_service.dart';
 import 'package:forge_and_flow/services/shift_service.dart';
 import 'package:forge_and_flow/services/weekly_plan_snapshot_service.dart';

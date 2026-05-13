@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/active_target_profile_notifier.dart';
-import '../../data/app_defaults.dart';
+import '../../domain/constants/app_defaults.dart';
 import '../../services/schedule_plan_read_service.dart';
 import '../../domain/models/active_target_profile.dart';
 import '../../models/baseline_candidate_shift.dart';

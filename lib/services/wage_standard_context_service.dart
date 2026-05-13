@@ -22,7 +22,7 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scop
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
-import '../data/app_defaults.dart'; // MeridianConfig for config fallback
+import '../domain/constants/app_defaults.dart'; // MeridianConfig for config fallback
 
 class WageStandardContextService {
   WageStandardContextService._();

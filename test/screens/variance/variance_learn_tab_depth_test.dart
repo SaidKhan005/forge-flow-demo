@@ -27,7 +27,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/cross_axis_pair_catalog.dart';
+import 'package:forge_and_flow/domain/constants/cross_axis_pair_catalog.dart';
 import 'package:forge_and_flow/models/history_pattern_record.dart';
 import 'package:forge_and_flow/models/learn_benchmark_context.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
@@ -209,7 +209,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Lever metric for `covers_down` is 'COVERS CAME IN LIGHT' per
-        // `lib/data/app_defaults.dart`; the caption joins via middot
+        // `lib/domain/constants/app_defaults.dart`; the caption joins via middot
         // (U+00B7) and pluralizes 'Tue Lunch' -> 'Tue Lunches'.
         expect(
           find.text(

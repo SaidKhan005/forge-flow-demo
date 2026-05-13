@@ -2,8 +2,8 @@
 // a teaching summary: most common leak, where it repeats, and benchmark
 // dayparts to study against it.
 
-import '../data/app_defaults.dart';
-import '../data/cross_axis_pair_catalog.dart';
+import '../domain/constants/app_defaults.dart';
+import '../domain/constants/cross_axis_pair_catalog.dart';
 import '../models/cross_axis_pair_record.dart';
 import '../models/history_pattern_record.dart';
 
@@ -24,7 +24,7 @@ class HistoryTeachingSummary {
   /// shifts never contribute to pair counts.
   ///
   /// Each `pairId` matches a `CrossAxisPairData.id` in
-  /// `lib/data/cross_axis_pair_catalog.dart`; consumers resolve through
+  /// `lib/domain/constants/cross_axis_pair_catalog.dart`; consumers resolve through
   /// `CrossAxisPairs.lookup`. The single-axis path
   /// (`mostCommonLeakId` etc.) is unchanged by this field — the
   /// cross-axis pair detector runs in parallel and only fires when

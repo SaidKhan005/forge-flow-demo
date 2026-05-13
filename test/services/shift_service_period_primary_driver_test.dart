@@ -17,7 +17,7 @@
 //     re-mint a key from a different formula (7.61 R-PROD-1).
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/app_defaults.dart';
+import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/services/shift_service_period_read_service.dart';
 

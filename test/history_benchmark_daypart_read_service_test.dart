@@ -9,7 +9,7 @@
 // F. Max results limit
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
+import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/services/closed_timing_label_resolver.dart';
 import 'package:forge_and_flow/services/history_benchmark_daypart_read_service.dart';

@@ -382,7 +382,7 @@ These are NOT violations even though they reference `kDemoMode`:
 
 - **Doc comments** referencing `kDemoMode` to explain wiring
   (e.g. `lib/dev/demo_fixture_data.dart` header comment, the
-  `// kDemoMode only` comment in `lib/data/app_defaults.dart`).
+  `// kDemoMode only` comment in `lib/domain/constants/app_defaults.dart`).
 - **Demo-only writers** under `lib/dev/`, `lib/services/mock_replay_data_source_provider.dart`,
   and the SQLite seed helpers — these are the writer side of the
   switch.

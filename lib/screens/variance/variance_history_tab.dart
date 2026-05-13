@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/app_defaults.dart';
+import '../../domain/constants/app_defaults.dart';
 import '../../services/shift_data_source.dart';
 import '../../models/history_benchmark_daypart_summary.dart';
 import '../../models/history_pattern_record.dart';
