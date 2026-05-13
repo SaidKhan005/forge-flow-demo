@@ -49,18 +49,28 @@ Prefer `.mcp.json` servers for orientation: `forgeflow_docs`,
 
 | Index | Audience | Purpose |
 | --- | --- | --- |
-| `docs/_indices/NEXT_WAVE_PLAN.md` | All | Forward roadmap: demo-validate → tag → refactor → re-test → mutate pipeline. Each step operator-gated. |
-| `docs/_indices/WAVE_EXECUTION_LEDGER.md` | Reference (frozen) | Post-Codex wave's slice ledger. **CLOSED 2026-05-13.** Historical only. Next wave gets its own ledger. |
-| `docs/_indices/CLAUDE_HANDOFF_PROMPT.md` | Operator (paste-ready) | Master prompt for a fresh Claude executor session. Encodes the executor-as-mini-orchestrator pattern. |
-| `docs/_indices/CODEX_HANDOFF_PROMPT.md` | Operator (paste-ready) | Same shape for Codex. Both encode the SAME workflow (CLAUDE.md "Workflow" section); the handoff prompts are executor-specific scaffolding for the same underlying loop. |
+| `docs/_indices/NEXT_WAVE_PLAN.md` | All | Forward 7-phase pipeline: Phase 0 smoke → Phase 1 walkthrough → Phase 2 Wave 2 → Phase 3 tag happy state → Phase 4 refactor → Phase 5 re-test → Phase 6 mutate → Phase 7 post-launch. Operator-locked decisions captured. |
+| `docs/_indices/WAVE_2_LEDGER.md` | All (Main + Claude2 read; Main writes) | Wave 2's canonical slice ledger. 33 slices across 11 lanes; lane assignments locked 2026-05-13. |
+| `docs/_indices/WAVE_2_PARALLEL_LANE_HANDOFF.md` | Operator (paste-ready) | Wave 2 deployment prompt for the second Claude account. Operator pastes this into the other device's session to bootstrap parallel-lane execution. |
+| `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md` | All | Source-of-truth on every brain-dump ask from `debug.md` mapped to ✅/🚧/❌/🔍 with citations. Wave 2 ledger rows cite this. |
+| `docs/_indices/WAVE_EXECUTION_LEDGER.md` | Reference (frozen) | Post-Codex wave's (Wave 1) slice ledger. **CLOSED 2026-05-13.** Historical only. |
+| `docs/_indices/CLAUDE_HANDOFF_PROMPT.md` | Operator (paste-ready) | General Claude executor handoff. Use for non-Wave-2 sessions. |
+| `docs/_indices/CODEX_HANDOFF_PROMPT.md` | Operator (paste-ready) | Same shape for Codex (dormant; out of quota). Both general handoff prompts encode the SAME workflow (CLAUDE.md "Workflow" section); executor-specific scaffolding only. |
 | `docs/_indices/README.md` | All | Explains the index pattern + when to read which doc. |
 
+**Dual-Claude execution (Wave 2):** Codex out of quota; Wave 2 runs with
+two Claude orchestrators in parallel. Main orchestrator (this session,
+operator's primary device) owns 7 of 11 Wave 2 lanes
+(W/H/R/S/B/Q/M-Other — auth/RLS/schema/proxy-sensitive). Second Claude
+(operator's other device, bootstrapped via WAVE_2_PARALLEL_LANE_HANDOFF)
+owns 4 lanes (U/V/D/M-Poll — UX polish, mechanical rename, docs +
+tooling, mobile Integrations tab). Branch prefixes prevent collision:
+`claude/` for main agents, `claude2/` for second-Claude agents.
+
 Note: `CLAUDE_LANE_INDEX.md` + `CODEX_LANE_INDEX.md` (post-Codex wave's
-per-lane scope routers) retired to `docs/archive/_indices/` 2026-05-13
-along with the rest of the wave's closed artifacts. The handoff prompts
-above are the active operator-paste-ready surface; per-slice scope lives
-in `docs/_execution/<lane>/03_execution_slices.md` or inline in this
-tracker per "Phase Doc Hygiene" in CLAUDE.md.
+per-lane scope routers) retired to `docs/archive/_indices/` 2026-05-13.
+The handoff prompts above are the active operator-paste-ready surface;
+per-slice scope for Wave 2 lives in `docs/_indices/WAVE_2_LEDGER.md`.
 
 ## Hard Product Rule - Hierarchy-Scoped Settings
 
