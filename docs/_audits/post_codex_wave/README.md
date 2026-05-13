@@ -4,7 +4,7 @@ Table of contents for all per-PR audit docs + cross-cutting audits produced duri
 
 Wave ledger: `docs/_indices/WAVE_EXECUTION_LEDGER.md` (canonical for slice state). This file is a navigation aid; refresh on each housekeeping pass.
 
-Last refreshed: 2026-05-13 (bundle 40).
+Last refreshed: 2026-05-13 (bundle 45 + closeout-checklist-lean; master tip `76648daf`).
 
 ## Cross-cutting audits
 
@@ -14,7 +14,9 @@ Last refreshed: 2026-05-13 (bundle 40).
 | 2026-05-13 | [`followups_doc_drift_cleanup_2026_05_13.md`](followups_doc_drift_cleanup_2026_05_13.md) | 3 mechanical fixes to `docs/POST_HARDENING_FOLLOWUPS.md` via PR #558 |
 | 2026-05-13 | [`final_housekeeping_sweep_2026_05_13.md`](final_housekeeping_sweep_2026_05_13.md) | Bundle 26 staging sweep — `docs/_indices/` doc trim + `CLAUDE_HANDOFF_PROMPT.md` + `CODEX_HANDOFF_PROMPT.md` refinements + this README index created |
 | 2026-05-13 | [`orchestrator_bundle_33_b10_1_fallout.md`](orchestrator_bundle_33_b10_1_fallout.md) | B10.1 fallout cleanup per A3.4 worker disclosures — bleed-stop ceiling raised 19,071 → 19,600; B10.1 carry-forward bare-catch typed at line 14109 |
-| 2026-05-13 | [`wave_closeout_checklist_DRAFT.md`](wave_closeout_checklist_DRAFT.md) | DRAFT — operator-approved closeout sequence launchpad (visual-test surface map + HP audit + migration apply queue + sign-off chain); PR #597 open for operator review |
+| 2026-05-13 | [`wave_closeout_checklist_DRAFT.md`](wave_closeout_checklist_DRAFT.md) | DRAFT — operator-approved closeout sequence launchpad (visual-test surface map + HP audit + migration apply queue + sign-off chain); merged to master 2026-05-13 via PR #597 and leaned to current state via PR #613 |
+| 2026-05-13 | [`test_proxy_5_failures_investigation.md`](test_proxy_5_failures_investigation.md) | Investigation report reframing B2.3's "5 test failures in test/proxy/" disclosure — actual picture was 2 stale snapshots / 3 cases / 2 files (Bundle 33-style inflation pattern); fix shipped via PR #610 |
+| 2026-05-13 | [`c_1_ecdsa_pubkey_gap_investigation.md`](c_1_ecdsa_pubkey_gap_investigation.md) | Investigation report confirming env-var-first interpretation for C-1's SendGrid Event Webhook pubkey (no `email_credentials.sendgrid_event_webhook_pubkey_pem` column needed for V1); C-1b queued conditionally if rotation becomes P0 post-launch |
 
 ## Per-PR audits — chronological
 
@@ -82,6 +84,8 @@ Verdict legend: ✅ approve-for-merge · 🔐 approve-pending-operator · 🚧 s
 | #586 | B11.2.b | 🔐 | RFC 9470 step-up wiring + production binding + client adapters + B9.2 clock-skew fix (Claude; **auth-critical, 20 sensitive routes**) | [`pr_586_b11_2_b_step_up_wiring_audit.md`](pr_586_b11_2_b_step_up_wiring_audit.md) |
 | #590 | B2.2 | 🔐 | Default Role catalog admin editor + operator-web Default badge (Claude; UI-only on top of B2.1; 2 honest gaps → B2.3/B2.4) | [`pr_590_b2_2_default_role_catalog_admin_editor_audit.md`](pr_590_b2_2_default_role_catalog_admin_editor_audit.md) |
 | #594 | B10.2 | 🔐 | Vendor applicability admin editor + operator-web wage authority binding (Codex; UI + binding on top of B10.1) | [`pr_594_b10_2_vendor_applicability_admin_audit.md`](pr_594_b10_2_vendor_applicability_admin_audit.md) |
+| #603 | B2.3 | 🔐 | Default Role catalog blast-radius endpoint — `GET /v1/admin/auth/role-catalogs/blast-radius` returns `{operator_count, location_count, user_count}` (Claude; closes B2.2 Gap 1; single-CTE pattern immune to concurrent operator-flip drift) | [`pr_603_b2_3_blast_radius_endpoint_audit.md`](pr_603_b2_3_blast_radius_endpoint_audit.md) |
+| #609 | B2.4 | ✅ | Per-role `catalog_published_at` projection on operator-web roles screen (Claude; closes B2.2 Gap 2 — B2.x family complete; "Updated by F&F on Mon D, YYYY" annotation live) | [`pr_609_b2_4_catalog_published_at_projection_audit.md`](pr_609_b2_4_catalog_published_at_projection_audit.md) |
 
 ### Lane C — Cross-Surface Parity
 
@@ -92,6 +96,22 @@ Verdict legend: ✅ approve-for-merge · 🔐 approve-pending-operator · 🚧 s
 | #579 | C-3 | ✅ | Sign-in-security → My Account fold (Codex; -1196 LoC net delete) | [`pr_579_c_3_sign_in_security_to_my_account_audit.md`](pr_579_c_3_sign_in_security_to_my_account_audit.md) |
 | #580 | C-9 | 🔐 | Mobile inbox catalog rendering — `eventKey` resolution preferred over legacy `type` (Codex) | [`pr_580_c_9_mobile_inbox_catalog_audit.md`](pr_580_c_9_mobile_inbox_catalog_audit.md) |
 | #592 | C-4 | 🔐 | Master Demo → Live switch + 4th HP #2 reader-side carve-out (Codex; doctrine expansion specced by ledger row 81) | [`pr_592_c_4_demo_live_master_switch_audit.md`](pr_592_c_4_demo_live_master_switch_audit.md) |
+| #599 | C-1a | 🔐 | Email event provider_event_id prep migration — `ADD COLUMN provider_event_id text` + partial UNIQUE INDEX `WHERE provider_event_id IS NOT NULL` (Claude; unblocks C-1; pure additive expand) | [`pr_599_c_1a_email_event_provider_id_audit.md`](pr_599_c_1a_email_event_provider_id_audit.md) |
+| #600 | C-5 | 🔐 | Mobile pointer deep-link redemption — mobile mints B11.1 handoff codes, operator-web `/handoff` route redeems via body-only POST; addendum A1 satisfied; defense-in-depth ID token requirement (Codex) | [`pr_600_c_5_mobile_handoff_deeplink_audit.md`](pr_600_c_5_mobile_handoff_deeplink_audit.md) |
+| #611 | C-1 | ✅ | SendGrid Event Webhook receiver — pre-decode ECDSA P-256 verify + ON CONFLICT idempotency + env-var-only pubkey + 503 retry posture; `advisor_proxy.dart` UNTOUCHED via main.dart pre-check mount (Claude; unblocks C-2) | [`pr_611_c_1_sendgrid_events_webhook_audit.md`](pr_611_c_1_sendgrid_events_webhook_audit.md) |
+
+### Lane L — Hierarchy Foundations (added 2026-05-13 per operator's B8 Path A pick)
+
+| PR | Slice | Verdict | Topic | Audit doc |
+|---|---|---|---|---|
+| #608 | L_A1 | 🔐 | Inheritance Tree primitive — `InheritanceTreeNode` value class + shared `InheritanceTree` visualization widget + 3 read methods on `OrgUnitsRepository` (Claude; operator-approved Option 1 — no migration; existing ltree+GIST is the denormalization L_A2 caches off; unblocks B6/B8/C-6) | [`pr_608_l_a1_inheritance_tree_primitive_audit.md`](pr_608_l_a1_inheritance_tree_primitive_audit.md) |
+
+### Housekeeping fixes (test-only / cross-lane closures)
+
+| PR | Topic | Verdict | Audit doc |
+|---|---|---|---|
+| #604 | B11.2.b test fake wall-clock fix — `_RecordingStepUpGateway` was comparing seeded `expiresAt` to real-clock UTC while the test gate ran on injected clock; pure time-bomb pattern, production code unchanged | ✅ | [`pr_604_b11_2_b_test_fake_clock_fix_audit.md`](pr_604_b11_2_b_test_fake_clock_fix_audit.md) |
+| #610 | test/proxy stale-snapshot fix — 2 fixes / 3 cases (B1 sign-in `c3f1ce0d` contract + A3.3 `bb88f82b` typed catch); reframes B2.3's "5 test failures" disclosure (Bundle 33-style inflation) | ✅ | [`pr_610_test_proxy_stale_snapshot_fix_audit.md`](pr_610_test_proxy_stale_snapshot_fix_audit.md) |
 
 ## Conventions
 
