@@ -8,7 +8,7 @@
 > work owed.
 
 
-Updated: 2026-05-02
+Updated: 2026-05-13 (re-verified by wave-closeout `docs/_audits/post_codex_wave/wave_audit_auth_rls_permissions.md` — 0 findings; 36 new repositories all extend `OperatorScopedRepository` with documented exceptions; every `withSystem` callsite passes a stable `reason:` string)
 Owner: HARD-F (data + RLS sprint)
 Status: Active authority
 

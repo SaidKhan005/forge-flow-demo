@@ -49,7 +49,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (45 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (46 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -65,6 +65,7 @@ Pending follow-up scope (45 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605070000_phase_11W_7_operator_account_fields.sql`
 - `db/migrations/202605070100_password_history_salt_pepper.sql`
 - `db/migrations/202605070200_audit_anchor_advisory_lock_infra.sql`
+- `db/migrations/202605070400_phase_8_notification_preferences.sql`
 - `db/migrations/202605080000_phase_8_timing_provenance_fk_posture.sql`
 - `db/migrations/202605080100_admin_idempotency_expires_at.sql`
 - `db/migrations/202605080100_phase_8_weekly_plan_server_truth.sql`
@@ -645,7 +646,7 @@ until the post-tuning monitor window is clean.
   `build/phase_9_production1_apply/2026-05-03_second_batch/` and intentionally
   stay uncommitted.
 
-### Next follow-up - pending (cutoff `202605080600_phase_8_idempotency_location_id_rekey.sql`)
+### Next follow-up - pending (cutoff `202605131900_c_2_d_vendor_sync_outage_state.sql`)
 
 - `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` is
   applied and Browser Use verified on staging. Apply it to Production1 under

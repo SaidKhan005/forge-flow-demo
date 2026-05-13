@@ -363,10 +363,10 @@ Carve-out #4 is a runtime `demo_mode_state` UI fold with no
 
 ## Proxy / server-side auth carve-outs (NOT mobile reader paths)
 
-Two additional `bool.fromEnvironment('kDemoMode')` reads exist in
-proxy/server-side auth code. They are NOT wired into either mobile
-entrypoint (`lib/main_forgeflow.dart` / `lib/main_barrio.dart`) and
-therefore do not influence the mobile demo→prod alignment. They are
+Three additional `bool.fromEnvironment('kDemoMode')` reads exist in
+proxy/server-side auth + bootstrap code. They are NOT wired into either
+mobile entrypoint (`lib/main_forgeflow.dart` / `lib/main_barrio.dart`)
+and therefore do not influence the mobile demo→prod alignment. They are
 listed here so future audits don't re-flag them as drift.
 
 - `lib/services/auth/pepper_resolver.dart:64`
@@ -380,12 +380,20 @@ listed here so future audits don't re-flag them as drift.
   (`_envDemoMode`). Same idea: in demo mode, the pepper-missing
   startup error is suppressed. In production the error is thrown so
   the proxy refuses to write un-peppered rows.
+- `tool/advisor_proxy/phase_8_production_binder.dart:102`
+  (writer-side bootstrap guard added during post-Codex wave). When
+  `kDemoMode=true`, the Phase 8 production binder for inbound vendor
+  integrations is skipped at startup so demo builds don't try to wire
+  17 vendor adapters against fixtures. Architecturally clean (a writer-
+  side switch, not a reader-side branch) — added 2026-05-13 (commit
+  `c7ed5df3`); enumerated here per wave-closeout audit
+  `wave_audit_demo_mode_flavor.md` finding D-1.
 
-Both reads are server-side hardening: demo mode loosens a startup
-precondition that exists only because production peppering is not yet
-provisioned. Replacing them is part of the proxy hardening backlog,
-not the mobile alignment backlog. They are documented here, not as
-mobile carve-outs.
+All three reads are server-side hardening / writer-side bootstrap
+gates: demo mode loosens a startup precondition or skips a binder that
+makes no sense without production vendor secrets. Replacing/removing
+them is part of the proxy hardening backlog, not the mobile alignment
+backlog. They are documented here, not as mobile carve-outs.
 
 ---
 
