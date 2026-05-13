@@ -84,6 +84,8 @@ ProxyHealthRegistryProducer adaptFamilyProducer(ProxyHealthProducer producer) {
       now: registryContext.now,
       budget: registryContext.budget,
       inMemoryBreakerStates: registryContext.inMemoryBreakerStates,
+      sessionRecordIncompleteSnapshot:
+          registryContext.sessionRecordIncompleteSnapshot,
     );
     return producer(familyContext);
   };
