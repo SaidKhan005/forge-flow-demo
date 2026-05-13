@@ -1568,6 +1568,31 @@ Future<void> _runProxy(List<String> args) async {
             return;
           }
           // endregion
+          // region: lane_c_c_1_sendgrid_events_webhook
+          // Lane C C-1 — SendGrid Event Webhook receiver. Handles
+          // POST /v1/webhooks/sendgrid/events. The router verifies
+          // the `X-Twilio-Email-Event-Webhook-Signature` (ECDSA P-256
+          // over `timestamp + raw_body`) against the pubkey loaded
+          // from `SENDGRID_EVENT_WEBHOOK_PUBKEY_PEM`, decodes the
+          // JSON-array body, and inserts one `email_event` row per
+          // event with `ON CONFLICT (provider_event_id) WHERE
+          // provider_event_id IS NOT NULL DO NOTHING` against the
+          // partial UNIQUE INDEX from C-1a's migration. Returns 204
+          // on success (even when every event was a duplicate replay),
+          // 401 bad_signature, 400 malformed_json / malformed_event,
+          // 503 pubkey_not_configured when the env var is unset.
+          //
+          // Auth posture: ECDSA signature ONLY — no Firebase JWT,
+          // no permission key. SendGrid is a server-to-server caller.
+          // The router writes its own JSON response and closes the
+          // HTTP response; we early-return so `routeRequest` (which
+          // would 401 on missing Authorization) does not fire.
+          if (await productionBindings
+              .sendGridEventsWebhookRouter
+              .tryHandle(request)) {
+            return;
+          }
+          // endregion
           await routeRequest(
             request,
             authGuard,

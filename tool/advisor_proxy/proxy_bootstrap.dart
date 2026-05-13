@@ -30,6 +30,7 @@ import 'package:forge_and_flow/services/business_timing/repository_operator_writ
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/default_role_catalog_versions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/demo_mode_state_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/email_event_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/feature_flags_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/graph_repository.dart';
@@ -114,6 +115,7 @@ import 'anthropic_http_complete_fn.dart';
 import 'health_producers/producer_registry.dart';
 import 'log.dart';
 import 'mobile_push_notifications.dart';
+import 'sendgrid_events_webhook.dart';
 import 'vendor_admin_status_catalog.dart' as vendor_status;
 import 'vendor_capability_index.dart';
 
@@ -238,6 +240,7 @@ class ProxyProductionBindings {
     required this.authHandoffRouter,
     required this.stepUpChallengeRouter,
     required this.defaultRoleCatalogAdminRouter,
+    required this.sendGridEventsWebhookRouter,
     required this.passwordResetEmailShortCounter,
     required this.passwordResetIpCounter,
     required this.permissionVersionChecker,
@@ -485,6 +488,32 @@ class ProxyProductionBindings {
   /// [IntegrationAdminActorResolver] before invoking the sink so the
   /// audit row's `actor_user_id` is the verified UUID.
   final DefaultRoleCatalogAdminRouter defaultRoleCatalogAdminRouter;
+
+  /// Lane C C-1 — SendGrid Event Webhook receiver. Mounted as a
+  /// pre-check in `main.dart` BEFORE `routeRequest` so the monolithic
+  /// dispatcher never sees the `/v1/webhooks/sendgrid/events` URL.
+  ///
+  /// The router takes the body raw bytes, verifies the
+  /// `X-Twilio-Email-Event-Webhook-Signature` (ECDSA P-256) against
+  /// `timestamp + body` using a pubkey loaded from
+  /// `SENDGRID_EVENT_WEBHOOK_PUBKEY_PEM`, then inserts one
+  /// `email_event` row per event in the JSON-array body with
+  /// `ON CONFLICT (provider_event_id) WHERE provider_event_id IS NOT
+  /// NULL DO NOTHING` against the partial UNIQUE INDEX from migration
+  /// `202605131700_c_1a_email_event_provider_id.sql`.
+  ///
+  /// Auth posture: ECDSA signature ONLY — no permission key, no
+  /// Firebase JWT. SendGrid is an external server-to-server caller.
+  ///
+  /// Audit posture: the `email_event` row IS the audit trail; NO
+  /// audit_logs writes from this route to avoid inflating the audit
+  /// chain (SendGrid emits ~3-5 events per send).
+  ///
+  /// Pubkey resolution: env var only for V1; the deferred
+  /// `email_credentials` column path is a future enhancement
+  /// disclosed in the C-1a worker's PR (and not addressed in this
+  /// slice per ledger row 82 worker disclosure).
+  final SendGridEventsWebhookRouter sendGridEventsWebhookRouter;
 
   /// B1.S8 — per-email 5-min short-window rolling counter for the
   /// password-reset / magic-link request endpoint. Keyed by
@@ -921,6 +950,24 @@ ProxyProductionBindings buildProxyProductionBindings(
       },
     ),
   );
+  // Lane C C-1 — SendGrid Event Webhook receiver. Backed by
+  // [EmailEventRepository] which writes through the admin pool
+  // (`withSystem`) because the inbound event arrives without operator
+  // context — the FK back to `email_outbox.operator_id` is resolved
+  // after dispatch records the `provider_message_id`. Idempotency is
+  // Postgres-enforced via the partial UNIQUE INDEX on
+  // `email_event.provider_event_id`; replays land harmlessly.
+  //
+  // Pubkey resolution: default loader reads
+  // `SENDGRID_EVENT_WEBHOOK_PUBKEY_PEM`. If the env var is unset, the
+  // route returns 503 `pubkey_not_configured` so SendGrid backs off
+  // and retries while operators configure the secret. Signature
+  // verifier is the pointycastle-backed ECDSA P-256 path; the
+  // observer wires structured logging for parse + signature failures.
+  final sendGridEventsWebhookRouter = SendGridEventsWebhookRouter(
+    repository: EmailEventRepository(adminWrapper),
+    observer: const LoggingSendGridEventsWebhookObserver(),
+  );
   // Phase 8 W5.A.1 - operator-scoped wage role rows write router.
   // Wired through tenant-pool repository so RLS + per-operator
   // isolation hold; the read path stays in `fetchWageRoleRows`
@@ -1322,6 +1369,13 @@ ProxyProductionBindings buildProxyProductionBindings(
     // POST /v1/admin/auth/role-catalogs/publish routes return 503
     // default_role_catalog_admin_not_configured.
     defaultRoleCatalogAdminRouter: defaultRoleCatalogAdminRouter,
+    // Lane C C-1 — SendGrid Event Webhook receiver. Mounted as a
+    // pre-check in `main.dart` so the monolithic dispatcher never
+    // sees the `/v1/webhooks/sendgrid/events` URL. The router writes
+    // its own JSON response and closes the HTTP response; main.dart
+    // short-circuits on a matched request the same way it does for
+    // the email-test + Phase 8.0 admin routes.
+    sendGridEventsWebhookRouter: sendGridEventsWebhookRouter,
     // Slice A11.1 — production session-record gauge. Single shared
     // instance per proxy process; the route handler increments it on
     // every 2xx from POST /v1/auth/session/login, the deep-health
