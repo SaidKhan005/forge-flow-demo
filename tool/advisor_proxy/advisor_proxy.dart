@@ -11147,34 +11147,34 @@ Future<void> routeRequest(
                 });
                 return;
               }
-              final cached = await (authIdempotencyCache ??
-                      _defaultAuthIdempotencyCache)
-                  .runOrReplay(
-                route: authMfaRecoveryCodesViewedPath,
-                key: idempotencyKey,
-                compute: () async {
-                  final completed = await mfaOperationsGateway
-                      .markRecoveryCodesViewed(
-                        MfaMarkRecoveryCodesViewedCommand(
-                          actorUserId: scope.userId,
-                          operatorId: scope.operatorId,
-                          locationId: scope.locationId,
-                          authorizationIdToken: authorizationIdToken,
-                          factorId: factorId,
-                          idempotencyKey: idempotencyKey,
-                        ),
+              final cached =
+                  await (authIdempotencyCache ?? _defaultAuthIdempotencyCache)
+                      .runOrReplay(
+                        route: authMfaRecoveryCodesViewedPath,
+                        key: idempotencyKey,
+                        compute: () async {
+                          final completed = await mfaOperationsGateway
+                              .markRecoveryCodesViewed(
+                                MfaMarkRecoveryCodesViewedCommand(
+                                  actorUserId: scope.userId,
+                                  operatorId: scope.operatorId,
+                                  locationId: scope.locationId,
+                                  authorizationIdToken: authorizationIdToken,
+                                  factorId: factorId,
+                                  idempotencyKey: idempotencyKey,
+                                ),
+                              );
+                          return CachedProxyResponse(
+                            statusCode: 200,
+                            body: <String, Object?>{
+                              'ok': true,
+                              'recovery_codes_viewed_at': completed.viewedAt
+                                  .toUtc()
+                                  .toIso8601String(),
+                            },
+                          );
+                        },
                       );
-                  return CachedProxyResponse(
-                    statusCode: 200,
-                    body: <String, Object?>{
-                      'ok': true,
-                      'recovery_codes_viewed_at': completed.viewedAt
-                          .toUtc()
-                          .toIso8601String(),
-                    },
-                  );
-                },
-              );
               _writeJson(response, cached.statusCode, cached.body);
               return;
             }
@@ -11382,19 +11382,42 @@ Future<void> routeRequest(
             return;
           }
           try {
-            final result = await defaultRoleCatalogAdminRouter.dispatch(
-              method: request.method,
-              path: path,
-              actorRoles: actor.roles.toSet(),
-              actorFirebaseUid: actor.firebaseUid ?? actor.userId,
-              actorResolver: integrationAdminActorResolver?.resolveActorUserId,
-              idempotencyKeyHeader: request.headers
-                  .value('Idempotency-Key')
-                  ?.trim(),
-              limitQueryParam: request.uri.queryParameters['limit'],
-              versionIdQueryParam: request.uri.queryParameters['version_id'],
-              body: catalogBody,
-            );
+            // Phase 11A.10 / HP #7 — wrap publish in the shared auth
+            // idempotency cache so retries replay the prior 201/400
+            // instead of creating a second catalog version (B-1 from
+            // c_12_lane_c_closeout_audit.md). Router-side header
+            // validation still runs inside dispatch; GET skips caching.
+            final idempotencyKey =
+                request.headers.value('Idempotency-Key')?.trim() ?? '';
+            Future<CachedProxyResponse> runDispatch() async {
+              final r = await defaultRoleCatalogAdminRouter.dispatch(
+                method: request.method,
+                path: path,
+                actorRoles: actor.roles.toSet(),
+                actorFirebaseUid: actor.firebaseUid ?? actor.userId,
+                actorResolver:
+                    integrationAdminActorResolver?.resolveActorUserId,
+                idempotencyKeyHeader: idempotencyKey.isEmpty
+                    ? null
+                    : idempotencyKey,
+                limitQueryParam: request.uri.queryParameters['limit'],
+                versionIdQueryParam: request.uri.queryParameters['version_id'],
+                body: catalogBody,
+              );
+              return CachedProxyResponse(
+                statusCode: r.statusCode,
+                body: r.body,
+              );
+            }
+
+            final result = request.method == 'POST' && idempotencyKey.isNotEmpty
+                ? await (authIdempotencyCache ?? _defaultAuthIdempotencyCache)
+                      .runOrReplay(
+                        route: path,
+                        key: idempotencyKey,
+                        compute: runDispatch,
+                      )
+                : await runDispatch();
             _writeJson(response, result.statusCode, result.body);
           } catch (error, stackTrace) {
             if (_maybeWriteDependencyTimeout(response, error)) return;
