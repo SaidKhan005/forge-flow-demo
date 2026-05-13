@@ -146,7 +146,7 @@ Do not re-open stale findings unless the repo regresses:
   `location_id` to the fact/webhook idempotency keys and switch all 17
   vendor sinks to a DO UPDATE WHERE `vendor_modified_at >=` guard. The
   follow-up queue now continues through
-  `202605131800_c_7a_recovery_codes_viewed_at.sql`, including permission-cache,
+  `202605131900_c_2_d_vendor_sync_outage_state.sql`, including permission-cache,
   webhook-secret, demo-counter, audit-anchor, auth-version,
   OAuth-refresh-lock, outbox NOTIFY split hardening, cron maintenance,
   KMS flag seeding, PII erasure, retention sweep, and admin hierarchy
@@ -176,7 +176,19 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605131800_c_7a_recovery_codes_viewed_at.sql`.
+  `202605131900_c_2_d_vendor_sync_outage_state.sql`.
+
+  Lane C C-2-D (`202605131900_c_2_d_vendor_sync_outage_state.sql`)
+  adds the per-(operator_id, location_id, connection_id) state surface
+  for the first-failure-of-outage detector that gates the
+  `vendor_sync_error_alert` email. One row per outage window;
+  cleared (deleted) on the next `poll_success` for the same
+  connection. Per-tenant RLS mirroring `connector_sync_log`; the
+  detector lives at
+  `lib/services/vendor_sync/vendor_sync_outage_detector.dart` with
+  a Postgres-backed repository at
+  `lib/infrastructure/persistence/postgres/repositories/vendor_sync_outage_state_repository.dart`.
+  Pure additive expand; no existing table is mutated.
 
 ## Remaining Live-Closeout Gates
 

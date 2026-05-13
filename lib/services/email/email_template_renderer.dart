@@ -121,20 +121,27 @@ class EmailTemplateIds {
   /// Draft C.
   static const String mfaFactorChangedNotice = 'mfa_factor_changed_notice';
 
-  /// V1 status: TEMPLATE ONLY. Wire deferred per C-2 operator
-  /// decision: no production "sustained sync failure" aggregator
-  /// exists today. The polling tier emits per-tick `connector_sync_log`
-  /// rows (`event_kind = 'auth_refresh' / 'auth_refresh_failed'`)
-  /// but does not detect "first failure of a new outage" — wiring a
-  /// per-row email would spam the operator on every transient hiccup.
-  /// The OAuth refresh worker (`tool/oauth_refresh_worker/main.dart`)
-  /// covers the auto-disable cap path, which `vendorConnectionAutoDisabled`
-  /// owns. C-2 ships no wire; operator decision pending on either
-  /// (a) build a new "first-failure-of-outage" detector, or
-  /// (b) delete and rely on the existing `error` chip on the
-  /// Connected services card (`lib/admin/screens/integration_admin_screen.dart`).
-  /// Source: `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
-  /// Draft D.
+  /// V1 status: WIRED (C-2-D). Operator picked WIRE in the C-2
+  /// matrix; the polling tier emits per-tick `connector_sync_log`
+  /// rows but does not natively detect "first failure of a new
+  /// outage" — a per-row email would spam on transients. C-2-D
+  /// added the missing aggregator: `VendorSyncOutageDetector`
+  /// (`lib/services/vendor_sync/vendor_sync_outage_detector.dart`)
+  /// tracks consecutive-failure streaks against the new
+  /// `vendor_sync_outage_state` table
+  /// (`db/migrations/202605131900_c_2_d_vendor_sync_outage_state.sql`)
+  /// and enqueues one email per outage window (default threshold:
+  /// 3 consecutive `poll_error` rows within a 30-minute lookback).
+  /// The companion `VendorSyncErrorAlertDispatcher`
+  /// (`lib/services/email/vendor_sync_error_alert_dispatcher.dart`)
+  /// resolves the operator admin recipient + vendor display
+  /// metadata and writes to `email_outbox` inside the same tenant
+  /// transaction as the detector's state stamp. Wired into the
+  /// polling tier via `tool/integration_sync_worker` so a crash
+  /// between the email INSERT and the `notified_at` stamp rolls
+  /// both back. Source:
+  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+  /// Draft D, operator pick 2026-05-13.
   static const String vendorSyncErrorAlert = 'vendor_sync_error_alert';
 
   /// V1 status: TEMPLATE ONLY. Phase 8 lean cut 2 explicitly deferred

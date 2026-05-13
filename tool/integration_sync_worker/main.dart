@@ -761,6 +761,21 @@ class WorkerTickResult {
 /// V1 lean cut #2 — no SIGTERM hooks. The `shouldStop` parameter
 /// exists only for the daemon loop's between-row interrupt so the
 /// loop can exit between ticks without a custom drain handler.
+/// C-2-D outage observer callback. Invoked after every
+/// `appendSyncLog` write so the
+/// `VendorSyncOutageDetector` can decide whether to enqueue a
+/// `vendor_sync_error_alert` email. Signature is intentionally
+/// narrow so this file stays decoupled from
+/// `lib/services/vendor_sync` (production wires the detector
+/// via a closure in the runtime bootstrap; tests skip the
+/// observer entirely by leaving it null).
+typedef VendorSyncOutageObserver = Future<void> Function({
+  required String operatorId,
+  required String locationId,
+  required String connectionId,
+  required String eventKind,
+});
+
 Future<WorkerTickResult> runSyncWorkerOnce({
   required SyncWorkerSource source,
   required CanonicalSink canonicalSink,
@@ -770,6 +785,7 @@ Future<WorkerTickResult> runSyncWorkerOnce({
   bool Function()? shouldStop,
   IOSink? out,
   IOSink? err,
+  VendorSyncOutageObserver? outageObserver,
 }) async {
   // ignore: close_sinks - stdout/stderr owned by dart:io.
   final stdoutSink = out ?? stdout;
@@ -778,9 +794,17 @@ Future<WorkerTickResult> runSyncWorkerOnce({
   final dispatch = dispatcher ?? IntegrationSyncWorkerDispatch();
   // The runner wraps the supplied sink so it can count successes /
   // failures without forcing the dispatcher's contract to grow a
-  // tally surface.
+  // tally surface. C-2-D also threads an optional outage observer
+  // through so the `VendorSyncOutageDetector` runs after each
+  // `appendSyncLog` write without coupling this file to
+  // `lib/services/vendor_sync`.
   final tally = _TickTally();
-  final wrappedSink = _CountingCanonicalSink(canonicalSink, tally);
+  final wrappedSink = _CountingCanonicalSink(
+    canonicalSink,
+    tally,
+    outageObserver: outageObserver,
+    errSink: stderrSink,
+  );
 
   var processed = 0;
   await for (final row in source.connectedConnections()) {
@@ -905,10 +929,18 @@ class _TickTally {
 /// `poll_success` / `poll_error` / `vendor_not_registered` per row, so
 /// the tally lines up with the row count under normal operation.
 class _CountingCanonicalSink implements CanonicalSink {
-  _CountingCanonicalSink(this._delegate, this._tally);
+  _CountingCanonicalSink(
+    this._delegate,
+    this._tally, {
+    VendorSyncOutageObserver? outageObserver,
+    IOSink? errSink,
+  })  : _outageObserver = outageObserver,
+        _errSink = errSink;
 
   final CanonicalSink _delegate;
   final _TickTally _tally;
+  final VendorSyncOutageObserver? _outageObserver;
+  final IOSink? _errSink;
 
   @override
   Future<bool> upsertCoverFact({
@@ -995,6 +1027,31 @@ class _CountingCanonicalSink implements CanonicalSink {
         // tallies unchanged.
         break;
     }
+    // C-2-D: feed the outage detector AFTER the sync-log row has
+    // been durable. The detector reads `connector_sync_log` to
+    // compute the consecutive-failure streak so it needs the row
+    // already committed; failures are logged but never crash the
+    // tick (the email path is operator-courtesy, not load-bearing).
+    final observer = _outageObserver;
+    if (observer != null) {
+      try {
+        await observer(
+          operatorId: operatorId,
+          locationId: locationId,
+          connectionId: connectionId,
+          eventKind: eventKind,
+        );
+      } catch (error, stack) {
+        _errSink?.writeln(jsonEncode(<String, Object?>{
+          'event': 'vendor_sync_outage_observer_error',
+          'operator_id': operatorId,
+          'connection_id': connectionId,
+          'event_kind': eventKind,
+          'error': error.toString(),
+          'stack_first_frame': stack.toString().split('\n').first,
+        }));
+      }
+    }
   }
 
   @override
@@ -1029,9 +1086,11 @@ class IntegrationSyncWorkerLoop {
     IntegrationSyncWorkerDispatch? dispatcher,
     IOSink? out,
     IOSink? err,
+    VendorSyncOutageObserver? outageObserver,
   })  : _dispatcher = dispatcher ?? IntegrationSyncWorkerDispatch(),
         _out = out ?? stdout,
-        _err = err ?? stderr;
+        _err = err ?? stderr,
+        _outageObserver = outageObserver;
 
   final SyncWorkerSource source;
   final CanonicalSink canonicalSink;
@@ -1041,6 +1100,7 @@ class IntegrationSyncWorkerLoop {
   // ignore: unused_field, close_sinks
   final IOSink _out;
   final IOSink _err;
+  final VendorSyncOutageObserver? _outageObserver;
 
   bool _stopRequested = false;
   Completer<void>? _stoppedCompleter;
@@ -1065,6 +1125,7 @@ class IntegrationSyncWorkerLoop {
             shouldStop: () => _stopRequested,
             out: _out,
             err: _err,
+            outageObserver: _outageObserver,
           );
           _out.writeln(
             'integration_sync_worker tick: '
