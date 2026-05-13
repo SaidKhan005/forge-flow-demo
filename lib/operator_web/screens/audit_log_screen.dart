@@ -51,10 +51,13 @@ import 'package:flutter/services.dart';
 import '../../auth/permission_keys.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_audit_chain_anchors_gateway_provider.dart';
+import '../services/web_audit_log_hierarchy_gateway.dart';
 import '../services/web_team_audit_log_gateway.dart';
+import '../services/web_team_hierarchy_gateway.dart';
 import '../widgets/audit_log_row.dart';
 import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
+import 'audit_log_hierarchy_filter_pane.dart';
 
 /// Permission-key bound for the Audit Log read surface. Live source
 /// hydrates from `/v1/auth/permissions/snapshot`. Aliased to the
@@ -96,10 +99,32 @@ class AuditLogScreen extends StatefulWidget {
     this.copyToClipboard,
     this.chainAnchorGateway,
     this.chainAnchorClock,
+    this.hierarchyGateway,
+    this.teamHierarchyGateway,
+    this.hierarchyPaneClock,
   });
 
   final OperatorWebSession session;
   final WebTeamAuditLogGateway gateway;
+
+  /// Lane B B8.b — hierarchy-filtered audit-log gateway. Optional so
+  /// router builds that have not yet wired the gateway (or screens
+  /// constructed in isolation by widget tests) keep rendering the
+  /// legacy unfiltered surface; when both this and
+  /// [teamHierarchyGateway] are non-null the screen renders the
+  /// [AuditLogHierarchyFilterPane] sibling alongside the existing
+  /// filters.
+  final WebAuditLogHierarchyGateway? hierarchyGateway;
+
+  /// Lane B B8.b — team hierarchy gateway used to fetch the
+  /// org-unit + location tree the hierarchy pane visualizes. Paired
+  /// with [hierarchyGateway] — both required for the pane to render
+  /// so the parent screen does not show a half-wired surface.
+  final WebTeamHierarchyGateway? teamHierarchyGateway;
+
+  /// Optional clock override for the hierarchy pane (tests pin it so
+  /// the default time window is deterministic).
+  final DateTime Function()? hierarchyPaneClock;
 
   /// Operator Web W4.B - optional gateway driving the chain integrity
   /// badge. When null the badge falls back to the unknown state with
@@ -465,6 +490,19 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
             now: widget.chainAnchorClock?.call(),
           ),
           const SizedBox(height: 18),
+          if (widget.hierarchyGateway != null &&
+              widget.teamHierarchyGateway != null) ...<Widget>[
+            AuditLogHierarchyFilterPane(
+              key: const Key('operator_web_audit_log_hierarchy_filter_pane'),
+              hierarchyGateway: widget.hierarchyGateway!,
+              teamHierarchyGateway: widget.teamHierarchyGateway!,
+              actorUserId: widget.session.uid,
+              operatorId: widget.session.operatorId,
+              locationId: widget.session.primaryLocationId,
+              clock: widget.hierarchyPaneClock,
+            ),
+            const SizedBox(height: 18),
+          ],
           _AuditLogFilters(
             query: _query,
             selectedActions: _selectedActions,

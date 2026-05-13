@@ -61,6 +61,7 @@ import 'package:http/http.dart' as http;
 import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart'
     show MetadataServerAccessTokenProvider;
 import 'package:forge_and_flow/services/auth/kms_pepper_store.dart';
+import 'package:forge_and_flow/auth/permission_effect.dart';
 
 import '../audit_anchor/audit_anchor.dart' as audit_anchor;
 import '../audit_anchor/main.dart' as audit_anchor_cli;
@@ -69,6 +70,7 @@ import 'admin_email_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
 import 'audit_log_hierarchy_routes.dart';
+import 'operator_web_audit_log_hierarchy_routes.dart';
 import 'advisor_response_cache.dart';
 import 'operator_benchmark_overrides_routes.dart';
 import 'integration_oauth_routes.dart';
@@ -1342,6 +1344,60 @@ Future<void> _runProxy(List<String> args) async {
     },
   );
 
+  // Lane B B8.b — operator-web parity router. Mounts the
+  // `/v1/auth/audit-log/hierarchy` operator-facing path next to the
+  // existing `/v1/auth/audit-log` unfiltered route (legacy admin
+  // path lives under `/v1/admin/...`). Auth resolver closes over
+  // both `authGuard.requireOperatorContext` (JWT verification + RLS
+  // scope) AND `permissionSnapshotResolver.load` (gates on
+  // `team.audit_log.view`). The split return shape lets the
+  // resolver pick the right HTTP status (401 on missing JWT, 403 on
+  // missing permission, 503 on snapshot read failure) without
+  // leaking those concerns into the route handler.
+  final operatorWebAuditLogHierarchyRouter =
+      OperatorWebAuditLogHierarchyRouter(
+    gateway: productionBindings.operatorWebAuditLogHierarchyGateway,
+    authResolver: (request) async {
+      OperatorContext scope;
+      try {
+        scope = await authGuard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+      } on ProxyAuthError {
+        return const OperatorWebAuditLogHierarchyAuthResult.unauthorized();
+      }
+      if (scope.operatorId.isEmpty || scope.locationId.isEmpty) {
+        // Operator-web JWTs always carry tenant scope; a scope-less
+        // token (B1 sign-in contract reserves those for global
+        // admins) cannot read this route. Treat as 401 so the
+        // operator-web client surfaces a sign-in prompt rather than
+        // a permission-denied banner.
+        return const OperatorWebAuditLogHierarchyAuthResult.unauthorized();
+      }
+      ProxyPermissionSnapshot snapshot;
+      try {
+        snapshot =
+            await productionBindings.permissionSnapshotResolver.load(scope);
+      } on Exception catch (_) {
+        return const OperatorWebAuditLogHierarchyAuthResult.unavailable();
+      }
+      final effect = snapshot
+          .permissions[OperatorWebAuditLogHierarchyRouter.permissionKey];
+      if (effect != PermissionEffect.allow) {
+        return const OperatorWebAuditLogHierarchyAuthResult.forbidden();
+      }
+      return OperatorWebAuditLogHierarchyAuthResult.allow(
+        OperatorWebAuditLogHierarchyActor(
+          actorUserId: scope.userId,
+          actorOperatorId: scope.operatorId,
+          actorLocationId: scope.locationId,
+        ),
+      );
+    },
+  );
+
   // Phase 8 — wire the inbound integration chain (vendor credential
   // broker, 17 per-tenant adapter factories, signature verifiers,
   // RepositoryInboundWebhookGateway, RepositoryIntegrationRoutesGateway)
@@ -1739,6 +1795,23 @@ Future<void> _runProxy(List<String> args) async {
           // `tryHandle` short-circuit) so reviewers see one idiom for
           // every operator/admin sibling router.
           if (await operatorBenchmarkOverridesRouter.tryHandle(request)) {
+            return;
+          }
+          // endregion
+          // region: lane_b_b8_b_operator_web_audit_log_hierarchy_filter
+          // Lane B B8.b — operator-web parity for the hierarchy-
+          // scoped audit log filter. Handles
+          // GET /v1/auth/audit-log/hierarchy. Auth resolver gates on
+          // `team.audit_log.view` via the proxy permission snapshot
+          // resolver; tenant scope is taken from the verified JWT
+          // (operator_id / location_id query params are rejected so
+          // the surface cannot fan out across tenants). Returns
+          // false on non-matching paths so the existing dispatcher
+          // continues. advisor_proxy.dart is intentionally NOT
+          // touched (bleed-stop ceiling discipline) — the only
+          // mounting site is this pre-check.
+          if (await operatorWebAuditLogHierarchyRouter
+              .tryHandle(request)) {
             return;
           }
           // endregion
