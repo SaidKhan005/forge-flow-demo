@@ -114,7 +114,7 @@ import 'vendor_capability_index.dart';
 
 typedef PostgresPoolFactory = PostgresPool Function(String connectionString);
 
-// Honor POSTGRES_POOL_MAX_CONNECTIONS env override; falls back to default 4.
+// Honor POSTGRES_POOL_MAX_CONNECTIONS env override; falls back to default 20.
 PostgresPool _defaultPostgresPoolFactory(String connectionString) =>
     PackagePostgresPool.fromUrl(
       connectionString,
@@ -1701,7 +1701,13 @@ RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
   List<String> expectedMigrationFilenames = const <String>[],
 }) {
   const healthStatementTimeout = Duration(milliseconds: 150);
-  const healthProducerConcurrency = kPostgresDefaultMaxConnectionsPerPool;
+  // A4.2 (R3) per `docs/_audits/code_health/a4_performance_audit.md`:
+  // resolve health-producer fan-out concurrency from the same env-aware
+  // pool resolver the production pool factory uses, so when
+  // POSTGRES_POOL_MAX_CONNECTIONS is pinned (20 in prod), the producer
+  // fan-out matches actual pool capacity instead of the in-process
+  // fallback constant.
+  final healthProducerConcurrency = resolvePostgresMaxConnectionsPerPool();
 
   Future<List<Map<String, Object?>>> runnerFn(
     String sql, {

@@ -116,8 +116,14 @@ void main() {
       );
     });
 
-    test('default constant is unchanged at 4', () {
-      expect(kPostgresDefaultMaxConnectionsPerPool, equals(4));
+    test('default constant is 20 (A4.2 R1: bumped from 4 → 20)', () {
+      // A4.2 (R1) per `docs/_audits/code_health/a4_performance_audit.md`:
+      // bumped the in-process fallback from 4 → 20 so a Cloud Run
+      // service that forgets POSTGRES_POOL_MAX_CONNECTIONS no longer
+      // silently regresses to a pool of 4. Production runbook
+      // (`runbooks/cloud_run_env_vars.md`) still pins the env var to 20
+      // for every service; the constant is the safety net.
+      expect(kPostgresDefaultMaxConnectionsPerPool, equals(20));
       expect(
         kPostgresPoolMaxConnectionsEnvVar,
         equals('POSTGRES_POOL_MAX_CONNECTIONS'),

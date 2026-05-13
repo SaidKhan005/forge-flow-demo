@@ -399,11 +399,15 @@ void main() {
       final source = File(
         'tool/advisor_proxy/proxy_bootstrap.dart',
       ).readAsStringSync();
+      // A4.2 (R3): healthProducerConcurrency now resolves through
+      // `resolvePostgresMaxConnectionsPerPool()` so fan-out matches the
+      // env-pinned pool size (20 in prod via POSTGRES_POOL_MAX_CONNECTIONS)
+      // rather than the in-process fallback constant.
       expect(
         source,
         contains(
-          'const healthProducerConcurrency = '
-          'kPostgresDefaultMaxConnectionsPerPool',
+          'final healthProducerConcurrency = '
+          'resolvePostgresMaxConnectionsPerPool()',
         ),
       );
       expect(
