@@ -114,6 +114,7 @@ import 'advisor_proxy.dart';
 import 'operator_benchmark_overrides_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'audit_log_hierarchy_routes.dart';
+import 'operator_web_audit_log_hierarchy_routes.dart';
 import 'connector_backfill_jobs_routes.dart';
 import 'anthropic_http_complete_fn.dart';
 import 'health_producers/producer_registry.dart';
@@ -247,6 +248,7 @@ class ProxyProductionBindings {
     required this.stepUpChallengeRouter,
     required this.defaultRoleCatalogAdminRouter,
     required this.auditLogHierarchyGateway,
+    required this.operatorWebAuditLogHierarchyGateway,
     required this.sendGridEventsWebhookRouter,
     required this.passwordResetEmailShortCounter,
     required this.passwordResetIpCounter,
@@ -534,6 +536,18 @@ class ProxyProductionBindings {
   /// operator. The reader is READ-ONLY by construction (no
   /// `audit_logs` UPDATE / DELETE anywhere in the call graph).
   final AuditLogHierarchyGateway auditLogHierarchyGateway;
+
+  /// Lane B B8.b — operator-web parity gateway for the hierarchy
+  /// audit-log filter. Companion to [auditLogHierarchyGateway]: same
+  /// reader backing, separate gateway interface so the operator-web
+  /// route (gated on `team.audit_log.view`, JWT-scoped, no
+  /// `admin_reason`) and the admin route (gated on
+  /// `{super_admin, ff_support}` + `admin_reason`) do not couple to a
+  /// shared client-facing surface. Both wrap the same
+  /// [AuditLogsReader] so a single Postgres call graph backs both
+  /// routes; the gateway boundary lets a future slice swap one
+  /// without disturbing the other.
+  final OperatorWebAuditLogHierarchyGateway operatorWebAuditLogHierarchyGateway;
 
   /// Lane C C-1 — SendGrid Event Webhook receiver. Mounted as a
   /// pre-check in `main.dart` BEFORE `routeRequest` so the monolithic
@@ -1468,6 +1482,20 @@ ProxyProductionBindings buildProxyProductionBindings(
     // constructed in `main.dart` because `ProxyRequestGuard` lives
     // there.
     auditLogHierarchyGateway: RepositoryAuditLogHierarchyGateway(
+      reader: AuditLogsReader(tenantWrapper),
+    ),
+    // Lane B B8.b — operator-web parity gateway for the hierarchy
+    // audit-log filter. Same reader as the admin-side variant
+    // (`AuditLogsReader` over the tenant pool — `withTenant` clamps
+    // RLS via SET LOCAL); separate gateway interface so the
+    // operator-web route's posture (JWT-scoped, `team.audit_log.view`
+    // gate, no admin_reason) does not couple to the admin route's
+    // posture (`{super_admin, ff_support}` + admin_reason). The
+    // router itself (with the auth-resolver closure over
+    // `permissionSnapshotResolver`) is constructed in `main.dart`
+    // where `ProxyRequestGuard` lives.
+    operatorWebAuditLogHierarchyGateway:
+        RepositoryOperatorWebAuditLogHierarchyGateway(
       reader: AuditLogsReader(tenantWrapper),
     ),
     // Lane C C-1 — SendGrid Event Webhook receiver. Mounted as a

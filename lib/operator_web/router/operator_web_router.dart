@@ -1083,7 +1083,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         );
         break;
       case kOperatorWebNavAuditLog:
-        body = AuditLogScreen(session: session, gateway: _teamAuditLogGateway);
+        body = AuditLogScreen(
+          session: session,
+          gateway: _teamAuditLogGateway,
+          hierarchyGateway: _auditLogHierarchyGateway,
+          teamHierarchyGateway: _teamHierarchyGateway,
+        );
         break;
       case kOperatorWebNavVendorConnections:
         body = locationScope == null
@@ -1274,6 +1279,23 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         DemoOperatorWebBenchmarksGateway();
   }
 
+  /// Lane B B8.b — operator-web hierarchy-filtered audit-log gateway.
+  /// Live wiring mixes [OperatorWebAuditLogHierarchyGatewayProvider]
+  /// onto the auth source (small follow-up); demo / unmixed sources
+  /// fall back to [InMemoryWebAuditLogHierarchyGateway] so the pane
+  /// renders deterministically during the walkthrough. The screen
+  /// gates the pane on BOTH this gateway AND `_teamHierarchyGateway`
+  /// being non-null, so this getter is the only required wire site.
+  WebAuditLogHierarchyGateway get _auditLogHierarchyGateway {
+    final source = widget.source;
+    if (source is OperatorWebAuditLogHierarchyGatewayProvider) {
+      return (source as OperatorWebAuditLogHierarchyGatewayProvider)
+          .auditLogHierarchyGateway;
+    }
+    return _routerOwnedDemoAuditLogHierarchyGateway ??=
+        InMemoryWebAuditLogHierarchyGateway();
+  }
+
   /// Resolver for the Vendor connections screen gateway. Lifts
   /// gateway resolution off the router so the screen mount stays
   /// thin and the wiring is testable in isolation. See
@@ -1337,6 +1359,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   BusinessTimingGateway? _routerOwnedTimingGateway;
   DemoWebTeamRolesGateway? _routerOwnedDemoRolesGateway;
   DemoOperatorWebBenchmarksGateway? _routerOwnedDemoBenchmarksGateway;
+  InMemoryWebAuditLogHierarchyGateway?
+      _routerOwnedDemoAuditLogHierarchyGateway;
 
   WebTeamHierarchyGateway get _teamHierarchyGateway {
     final source = widget.source;

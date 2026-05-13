@@ -48,6 +48,24 @@ export 'operator_web_benchmarks_gateway.dart'
         OperatorWebBenchmarksGatewayProvider,
         OperatorWebHttpBenchmarksGateway;
 
+/// Lane B B8.b — re-export the hierarchy-filtered audit-log gateway
+/// provider sentinel so router/auth-source wiring sees one canonical
+/// surface (matches `OperatorWebBenchmarksGatewayProvider` posture).
+/// Demo auth source surfaces the in-memory gateway; live wiring (a
+/// future small follow-up) mixes the HTTP gateway via the same
+/// provider.
+export 'web_audit_log_hierarchy_gateway.dart'
+    show
+        HttpWebAuditLogHierarchyGateway,
+        InMemoryWebAuditLogHierarchyGateway,
+        OperatorWebAuditLogHierarchyGatewayProvider,
+        WebAuditLogHierarchyGateway,
+        WebAuditLogHierarchyGatewayError,
+        WebAuditLogHierarchyListCommand,
+        WebAuditLogHierarchyListResult,
+        WebAuditLogHierarchyRow,
+        WebAuditLogHierarchyScopeType;
+
 export 'web_vendor_applicability_gateway.dart'
     show
         HttpWebVendorApplicabilityGateway,
