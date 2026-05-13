@@ -318,6 +318,30 @@ void main() {
         find.byKey(const Key('operator_web_custom_role_editor_permissions')),
         findsOneWidget,
       );
+      expect(
+        find.byKey(const Key('operator_web_custom_role_editor_product_tabs')),
+        findsOneWidget,
+      );
+      expect(find.text('Forge & Flow'), findsOneWidget);
+      expect(find.text('Barrio'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const Key('operator_web_custom_role_editor_tab_barrio')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(
+          const Key('operator_web_custom_role_editor_barrio_coming_soon'),
+        ),
+        findsOneWidget,
+      );
+      final barrioPermission = find.byKey(
+        const Key('operator_web_custom_role_editor_perm_barrio.handbook.view'),
+      );
+      expect(barrioPermission, findsOneWidget);
+      final checkbox = tester.widget<Checkbox>(
+        find.descendant(of: barrioPermission, matching: find.byType(Checkbox)),
+      );
+      expect(checkbox.onChanged, isNull);
     });
 
     testWidgets('Save button stays disabled until name + role key + at least '

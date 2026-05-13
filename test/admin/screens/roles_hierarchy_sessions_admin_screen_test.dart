@@ -553,6 +553,28 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        expect(
+          find.byKey(const Key('admin_rhs_role_editor_product_tabs')),
+          findsOneWidget,
+        );
+        await tester.tap(
+          find.byKey(const Key('admin_rhs_role_editor_tab_barrio')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('admin_rhs_role_editor_barrio_coming_soon')),
+          findsOneWidget,
+        );
+        final barrioCheckbox = find.byKey(
+          const Key('admin_rhs_role_editor_checkbox_barrio.handbook.view'),
+        );
+        await tester.ensureVisible(barrioCheckbox);
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<CheckboxListTile>(barrioCheckbox).onChanged,
+          isNull,
+        );
+
         await tester.enterText(
           find.byKey(const Key('admin_rhs_create_custom_role_name')),
           'Line Lead',

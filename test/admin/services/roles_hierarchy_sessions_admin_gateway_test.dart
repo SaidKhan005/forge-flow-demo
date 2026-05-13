@@ -362,6 +362,50 @@ void main() {
       },
     );
 
+    test(
+      'custom role audit payload tags permission changes by product',
+      () async {
+        final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+          rolesByOperator: kDemoRolesByOperator(),
+        );
+        final created = await gateway.createCustomRole(
+          operatorId: kDemoDinerOperatorId,
+          roleKey: 'custom.product_lead',
+          displayName: 'Product Lead',
+          description: 'Cross-product lead',
+          permissionKeys: const <String>[
+            'forgeflow.shift.view',
+            'product.barrio.access',
+          ],
+          idempotencyKey: 'k-product-create',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'support-onboarding',
+        );
+
+        final event = gateway.capturedAuditEvents.single;
+        expect(event.action, equals('team.roles.create_custom'));
+        expect(event.targetId, equals(created.roleId));
+        final changePayload =
+            event.payload['change_payload'] as Map<String, Object?>;
+        expect(changePayload['change_count'], equals(2));
+        final changes = (changePayload['changes']! as List)
+            .cast<Map<String, Object?>>();
+        final forgeflow = changes.singleWhere(
+          (entry) => entry['permission_key'] == 'forgeflow.shift.view',
+        );
+        final barrio = changes.singleWhere(
+          (entry) => entry['permission_key'] == 'product.barrio.access',
+        );
+        expect(forgeflow['product'], equals('forgeflow'));
+        expect(forgeflow['from'], equals('inherit'));
+        expect(forgeflow['to'], equals('allow'));
+        expect(barrio['product'], equals('barrio'));
+        expect(barrio['from'], equals('inherit'));
+        expect(barrio['to'], equals('allow'));
+      },
+    );
+
     test('move location writes team.location.move action', () async {
       final gateway = InMemoryRolesHierarchySessionsAdminGateway(
         locationsByOperator: kDemoHierarchyLocationsByOperator(),

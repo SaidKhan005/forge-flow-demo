@@ -108,6 +108,41 @@ class InMemoryRolesHierarchySessionsAdminGateway
     );
   }
 
+  Map<String, Object?> _permissionChangePayload({
+    required String roleId,
+    required Iterable<String> from,
+    required Iterable<String> to,
+  }) {
+    final fromSet = Set<String>.of(from);
+    final toSet = Set<String>.of(to);
+    final changedKeys =
+        <String>{...fromSet, ...toSet}
+            .where((key) => fromSet.contains(key) != toSet.contains(key))
+            .toList()
+          ..sort();
+    return <String, Object?>{
+      'change_count': changedKeys.length,
+      'changes': <Map<String, Object?>>[
+        for (final key in changedKeys)
+          <String, Object?>{
+            'role_id': roleId,
+            'permission_key': key,
+            'product': _rolePermissionProduct(key),
+            'from': fromSet.contains(key) ? 'allow' : 'inherit',
+            'to': toSet.contains(key) ? 'allow' : 'inherit',
+          },
+      ],
+    };
+  }
+
+  String _rolePermissionProduct(String permissionKey) {
+    if (permissionKey == 'product.barrio.access' ||
+        permissionKey.startsWith('barrio.')) {
+      return 'barrio';
+    }
+    return 'forgeflow';
+  }
+
   List<RoleAdminRow> _rolesFor(String operatorId) {
     return _roles.putIfAbsent(operatorId, () => <RoleAdminRow>[]);
   }
@@ -206,6 +241,11 @@ class InMemoryRolesHierarchySessionsAdminGateway
           'from': prev.permissionKeys,
           'to': updated.permissionKeys,
         },
+        'change_payload': _permissionChangePayload(
+          roleId: roleId,
+          from: prev.permissionKeys,
+          to: updated.permissionKeys,
+        ),
       },
       adminReason: adminReason,
     );
@@ -258,6 +298,11 @@ class InMemoryRolesHierarchySessionsAdminGateway
       payload: <String, Object?>{
         'role_key': roleKey,
         'permission_keys': permissionKeys,
+        'change_payload': _permissionChangePayload(
+          roleId: created.roleId,
+          from: const <String>[],
+          to: permissionKeys,
+        ),
       },
       adminReason: adminReason,
     );
