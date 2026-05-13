@@ -36,40 +36,69 @@ You are NOT the orchestrator session. The orchestrator runs in a separate Claude
 
 For each batch (1-3 slices in parallel):
 
-**Step 1 — Spawn one worker sub-agent per slice via the `Agent` tool with `isolation: "worktree"` and `subagent_type: "general-purpose"`.** Each sub-agent's prompt:
+**Step 1 — Spawn one worker sub-agent per slice via the `Agent` tool with `isolation: "worktree"` and `subagent_type: "general-purpose"`.** Brief each sub-agent in the **3-block format** (per `~/.claude/projects/.../memory/feedback_codex_prompt_format.md`):
 
 ```
 You are a worker sub-agent for the Forge & Flow wave executor. Your
 job is to implement ONE slice and return a diff for review. Do NOT
 push. Do NOT open a PR. Do NOT commit to master.
 
-Slice: <slice-id> from docs/_indices/WAVE_EXECUTION_LEDGER.md
-Scope: docs/_execution/<lane>/03_execution_slices.md (find your
-       slice and read it in full)
-Authority: read what the slice cites + CLAUDE.md guardrails
+==== Block 1 — Human-readable context ====
 
-Setup: you are running in an isolated worktree off master. Create a
+Slice: <slice-id> from docs/_indices/WAVE_EXECUTION_LEDGER.md
+Why: <1-3 sentence rationale; cite the deep-audit row or plan-anchor finding>
+Current issue / gap: <what this slice closes>
+
+==== Block 2 — Tech context ====
+
+Step 0 (REQUIRED for fresh worktrees): pwsh scripts/install_git_hooks.ps1
+       (canonical hooks; pre-push hook from parent worktree is stale)
+
+Authority files (read in order):
+- docs/_execution/<lane>/03_execution_slices.md — find your slice and read it in full
+- CLAUDE.md (Authority Order + Hard Promises)
+- Any contract docs the slice cites under docs/contracts/
+
+Worktree: you are running in an isolated worktree off master. Create a
 new branch off origin/master: claude/<slice-id-lowercased>-<topic>.
+
+Hard constraints:
+- Banned items per ~/.claude/projects/.../memory/project_v1_lean_cut_2_2026_05_03.md
+  MUST be absent from every new file: KMS rollout, parse_warnings, parse_partial,
+  kStrictReplayFiveMinute, pg_advisory_lock, sigtermDrainHandler, inboundWebhookDLQTile,
+  raw_payload_partition, pg_partman_raw — ALL REJECT.
+- Banned imports: `package:postgres` outside lib/infrastructure/persistence/postgres/
+  and tool/advisor_proxy/ (enforced by postgres_import_lint).
+- Sensitive paths: if you touch db/migrations/**, docs/contracts/**, lib/auth/**,
+  or lib/infrastructure/persistence/postgres/**, flag it in your return summary so
+  the executor can confirm the slice's ledger Gate column is `operator`.
+- Files to LEAVE ALONE: explicit list from your slice's plan-anchor "Files NEW" /
+  "Files MODIFY" / "Files to LEAVE ALONE" sections. Frozen `lib/auth/**` +
+  `lib/data/**` unless the slice explicitly touches them.
+
+==== Block 3 — Tasks ====
 
 Implement the slice. Stay strictly inside scope. No drive-by fixes.
 
 Run:
-- dart analyze on every touched file (must be clean)
+- dart analyze --fatal-infos on every touched file (must be clean)
 - targeted tests for the slice's surface (must pass)
 
 Then run the Feature Implementation Lens Audit Framework
-(docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md)
-deep pass against your own change. Produce the 14-lens table
-with file:line citations for every finding.
+(docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md) deep pass against
+your own change. Produce the 14-lens **worker self-audit table** with file:line
+citations for every finding. Same shape as the worker tables in PRs #547, #556,
+#557 of this repo — read those PR bodies for the exact format.
 
 Commit your work to the branch (one commit). Do NOT push.
 
 Return to me (the executor):
-- the git log of your branch
+- the git log of your branch + branch name + commit SHA
 - the git diff vs origin/master (full)
-- the 14-lens audit table
-- a 1-paragraph summary of what changed and why
+- the 14-lens worker self-audit table
+- a 1-paragraph execution-report summary (what built, what tested, what's clean)
 - the dart analyze + test command outputs (last lines confirming pass)
+- a flag if you touched any sensitive path (db/migrations, lib/auth, etc.)
 
 Hard rules:
 - Do NOT push.
@@ -78,6 +107,8 @@ Hard rules:
 - Do NOT cross lanes (no fixing bugs in other lanes' files).
 - Do NOT use --no-verify or skip CI gates.
 - Do NOT redeploy / push to Production1 / touch live KMS or billing.
+- Do NOT update the wave ledger or lane indices.
+- Do NOT run graphify or the full Flutter test suite.
 ```
 
 **Step 2 — Wait for all sub-agents to return.** They run in parallel with `run_in_background: true`. You receive notifications when each completes.
@@ -118,6 +149,33 @@ For each finding, cite an authority anchor (CLAUDE.md, contracts, decision docs,
 **Step 6 — Concurrency cap.** Maintain at most 3 open PRs from your session at any moment. If you have 3 open and want to start a new batch, wait until at least one merges (or is closed by the orchestrator). Use `gh pr list --author "@me"` to check.
 
 **Step 7 — Move to next batch.** Re-read the ledger (state may have changed — orchestrator updates merged slices). Pick the next 1-3 independent slices for the next batch.
+
+### Salvage discipline (relaunch recovery)
+
+If a Claude Code relaunch kills one of your worker sub-agents mid-task:
+
+1. The worker's local commit (if any) survives on disk in its worktree.
+2. After the relaunch, salvage what's on disk:
+   - `cd` to the dead worker's worktree.
+   - Run `git status` + `git log -1` to confirm what landed.
+   - Run `git diff origin/master..HEAD` to see the partial state.
+3. Decide:
+   - **If the commit is substantively complete** (production code + tests + worker self-audit table written): salvage. Run your executor audit pass on the partial diff. Note in the PR body's "Salvage note" section: (a) what the worker completed before dying, (b) what you salvaged (audit doc, push, etc.), (c) what's missing from the spec.
+   - **If the commit is too partial** (no tests, no audit table, stub work): close out, log inline, and re-spawn the worker as a fresh attempt.
+4. Examples of clean salvage: PRs #561 (B1.c) + #563 (A3.2) on 2026-05-13.
+
+The orchestrator inspects the salvage path for drift artifacts before merge. Honest disclosure in the "Salvage note" section is the discipline — silent gap-filling is not.
+
+### Pattern B drift discipline
+
+The worker self-audit table + your executor independent audit table are BOTH non-negotiable in every PR body. If a Claude lane session ships 3+ consecutive PRs missing one or both tables (e.g., PRs #550 + #552 + #561 + #563 on 2026-05-13), it indicates prompt drift — the cheapest fix is to start a fresh session with this handoff prompt rather than retrofit the drifting session.
+
+The exemplars to mirror in every PR body are at:
+- `docs/_audits/post_codex_wave/pr_547_b9_2_my_account_active_sessions_audit.md`
+- `docs/_audits/post_codex_wave/pr_556_c10_admin_parity_copy_audit.md`
+- `docs/_audits/post_codex_wave/pr_557_b5_admin_access_control_audit.md`
+
+These are the orchestrator-side audit docs for those PRs, but they cite the worker + executor tables present in the PR bodies themselves. View the PR bodies via `gh pr view <number> --json body` for the exact shape.
 
 ### Batch sizing rules
 

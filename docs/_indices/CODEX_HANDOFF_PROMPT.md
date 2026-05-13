@@ -42,35 +42,60 @@ Use the built-in `worker` role for each slice sub-agent.
 
 For each batch (1-3 slices in parallel):
 
-**Step 1 — Spawn one worker sub-agent per slice.** Each sub-agent's brief:
+**Step 1 — Spawn one worker sub-agent per slice.** Brief each sub-agent in the **3-block format** (per `~/.claude/projects/.../memory/feedback_codex_prompt_format.md`):
 
 ```
 You are a Codex worker sub-agent. Your job is to implement ONE slice
 and return a diff for review. Do NOT push. Do NOT open a PR.
 
+==== Block 1 — Human-readable context ====
+
 Slice: <slice-id> from docs/_indices/WAVE_EXECUTION_LEDGER.md
-Scope: docs/_execution/<lane>/03_execution_slices.md (find your slice)
-Authority: read what the slice cites + CLAUDE.md guardrails
+Why: <1-3 sentence rationale>
+Current issue / gap: <what this slice closes>
+
+==== Block 2 — Tech context ====
+
+Authority files (read in order):
+- docs/_execution/<lane>/03_execution_slices.md — find your slice and read it in full
+- CLAUDE.md (Authority Order + Hard Promises)
+- Any contract docs the slice cites under docs/contracts/
 
 Worktree: create a new Codex worktree off origin/master.
 Branch name: codex/<slice-id-lowercased>-<short-topic>
 
-Implement the slice. Stay strictly inside scope.
+Hard constraints:
+- Banned items per ~/.claude/projects/.../memory/project_v1_lean_cut_2_2026_05_03.md
+  MUST be absent from every new file: KMS rollout, parse_warnings, parse_partial,
+  kStrictReplayFiveMinute, pg_advisory_lock, sigtermDrainHandler, inboundWebhookDLQTile,
+  raw_payload_partition, pg_partman_raw — ALL REJECT.
+- Banned imports: `package:postgres` outside lib/infrastructure/persistence/postgres/
+  and tool/advisor_proxy/ (enforced by postgres_import_lint).
+- Sensitive paths: if you touch db/migrations/**, docs/contracts/**, lib/auth/**,
+  or lib/infrastructure/persistence/postgres/**, flag it in your return summary so
+  the executor confirms the slice's ledger Gate column is `operator`.
+- Files to LEAVE ALONE: explicit list from your slice's plan-anchor sections.
+  Frozen `lib/auth/**` + `lib/data/**` unless the slice explicitly touches them.
+
+==== Block 3 — Tasks ====
+
+Implement the slice. Stay strictly inside scope. No drive-by fixes.
 
 Run:
-- dart analyze on every touched file (must be clean)
+- dart analyze --fatal-infos on every touched file (must be clean)
 - targeted tests for the slice's surface (must pass)
 
 Then run the Feature Implementation Lens Audit Framework
-(docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md)
-deep pass against your own change. Produce the 14-lens table
-with file:line citations.
+(docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md) deep pass against
+your own change. Produce the 14-lens **worker self-audit table** with file:line
+citations. Same shape as the worker tables in PRs #547, #556, #557 of this repo.
 
 Return to the executor (me):
 - the git diff of your branch vs origin/master
-- the 14-lens audit table
-- a 1-paragraph summary of what changed and why
+- the 14-lens worker self-audit table
+- a 1-paragraph execution-report summary
 - the dart analyze + test command outputs (last lines)
+- a flag if you touched any sensitive path
 
 Do NOT push your branch. Do NOT open a PR. Wait for executor review.
 ```
@@ -112,6 +137,20 @@ For each finding, cite an authority anchor (CLAUDE.md, contracts, decision docs,
 **Step 6 — Concurrency cap.** Maintain at most 3 open PRs from your session at any moment. If you have 3 open and want to start a new batch, wait until at least one merges (or is closed by the orchestrator). Use `gh pr list --author "@me"` to check.
 
 **Step 7 — Move to next batch.** Re-read the ledger (state may have changed — orchestrator updates merged slices). Pick the next 1-3 independent slices for the next batch.
+
+### Salvage discipline (session-interruption recovery)
+
+If your Codex session is interrupted mid-task and a worker has a partial local commit:
+
+1. After restart, salvage what's on disk in the worker's worktree.
+2. Decide:
+   - **Substantively complete** (code + tests + worker self-audit table): salvage. Run your executor audit on the partial diff. Disclose in the PR body's "Salvage note" section what was completed vs salvaged vs missing.
+   - **Too partial**: close out, log inline, re-spawn the worker.
+3. Honest disclosure in the "Salvage note" section is the discipline — silent gap-filling is not. Examples (from Claude lane): PRs #561 + #563 on 2026-05-13.
+
+### Pattern B exemplars
+
+The worker self-audit table + your executor independent audit table are BOTH non-negotiable in every PR body. Codex has shipped this faithfully in PRs #547, #556, #557 — those are the exemplars. Match that shape on every PR.
 
 ### Batch sizing rules
 
