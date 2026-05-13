@@ -257,6 +257,24 @@ void main() {
         bindings.defaultRoleCatalogAdminRouter.auditSink,
         isNot(isA<NoopDefaultRoleCatalogAuditSink>()),
       );
+      // Lane B B11.2.b — RFC 9470 step-up challenge router. The
+      // production bootstrap MUST wire a non-null router whose gateway
+      // is the Postgres-backed repository implementation (NOT a noop /
+      // recording fake). Without this the step-up gate inside
+      // routeRequest short-circuits to pass-through (legacy "no step-
+      // up" mode) and sensitive routes accept any verified bearer
+      // token regardless of auth_time freshness. The expectations
+      // below pin BOTH the non-null binding AND the production-backed
+      // gateway so a future regression that drops back to a noop fails
+      // this test loudly.
+      expect(
+        bindings.stepUpChallengeRouter,
+        isA<StepUpChallengeRouter>(),
+      );
+      expect(
+        bindings.stepUpChallengeRouter.gateway,
+        isA<RepositoryStepUpChallengesGateway>(),
+      );
       expect(
         bindings.integrationCategoryResolver(
           'toast',

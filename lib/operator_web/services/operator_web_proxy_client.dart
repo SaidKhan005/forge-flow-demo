@@ -211,12 +211,13 @@ class OperatorWebProxyClient {
     required String idToken,
     Map<String, Object?> body = const <String, Object?>{},
     Map<String, String>? queryParameters,
+    Map<String, String> extraHeaders = const <String, String>{},
   }) async {
     final request = http.Request(
       'POST',
       _resolve(path, queryParameters: queryParameters),
     );
-    _applyHeaders(request, idToken: idToken);
+    _applyHeaders(request, idToken: idToken, extraHeaders: extraHeaders);
     request.body = jsonEncode(body);
     final response = await _send(request);
     _throwIfUnsuccessful(response, path);
@@ -251,12 +252,24 @@ class OperatorWebProxyClient {
     );
   }
 
-  void _applyHeaders(http.Request request, {required String idToken}) {
+  void _applyHeaders(
+    http.Request request, {
+    required String idToken,
+    Map<String, String> extraHeaders = const <String, String>{},
+  }) {
     request.headers.addAll(<String, String>{
       'accept': 'application/json',
       'content-type': 'application/json',
       'authorization': 'Bearer ${idToken.trim()}',
       'Idempotency-Key': _idempotencyKeyFactory(),
+      // B11.2.b — caller-supplied headers (e.g. `Step-Up-Challenge-Id`
+      // on a step-up replay). Applied AFTER the defaults so callers
+      // cannot accidentally drop Authorization / Content-Type by
+      // omitting them, but CAN add additional headers like the step-
+      // up challenge id. The challenge id flows through the HEADER
+      // here, NEVER through the URL (addendum A1) — `_resolve` builds
+      // the URI from `path` + `queryParameters` only.
+      ...extraHeaders,
     });
   }
 
@@ -274,7 +287,15 @@ class OperatorWebProxyClient {
     final body = decoded is Map<Object?, Object?>
         ? Map<String, Object?>.from(decoded)
         : const <String, Object?>{};
-    return OperatorWebJsonResponse(statusCode: streamed.statusCode, body: body);
+    // B11.2.b — snapshot response headers so the failure path can
+    // surface the RFC 9470 `WWW-Authenticate` header to the gateway's
+    // step-up challenge parser.
+    final headers = Map<String, String>.unmodifiable(streamed.headers);
+    return OperatorWebJsonResponse(
+      statusCode: streamed.statusCode,
+      body: body,
+      headers: headers,
+    );
   }
 
   void _throwIfUnsuccessful(OperatorWebJsonResponse response, String path) {
@@ -299,6 +320,8 @@ class OperatorWebProxyClient {
           'The operator web proxy could not complete $path.',
       statusCode: response.statusCode,
       redirectUri: freshnessRedirect?.redirectUri,
+      responseHeaders: response.headers,
+      responseBody: response.body,
     );
   }
 
@@ -324,10 +347,19 @@ class OperatorWebProxyClient {
 }
 
 class OperatorWebJsonResponse {
-  const OperatorWebJsonResponse({required this.statusCode, required this.body});
+  const OperatorWebJsonResponse({
+    required this.statusCode,
+    required this.body,
+    this.headers = const <String, String>{},
+  });
 
   final int statusCode;
   final Map<String, Object?> body;
+
+  /// B11.2.b — response headers (lower-case keys per dart:io / http
+  /// package conventions). The gateway's step-up challenge parser
+  /// reads `www-authenticate` here to recognize an RFC 9470 challenge.
+  final Map<String, String> headers;
 }
 
 class OperatorWebProxyException implements Exception {
@@ -336,6 +368,8 @@ class OperatorWebProxyException implements Exception {
     required this.message,
     this.statusCode,
     this.redirectUri,
+    this.responseHeaders,
+    this.responseBody,
   });
 
   final String code;
@@ -350,6 +384,19 @@ class OperatorWebProxyException implements Exception {
   /// performed by the auth source's
   /// [MfaFreshnessRedirectListener] before this exception bubbles.
   final String? redirectUri;
+
+  /// B11.2.b — snapshot of response headers (lower-case keys). The
+  /// gateway's step-up challenge handler reads `www-authenticate`
+  /// here to parse an RFC 9470 challenge from a 401. Null when the
+  /// exception was synthesised without an underlying HTTP response
+  /// (e.g. typed local validation failures).
+  final Map<String, String>? responseHeaders;
+
+  /// B11.2.b — snapshot of response body JSON. The step-up handler
+  /// reads `challenge_id` / `message` / `challenge_expires_in_seconds`
+  /// here. Null when the exception was synthesised without an
+  /// underlying HTTP response.
+  final Map<String, Object?>? responseBody;
 
   /// Convenience: true iff this exception was the
   /// `mfa_freshness_required` 403. Avoids stringly-typed branching

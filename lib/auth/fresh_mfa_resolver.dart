@@ -28,6 +28,25 @@
 // field (which carries the `auth_time` claim verbatim per
 // `lib/auth/auth_session.dart`). It does no I/O and is therefore
 // safe to call on every paint of the admin shell.
+//
+// B11.2.b adapter — recognizing server-side step-up challenges.
+// The proxy now emits RFC 9470 step-up challenges (401 + WWW-
+// Authenticate: Bearer error="insufficient_user_authentication") for
+// the routes listed in `tool/advisor_proxy/auth_step_up_routes.dart::
+// kStepUpSensitiveRoutes`. Two recognition helpers below classify a
+// 401 response shape so the gateway / shell can branch:
+//   * [recognizeStepUpChallenge401] — true when the 401 carries a
+//     step-up challenge (server-side gate). Caller should drive the
+//     incremental re-auth flow via
+//     `lib/operator_web/auth/step_up_challenge_handler.dart` and
+//     replay the original request with the `Step-Up-Challenge-Id`
+//     header (NEVER as a URL param — addendum A1).
+//   * [isFreshMfaRedirect403] — true when the 403 carries the
+//     existing `mfa_freshness_required` payload. Caller drives the
+//     legacy full-re-auth flow via
+//     `lib/auth/mfa_freshness_redirect_listener.dart`.
+// Both helpers are pure — no I/O, no FFI, no Flutter dependency —
+// so they can be called from any layer (gateway, screen, test).
 
 import 'dart:io';
 
@@ -113,6 +132,60 @@ class JwtFreshMfaResolver implements FreshMfaResolver {
     if (elapsed >= _windowSeconds) return 0;
     return _windowSeconds - elapsed;
   }
+}
+
+/// B11.2.b — server-side step-up recognition. Returns true when the
+/// (statusCode, headers, body) triple matches the proxy's RFC 9470
+/// challenge emission shape. The check is conservative: it requires
+/// BOTH the `WWW-Authenticate: Bearer error="insufficient_user_
+/// authentication"` header AND a non-empty `challenge_id` in the JSON
+/// body. Pure function; no I/O.
+///
+/// Use this from gateways that receive a 401 to decide whether to
+/// drive the incremental step-up flow (via
+/// `lib/operator_web/auth/step_up_challenge_handler.dart`) vs.
+/// surfacing the 401 to the screen layer as a generic auth failure.
+bool recognizeStepUpChallenge401({
+  required int statusCode,
+  required Map<String, String> headers,
+  required Map<String, Object?> body,
+}) {
+  if (statusCode != 401) return false;
+  // Find the WWW-Authenticate header (HTTP headers are case-
+  // insensitive on the wire; client libraries normalize differently).
+  String? wwwAuth;
+  for (final entry in headers.entries) {
+    if (entry.key.toLowerCase() == 'www-authenticate') {
+      wwwAuth = entry.value;
+      break;
+    }
+  }
+  if (wwwAuth == null) return false;
+  final lower = wwwAuth.toLowerCase();
+  if (!lower.startsWith('bearer ')) return false;
+  if (!lower.contains('error="insufficient_user_authentication"')) {
+    return false;
+  }
+  final challengeIdRaw = body['challenge_id'];
+  return challengeIdRaw is String && challengeIdRaw.isNotEmpty;
+}
+
+/// B11.2.b — legacy `mfa_freshness_required` 403 recognizer. Returns
+/// true when the (statusCode, body) pair matches the older proxy
+/// emission shape (full re-auth flow via
+/// `mfa_freshness_redirect_listener.dart`). Pure function; no I/O.
+///
+/// Kept alongside [recognizeStepUpChallenge401] so the two recognition
+/// helpers live in one file and a gateway can branch in one place:
+///   * step-up 401 -> incremental re-auth + replay-with-challenge
+///   * mfa_freshness 403 -> full sign-out + redirect
+bool isFreshMfaRedirect403({
+  required int statusCode,
+  required Map<String, Object?> body,
+}) {
+  if (statusCode != 403) return false;
+  final error = body['error'];
+  return error is String && error == 'mfa_freshness_required';
 }
 
 /// Test fake — fixed answer regardless of the session value.

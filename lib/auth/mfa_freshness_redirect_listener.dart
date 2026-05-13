@@ -30,6 +30,21 @@
 // `OperatorWebAuthSource.signOut`); the navigation to the redirect
 // target is the listener's responsibility. We deliberately do not
 // invent a new sign-out flow here.
+//
+// B11.2.b — coexistence with the RFC 9470 step-up flow. The proxy
+// now ALSO emits step-up challenges (401 + `WWW-Authenticate: Bearer
+// error="insufficient_user_authentication"`) for the routes in
+// `tool/advisor_proxy/auth_step_up_routes.dart::kStepUpSensitiveRoutes`.
+// Step-up is INCREMENTAL re-auth (the user proves freshness, the
+// original request is replayed with `Step-Up-Challenge-Id` as a
+// HEADER — never a URL param, addendum A1). The two flows do not
+// conflict: this listener still drives the full sign-out flow when
+// the legacy `mfa_freshness_required` 403 is emitted (admin console +
+// some pre-step-up gateway paths); the step-up handler at
+// `lib/operator_web/auth/step_up_challenge_handler.dart` drives the
+// incremental flow for sensitive routes. Gateways branch using
+// `lib/auth/fresh_mfa_resolver.dart::recognizeStepUpChallenge401` vs.
+// `isFreshMfaRedirect403`.
 
 import 'package:meta/meta.dart';
 
