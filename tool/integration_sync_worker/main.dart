@@ -81,6 +81,7 @@ import 'dart:io';
 
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/vendor_sync_outage_state_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dart';
@@ -89,6 +90,7 @@ import 'package:forge_and_flow/integrations/pos/aloha_ncr_voyix_pos_production_a
 import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/per_tenant_location_config_resolver.dart';
+import 'package:forge_and_flow/services/vendor_sync/vendor_sync_outage_detector.dart';
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
 
@@ -106,6 +108,7 @@ import '../advisor_proxy/phase_8_vendor_integration_factories.dart'
         kPhase8WebhookPublicBaseUriEnvName;
 import 'dispatch.dart';
 import 'postgres_sync_worker_source.dart';
+import 'vendor_sync_outage_email_bindings.dart';
 
 // ─── Service principal / clock ──────────────────────────────────────
 
@@ -1198,6 +1201,8 @@ class WorkerRuntime {
     required this.config,
     required this.disabledVendors,
     required this.wiredVendorIds,
+    this.outageObserver,
+    this.outageEmailBindings,
   });
 
   final SyncWorkerSource source;
@@ -1213,12 +1218,30 @@ class WorkerRuntime {
   /// Vendor ids whose adapter factory is wired (sorted ascending for
   /// stable boot logs).
   final List<String> wiredVendorIds;
+
+  /// C-2-D production binding: vendor sync outage observer wired
+  /// through `buildWorkerRuntime`. Non-null when the runtime is built
+  /// from real Postgres seams; null on the test override path where
+  /// the caller supplies its own source / sink / resolver. The
+  /// observer fires after every `appendSyncLog` write so the
+  /// `VendorSyncOutageDetector` can enqueue the
+  /// `vendor_sync_error_alert` email on the first failure of an
+  /// outage.
+  final VendorSyncOutageObserver? outageObserver;
+
+  /// The detector + dispatcher seam bundle the observer composes.
+  /// Surfaced for tests / introspection only; production callers
+  /// should pass `outageObserver` (the observer is the loop-facing
+  /// closure that wires through to the detector + dispatcher under
+  /// the hood).
+  final VendorSyncOutageEmailBindings? outageEmailBindings;
 }
 
 WorkerRuntime buildWorkerRuntime({
   required WorkerRuntimeConfig config,
   WorkerPoolFactory poolFactory = _defaultPoolFactory,
   http.Client? httpClient,
+  IOSink? observerTelemetrySink,
 }) {
   final pool = poolFactory(config.postgresUrl);
   final wrapper = TenantTransactionWrapper(pool);
@@ -1254,6 +1277,34 @@ WorkerRuntime buildWorkerRuntime({
   }.toList()
     ..sort();
 
+  // C-2-D production binding: compose the detector + dispatcher seams
+  // off the same tenant wrapper so RLS / SET LOCAL discipline matches
+  // the polling tier's `connector_sync_log` writes. Mirrors
+  // `buildWorkerRuntime` in `tool/oauth_refresh_worker/main.dart`
+  // (PR #628 C-2-F precedent): recipient resolution rides
+  // `withSystem` (cross-tenant; the worker walks all operators); the
+  // outbox INSERT + audit row write ride `withTenant` (per-tenant
+  // RLS engaged).
+  final outageStateRepository =
+      PostgresVendorSyncOutageStateRepository(wrapper);
+  final outageAdminEmailLookup =
+      PostgresVendorSyncOutageAdminEmailLookup(tenantWrapper: wrapper);
+  final outageVendorIdLookup =
+      PostgresVendorSyncOutageVendorIdLookup(tenantWrapper: wrapper);
+  final outageEmailBindings = VendorSyncOutageEmailBindings(
+    stateRepository: outageStateRepository,
+    adminEmailLookup: outageAdminEmailLookup,
+    vendorIdLookup: outageVendorIdLookup,
+    consoleUrlBuilder: defaultVendorSyncIntegrationConsoleUrl,
+    failureThreshold: VendorSyncOutageDetector.kDefaultFailureThreshold,
+    lookbackWindow: VendorSyncOutageDetector.kDefaultLookbackWindow,
+  );
+  final outageObserver = buildVendorSyncOutageObserver(
+    tenantWrapper: wrapper,
+    bindings: outageEmailBindings,
+    errSink: observerTelemetrySink ?? stderr,
+  );
+
   return WorkerRuntime(
     source: source,
     canonicalSink: canonicalSink,
@@ -1262,6 +1313,8 @@ WorkerRuntime buildWorkerRuntime({
     disabledVendors:
         Map<String, String>.unmodifiable(factories.disabledVendors),
     wiredVendorIds: List<String>.unmodifiable(wired),
+    outageObserver: outageObserver,
+    outageEmailBindings: outageEmailBindings,
   );
 }
 
@@ -1275,6 +1328,7 @@ Future<int> runCli(
   CanonicalSink? canonicalSinkOverride,
   AdapterFactoryResolver? resolveAdapterFactoryOverride,
   IntegrationSyncWorkerDispatch? dispatcherOverride,
+  VendorSyncOutageObserver? outageObserverOverride,
   IOSink? out,
   IOSink? err,
   Future<void> Function(IntegrationSyncWorkerLoop loop)? installSignalHandlers,
@@ -1303,6 +1357,11 @@ Future<int> runCli(
   AdapterFactoryResolver resolveAdapterFactory;
   Map<String, String> disabledVendors = const <String, String>{};
   List<String> wiredVendorIds = const <String>[];
+  // C-2-D production binding: outage observer wired by
+  // `buildWorkerRuntime` on the production path; tests using the
+  // override path pass `outageObserverOverride` (or leave it null —
+  // existing observer-related tests already exercise the null path).
+  VendorSyncOutageObserver? outageObserver;
 
   if (hasOverrides) {
     config = WorkerRuntimeConfig(
@@ -1322,6 +1381,10 @@ Future<int> runCli(
     source = sourceOverride;
     canonicalSink = canonicalSinkOverride;
     resolveAdapterFactory = resolveAdapterFactoryOverride;
+    // Test path: only wire the observer when the caller explicitly
+    // injects one. Leaving it null preserves the existing "no email"
+    // contract for tests that don't exercise the C-2-D path.
+    outageObserver = outageObserverOverride;
   } else {
     try {
       config = WorkerRuntimeConfig.fromEnvironment(env, cliOverrides: args);
@@ -1332,12 +1395,15 @@ Future<int> runCli(
     final runtime = buildWorkerRuntime(
       config: config,
       poolFactory: poolFactory ?? _defaultPoolFactory,
+      observerTelemetrySink: stderrSink,
     );
     source = runtime.source;
     canonicalSink = runtime.canonicalSink;
     resolveAdapterFactory = runtime.resolveAdapterFactory;
     disabledVendors = runtime.disabledVendors;
     wiredVendorIds = runtime.wiredVendorIds;
+    outageObserver =
+        outageObserverOverride ?? runtime.outageObserver;
     // Boot-time JSON log: name three categories so a deploy review can
     // verify the worker matches the proxy's connector activation list
     // one-to-one. Secret values are NEVER echoed — only env names.
@@ -1350,6 +1416,11 @@ Future<int> runCli(
         'disabled_vendors': disabledVendors,
         'max_rows_per_tick': config.maxRowsPerTick,
         'poll_interval_seconds': config.pollInterval.inSeconds,
+        // C-2-D production binding disclosure: an explicit boolean in
+        // the boot log lets a deploy review confirm the email path is
+        // reachable (i.e. the observer was wired through). False only
+        // on the test override path.
+        'vendor_sync_outage_observer_wired': outageObserver != null,
       })}',
     );
   }
@@ -1365,6 +1436,7 @@ Future<int> runCli(
           maxRowsPerTick: config.maxRowsPerTick,
           out: stdoutSink,
           err: stderrSink,
+          outageObserver: outageObserver,
         );
         stdoutSink.writeln(
           'integration_sync_worker exit: ${jsonEncode(<String, Object?>{
@@ -1389,6 +1461,7 @@ Future<int> runCli(
         dispatcher: dispatcherOverride,
         out: stdoutSink,
         err: stderrSink,
+        outageObserver: outageObserver,
       );
       if (installSignalHandlers != null) {
         await installSignalHandlers(loop);
