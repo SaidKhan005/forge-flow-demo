@@ -961,6 +961,145 @@ void main() {
 
       expect(find.text('Choose a role for this member.'), findsOneWidget);
     });
+
+    testWidgets('operator-wide invite draft carries no primary location', (
+      tester,
+    ) async {
+      InviteMemberAdminDraft? captured;
+      await tester.pumpWidget(
+        wrap(
+          Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                key: const Key('open_dialog'),
+                onPressed: () async {
+                  captured = await showDialog<InviteMemberAdminDraft>(
+                    context: context,
+                    builder: (_) => const InviteMemberAdminDialog(
+                      operatorBusinessName: 'Demo',
+                      locations: <MemberLocationRef>[
+                        MemberLocationRef(locationId: 'loc-1', name: 'Loc 1'),
+                      ],
+                      accessScopes: <MemberAccessScopeRef>[
+                        MemberAccessScopeRef(
+                          scopeType: 'operator_wide',
+                          id: 'operator_wide:op-1',
+                          label: 'Business / Demo',
+                        ),
+                        MemberAccessScopeRef(
+                          scopeType: 'location',
+                          id: 'location:loc-1',
+                          label: 'Loc 1',
+                          locationId: 'loc-1',
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open_dialog')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_email')),
+        'business@op.test',
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_display_name')),
+        'Business Invite',
+      );
+      await tester.tap(find.byKey(const Key('admin_members_invite_role')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Operator manager').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_admin_reason')),
+        'support-onboarding',
+      );
+      await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
+      await tester.pumpAndSettle();
+
+      expect(captured, isNotNull);
+      expect(captured!.scopeType, equals('operator_wide'));
+      expect(captured!.primaryLocationId, isEmpty);
+      expect(captured!.orgUnitId, isNull);
+    });
+
+    testWidgets('org-unit invite draft carries only org-unit scope', (
+      tester,
+    ) async {
+      InviteMemberAdminDraft? captured;
+      const orgScope = MemberAccessScopeRef(
+        scopeType: 'org_unit',
+        id: 'org_unit:unit-1',
+        label: 'Org unit / Midtown',
+        orgUnitId: 'unit-1',
+      );
+      await tester.pumpWidget(
+        wrap(
+          Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                key: const Key('open_dialog'),
+                onPressed: () async {
+                  captured = await showDialog<InviteMemberAdminDraft>(
+                    context: context,
+                    builder: (_) => const InviteMemberAdminDialog(
+                      operatorBusinessName: 'Demo',
+                      locations: <MemberLocationRef>[
+                        MemberLocationRef(locationId: 'loc-1', name: 'Loc 1'),
+                      ],
+                      accessScopes: <MemberAccessScopeRef>[
+                        orgScope,
+                        MemberAccessScopeRef(
+                          scopeType: 'location',
+                          id: 'location:loc-1',
+                          label: 'Loc 1',
+                          locationId: 'loc-1',
+                        ),
+                      ],
+                      initialScope: orgScope,
+                    ),
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open_dialog')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_email')),
+        'regional@op.test',
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_display_name')),
+        'Regional Invite',
+      );
+      await tester.tap(find.byKey(const Key('admin_members_invite_role')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Operator manager').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_admin_reason')),
+        'support-onboarding',
+      );
+      await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
+      await tester.pumpAndSettle();
+
+      expect(captured, isNotNull);
+      expect(captured!.scopeType, equals('org_unit'));
+      expect(captured!.primaryLocationId, isEmpty);
+      expect(captured!.orgUnitId, equals('unit-1'));
+    });
   });
 
   group('merged People/access/roles surface', () {

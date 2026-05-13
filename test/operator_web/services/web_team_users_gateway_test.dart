@@ -146,6 +146,39 @@ void main() {
       expect(captured.headers['Idempotency-Key'], 'idem-suspend-1');
     });
 
+    test('revokeInvite DELETEs /v1/auth/team/invites/{id} with the '
+        'screen-supplied idempotency key threaded through', () async {
+      late http.Request captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{'revoked': true}),
+          200,
+        );
+      });
+      final gateway = WebTeamUsersGatewayLive(
+        proxyBaseUri: kProxyBase,
+        idTokenProvider: tokenProvider,
+        httpClient: client,
+      );
+
+      final result = await gateway.revokeInvite(
+        const TeamInviteRevokeCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          inviteId: 'invite-cancel-me',
+        ),
+        idempotencyKey: 'idem-cancel-1',
+      );
+
+      expect(result.revoked, isTrue);
+      expect(captured.method, 'DELETE');
+      expect(captured.url.path, WebTeamUsersPaths.invite('invite-cancel-me'));
+      expect(captured.headers['Idempotency-Key'], 'idem-cancel-1');
+      expect(captured.headers['authorization'], 'Bearer test-id-token');
+    });
+
     test(
       'non-2xx response surfaces a WebTeamUsersError with the proxy code',
       () async {

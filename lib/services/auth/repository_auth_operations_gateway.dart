@@ -542,7 +542,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         operatorId: command.operatorId,
         locationId: command.locationId,
         actorUserId: command.actorUserId,
-        eventType: 'auth.invite_revoked',
+        eventType: 'invite.cancel',
         payload: <String, Object?>{'invite_id': command.inviteId},
       );
     }
