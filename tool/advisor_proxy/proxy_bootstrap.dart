@@ -110,6 +110,7 @@ import '../advisor_corpus/advisor_corpus.dart'
         graphifyNodeCandidatesFileName;
 import 'advisor_proxy.dart';
 import 'admin_integrations_routes.dart';
+import 'audit_log_hierarchy_routes.dart';
 import 'connector_backfill_jobs_routes.dart';
 import 'anthropic_http_complete_fn.dart';
 import 'health_producers/producer_registry.dart';
@@ -240,6 +241,7 @@ class ProxyProductionBindings {
     required this.authHandoffRouter,
     required this.stepUpChallengeRouter,
     required this.defaultRoleCatalogAdminRouter,
+    required this.auditLogHierarchyGateway,
     required this.sendGridEventsWebhookRouter,
     required this.passwordResetEmailShortCounter,
     required this.passwordResetIpCounter,
@@ -488,6 +490,22 @@ class ProxyProductionBindings {
   /// [IntegrationAdminActorResolver] before invoking the sink so the
   /// audit row's `actor_user_id` is the verified UUID.
   final DefaultRoleCatalogAdminRouter defaultRoleCatalogAdminRouter;
+
+  /// Lane B B8 — hierarchy-scoped audit log filter gateway. The
+  /// matching [AuditLogHierarchyRouter] is constructed in `main.dart`
+  /// where the `ProxyRequestGuard` lives (so the auth resolver closes
+  /// over the same verified JWT path the rest of the proxy uses).
+  /// Mounting the router as a pre-check before `routeRequest` keeps
+  /// `tool/advisor_proxy/advisor_proxy.dart` UNTOUCHED, preserving
+  /// the `advisor_proxy_size_lint` bleed-stop ceiling.
+  ///
+  /// Production binding wraps [AuditLogsReader] over the tenant pool
+  /// transaction wrapper. Every read routes through `withTenant` so
+  /// `SET LOCAL app.operator_id` engages and the existing RLS policy
+  /// on `public.audit_logs` clamps the SELECT to the caller's
+  /// operator. The reader is READ-ONLY by construction (no
+  /// `audit_logs` UPDATE / DELETE anywhere in the call graph).
+  final AuditLogHierarchyGateway auditLogHierarchyGateway;
 
   /// Lane C C-1 — SendGrid Event Webhook receiver. Mounted as a
   /// pre-check in `main.dart` BEFORE `routeRequest` so the monolithic
@@ -1369,6 +1387,16 @@ ProxyProductionBindings buildProxyProductionBindings(
     // POST /v1/admin/auth/role-catalogs/publish routes return 503
     // default_role_catalog_admin_not_configured.
     defaultRoleCatalogAdminRouter: defaultRoleCatalogAdminRouter,
+    // Lane B B8 — hierarchy-scoped audit log filter gateway. Backed by
+    // [AuditLogsReader] over the tenant pool — every read routes
+    // through `withTenant` so SET LOCAL app.operator_id engages and
+    // the per-operator RLS policy on `public.audit_logs` clamps the
+    // SELECT. The router (with the JWT auth resolver closure) is
+    // constructed in `main.dart` because `ProxyRequestGuard` lives
+    // there.
+    auditLogHierarchyGateway: RepositoryAuditLogHierarchyGateway(
+      reader: AuditLogsReader(tenantWrapper),
+    ),
     // Lane C C-1 — SendGrid Event Webhook receiver. Mounted as a
     // pre-check in `main.dart` so the monolithic dispatcher never
     // sees the `/v1/webhooks/sendgrid/events` URL. The router writes

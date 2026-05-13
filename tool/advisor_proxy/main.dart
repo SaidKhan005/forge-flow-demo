@@ -66,6 +66,7 @@ import '../audit_anchor/main.dart' as audit_anchor_cli;
 import 'admin_email_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
+import 'audit_log_hierarchy_routes.dart';
 import 'advisor_response_cache.dart';
 import 'integration_oauth_routes.dart';
 import 'integration_oauth_state_store.dart';
@@ -1224,6 +1225,35 @@ Future<void> _runProxy(List<String> args) async {
   final pepperRouter = PepperRouter(store: pepperStore, authGuard: authGuard);
   // endregion
 
+  // Lane B B8 — hierarchy-scoped audit log filter router. Mounted as
+  // a pre-check below so `routeRequest` never sees the
+  // `/v1/admin/auth/audit-log/hierarchy` URL (advisor_proxy.dart is
+  // UNTOUCHED, preserving the bleed-stop ceiling). The router takes
+  // the inbound bearer token through the existing `authGuard` so we
+  // do not duplicate JWT verification; the gateway is constructed in
+  // `proxy_bootstrap.dart` (over the tenant pool) so this file does
+  // not import `package:postgres`.
+  final auditLogHierarchyRouter = AuditLogHierarchyRouter(
+    gateway: productionBindings.auditLogHierarchyGateway,
+    authResolver: (request) async {
+      try {
+        final scope = await authGuard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+        return AuditLogHierarchyActor(
+          actorUserId: scope.userId,
+          actorRoles: scope.roles.toSet(),
+          actorOperatorId: scope.operatorId,
+          actorLocationId: scope.locationId,
+        );
+      } on ProxyAuthError {
+        return null;
+      }
+    },
+  );
+
   // Phase 8 — wire the inbound integration chain (vendor credential
   // broker, 17 per-tenant adapter factories, signature verifiers,
   // RepositoryInboundWebhookGateway, RepositoryIntegrationRoutesGateway)
@@ -1590,6 +1620,19 @@ Future<void> _runProxy(List<String> args) async {
           if (await productionBindings
               .sendGridEventsWebhookRouter
               .tryHandle(request)) {
+            return;
+          }
+          // endregion
+          // region: lane_b_b8_audit_log_hierarchy_filter
+          // Lane B B8 — hierarchy-scoped audit log filter. Handles
+          // GET /v1/admin/auth/audit-log/hierarchy. The router does
+          // its own JWT + role + admin_reason verification via the
+          // injected resolver (closure over `authGuard`); returns
+          // false on non-matching paths so the existing dispatcher
+          // continues. advisor_proxy.dart is intentionally NOT
+          // touched (bleed-stop ceiling discipline) — the only
+          // mounting site is this pre-check.
+          if (await auditLogHierarchyRouter.tryHandle(request)) {
             return;
           }
           // endregion
