@@ -22,6 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/default_role_catalog_versions_repository.dart';
 
 import '../../tool/advisor_proxy/admin_default_role_catalog_routes.dart';
+import '../../tool/advisor_proxy/proxy_idempotency_cache.dart';
 
 const String _kAdminPostgresUserId = '11111111-1111-1111-1111-111111111111';
 const String _kSupportPostgresUserId = '22222222-2222-2222-2222-222222222222';
@@ -95,10 +96,7 @@ void main() {
 
     test('rejects unrelated admin paths', () {
       expect(
-        DefaultRoleCatalogAdminRouter.matches(
-          '/v1/admin/auth/roles',
-          'POST',
-        ),
+        DefaultRoleCatalogAdminRouter.matches('/v1/admin/auth/roles', 'POST'),
         isFalse,
       );
     });
@@ -280,27 +278,29 @@ void main() {
       expect(audit.events, isEmpty);
     });
 
-    test('over-length Idempotency-Key → 400 idempotency_key_too_long',
-        () async {
-      final repo = _FakeCatalogRepository();
-      final audit = RecordingDefaultRoleCatalogAuditSink();
-      final router = DefaultRoleCatalogAdminRouter(
-        repository: repo,
-        auditSink: audit,
-      );
-      final result = await router.dispatch(
-        method: 'POST',
-        path: '/v1/admin/auth/role-catalogs/publish',
-        actorRoles: const <String>{'super_admin'},
-        actorFirebaseUid: _kFirebaseUid,
-        actorResolver: _resolveToAdmin,
-        idempotencyKeyHeader: 'x' * 201,
-        limitQueryParam: null,
-        body: <String, Object?>{'payload': _kPayload},
-      );
-      expect(result.statusCode, equals(400));
-      expect(result.body['error'], equals('idempotency_key_too_long'));
-    });
+    test(
+      'over-length Idempotency-Key → 400 idempotency_key_too_long',
+      () async {
+        final repo = _FakeCatalogRepository();
+        final audit = RecordingDefaultRoleCatalogAuditSink();
+        final router = DefaultRoleCatalogAdminRouter(
+          repository: repo,
+          auditSink: audit,
+        );
+        final result = await router.dispatch(
+          method: 'POST',
+          path: '/v1/admin/auth/role-catalogs/publish',
+          actorRoles: const <String>{'super_admin'},
+          actorFirebaseUid: _kFirebaseUid,
+          actorResolver: _resolveToAdmin,
+          idempotencyKeyHeader: 'x' * 201,
+          limitQueryParam: null,
+          body: <String, Object?>{'payload': _kPayload},
+        );
+        expect(result.statusCode, equals(400));
+        expect(result.body['error'], equals('idempotency_key_too_long'));
+      },
+    );
 
     test('empty payload → 400 with empty_payload', () async {
       final repo = _FakeCatalogRepository();
@@ -368,8 +368,7 @@ void main() {
       expect(result.body['error'], equals('invalid_notes'));
     });
 
-    test('null actor resolver → 503 actor_resolver_not_configured',
-        () async {
+    test('null actor resolver → 503 actor_resolver_not_configured', () async {
       final repo = _FakeCatalogRepository();
       final audit = RecordingDefaultRoleCatalogAuditSink();
       final router = DefaultRoleCatalogAdminRouter(
@@ -405,11 +404,11 @@ void main() {
         path: '/v1/admin/auth/role-catalogs/publish',
         actorRoles: const <String>{'super_admin'},
         actorFirebaseUid: _kFirebaseUid,
-        actorResolver: ({
-          required String firebaseUid,
-          required String adminReason,
-        }) async =>
-            null,
+        actorResolver:
+            ({
+              required String firebaseUid,
+              required String adminReason,
+            }) async => null,
         idempotencyKeyHeader: 'pub-key-1',
         limitQueryParam: null,
         body: <String, Object?>{'payload': _kPayload},
@@ -468,6 +467,117 @@ void main() {
       expect(result.body['error'], equals('not_found'));
     });
   });
+
+  // B-1 — c_12_lane_c_closeout_audit.md: the proxy dispatcher must wrap
+  // publish in ProxyAuthIdempotencyCache.runOrReplay so two retries with
+  // the same Idempotency-Key coalesce to one repository publish and the
+  // replayed 201 returns the SAME version_id (HP #7, Phase 11A.10).
+  //
+  // The router itself is unaware of replay; the cache wraps `dispatch`.
+  // This group replicates the dispatcher's cache wrapping
+  // (advisor_proxy.dart ~11384-11422) so the regression is pinned at the
+  // composition level without dragging in the full HTTP shell.
+  group('Default Role Catalog publish idempotency replay (B-1)', () {
+    Future<({int statusCode, Map<String, Object?> body})> dispatchWithCache({
+      required DefaultRoleCatalogAdminRouter router,
+      required ProxyAuthIdempotencyCache cache,
+      required String idempotencyKeyHeader,
+      required Map<String, Object?> body,
+    }) async {
+      const String path = '/v1/admin/auth/role-catalogs/publish';
+      final cached = await cache.runOrReplay(
+        route: path,
+        key: idempotencyKeyHeader,
+        compute: () async {
+          final r = await router.dispatch(
+            method: 'POST',
+            path: path,
+            actorRoles: const <String>{'super_admin'},
+            actorFirebaseUid: _kFirebaseUid,
+            actorResolver: _resolveToAdmin,
+            idempotencyKeyHeader: idempotencyKeyHeader,
+            limitQueryParam: null,
+            body: body,
+          );
+          return CachedProxyResponse(statusCode: r.statusCode, body: r.body);
+        },
+      );
+      return (statusCode: cached.statusCode, body: cached.body);
+    }
+
+    test(
+      'two POSTs with same Idempotency-Key → one publish, same version_id',
+      () async {
+        final repo = _FakeCatalogRepository();
+        final audit = RecordingDefaultRoleCatalogAuditSink();
+        final cache = ProxyAuthIdempotencyCache();
+        final router = DefaultRoleCatalogAdminRouter(
+          repository: repo,
+          auditSink: audit,
+        );
+        final body = <String, Object?>{
+          'payload': _kPayload,
+          'notes': 'B-1 replay test',
+        };
+        final first = await dispatchWithCache(
+          router: router,
+          cache: cache,
+          idempotencyKeyHeader: 'pub-key-replay',
+          body: body,
+        );
+        final second = await dispatchWithCache(
+          router: router,
+          cache: cache,
+          idempotencyKeyHeader: 'pub-key-replay',
+          body: body,
+        );
+        expect(first.statusCode, equals(201));
+        expect(second.statusCode, equals(201));
+        // Cache replay: the same version_id flows back to the caller, and
+        // the repository observes exactly one publish (not two).
+        expect(second.body['version_id'], equals(first.body['version_id']));
+        expect(repo.publishCount, equals(1));
+        // Audit fans only on the first invocation; the replay does not
+        // re-emit the auth.default_role_catalog.published event.
+        expect(audit.events, hasLength(1));
+      },
+    );
+
+    test(
+      'distinct Idempotency-Keys → cache keys do not collide (publish runs twice)',
+      () async {
+        final repo = _FakeCatalogRepository();
+        final audit = RecordingDefaultRoleCatalogAuditSink();
+        final cache = ProxyAuthIdempotencyCache();
+        final router = DefaultRoleCatalogAdminRouter(
+          repository: repo,
+          auditSink: audit,
+        );
+        final body = <String, Object?>{'payload': _kPayload};
+        final first = await dispatchWithCache(
+          router: router,
+          cache: cache,
+          idempotencyKeyHeader: 'pub-key-a',
+          body: body,
+        );
+        final second = await dispatchWithCache(
+          router: router,
+          cache: cache,
+          idempotencyKeyHeader: 'pub-key-b',
+          body: body,
+        );
+        expect(first.statusCode, equals(201));
+        expect(second.statusCode, equals(201));
+        // The cache MUST NOT coalesce distinct keys. The fake repository
+        // reports two publish calls and the audit sink records two
+        // events; version_id collisions in the fake's emitted rows are
+        // an artifact of the in-memory builder (it does not append to
+        // its own history list), not a cache hit.
+        expect(repo.publishCount, equals(2));
+        expect(audit.events, hasLength(2));
+      },
+    );
+  });
 }
 
 DefaultRoleCatalogVersionRow _buildRow({
@@ -492,14 +602,12 @@ DefaultRoleCatalogVersionRow _buildRow({
 Future<String?> _resolveToAdmin({
   required String firebaseUid,
   required String adminReason,
-}) async =>
-    _kAdminPostgresUserId;
+}) async => _kAdminPostgresUserId;
 
 Future<String?> _resolveToSupport({
   required String firebaseUid,
   required String adminReason,
-}) async =>
-    _kSupportPostgresUserId;
+}) async => _kSupportPostgresUserId;
 
 /// In-memory fake of [DefaultRoleCatalogVersionsRepository]. Mirrors the
 /// minimal method surface the router exercises: getCurrentVersion,
@@ -510,7 +618,7 @@ class _FakeCatalogRepository implements DefaultRoleCatalogVersionsRepository {
     this.history = const <DefaultRoleCatalogVersionRow>[],
     Map<String, int>? operatorFollowersByVersion,
   }) : _operatorFollowersByVersion =
-            operatorFollowersByVersion ?? const <String, int>{};
+           operatorFollowersByVersion ?? const <String, int>{};
 
   DefaultRoleCatalogVersionRow? currentRow;
   final List<DefaultRoleCatalogVersionRow> history;
@@ -563,9 +671,10 @@ class _FakeCatalogRepository implements DefaultRoleCatalogVersionsRepository {
     String reason = 'admin.default_role_catalog.publish',
   }) async {
     publishCount += 1;
-    final nextNumber = (history
-                .map((r) => r.versionNumber)
-                .fold<int>(0, (a, b) => a > b ? a : b)) +
+    final nextNumber =
+        (history
+            .map((r) => r.versionNumber)
+            .fold<int>(0, (a, b) => a > b ? a : b)) +
         1;
     final row = DefaultRoleCatalogVersionRow(
       versionId: 'version-uuid-$nextNumber',
@@ -584,6 +693,5 @@ class _FakeCatalogRepository implements DefaultRoleCatalogVersionsRepository {
 
   @override
   // ignore: invalid_use_of_visible_for_overriding_member
-  dynamic noSuchMethod(Invocation invocation) =>
-      super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
