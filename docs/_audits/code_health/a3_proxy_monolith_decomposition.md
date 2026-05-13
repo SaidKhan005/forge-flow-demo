@@ -1488,3 +1488,27 @@ monolith.
   Risk §7.10.
 - `docs/_audits/code_health/a1_proxy_bug_root_cause.md` — shape
   precedent (line-number citation density, evidence-grade ranking).
+
+---
+
+## Bare-catch sweep progress (A3.2 / A3.3 / A3.4)
+
+The 45 bare `catch (_)` sites in `advisor_proxy.dart` are being typed
+across three sibling slices. Each slice picks a coherent cluster
+range from the seam map at
+`docs/_audits/code_health/a3_advisor_proxy_seam_map.md`.
+
+| Slice | Cluster range | Lines | Sites converted | Status |
+|---|---|---|---|---|
+| **A3.2** | Clusters 2-3 + early cluster 4 | 1341-2735 | 12 (1 explicitly retained at line 2426 — `Platform.environment` swallow) | open |
+| A3.3 | Clusters 4-8 (mid + late `routeRequest`) | ~3670-14910 | ~16 (estimated) | pending |
+| A3.4 | Clusters 9-12 (admin delegates + predicates + CORS tail) | ~14911-18871 | ~16 (estimated) | pending |
+
+A3.2 conversion idiom: every typed catch carries a 1-3 line comment
+naming the exception class the protected block actually throws and
+the verifier-typed error it converts to. `on Exception catch (_)`
+used when the protected block has multiple disjoint concrete
+throws (e.g. cryptography backends) — `on Object` was never used so
+genuine `Error`s (assertion failures, OOM, type errors) keep
+propagating. A3.2 line count: 18,871 → 18,899 (+28; bleed-stop
+ceiling 19,071, headroom 172).
