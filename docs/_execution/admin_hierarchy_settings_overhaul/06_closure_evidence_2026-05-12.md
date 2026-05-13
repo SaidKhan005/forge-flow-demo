@@ -24,12 +24,12 @@ All 12 slices (0–11) landed on master. PR / commit map:
 
 ## Orchestrator audit chain (all on master)
 
-- `docs/_audits/post_codex_wave/pr_481_retroactive_audit.md` — 7-chunk retroactive audit for PR #481 (the big-bang consolidation that bypassed the audit gate)
-- `docs/_audits/post_codex_wave/pr_482_audit.md` — light-playbook audit
-- `docs/_audits/post_codex_wave/pr_484_audit.md` — audit-log contract schema (PR C)
-- `docs/_audits/post_codex_wave/pr_488_audit.md` — admin hierarchy lifecycle access hardening (PR B)
-- `docs/_audits/post_codex_wave/pr_490_audit.md` — admin audit target attribution (PR A)
-- `docs/_audits/post_codex_wave/pr_b_pr_a_rollup_audit.md` — recovery rollup (PR #492) after PR B + PR A's stacked-merge base drift
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_481_retroactive_audit.md` — 7-chunk retroactive audit for PR #481 (the big-bang consolidation that bypassed the audit gate)
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_482_audit.md` — light-playbook audit
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_484_audit.md` — audit-log contract schema (PR C)
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_488_audit.md` — admin hierarchy lifecycle access hardening (PR B)
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_490_audit.md` — admin audit target attribution (PR A)
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_b_pr_a_rollup_audit.md` — recovery rollup (PR #492) after PR B + PR A's stacked-merge base drift
 
 ## Operator visual verification (2026-05-12)
 

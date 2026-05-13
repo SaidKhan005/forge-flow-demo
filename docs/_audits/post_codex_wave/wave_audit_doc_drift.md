@@ -220,7 +220,7 @@ Sample of 18 cross-references from `docs/POST_HARDENING_FOLLOWUPS.md` that the w
 | `tool/migration_drift_scanner.dart` | ✓ |
 | `tool/migration_cutoff_lint.dart` | ✓ |
 | `tool/audit_anchor/azure_blob_client.dart` | ✓ |
-| `docs/_audits/post_codex_wave/pr_537_a11_2_soak_harness_extensions_audit.md` | ✓ |
+| `docs/archive/_audits/post_codex_wave_2026-05-13/pr_537_a11_2_soak_harness_extensions_audit.md` | ✓ |
 | `docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md` | ✓ |
 | `docs/archive/_execution/2026-05-08_pressure_preview_findings.md` | ✓ |
 | `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md` | ✓ |

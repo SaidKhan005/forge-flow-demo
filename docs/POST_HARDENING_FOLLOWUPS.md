@@ -166,7 +166,7 @@ that inert state is the safety guarantee until the Azure swap ships.
 **Authority anchors:**
 - `tool/audit_anchor/azure_blob_client.dart` (the canonical F&F Azure
   Blob pattern to mirror)
-- `docs/_audits/post_codex_wave/pr_537_a11_2_soak_harness_extensions_audit.md`
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_537_a11_2_soak_harness_extensions_audit.md`
   (audit doc that flagged the decision)
 - This entry.
 

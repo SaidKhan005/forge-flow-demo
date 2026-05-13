@@ -387,7 +387,7 @@ The audit at `pr_586_b11_2_b_step_up_wiring_audit.md:81` independently verified 
 
 **Severity:** Cosmetic (doc only)
 **File evidence:**
-- `docs/_audits/post_codex_wave/pr_629_c_2_c_mfa_factor_changed_wire_audit.md:34` claims action is `system.mfa_factor_changed_notice_audit`
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_629_c_2_c_mfa_factor_changed_wire_audit.md:34` claims action is `system.mfa_factor_changed_notice_audit`
 - `lib/services/mfa/mfa_factor_changed_notice_dispatcher.dart:241` actually emits `eventType: 'mfa_factor_changed_email_enqueued'`
 
 **Discussion:** The orchestrator prompt also references `system.mfa_factor_changed_notice_audit`. Real action is `mfa_factor_changed_email_enqueued`. Still distinct from C-2-F's `vendor_credential_auto_disabled_email_enqueue` and C-2-D's `vendor.sync_outage.alerted`. No collision risk; pure doc drift.

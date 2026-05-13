@@ -171,9 +171,9 @@ The orchestrator inspects the salvage path for drift artifacts before merge. Hon
 The worker self-audit table + your executor independent audit table are BOTH non-negotiable in every PR body. If a Claude lane session ships 3+ consecutive PRs missing one or both tables (e.g., PRs #550 + #552 + #561 + #563 on 2026-05-13), it indicates prompt drift — the cheapest fix is to start a fresh session with this handoff prompt rather than retrofit the drifting session.
 
 The exemplars to mirror in every PR body are at:
-- `docs/_audits/post_codex_wave/pr_547_b9_2_my_account_active_sessions_audit.md`
-- `docs/_audits/post_codex_wave/pr_556_c10_admin_parity_copy_audit.md`
-- `docs/_audits/post_codex_wave/pr_557_b5_admin_access_control_audit.md`
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_547_b9_2_my_account_active_sessions_audit.md`
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_556_c10_admin_parity_copy_audit.md`
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_557_b5_admin_access_control_audit.md`
 
 These are the orchestrator-side audit docs for those PRs, but they cite the worker + executor tables present in the PR bodies themselves. View the PR bodies via `gh pr view <number> --json body` for the exact shape.
 

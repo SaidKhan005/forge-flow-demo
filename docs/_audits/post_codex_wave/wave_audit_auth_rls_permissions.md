@@ -395,7 +395,7 @@ before calling the router. **No cache-bypass vector.**
 ## Coverage gaps
 
 None material. Every new route file I inspected had at least one
-audit doc under `docs/_audits/post_codex_wave/pr_*_audit.md`
+audit doc under `docs/archive/_audits/post_codex_wave_2026-05-13/pr_*_audit.md`
 (verified by counting README.md entries in that directory — 84
 audit docs for ~50 PRs is heavy coverage). The C-2-D production
 binding (PR #633) carries a "light variant audit" verdict per its
@@ -435,7 +435,7 @@ missed.
 - `tool/rls_policy_lint_allowlist.txt` — single entry,
   unchanged this wave
 - `tool/audit_logs_update_lint.dart` — exists; enforces append-only
-- `docs/_audits/post_codex_wave/pr_633_c_2_d_production_binding_audit.md`
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_633_c_2_d_production_binding_audit.md`
   - Mirror precedent + worker-disclosed safety guarantees
 - `db/migrations/202605131000_admin_audit_log_actor_reason_contract.sql`
   - Hardened `actor_kind` enum and `admin_reason` CHECK

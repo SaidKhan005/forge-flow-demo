@@ -199,7 +199,7 @@ The migrations were authored after the lean-cut decision (2026-05-07 + 2026-05-0
 
 **Why it matters:** The schema migrations are technically banned-token-clean (they only seed lock-id rows, no `pg_advisory_lock(...)` call in DDL/DML). But the entire purpose of the rows is to support an application-layer pattern that the lean-cut memory says was pulled back. Either the memory + walkthrough docs are stale, or the migrations should be reverted.
 
-**Audit-doc precedent:** `docs/_audits/post_codex_wave/pr_584_b2_1_default_role_catalog_audit.md:98` notes `No pg_advisory_lock, no pgmq, no banned items | ✓` — so the audit format DOES expect a pg_advisory_lock check, but the precedent docs only enforce it in NEW migrations, not retrospective ones.
+**Audit-doc precedent:** `docs/archive/_audits/post_codex_wave_2026-05-13/pr_584_b2_1_default_role_catalog_audit.md:98` notes `No pg_advisory_lock, no pgmq, no banned items | ✓` — so the audit format DOES expect a pg_advisory_lock check, but the precedent docs only enforce it in NEW migrations, not retrospective ones.
 
 **Remedy:** Operator decision — either (a) record the J4 race-fix restoration in `project_v1_lean_cut_2_2026_05_03.md` (memory + walkthrough docs), or (b) revert `202605080900_oauth_refresh_advisory_lock.sql` and the matching code in `oauth_refresh_cron.dart`. (a) appears to be the live truth.
 
@@ -298,8 +298,8 @@ Single `ALTER TABLE … ADD COLUMN IF NOT EXISTS … timestamptz null` + `COMMEN
 - **`runbooks/phase_9_production1_migration_apply_runbook.md`** — operational runbook with apply history and dependency notes.
 - **`scripts/postgres_staging_setup.ps1`** — staging setup script with the `MIGRATION_CUTOFF_BEGIN/END` sentinel.
 - **Prior wave audits referencing these checks:**
-  - `docs/_audits/post_codex_wave/pr_599_c_1a_email_event_provider_id_audit.md` (timeouts + audit_logs + pg_advisory_lock checks)
-  - `docs/_audits/post_codex_wave/pr_626_c_7a_recovery_codes_viewed_at_prep_audit.md` (full new-table audit template)
-  - `docs/_audits/post_codex_wave/pr_631_c_2_d_vendor_sync_outage_detector_wire_audit.md` (current-cutoff slice)
-  - `docs/_audits/post_codex_wave/pr_584_b2_1_default_role_catalog_audit.md` and `pr_586_b11_2_b_step_up_wiring_audit.md` (B2.1 + B11.2 schema-touching slices)
+  - `docs/archive/_audits/post_codex_wave_2026-05-13/pr_599_c_1a_email_event_provider_id_audit.md` (timeouts + audit_logs + pg_advisory_lock checks)
+  - `docs/archive/_audits/post_codex_wave_2026-05-13/pr_626_c_7a_recovery_codes_viewed_at_prep_audit.md` (full new-table audit template)
+  - `docs/archive/_audits/post_codex_wave_2026-05-13/pr_631_c_2_d_vendor_sync_outage_detector_wire_audit.md` (current-cutoff slice)
+  - `docs/archive/_audits/post_codex_wave_2026-05-13/pr_584_b2_1_default_role_catalog_audit.md` and `pr_586_b11_2_b_step_up_wiring_audit.md` (B2.1 + B11.2 schema-touching slices)
 - **Lean-cut memory** — `~/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/project_v1_lean_cut_2_2026_05_03.md` (records the `pg_advisory_lock` drop verdict that Finding 5 cross-checks against).
