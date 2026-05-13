@@ -31,7 +31,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 const String kHarnessBinary = 'tool/pressure/p3a_webhook_flood.dart';
-const String kOutputDir = 'test/load/pressure';
+const String kOutputDir = 'test/pressure';
 
 void main() {
   group('Phase 3A webhook flood runner', () {

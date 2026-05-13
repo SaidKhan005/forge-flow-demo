@@ -21,7 +21,7 @@
 // real production Postgres pool.
 //
 // This is a HARNESS HELPER, not production code. It lives under
-// `test/load/pressure/_helpers/` and is only imported by the P3C
+// `test/pressure/_helpers/` and is only imported by the P3C
 // binary + runner test.
 
 import 'dart:async';

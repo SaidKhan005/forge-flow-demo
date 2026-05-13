@@ -773,7 +773,7 @@ void main() {
   // The three groups below pin contracts the in-memory simulator at
   // `tool/pressure/p3b_backfill_flood.dart` proved against
   // `InMemoryBackfillStore` and the runner at
-  // `test/load/pressure/p3b_backfill_flood_runner_test.dart` asserted
+  // `test/pressure/p3b_backfill_flood_runner_test.dart` asserted
   // at the harness boundary. These tests gate on `PHASE_6_PG_URL` (or
   // `--dart-define=PHASE_6_PG_URL=...`); when unset they emit a single
   // `setup_skipped` test result so a CI run without staging access is
@@ -1151,7 +1151,7 @@ void main() {
       // (operator, location, category) triple. The strong invariant
       // ("audit row for the flip event is emitted exactly once") must
       // be tested at the worker layer (covered by
-      // `test/load/pressure/p3b_backfill_flood_runner_test.dart`),
+      // `test/pressure/p3b_backfill_flood_runner_test.dart`),
       // not here.
 
       if (!hasDb) {
@@ -1486,7 +1486,7 @@ void main() {
       // not here). This contract belongs in a worker-layer test, not
       // in this repository test. The Phase 3B harness pins it via the
       // `audit_row_missing` finding category in
-      // `test/load/pressure/p3b_backfill_flood_runner_test.dart`.
+      // `test/pressure/p3b_backfill_flood_runner_test.dart`.
     },
   );
 

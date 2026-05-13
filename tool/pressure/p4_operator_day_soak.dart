@@ -28,9 +28,9 @@
 //
 // Output
 // ------
-//   * `test/load/pressure/p4_operator_day_soak_raw.jsonl`
-//   * `test/load/pressure/p4_operator_day_soak_findings.jsonl`
-//   * `test/load/pressure/p4_operator_day_soak_summary.md`
+//   * `test/pressure/p4_operator_day_soak_raw.jsonl`
+//   * `test/pressure/p4_operator_day_soak_findings.jsonl`
+//   * `test/pressure/p4_operator_day_soak_summary.md`
 //
 // Usage
 // -----
@@ -82,7 +82,7 @@ _Args _parseArgs(List<String> args) {
   int ops = kDefaultOps;
   int concurrency = kDefaultConcurrency;
   int durationSeconds = parseSoakDurationSeconds(kDefaultDuration);
-  String outputDir = 'test/load/pressure';
+  String outputDir = 'test/pressure';
   int thinkTimeMs = 1500;
 
   for (final raw in args) {
