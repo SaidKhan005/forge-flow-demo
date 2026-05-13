@@ -18,7 +18,29 @@
 // `createRoot`, and `createChild`. Subtree enumeration
 // (`path <@ ancestor`), permission inheritance lookup, and grant
 // rules are downstream slices.
+//
+// Slice L_A1 — Inheritance Tree primitive foundation. Extended with
+// three operator-scoped hierarchy-read methods consumed by the shared
+// `InheritanceTree` widget and any downstream feature that needs the
+// Business → Org Unit → Location chain in a single tenant-isolated
+// projection:
+//
+//   * [getOrgUnitTreeForOperator] — assembled root with descendants
+//     for the operator's full hierarchy.
+//   * [getDescendantLocations] — every location under an org_unit
+//     scope (or, when scope is null, every location under the
+//     operator's business root).
+//   * [getNodeForLocation] — single-row lookup for one location.
+//
+// No new schema. The existing `org_units.path` ltree column plus the
+// denormalized `locations.org_unit_path` (with its GIST index from
+// `202604290101_phase_9_hierarchy_access_wiring.sql`) is structurally
+// sufficient for the L_A2 descendant-set cache — that slice is a
+// performance denormalization (materialised view / table) projecting
+// off the same ltree shape, not a different shape. See the L_A1 audit
+// doc for the YES + rationale.
 
+import '../../../../domain/models/inheritance_tree_node.dart';
 import '../operator_scoped_repository.dart';
 import '../tenant_context.dart';
 
@@ -839,6 +861,318 @@ class OrgUnitsRepository extends OperatorScopedRepository {
     }, reason: adminReason);
   }
 
+  /// Slice L_A1 — assemble the operator's full Business → Org Unit →
+  /// Location hierarchy as an [InheritanceTreeNode] graph.
+  ///
+  /// One round-trip per call: two `withTenant` reads (`org_units` rows
+  /// + `locations` rows) running inside the SAME transaction so the
+  /// `app_current_operator()` wrapper sees a consistent snapshot. The
+  /// Dart side stitches the tree with O(N + M) work where N =
+  /// org_units count, M = locations count.
+  ///
+  /// Returns `null` only when the operator has no root row in
+  /// `org_units` — every operator that completed migration
+  /// `202604280002_phase_9_0sigma_c_org_units.sql` has exactly one
+  /// root, so this is effectively unreachable in production but stays
+  /// non-throwing so freshly-created operators (root creation lands in
+  /// 11A) do not crash a caller.
+  ///
+  /// Children at every level are sorted alphabetically by
+  /// `displayName` for reproducible rendering, matching the
+  /// pre-existing scope selector in
+  /// `lib/operator_web/widgets/org_unit_tree_view.dart`.
+  ///
+  /// Deleted org_units (`deleted_at IS NOT NULL`) and locations are
+  /// filtered out so the tree reflects the live hierarchy. The
+  /// existing `listLocationsForTenant` predicate also excludes any
+  /// location whose ancestor chain contains a soft-deleted org_unit;
+  /// this method mirrors that posture so visualization stays consistent.
+  Future<InheritanceTreeNode?> getOrgUnitTreeForOperator({
+    required String operatorId,
+    required String locationId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<InheritanceTreeNode?>(ctx, (exec) async {
+      // Read org_units inside the tenant transaction. RLS confines
+      // the result set to the operator's hierarchy automatically.
+      final orgUnitRows = await exec.query(
+        'select id::text as id, parent_id::text as parent_id, '
+        'unit_type, path::text as path, name '
+        'from org_units '
+        'where deleted_at is null '
+        'order by path',
+      );
+      if (orgUnitRows.isEmpty) {
+        return null;
+      }
+      // Read locations inside the same tenant transaction. The
+      // existing `set_location_org_unit_path()` trigger keeps
+      // `org_unit_path` in sync so the parent-id pointer alone is
+      // enough to stitch leaves under their parent org_unit.
+      final locationRows = await exec.query(
+        'select location_id::text as location_id, '
+        'parent_org_unit_id::text as parent_org_unit_id, '
+        "coalesce(org_unit_path::text, '') as org_unit_path, "
+        'name '
+        'from locations '
+        'where deleted_at is null '
+        'and not exists ('
+        'select 1 from org_units deleted_ancestor '
+        'where deleted_ancestor.operator_id = locations.operator_id '
+        'and deleted_ancestor.deleted_at is not null '
+        'and locations.org_unit_path <@ deleted_ancestor.path'
+        ') '
+        'order by name',
+      );
+      return _assembleTree(orgUnitRows, locationRows);
+    });
+  }
+
+  /// Slice L_A1 — enumerate every location under the supplied scope.
+  ///
+  /// Used by the audit-log hierarchy filter (B8), benchmark inheritance
+  /// (B6), and any future hierarchy-rollup feature that needs the leaf
+  /// set without traversing the tree in Dart. Implemented as a single
+  /// `path <@ ancestor` ltree predicate so the GIST index on
+  /// `locations.org_unit_path` does the work.
+  ///
+  /// When [scopeOrgUnitId] is null, returns every live location under
+  /// the operator's business root — equivalent to passing the root's
+  /// id, but skips one round-trip.
+  ///
+  /// Returns rows ordered by `org_unit_path, name` for stable
+  /// rendering.
+  Future<List<InheritanceTreeLocationRef>> getDescendantLocations({
+    required String operatorId,
+    required String locationId,
+    String? scopeOrgUnitId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<List<InheritanceTreeLocationRef>>(ctx, (exec) async {
+      // When scope is unspecified we still constrain to the operator
+      // via RLS — the predicate "everything in this tenant" already
+      // matches that. Specifying scope adds an ltree subtree predicate
+      // using the org_unit's own path.
+      final sql = scopeOrgUnitId == null
+          ? 'select location_id::text as location_id, '
+              'parent_org_unit_id::text as parent_org_unit_id, '
+              'org_unit_path::text as org_unit_path, '
+              'name '
+              'from locations '
+              'where deleted_at is null '
+              'and not exists ('
+              'select 1 from org_units deleted_ancestor '
+              'where deleted_ancestor.operator_id = locations.operator_id '
+              'and deleted_ancestor.deleted_at is not null '
+              'and locations.org_unit_path <@ deleted_ancestor.path'
+              ') '
+              'order by org_unit_path, lower(name), location_id'
+          : 'select l.location_id::text as location_id, '
+              'l.parent_org_unit_id::text as parent_org_unit_id, '
+              'l.org_unit_path::text as org_unit_path, '
+              'l.name '
+              'from locations l '
+              'join org_units scope '
+              'on scope.id = @scope_id::uuid '
+              'and scope.deleted_at is null '
+              'where l.deleted_at is null '
+              'and l.org_unit_path <@ scope.path '
+              'and not exists ('
+              'select 1 from org_units deleted_ancestor '
+              'where deleted_ancestor.operator_id = l.operator_id '
+              'and deleted_ancestor.deleted_at is not null '
+              'and l.org_unit_path <@ deleted_ancestor.path'
+              ') '
+              'order by l.org_unit_path, lower(l.name), l.location_id';
+      final rows = await exec.query(
+        sql,
+        parameters: scopeOrgUnitId == null
+            ? const <String, Object?>{}
+            : <String, Object?>{'scope_id': scopeOrgUnitId},
+      );
+      return rows
+          .map(
+            (row) => InheritanceTreeLocationRef(
+              locationId: row['location_id']! as String,
+              parentOrgUnitId: row['parent_org_unit_id'] as String?,
+              orgUnitPath: row['org_unit_path'] as String? ?? '',
+              displayName: row['name']! as String,
+            ),
+          )
+          .toList(growable: false);
+    });
+  }
+
+  /// Slice L_A1 — single-location lookup as an [InheritanceTreeNode].
+  ///
+  /// Returns null when the location is invisible to the tenant (RLS)
+  /// or absent. Used by B8 / B6 / future consumers when they need the
+  /// tree-node shape for a single leaf without assembling the whole
+  /// tree (e.g. a per-location audit drawer).
+  Future<InheritanceTreeNode?> getNodeForLocation({
+    required String operatorId,
+    required String locationId,
+    required String targetLocationId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<InheritanceTreeNode?>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select location_id::text as location_id, '
+        'parent_org_unit_id::text as parent_org_unit_id, '
+        "coalesce(org_unit_path::text, '') as org_unit_path, "
+        'name, nlevel(org_unit_path) as depth '
+        'from locations '
+        'where location_id = @location_id::uuid '
+        'and deleted_at is null',
+        parameters: <String, Object?>{'location_id': targetLocationId},
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final depthValue = row['depth'];
+      final pathDepth = depthValue is int
+          ? depthValue
+          : int.parse(depthValue.toString());
+      return InheritanceTreeNode(
+        scopeKind: InheritanceTreeScopeKind.location,
+        scopeId: row['location_id']! as String,
+        displayName: row['name']! as String,
+        parentScopeId: row['parent_org_unit_id'] as String?,
+        // Location depth = the location's parent_org_unit depth + 1.
+        // `nlevel(org_unit_path)` returns the parent's level (root = 1),
+        // so the location sits one below that.
+        depth: pathDepth,
+        metadata: <String, Object?>{
+          'org_unit_path': row['org_unit_path'] as String? ?? '',
+        },
+      );
+    });
+  }
+
+  /// Pure Dart tree assembler. Public for the L_A2 cache projector
+  /// (slice gated on this method existing as a stable seam) and unit
+  /// tests; not intended for direct call from consumer surfaces — use
+  /// [getOrgUnitTreeForOperator] instead so RLS-isolated reads run
+  /// inside the same transaction.
+  ///
+  /// Builds the Business → Org Unit → Location tree from two flat
+  /// row sets:
+  ///   * [orgUnitRows] — rows with `id`, `parent_id`, `unit_type`,
+  ///     `path`, `name` (all text-projected; UUIDs come back as
+  ///     strings).
+  ///   * [locationRows] — rows with `location_id`, `parent_org_unit_id`,
+  ///     `org_unit_path`, `name`.
+  ///
+  /// Returns the root node (business) with descendants attached, or
+  /// null when no root row exists in [orgUnitRows].
+  static InheritanceTreeNode? _assembleTree(
+    List<Map<String, Object?>> orgUnitRows,
+    List<Map<String, Object?>> locationRows,
+  ) {
+    // Index org_units by id and by parent_id.
+    Map<String, Object?>? rootRow;
+    final byId = <String, Map<String, Object?>>{};
+    final orgUnitChildren = <String, List<Map<String, Object?>>>{};
+    for (final row in orgUnitRows) {
+      final id = row['id']! as String;
+      byId[id] = row;
+      final parentId = row['parent_id'] as String?;
+      if (parentId == null) {
+        rootRow = row;
+      } else {
+        orgUnitChildren
+            .putIfAbsent(parentId, () => <Map<String, Object?>>[])
+            .add(row);
+      }
+    }
+    if (rootRow == null) {
+      return null;
+    }
+    final locationsByParent = <String, List<Map<String, Object?>>>{};
+    for (final row in locationRows) {
+      final parentOrgUnitId = row['parent_org_unit_id'] as String?;
+      if (parentOrgUnitId == null) continue;
+      locationsByParent
+          .putIfAbsent(parentOrgUnitId, () => <Map<String, Object?>>[])
+          .add(row);
+    }
+    return _buildOrgUnitNode(
+      row: rootRow,
+      orgUnitChildren: orgUnitChildren,
+      locationsByParent: locationsByParent,
+      depth: 0,
+    );
+  }
+
+  static InheritanceTreeNode _buildOrgUnitNode({
+    required Map<String, Object?> row,
+    required Map<String, List<Map<String, Object?>>> orgUnitChildren,
+    required Map<String, List<Map<String, Object?>>> locationsByParent,
+    required int depth,
+  }) {
+    final id = row['id']! as String;
+    final unitType = row['unit_type']! as String;
+    final scopeKind = row['parent_id'] == null
+        ? InheritanceTreeScopeKind.business
+        : InheritanceTreeScopeKind.orgUnit;
+    final childOrgUnits = orgUnitChildren[id] ?? const <Map<String, Object?>>[];
+    final childLocations =
+        locationsByParent[id] ?? const <Map<String, Object?>>[];
+    final childNodes = <InheritanceTreeNode>[
+      ...childOrgUnits.map(
+        (child) => _buildOrgUnitNode(
+          row: child,
+          orgUnitChildren: orgUnitChildren,
+          locationsByParent: locationsByParent,
+          depth: depth + 1,
+        ),
+      ),
+      ...childLocations.map(
+        (loc) => InheritanceTreeNode(
+          scopeKind: InheritanceTreeScopeKind.location,
+          scopeId: loc['location_id']! as String,
+          displayName: loc['name']! as String,
+          parentScopeId: loc['parent_org_unit_id'] as String?,
+          depth: depth + 1,
+          metadata: <String, Object?>{
+            'org_unit_path': loc['org_unit_path'] as String? ?? '',
+          },
+        ),
+      ),
+    ];
+    childNodes.sort(
+      (a, b) => a.displayName.toLowerCase().compareTo(
+            b.displayName.toLowerCase(),
+          ),
+    );
+    return InheritanceTreeNode(
+      scopeKind: scopeKind,
+      scopeId: id,
+      displayName: row['name']! as String,
+      parentScopeId: row['parent_id'] as String?,
+      depth: depth,
+      children: List<InheritanceTreeNode>.unmodifiable(childNodes),
+      metadata: <String, Object?>{
+        'unit_type': unitType,
+        'path': row['path'] as String? ?? '',
+      },
+    );
+  }
+
   static void _validateUnitType(String value) {
     if (!allowedUnitTypes.contains(value)) {
       throw ArgumentError.value(
@@ -934,4 +1268,50 @@ class OrgLocationRow {
   final DateTime? suspendedAt;
   final DateTime? deletedAt;
   final String? operatorName;
+}
+
+/// Slice L_A1 — flat projection of a descendant `locations` row used
+/// by [OrgUnitsRepository.getDescendantLocations]. Lighter than
+/// [OrgLocationRow] (no timezone / suspended_at / operator_name) so
+/// callers that just need the leaf identifiers + display name pay no
+/// extra column cost.
+///
+/// L_A2 caches `List<InheritanceTreeLocationRef>` per (operator_id,
+/// scope_id); the field shape mirrors what that cache will project.
+class InheritanceTreeLocationRef {
+  const InheritanceTreeLocationRef({
+    required this.locationId,
+    required this.displayName,
+    required this.orgUnitPath,
+    this.parentOrgUnitId,
+  });
+
+  final String locationId;
+  final String displayName;
+  final String orgUnitPath;
+  final String? parentOrgUnitId;
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other is InheritanceTreeLocationRef &&
+            other.locationId == locationId &&
+            other.displayName == displayName &&
+            other.orgUnitPath == orgUnitPath &&
+            other.parentOrgUnitId == parentOrgUnitId);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        locationId,
+        displayName,
+        orgUnitPath,
+        parentOrgUnitId,
+      );
+
+  @override
+  String toString() {
+    return 'InheritanceTreeLocationRef($locationId, "$displayName", '
+        'orgUnitPath="$orgUnitPath")';
+  }
 }
