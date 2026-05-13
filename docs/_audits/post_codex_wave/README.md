@@ -4,7 +4,7 @@ Table of contents for all per-PR audit docs + cross-cutting audits produced duri
 
 Wave ledger: `docs/_indices/WAVE_EXECUTION_LEDGER.md` (canonical for slice state). This file is a navigation aid; refresh on each housekeeping pass.
 
-Last refreshed: 2026-05-13 (bundle 26).
+Last refreshed: 2026-05-13 (bundle 30).
 
 ## Cross-cutting audits
 
@@ -12,6 +12,7 @@ Last refreshed: 2026-05-13 (bundle 26).
 |---|---|---|
 | 2026-05-13 | [`wave_completion_deep_audit_2026_05_13.md`](wave_completion_deep_audit_2026_05_13.md) | Background deep audit covering 21 merged slices; 5 P1 + 4 P2 + 2 P3 findings deposited per the ledger-first hygiene rule |
 | 2026-05-13 | [`followups_doc_drift_cleanup_2026_05_13.md`](followups_doc_drift_cleanup_2026_05_13.md) | 3 mechanical fixes to `docs/POST_HARDENING_FOLLOWUPS.md` via PR #558 |
+| 2026-05-13 | [`final_housekeeping_sweep_2026_05_13.md`](final_housekeeping_sweep_2026_05_13.md) | Bundle 26 staging sweep — `docs/_indices/` doc trim + `CLAUDE_HANDOFF_PROMPT.md` + `CODEX_HANDOFF_PROMPT.md` refinements + this README index created |
 
 ## Per-PR audits — chronological
 
@@ -50,6 +51,8 @@ Verdict legend: ✅ approve-for-merge · 🔐 approve-pending-operator · 🚧 s
 | #542 | Apple CI | 🔐 | Apple Platform Verification workflow gate | [`pr_542_apple_ci_gate_audit.md`](pr_542_apple_ci_gate_audit.md) |
 | #552 | A4.2 | 🔐 | Performance fixes (R1/R2/R3) (Claude) | [`pr_552_a4_2_performance_fixes_audit.md`](pr_552_a4_2_performance_fixes_audit.md) |
 | #563 | A3.2 | 🔐 | Bare-catch typing chunk 1 of 3 (Claude, salvaged) | [`pr_563_a3_2_bare_catch_typing_chunk_1_audit.md`](pr_563_a3_2_bare_catch_typing_chunk_1_audit.md) |
+| #571 | A11.1.b | 🔐 | Session-record gauge consumer wiring (Claude, first post-loop-mode-restart) | [`pr_571_a11_1_b_session_record_gauge_consumer_audit.md`](pr_571_a11_1_b_session_record_gauge_consumer_audit.md) |
+| #572 | A3.3 | 🔐 | Bare-catch typing chunk 2 of 3 (Claude, Option A continuation) | [`pr_572_a3_3_bare_catch_typing_chunk_2_audit.md`](pr_572_a3_3_bare_catch_typing_chunk_2_audit.md) |
 
 ### Lane B — Features (PRs #499-561)
 
@@ -68,6 +71,9 @@ Verdict legend: ✅ approve-for-merge · 🔐 approve-pending-operator · 🚧 s
 | #550 | B11.2 | 🔐 | RFC 9470 step-up scaffold (Claude) | [`pr_550_b11_2_step_up_challenge_audit.md`](pr_550_b11_2_step_up_challenge_audit.md) |
 | #557 | B5 | 🔐 | Admin access-control sweep (Codex) | [`pr_557_b5_admin_access_control_audit.md`](pr_557_b5_admin_access_control_audit.md) |
 | #561 | B1.c | 🔐 | Admin gateway actorKind peer-bug sweep (Claude, salvaged) | [`pr_561_b1_c_actorkind_peer_bug_sweep_audit.md`](pr_561_b1_c_actorkind_peer_bug_sweep_audit.md) |
+| #568 | B9.3 | ✅ | Adaptive 2FA card 4-state machine + clock-skew (Codex) | [`pr_568_b9_3_adaptive_2fa_card_audit.md`](pr_568_b9_3_adaptive_2fa_card_audit.md) |
+| #573 | B5.b | 🔐 | Catalog tri-mirror amendment (Codex, B5 Option A deferred half) | [`pr_573_b5_b_catalog_tri_mirror_audit.md`](pr_573_b5_b_catalog_tri_mirror_audit.md) |
+| #576 | B10.1 | 🔐 | Vendor applicability plumbing (Codex, schema + RLS + admin/operator routes) | [`pr_576_b10_1_vendor_applicability_audit.md`](pr_576_b10_1_vendor_applicability_audit.md) |
 
 ### Lane C — Cross-Surface Parity
 
