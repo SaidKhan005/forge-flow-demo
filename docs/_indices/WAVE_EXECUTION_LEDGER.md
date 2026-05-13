@@ -52,7 +52,7 @@ Triggers the `operator` gate: auth-critical, RLS-touching, schema-touching (migr
 | B2.1 | B2.1 | Claude | Medium | Medium | operator | — | assigned | — | Default Role catalog schema + publish endpoint |
 | B2.2 | B2.2 | Claude | Medium | Medium | operator | B2.1 merged | assigned | — | Default Role catalog admin editor |
 | B3 | B3 | Codex | Medium | Medium | operator | — | merged | #502 | Role-key hybrid identifier sweep — operator approved 2026-05-12; unblocks B7.a |
-| B4 | B4 | Codex | Small | Low | auto | B3 merged | assigned | — | Two-product taxonomy in role editor |
+| B4 | B4 | Codex | Small | Low | auto | B3 merged | merged | #513 | Two-product taxonomy in role editor + product-tagged audit payload |
 | B5 | B5 | Codex | Medium | Medium | operator | — | assigned | — | Admin access-control + permission-key completeness |
 | B6 | B6 | Codex | Medium | Medium | operator | B10.1 merged | assigned | — | Benchmark override (hierarchy-inherited) |
 | B7.a | B7.a | Codex | Small | Medium | operator | — | merged | #507 | Invite hierarchy-scope fix — operator approved 2026-05-12; Option A consumer-label follow-up applied by orchestrator |
