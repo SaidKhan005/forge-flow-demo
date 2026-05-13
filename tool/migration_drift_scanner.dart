@@ -12,6 +12,8 @@ import 'dart:io';
 import 'migration_cutoff_lint.dart';
 
 const String defaultReportPath = 'build/reports/migration_drift_report.md';
+const String defaultExpandContractGrandfatherCutoff =
+    '202605131030_b11_1_auth_handoff_codes.sql';
 
 const List<String> defaultWatchedDocs = <String>[
   'PROJECT_TRACKER.md',
@@ -27,6 +29,22 @@ const String _cutoffEndMarker = '# MIGRATION_CUTOFF_END';
 
 final RegExp _filenamePattern = RegExp(r'(\d{8,}[A-Za-z0-9_.-]*\.sql)');
 final RegExp _timestampPattern = RegExp(r'\b20\d{6,}\b');
+final RegExp _createTablePattern = RegExp(
+  r'\bcreate\s+table\s+(?:if\s+not\s+exists\s+)?((?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)(?:\s*\.\s*(?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*))?)',
+  caseSensitive: false,
+);
+final RegExp _addColumnPattern = RegExp(
+  r'\balter\s+table\s+(?:if\s+exists\s+)?((?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)(?:\s*\.\s*(?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*))?)\s+[\s\S]*?\badd\s+column\s+(?:if\s+not\s+exists\s+)?[\s\S]*?;',
+  caseSensitive: false,
+);
+final RegExp _updateTablePattern = RegExp(
+  r'\bupdate\s+(?:only\s+)?((?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)(?:\s*\.\s*(?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*))?)(?:\s+(?:as\s+)?[a-zA-Z_][a-zA-Z0-9_$]*)?\s+set\b',
+  caseSensitive: false,
+);
+final RegExp _setNotNullPattern = RegExp(
+  r'\balter\s+table\s+(?:if\s+exists\s+)?((?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)(?:\s*\.\s*(?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*))?)\s+[\s\S]*?\balter\s+column\s+[\s\S]*?\bset\s+not\s+null\b[\s\S]*?;',
+  caseSensitive: false,
+);
 
 class MigrationDriftScanResult {
   const MigrationDriftScanResult({
@@ -56,6 +74,163 @@ class MigrationDriftScanResult {
       docResults.any((result) => result.status == MigrationDocStatus.stale);
 
   String get latestTimestamp => latestMigration.split('_').first;
+}
+
+class MigrationExpandContractViolation {
+  const MigrationExpandContractViolation({
+    required this.fileName,
+    required this.tableName,
+    required this.line,
+    required this.reason,
+  });
+
+  final String fileName;
+  final String tableName;
+  final int line;
+  final String reason;
+
+  @override
+  String toString() =>
+      '$fileName:$line combines schema expand + backfill + '
+      'contract on $tableName ($reason). Split into an expand migration plus '
+      'post_deploy backfill/contract SQL.';
+}
+
+class MigrationExpandContractLintResult {
+  const MigrationExpandContractLintResult({
+    required this.scannedFileCount,
+    required this.grandfatheredFileCount,
+    required this.violations,
+  });
+
+  final int scannedFileCount;
+  final int grandfatheredFileCount;
+  final List<MigrationExpandContractViolation> violations;
+
+  bool get isClean => violations.isEmpty;
+}
+
+class MigrationExpandContractLintRunner {
+  const MigrationExpandContractLintRunner({
+    required this.files,
+    this.grandfatherCutoff,
+  });
+
+  final Map<String, String> files;
+  final String? grandfatherCutoff;
+
+  MigrationExpandContractLintResult run() {
+    final violations = <MigrationExpandContractViolation>[];
+    var grandfatheredFileCount = 0;
+    for (final entry in files.entries) {
+      final fileName = entry.key;
+      if (_isGrandfathered(fileName)) {
+        grandfatheredFileCount++;
+        continue;
+      }
+      violations.addAll(_scanFile(fileName, entry.value));
+    }
+    return MigrationExpandContractLintResult(
+      scannedFileCount: files.length,
+      grandfatheredFileCount: grandfatheredFileCount,
+      violations: List<MigrationExpandContractViolation>.unmodifiable(
+        violations,
+      ),
+    );
+  }
+
+  bool _isGrandfathered(String fileName) {
+    final cutoff = grandfatherCutoff;
+    return cutoff != null && fileName.compareTo(cutoff) <= 0;
+  }
+
+  Iterable<MigrationExpandContractViolation> _scanFile(
+    String fileName,
+    String body,
+  ) sync* {
+    final scanBody = _stripSqlCommentsPreservingOffsets(body);
+    final createdTables = _createdTables(scanBody);
+    final tableStates = <String, _ExpandContractTableState>{};
+
+    for (final match in _addColumnPattern.allMatches(scanBody)) {
+      final tableName = _normalizeSqlTableName(match.group(1) ?? '');
+      if (tableName.isEmpty || createdTables.contains(tableName)) continue;
+      final state = tableStates.putIfAbsent(
+        tableName,
+        () => _ExpandContractTableState(tableName),
+      );
+      final statement = match.group(0) ?? '';
+      state.addColumnLine ??= _lineForOffset(scanBody, match.start);
+      if (RegExp(r'\bnot\s+null\b', caseSensitive: false).hasMatch(statement)) {
+        state.hasAddNotNull = true;
+      } else {
+        state.hasAddNullable = true;
+      }
+    }
+
+    for (final match in _updateTablePattern.allMatches(scanBody)) {
+      final tableName = _normalizeSqlTableName(match.group(1) ?? '');
+      if (tableName.isEmpty || createdTables.contains(tableName)) continue;
+      final state = tableStates.putIfAbsent(
+        tableName,
+        () => _ExpandContractTableState(tableName),
+      );
+      state.hasUpdate = true;
+      state.updateLine ??= _lineForOffset(scanBody, match.start);
+    }
+
+    for (final match in _setNotNullPattern.allMatches(scanBody)) {
+      final tableName = _normalizeSqlTableName(match.group(1) ?? '');
+      if (tableName.isEmpty || createdTables.contains(tableName)) continue;
+      final state = tableStates.putIfAbsent(
+        tableName,
+        () => _ExpandContractTableState(tableName),
+      );
+      state.hasSetNotNull = true;
+      state.setNotNullLine ??= _lineForOffset(scanBody, match.start);
+    }
+
+    for (final state in tableStates.values) {
+      if (state.hasAddNotNull && state.hasUpdate) {
+        yield MigrationExpandContractViolation(
+          fileName: fileName,
+          tableName: state.tableName,
+          line: state.addColumnLine ?? state.updateLine ?? 1,
+          reason: 'ADD COLUMN NOT NULL and UPDATE in one migration',
+        );
+        continue;
+      }
+      if (state.hasAddNullable && state.hasUpdate && state.hasSetNotNull) {
+        yield MigrationExpandContractViolation(
+          fileName: fileName,
+          tableName: state.tableName,
+          line: state.addColumnLine ?? state.updateLine ?? 1,
+          reason: 'ADD COLUMN, UPDATE, and SET NOT NULL in one migration',
+        );
+      }
+    }
+  }
+
+  Set<String> _createdTables(String body) {
+    return _createTablePattern
+        .allMatches(body)
+        .map((match) => _normalizeSqlTableName(match.group(1) ?? ''))
+        .where((tableName) => tableName.isNotEmpty)
+        .toSet();
+  }
+}
+
+class _ExpandContractTableState {
+  _ExpandContractTableState(this.tableName);
+
+  final String tableName;
+  bool hasAddNullable = false;
+  bool hasAddNotNull = false;
+  bool hasUpdate = false;
+  bool hasSetNotNull = false;
+  int? addColumnLine;
+  int? updateLine;
+  int? setNotNullLine;
 }
 
 enum MigrationDocStatus {
@@ -306,6 +481,12 @@ String renderMigrationDriftReport(MigrationDriftScanResult result) {
 Future<void> main(List<String> args) async {
   final fix = args.contains('--fix');
   final strictDocs = args.contains('--strict-docs');
+  final requireExpandContract = args.contains('--require-expand-contract');
+  final expandContractGrandfatherCutoff = _argOrDefault(
+    args,
+    '--expand-contract-grandfather-cutoff=',
+    defaultExpandContractGrandfatherCutoff,
+  );
   final scriptPath = _argOrDefault(args, '--script=', defaultScriptPath);
   final migrationsDir = _argOrDefault(
     args,
@@ -330,14 +511,20 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  final migrationFilenames =
+  final migrationFiles =
       migrationsDirectory
           .listSync(followLinks: false)
           .whereType<File>()
           .where((file) => file.path.toLowerCase().endsWith('.sql'))
-          .map((file) => file.uri.pathSegments.last)
           .toList()
-        ..sort();
+        ..sort((a, b) => a.path.compareTo(b.path));
+  final migrationFilenames = migrationFiles
+      .map((file) => file.uri.pathSegments.last)
+      .toList();
+  final migrationBodies = <String, String>{};
+  for (final file in migrationFiles) {
+    migrationBodies[file.uri.pathSegments.last] = file.readAsStringSync();
+  }
 
   final scriptBody = scriptFile.readAsStringSync();
   final docBodies = <String, String?>{};
@@ -384,7 +571,39 @@ Future<void> main(List<String> args) async {
     );
   }
 
-  if (!result.cutoffClean || (strictDocs && result.hasLikelyDocDrift)) {
+  var shouldFail =
+      !result.cutoffClean || (strictDocs && result.hasLikelyDocDrift);
+
+  if (requireExpandContract) {
+    final expandContractResult = MigrationExpandContractLintRunner(
+      files: migrationBodies,
+      grandfatherCutoff: expandContractGrandfatherCutoff.isEmpty
+          ? null
+          : expandContractGrandfatherCutoff,
+    ).run();
+    stdout.writeln(
+      'migration_drift_scanner: expand-contract scanned '
+      '${expandContractResult.scannedFileCount} migration file(s); '
+      '${expandContractResult.grandfatheredFileCount} grandfathered.',
+    );
+    if (expandContractResult.isClean) {
+      stdout.writeln(
+        'migration_drift_scanner: expand-contract clean for enforced '
+        'migrations.',
+      );
+    } else {
+      stderr.writeln(
+        'migration_drift_scanner: expand-contract '
+        '${expandContractResult.violations.length} violation(s):',
+      );
+      for (final violation in expandContractResult.violations) {
+        stderr.writeln('  - $violation');
+      }
+      shouldFail = true;
+    }
+  }
+
+  if (shouldFail) {
     exitCode = 1;
   }
 }
@@ -425,4 +644,91 @@ String _statusLabel(MigrationDocStatus status) {
     case MigrationDocStatus.missing:
       return 'missing';
   }
+}
+
+String _stripSqlCommentsPreservingOffsets(String input) {
+  final buffer = StringBuffer();
+  var index = 0;
+  var inSingleQuote = false;
+  var inDoubleQuote = false;
+
+  while (index < input.length) {
+    final char = input[index];
+    final next = index + 1 < input.length ? input[index + 1] : '';
+
+    if (!inSingleQuote && !inDoubleQuote && char == '-' && next == '-') {
+      buffer.write('  ');
+      index += 2;
+      while (index < input.length && input[index] != '\n') {
+        buffer.write(' ');
+        index++;
+      }
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote && char == '/' && next == '*') {
+      buffer.write('  ');
+      index += 2;
+      while (index < input.length) {
+        final blockChar = input[index];
+        final blockNext = index + 1 < input.length ? input[index + 1] : '';
+        if (blockChar == '*' && blockNext == '/') {
+          buffer.write('  ');
+          index += 2;
+          break;
+        }
+        buffer.write(blockChar == '\n' ? '\n' : ' ');
+        index++;
+      }
+      continue;
+    }
+
+    if (!inDoubleQuote && char == "'") {
+      buffer.write(char);
+      if (inSingleQuote && next == "'") {
+        buffer.write(next);
+        index += 2;
+        continue;
+      }
+      inSingleQuote = !inSingleQuote;
+      index++;
+      continue;
+    }
+
+    if (!inSingleQuote && char == '"') {
+      buffer.write(char);
+      if (inDoubleQuote && next == '"') {
+        buffer.write(next);
+        index += 2;
+        continue;
+      }
+      inDoubleQuote = !inDoubleQuote;
+      index++;
+      continue;
+    }
+
+    buffer.write(char);
+    index++;
+  }
+
+  return buffer.toString();
+}
+
+String _normalizeSqlTableName(String raw) {
+  final parts = raw
+      .split('.')
+      .map((part) => part.trim().replaceAll('"', '').toLowerCase())
+      .where((part) => part.isNotEmpty)
+      .toList();
+  if (parts.isEmpty) return '';
+  if (parts.length == 1) return 'public.${parts.single}';
+  return '${parts[parts.length - 2]}.${parts.last}';
+}
+
+int _lineForOffset(String body, int offset) {
+  var line = 1;
+  for (var i = 0; i < offset && i < body.length; i++) {
+    if (body.codeUnitAt(i) == 10) line++;
+  }
+  return line;
 }
