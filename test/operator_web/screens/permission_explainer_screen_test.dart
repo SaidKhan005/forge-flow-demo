@@ -3,9 +3,10 @@
 // Pins the parity contract section "Roles + Permission Explainer
 // (11W.2 + 11A.13 Roles tab)":
 //
-//   - 9 categories rendered in the locked order:
+//   - 11 categories rendered in the locked order:
 //     `product` -> `forgeflow` -> `barrio` -> `admin` -> `team` ->
-//     `billing` -> `integration` -> `integrations` -> `workflow`.
+//     `account` -> `business_timing` -> `billing` -> `integration` ->
+//     `integrations` -> `workflow`.
 //   - Every key in `PermissionKeys.all` appears under its category.
 //   - Description copy is verbatim from the catalog migration seed
 //     (no paraphrasing in the UI).
@@ -38,11 +39,11 @@ void main() {
     });
   }
 
-  group('Permission Explainer renders 9 categories in locked order', () {
-    testWidgets('renders all 9 category blocks in the locked sequence', (
+  group('Permission Explainer renders 11 categories in locked order', () {
+    testWidgets('renders all 11 category blocks in the locked sequence', (
       tester,
     ) async {
-      await sizeViewport(tester, const Size(1280, 1600));
+      await sizeViewport(tester, const Size(1280, 2400));
       await tester.pumpWidget(wrap(const PermissionExplainerScreen()));
       await tester.pumpAndSettle();
 
@@ -52,6 +53,8 @@ void main() {
         'barrio',
         'admin',
         'team',
+        'account',
+        'business_timing',
         'billing',
         'integration',
         'integrations',
@@ -70,6 +73,22 @@ void main() {
         }
       }
       expect(foundOrder, expectedOrder);
+    });
+
+    test('every category in the locked order has a display label', () {
+      for (final category in kPermissionExplainerCategories) {
+        final label = kPermissionExplainerCategoryLabels[category];
+        expect(
+          label,
+          isNotNull,
+          reason: 'category $category missing display label',
+        );
+        expect(
+          (label ?? '').trim().isNotEmpty,
+          isTrue,
+          reason: 'category $category has blank display label',
+        );
+      }
     });
 
     test('every key in PermissionKeys.all has a verbatim description', () {
@@ -203,6 +222,32 @@ void main() {
         'Configure inbound vendor connections (POS / labor / reservation) '
             'on the per-(operator, location) Vendor Connections admin '
             'surface.',
+      );
+    });
+
+    test('team.hierarchy.* descriptions match migration seed', () {
+      // Seeded by db/migrations/202605082200_admin_hierarchy_lifecycle.sql.
+      expect(
+        kPermissionExplainerDescriptions['team.hierarchy.suspend'],
+        'Suspend or reactivate locations and hierarchy levels.',
+      );
+      expect(
+        kPermissionExplainerDescriptions['team.hierarchy.delete'],
+        'Delete locations and empty hierarchy levels.',
+      );
+    });
+
+    test('account + business_timing descriptions match migration seed', () {
+      // Seeded by db/migrations/202605131500_b5_b_catalog_tri_mirror.sql.
+      expect(
+        kPermissionExplainerDescriptions['account.configure'],
+        'Configure operator business account identity, locale, currency, '
+            'business-week, rollover-hour, and logo settings.',
+      );
+      expect(
+        kPermissionExplainerDescriptions['business_timing.configure'],
+        'Configure effective-dated business timing profiles, rollover-hour, '
+            'week-start, and service periods.',
       );
     });
   });

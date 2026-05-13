@@ -1,6 +1,6 @@
 // Phase 11W.2 - Operator Web Permission Explainer screen.
 //
-// Renders the frozen permission key catalog as a 9-category tree per
+// Renders the frozen permission key catalog as an 11-category tree per
 // the Team / Roles / Hierarchy / Sessions / Audit / Security console
 // parity contract § Roles + Permission Explainer. Mounted at the
 // `/roles/explainer` route in the operator-web shell.
@@ -22,6 +22,8 @@
 //   * db/migrations/202605040000_phase_8_0_integration_framework.sql
 //   * db/migrations/202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql
 //   * db/migrations/202605061600_phase_11W_5_team_audit_log_export_key.sql
+//   * db/migrations/202605082200_admin_hierarchy_lifecycle.sql
+//   * db/migrations/202605131500_b5_b_catalog_tri_mirror.sql
 //
 // Adding a new permission key requires updating the migration, the
 // catalog doc, `lib/auth/permission_keys.dart`, and this file's
@@ -42,6 +44,8 @@ const List<String> kPermissionExplainerCategories = <String>[
   'barrio',
   'admin',
   'team',
+  'account',
+  'business_timing',
   'billing',
   'integration',
   'integrations',
@@ -56,6 +60,8 @@ const Map<String, String> kPermissionExplainerCategoryLabels = <String, String>{
   'barrio': 'Barrio',
   'admin': 'F&F admin',
   'team': 'Team self-service',
+  'account': 'Account configuration',
+  'business_timing': 'Business timing',
   'billing': 'Billing',
   'integration': 'Integrations (per vendor)',
   'integrations': 'Integrations (vendor connections)',
@@ -159,7 +165,7 @@ const Map<String, String> kPermissionExplainerDescriptions = <String, String>{
       'provenance row capturing reader, reason, target, and records-read '
       'count. MFA required.',
 
-  // team.* (14)
+  // team.* (16)
   'team.users.view': "View the operator's user list.",
   'team.users.invite': 'Create invites for users in own operator.',
   'team.users.deactivate': 'Suspend a user in own operator.',
@@ -177,6 +183,20 @@ const Map<String, String> kPermissionExplainerDescriptions = <String, String>{
   'team.audit_log.export': 'View and export team audit log entries (CSV).',
   'team.session.force_logout':
       "Force-logout a user's sessions within own operator.",
+  'team.hierarchy.suspend':
+      'Suspend or reactivate locations and hierarchy levels.',
+  'team.hierarchy.delete':
+      'Delete locations and empty hierarchy levels.',
+
+  // account.* (1)
+  'account.configure':
+      'Configure operator business account identity, locale, currency, '
+      'business-week, rollover-hour, and logo settings.',
+
+  // business_timing.* (1)
+  'business_timing.configure':
+      'Configure effective-dated business timing profiles, rollover-hour, '
+      'week-start, and service periods.',
 
   // billing.* (5)
   'billing.invoice.view': 'View operator invoices.',
