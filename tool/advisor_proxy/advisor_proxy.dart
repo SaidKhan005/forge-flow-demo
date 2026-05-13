@@ -89,6 +89,7 @@ import 'health_operation_budget.dart';
 import 'log.dart';
 import 'business_scope_routes.dart';
 import 'connector_backfill_jobs_routes.dart';
+import 'demo_mode_master_switch_routes.dart';
 import 'mobile_push_notifications.dart';
 import 'notification_preferences_routes.dart';
 import 'admin_business_timing_routes.dart';
@@ -150,6 +151,15 @@ export 'notification_preferences_routes.dart'
         notificationPreferencesPath,
         notificationPreferencesPrefix,
         hashNotificationPreferencesRequest;
+export 'demo_mode_master_switch_routes.dart'
+    show
+        DemoModeMasterSwitchGateway,
+        DemoModeMasterSwitchMatch,
+        DemoModeMasterSwitchRejected,
+        DemoModeMasterSwitchRouter,
+        RepositoryDemoModeMasterSwitchGateway;
+export 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/demo_mode_state_repository.dart'
+    show DemoModeMasterSwitchResult;
 export 'wage_role_rows_routes.dart'
     show
         WageRoleRowsRouter,
@@ -8853,6 +8863,10 @@ Future<void> routeRequest(
   // Optional: when null, the POST/DELETE routes return 503 so existing
   // tests do not need to plumb the router through every call site.
   WageRoleRowsRouter? wageRoleRowsRouter,
+  // Slice C-4 - operator-scoped Demo -> Live master switch. Optional:
+  // when null the route returns 503 so existing tests do not need to
+  // plumb the router through every call site.
+  DemoModeMasterSwitchRouter? demoModeMasterSwitchRouter,
   // Phase 8 star/target truth - selected-star read/write router. Optional
   // for existing tests; production installs a global router from bootstrap.
   SelectedStarTargetRouter? selectedStarTargetRouter,
@@ -9502,6 +9516,104 @@ Future<void> routeRequest(
               'error': 'audit_chain_anchors_unavailable',
               'message':
                   'audit chain anchor lookup is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        final demoModeMasterSwitchMatch = DemoModeMasterSwitchRouter.match(
+          path,
+          request.method,
+        );
+        if (demoModeMasterSwitchMatch != null) {
+          if (demoModeMasterSwitchRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'demo_mode_master_switch_not_configured',
+              'message':
+                  'route requires a DemoModeMasterSwitchRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveLocationReadContextOrWrite(
+            request: request,
+            response: response,
+            authGuard: authGuard,
+            operatorId: demoModeMasterSwitchMatch.operatorId,
+            locationId: demoModeMasterSwitchMatch.locationId,
+          );
+          if (scope == null) return;
+          if (!scope.roles.any(kOperatorWriteRoles.contains)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'forbidden',
+              'message': 'operator owner or operator admin role is required',
+              'required_roles': kOperatorWriteRoles.toList(),
+            });
+            return;
+          }
+          if (!await _operatorLocationScopeAllowed(
+            scope: scope,
+            operatorId: demoModeMasterSwitchMatch.operatorId,
+            locationId: demoModeMasterSwitchMatch.locationId,
+            businessScopeGateway: businessScopeGateway,
+          )) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'requested demo-mode scope does not match caller scope',
+            });
+            return;
+          }
+          final headerKey = request.headers.value('Idempotency-Key')?.trim();
+          if (headerKey == null || headerKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_missing',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
+          if (headerKey.length > 200) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_too_long',
+              'message':
+                  'Idempotency-Key header must be 200 characters or fewer',
+            });
+            return;
+          }
+          final bodyResult = await readOperatorJsonBody(request);
+          if (bodyResult.errorStatus != null) {
+            _writeJson(
+              response,
+              bodyResult.errorStatus!,
+              bodyResult.errorBody!,
+            );
+            return;
+          }
+          try {
+            final result = await demoModeMasterSwitchRouter.handle(
+              operatorId: demoModeMasterSwitchMatch.operatorId,
+              locationId: demoModeMasterSwitchMatch.locationId,
+              actorUserId: scope.userId,
+              idempotencyKey: headerKey,
+              body: bodyResult.body!,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } on DemoModeMasterSwitchRejected catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message': error.message,
+            });
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'demo_mode_master_switch',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'demo_mode_master_switch_unavailable',
+              'message': 'demo-mode switch is unavailable; please retry',
             });
           }
           return;
@@ -11189,7 +11301,10 @@ Future<void> routeRequest(
             return;
           }
           final actor = await _resolveVerifiedClaimsOrWrite(
-              request, response, authGuard);
+            request,
+            response,
+            authGuard,
+          );
           if (actor == null) return;
           Map<String, Object?> catalogBody;
           try {
@@ -11207,10 +11322,10 @@ Future<void> routeRequest(
               path: path,
               actorRoles: actor.roles.toSet(),
               actorFirebaseUid: actor.firebaseUid ?? actor.userId,
-              actorResolver:
-                  integrationAdminActorResolver?.resolveActorUserId,
-              idempotencyKeyHeader:
-                  request.headers.value('Idempotency-Key')?.trim(),
+              actorResolver: integrationAdminActorResolver?.resolveActorUserId,
+              idempotencyKeyHeader: request.headers
+                  .value('Idempotency-Key')
+                  ?.trim(),
               limitQueryParam: request.uri.queryParameters['limit'],
               body: catalogBody,
             );

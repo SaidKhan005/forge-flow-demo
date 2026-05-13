@@ -533,8 +533,9 @@ Future<void> _runProxy(List<String> args) async {
   // minutes regardless of which pod served the original publish. With
   // the flag off (default), the subscriber is null and the resolver
   // falls back to the in-process ring — zero new GCP cost.
-  final pubsubRealtimeStartup =
-      evaluatePubsubRealtimeStartup(Platform.environment);
+  final pubsubRealtimeStartup = evaluatePubsubRealtimeStartup(
+    Platform.environment,
+  );
   if (pubsubRealtimeStartup.hasMissingEnvVars) {
     log(
       LogSeverity.error,
@@ -558,14 +559,16 @@ Future<void> _runProxy(List<String> args) async {
       projectId: pubsubRealtimeStartup.projectId!,
       topicName: pubsubRealtimeStartup.topicName!,
       subscriptionName: PubsubSubscriptionName.forPod(
-        revision: Platform.environment['K_REVISION'] ??
+        revision:
+            Platform.environment['K_REVISION'] ??
             Platform.environment['CLOUD_RUN_REVISION'] ??
             'rev-unknown',
         hostname: Platform.localHostname,
       ),
       accessTokenProvider: MetadataServerAccessTokenProvider(),
-      messageRetention:
-          Duration(seconds: pubsubRealtimeStartup.retentionSeconds),
+      messageRetention: Duration(
+        seconds: pubsubRealtimeStartup.retentionSeconds,
+      ),
       logger: _logPubsubSubscriberEvent,
     );
     try {
@@ -702,12 +705,12 @@ Future<void> _runProxy(List<String> args) async {
       projectId: pubsubRealtimeStartup.projectId!,
       accessTokenProvider: MetadataServerAccessTokenProvider(),
     );
-    pubsubMessagePublisherCallback = ({
-      required String topicName,
-      required String body,
-      required Map<String, String> attributes,
-    }) =>
-        googlePublisher.publish(
+    pubsubMessagePublisherCallback =
+        ({
+          required String topicName,
+          required String body,
+          required Map<String, String> attributes,
+        }) => googlePublisher.publish(
           topicName: topicName,
           body: body,
           attributes: attributes,
@@ -1670,6 +1673,11 @@ Future<void> _runProxy(List<String> args) async {
             // return 503 notification_preferences_router_not_configured.
             notificationPreferencesRouter:
                 productionBindings.notificationPreferencesRouter,
+            // Slice C-4 - operator-scoped Demo -> Live master switch.
+            // Without this binding the route returns 503
+            // demo_mode_master_switch_not_configured.
+            demoModeMasterSwitchRouter:
+                productionBindings.demoModeMasterSwitchRouter,
             // Phase 8 W5.A.1 - operator-scoped wage role rows write
             // router. Without this binding the POST/DELETE routes
             // return 503 wage_role_rows_router_not_configured.
@@ -1998,8 +2006,7 @@ class PubsubRealtimeStartup {
 
   /// True when the env flag is on but at least one required name is
   /// missing — the bootstrap exits 78 in that case (fail-loud).
-  bool get hasMissingEnvVars =>
-      enabled && missingEnvVarNames.isNotEmpty;
+  bool get hasMissingEnvVars => enabled && missingEnvVarNames.isNotEmpty;
 }
 
 /// Inspect the process environment and return the resolved startup
@@ -2010,7 +2017,8 @@ PubsubRealtimeStartup evaluatePubsubRealtimeStartup(
   Map<String, String> environment,
 ) {
   final rawFlag = environment[pubsubRealtimeEnabledEnvVar];
-  final isEnabled = rawFlag != null &&
+  final isEnabled =
+      rawFlag != null &&
       <String>{'true', '1', 'yes'}.contains(rawFlag.trim().toLowerCase());
   if (!isEnabled) return PubsubRealtimeStartup.disabled;
   final missing = <String>[];
@@ -2018,8 +2026,9 @@ PubsubRealtimeStartup evaluatePubsubRealtimeStartup(
   if (projectId == null) missing.add(pubsubRealtimeProjectEnvVar);
   final topicName = _stringOrNull(environment[pubsubRealtimeTopicEnvVar]);
   if (topicName == null) missing.add(pubsubRealtimeTopicEnvVar);
-  final retentionRaw =
-      _stringOrNull(environment[pubsubRealtimeRetentionSecondsEnvVar]);
+  final retentionRaw = _stringOrNull(
+    environment[pubsubRealtimeRetentionSecondsEnvVar],
+  );
   var retentionSeconds = kPubsubRealtimeDefaultRetentionSeconds;
   if (retentionRaw != null) {
     final parsed = int.tryParse(retentionRaw);

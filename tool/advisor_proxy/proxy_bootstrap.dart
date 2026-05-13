@@ -29,6 +29,7 @@ import 'package:forge_and_flow/services/business_timing/production_operator_writ
 import 'package:forge_and_flow/services/business_timing/repository_operator_write_gateways.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/default_role_catalog_versions_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/demo_mode_state_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/feature_flags_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/graph_repository.dart';
@@ -232,6 +233,7 @@ class ProxyProductionBindings {
     required this.connectorBackfillJobsRouter,
     required this.vendorLifecycleRecentlyAvailableRouter,
     required this.notificationPreferencesRouter,
+    required this.demoModeMasterSwitchRouter,
     required this.wageRoleRowsRouter,
     required this.authHandoffRouter,
     required this.stepUpChallengeRouter,
@@ -419,6 +421,11 @@ class ProxyProductionBindings {
   /// RLS). Wired into `routeRequest` for the three operator-scoped
   /// notification-preferences routes.
   final NotificationPreferencesRouter notificationPreferencesRouter;
+
+  /// Slice C-4 - operator-scoped Demo -> Live master switch. Backed by
+  /// [DemoModeStateRepository] over the tenant pool so the write uses
+  /// the same RLS posture as the existing demo-mode read surface.
+  final DemoModeMasterSwitchRouter demoModeMasterSwitchRouter;
 
   /// Phase 8 W5.A.1 - operator-scoped wage role rows write router.
   /// Handles POST /v1/operator/wage-role-rows (upsert) and DELETE
@@ -824,6 +831,18 @@ ProxyProductionBindings buildProxyProductionBindings(
   // so the audit row's operator_id matches the SET LOCAL GUC and the
   // chain stays per-(operator, chain_date)-bounded. The opaque code
   // never appears in audit payloads (SHA-256 hex hash only).
+  // Slice C-4 - operator-scoped master Demo -> Live switch. This
+  // deliberately uses the same tenant pool as the mobile read path;
+  // RLS is the backup defense and the repository writes the audit row
+  // inside the same transaction as the flag flip.
+  final demoModeMasterSwitchRouter = DemoModeMasterSwitchRouter(
+    gateway: RepositoryDemoModeMasterSwitchGateway(
+      repository: DemoModeStateRepository(
+        tenantWrapper,
+        auditLogsRepository: auditLogsRepository,
+      ),
+    ),
+  );
   final authHandoffRouter = AuthHandoffRouter(
     gateway: RepositoryHandoffCodesGateway(
       repository: HandoffCodesRepository(tenantWrapper),
@@ -1289,6 +1308,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     vendorLifecycleRecentlyAvailableRouter:
         vendorLifecycleRecentlyAvailableRouter,
     notificationPreferencesRouter: notificationPreferencesRouter,
+    demoModeMasterSwitchRouter: demoModeMasterSwitchRouter,
     wageRoleRowsRouter: wageRoleRowsRouter,
     authHandoffRouter: authHandoffRouter,
     // Lane B B11.2.b — RFC 9470 step-up challenge router. Without this

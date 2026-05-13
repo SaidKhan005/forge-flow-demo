@@ -19,6 +19,7 @@ import '../theme/app_theme.dart';
 import '../widgets/sticky_section_delegate.dart';
 import 'settings/settings_active_sessions_section.dart';
 import 'settings/settings_data_sections.dart';
+import 'settings/settings_demo_live_switch.dart';
 import 'settings/settings_mfa_section.dart';
 import 'settings/settings_pointer_row.dart';
 import 'settings/settings_timing_authority_section.dart';
@@ -367,6 +368,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     description:
                         'See whether this device has the local data it needs.',
                     child: SettingsDataStatusSection(status: _status),
+                  ),
+                  _settingsSection(
+                    title: 'Integrations',
+                    description:
+                        'Switch this location from demo facts to live vendor facts.',
+                    child: const SettingsDemoLiveSwitch(),
                   ),
                   // Phase 10a.UX.1 — per-table last-sync timestamps
                   // surfacing the realtime push channel from the

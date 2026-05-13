@@ -21,6 +21,7 @@ import 'weekly_plan_sync_resources.dart';
 class HttpSyncProxyClient
     implements
         SyncProxyClient,
+        DemoModeMasterSwitchClient,
         BusinessScopeClient,
         StarTargetSyncProxyClient,
         WeeklyPlanSyncProxyClient,
@@ -157,6 +158,30 @@ class HttpSyncProxyClient
   }) async {
     final body = await _getJson(
       _locationPath(operatorId, locationId, const <String>['demo_mode_states']),
+    );
+    final rows = _readList(body, const <String>[
+      'demo_mode_states',
+      'states',
+      'records',
+      'data',
+    ]);
+    return rows
+        .map((row) => _demoModeRecordFromJson(_stringKeyMap(row)))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<List<DemoModeRecord>> switchDemoModeToLive({
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+  }) async {
+    final body = await _postJson(
+      _locationPath(operatorId, locationId, const <String>[
+        'demo-mode-master-switch',
+      ]),
+      body: const <String, Object?>{'target_mode': 'live'},
+      idempotencyKey: idempotencyKey,
     );
     final rows = _readList(body, const <String>[
       'demo_mode_states',
@@ -972,8 +997,7 @@ class HttpSyncProxyClient
         _readString(json['wage_role_row_id']) ??
         _readString(json['wageRoleRowId']);
     final effectiveAtRaw = json['effective_at'] ?? json['effectiveAt'];
-    final effectiveAtIso =
-        _readDateTime(effectiveAtRaw)?.toIso8601String();
+    final effectiveAtIso = _readDateTime(effectiveAtRaw)?.toIso8601String();
     final metadata = _readMap(json['metadata']);
     return WageRoleRow(
       serverId: serverId,
@@ -998,8 +1022,7 @@ class HttpSyncProxyClient
           _readDouble(json['weightedHours']) ??
           _requiredDouble(json, 'hours'),
       jobCode: _readString(json['job_code']) ?? _readString(json['jobCode']),
-      vendorId:
-          _readString(json['vendor_id']) ?? _readString(json['vendorId']),
+      vendorId: _readString(json['vendor_id']) ?? _readString(json['vendorId']),
       vendorRoleId:
           _readString(json['vendor_role_id']) ??
           _readString(json['vendorRoleId']),
@@ -1164,8 +1187,7 @@ class HttpSyncProxyClient
     if (value is Map) {
       if (value.isEmpty) return null;
       return <String, Object?>{
-        for (final entry in value.entries)
-          entry.key.toString(): entry.value,
+        for (final entry in value.entries) entry.key.toString(): entry.value,
       };
     }
     if (value is String && value.trim().isNotEmpty) {
