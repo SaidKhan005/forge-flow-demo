@@ -81,6 +81,49 @@ apply evidence must stay attached to the runbook before any Production1 apply.
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 
+## P1 — Soak Heap-Snapshot Uploader: swap GCS → Azure Blob (A11.2 follow-up)
+
+**Origin:** A11.2 (PR #537, merged 2026-05-13 at `8463d56b`) added a
+storage-agnostic `HeapSnapshotUploadTarget` interface plus a concrete
+`GcsHeapSnapshotUploadTarget` implementation (raw GCS REST PUT via
+`dart:io HttpClient` + bearer-token auth). The slice doc specified GCS;
+F&F's only other cloud-storage client is Azure Blob
+(`tool/audit_anchor/azure_blob_client.dart`).
+
+**Operator decision (2026-05-13):** F&F will not run two cloud-storage
+backends. The GCS implementation must be **replaced** with an Azure Blob
+implementation before any soak run actually uses uploads.
+
+**Binding constraint:** the GCS env vars (`GCS_BUCKET_HEAP_SNAPSHOTS`,
+`GCS_BEARER_TOKEN`) MUST stay unset on every host until this swap lands.
+The uploader is inert when unconfigured (one "skipped" log line at start);
+that inert state is the safety guarantee until the Azure swap ships.
+
+**Follow-up slice scope:**
+- Add `AzureBlobHeapSnapshotUploadTarget implements HeapSnapshotUploadTarget`
+  modeled on `tool/audit_anchor/azure_blob_client.dart` (workload-identity-
+  federation flow analogous to the audit-anchor pattern).
+- Switch the default binding in `tool/pressure/p4_heap_snapshot_uploader.dart`
+  from `GcsHeapSnapshotUploadTarget` to `AzureBlobHeapSnapshotUploadTarget`.
+- **Delete** `GcsHeapSnapshotUploadTarget` and the GCS env-var references —
+  no two-backend codebase. The storage-agnostic interface stays as the
+  load-bearing artifact.
+- Update tests (the existing `_StubUploadTarget` in
+  `test/pressure/p4_heap_snapshot_uploader_test.dart` already implements
+  the interface — should keep passing without change).
+- Add the new env vars (`AZURE_BLOB_HEAP_SNAPSHOTS_CONTAINER`, etc.) to
+  `runbooks/cloud_run_env_vars.md` once the workload-identity flow is wired.
+
+**Authority anchors:**
+- `tool/audit_anchor/azure_blob_client.dart` (the canonical F&F Azure
+  Blob pattern to mirror)
+- `docs/_audits/post_codex_wave/pr_537_a11_2_soak_harness_extensions_audit.md`
+  (audit doc that flagged the decision)
+- This entry.
+
+**Not blocking:** A11.2's other deliverables (fd watcher, p3c CLI flags)
+are independent of this swap and stay live on master.
+
 ## P1 — Live Admin Operational Gates
 
 The staging admin smoke surfaced live actions that code cannot complete
