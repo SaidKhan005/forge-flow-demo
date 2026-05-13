@@ -11327,6 +11327,8 @@ Future<void> routeRequest(
                   .value('Idempotency-Key')
                   ?.trim(),
               limitQueryParam: request.uri.queryParameters['limit'],
+              versionIdQueryParam:
+                  request.uri.queryParameters['version_id'],
               body: catalogBody,
             );
             _writeJson(response, result.statusCode, result.body);

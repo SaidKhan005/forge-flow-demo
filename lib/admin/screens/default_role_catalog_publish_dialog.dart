@@ -1,4 +1,4 @@
-// Lane B B2.2 - Default Role catalog publish dialog.
+// Lane B B2.2 + B2.3 - Default Role catalog publish dialog.
 //
 // Double-confirm modal opened from
 // `default_role_catalog_admin_screen.dart` when the F&F super_admin
@@ -15,16 +15,18 @@
 //      is consistent across admin surfaces.
 //   3. Optional notes field (0-2000 chars per the B2.1 schema CHECK).
 //
-// The dialog DOES NOT compute or display operator / location / user
-// counts. The B2.1 admin gateway surface
-// (`DefaultRoleCatalogAdminGateway.listCatalogs` + `publishVersion`)
-// does NOT expose a blast-radius read endpoint - the count lives only
-// in the audit-event payload the proxy emits at publish time. Per
-// CLAUDE.md "Service-Layer Split" + the B2.2 worker brief's hard
-// rules, we cannot add a backend route to surface that count from
-// this slice. The dialog renders plain-English consequence copy
-// instead, and the gap is flagged in the slice return summary for a
-// future backend slice to address (see audit doc B2.2).
+// B2.3 — when [priorCurrent] is non-null the dialog fires a
+// `getBlastRadius(priorCurrent.versionId)` call on open and renders
+// the slice-specced "Affecting N businesses, N locations, N users"
+// copy. The dialog falls back to plain-English consequence copy when:
+//   * priorCurrent is null (genesis publish — nothing to supersede),
+//   * counts are all zero (no operators pinned to the prior version
+//     yet — common at PR-merge time when no live operator has
+//     customized a version pointer),
+//   * the gateway throws (404 unknown version, transient proxy
+//     failure, timeout). A small error chip surfaces the proxy code
+//     so the super_admin can decide whether to retry; the dialog never
+//     blocks the publish path on a blast-radius preview failure.
 //
 // Tested by:
 //   * test/admin/default_role_catalog_publish_dialog_test.dart
@@ -102,10 +104,53 @@ class _DefaultRoleCatalogPublishDialogState
   String? _errorMessage;
   DefaultRoleCatalogVersionView? _published;
 
+  /// B2.3 — async result of the blast-radius preview fetch. Tri-state:
+  ///   * `null` → still in flight (or skipped on genesis publish).
+  ///   * non-null `counts` → render numeric copy when non-zero,
+  ///     plain-English fallback when zero.
+  ///   * non-null `errorCode` → render plain-English fallback + small
+  ///     error chip surfacing the proxy code.
+  _BlastRadiusFetch? _blastRadius;
+
   @override
   void initState() {
     super.initState();
     _confirmController.addListener(_recomputeMatch);
+    _maybeFetchBlastRadius();
+  }
+
+  /// Fires the blast-radius preview when [priorCurrent] is non-null.
+  /// Genesis publish skips the fetch — there is no prior version to
+  /// preview against. Errors are caught and surfaced via the
+  /// [_BlastRadiusFetch.errorCode] field so the dialog never blocks on
+  /// a transient backend hiccup.
+  Future<void> _maybeFetchBlastRadius() async {
+    final prior = widget.priorCurrent;
+    if (prior == null) return;
+    try {
+      final counts =
+          await widget.gateway.getBlastRadius(versionId: prior.versionId);
+      if (!mounted) return;
+      setState(() {
+        _blastRadius = _BlastRadiusFetch(counts: counts);
+      });
+    } on DefaultRoleCatalogAdminGatewayError catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _blastRadius = _BlastRadiusFetch(
+          errorCode: error.errorCode,
+          errorMessage: error.message,
+        );
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _blastRadius = _BlastRadiusFetch(
+          errorCode: 'unknown_error',
+          errorMessage: error.toString(),
+        );
+      });
+    }
   }
 
   void _recomputeMatch() {
@@ -240,6 +285,7 @@ class _DefaultRoleCatalogPublishDialogState
           priorCurrent: widget.priorCurrent,
           nextVersionNumber: widget.nextVersionNumber,
           notesController: _notesController,
+          blastRadius: _blastRadius,
         );
       case _Stage.typeConfirm:
         return _TypeConfirmBody(
@@ -342,36 +388,65 @@ class _AwarenessBody extends StatelessWidget {
     required this.priorCurrent,
     required this.nextVersionNumber,
     required this.notesController,
+    required this.blastRadius,
   });
 
   final DefaultRoleCatalogVersionView? priorCurrent;
   final int nextVersionNumber;
   final TextEditingController notesController;
+  final _BlastRadiusFetch? blastRadius;
 
   @override
   Widget build(BuildContext context) {
     final prior = priorCurrent;
+    final headlineCopy = _composeHeadline(prior: prior);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        if (prior == null)
-          Text(
-            'This will publish the first version of the default role catalog. '
-            'Every Forge & Flow business will start with these roles when '
-            'they sign up; existing businesses will keep their own copies '
-            'unless they opt in to follow the latest version.',
-            style: AppTextStyles.body13(color: AppColors.textPrimary),
-          )
-        else
-          Text(
-            'This will replace the current default role catalog '
-            '(version ${prior.versionNumber}) with a new version '
-            '$nextVersionNumber. Any business set to follow the latest '
-            'default catalog will see the new roles immediately on the '
-            'next role refresh. Businesses that have customized their '
-            'roles are unaffected.',
-            style: AppTextStyles.body13(color: AppColors.textPrimary),
+        Text(
+          headlineCopy,
+          key: const Key('admin_default_role_catalog_publish_headline'),
+          style: AppTextStyles.body13(color: AppColors.textPrimary),
+        ),
+        if (_shouldShowErrorChip)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Container(
+              key: const Key(
+                'admin_default_role_catalog_publish_blast_error_chip',
+              ),
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+              decoration: BoxDecoration(
+                color: AppColors.negative.withValues(alpha: 0.08),
+                border: Border.all(
+                  color: AppColors.negative.withValues(alpha: 0.40),
+                  width: 1,
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Icon(
+                    Icons.error_outline,
+                    size: 14,
+                    color: AppColors.negative,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Blast-radius preview unavailable '
+                      '(${blastRadius!.errorCode}). Showing plain-English '
+                      'consequences instead — publish still works.',
+                      style: AppTextStyles.body12(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         const SizedBox(height: 14),
         Container(
@@ -433,6 +508,76 @@ class _AwarenessBody extends StatelessWidget {
       ],
     );
   }
+
+  /// Headline copy logic (B2.3):
+  ///
+  /// 1. Genesis publish (prior == null) → plain-English first-publish
+  ///    copy. The blast-radius preview is not fetched in this case.
+  /// 2. Numeric copy when the gateway returned a non-zero count for the
+  ///    prior version: "Publishing version N will supersede version M,
+  ///    currently followed by X businesses (Y locations, Z users)…"
+  /// 3. Zero-count fallback (gateway returned counts but all zero):
+  ///    "This is the first published catalog with no businesses pinned
+  ///    yet…". This is the common state at PR-merge time.
+  /// 4. Error fallback (gateway threw): plain-English copy + the error
+  ///    chip rendered separately above.
+  /// 5. In-flight (still fetching): plain-English consequence copy.
+  ///    Numeric copy will swap in when the fetch resolves.
+  String _composeHeadline({required DefaultRoleCatalogVersionView? prior}) {
+    if (prior == null) {
+      return 'This will publish the first version of the default role '
+          'catalog. Every Forge & Flow business will start with these '
+          'roles when they sign up; existing businesses will keep their '
+          'own copies unless they opt in to follow the latest version.';
+    }
+    final fetched = blastRadius;
+    final hasNumericData = fetched != null &&
+        fetched.counts != null &&
+        !fetched.counts!.isZeroState;
+    if (hasNumericData) {
+      final counts = fetched.counts!;
+      final businessLabel = counts.operatorCount == 1
+          ? 'business'
+          : 'businesses';
+      final locationLabel = counts.locationCount == 1
+          ? 'location'
+          : 'locations';
+      final userLabel = counts.userCount == 1 ? 'user' : 'users';
+      return 'Publishing version $nextVersionNumber will supersede '
+          'version ${prior.versionNumber}, currently followed by '
+          '${counts.operatorCount} $businessLabel '
+          '(${counts.locationCount} $locationLabel, '
+          '${counts.userCount} $userLabel). Any business set to follow '
+          'the latest default catalog will see version $nextVersionNumber '
+          "immediately on the next role refresh. Businesses that have "
+          'customized their roles are unaffected.';
+    }
+    // Zero-count OR error-fallback OR still-in-flight — same copy.
+    return 'This will replace the current default role catalog '
+        '(version ${prior.versionNumber}) with a new version '
+        '$nextVersionNumber. Any business set to follow the latest '
+        'default catalog will see the new roles immediately on the '
+        'next role refresh. Businesses that have customized their '
+        'roles are unaffected.';
+  }
+
+  bool get _shouldShowErrorChip {
+    final fetched = blastRadius;
+    return fetched != null && fetched.errorCode != null;
+  }
+}
+
+/// Carry-shape for the async blast-radius preview fetch. Mutually
+/// exclusive fields: a successful fetch populates [counts] and leaves
+/// [errorCode]/[errorMessage] null; a failed fetch populates the error
+/// pair and leaves [counts] null. The dialog reads both to decide
+/// between numeric copy and plain-English fallback.
+class _BlastRadiusFetch {
+  const _BlastRadiusFetch({this.counts, this.errorCode, this.errorMessage});
+
+  final DefaultRoleCatalogBlastRadius? counts;
+  final String? errorCode;
+  final String? errorMessage;
 }
 
 class _TypeConfirmBody extends StatelessWidget {

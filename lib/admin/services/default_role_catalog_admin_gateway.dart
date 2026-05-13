@@ -1,8 +1,9 @@
-// Lane B B2.1 — Default Role catalog admin gateway.
+// Lane B B2.1 + B2.3 — Default Role catalog admin gateway.
 //
-// Thin HTTP client over the two new admin routes:
-//   GET  /v1/admin/auth/role-catalogs           {super_admin, ff_support}
-//   POST /v1/admin/auth/role-catalogs/publish   super_admin only
+// Thin HTTP client over the three admin routes:
+//   GET  /v1/admin/auth/role-catalogs                {super_admin, ff_support}
+//   POST /v1/admin/auth/role-catalogs/publish        super_admin only
+//   GET  /v1/admin/auth/role-catalogs/blast-radius   {super_admin, ff_support}
 //
 // The admin Flutter client never holds a Postgres connection string
 // and never reaches the database directly — every read/write flows
@@ -13,7 +14,9 @@
 // `tool/advisor_proxy/admin_default_role_catalog_routes.dart`.
 //
 // B2.2 (separate slice) ships the admin editor screen that consumes
-// this gateway; this slice provides the gateway shape only.
+// this gateway. B2.3 adds the blast-radius read endpoint so the
+// publish dialog can render "Affecting N businesses, N locations,
+// N users" copy instead of the plain-English fallback.
 
 import 'dart:convert';
 
@@ -106,6 +109,43 @@ class DefaultRoleCatalogListing {
   final List<DefaultRoleCatalogVersionView> history;
 }
 
+/// B2.3 — blast-radius counts for a given catalog version. Returned
+/// from `GET /v1/admin/auth/role-catalogs/blast-radius`. Mirrors the
+/// repository's `DefaultRoleCatalogBlastRadiusCounts` shape with one
+/// extra `versionNumber` field the proxy joins in for display.
+class DefaultRoleCatalogBlastRadius {
+  const DefaultRoleCatalogBlastRadius({
+    required this.versionId,
+    required this.versionNumber,
+    required this.operatorCount,
+    required this.locationCount,
+    required this.userCount,
+  });
+
+  final String versionId;
+  final int versionNumber;
+  final int operatorCount;
+  final int locationCount;
+  final int userCount;
+
+  /// True when no operators are pinned to this version. The publish
+  /// dialog uses this to decide between the numeric copy ("Affecting
+  /// N businesses...") and the plain-English fallback ("This is the
+  /// first published catalog...").
+  bool get isZeroState =>
+      operatorCount == 0 && locationCount == 0 && userCount == 0;
+
+  factory DefaultRoleCatalogBlastRadius.fromJson(Map<String, Object?> json) {
+    return DefaultRoleCatalogBlastRadius(
+      versionId: json['version_id'] as String,
+      versionNumber: (json['version_number'] as num?)?.toInt() ?? 0,
+      operatorCount: (json['operator_count'] as num?)?.toInt() ?? 0,
+      locationCount: (json['location_count'] as num?)?.toInt() ?? 0,
+      userCount: (json['user_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 abstract class DefaultRoleCatalogAdminGateway {
   /// GET the current catalog version + history. Admits ff_support +
   /// super_admin.
@@ -117,6 +157,19 @@ abstract class DefaultRoleCatalogAdminGateway {
   Future<DefaultRoleCatalogVersionView> publishVersion({
     required List<Object?> payload,
     String? notes,
+  });
+
+  /// B2.3 — GET the blast-radius counts (operator + location + user)
+  /// for [versionId]. Admits ff_support + super_admin (read-only).
+  ///
+  /// Throws [DefaultRoleCatalogAdminGatewayError] with `statusCode: 404`
+  /// when [versionId] does not exist, `statusCode: 400` when the param
+  /// is malformed, or other status codes for proxy errors. The publish
+  /// dialog catches the error and falls back to plain-English copy so
+  /// a transient backend hiccup never blocks the operator from
+  /// publishing.
+  Future<DefaultRoleCatalogBlastRadius> getBlastRadius({
+    required String versionId,
   });
 }
 
@@ -142,6 +195,8 @@ class HttpDefaultRoleCatalogAdminGateway
 
   static const String listPath = '/v1/admin/auth/role-catalogs';
   static const String publishPath = '/v1/admin/auth/role-catalogs/publish';
+  static const String blastRadiusPath =
+      '/v1/admin/auth/role-catalogs/blast-radius';
 
   @override
   Future<DefaultRoleCatalogListing> listCatalogs({
@@ -184,6 +239,18 @@ class HttpDefaultRoleCatalogAdminGateway
       },
     );
     return DefaultRoleCatalogVersionView.fromJson(body);
+  }
+
+  @override
+  Future<DefaultRoleCatalogBlastRadius> getBlastRadius({
+    required String versionId,
+  }) async {
+    final encoded = Uri.encodeQueryComponent(versionId);
+    final body = await _send(
+      method: 'GET',
+      path: '$blastRadiusPath?version_id=$encoded',
+    );
+    return DefaultRoleCatalogBlastRadius.fromJson(body);
   }
 
   Future<Map<String, Object?>> _send({
@@ -244,19 +311,26 @@ class HttpDefaultRoleCatalogAdminGateway
 /// across runs. Mirrors the proxy contract:
 ///   * publish appends a row and flips `is_current`.
 ///   * list returns the current row + history ordered desc.
+///   * blast-radius returns deterministic counts seeded by
+///     [blastRadiusByVersionId] (defaults to zero counts so the dialog
+///     renders its plain-English fallback).
 class InMemoryDefaultRoleCatalogAdminGateway
     implements DefaultRoleCatalogAdminGateway {
   InMemoryDefaultRoleCatalogAdminGateway({
     DateTime Function()? now,
     String Function()? versionIdGenerator,
     String? publishedByUserId,
+    Map<String, DefaultRoleCatalogBlastRadius>? blastRadiusByVersionId,
   })  : _now = now ?? DateTime.now,
         _versionIdGenerator = versionIdGenerator ?? _defaultVersionIdGenerator,
-        _publishedByUserId = publishedByUserId ?? 'demo-admin-user';
+        _publishedByUserId = publishedByUserId ?? 'demo-admin-user',
+        _blastRadiusByVersionId =
+            blastRadiusByVersionId ?? const <String, DefaultRoleCatalogBlastRadius>{};
 
   final DateTime Function() _now;
   final String Function() _versionIdGenerator;
   final String _publishedByUserId;
+  final Map<String, DefaultRoleCatalogBlastRadius> _blastRadiusByVersionId;
   final List<DefaultRoleCatalogVersionView> _versions =
       <DefaultRoleCatalogVersionView>[];
 
@@ -317,6 +391,35 @@ class InMemoryDefaultRoleCatalogAdminGateway
     );
     _versions.add(fresh);
     return fresh;
+  }
+
+  @override
+  Future<DefaultRoleCatalogBlastRadius> getBlastRadius({
+    required String versionId,
+  }) async {
+    // Seeded counts win; otherwise return a deterministic zero state
+    // so the publish dialog renders its plain-English fallback in
+    // demo mode (no operators yet → genuinely zero blast radius).
+    final seeded = _blastRadiusByVersionId[versionId];
+    if (seeded != null) return seeded;
+    // 404 parity with the proxy when the version is unknown — keeps
+    // the dialog's error-fallback path consistent in widget tests.
+    final exists = _versions.any((v) => v.versionId == versionId);
+    if (!exists) {
+      throw DefaultRoleCatalogAdminGatewayError(
+        statusCode: 404,
+        errorCode: 'version_not_found',
+        message: 'no catalog version exists for version_id=$versionId',
+      );
+    }
+    final version = _versions.firstWhere((v) => v.versionId == versionId);
+    return DefaultRoleCatalogBlastRadius(
+      versionId: versionId,
+      versionNumber: version.versionNumber,
+      operatorCount: 0,
+      locationCount: 0,
+      userCount: 0,
+    );
   }
 }
 

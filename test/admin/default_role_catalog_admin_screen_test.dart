@@ -455,4 +455,11 @@ class _ThrowingListGateway implements DefaultRoleCatalogAdminGateway {
   }) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<DefaultRoleCatalogBlastRadius> getBlastRadius({
+    required String versionId,
+  }) {
+    throw UnimplementedError();
+  }
 }
