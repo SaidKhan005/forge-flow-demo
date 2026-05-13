@@ -62,7 +62,7 @@ Triggers the `operator` gate: auth-critical, RLS-touching, schema-touching (migr
 | B9.3 | B9.3 | Codex | Small | Low | auto | B9.2 merged | assigned | — | Adaptive 2FA button (4 states) |
 | B10.1 | B10.1 | Codex | Medium | Medium | operator | — | assigned | — | `vendor_applicability` table + repository + routes |
 | B10.2 | B10.2 | Codex | Medium | Medium | operator | B10.1 merged | assigned | — | Vendor applicability admin editor + wage authority binding |
-| B11.1 | B11.1 | Claude | Medium | High | operator | — | assigned | — | `handoff_codes` table + endpoints |
+| B11.1 | B11.1 | Claude | Medium | High | operator | — | audit-pending | #512 | `handoff_codes` table + endpoints — escalated to operator (auth-critical + RLS + schema + proxy; new Production1 migration in queue) |
 | B11.2 | B11.2 | Claude | Medium | High | operator | B11.1 merged | assigned | — | RFC 9470 step-up challenge on sensitive routes |
 
 ### Lane C — Cross-Surface Parity
