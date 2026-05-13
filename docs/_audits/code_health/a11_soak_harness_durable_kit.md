@@ -162,9 +162,9 @@ A1 §1.3).
   otherwise. Code 2 reserved for the preview-URL guard fail.
 
 **Expected output**:
-- `test/load/pressure/p4_session_soak_raw.jsonl` — one `_RequestRecord` per request.
-- `test/load/pressure/p4_session_soak_findings.jsonl` — one `SoakFinding` per detected incomplete record.
-- `test/load/pressure/p4_session_soak_summary.md` — Markdown table with totals + finding count.
+- `test/pressure/p4_session_soak_raw.jsonl` — one `_RequestRecord` per request.
+- `test/pressure/p4_session_soak_findings.jsonl` — one `SoakFinding` per detected incomplete record.
+- `test/pressure/p4_session_soak_summary.md` — Markdown table with totals + finding count.
 
 **Runtime budget**:
 - Smoke (CI / local dev): `--ops=5 --concurrency=5 --duration=60s` →
@@ -413,7 +413,7 @@ The kit runs at three tiers. Each tier serves a different question.
 ### 6.2 Why this tiered shape (not "run on every PR")
 
 The harnesses count against staging-Postgres connection budget
-(per `test/load/pressure/README.md:7-9` and the bounded-run
+(per `test/pressure/README.md:7-9` and the bounded-run
 discipline at `:33-46`). Running them on every PR would burn quota
 that operators need for actual feature staging work. The
 structural-only Tier 1 check catches the common regressions (broken
@@ -503,7 +503,7 @@ The kit has **zero new dependencies**:
 - No Cloud Tasks emulator — the realtime publisher is in-process by
   default; Cloud Pub/Sub is opt-in via `PUBSUB_REALTIME_ENABLED`.
 - No special env vars to read findings — JSONL output writes to
-  `test/load/pressure/` (gitignored).
+  `test/pressure/` (gitignored).
 
 ### 7.3 Inspecting `/health` runtime gauges locally
 
@@ -528,19 +528,19 @@ The `pubsub_subscriber.ring_buffer_keys` field appears only when
 ### 7.4 Inspecting findings post-run
 
 Three files per harness invocation:
-- `test/load/pressure/<lane>_raw.jsonl` — per-request JSONL.
-- `test/load/pressure/<lane>_findings.jsonl` — per-finding JSONL.
+- `test/pressure/<lane>_raw.jsonl` — per-request JSONL.
+- `test/pressure/<lane>_findings.jsonl` — per-finding JSONL.
   Empty file = clean run.
-- `test/load/pressure/<lane>_summary.md` — Markdown summary table.
+- `test/pressure/<lane>_summary.md` — Markdown summary table.
 
 `jq` examples:
 ```
 # All findings of a category
 jq 'select(.category == "incomplete_session_record")' \
-  test/load/pressure/p4_session_soak_findings.jsonl
+  test/pressure/p4_session_soak_findings.jsonl
 
 # Distribution of HTTP statuses
-jq -r '.status_code' test/load/pressure/p4_session_soak_raw.jsonl \
+jq -r '.status_code' test/pressure/p4_session_soak_raw.jsonl \
   | sort | uniq -c
 ```
 
@@ -634,8 +634,8 @@ For every new `p5_*` lane:
 1. **Predicate unit tests** (if the lane introduces a new predicate)
    — under `test/pressure/p5_<name>_predicate_test.dart`. Pattern at
    `test/pressure/p4_session_record_predicate_test.dart`.
-2. **Runner test** — under `test/load/pressure/p5_<lane>_runner_test.dart`.
-   Pattern at `test/load/pressure/p3a_webhook_flood_runner_test.dart`.
+2. **Runner test** — under `test/pressure/p5_<lane>_runner_test.dart`.
+   Pattern at `test/pressure/p3a_webhook_flood_runner_test.dart`.
    Two test groups:
    - Structural — `harness binary parses CLI without crashing`,
      unconditional, asserts the file exists and declares `main` +
@@ -647,7 +647,7 @@ For every new `p5_*` lane:
 ### 9.4 Required docs
 
 - Append a row to the Five Load Lanes table at
-  `test/load/pressure/README.md:17-23`.
+  `test/pressure/README.md:17-23`.
 - Append a "Phase 5 — ..." section to the same README mirroring the
   "Phase 4 — B2 hot-fix lanes" section at `:64-91`.
 - If the lane introduces a new failure category, add a row to
@@ -679,7 +679,7 @@ For every new `p5_*` lane:
   finding so the operator sees it.
 - Write to repository-tracked paths other than the three output
   files. The output dir is gitignored; reviewers should never see a
-  PR that touches `test/load/pressure/*.jsonl`.
+  PR that touches `test/pressure/*.jsonl`.
 
 ---
 
@@ -861,6 +861,6 @@ by inspection of the three p4 files in Section 2.1).
 - `requireOperatorContext` (B1 proxy contract): `tool/advisor_proxy/advisor_proxy.dart:2168-2266`.
 - Session login route: `tool/advisor_proxy/advisor_proxy.dart:12174-12437`.
 - Client-side parser (the three-mirror discipline anchor): `lib/services/auth/proxy_auth_session_ledger_writer.dart:373-425`.
-- Lane README: `test/load/pressure/README.md:1-101`.
+- Lane README: `test/pressure/README.md:1-101`.
 
 End of audit.
