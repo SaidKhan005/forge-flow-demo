@@ -146,7 +146,7 @@ Do not re-open stale findings unless the repo regresses:
   `location_id` to the fact/webhook idempotency keys and switch all 17
   vendor sinks to a DO UPDATE WHERE `vendor_modified_at >=` guard. The
   follow-up queue now continues through
-  `202605131700_c_1a_email_event_provider_id.sql`, including permission-cache,
+  `202605131800_c_7a_recovery_codes_viewed_at.sql`, including permission-cache,
   webhook-secret, demo-counter, audit-anchor, auth-version,
   OAuth-refresh-lock, outbox NOTIFY split hardening, cron maintenance,
   KMS flag seeding, PII erasure, retention sweep, and admin hierarchy
@@ -169,10 +169,14 @@ Do not re-open stale findings unless the repo regresses:
   UNIQUE INDEX `WHERE provider_event_id IS NOT NULL` so the C-1
   SendGrid Event Webhook receiver can rely on Postgres-enforced
   dedupe via `ON CONFLICT (provider_event_id) DO NOTHING`; pure
-  additive expand, no RLS change).
+  additive expand, no RLS change), and the Lane C C-7a `mfa_factors`
+  prep migration (adds `recovery_codes_viewed_at timestamptz NULL` so
+  Codex's C-7 Adaptive 2FA button can compute its label from
+  `(session.mfaEnrolled, factor_count, recovery_codes_viewed_at)`;
+  pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605131700_c_1a_email_event_provider_id.sql`.
+  `202605131800_c_7a_recovery_codes_viewed_at.sql`.
 
 ## Remaining Live-Closeout Gates
 
