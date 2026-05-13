@@ -14514,9 +14514,9 @@ Future<void> routeRequest(
         }
 
         // Doc 1 timing web/admin live parity (2026-05-08) - admin-side
-        // override routes for business-timing profiles. Caller must
-        // hold a super_admin or ff_support role; operator id is taken
-        // from the URL, and writes require `admin_reason` in the body.
+        // override routes for business-timing profiles. GET admits
+        // super_admin + ff_support; writes are super_admin-only and
+        // require `admin_reason` in the body.
         if (AdminBusinessTimingRouter.matches(path, request.method)) {
           if (adminBusinessTimingRouter == null) {
             _writeJson(response, 503, <String, Object?>{
@@ -14532,20 +14532,24 @@ Future<void> routeRequest(
             authGuard,
           );
           if (actor == null) return;
-          if (!actor.roles.any(kAdminBusinessTimingRoles.contains)) {
-            _writeJson(response, 403, <String, Object?>{
-              'error': 'permission_denied',
-              'message':
-                  'admin business-timing override requires super_admin or '
-                  'ff_support role',
-              'required_roles': kAdminBusinessTimingRoles.toList(),
-            });
-            return;
-          }
           final isReadOnly = AdminBusinessTimingRouter.isReadOnly(
             path,
             request.method,
           );
+          final adminBusinessTimingRoles = isReadOnly
+              ? kAdminBusinessTimingRoles
+              : const <String>{'super_admin'};
+          if (!actor.roles.any(adminBusinessTimingRoles.contains)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': isReadOnly
+                  ? 'admin business-timing read requires super_admin or '
+                        'ff_support role'
+                  : 'admin business-timing write requires super_admin role',
+              'required_roles': adminBusinessTimingRoles.toList(),
+            });
+            return;
+          }
           String adminIdempotencyKey;
           Map<String, Object?> requestBody;
           if (isReadOnly) {
@@ -14924,6 +14928,7 @@ bool _isAdminOperatorOrLocationPath(String path) {
 }
 
 bool _isAdminOperatorOrLocationOperation(String path, String method) {
+  if (AdminBusinessTimingRouter.matches(path, method)) return false;
   if (method == 'GET' && path == adminOperatorsPath) return true;
   if (method == 'POST' && path == adminOperatorsPath) return true;
   if (method == 'PATCH' && path.startsWith(adminOperatorsPrefix)) return true;

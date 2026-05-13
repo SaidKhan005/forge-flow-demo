@@ -129,7 +129,10 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
       method: 'POST',
       path: operatorsPath,
       idempotencyKey: command.idempotencyKey,
-      jsonBody: command.toJson(),
+      jsonBody: _withAdminReason(
+        command.toJson(),
+        'admin.operator_location.onboard',
+      ),
     );
     return OperatorAdminBundle.fromJson(body);
   }
@@ -142,7 +145,10 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
       method: 'PATCH',
       path: '$operatorsPath/${Uri.encodeComponent(command.operatorId)}',
       idempotencyKey: command.idempotencyKey,
-      jsonBody: command.toJson(),
+      jsonBody: _withAdminReason(
+        command.toJson(),
+        'admin.operator_location.patch_operator',
+      ),
     );
     return OperatorAdminRecord.fromJson(
       (body['operator'] as Map).cast<String, Object?>(),
@@ -158,7 +164,10 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
       method: 'POST',
       path: '$operatorsPath/${Uri.encodeComponent(operatorId)}/suspend',
       idempotencyKey: idempotencyKey,
-      jsonBody: const <String, Object?>{},
+      jsonBody: _withAdminReason(
+        const <String, Object?>{},
+        'admin.operator_location.suspend',
+      ),
     );
     return OperatorAdminRecord.fromJson(
       (body['operator'] as Map).cast<String, Object?>(),
@@ -174,7 +183,10 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
       method: 'POST',
       path: '$operatorsPath/${Uri.encodeComponent(operatorId)}/reactivate',
       idempotencyKey: idempotencyKey,
-      jsonBody: const <String, Object?>{},
+      jsonBody: _withAdminReason(
+        const <String, Object?>{},
+        'admin.operator_location.reactivate',
+      ),
     );
     return OperatorAdminRecord.fromJson(
       (body['operator'] as Map).cast<String, Object?>(),
@@ -188,7 +200,10 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
       method: 'POST',
       path: locationsPath,
       idempotencyKey: command.idempotencyKey,
-      jsonBody: command.toJson(),
+      jsonBody: _withAdminReason(
+        command.toJson(),
+        'admin.operator_location.add_location',
+      ),
     );
     return LocationAdminRecord.fromJson(
       (body['location'] as Map).cast<String, Object?>(),
@@ -203,7 +218,10 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
       method: 'PATCH',
       path: '$locationsPath/${Uri.encodeComponent(command.locationId)}',
       idempotencyKey: command.idempotencyKey,
-      jsonBody: command.toJson(),
+      jsonBody: _withAdminReason(
+        command.toJson(),
+        'admin.operator_location.patch_location',
+      ),
     );
     return LocationAdminRecord.fromJson(
       (body['location'] as Map).cast<String, Object?>(),
@@ -220,9 +238,16 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
       method: 'DELETE',
       path: '$locationsPath/${Uri.encodeComponent(locationId)}',
       idempotencyKey: idempotencyKey,
-      jsonBody: <String, Object?>{'operator_id': operatorId},
+      jsonBody: _withAdminReason(<String, Object?>{
+        'operator_id': operatorId,
+      }, 'admin.operator_location.remove_location'),
     );
   }
+
+  Map<String, Object?> _withAdminReason(
+    Map<String, Object?> body,
+    String adminReason,
+  ) => <String, Object?>{...body, 'admin_reason': adminReason};
 
   Future<Map<String, Object?>> _send({
     required String method,

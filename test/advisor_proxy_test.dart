@@ -25,6 +25,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_exec
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
+import 'package:forge_and_flow/services/business_timing/business_timing_profile_validator.dart';
 import 'package:pointycastle/pointycastle.dart' as pc;
 
 import '../tool/advisor_proxy/advisor_proxy.dart';
@@ -5920,6 +5921,175 @@ void main() {
     );
   });
 
+  group('B5 admin business-timing dispatcher route gate', () {
+    const operatorId = '11111111-1111-1111-1111-111111111111';
+    const path = '/v1/admin/operators/$operatorId/business-timing-profiles';
+
+    Future<T> withRealHttp<T>(Future<T> Function() body) async {
+      final saved = HttpOverrides.current;
+      HttpOverrides.global = null;
+      try {
+        return await body();
+      } finally {
+        HttpOverrides.global = saved;
+      }
+    }
+
+    Future<
+      ({
+        HttpServer server,
+        HttpClient client,
+        Uri baseUri,
+        _SettableVerifier verifier,
+        _FakeAdminBusinessTimingGateway gateway,
+        _RecordingAdminBusinessTimingAuditSink auditSink,
+      })
+    >
+    spinUp({
+      ProxyJwtClaims? initialClaims,
+      _FakeAdminBusinessTimingGateway? customGateway,
+    }) async {
+      final verifier = _SettableVerifier();
+      verifier.claims = initialClaims;
+      final guard = ProxyRequestGuard(verifier: verifier);
+      final gateway = customGateway ?? _FakeAdminBusinessTimingGateway();
+      final auditSink = _RecordingAdminBusinessTimingAuditSink();
+      final router = AdminBusinessTimingRouter(
+        businessTimingGateway: gateway,
+        auditSink: auditSink,
+        now: () => DateTime.utc(2026, 5, 13, 12),
+      );
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      // ignore: unawaited_futures
+      server.listen((request) async {
+        try {
+          await routeRequest(
+            request,
+            guard,
+            adminBusinessTimingRouter: router,
+            now: () => DateTime.utc(2026, 5, 13, 12),
+          );
+        } catch (_) {
+          try {
+            request.response.statusCode = 500;
+            await request.response.close();
+          } catch (_) {}
+        }
+      });
+      final client = HttpClient();
+      final baseUri = Uri.parse('http://${server.address.host}:${server.port}');
+      return (
+        server: server,
+        client: client,
+        baseUri: baseUri,
+        verifier: verifier,
+        gateway: gateway,
+        auditSink: auditSink,
+      );
+    }
+
+    test('ff_support can read admin business-timing profiles', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeAdminBusinessTimingGateway()
+          ..seed(operatorId, 'profile-read');
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_support',
+            operatorId: 'op_support',
+            locationId: 'loc_support',
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(path),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final profiles = (body['profiles']! as List).cast<Object?>();
+          expect(profiles, hasLength(1));
+          expect(gateway.listCalls, equals(1));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('ff_support cannot write admin business-timing profiles', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeAdminBusinessTimingGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_support',
+            operatorId: 'op_support',
+            locationId: 'loc_support',
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(path),
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-b5-ff-support-write',
+            body: _adminBusinessTimingBody(operatorId: operatorId),
+          );
+          expect(response.statusCode, equals(403));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('permission_denied'));
+          expect(body['required_roles'], equals(<Object?>['super_admin']));
+          expect(gateway.createCalls, equals(0));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('super_admin write reaches admin business-timing router', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeAdminBusinessTimingGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_super',
+            operatorId: 'op_super',
+            locationId: 'loc_super',
+            roles: <String>['super_admin'],
+          ),
+        );
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(path),
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-b5-super-write',
+            body: _adminBusinessTimingBody(operatorId: operatorId),
+          );
+          expect(response.statusCode, equals(201), reason: response.body);
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['profileId'], equals('profile-created'));
+          expect(gateway.createCalls, equals(1));
+          expect(ctx.auditSink.records, hasLength(1));
+          expect(
+            ctx.auditSink.records.single['admin_reason'],
+            equals('B5 dispatcher regression'),
+          );
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+  });
+
   group('11A.2 admin pricing tier routes', () {
     Future<T> withRealHttp<T>(Future<T> Function() body) async {
       final saved = HttpOverrides.current;
@@ -6779,6 +6949,175 @@ class _FakeAdminGateway implements OperatorLocationAdminProxyGateway {
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
+
+Map<String, Object?> _adminBusinessTimingBody({required String operatorId}) {
+  return <String, Object?>{
+    'admin_reason': 'B5 dispatcher regression',
+    'scopeKind': 'operator',
+    'scopeId': operatorId,
+    'effectiveAtBusinessDate': '2026-06-01',
+    'ianaTimezone': 'America/Toronto',
+    'weekStartDay': 'monday',
+    'businessDayStartLocal': '04:00',
+    'servicePeriods': const <Map<String, Object?>>[
+      <String, Object?>{
+        'key': 'lunch',
+        'label': 'Lunch',
+        'startLocal': '11:00',
+        'endLocal': '15:00',
+      },
+      <String, Object?>{
+        'key': 'dinner',
+        'label': 'Dinner',
+        'startLocal': '17:00',
+        'endLocal': '22:00',
+      },
+    ],
+  };
+}
+
+class _FakeAdminBusinessTimingGateway
+    implements OperatorBusinessTimingWriteGateway {
+  int createCalls = 0;
+  int listCalls = 0;
+  final Map<String, OperatorBusinessTimingProfileRecord> _records =
+      <String, OperatorBusinessTimingProfileRecord>{};
+
+  void seed(String operatorId, String profileId) {
+    _records['$operatorId|$profileId'] = _record(
+      profileId: profileId,
+      scopeKind: 'operator',
+      scopeId: operatorId,
+    );
+  }
+
+  @override
+  Future<OperatorBusinessTimingProfileRecord> createProfile({
+    required String operatorId,
+    required String actorUserId,
+    required String idempotencyKey,
+    required ValidatedBusinessTimingProfile validated,
+    required String adminReason,
+  }) async {
+    createCalls += 1;
+    final record = _record(
+      profileId: 'profile-created',
+      scopeKind: validated.scopeKind,
+      scopeId: validated.scopeId,
+    );
+    _records['$operatorId|${record.profileId}'] = record;
+    return record;
+  }
+
+  @override
+  Future<OperatorBusinessTimingProfileRecord?> loadProfile({
+    required String operatorId,
+    required String profileId,
+  }) async {
+    return _records['$operatorId|$profileId'];
+  }
+
+  @override
+  Future<List<OperatorBusinessTimingProfileRecord>> listProfiles({
+    required String operatorId,
+  }) async {
+    listCalls += 1;
+    return _records.entries
+        .where((entry) => entry.key.startsWith('$operatorId|'))
+        .map((entry) => entry.value)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<OperatorBusinessTimingProfileRecord> updateProfile({
+    required String operatorId,
+    required String actorUserId,
+    required String idempotencyKey,
+    required String profileId,
+    required ValidatedBusinessTimingProfile validated,
+    required String adminReason,
+  }) async {
+    final record = _record(
+      profileId: profileId,
+      scopeKind: validated.scopeKind,
+      scopeId: validated.scopeId,
+    );
+    _records['$operatorId|$profileId'] = record;
+    return record;
+  }
+
+  @override
+  Future<OperatorBusinessTimingProfileRecord> replaceServicePeriodSet({
+    required String operatorId,
+    required String actorUserId,
+    required String idempotencyKey,
+    required String profileId,
+    required List<ValidatedServicePeriod> mergedSet,
+    required String eventKind,
+    required Map<String, Object?> auditPayload,
+    required String adminReason,
+  }) async {
+    final record =
+        _records['$operatorId|$profileId'] ??
+        _record(
+          profileId: profileId,
+          scopeKind: 'operator',
+          scopeId: operatorId,
+        );
+    _records['$operatorId|$profileId'] = record;
+    return record;
+  }
+
+  OperatorBusinessTimingProfileRecord _record({
+    required String profileId,
+    required String scopeKind,
+    required String scopeId,
+  }) {
+    return OperatorBusinessTimingProfileRecord(
+      profileId: profileId,
+      scopeKind: scopeKind,
+      scopeId: scopeId,
+      effectiveAtBusinessDate: '2026-06-01',
+      ianaTimezone: 'America/Toronto',
+      weekStartDay: 'monday',
+      businessDayStartLocal: '04:00',
+      servicePeriods: const <OperatorBusinessTimingServicePeriodRecord>[
+        OperatorBusinessTimingServicePeriodRecord(
+          key: 'lunch',
+          label: 'Lunch',
+          startLocal: '11:00',
+          endLocal: '15:00',
+          rollsPastMidnight: false,
+        ),
+      ],
+      createdAt: DateTime.utc(2026, 5, 13),
+      updatedAt: DateTime.utc(2026, 5, 13),
+    );
+  }
+}
+
+class _RecordingAdminBusinessTimingAuditSink implements OperatorWriteAuditSink {
+  final List<Map<String, Object?>> records = <Map<String, Object?>>[];
+
+  @override
+  Future<void> record({
+    required String operatorId,
+    required String actorUserId,
+    required String actorKind,
+    required String eventKind,
+    required Map<String, Object?> payload,
+    required DateTime occurredAt,
+  }) async {
+    records.add(<String, Object?>{
+      'operator_id': operatorId,
+      'actor_user_id': actorUserId,
+      'actor_kind': actorKind,
+      'event_kind': eventKind,
+      'admin_reason': payload['admin_reason'],
+      'occurred_at': occurredAt.toUtc().toIso8601String(),
+    });
+  }
+}
 
 class _AlwaysOkVerifier implements ProxyJwtVerifier {
   @override
