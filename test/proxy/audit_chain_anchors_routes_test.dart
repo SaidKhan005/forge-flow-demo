@@ -213,7 +213,11 @@ void main() {
             userId: 'user-1',
             operatorId: null,
             locationId: null,
-            roles: <String>['super_admin'],
+            // operator_owner without operator scope is genuinely unauthorized.
+            // super_admin was the prior role here, but B1 sign-in contract
+            // (c3f1ce0d, 2026-05-12) intentionally accepts scope-less
+            // super_admin / ff_support → 200, so this assertion would drift.
+            roles: <String>['operator_owner'],
           ),
         );
         try {
