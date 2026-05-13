@@ -20,6 +20,7 @@ import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connect
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/screens/data_accuracy_screen.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_data_accuracy_gateway.dart';
+import 'package:forge_and_flow/operator_web/services/web_vendor_applicability_gateway.dart';
 import 'package:forge_and_flow/operator_web/widgets/keyed_service_period_accuracy_card.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -631,6 +632,157 @@ void main() {
     );
   });
 
+  group('DataAccuracyScreen wage vendor applicability binding', () {
+    testWidgets(
+      'enabled current wage rows make vendor selectable and persist through save',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1200));
+        final saves = <DataAccuracySettings>[];
+        final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+          ..rows = <WebVendorApplicabilityRow>[
+            _vendorApplicabilityRow(
+              id: 'toast-current',
+              vendorSlug: 'toast',
+              enabled: true,
+            ),
+          ];
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId,
+              gateway: InMemoryVendorConnectionsGateway(),
+              initialSettings: _settingsWithWage(WageSource.manualMix),
+              vendorApplicabilityGateway: applicabilityGateway,
+              onSaveSettings: saves.add,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(applicabilityGateway.calls, equals(<String>['wage']));
+        expect(
+          find.byKey(const Key('wage_source_vendor_applicability_status')),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('Enabled wage vendors: toast'),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.byKey(const Key('wage_source_radio_vendor')));
+        await tester.pumpAndSettle();
+
+        expect(saves.last.wageSource, WageSource.vendor);
+      },
+    );
+
+    testWidgets(
+      'disabled and ended wage rows are not selectable as vendor source',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1200));
+        final saves = <DataAccuracySettings>[];
+        final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+          ..rows = <WebVendorApplicabilityRow>[
+            _vendorApplicabilityRow(
+              id: 'toast-disabled',
+              vendorSlug: 'toast',
+              enabled: false,
+            ),
+            _vendorApplicabilityRow(
+              id: 'qbt-ended',
+              vendorSlug: 'quickbooks_time',
+              enabled: true,
+              effectiveUntil: DateTime.utc(2026, 5, 14),
+            ),
+          ];
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId,
+              gateway: InMemoryVendorConnectionsGateway(),
+              initialSettings: _settingsWithWage(WageSource.manualMix),
+              vendorApplicabilityGateway: applicabilityGateway,
+              onSaveSettings: saves.add,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('No enabled wage vendor is current'),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const Key('wage_source_radio_vendor')));
+        await tester.pumpAndSettle();
+
+        expect(saves, isEmpty);
+      },
+    );
+
+    testWidgets('empty wage applicability rows keep manual mix available', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      final applicabilityGateway = _FakeWebVendorApplicabilityGateway();
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId,
+            gateway: InMemoryVendorConnectionsGateway(),
+            initialSettings: _settingsWithWage(WageSource.manualMix),
+            vendorApplicabilityGateway: applicabilityGateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Manual mix stays available'), findsOneWidget);
+      expect(
+        find.byKey(const Key('wage_source_radio_manual_mix')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+      'wage applicability load error is shown without saving vendor',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1200));
+        final saves = <DataAccuracySettings>[];
+        final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+          ..throwsOnList = true;
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId,
+              gateway: InMemoryVendorConnectionsGateway(),
+              initialSettings: _settingsWithWage(WageSource.manualMix),
+              vendorApplicabilityGateway: applicabilityGateway,
+              onSaveSettings: saves.add,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('Could not load wage vendor applicability'),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const Key('wage_source_radio_vendor')));
+        await tester.pumpAndSettle();
+
+        expect(saves, isEmpty);
+      },
+    );
+  });
+
   // Doc 1 keyed-data-accuracy-write — operator-web screen wires the
   // keyed service-period card to OperatorWebDataAccuracyGateway. The
   // dialog round-trips a draft into saveServicePeriodSetting on the
@@ -668,10 +820,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(kKeyedServicePeriodAccuracyCardKey),
-          findsOneWidget,
-        );
+        expect(find.byKey(kKeyedServicePeriodAccuracyCardKey), findsOneWidget);
         expect(
           find.byKey(
             const Key(
@@ -730,30 +879,27 @@ void main() {
         );
 
         // Pick covers source = reservation_plus_walkin.
-        await tester.tap(
-          find.byKey(kKeyedServicePeriodAccuracyCoversFieldKey),
-        );
+        await tester.tap(find.byKey(kKeyedServicePeriodAccuracyCoversFieldKey));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Reservations + walk-ins').last);
         await tester.pumpAndSettle();
 
         // Pick wage source = target_substitution.
-        await tester.tap(
-          find.byKey(kKeyedServicePeriodAccuracyWageFieldKey),
-        );
+        await tester.tap(find.byKey(kKeyedServicePeriodAccuracyWageFieldKey));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Target substitution').last);
         await tester.pumpAndSettle();
 
-        await tester.tap(
-          find.byKey(kKeyedServicePeriodAccuracySubmitKey),
-        );
+        await tester.tap(find.byKey(kKeyedServicePeriodAccuracySubmitKey));
         await tester.pumpAndSettle();
 
         expect(gateway.servicePeriodSaveCalls, hasLength(1));
         final call = gateway.servicePeriodSaveCalls.single;
         expect(call.servicePeriodKey, 'breakfast');
-        expect(call.coversSource, ServicePeriodCoversSource.reservationPlusWalkin);
+        expect(
+          call.coversSource,
+          ServicePeriodCoversSource.reservationPlusWalkin,
+        );
         expect(call.wageSource, ServicePeriodWageSource.targetSubstitution);
         expect(call.effectiveAtBusinessDateIso, '2026-05-08');
         expect(call.operatorId, ownerSession.operatorId);
@@ -791,16 +937,12 @@ void main() {
           find.byKey(kKeyedServicePeriodAccuracyKeyFieldKey),
           'Brunch Special',
         );
-        await tester.tap(
-          find.byKey(kKeyedServicePeriodAccuracySubmitKey),
-        );
+        await tester.tap(find.byKey(kKeyedServicePeriodAccuracySubmitKey));
         await tester.pumpAndSettle();
 
         expect(
           find.byKey(
-            const Key(
-              'data_accuracy_keyed_service_period_dialog_error',
-            ),
+            const Key('data_accuracy_keyed_service_period_dialog_error'),
           ),
           findsOneWidget,
         );
@@ -826,6 +968,74 @@ class _ServicePeriodSaveCall {
   final ServicePeriodCoversSource coversSource;
   final ServicePeriodWageSource wageSource;
   final String effectiveAtBusinessDateIso;
+}
+
+DataAccuracySettings _settingsWithWage(WageSource wageSource) {
+  return DataAccuracySettings(
+    settingId: 'settings-wage-$wageSource',
+    operatorId: 'brio-operator',
+    locationId: 'brio-chicago-loop',
+    coversSourceLunch: CoversSource.vendor,
+    coversSourceDinner: CoversSource.vendor,
+    coversSourceLateNight: CoversSource.vendor,
+    coversManualEntries: const <String, Map<String, int>>{},
+    wageSource: wageSource,
+    walkInHandlingMode: DataAccuracyWalkInHandlingMode.reservationsOnly,
+    walkInManualEntries: const <String, int>{},
+    createdAt: DateTime.utc(2026, 5, 13),
+    updatedAt: DateTime.utc(2026, 5, 13),
+  );
+}
+
+WebVendorApplicabilityRow _vendorApplicabilityRow({
+  required String id,
+  required String vendorSlug,
+  required bool enabled,
+  DateTime? effectiveUntil,
+  String settingKind = 'wage',
+}) {
+  final now = DateTime.utc(2026, 5, 13, 15);
+  return WebVendorApplicabilityRow(
+    id: id,
+    settingKind: settingKind,
+    settingKey: 'default',
+    vendorSlug: vendorSlug,
+    enabled: enabled,
+    metadata: const <String, Object?>{'authority_basis': 'job_code'},
+    effectiveFrom: now,
+    effectiveUntil: effectiveUntil,
+    operatorId: 'brio-operator',
+    createdAt: now,
+    createdBy: 'admin-user',
+  );
+}
+
+class _FakeWebVendorApplicabilityGateway
+    implements WebVendorApplicabilityGateway {
+  List<WebVendorApplicabilityRow> rows = const <WebVendorApplicabilityRow>[];
+  final List<String> calls = <String>[];
+  bool throwsOnList = false;
+
+  @override
+  Future<List<WebVendorApplicabilityRow>> list({
+    required String settingKind,
+    String? settingKey,
+  }) async {
+    calls.add(settingKind);
+    if (throwsOnList) {
+      throw const WebVendorApplicabilityGatewayError(
+        code: 'simulated_failure',
+        message: 'fake failure',
+      );
+    }
+    return rows
+        .where(
+          (row) =>
+              row.settingKind == settingKind &&
+              (settingKey == null || row.settingKey == settingKey),
+        )
+        .toList(growable: false);
+  }
 }
 
 /// Minimal in-memory test double for the operator-web data accuracy

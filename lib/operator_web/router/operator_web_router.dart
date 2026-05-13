@@ -938,6 +938,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 locationId: locationScope.id,
                 locationName: locationScope.label,
                 dataAccuracyGateway: _dataAccuracyGateway,
+                vendorApplicabilityGateway: _vendorApplicabilityGateway,
               );
         break;
       case kOperatorWebNavWageAuthority:
@@ -1065,6 +1066,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       widget.source is OperatorWebDataAccuracyGatewayProvider
       ? (widget.source as OperatorWebDataAccuracyGatewayProvider)
             .dataAccuracyGateway
+      : null;
+
+  WebVendorApplicabilityGateway? get _vendorApplicabilityGateway =>
+      widget.source is OperatorWebVendorApplicabilityGatewayProvider
+      ? (widget.source as OperatorWebVendorApplicabilityGatewayProvider)
+            .vendorApplicabilityGateway
       : null;
 
   /// Resolver for the Vendor connections screen gateway. Lifts

@@ -43,6 +43,7 @@ import 'screens/polling_and_pricing_admin_screen.dart';
 import 'screens/pricing_tier_admin_screen.dart';
 import 'screens/roles_hierarchy_sessions_admin_screen.dart';
 import 'screens/support_operator_view_admin_screen.dart';
+import 'screens/vendor_applicability_admin_screen.dart';
 import 'screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'services/audited_support_actions_admin_gateway.dart';
 import 'services/corpus_admin_gateway.dart';
@@ -60,6 +61,7 @@ import 'services/observability_admin_gateway.dart';
 import 'services/operator_location_admin_gateway.dart';
 import 'services/pricing_tier_admin_gateway.dart';
 import 'services/roles_hierarchy_sessions_admin_gateway.dart';
+import 'services/vendor_applicability_admin_gateway.dart';
 import 'widgets/admin_setup_workspace.dart';
 import '../domain/models/forge_flow_polling_tier_assignment.dart';
 
@@ -218,6 +220,9 @@ const String kAdminObservabilityRouteId = 'observability';
 
 /// Phase 8 spine-bridge Lane .C - Data Accuracy admin tab (Tab 1).
 const String kAdminDataAccuracyRouteId = 'data-accuracy';
+
+/// B10.2 - Vendor applicability admin editor route ID.
+const String kAdminVendorApplicabilityRouteId = 'vendor-applicability';
 
 /// Phase 8 spine-bridge Lane .C - Polling & Pricing admin tab (Tab 2).
 const String kAdminPollingPricingRouteId = 'polling-pricing';
@@ -385,6 +390,17 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildDataAccuracy,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
+  ),
+  AdminRoute(
+    id: kAdminVendorApplicabilityRouteId,
+    title: 'Vendor Applicability',
+    path: '/vendor-applicability',
+    icon: Icons.fact_check_outlined,
+    section: AdminRouteSection.operations,
+    badge: 'Admin only',
+    subtitle:
+        'This surface is for F&F admins only - choose which vendors can power wage, covers, and polling settings.',
+    builder: _buildVendorApplicability,
   ),
   AdminRoute(
     id: kAdminPollingPricingRouteId,
@@ -1157,8 +1173,9 @@ Widget _buildFeatureFlags(BuildContext context) {
 /// branch (the proxy enforces the same gate server-side via
 /// [kDefaultRoleCatalogAdminWriteRoles]).
 Widget _buildDefaultRoleCatalog(BuildContext context) {
-  final gateway =
-      AdminConsoleServicesScope.defaultRoleCatalogAdminGatewayOf(context);
+  final gateway = AdminConsoleServicesScope.defaultRoleCatalogAdminGatewayOf(
+    context,
+  );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   Widget buildScreen({required bool canEdit}) {
     return DefaultRoleCatalogAdminScreen(
@@ -1175,11 +1192,32 @@ Widget _buildDefaultRoleCatalog(BuildContext context) {
     initialData: source.current,
     builder: (context, snapshot) {
       final state = snapshot.data;
-      final session =
-          state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit =
-          session != null && session.roles.contains('super_admin');
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
       return buildScreen(canEdit: canEdit);
+    },
+  );
+}
+
+Widget _buildVendorApplicability(BuildContext context) {
+  final gateway = AdminConsoleServicesScope.vendorApplicabilityGatewayOf(
+    context,
+  );
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  if (source == null) {
+    return VendorApplicabilityAdminScreen(gateway: gateway);
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
+      return VendorApplicabilityAdminScreen(
+        gateway: gateway,
+        editingEnabled: canEdit,
+      );
     },
   );
 }
@@ -2453,6 +2491,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.defaultRoleCatalogAdminGateway,
     this.debugConsoleGateway,
     this.dataAccuracyAdminGateway,
+    this.vendorApplicabilityGateway,
     this.membersAdminGateway,
     this.rolesHierarchySessionsAdminGateway,
     this.auditedSupportActionsAdminGateway,
@@ -2539,6 +2578,10 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// fallback is the seeded in-memory gateway used by the kDemoMode
   /// walkthrough.
   final DataAccuracyAdminGateway? dataAccuracyAdminGateway;
+
+  /// B10.2 vendor applicability admin gateway. Optional so demo /
+  /// share-preview can fall back to an in-memory catalog.
+  final VendorApplicabilityAdminGateway? vendorApplicabilityGateway;
 
   /// Phase 11A.12 - cross-operator Members + Invites admin gateway.
   /// Optional; the default fallback is the seeded in-memory gateway
@@ -2640,6 +2683,15 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.dataAccuracyAdminGateway ?? _defaultDataAccuracyDemoGateway;
   }
 
+  static VendorApplicabilityAdminGateway vendorApplicabilityGatewayOf(
+    BuildContext context,
+  ) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.vendorApplicabilityGateway ??
+        _defaultVendorApplicabilityDemoGateway;
+  }
+
   static MembersAdminGateway membersAdminGatewayOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
@@ -2683,6 +2735,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
           oldWidget.defaultRoleCatalogAdminGateway ||
       debugConsoleGateway != oldWidget.debugConsoleGateway ||
       dataAccuracyAdminGateway != oldWidget.dataAccuracyAdminGateway ||
+      vendorApplicabilityGateway != oldWidget.vendorApplicabilityGateway ||
       membersAdminGateway != oldWidget.membersAdminGateway ||
       rolesHierarchySessionsAdminGateway !=
           oldWidget.rolesHierarchySessionsAdminGateway ||
@@ -3103,6 +3156,168 @@ final DataAccuracyAdminGateway _defaultDataAccuracyDemoGateway =
         ),
       ],
     );
+
+final VendorApplicabilityAdminGateway _defaultVendorApplicabilityDemoGateway =
+    _InMemoryVendorApplicabilityAdminGateway(
+      seed: <VendorApplicabilityAdminRow>[
+        VendorApplicabilityAdminRow(
+          id: 'demo-va-wage-toast',
+          operatorId: null,
+          settingKind: 'wage',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          metadata: const <String, Object?>{
+            'authority_basis': 'job_code',
+            'requires_job_code': true,
+          },
+          effectiveFrom: DateTime.utc(2026, 5, 13, 15),
+          effectiveUntil: null,
+          createdAt: DateTime.utc(2026, 5, 13, 15),
+          createdBy: 'demo-super-admin',
+        ),
+        VendorApplicabilityAdminRow(
+          id: 'demo-va-covers-libro',
+          operatorId: null,
+          settingKind: 'covers',
+          settingKey: 'default',
+          vendorSlug: 'libro',
+          enabled: true,
+          metadata: const <String, Object?>{
+            'cover_filter': 'all_covers',
+            'exclude_voids': true,
+          },
+          effectiveFrom: DateTime.utc(2026, 5, 13, 15),
+          effectiveUntil: null,
+          createdAt: DateTime.utc(2026, 5, 13, 15),
+          createdBy: 'demo-super-admin',
+        ),
+        VendorApplicabilityAdminRow(
+          id: 'demo-va-polling-qbt',
+          operatorId: null,
+          settingKind: 'polling',
+          settingKey: 'standard',
+          vendorSlug: 'quickbooks_time',
+          enabled: true,
+          metadata: const <String, Object?>{'tier_key': 'standard'},
+          effectiveFrom: DateTime.utc(2026, 5, 13, 15),
+          effectiveUntil: null,
+          createdAt: DateTime.utc(2026, 5, 13, 15),
+          createdBy: 'demo-super-admin',
+        ),
+      ],
+    );
+
+class _InMemoryVendorApplicabilityAdminGateway
+    implements VendorApplicabilityAdminGateway {
+  _InMemoryVendorApplicabilityAdminGateway({
+    required Iterable<VendorApplicabilityAdminRow> seed,
+  }) : _rows = seed.toList(growable: true);
+
+  final List<VendorApplicabilityAdminRow> _rows;
+  int _sequence = 0;
+
+  @override
+  Future<List<VendorApplicabilityAdminRow>> list({
+    VendorApplicabilityAdminFilter filter =
+        const VendorApplicabilityAdminFilter(),
+  }) async {
+    return _rows
+        .where((row) {
+          if (filter.operatorId != null &&
+              row.operatorId != filter.operatorId) {
+            return false;
+          }
+          if (filter.settingKind != null &&
+              row.settingKind != filter.settingKind) {
+            return false;
+          }
+          if (filter.settingKey != null &&
+              row.settingKey != filter.settingKey) {
+            return false;
+          }
+          if (filter.vendorSlug != null &&
+              row.vendorSlug != filter.vendorSlug) {
+            return false;
+          }
+          if (filter.currentOnly && row.effectiveUntil != null) return false;
+          return true;
+        })
+        .toList(growable: false);
+  }
+
+  @override
+  Future<VendorApplicabilityAdminRow> upsert(
+    VendorApplicabilityUpsertCommand command,
+  ) async {
+    final now = DateTime.now().toUtc();
+    for (var i = 0; i < _rows.length; i++) {
+      final row = _rows[i];
+      if (row.operatorId == command.operatorId &&
+          row.settingKind == command.settingKind &&
+          row.settingKey == command.settingKey &&
+          row.vendorSlug == command.vendorSlug &&
+          row.effectiveUntil == null) {
+        _rows[i] = _copyRow(row, effectiveUntil: now);
+      }
+    }
+    _sequence += 1;
+    final row = VendorApplicabilityAdminRow(
+      id: 'demo-va-row-$_sequence',
+      operatorId: command.operatorId,
+      settingKind: command.settingKind,
+      settingKey: command.settingKey,
+      vendorSlug: command.vendorSlug,
+      enabled: command.enabled,
+      metadata: command.metadata,
+      effectiveFrom: command.effectiveFrom ?? now,
+      effectiveUntil: null,
+      createdAt: now,
+      createdBy: 'demo-super-admin',
+    );
+    _rows.add(row);
+    return row;
+  }
+
+  @override
+  Future<VendorApplicabilityAdminRow?> end(
+    VendorApplicabilityEndCommand command,
+  ) async {
+    final until = command.effectiveUntil ?? DateTime.now().toUtc();
+    for (var i = 0; i < _rows.length; i++) {
+      final row = _rows[i];
+      if (row.operatorId == command.operatorId &&
+          row.settingKind == command.settingKind &&
+          row.settingKey == command.settingKey &&
+          row.vendorSlug == command.vendorSlug &&
+          row.effectiveUntil == null) {
+        final ended = _copyRow(row, effectiveUntil: until);
+        _rows[i] = ended;
+        return ended;
+      }
+    }
+    return null;
+  }
+
+  VendorApplicabilityAdminRow _copyRow(
+    VendorApplicabilityAdminRow row, {
+    DateTime? effectiveUntil,
+  }) {
+    return VendorApplicabilityAdminRow(
+      id: row.id,
+      operatorId: row.operatorId,
+      settingKind: row.settingKind,
+      settingKey: row.settingKey,
+      vendorSlug: row.vendorSlug,
+      enabled: row.enabled,
+      metadata: row.metadata,
+      effectiveFrom: row.effectiveFrom,
+      effectiveUntil: effectiveUntil,
+      createdAt: row.createdAt,
+      createdBy: row.createdBy,
+    );
+  }
+}
 
 /// Phase 11A.12 - cross-operator Members + Invites demo gateway.
 /// Seeded from `kDemoMembersByOperator` / `kDemoInvitesByOperator`

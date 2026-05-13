@@ -52,6 +52,7 @@ import 'admin/services/operator_location_admin_gateway.dart';
 import 'admin/services/pricing_tier_admin_gateway.dart';
 import 'admin/services/audited_support_actions_admin_gateway.dart';
 import 'admin/services/roles_hierarchy_sessions_admin_gateway.dart';
+import 'admin/services/vendor_applicability_admin_gateway.dart';
 import 'integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import 'services/auth/firebase_auth_client.dart';
 import 'services/auth/firebase_auth_client_sdk.dart';
@@ -140,6 +141,9 @@ Future<void> main() async {
     final dataAccuracyGateway = gateway == null
         ? null
         : _resolveDataAccuracyAdminGateway(authBinding.authClient);
+    final vendorApplicabilityGateway = gateway == null
+        ? null
+        : _resolveVendorApplicabilityAdminGateway(authBinding.authClient);
     final corpusGateway = gateway == null
         ? null
         : _resolveCorpusAdminGateway(authBinding.authClient);
@@ -186,6 +190,7 @@ Future<void> main() async {
         operatorLocationGateway: gateway,
         pricingTierGateway: pricingGateway,
         dataAccuracyAdminGateway: dataAccuracyGateway,
+        vendorApplicabilityGateway: vendorApplicabilityGateway,
         corpusAdminGateway: corpusGateway,
         integrationGateway: integrationGateway,
         vendorConnectionsGateway: vendorConnectionsGateway,
@@ -308,6 +313,21 @@ DataAccuracyAdminGateway? _resolveDataAccuracyAdminGateway(
 /// Phase 11A.3a — corpus admin gateway. Same admin proxy base URI as
 /// the pricing gateway. Demo mode returns null and the route falls
 /// back to the seeded in-memory corpus gateway in `admin_routes.dart`.
+VendorApplicabilityAdminGateway? _resolveVendorApplicabilityAdminGateway(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpVendorApplicabilityAdminGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+  );
+}
+
 CorpusAdminGateway? _resolveCorpusAdminGateway(FirebaseAuthClient? authClient) {
   if (_kAdminDemoAuth) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);

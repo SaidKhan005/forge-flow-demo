@@ -23,6 +23,7 @@ import 'web_team_hierarchy_gateway.dart';
 import 'web_team_roles_gateway.dart';
 import 'web_team_sessions_gateway.dart';
 import 'web_team_users_gateway.dart';
+import 'web_vendor_applicability_gateway.dart';
 
 /// Re-export for the Phase 11W.8 / Wave A3 vendor-connections mount.
 /// Auth sources mix this provider in to surface the live HTTP gateway
@@ -38,9 +39,14 @@ export 'operator_web_vendor_connections_resolver.dart'
     show OperatorWebVendorConnectionsResolver;
 
 export 'operator_web_data_accuracy_gateway.dart'
+    show OperatorWebDataAccuracyGateway, OperatorWebHttpDataAccuracyGateway;
+
+export 'web_vendor_applicability_gateway.dart'
     show
-        OperatorWebDataAccuracyGateway,
-        OperatorWebHttpDataAccuracyGateway;
+        HttpWebVendorApplicabilityGateway,
+        WebVendorApplicabilityGateway,
+        WebVendorApplicabilityGatewayError,
+        WebVendorApplicabilityRow;
 
 /// Phase 8 W5.A.2 - Operator Web Wage authority gateway provider seam.
 /// Auth sources mix this provider in to surface the live HTTP gateway
@@ -140,6 +146,12 @@ abstract class OperatorWebBusinessTimingWriteGatewayProvider {
 /// the screen keeps its fixture/in-memory behavior.
 abstract class OperatorWebDataAccuracyGatewayProvider {
   OperatorWebDataAccuracyGateway get dataAccuracyGateway;
+}
+
+/// B10.2 provider for the read-only vendor_applicability operator
+/// endpoint consumed by the Data Accuracy wage picker.
+abstract class OperatorWebVendorApplicabilityGatewayProvider {
+  WebVendorApplicabilityGateway get vendorApplicabilityGateway;
 }
 
 /// Sentinel the operator-web shell stamps on the auth source when it
