@@ -45,7 +45,11 @@ OperatorLocationIntegrationsProjection _failingProjection() {
     required String locationId,
     required String actorUserId,
   }) async {
-    throw StateError('boom');
+    // A3.3 (bb88f82b) narrowed the catch site at advisor_proxy.dart from
+    // `catch (_)` to `on Exception catch (_)`. StateError extends Error so
+    // escapes uncaught; use Exception to exercise the swallow-and-project-
+    // false path (503 + integrations_projection_unavailable).
+    throw Exception('boom');
   };
 }
 
