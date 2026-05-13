@@ -14106,7 +14106,14 @@ Future<void> routeRequest(
                 return;
               }
               resolvedActorUserId = resolved;
-            } catch (_) {
+            } on Exception catch (_) {
+              // B10.1 carry-forward typed per A3.4 audit (was bare catch at
+              // master line 14109 post-A3.4). Actor resolver round-trips
+              // through Postgres + auth claim verification; throw surface
+              // is `PgException` / `TimeoutException` / `IOException` /
+              // JWT/claim Exception subtypes. Narrowed to `Exception` so
+              // genuine `Error`s (assertion failures, OOM, type errors)
+              // keep propagating to `runZonedGuarded` per addendum C4.
               _writeJson(response, 503, <String, Object?>{
                 'error': 'vendor_applicability_actor_resolve_failed',
                 'message': 'actor resolution is unavailable; please retry',
