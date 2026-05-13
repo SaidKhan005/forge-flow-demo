@@ -168,16 +168,30 @@ scripts\run_admin_console_dev.ps1 -DemoMode
 scripts\run_admin_console_dev.ps1 -AdminProxyBaseUri http://localhost:8080
 ```
 
-### Local Postgres (optional)
+### Local Postgres (full stack)
 
-```bash
-docker compose -f docker-compose.dev.yml up --build
-# Apply migrations in lexicographic order:
-psql "postgres://forge:dev@localhost:5432/forge" \
-     -v ON_ERROR_STOP=1 \
-     -f db/migrations/202604250000_advisor_roles.sql
-# ...continue with the rest of db/migrations/*.sql in lex order.
+For full-stack local demo / happy-state validation against a Postgres
+that satisfies every wave-scope migration (AGE + pgvector + pg_partman +
+pg_cron + pg_stat_statements + pg_diskann stub), follow:
+
+→ [`runbooks/local_full_stack_setup_runbook.md`](runbooks/local_full_stack_setup_runbook.md)
+
+The runbook covers the Docker bootstrap, all 125 migrations, the W-1 +
+W-2 wave-bug workarounds, and connection wiring for the proxy + Flutter
+operator-web + mobile flavors.
+
+Current local state once bootstrapped:
+
 ```
+Port:       localhost:5433
+Database:   forge_flow
+Superuser:  postgres / forge_flow_local
+POSTGRES_URL=postgresql://postgres:forge_flow_local@localhost:5433/forge_flow
+```
+
+Legacy `docker-compose.dev.yml` (Phase 11a.11c.5 scaffold) predates
+the wave's extension list and only ships AGE + pgvector; the runbook
+supersedes it.
 
 After editing migrations:
 
