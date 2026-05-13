@@ -159,25 +159,30 @@ comment on column public.handoff_codes.source_device_fingerprint is
   'available). Logged on the redeem audit_logs row so the audit '
   'reader can see which mobile device originated the handoff.';
 
--- Operator-leading B-tree indexes per CI lint (CLAUDE.md hard rule).
+-- Operator-leading B-tree indexes per CI lint (CLAUDE.md hard rule —
+-- "every fact-table B-tree index leads with operator_id" enforced by
+-- tool/index_leading_column_lint.dart).
+--
 -- The composite (operator_id, user_id, created_at desc) supports the
 -- per-user 10/hour rate-limit window scan in the mint handler.
 create index if not exists handoff_codes_operator_user_idx
   on public.handoff_codes (operator_id, user_id, created_at desc);
 
--- Partial index supports the redeem lookup. WHERE consumed_at IS NULL
--- so the index stays small (each row appears in this index for at
--- most 60 seconds before the inline reaper drops it).
-create index if not exists handoff_codes_code_active_idx
-  on public.handoff_codes (code)
-  where consumed_at is null;
+-- Redeem lookup is a PK lookup on `code` (the table's primary key
+-- already provides a unique index covering the single-row read), so
+-- no additional `(code)` index is needed. RLS adds the
+-- `operator_id = app_current_operator()` predicate which the planner
+-- folds into the PK lookup; the partial-active filter saves negligible
+-- space inside the 60-second TTL window. Skipping a redundant index
+-- also keeps the operator-leading-index lint clean.
 
--- Partial index supports the inline reaper sweep. WHERE consumed_at
--- IS NULL filters out already-redeemed rows the reaper does not need
--- to revisit. Once a row is consumed it can age out via the
--- expires_at index for archival cleanup.
-create index if not exists handoff_codes_expires_at_active_idx
-  on public.handoff_codes (expires_at)
+-- Inline reaper sweep is operator-scoped: the tenant transaction sets
+-- LOCAL app.operator_id and the per-operator RLS policy adds
+-- operator_id = app_current_operator(), so the optimal index is
+-- (operator_id, expires_at). WHERE consumed_at IS NULL keeps the
+-- index small — already-redeemed rows do not need reaper visits.
+create index if not exists handoff_codes_operator_expires_at_active_idx
+  on public.handoff_codes (operator_id, expires_at)
   where consumed_at is null;
 
 -- RLS — wrapper-only per Phase 9.0Σ.b item 4. Per-operator policy
