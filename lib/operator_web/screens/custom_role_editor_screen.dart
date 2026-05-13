@@ -120,6 +120,9 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
 
   bool get _isCreate => widget.existing == null;
 
+  bool get _barrioPlanIncluded =>
+      widget.session.permissions.contains(PermissionKeys.productBarrioAccess);
+
   bool get _canSave {
     if (widget.readOnly) return false;
     final name = _displayNameController.text.trim();
@@ -147,7 +150,9 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
       return;
     }
     if (_selectedPermissions.isEmpty) {
-      setState(() => _saveError = 'Pick at least one permission for this role.');
+      setState(
+        () => _saveError = 'Pick at least one permission for this role.',
+      );
       return;
     }
     setState(() {
@@ -157,7 +162,8 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
     try {
       final permissions = _selectedPermissions
           .map(
-            (key) => TeamRolePermissionUpdate(permissionKey: key, effect: 'allow'),
+            (key) =>
+                TeamRolePermissionUpdate(permissionKey: key, effect: 'allow'),
           )
           .toList(growable: false);
       TeamRoleCatalogEntry saved;
@@ -221,7 +227,8 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
     if (existing == null) {
       return _selectedPermissions
           .map(
-            (key) => TeamRolePermissionUpdate(permissionKey: key, effect: 'allow'),
+            (key) =>
+                TeamRolePermissionUpdate(permissionKey: key, effect: 'allow'),
           )
           .toList(growable: false);
     }
@@ -241,9 +248,7 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
       if (!_selectedPermissions.contains(key)) {
         // `null` effect tells the gateway to clear the rule; falls
         // back to inherited behaviour per the catalog.
-        updates.add(
-          TeamRolePermissionUpdate(permissionKey: key, effect: null),
-        );
+        updates.add(TeamRolePermissionUpdate(permissionKey: key, effect: null));
       }
     }
     return updates;
@@ -274,7 +279,6 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final byCategory = permissionExplainerByCategory();
     return Scaffold(
       key: const Key('operator_web_custom_role_editor_screen'),
       backgroundColor: AppColors.backgroundDeep,
@@ -311,9 +315,9 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
                 ),
                 const SizedBox(height: 16),
                 _PermissionPickerCard(
-                  byCategory: byCategory,
                   selected: _selectedPermissions,
                   readOnly: widget.readOnly,
+                  barrioPlanIncluded: _barrioPlanIncluded,
                   onToggle: _togglePermission,
                 ),
                 if (_saveError != null) ...<Widget>[
@@ -328,7 +332,7 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
                       onPressed: _saving
                           ? null
                           : (widget.onClose ??
-                              () => Navigator.of(context).maybePop()),
+                                () => Navigator.of(context).maybePop()),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.sunsetDark,
                         side: const BorderSide(
@@ -364,12 +368,8 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
                       '${_selectedPermissions.length} '
                       '${_selectedPermissions.length == 1 ? 'permission' : 'permissions'} '
                       'selected',
-                      key: const Key(
-                        'operator_web_custom_role_editor_count',
-                      ),
-                      style: AppTextStyles.mono10(
-                        color: AppColors.textMuted,
-                      ),
+                      key: const Key('operator_web_custom_role_editor_count'),
+                      style: AppTextStyles.mono10(color: AppColors.textMuted),
                     ),
                   ],
                 ),
@@ -380,6 +380,76 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
       ),
     );
   }
+}
+
+enum _RoleEditorProduct {
+  forgeFlow(label: 'Forge & Flow'),
+  barrio(label: 'Barrio');
+
+  const _RoleEditorProduct({required this.label});
+
+  final String label;
+}
+
+_RoleEditorProduct _productForPermission(String permissionKey) {
+  if (permissionKey == PermissionKeys.productBarrioAccess ||
+      permissionKey.startsWith('barrio.')) {
+    return _RoleEditorProduct.barrio;
+  }
+  return _RoleEditorProduct.forgeFlow;
+}
+
+String _resourceLabelForPermission(String permissionKey) {
+  if (permissionKey == PermissionKeys.productForgeflowAccess ||
+      permissionKey == PermissionKeys.productBarrioAccess) {
+    return 'Product access';
+  }
+  final parts = permissionKey.split('.');
+  if (parts.length < 2) return permissionKey;
+  final product = _productForPermission(permissionKey);
+  final resourceParts = switch (product) {
+    _RoleEditorProduct.forgeFlow when parts.first == 'forgeflow' =>
+      parts.skip(1).take(1),
+    _RoleEditorProduct.barrio when parts.first == 'barrio' =>
+      parts.skip(1).take(1),
+    _ => parts.take(parts.length - 1),
+  };
+  return resourceParts.map(_titleCasePermissionPart).join(' ');
+}
+
+String _titleCasePermissionPart(String part) {
+  return part
+      .split('_')
+      .where((token) => token.isNotEmpty)
+      .map((token) {
+        if (token.length == 1) return token.toUpperCase();
+        return token.substring(0, 1).toUpperCase() +
+            token.substring(1).toLowerCase();
+      })
+      .join(' ');
+}
+
+List<String> _orderedPermissionKeysForProduct(_RoleEditorProduct product) {
+  final byCategory = permissionExplainerByCategory();
+  final keys = <String>[];
+  for (final category in kPermissionExplainerCategories) {
+    for (final key in byCategory[category] ?? const <String>[]) {
+      if (_productForPermission(key) == product) keys.add(key);
+    }
+  }
+  return keys;
+}
+
+Map<String, List<String>> _permissionKeysByResource(
+  _RoleEditorProduct product,
+) {
+  final grouped = <String, List<String>>{};
+  for (final key in _orderedPermissionKeysForProduct(product)) {
+    grouped
+        .putIfAbsent(_resourceLabelForPermission(key), () => <String>[])
+        .add(key);
+  }
+  return grouped;
 }
 
 class _MetaCard extends StatelessWidget {
@@ -453,7 +523,7 @@ class _MetaCard extends StatelessWidget {
               isDense: true,
               helperText: isCreate
                   ? 'Lowercase letters, numbers, and underscores. '
-                      'For example, floor_captain.'
+                        'For example, floor_captain.'
                   : 'Role keys are locked once a role is created.',
             ),
             validator: (value) {
@@ -492,21 +562,43 @@ class _MetaCard extends StatelessWidget {
   }
 }
 
-class _PermissionPickerCard extends StatelessWidget {
+class _PermissionPickerCard extends StatefulWidget {
   const _PermissionPickerCard({
-    required this.byCategory,
     required this.selected,
     required this.readOnly,
+    required this.barrioPlanIncluded,
     required this.onToggle,
   });
 
-  final Map<String, List<String>> byCategory;
   final Set<String> selected;
   final bool readOnly;
+  final bool barrioPlanIncluded;
   final void Function(String key, bool selected) onToggle;
 
   @override
+  State<_PermissionPickerCard> createState() => _PermissionPickerCardState();
+}
+
+class _PermissionPickerCardState extends State<_PermissionPickerCard>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController = TabController(
+    length: _RoleEditorProduct.values.length,
+    vsync: this,
+  );
+
+  _RoleEditorProduct _activeProduct = _RoleEditorProduct.forgeFlow;
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final product = _activeProduct;
+    final productDisabled =
+        product == _RoleEditorProduct.barrio && !widget.barrioPlanIncluded;
     return Container(
       key: const Key('operator_web_custom_role_editor_permissions'),
       decoration: BoxDecoration(
@@ -539,41 +631,98 @@ class _PermissionPickerCard extends StatelessWidget {
                 Text(
                   'Pick the permissions this role grants. Lock chips '
                   'mark permissions that need multi-factor authentication.',
-                  style:
-                      AppTextStyles.body12(color: AppColors.textSecondary),
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
                 ),
               ],
             ),
           ),
-          for (final category in kPermissionExplainerCategories)
-            if ((byCategory[category] ?? const <String>[]).isNotEmpty)
-              _PickerCategorySection(
-                key: Key(
-                  'operator_web_custom_role_editor_category_$category',
-                ),
-                category: category,
-                permissionKeys: byCategory[category]!,
-                selected: selected,
-                readOnly: readOnly,
-                onToggle: onToggle,
+          TabBar(
+            key: const Key('operator_web_custom_role_editor_product_tabs'),
+            controller: _tabController,
+            labelColor: AppColors.textPrimary,
+            unselectedLabelColor: AppColors.textMuted,
+            indicatorColor: AppColors.sunset,
+            onTap: (index) {
+              setState(() => _activeProduct = _RoleEditorProduct.values[index]);
+            },
+            tabs: const <Widget>[
+              Tab(
+                key: Key('operator_web_custom_role_editor_tab_forgeflow'),
+                text: 'Forge & Flow',
               ),
+              Tab(
+                key: Key('operator_web_custom_role_editor_tab_barrio'),
+                text: 'Barrio',
+              ),
+            ],
+          ),
+          if (productDisabled)
+            const _DormantProductNotice(
+              key: Key('operator_web_custom_role_editor_barrio_coming_soon'),
+            ),
+          for (final entry in _permissionKeysByResource(product).entries)
+            _PickerResourceSection(
+              key: Key(
+                'operator_web_custom_role_editor_resource_'
+                '${product.name}_${entry.key}',
+              ),
+              resourceLabel: entry.key,
+              permissionKeys: entry.value,
+              selected: widget.selected,
+              readOnly: widget.readOnly || productDisabled,
+              onToggle: widget.onToggle,
+            ),
         ],
       ),
     );
   }
 }
 
-class _PickerCategorySection extends StatelessWidget {
-  const _PickerCategorySection({
+class _DormantProductNotice extends StatelessWidget {
+  const _DormantProductNotice({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.08),
+        border: Border.all(
+          color: AppColors.warning.withValues(alpha: 0.32),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.info_outline, size: 16, color: AppColors.warning),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Coming soon. Barrio permissions are visible for planning, '
+              'but this operator plan does not include Barrio yet.',
+              style: AppTextStyles.body12(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PickerResourceSection extends StatelessWidget {
+  const _PickerResourceSection({
     super.key,
-    required this.category,
+    required this.resourceLabel,
     required this.permissionKeys,
     required this.selected,
     required this.readOnly,
     required this.onToggle,
   });
 
-  final String category;
+  final String resourceLabel;
   final List<String> permissionKeys;
   final Set<String> selected;
   final bool readOnly;
@@ -581,10 +730,7 @@ class _PickerCategorySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label =
-        kPermissionExplainerCategoryLabels[category] ?? category;
-    final selectedInCategory =
-        permissionKeys.where(selected.contains).length;
+    final selectedInCategory = permissionKeys.where(selected.contains).length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Column(
@@ -594,7 +740,7 @@ class _PickerCategorySection extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: Text(
-                  label,
+                  resourceLabel,
                   style: AppTextStyles.mono12(
                     color: AppColors.textPrimary,
                     weight: FontWeight.w700,
@@ -610,14 +756,11 @@ class _PickerCategorySection extends StatelessWidget {
           const SizedBox(height: 6),
           for (final permissionKey in permissionKeys)
             _PermissionCheckbox(
-              key: Key(
-                'operator_web_custom_role_editor_perm_$permissionKey',
-              ),
+              key: Key('operator_web_custom_role_editor_perm_$permissionKey'),
               permissionKey: permissionKey,
               selected: selected.contains(permissionKey),
               readOnly: readOnly,
-              onChanged: (value) =>
-                  onToggle(permissionKey, value ?? false),
+              onChanged: (value) => onToggle(permissionKey, value ?? false),
             ),
         ],
       ),
@@ -649,10 +792,7 @@ class _PermissionCheckbox extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Checkbox(
-            value: selected,
-            onChanged: readOnly ? null : onChanged,
-          ),
+          Checkbox(value: selected, onChanged: readOnly ? null : onChanged),
           const SizedBox(width: 4),
           Expanded(
             child: Column(
@@ -680,8 +820,7 @@ class _PermissionCheckbox extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: AppColors.warning.withValues(alpha: 0.12),
                             border: Border.all(
-                              color: AppColors.warning
-                                  .withValues(alpha: 0.45),
+                              color: AppColors.warning.withValues(alpha: 0.45),
                               width: 1,
                             ),
                             borderRadius: BorderRadius.circular(999),
@@ -711,9 +850,7 @@ class _PermissionCheckbox extends StatelessWidget {
                 const SizedBox(height: 1),
                 Text(
                   description,
-                  style: AppTextStyles.body12(
-                    color: AppColors.textSecondary,
-                  ),
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -745,11 +882,7 @@ class _SaveErrorPanel extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Icon(
-            Icons.error_outline,
-            size: 18,
-            color: AppColors.negative,
-          ),
+          const Icon(Icons.error_outline, size: 18, color: AppColors.negative),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

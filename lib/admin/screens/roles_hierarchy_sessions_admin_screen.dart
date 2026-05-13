@@ -968,6 +968,83 @@ class PermissionKeyChip extends StatelessWidget {
   }
 }
 
+enum _RoleEditorProduct {
+  forgeFlow(label: 'Forge & Flow'),
+  barrio(label: 'Barrio');
+
+  const _RoleEditorProduct({required this.label});
+
+  final String label;
+}
+
+_RoleEditorProduct _productForPermission(String permissionKey) {
+  if (permissionKey == PermissionKeys.productBarrioAccess ||
+      permissionKey.startsWith('barrio.')) {
+    return _RoleEditorProduct.barrio;
+  }
+  return _RoleEditorProduct.forgeFlow;
+}
+
+String _resourceLabelForPermission(String permissionKey) {
+  if (permissionKey == PermissionKeys.productForgeflowAccess ||
+      permissionKey == PermissionKeys.productBarrioAccess) {
+    return 'Product access';
+  }
+  final parts = permissionKey.split('.');
+  if (parts.length < 2) return permissionKey;
+  final product = _productForPermission(permissionKey);
+  final resourceParts = switch (product) {
+    _RoleEditorProduct.forgeFlow when parts.first == 'forgeflow' =>
+      parts.skip(1).take(1),
+    _RoleEditorProduct.barrio when parts.first == 'barrio' =>
+      parts.skip(1).take(1),
+    _ => parts.take(parts.length - 1),
+  };
+  return resourceParts.map(_titleCaseToken).join(' ');
+}
+
+List<String> _orderedPermissionKeysForProduct(_RoleEditorProduct product) {
+  final keys = PermissionKeys.all
+      .where((key) => _productForPermission(key) == product)
+      .toList(growable: false);
+  keys.sort((a, b) {
+    final resource = _resourceLabelForPermission(
+      a,
+    ).compareTo(_resourceLabelForPermission(b));
+    if (resource != 0) return resource;
+    return a.compareTo(b);
+  });
+  return keys;
+}
+
+Map<String, List<String>> _permissionKeysByResource(
+  _RoleEditorProduct product,
+) {
+  final grouped = <String, List<String>>{};
+  for (final key in _orderedPermissionKeysForProduct(product)) {
+    grouped
+        .putIfAbsent(_resourceLabelForPermission(key), () => <String>[])
+        .add(key);
+  }
+  return grouped;
+}
+
+List<String> _orderedSelectedPermissionKeys(Set<String> selected) {
+  final ordered = <String>[];
+  for (final product in _RoleEditorProduct.values) {
+    for (final key in _orderedPermissionKeysForProduct(product)) {
+      if (selected.contains(key)) ordered.add(key);
+    }
+  }
+  final unknown =
+      selected
+          .where((key) => !PermissionKeys.all.contains(key))
+          .toList(growable: false)
+        ..sort();
+  ordered.addAll(unknown);
+  return ordered;
+}
+
 @visibleForTesting
 String permissionHumanLabel(String permissionKey) {
   final parts = permissionKey
@@ -2051,6 +2128,239 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
 // Roles tab dialogs
 // ---------------------------------------------------------------------
 
+class _AdminProductPermissionPicker extends StatefulWidget {
+  const _AdminProductPermissionPicker({
+    required this.selected,
+    required this.barrioPlanIncluded,
+    required this.onToggle,
+  });
+
+  final Set<String> selected;
+  final bool barrioPlanIncluded;
+  final void Function(String permissionKey, bool selected) onToggle;
+
+  @override
+  State<_AdminProductPermissionPicker> createState() =>
+      _AdminProductPermissionPickerState();
+}
+
+class _AdminProductPermissionPickerState
+    extends State<_AdminProductPermissionPicker>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController = TabController(
+    length: _RoleEditorProduct.values.length,
+    vsync: this,
+  );
+
+  _RoleEditorProduct _activeProduct = _RoleEditorProduct.forgeFlow;
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final product = _activeProduct;
+    final disabled =
+        product == _RoleEditorProduct.barrio && !widget.barrioPlanIncluded;
+    return Container(
+      key: const Key('admin_rhs_role_editor_permission_picker'),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          TabBar(
+            key: const Key('admin_rhs_role_editor_product_tabs'),
+            controller: _tabController,
+            labelColor: AppColors.textPrimary,
+            unselectedLabelColor: AppColors.textMuted,
+            indicatorColor: AppColors.sunset,
+            onTap: (index) {
+              setState(() => _activeProduct = _RoleEditorProduct.values[index]);
+            },
+            tabs: const <Widget>[
+              Tab(
+                key: Key('admin_rhs_role_editor_tab_forgeflow'),
+                text: 'Forge & Flow',
+              ),
+              Tab(key: Key('admin_rhs_role_editor_tab_barrio'), text: 'Barrio'),
+            ],
+          ),
+          if (disabled)
+            const _AdminDormantProductNotice(
+              key: Key('admin_rhs_role_editor_barrio_coming_soon'),
+            ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              children: <Widget>[
+                for (final entry in _permissionKeysByResource(product).entries)
+                  _AdminPermissionResourceSection(
+                    key: Key(
+                      'admin_rhs_role_editor_resource_'
+                      '${product.name}_${entry.key}',
+                    ),
+                    resourceLabel: entry.key,
+                    permissionKeys: entry.value,
+                    selected: widget.selected,
+                    disabled: disabled,
+                    onToggle: widget.onToggle,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminDormantProductNotice extends StatelessWidget {
+  const _AdminDormantProductNotice({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 2),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.08),
+        border: Border.all(
+          color: AppColors.warning.withValues(alpha: 0.32),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.info_outline, size: 16, color: AppColors.warning),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Coming soon. Barrio permissions are visible for planning, '
+              'but this operator plan does not include Barrio yet.',
+              style: AppTextStyles.body12(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminPermissionResourceSection extends StatelessWidget {
+  const _AdminPermissionResourceSection({
+    super.key,
+    required this.resourceLabel,
+    required this.permissionKeys,
+    required this.selected,
+    required this.disabled,
+    required this.onToggle,
+  });
+
+  final String resourceLabel;
+  final List<String> permissionKeys;
+  final Set<String> selected;
+  final bool disabled;
+  final void Function(String permissionKey, bool selected) onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedCount = permissionKeys.where(selected.contains).length;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  resourceLabel,
+                  style: AppTextStyles.mono12(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                '$selectedCount / ${permissionKeys.length}',
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          for (final key in permissionKeys)
+            _AdminPermissionCheckbox(
+              key: Key('admin_rhs_role_editor_perm_$key'),
+              permissionKey: key,
+              selected: selected.contains(key),
+              disabled: disabled,
+              onChanged: (value) => onToggle(key, value ?? false),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminPermissionCheckbox extends StatelessWidget {
+  const _AdminPermissionCheckbox({
+    super.key,
+    required this.permissionKey,
+    required this.selected,
+    required this.disabled,
+    required this.onChanged,
+  });
+
+  final String permissionKey;
+  final bool selected;
+  final bool disabled;
+  final ValueChanged<bool?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final mfa = PermissionKeys.requiresMfa.contains(permissionKey);
+    return CheckboxListTile(
+      key: Key('admin_rhs_role_editor_checkbox_$permissionKey'),
+      value: selected,
+      onChanged: disabled ? null : onChanged,
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      controlAffinity: ListTileControlAffinity.leading,
+      title: Wrap(
+        spacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: <Widget>[
+          Text(
+            permissionHumanLabel(permissionKey),
+            style: AppTextStyles.body12(color: AppColors.textPrimary),
+          ),
+          if (mfa)
+            Tooltip(
+              message: kMfaRequiredTooltip,
+              child: Text(
+                'MFA',
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+            ),
+        ],
+      ),
+      subtitle: Text(
+        permissionKey,
+        style: AppTextStyles.mono10(color: AppColors.textMuted),
+      ),
+    );
+  }
+}
+
 class EditSeededRoleResult {
   const EditSeededRoleResult({
     required this.permissionKeys,
@@ -2071,15 +2381,13 @@ class EditSeededRoleDialog extends StatefulWidget {
 }
 
 class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
-  late final _permissionsController = TextEditingController(
-    text: widget.initial.permissionKeys.join('\n'),
-  );
   final _reasonController = TextEditingController();
+  late final Set<String> _selectedPermissionKeys = widget.initial.permissionKeys
+      .toSet();
   bool _violated = false;
 
   @override
   void dispose() {
-    _permissionsController.dispose();
     _reasonController.dispose();
     super.dispose();
   }
@@ -2090,14 +2398,22 @@ class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
       setState(() => _violated = true);
       return;
     }
-    final keys = _permissionsController.text
-        .split('\n')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList(growable: false);
-    Navigator.of(
-      context,
-    ).pop(EditSeededRoleResult(permissionKeys: keys, adminReason: reason));
+    Navigator.of(context).pop(
+      EditSeededRoleResult(
+        permissionKeys: _orderedSelectedPermissionKeys(_selectedPermissionKeys),
+        adminReason: reason,
+      ),
+    );
+  }
+
+  void _togglePermission(String permissionKey, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedPermissionKeys.add(permissionKey);
+      } else {
+        _selectedPermissionKeys.remove(permissionKey);
+      }
+    });
   }
 
   @override
@@ -2110,25 +2426,22 @@ class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
         style: AdminButtonStyles.dialogTitleStyle,
       ),
       content: SizedBox(
-        width: 520,
+        width: 720,
+        height: 640,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Text(
               'Editing a seeded role requires multi-factor sign-in. '
-              'Add one permission key per line.',
+              'Pick permissions by product, then add a reason.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_rhs_edit_seeded_role_keys'),
-              controller: _permissionsController,
-              minLines: 4,
-              maxLines: 10,
-              decoration: const InputDecoration(
-                labelText: 'Permission keys',
-                border: OutlineInputBorder(),
+            Expanded(
+              child: _AdminProductPermissionPicker(
+                selected: _selectedPermissionKeys,
+                barrioPlanIncluded: false,
+                onToggle: _togglePermission,
               ),
             ),
             const SizedBox(height: 12),
@@ -2191,8 +2504,8 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
   final _displayNameController = TextEditingController();
   final _roleKeyController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _permissionsController = TextEditingController();
   final _reasonController = TextEditingController();
+  final Set<String> _selectedPermissionKeys = <String>{};
   String? _displayNameError;
   String? _roleKeyError;
   String? _reasonError;
@@ -2202,7 +2515,6 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
     _displayNameController.dispose();
     _roleKeyController.dispose();
     _descriptionController.dispose();
-    _permissionsController.dispose();
     _reasonController.dispose();
     super.dispose();
   }
@@ -2227,20 +2539,25 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
         _reasonError != null) {
       return;
     }
-    final keys = _permissionsController.text
-        .split('\n')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList(growable: false);
     Navigator.of(context).pop(
       CustomRoleDraft(
         roleKey: roleKey,
         displayName: displayName,
         description: _descriptionController.text.trim(),
-        permissionKeys: keys,
+        permissionKeys: _orderedSelectedPermissionKeys(_selectedPermissionKeys),
         adminReason: reason,
       ),
     );
+  }
+
+  void _togglePermission(String permissionKey, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedPermissionKeys.add(permissionKey);
+      } else {
+        _selectedPermissionKeys.remove(permissionKey);
+      }
+    });
   }
 
   @override
@@ -2250,9 +2567,9 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
       backgroundColor: AppColors.backgroundSurface,
       title: Text('New custom role', style: AdminButtonStyles.dialogTitleStyle),
       content: SizedBox(
-        width: 520,
+        width: 720,
+        height: 720,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             TextField(
@@ -2286,14 +2603,11 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
               ),
             ),
             const SizedBox(height: 10),
-            TextField(
-              key: const Key('admin_rhs_create_custom_role_keys'),
-              controller: _permissionsController,
-              minLines: 3,
-              maxLines: 8,
-              decoration: const InputDecoration(
-                labelText: 'Permission keys (one per line)',
-                border: OutlineInputBorder(),
+            Expanded(
+              child: _AdminProductPermissionPicker(
+                selected: _selectedPermissionKeys,
+                barrioPlanIncluded: false,
+                onToggle: _togglePermission,
               ),
             ),
             const SizedBox(height: 10),

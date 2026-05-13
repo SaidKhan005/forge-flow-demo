@@ -214,7 +214,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       displayName: displayName,
       description: description,
     );
-    await _applyRolePermissionUpdates(
+    final permissionAudit = await _applyRolePermissionUpdates(
       command: command,
       roleId: roleId,
       updates: command.permissions,
@@ -229,6 +229,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       payload: <String, Object?>{
         'role_id': roleId,
         'role_key': roleKey,
+        if (permissionAudit.changed > 0)
+          'change_payload': permissionAudit.toPayload(),
         if (command.reason != null) 'reason': command.reason,
       },
     );
@@ -259,11 +261,12 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
           ) >
           0;
     }
-    final permissionChanges = await _applyRolePermissionUpdates(
+    final permissionAudit = await _applyRolePermissionUpdates(
       command: command,
       roleId: command.roleId,
       updates: command.permissions,
     );
+    final permissionChanges = permissionAudit.changed;
     var bumpedUsers = 0;
     if (permissionChanges > 0) {
       bumpedUsers = await userRolesRepository.bumpActiveGrantHoldersForRole(
@@ -286,6 +289,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
           'permission_changes': permissionChanges,
           'metadata_changed': metadataChanged,
           'bumped_users': bumpedUsers,
+          if (permissionAudit.changed > 0)
+            'change_payload': permissionAudit.toPayload(),
           if (command.reason != null) 'reason': command.reason,
         },
       );
@@ -1657,7 +1662,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     return role;
   }
 
-  Future<int> _applyRolePermissionUpdates({
+  Future<_RolePermissionMutationAudit> _applyRolePermissionUpdates({
     required Object command,
     required String roleId,
     required List<TeamRolePermissionUpdate> updates,
@@ -1677,7 +1682,23 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       TeamRolePatchCommand(:final actorUserId) => actorUserId,
       _ => throw ArgumentError.value(command, 'command'),
     };
+    if (updates.isEmpty) {
+      return const _RolePermissionMutationAudit(
+        changed: 0,
+        changes: <_RolePermissionMutationAuditEntry>[],
+      );
+    }
     var changed = 0;
+    final changes = <_RolePermissionMutationAuditEntry>[];
+    final previousRows = await rolePermissionsRepository.listForRole(
+      operatorId: operatorId,
+      locationId: locationId,
+      roleId: roleId,
+      actorUserId: actorUserId,
+    );
+    final previousEffects = <String, String>{
+      for (final row in previousRows) row.permissionKey: row.effect,
+    };
     final seen = <String>{};
     for (final update in updates) {
       final key = _requiredTrimmed(update.permissionKey, 'permissionKey');
@@ -1690,13 +1711,25 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       }
       final effect = update.effect?.trim();
       if (effect == null || effect == 'inherit') {
-        changed += await rolePermissionsRepository.deleteCell(
+        final affected = await rolePermissionsRepository.deleteCell(
           operatorId: operatorId,
           locationId: locationId,
           updatedByUserId: actorUserId,
           roleId: roleId,
           permissionKey: key,
         );
+        changed += affected;
+        if (affected > 0) {
+          changes.add(
+            _RolePermissionMutationAuditEntry(
+              roleId: roleId,
+              permissionKey: key,
+              product: _rolePermissionProduct(key),
+              from: previousEffects[key] ?? 'inherit',
+              to: 'inherit',
+            ),
+          );
+        }
         continue;
       }
       if (effect != 'allow' && effect != 'deny') {
@@ -1706,7 +1739,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
           statusCode: 400,
         );
       }
-      changed += await rolePermissionsRepository.upsertCell(
+      final affected = await rolePermissionsRepository.upsertCell(
         operatorId: operatorId,
         locationId: locationId,
         updatedByUserId: actorUserId,
@@ -1714,8 +1747,23 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         permissionKey: key,
         effect: effect,
       );
+      changed += affected;
+      if (affected > 0) {
+        changes.add(
+          _RolePermissionMutationAuditEntry(
+            roleId: roleId,
+            permissionKey: key,
+            product: _rolePermissionProduct(key),
+            from: previousEffects[key] ?? 'inherit',
+            to: effect,
+          ),
+        );
+      }
     }
-    return changed;
+    return _RolePermissionMutationAudit(
+      changed: changed,
+      changes: List<_RolePermissionMutationAuditEntry>.unmodifiable(changes),
+    );
   }
 
   Map<String, Object?> _baseClaimsForUser({
@@ -1869,6 +1917,14 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     return trimmed;
   }
 
+  static String _rolePermissionProduct(String permissionKey) {
+    if (permissionKey == 'product.barrio.access' ||
+        permissionKey.startsWith('barrio.')) {
+      return 'barrio';
+    }
+    return 'forgeflow';
+  }
+
   static String _requiredTrimmed(String value, String fieldName) {
     final trimmed = value.trim();
     if (trimmed.isEmpty) {
@@ -1910,4 +1966,49 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   static String _randomToken() => _uuidV4();
+}
+
+class _RolePermissionMutationAudit {
+  const _RolePermissionMutationAudit({
+    required this.changed,
+    required this.changes,
+  });
+
+  final int changed;
+  final List<_RolePermissionMutationAuditEntry> changes;
+
+  Map<String, Object?> toPayload() {
+    return <String, Object?>{
+      'change_count': changed,
+      'changes': <Map<String, Object?>>[
+        for (final change in changes) change.toPayload(),
+      ],
+    };
+  }
+}
+
+class _RolePermissionMutationAuditEntry {
+  const _RolePermissionMutationAuditEntry({
+    required this.roleId,
+    required this.permissionKey,
+    required this.product,
+    required this.from,
+    required this.to,
+  });
+
+  final String roleId;
+  final String permissionKey;
+  final String product;
+  final String from;
+  final String to;
+
+  Map<String, Object?> toPayload() {
+    return <String, Object?>{
+      'role_id': roleId,
+      'permission_key': permissionKey,
+      'product': product,
+      'from': from,
+      'to': to,
+    };
+  }
 }

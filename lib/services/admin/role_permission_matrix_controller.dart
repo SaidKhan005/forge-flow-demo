@@ -60,6 +60,17 @@ class MatrixCellChange {
   final String permissionKey;
   final MatrixCellState from;
   final MatrixCellState to;
+
+  /// Product bucket used by `role_audit_log.change_payload` filters.
+  String get product => rolePermissionProduct(permissionKey);
+}
+
+String rolePermissionProduct(String permissionKey) {
+  if (permissionKey == 'product.barrio.access' ||
+      permissionKey.startsWith('barrio.')) {
+    return 'barrio';
+  }
+  return 'forgeflow';
 }
 
 class RolePermissionMatrixController {
@@ -72,10 +83,8 @@ class RolePermissionMatrixController {
          ),
        ),
        _current = baseline.map(
-         (roleId, perKey) => MapEntry(
-           roleId,
-           Map<String, PermissionEffect>.from(perKey),
-         ),
+         (roleId, perKey) =>
+             MapEntry(roleId, Map<String, PermissionEffect>.from(perKey)),
        );
 
   final Map<String, Map<String, PermissionEffect>> _baseline;
@@ -95,7 +104,10 @@ class RolePermissionMatrixController {
     required String permissionKey,
     required MatrixCellState state,
   }) {
-    final per = _current.putIfAbsent(roleId, () => <String, PermissionEffect>{});
+    final per = _current.putIfAbsent(
+      roleId,
+      () => <String, PermissionEffect>{},
+    );
     final effect = state.toEffect();
     if (effect == null) {
       per.remove(permissionKey);
@@ -170,6 +182,7 @@ class RolePermissionMatrixController {
           <String, Object?>{
             'role_id': change.roleId,
             'permission_key': change.permissionKey,
+            'product': change.product,
             'from': change.from.name,
             'to': change.to.name,
           },

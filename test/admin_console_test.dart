@@ -250,6 +250,7 @@ void main() {
       final entry = (payload['changes']! as List).first as Map<String, Object?>;
       expect(entry['role_id'], equals('role-staff'));
       expect(entry['permission_key'], equals('forgeflow.shift.edit'));
+      expect(entry['product'], equals('forgeflow'));
       expect(entry['from'], equals('inherit'));
       expect(entry['to'], equals('deny'));
     });
