@@ -75,6 +75,13 @@ walkthrough. Cheap to run; catches gross breakage early.
 
 **Owner:** main orchestrator (this session).
 
+**Hand-off on clean Phase 0:** the moment Phase 0 passes, second Claude
+is cleared to start **Lanes U, V, and D** in parallel with the Phase 1
+walkthrough. Only **Lane M-Poll** waits for Phase 1 to complete (M-Poll
+touches the demo-live switch surface and walkthrough may amend its
+scope). This parallelization keeps second Claude's caps spent on
+shipping rather than waiting.
+
 ---
 
 ## Phase 1 — Demo-validate as a STRUCTURED walkthrough
@@ -101,6 +108,12 @@ punch list, plus any new bugs filed as additional rows.
 **Operator gates:** operator drives the walkthrough; main orchestrator is
 the companion. Phase 1 closes when the operator says "I've seen enough; go
 to Phase 2."
+
+**Parallel execution:** second Claude is already running Lanes U/V/D
+during this phase (cleared at Phase 0 close). Their PRs land in parallel
+with the walkthrough. The walkthrough may surface NEW UX gaps that
+become additional Lane U slices — those get added to the ledger by main
+orchestrator and queued for second Claude's next pick.
 
 ---
 
@@ -277,6 +290,79 @@ Operator-owned work (engineering not required for these):
 - **Soak harness completion + Azure Blob swap** (started in Wave 2 Lane Q; full operational run happens post-launch).
 - **Email/notification pressure test full run** (harness built in Wave 2 Lane Q; pressure runs happen post-launch).
 - **CI reactivation 2026-06-01** per `feedback_ci_dark_until_2026_06_01.md`.
+
+---
+
+## Cap discipline + parallelization rules (added 2026-05-13)
+
+Both Claude accounts share the same risk: burn through caps in one
+session and the wave stalls for hours/days. These rules apply to BOTH
+the main orchestrator and second-Claude orchestrator across all phases.
+
+### 1. Orchestrate-don't-implement
+
+Every code change of meaningful size goes through a **worker agent
+dispatched in a worktree** via the Agent tool. Worker agents run in
+their OWN context window — their token usage does NOT hit the
+orchestrator's session cap. The orchestrator spends tokens on:
+
+- Writing the worker prompt.
+- Auditing the resulting PR.
+- Merging (or dispatching a follow-up agent for fixes).
+
+That's it. No inline edits to slice work. Doc tweaks ≤10 lines are the
+only carve-out.
+
+### 2. 70% cap throttle
+
+When either session crosses ~70% session usage, **stop dispatching new
+workers**. Audit + merge what's already in flight. Then compact and
+resume on a fresh session.
+
+The failure mode we're avoiding: orchestrator dispatches 4 workers,
+audits 1, hits the cap mid-audit-2, leaves 2 PRs unaudited and the
+operator stranded.
+
+### 3. Compact between batches
+
+Not just at phase boundaries — after every merged PR or every
+audit-and-merge cycle, **compact**. Long contexts cost more per turn
+(cache misses, more replay). Short context after compact is cheap.
+
+### 4. Lane U bundling (second Claude specific)
+
+The ledger explicitly permits second Claude to bundle Lane U (UX polish)
+slices into 1-2 fat PRs instead of 7 thin ones. **Default to fat
+bundles** under cap pressure:
+
+- 7 thin PRs = 7 audits = 7× orchestrator cap spend.
+- 2 fat PRs = 2 audits = 2× orchestrator cap spend.
+- Workers don't care — fresh context per dispatch either way.
+
+### 5. Audit by grep, not by re-reading
+
+When auditing a PR diff, use `gh pr diff <n>` + targeted grep against
+cited file:line ranges. Do NOT re-read whole files unless the audit
+turns up a seam that needs broader inspection.
+
+### 6. rg-first, offset reads, no double-reads
+
+- `rg` (Grep tool) first when symbol/filename/literal is known.
+- Offset reads on large docs — `offset` + `limit` parameters, not full reads.
+- Don't re-read what you just read. Trust the prior read.
+
+### 7. Tail tests
+
+`flutter test test/<specific-dir>` not the whole suite. `dart analyze
+lib/<specific-subtree>` not the whole tree, when scope is local.
+
+### 8. Cross-session audit fallback
+
+If main session caps out mid-audit on a Main-owned PR, second Claude
+MAY pick it up as a one-off. Audits write to `docs/_audits/wave_2/`
+which both sessions can write to (only `WAVE_2_LEDGER.md` itself is
+main-only-writes). The audit doc carries the verdict; main session
+merges when it's back. **Use sparingly** — safety valve, not habit.
 
 ---
 
