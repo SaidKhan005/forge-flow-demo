@@ -201,7 +201,13 @@ void main() {
       kAdminRoutes
           .where((route) => route.section == AdminRouteSection.serviceSetup)
           .map((route) => route.id),
-      <String>[kAdminIntegrationsRouteId, kAdminFeatureFlagsRouteId],
+      <String>[
+        kAdminIntegrationsRouteId,
+        kAdminFeatureFlagsRouteId,
+        // Lane B B2.2 — Default Role catalog admin editor added to
+        // the Service setup section as a F&F-admin-only surface.
+        kAdminDefaultRoleCatalogRouteId,
+      ],
     );
     expect(
       kAdminRoutes
