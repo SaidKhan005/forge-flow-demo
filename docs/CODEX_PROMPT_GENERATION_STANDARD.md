@@ -31,10 +31,8 @@ v  slices.
 - `docs/frameworks/deployFramework.md` for deploy, redeploy, preview,
   staging, Cloud Run, CORS, auth, database-mode, and rollback work.
 - `docs/frameworks/PERFORMANCE_FRAMEWORK.md` for performance, scale, mobile
-  slices (advisory pattern, not CI-enforced).
-- `docs/PERFORMANCE_FRAMEWORK.md` for performance, scale, mobile
   responsiveness, web-console timing, load, polling, health, or bundle-size
-  work.
+  work (advisory pattern, not CI-enforced).
 - `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md` for UX polish, copy, navigation, button,
   modal, filter, tooltip, browser-tab, and no-regression admin-console polish.
 - `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` for broad

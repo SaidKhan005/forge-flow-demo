@@ -45,9 +45,9 @@ Required reading before coding:
 - docs/CODEX_PROMPT_GENERATION_STANDARD.md
 - docs/contracts/core_app_architecture.md
 - docs/contracts/slice_runtime_acceptance_contract.md
-- docs/UX_ADJUSTMENT_FRAMEWORK.md or docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md
-- docs/PERFORMANCE_FRAMEWORK.md or docs/frameworks/PERFORMANCE_FRAMEWORK.md
-- docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md or docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md
+- docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md
+- docs/frameworks/PERFORMANCE_FRAMEWORK.md
+- docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md
 - runbooks/preview_environment_runbook.md
 
 Execution plan:
