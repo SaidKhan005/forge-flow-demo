@@ -10,6 +10,7 @@ import 'domain/models/restaurant_location.dart';
 import 'domain/models/business_scope.dart';
 import 'services/app_notification_service.dart';
 import 'services/auth/auth_operations_gateway.dart';
+import 'services/auth/handoff_code_gateway.dart';
 import 'services/auth/password_change_gateway.dart';
 import 'services/auth/password_reset_deep_link_source.dart';
 import 'services/auth/password_reset_gateway.dart';
@@ -71,6 +72,7 @@ class ForgeFlowApp extends StatelessWidget {
     this.mfaRecoveryRequestGateway,
     this.passwordResetGateway,
     this.passwordResetDeepLinkSource,
+    this.handoffCodeGateway,
   });
 
   final bool requireAuth;
@@ -79,6 +81,7 @@ class ForgeFlowApp extends StatelessWidget {
   final AccountInfoGateway? accountInfoGateway;
   final PasswordChangeGateway? passwordChangeGateway;
   final MfaOperationsGateway? mfaOperationsGateway;
+  final HandoffCodeGateway? handoffCodeGateway;
   final MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
   final PasswordResetGateway? passwordResetGateway;
   final PasswordResetDeepLinkSource? passwordResetDeepLinkSource;
@@ -91,6 +94,7 @@ class ForgeFlowApp extends StatelessWidget {
       accountInfoGateway: accountInfoGateway,
       passwordChangeGateway: passwordChangeGateway,
       mfaOperationsGateway: mfaOperationsGateway,
+      handoffCodeGateway: handoffCodeGateway,
     );
     final Widget homeContent = requireAuth
         ? AuthGate(
@@ -518,6 +522,7 @@ class AppShell extends StatefulWidget {
   final AccountInfoGateway? accountInfoGateway;
   final PasswordChangeGateway? passwordChangeGateway;
   final MfaOperationsGateway? mfaOperationsGateway;
+  final HandoffCodeGateway? handoffCodeGateway;
 
   /// Test-only: override business-date resolution for the boundary
   /// monitor. When provided, the monitor uses this resolver instead
@@ -558,6 +563,7 @@ class AppShell extends StatefulWidget {
     this.accountInfoGateway,
     this.passwordChangeGateway,
     this.mfaOperationsGateway,
+    this.handoffCodeGateway,
     this.testBusinessDateResolver,
     this.testBoundaryEventOutbox,
     this.testDisableDefaultBoundaryEventOutbox = false,
@@ -652,8 +658,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // the auth session itself does not change.
     RestaurantScopeNotifier? scopeNotifier;
     try {
-      scopeNotifier =
-          Provider.of<RestaurantScopeNotifier>(context, listen: false);
+      scopeNotifier = Provider.of<RestaurantScopeNotifier>(
+        context,
+        listen: false,
+      );
     } on ProviderNotFoundException {
       scopeNotifier = null;
     }
@@ -1085,9 +1093,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     );
     // W2.A — keep the bell badge in sync with the active restaurant.
     if (restaurant != null) {
-      unawaited(
-        AppNotificationService.instance.start(restaurant.restaurantId),
-      );
+      unawaited(AppNotificationService.instance.start(restaurant.restaurantId));
     }
   }
 
@@ -1218,12 +1224,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           passwordChangeGateway: widget.passwordChangeGateway,
           accountInfoGateway: widget.accountInfoGateway,
           mfaOperationsGateway: widget.mfaOperationsGateway,
+          handoffCodeGateway: widget.handoffCodeGateway,
           // Phase 9.UX.5 - Active Sessions in Account tab. Demo /
           // unauth shells fall back to the in-memory fixture so the
           // walkthrough can show multiple devices without a backend.
           authOperationsGateway: widget.authOperationsGateway,
-          allowDemoActiveSessionsFallback:
-              widget.authOperationsGateway == null,
+          allowDemoActiveSessionsFallback: widget.authOperationsGateway == null,
         ),
         fullscreenDialog: true,
       ),
@@ -1295,7 +1301,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       actorPermissions: permissions,
     );
   }
-
 
   void _openNotifications(BuildContext context) {
     Navigator.of(context).push(
@@ -1482,7 +1487,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     );
   }
 }
-
 
 class _AppBottomNav extends StatelessWidget {
   final int selectedIndex;

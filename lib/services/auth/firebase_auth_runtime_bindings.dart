@@ -42,6 +42,8 @@ import 'firebase_auth_client.dart';
 import 'firebase_auth_client_sdk.dart';
 import 'firebase_auth_login_service.dart';
 import 'flutter_secure_storage_backend.dart';
+import 'handoff_code_client.dart';
+import 'handoff_code_gateway.dart';
 import 'password_change_gateway.dart';
 import 'password_reset_deep_link_source.dart';
 import 'password_reset_gateway.dart';
@@ -69,6 +71,7 @@ class FirebaseAuthRuntimeBindings {
     this.passwordResetGateway,
     this.passwordResetDeepLinkSource,
     this.mobilePushTokenGateway,
+    this.handoffCodeGateway,
     this.idTokenProvider,
   });
 
@@ -89,6 +92,7 @@ class FirebaseAuthRuntimeBindings {
   final MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
   final PasswordResetGateway? passwordResetGateway;
   final MobilePushTokenGateway? mobilePushTokenGateway;
+  final HandoffCodeGateway? handoffCodeGateway;
   final Future<String?> Function()? idTokenProvider;
 
   /// 9.UX.7 — incoming-URI source forwarded to the unauthenticated
@@ -201,6 +205,7 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
   MfaOperationsGateway? mfaOperationsGateway;
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
   PasswordResetGateway? passwordResetGateway;
+  HandoffCodeGateway? handoffCodeGateway;
   // ops-debt.mobile-push-gating: build through the gated factory so a
   // production phone never POSTs to `/v1/auth/mobile/push-token/register`
   // until the migration is applied and `MOBILE_PUSH_NOTIFICATIONS_ENABLED`
@@ -211,6 +216,13 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
         idTokenProvider: authClient.currentIdToken,
       );
   if (proxyBaseUri != null) {
+    handoffCodeGateway = ProxyHandoffCodeGateway(
+      client: HandoffCodeClient(
+        proxyBaseUri: proxyBaseUri,
+        idTokenProvider: authClient.currentIdToken,
+        httpClient: DartIoProxyAuthOperationsHttpClient(),
+      ),
+    );
     ledgerWriter = ProxyAuthSessionLedgerWriter(
       proxyBaseUri: proxyBaseUri,
       // The Firebase Auth SDK auto-refreshes the cached ID token when
@@ -283,6 +295,7 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
     passwordResetGateway: passwordResetGateway,
     passwordResetDeepLinkSource: deepLinkSource,
     mobilePushTokenGateway: mobilePushTokenGateway,
+    handoffCodeGateway: handoffCodeGateway,
     idTokenProvider: authClient.currentIdToken,
   );
 }

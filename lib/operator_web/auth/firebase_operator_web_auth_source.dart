@@ -23,6 +23,7 @@ import '../services/web_team_hierarchy_gateway.dart';
 import '../services/web_team_roles_gateway.dart';
 import '../services/web_team_sessions_gateway.dart';
 import '../services/web_team_users_gateway.dart';
+import 'operator_web_handoff_redeem_gateway.dart';
 import 'operator_web_auth_source.dart';
 
 class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
@@ -45,6 +46,7 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
         OperatorWebNotificationPreferencesGatewayProvider,
         OperatorWebWageAuthorityGatewayProvider,
         OperatorWebScheduleGatewayProvider,
+        OperatorWebHandoffRedeemGatewayProvider,
         MfaFreshnessRedirectListener {
   factory FirebaseOperatorWebAuthSource({
     required FirebaseAuthClient authClient,
@@ -127,6 +129,10 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
          proxyBaseUri: proxyClient.baseUri,
          idTokenProvider: authClient.currentIdToken,
        ),
+       handoffRedeemGateway = ProxyOperatorWebHandoffRedeemGateway(
+         client: proxyClient,
+         idTokenProvider: authClient.currentIdToken,
+       ),
        vendorLifecycleRecentlyAvailableGateway =
            OperatorWebVendorLifecycleRecentlyAvailableGatewayLive(
              proxyBaseUri: proxyClient.baseUri,
@@ -207,6 +213,9 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
 
   @override
   final OperatorWebScheduleGateway scheduleGateway;
+
+  @override
+  final OperatorWebHandoffRedeemGateway handoffRedeemGateway;
 
   @override
   final OperatorWebVendorLifecycleRecentlyAvailableGateway

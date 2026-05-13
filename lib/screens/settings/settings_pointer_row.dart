@@ -1,17 +1,18 @@
-// Mobile Settings — pointer row helper.
+// Mobile Settings - pointer row helper.
 //
 // Mobile Settings is a read-only mirror of the operator-web console.
 // Sections that used to host edit affordances on mobile now end with a
 // pointer row that nudges the operator to the matching surface in
-// `app.forgeflow.app/<path>`. Tap behaviour copies the URL to the
-// clipboard and surfaces a snackbar so the operator can paste into a
-// browser; an optional [onLaunch] hook lets demo / preview shells
-// short-circuit the clipboard step (e.g. to call `url_launcher` once a
-// later lane wires it up).
+// `app.forgeflow.app/<path>`. C-5 replaces the default tap behavior
+// with the redemption-code handoff flow and keeps clipboard as the
+// explicit offline/proxy-5xx fallback.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../services/auth/handoff_code_client.dart';
+import '../../services/auth/handoff_code_gateway.dart';
 import '../../theme/app_theme.dart';
 import 'settings_shared_widgets.dart';
 
@@ -23,27 +24,55 @@ class SettingsPointerRow extends StatelessWidget {
     super.key,
     required this.label,
     required this.opWebPath,
+    this.navId,
+    this.handoffCodeGateway,
+    this.launchExternalUrl,
+    this.copyToClipboard,
     this.onLaunch,
   });
 
   /// Plain-English copy describing what the operator can do at the
-  /// Operator Web surface (e.g. "Manage on Operator Web").
+  /// Operator Web surface.
   final String label;
 
   /// Path under `app.forgeflow.app/` (no leading slash). Pass an empty
-  /// string when no route exists yet — the row renders the "coming
+  /// string when no route exists yet - the row renders the "coming
   /// soon" affordance instead of a tappable link.
   final String opWebPath;
 
-  /// Optional override for tap behaviour. When supplied, it is called
-  /// with the resolved URL instead of copying to the clipboard.
+  /// Stable Operator Web nav id carried by `/handoff?nav=...`.
+  final String? navId;
+
+  /// Gateway that mints the one-time redemption code before launch.
+  final HandoffCodeGateway? handoffCodeGateway;
+
+  /// Test seam for `url_launcher`.
+  final Future<bool> Function(Uri url)? launchExternalUrl;
+
+  /// Test seam for clipboard writes.
+  final Future<void> Function(String value)? copyToClipboard;
+
+  /// Older preview/test hook. New C-5 callers should inject
+  /// [handoffCodeGateway] and [launchExternalUrl] instead.
   final ValueChanged<String>? onLaunch;
 
   static const String _baseUrl = 'https://app.forgeflow.app';
 
   bool get _isComingSoon => opWebPath.trim().isEmpty;
 
-  String get _resolvedUrl => '$_baseUrl/${opWebPath.trim()}';
+  String get _resolvedUrl => '$_baseUrl${_targetPath()}';
+
+  String get _resolvedNavId {
+    final explicit = navId?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    return opWebPath.trim().replaceAll('-', '_').replaceAll('/', '');
+  }
+
+  String _targetPath() {
+    final trimmed = opWebPath.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed.startsWith('/') ? trimmed : '/$trimmed';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,9 +100,7 @@ class SettingsPointerRow extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _isComingSoon
-                              ? '$label (coming soon)'
-                              : label,
+                          _isComingSoon ? '$label (coming soon)' : label,
                           style: AppTextStyles.mono12(
                             color: AppColors.textPrimary,
                             weight: FontWeight.w600,
@@ -84,7 +111,9 @@ class SettingsPointerRow extends StatelessWidget {
                           _isComingSoon
                               ? 'This section will move to Operator Web in an upcoming release.'
                               : _resolvedUrl,
-                          style: AppTextStyles.body12(color: AppColors.textMuted),
+                          style: AppTextStyles.body12(
+                            color: AppColors.textMuted,
+                          ),
                         ),
                       ],
                     ),
@@ -99,23 +128,93 @@ class SettingsPointerRow extends StatelessWidget {
   }
 
   Future<void> _onTap(BuildContext context) async {
-    final url = _resolvedUrl;
     final launch = onLaunch;
     if (launch != null) {
-      launch(url);
+      launch(_resolvedUrl);
       return;
     }
-    await Clipboard.setData(ClipboardData(text: url));
+
+    final gateway = handoffCodeGateway;
+    if (gateway != null) {
+      try {
+        final link = await gateway.createDeepLink(
+          target: HandoffDeepLinkTarget(
+            navId: _resolvedNavId,
+            targetPath: _targetPath(),
+          ),
+        );
+        final launcher = launchExternalUrl ?? _launchExternalUrl;
+        final opened = await launcher(link.url);
+        if (!opened) {
+          await _copy(link.url.toString());
+          if (context.mounted) {
+            _showSnackBar(context, 'Handoff link copied - open in browser');
+          }
+          return;
+        }
+        if (context.mounted) {
+          _showSnackBar(context, 'Opening Operator Web');
+        }
+        return;
+      } catch (error) {
+        if (shouldFallbackToClipboardForHandoff(error)) {
+          await _copy(_resolvedUrl);
+          if (context.mounted) {
+            _showSnackBar(
+              context,
+              'Operator Web link copied - open in browser',
+            );
+          }
+          return;
+        }
+        if (context.mounted) {
+          _showSnackBar(context, _handoffErrorText(error));
+        }
+        return;
+      }
+    }
+
+    await _copy(_resolvedUrl);
     if (!context.mounted) return;
+    _showSnackBar(context, 'URL copied - open in browser');
+  }
+
+  Future<void> _copy(String value) async {
+    final writer = copyToClipboard;
+    if (writer != null) {
+      await writer(value);
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: value));
+  }
+
+  static Future<bool> _launchExternalUrl(Uri url) {
+    return launchUrl(url, mode: LaunchMode.externalApplication);
+  }
+
+  void _showSnackBar(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'URL copied — open in browser',
+          message,
           style: AppTextStyles.mono11(color: AppColors.textPrimary),
         ),
         backgroundColor: AppColors.backgroundMid,
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  String _handoffErrorText(Object error) {
+    if (error is HandoffCodeMintRejected) {
+      if (error.code == 'rate_limit_exceeded') {
+        return 'Too many handoff links. Try again in a few minutes.';
+      }
+      if (error.code == 'no_id_token' || error.statusCode == 401) {
+        return 'Sign in again before opening Operator Web.';
+      }
+      return error.message;
+    }
+    return 'Could not open Operator Web. Please try again.';
   }
 }

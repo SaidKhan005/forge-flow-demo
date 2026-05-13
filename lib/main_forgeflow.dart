@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -96,6 +95,7 @@ Future<void> main() async {
         mfaRecoveryRequestGateway: bindings.mfaRecoveryRequestGateway,
         passwordResetGateway: bindings.passwordResetGateway,
         passwordResetDeepLinkSource: bindings.passwordResetDeepLinkSource,
+        handoffCodeGateway: bindings.handoffCodeGateway,
       ),
       authLoginService: bindings.authLoginService,
       secureSessionStorage: bindings.secureSessionStorage,
@@ -143,7 +143,8 @@ class FcmTokenRevalidationObserver extends WidgetsBindingObserver {
   Future<void> _reValidateToken() async {
     // Invoke reValidateToken if the implementation has it, otherwise
     // this is a graceful no-op for the noop service.
-    if (_mobilePushService case MobilePushNotificationCoordinator coordinator) {
+    if (_mobilePushService
+        case final MobilePushNotificationCoordinator coordinator) {
       await coordinator.reValidateToken();
     }
   }
