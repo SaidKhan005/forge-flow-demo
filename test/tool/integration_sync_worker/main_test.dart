@@ -233,6 +233,83 @@ void main() {
             reason: 'shouldStop must trip before the second row dispatches');
       },
     );
+
+    test(
+      'C-2-D outage observer: fires once per appendSyncLog with the '
+      'event kind that just landed',
+      () async {
+        final source = _FakeSource(<ConnectorConnectionRow>[
+          _posRow(connectionId: 'conn-ok'),
+          _posRow(connectionId: 'conn-fail'),
+        ]);
+        final sink = _RecordingCanonicalSink();
+        final okAdapter = _RecordingPosAdapter()
+          ..pollResult = PollIncrementalResult(
+            recordsWritten: 1,
+            newCursorToken: 'c-ok',
+            newLastModifiedSeen: DateTime.utc(2026, 5, 4),
+          );
+        final failingAdapter = _RecordingPosAdapter()
+          ..throwOnPoll = StateError('vendor 500');
+        final observer = _RecordingOutageObserver();
+
+        final result = await runSyncWorkerOnce(
+          source: source,
+          canonicalSink: sink,
+          resolveAdapterFactory: (row) async =>
+              row.connectionId == 'conn-ok' ? okAdapter : failingAdapter,
+          outageObserver: observer.call,
+        );
+
+        expect(result.processed, 2);
+        expect(observer.calls, hasLength(2));
+        // The poll_success row fires the observer with eventKind =
+        // 'poll_success'; the failing row fires with 'poll_error'.
+        final okCall = observer.calls
+            .firstWhere((c) => c.connectionId == 'conn-ok');
+        final failCall = observer.calls
+            .firstWhere((c) => c.connectionId == 'conn-fail');
+        expect(okCall.eventKind, 'poll_success');
+        expect(failCall.eventKind, 'poll_error');
+      },
+    );
+
+    test(
+      'C-2-D outage observer: observer-thrown error does not crash the '
+      'tick; the next row still processes',
+      () async {
+        final source = _FakeSource(<ConnectorConnectionRow>[
+          _posRow(connectionId: 'conn-1'),
+          _posRow(connectionId: 'conn-2'),
+        ]);
+        final sink = _RecordingCanonicalSink();
+        final adapter = _RecordingPosAdapter()
+          ..pollResult = PollIncrementalResult(
+            recordsWritten: 1,
+            newCursorToken: 'c',
+            newLastModifiedSeen: DateTime.utc(2026, 5, 4),
+          );
+
+        final result = await runSyncWorkerOnce(
+          source: source,
+          canonicalSink: sink,
+          resolveAdapterFactory: (_) async => adapter,
+          outageObserver: ({
+            required String operatorId,
+            required String locationId,
+            required String connectionId,
+            required String eventKind,
+          }) async {
+            throw StateError('observer boom');
+          },
+        );
+
+        // Both rows still get processed; observer failure is logged
+        // but never aborts the tick.
+        expect(result.processed, 2);
+        expect(result.succeeded, 2);
+      },
+    );
   });
 
   group('runCli', () {
@@ -552,6 +629,40 @@ class _SyncLogEntry {
   final String eventKind;
   final String? errorMessage;
   final int? recordsCount;
+}
+
+/// C-2-D outage observer recorder. Captures every invocation so tests
+/// can assert which `(connection_id, event_kind)` pairs reached the
+/// observer.
+class _RecordingOutageObserver {
+  final List<_ObservedSyncLog> calls = <_ObservedSyncLog>[];
+
+  Future<void> call({
+    required String operatorId,
+    required String locationId,
+    required String connectionId,
+    required String eventKind,
+  }) async {
+    calls.add(_ObservedSyncLog(
+      operatorId: operatorId,
+      locationId: locationId,
+      connectionId: connectionId,
+      eventKind: eventKind,
+    ));
+  }
+}
+
+class _ObservedSyncLog {
+  _ObservedSyncLog({
+    required this.operatorId,
+    required this.locationId,
+    required this.connectionId,
+    required this.eventKind,
+  });
+  final String operatorId;
+  final String locationId;
+  final String connectionId;
+  final String eventKind;
 }
 
 /// In-memory `IOSink` for asserting on stdout/stderr without writing
