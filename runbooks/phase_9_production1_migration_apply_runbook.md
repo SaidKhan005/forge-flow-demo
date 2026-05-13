@@ -1,13 +1,13 @@
 # Phase 9 Production1 Migration Apply Runbook
 
-Updated: 2026-05-12.
+Updated: 2026-05-13.
 
 Purpose: govern and record Production1 migration applies. The second
 migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605131500_b5_b_catalog_tri_mirror.sql`. This
+`202605131600_b2_1_default_role_catalog_versions.sql`. This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -92,6 +92,7 @@ Pending follow-up scope (41 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605131400_b11_2_auth_step_up_challenges.sql`
 - `db/migrations/202605131500_b10_1_vendor_applicability.sql`
 - `db/migrations/202605131500_b5_b_catalog_tri_mirror.sql`
+- `db/migrations/202605131600_b2_1_default_role_catalog_versions.sql`
 
 Out of scope:
 
@@ -101,7 +102,7 @@ Out of scope:
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
-  anything later than `202605131500_b5_b_catalog_tri_mirror.sql`
+  anything later than `202605131600_b2_1_default_role_catalog_versions.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 

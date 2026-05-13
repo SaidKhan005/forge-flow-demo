@@ -81,6 +81,7 @@ import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 import '../advisor_corpus/advisor_corpus.dart'
     show CorpusManifest, defaultManifestPath;
 import 'audit_chain_anchors_routes.dart';
+import 'admin_default_role_catalog_routes.dart';
 import 'auth_handoff_routes.dart';
 import 'health_operation_budget.dart';
 import 'log.dart';
@@ -240,6 +241,23 @@ export 'auth_handoff_routes.dart'
         authHandoffCodesMintPath,
         authHandoffRedeemPath,
         hashAuthHandoffRequest;
+// Lane B B2.1 — default role catalog admin routes. The catalog is a
+// global F&F-wide table (no operator_id); the publish route gates on
+// super_admin only and emits a hash-chained audit row with the
+// blast-radius operator count.
+export 'admin_default_role_catalog_routes.dart'
+    show
+        DefaultRoleCatalogAdminRouter,
+        DefaultRoleCatalogAuditSink,
+        DefaultRoleCatalogRouteResult,
+        NoopDefaultRoleCatalogAuditSink,
+        RecordingDefaultRoleCatalogAuditSink,
+        canonicalRoleCatalogJson,
+        computeRoleCatalogPayloadSha256,
+        kAdminDefaultRoleCatalogsPath,
+        kAdminDefaultRoleCatalogPublishPath,
+        kDefaultRoleCatalogAdminReadRoles,
+        kDefaultRoleCatalogAdminWriteRoles;
 
 /// Default in-memory idempotency cache shared by the password
 /// change / reset request / reset confirm routes when the route
@@ -8823,6 +8841,10 @@ Future<void> routeRequest(
   // Optional: when null the two routes return 503 so existing tests
   // do not need to plumb the router through every call site.
   AuthHandoffRouter? authHandoffRouter,
+  // Lane B B2.1 - default Role catalog admin routes (publish + list).
+  // Optional: when null the two routes return 503 so existing tests
+  // do not need to plumb the router through every call site.
+  DefaultRoleCatalogAdminRouter? defaultRoleCatalogAdminRouter,
   // B1.A3 — permission_version revoke-forces-logout. Optional for
   // back-compat with existing tests + scaffolds. When null the per-request
   // DB check is skipped and only the JWT claim version gate applies.
@@ -11083,6 +11105,68 @@ Future<void> routeRequest(
               'error': 'service_principal_issuance_unavailable',
               'message':
                   'service principal JWT issuance is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Lane B B2.1 — default role catalog admin routes. Dispatched
+        // ahead of the generic admin-auth block because the catalog
+        // paths share the `/v1/admin/auth/` prefix but are not in the
+        // _isAdminAuthOperation allowlist (catalogs are global,
+        // super_admin only writes, no permission key — gated by role).
+        // The router (`admin_default_role_catalog_routes.dart`) owns
+        // the role gate, idempotency-key validation, actor resolution,
+        // and history-limit parsing so this dispatcher stays minimal.
+        if (DefaultRoleCatalogAdminRouter.matches(path, request.method)) {
+          if (defaultRoleCatalogAdminRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'default_role_catalog_admin_not_configured',
+              'message':
+                  'route requires a DefaultRoleCatalogAdminRouter to be installed',
+            });
+            return;
+          }
+          final actor = await _resolveVerifiedClaimsOrWrite(
+              request, response, authGuard);
+          if (actor == null) return;
+          Map<String, Object?> catalogBody;
+          try {
+            catalogBody = await _readJsonBody(request, allowEmpty: true);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+          try {
+            final result = await defaultRoleCatalogAdminRouter.dispatch(
+              method: request.method,
+              path: path,
+              actorRoles: actor.roles.toSet(),
+              actorFirebaseUid: actor.firebaseUid ?? actor.userId,
+              actorResolver:
+                  integrationAdminActorResolver?.resolveActorUserId,
+              idempotencyKeyHeader:
+                  request.headers.value('Idempotency-Key')?.trim(),
+              limitQueryParam: request.uri.queryParameters['limit'],
+              body: catalogBody,
+            );
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'default_role_catalog_admin',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'default_role_catalog_admin_unavailable',
+              'message':
+                  'default role catalog admin is unavailable; please retry',
             });
           }
           return;

@@ -10,9 +10,53 @@
 // custom roles). The composite PK on `(operator_id, role_key)`
 // (with a separate partial index for operator_id IS NULL) is
 // enforced at the DB; the repo just round-trips the values.
+//
+// Lane B B2.1 — `resolveDefaultRoleCatalogPayload` adds a pull-time
+// resolver that returns the resolved Default Role catalog payload for
+// an operator. Resolution order:
+//   1. If `operators.default_role_catalog_version_id` is non-NULL,
+//      return that pinned version's payload.
+//   2. Otherwise return the row in `default_role_catalog_versions`
+//      where `is_current = true` (the latest published version).
+//   3. If no version has been published yet (genesis state), return
+//      null. Call sites fall back to the existing hard-coded default
+//      catalog in that case so behavior is identical to pre-B2.1.
+
+import 'dart:convert';
 
 import '../operator_scoped_repository.dart';
 import '../tenant_context.dart';
+
+/// Lane B B2.1 — Resolved Default Role catalog for an operator.
+///
+/// Returned by [RolesRepository.resolveDefaultRoleCatalogPayload]. The
+/// `resolutionSource` field distinguishes the two non-genesis paths:
+///   * `'pinned'` — `operators.default_role_catalog_version_id` was
+///     non-NULL; the resolver returned the pinned version verbatim.
+///   * `'current'` — the operators pointer was NULL; the resolver
+///     returned the row with `is_current = true`.
+class DefaultRoleCatalogResolution {
+  const DefaultRoleCatalogResolution({
+    required this.versionId,
+    required this.versionNumber,
+    required this.payload,
+    required this.payloadSha256,
+    required this.isCurrent,
+    required this.publishedAt,
+    required this.resolutionSource,
+  });
+
+  final String versionId;
+  final int versionNumber;
+  final List<Object?> payload;
+  final String payloadSha256;
+  final bool isCurrent;
+  final DateTime publishedAt;
+
+  /// Either `'pinned'` (operator pins this version) or `'current'`
+  /// (operator follows the latest published version).
+  final String resolutionSource;
+}
 
 /// One row from `roles`.
 class RoleRecord {
@@ -271,6 +315,129 @@ class RolesRepository extends OperatorScopedRepository {
         },
       );
     });
+  }
+
+  /// Lane B B2.1 — Resolve the Default Role catalog payload for an
+  /// operator at read time.
+  ///
+  /// Resolution order:
+  ///   1. If `operators.default_role_catalog_version_id` is non-NULL,
+  ///      return the pinned version's payload + version metadata.
+  ///   2. Otherwise return the row in `default_role_catalog_versions`
+  ///      where `is_current = true` (the latest published version).
+  ///   3. Return null when no version has been published yet (genesis
+  ///      state). Callers MUST fall back to the existing hard-coded
+  ///      default catalog when null is returned — this is the
+  ///      backwards-compatible state that exists at PR-merge time
+  ///      (before any admin has published a version).
+  ///
+  /// The lookup runs through `withTenant` so the operator's tenant
+  /// context is active for the row visibility check on the
+  /// `operators` table. The `default_role_catalog_versions` join is
+  /// safe under that context because the catalog table has no RLS
+  /// policy (it is admin-pool only; the SELECT grant to
+  /// `service_role` admits the read from the tenant transaction).
+  Future<DefaultRoleCatalogResolution?> resolveDefaultRoleCatalogPayload({
+    required String operatorId,
+    required String locationId,
+    String? actorUserId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<DefaultRoleCatalogResolution?>(ctx, (exec) async {
+      // Single round-trip: a LEFT JOIN that resolves either the pinned
+      // version (when operators.default_role_catalog_version_id is
+      // non-NULL) or the current version (when NULL). The COALESCE
+      // produces NULL when neither branch resolves (genesis state).
+      final rows = await exec.query(
+        'select '
+        '  resolved.version_id::text as version_id, '
+        '  resolved.version_number as version_number, '
+        '  resolved.payload as payload, '
+        '  resolved.payload_sha256 as payload_sha256, '
+        '  resolved.is_current as is_current, '
+        '  resolved.published_at as published_at, '
+        '  case '
+        '    when o.default_role_catalog_version_id is not null '
+        '    then \'pinned\' '
+        '    else \'current\' '
+        '  end as resolution_source '
+        'from public.operators o '
+        'left join lateral ( '
+        '  select v.version_id, v.version_number, v.payload, '
+        '         v.payload_sha256, v.is_current, v.published_at '
+        '  from public.default_role_catalog_versions v '
+        '  where ('
+        '    o.default_role_catalog_version_id is not null '
+        '    and v.version_id = o.default_role_catalog_version_id'
+        '  ) or ('
+        '    o.default_role_catalog_version_id is null '
+        '    and v.is_current = true'
+        '  ) '
+        '  limit 1'
+        ') resolved on true '
+        'where o.operator_id = @operator_id::uuid '
+        'limit 1',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final versionId = row['version_id'];
+      if (versionId is! String || versionId.isEmpty) {
+        // The operators row exists but the lateral join produced no
+        // catalog row — genesis state. Callers fall back to the
+        // hard-coded catalog.
+        return null;
+      }
+      final versionNumber = row['version_number'];
+      final payloadRaw = row['payload'];
+      final payloadSha256 = row['payload_sha256'];
+      final isCurrent = row['is_current'];
+      final publishedAt = row['published_at'];
+      final resolutionSource = row['resolution_source'];
+      if (versionNumber is! int && versionNumber is! num) {
+        throw StateError(
+          'default_role_catalog_versions.version_number returned an '
+          'unexpected shape',
+        );
+      }
+      if (payloadSha256 is! String) {
+        throw StateError(
+          'default_role_catalog_versions.payload_sha256 returned non-String',
+        );
+      }
+      if (publishedAt is! DateTime) {
+        throw StateError(
+          'default_role_catalog_versions.published_at returned non-DateTime',
+        );
+      }
+      return DefaultRoleCatalogResolution(
+        versionId: versionId,
+        versionNumber: versionNumber is int
+            ? versionNumber
+            : (versionNumber as num).toInt(),
+        payload: _decodeCatalogPayload(payloadRaw),
+        payloadSha256: payloadSha256,
+        isCurrent: isCurrent is bool ? isCurrent : false,
+        publishedAt: publishedAt,
+        resolutionSource: resolutionSource is String
+            ? resolutionSource
+            : 'current',
+      );
+    });
+  }
+
+  static List<Object?> _decodeCatalogPayload(Object? raw) {
+    if (raw == null) return const <Object?>[];
+    final decoded = raw is String ? jsonDecode(raw) : raw;
+    if (decoded is List) return List<Object?>.from(decoded);
+    throw StateError(
+      'default_role_catalog_versions.payload returned a non-array shape '
+      '(${raw.runtimeType}) — migration CHECK has been dropped',
+    );
   }
 
   static RoleRecord _projectRow(Map<String, Object?> row) {

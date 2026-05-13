@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**41 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605131500_b5_b_catalog_tri_mirror.sql`; staging/preview
+**42 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605131600_b2_1_default_role_catalog_versions.sql`; staging/preview
 apply evidence must stay attached to the runbook before any Production1 apply.
 
 | Migration | Origin | Staging |
@@ -79,8 +79,9 @@ apply evidence must stay attached to the runbook before any Production1 apply.
 | `202605131400_b11_2_auth_step_up_challenges.sql` | Lane B B11.2 RFC 9470 step-up challenge ledger (operator-scoped, RLS, 5-minute TTL, route+user binding for replay protection) | code-ready |
 | `202605131500_b10_1_vendor_applicability.sql` | Lane B B10.1 vendor applicability temporal table (global defaults + operator overrides, RLS via app_current_operator, JSONB schema guarded in app code) | code-ready |
 | `202605131500_b5_b_catalog_tri_mirror.sql` | Lane B B5.b account/timing permission catalog tri-mirror (`account.configure`, `business_timing.configure`) plus owner/admin grants | code-ready |
+| `202605131600_b2_1_default_role_catalog_versions.sql` | Lane B B2.1 Default Role catalog versions table + `operators.default_role_catalog_version_id` pointer (global F&F-wide catalog, no RLS) | code-ready |
 
-**Action:** apply all 41 in next Production1 event per
+**Action:** apply all 42 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 
