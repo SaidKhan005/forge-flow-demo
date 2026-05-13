@@ -50,6 +50,7 @@ import '../services/web_team_sessions_gateway.dart';
 import '../services/web_team_users_gateway.dart';
 import '../screens/account_screen.dart';
 import '../screens/audit_log_screen.dart';
+import '../screens/benchmarks_screen.dart';
 import '../screens/business_setup_screen.dart';
 import '../screens/business_timing_editor_screen.dart';
 import '../screens/my_account_screen.dart';
@@ -82,6 +83,7 @@ const String kOperatorWebNavAccount = 'account';
 const String kOperatorWebNavMyAccount = 'my_account';
 const String kOperatorWebNavBusinessSetup = 'business_setup';
 const String kOperatorWebNavBusinessTimingEditor = 'business_timing_editor';
+const String kOperatorWebNavBenchmarks = 'benchmarks';
 const String kOperatorWebNavMembers = 'members';
 const String kOperatorWebNavRoles = 'roles';
 const String kOperatorWebNavLocations = 'locations';
@@ -235,6 +237,7 @@ String? _navIdFromRaw(String? raw) {
     'my_account' => kOperatorWebNavMyAccount,
     'business_setup' => kOperatorWebNavBusinessSetup,
     'business_timing_editor' => kOperatorWebNavBusinessSetup,
+    'benchmarks' => kOperatorWebNavBenchmarks,
     'members' => kOperatorWebNavMembers,
     'roles' => kOperatorWebNavRoles,
     'locations' => kOperatorWebNavLocations,
@@ -939,6 +942,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         group: 'Business',
       ),
       OperatorWebNavItem(
+        id: kOperatorWebNavBenchmarks,
+        title: 'Benchmarks',
+        icon: Icons.speed_outlined,
+        group: 'Business',
+      ),
+      OperatorWebNavItem(
         id: kOperatorWebNavLocations,
         title: 'Locations',
         icon: Icons.account_tree_outlined,
@@ -1040,6 +1049,14 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 : null,
           );
         }
+        break;
+      case kOperatorWebNavBenchmarks:
+        body = BenchmarksScreen(
+          session: session,
+          selectedScope: managementScope,
+          benchmarksGateway: _benchmarksGateway,
+          hierarchyGateway: _teamHierarchyGateway,
+        );
         break;
       case kOperatorWebNavMembers:
         body = MembersScreen(
@@ -1248,6 +1265,15 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             .vendorApplicabilityGateway
       : null;
 
+  OperatorWebBenchmarksGateway get _benchmarksGateway {
+    final source = widget.source;
+    if (source is OperatorWebBenchmarksGatewayProvider) {
+      return (source as OperatorWebBenchmarksGatewayProvider).benchmarksGateway;
+    }
+    return _routerOwnedDemoBenchmarksGateway ??=
+        DemoOperatorWebBenchmarksGateway();
+  }
+
   /// Resolver for the Vendor connections screen gateway. Lifts
   /// gateway resolution off the router so the screen mount stays
   /// thin and the wiring is testable in isolation. See
@@ -1310,6 +1336,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   DemoWebTeamUsersGateway? _routerOwnedDemoGateway;
   BusinessTimingGateway? _routerOwnedTimingGateway;
   DemoWebTeamRolesGateway? _routerOwnedDemoRolesGateway;
+  DemoOperatorWebBenchmarksGateway? _routerOwnedDemoBenchmarksGateway;
 
   WebTeamHierarchyGateway get _teamHierarchyGateway {
     final source = widget.source;

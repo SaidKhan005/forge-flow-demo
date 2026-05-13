@@ -1719,6 +1719,8 @@ Future<void> _runProxy(List<String> args) async {
             // account routes. Without this binding the routes return
             // 503 operator_write_router_not_configured.
             operatorWriteRouter: productionBindings.operatorWriteRouter,
+            operatorBenchmarkOverridesRouter:
+                productionBindings.operatorBenchmarkOverridesRouter,
             // Operator Web W4.B - per-tenant audit-chain-anchor read
             // gateway for the operator-web Audit Log integrity badge.
             // Without this binding the route returns 503
