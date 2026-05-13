@@ -29,7 +29,7 @@ Triggers the `operator` gate: auth-critical, RLS-touching, schema-touching (migr
 | Slice | Plan anchor | Owner | Size | Risk | Gate | Dependency | State | PR | Notes |
 |---|---|---|---|---|---|---|---|---|---|
 | A0 | `lane_a_code_health/03_execution_slices.md` Slice A0 | orchestrator | Small | Low | auto | — | merged | — | Verification PASS 2026-05-12; doc: `docs/_audits/code_health/a0_b1_b2_post_merge_verification.md` |
-| A2.1 | Slice A2.1 | Codex | Small | Low | auto | A0 merged | assigned | — | Dead-code sweep (placeholder widgets) |
+| A2.1 | Slice A2.1 | Codex | Small | Low | auto | A0 merged | merged | #519 | Dead-code sweep — 2 placeholder widgets deleted (179 LoC removed); inventory updated |
 | A2.2 | Slice A2.2 | Codex | Medium | Medium | operator | A2.1 merged | assigned | — | Email pipeline wire-or-delete |
 | A3.1 | Slice A3.1 | Claude | Medium | Medium | operator | A0 merged | assigned | — | Monolith seam-map + bleed-stop lint |
 | A3.2 | Slice A3.2 | Claude | Medium | Medium | operator | A3.1 merged | assigned | — | Bare-catch tail chunk 1 of 3 |
