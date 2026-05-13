@@ -132,6 +132,8 @@ import 'package:forge_and_flow/integrations/_common/production_oauth_refresh_clo
 import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dart';
 import 'package:http/http.dart' as http;
 
+import 'vendor_connection_auto_disabled_dispatcher.dart';
+
 // The service principal id the audit row records. The audit_logs
 // CHECK constraint requires `actor_kind='service' AND
 // actor_principal_id IS NOT NULL`. The integration sync worker uses
@@ -1113,6 +1115,14 @@ class WorkerTickResult {
 
 /// One tick of the worker. Called by both runOnce and the daemon
 /// loop. Tests call this directly.
+///
+/// C-2-F: when [autoDisabledEmailDispatcher] is non-null, the tick
+/// enqueues a `vendor_connection_auto_disabled` email after every
+/// `gateway.autoDisableConnection` call. The dispatcher swallows its
+/// own errors so a flaky email enqueue never poisons the cap-trip
+/// path (the status flip + audit row from
+/// `gateway.autoDisableConnection` have already committed by the time
+/// the dispatcher is invoked).
 Future<WorkerTickResult> runWorkerTick({
   required OAuthRefreshWorkerGateway gateway,
   required VendorCredentialBroker broker,
@@ -1120,6 +1130,7 @@ Future<WorkerTickResult> runWorkerTick({
   required int maxRowsPerTick,
   required int maxConsecutiveFailures,
   required Duration horizon,
+  VendorConnectionAutoDisabledDispatcher? autoDisabledEmailDispatcher,
   bool Function()? shouldStop,
   IOSink? out,
   IOSink? err,
@@ -1202,6 +1213,32 @@ Future<WorkerTickResult> runWorkerTick({
           consecutiveFailures: newCount,
         );
         autoDisabled += 1;
+        // C-2-F: enqueue the operator-facing
+        // `vendor_connection_auto_disabled` email AFTER the cap-trip
+        // path's own status flip + audit row have committed. The
+        // dispatcher swallows its own errors so a flaky email enqueue
+        // never poisons the cap trip; the outcome is logged for tick
+        // telemetry.
+        if (autoDisabledEmailDispatcher != null) {
+          final outcome =
+              await autoDisabledEmailDispatcher.dispatchForAutoDisable(
+            operatorId: row.operatorId,
+            locationId: row.locationId,
+            credentialId: row.credentialId,
+            vendorId: row.vendorId,
+            consecutiveFailures: newCount,
+            errorMessage: error.message,
+          );
+          // ignore: avoid_print — Cloud Run captures stdout into Cloud
+          // Logging.
+          stdoutSink.writeln(jsonEncode(<String, Object?>{
+            'event': 'oauth_refresh_auto_disabled_email',
+            'vendor_id': row.vendorId,
+            'credential_id': row.credentialId,
+            'enqueued': outcome.enqueued,
+            'skipped_reason': outcome.skippedReason,
+          }));
+        }
       }
     } catch (error, stack) {
       // Unexpected — broker promises typed errors; if a bare
@@ -1232,6 +1269,30 @@ Future<WorkerTickResult> runWorkerTick({
           consecutiveFailures: newCount,
         );
         autoDisabled += 1;
+        // C-2-F: enqueue the auto-disabled email. Same posture as the
+        // VendorCredentialBrokerError branch above: dispatcher errors
+        // are swallowed inside the dispatcher so a flaky email enqueue
+        // never poisons the cap-trip path.
+        if (autoDisabledEmailDispatcher != null) {
+          final outcome =
+              await autoDisabledEmailDispatcher.dispatchForAutoDisable(
+            operatorId: row.operatorId,
+            locationId: row.locationId,
+            credentialId: row.credentialId,
+            vendorId: row.vendorId,
+            consecutiveFailures: newCount,
+            errorMessage: 'unexpected_${error.runtimeType}',
+          );
+          // ignore: avoid_print — Cloud Run captures stdout into Cloud
+          // Logging.
+          stdoutSink.writeln(jsonEncode(<String, Object?>{
+            'event': 'oauth_refresh_auto_disabled_email',
+            'vendor_id': row.vendorId,
+            'credential_id': row.credentialId,
+            'enqueued': outcome.enqueued,
+            'skipped_reason': outcome.skippedReason,
+          }));
+        }
       }
     }
   }
@@ -1251,6 +1312,7 @@ class OAuthRefreshWorkerLoop {
     required this.broker,
     required this.refreshClosures,
     required this.config,
+    this.autoDisabledEmailDispatcher,
     IOSink? out,
     IOSink? err,
   })  : _out = out ?? stdout,
@@ -1260,6 +1322,12 @@ class OAuthRefreshWorkerLoop {
   final VendorCredentialBroker broker;
   final RefreshClosureRegistry refreshClosures;
   final WorkerRuntimeConfig config;
+  /// C-2-F: when non-null, the loop's per-tick `runWorkerTick` call
+  /// enqueues a `vendor_connection_auto_disabled` email after every
+  /// cap-trip auto-disable. Production wires this from
+  /// `buildWorkerRuntime`; tests may pass `null` to keep the existing
+  /// "no email" posture or inject a fake.
+  final VendorConnectionAutoDisabledDispatcher? autoDisabledEmailDispatcher;
   // ignore: unused_field, close_sinks
   final IOSink _out;
   final IOSink _err;
@@ -1285,6 +1353,7 @@ class OAuthRefreshWorkerLoop {
             maxRowsPerTick: config.maxRowsPerTick,
             maxConsecutiveFailures: config.maxConsecutiveFailures,
             horizon: config.horizon,
+            autoDisabledEmailDispatcher: autoDisabledEmailDispatcher,
             shouldStop: () => _stopRequested,
             out: _out,
             err: _err,
@@ -1345,11 +1414,38 @@ class WorkerRuntime {
     required this.gateway,
     required this.broker,
     required this.config,
+    this.autoDisabledEmailDispatcher,
   });
 
   final OAuthRefreshWorkerGateway gateway;
   final VendorCredentialBroker broker;
   final WorkerRuntimeConfig config;
+  /// C-2-F: wired when the runtime is built from real Postgres seams.
+  /// Tests that pass a `gatewayOverride` + `brokerOverride` to `runCli`
+  /// keep this null unless they explicitly inject a fake dispatcher.
+  final VendorConnectionAutoDisabledDispatcher? autoDisabledEmailDispatcher;
+}
+
+/// C-2-F: vendor display-name resolver wired into the production
+/// dispatcher. Mirrors the resolver
+/// `OperatorVendorLifecycleRecentlyAvailableRouter` uses in
+/// `proxy_bootstrap.dart`. The seam stays narrow so the worker does not
+/// import the larger `lib/integrations/ui/` surface; the registry
+/// lookup helper alone is sufficient.
+String? _resolveVendorDisplayNameForAutoDisabled(String vendorId) {
+  // The worker keeps its dependency surface tight: the closure factories
+  // in `production_oauth_refresh_closures.dart` give us a flat list of
+  // wired vendor ids but no display-name table. The vendor catalog
+  // (`tool/advisor_proxy/vendor_capability_index.dart`) lives under
+  // `tool/advisor_proxy/` and importing it from the worker would couple
+  // the Cloud Run binary's classpath to the proxy. Falling back to the
+  // raw vendor id is the operator-facing posture the renderer suite's
+  // sample data already documents for `{{vendorName}}` (e.g. "Toast"
+  // vs "toast" — copy is identical save the casing). A follow-up slice
+  // can hoist the display-name table into a shared registry under
+  // `lib/integrations/ui/vendor_connections/` and rewire this resolver
+  // without changing the dispatcher signature.
+  return null;
 }
 
 WorkerRuntime buildWorkerRuntime({
@@ -1363,10 +1459,26 @@ WorkerRuntime buildWorkerRuntime({
     tenantWrapper: wrapper,
     pgcryptoEnvelopeKey: config.pgcryptoEnvelopeKey,
   );
+  // C-2-F: wire the auto-disabled email dispatcher off the same
+  // tenant-wrapper so RLS / SET LOCAL discipline is identical to the
+  // gateway's audit-and-status path. Recipient resolution rides
+  // `withSystem` (worker is cross-tenant); enqueue + audit ride
+  // `withTenant`.
+  final autoDisabledRecipientResolver =
+      PostgresAutoDisabledRecipientResolver(tenantWrapper: wrapper);
+  final autoDisabledEnqueueRepository =
+      PostgresAutoDisabledEmailEnqueueRepository(tenantWrapper: wrapper);
+  final autoDisabledEmailDispatcher = VendorConnectionAutoDisabledDispatcher(
+    enqueueRepository: autoDisabledEnqueueRepository,
+    recipientResolver: ({required String operatorId}) =>
+        autoDisabledRecipientResolver.resolve(operatorId: operatorId),
+    vendorDisplayNameResolver: _resolveVendorDisplayNameForAutoDisabled,
+  );
   return WorkerRuntime(
     gateway: gateway,
     broker: broker,
     config: config,
+    autoDisabledEmailDispatcher: autoDisabledEmailDispatcher,
   );
 }
 
@@ -1388,6 +1500,7 @@ Future<int> runCli(
   OAuthRefreshWorkerGateway? gatewayOverride,
   VendorCredentialBroker? brokerOverride,
   RefreshClosureRegistry? refreshClosuresOverride,
+  VendorConnectionAutoDisabledDispatcher? autoDisabledEmailDispatcherOverride,
   http.Client? httpClientOverride,
   IOSink? out,
   IOSink? err,
@@ -1412,6 +1525,9 @@ Future<int> runCli(
   WorkerRuntimeConfig config;
   OAuthRefreshWorkerGateway gateway;
   VendorCredentialBroker broker;
+  // C-2-F: dispatcher wired from `buildWorkerRuntime` in production;
+  // tests may inject an override or leave it null (no email enqueue).
+  VendorConnectionAutoDisabledDispatcher? autoDisabledEmailDispatcher;
 
   if (hasOverrides) {
     // Tests path: skip env config and pool wiring entirely.
@@ -1435,6 +1551,10 @@ Future<int> runCli(
     );
     gateway = gatewayOverride;
     broker = brokerOverride;
+    // Test path: only wire the dispatcher when the caller explicitly
+    // injects one. Leaving it null preserves the existing "no email"
+    // contract for tests that don't exercise the C-2-F path.
+    autoDisabledEmailDispatcher = autoDisabledEmailDispatcherOverride;
   } else {
     try {
       config = WorkerRuntimeConfig.fromEnvironment(env, cliOverrides: args);
@@ -1448,6 +1568,8 @@ Future<int> runCli(
     );
     gateway = runtime.gateway;
     broker = runtime.broker;
+    autoDisabledEmailDispatcher = autoDisabledEmailDispatcherOverride ??
+        runtime.autoDisabledEmailDispatcher;
     stdoutSink.writeln(
       'oauth_refresh_worker starting (loaded secret names: '
       '${config.loadedSecretNames.join(', ')})',
@@ -1506,6 +1628,7 @@ Future<int> runCli(
           maxRowsPerTick: config.maxRowsPerTick,
           maxConsecutiveFailures: config.maxConsecutiveFailures,
           horizon: config.horizon,
+          autoDisabledEmailDispatcher: autoDisabledEmailDispatcher,
           out: stdoutSink,
           err: stderrSink,
         );
@@ -1526,6 +1649,7 @@ Future<int> runCli(
         broker: broker,
         refreshClosures: closures,
         config: config,
+        autoDisabledEmailDispatcher: autoDisabledEmailDispatcher,
         out: stdoutSink,
         err: stderrSink,
       );
