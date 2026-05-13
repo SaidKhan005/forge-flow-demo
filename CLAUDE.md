@@ -33,7 +33,7 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 
 - Phase loop: Claude proposes prompts → worktrees implement → Codex reviews → Claude fixes → Codex updates docs. Graph refresh is manual-only when the operator asks for it.
 - Parallel lanes: Codex on master; Claude in `.claude/worktrees/<lane>`. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
-- Between batches: master runs `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md` to audit, lean docs, archive, emit next prompts.
+- Between batches: master audits the just-merged batch, leans docs, archives closed material, and emits the next prompts.
 - After `db/migrations/*.sql` changes: `tool/migration_drift_scanner.dart --fix --strict-docs` then `tool/migration_cutoff_lint.dart`.
 - Runtime acceptance (advisory pattern, not CI-enforced — reviewer judgment): `docs/contracts/slice_runtime_acceptance_contract.md`; browser slices use `runbooks/browser_use_codex_acceptance_workflow.md` (Codex-driven, out-of-repo — no harness binary lives here).
 - Feature lens audit: use `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` before broad feature work, settings work, route/schema changes, runtime-exposed behavior, or any implementation where hidden plumbing may matter.
