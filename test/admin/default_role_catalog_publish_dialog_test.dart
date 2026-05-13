@@ -320,6 +320,278 @@ void main() {
     expect(find.text('Confirm version 4'), findsOneWidget);
   });
 
+  // ─── B2.3 — blast-radius copy variants ──────────────────────────
+
+  testWidgets(
+    'B2.3 numeric copy renders when gateway returns non-zero counts',
+    (tester) async {
+      sizeViewport(tester);
+      final prior = priorCurrent(versionNumber: 3);
+      final gateway = InMemoryDefaultRoleCatalogAdminGateway(
+        blastRadiusByVersionId: <String, DefaultRoleCatalogBlastRadius>{
+          prior.versionId: DefaultRoleCatalogBlastRadius(
+            versionId: prior.versionId,
+            versionNumber: 3,
+            operatorCount: 47,
+            locationCount: 312,
+            userCount: 1403,
+          ),
+        },
+      );
+      await tester.pumpWidget(
+        wrap(
+          Builder(
+            builder: (context) => Center(
+              child: FilledButton(
+                key: const Key('open'),
+                onPressed: () async {
+                  await showDefaultRoleCatalogPublishDialog(
+                    context: context,
+                    gateway: gateway,
+                    priorCurrent: prior,
+                    nextVersionNumber: 4,
+                    proposedPayload: const <Object?>[
+                      <String, Object?>{
+                        'role_key': 'r',
+                        'display_name': 'R',
+                        'description': '',
+                        'permissions': <Object?>[],
+                      },
+                    ],
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open')));
+      await tester.pumpAndSettle();
+
+      // Numeric copy folds the three counts into one sentence.
+      expect(
+        find.byKey(const Key('admin_default_role_catalog_publish_headline')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('47 businesses'), findsOneWidget);
+      expect(find.textContaining('312 locations'), findsOneWidget);
+      expect(find.textContaining('1403 users'), findsOneWidget);
+      // No error chip rendered on the happy path.
+      expect(
+        find.byKey(
+          const Key('admin_default_role_catalog_publish_blast_error_chip'),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'B2.3 zero counts → plain-English fallback (no numeric counts)',
+    (tester) async {
+      sizeViewport(tester);
+      final prior = priorCurrent(versionNumber: 3);
+      // Default in-memory gateway returns zero counts for any version.
+      final gateway = InMemoryDefaultRoleCatalogAdminGateway();
+      // Seed the prior version into the in-memory store so the lookup
+      // succeeds (and returns zero counts via the orElse path).
+      await gateway.publishVersion(payload: prior.payload);
+      // The published version has a fresh versionId; we pass the
+      // original prior with a known id, so the in-memory gateway
+      // returns a 404 in `getBlastRadius` — but that's the error-chip
+      // path, not zero-counts. Use a configured seed instead:
+      final gatewayWithSeed = InMemoryDefaultRoleCatalogAdminGateway(
+        blastRadiusByVersionId: <String, DefaultRoleCatalogBlastRadius>{
+          prior.versionId: DefaultRoleCatalogBlastRadius(
+            versionId: prior.versionId,
+            versionNumber: 3,
+            operatorCount: 0,
+            locationCount: 0,
+            userCount: 0,
+          ),
+        },
+      );
+      await tester.pumpWidget(
+        wrap(
+          Builder(
+            builder: (context) => Center(
+              child: FilledButton(
+                key: const Key('open'),
+                onPressed: () async {
+                  await showDefaultRoleCatalogPublishDialog(
+                    context: context,
+                    gateway: gatewayWithSeed,
+                    priorCurrent: prior,
+                    nextVersionNumber: 4,
+                    proposedPayload: const <Object?>[
+                      <String, Object?>{
+                        'role_key': 'r',
+                        'display_name': 'R',
+                        'description': '',
+                        'permissions': <Object?>[],
+                      },
+                    ],
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open')));
+      await tester.pumpAndSettle();
+
+      // Plain-English fallback renders; no numeric counts.
+      expect(
+        find.byKey(const Key('admin_default_role_catalog_publish_headline')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('0 businesses'), findsNothing);
+      expect(find.textContaining('replace the current default'), findsOneWidget);
+      // No error chip because the fetch resolved successfully.
+      expect(
+        find.byKey(
+          const Key('admin_default_role_catalog_publish_blast_error_chip'),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'B2.3 gateway error → plain-English fallback + error chip surfaces code',
+    (tester) async {
+      sizeViewport(tester);
+      // Throw on the blast-radius fetch only. publishVersion / listCatalogs
+      // are not exercised by this test, but the throwing-gateway fake
+      // throws the same error there too — that's fine; the dialog never
+      // reaches those paths in this flow.
+      final gateway = _ThrowingGateway(
+        DefaultRoleCatalogAdminGatewayError(
+          statusCode: 503,
+          errorCode: 'default_role_catalog_admin_unavailable',
+          message: 'transient backend hiccup',
+        ),
+        blastRadiusError: DefaultRoleCatalogAdminGatewayError(
+          statusCode: 503,
+          errorCode: 'default_role_catalog_admin_unavailable',
+          message: 'transient backend hiccup',
+        ),
+      );
+      await tester.pumpWidget(
+        wrap(
+          Builder(
+            builder: (context) => Center(
+              child: FilledButton(
+                key: const Key('open'),
+                onPressed: () async {
+                  await showDefaultRoleCatalogPublishDialog(
+                    context: context,
+                    gateway: gateway,
+                    priorCurrent: priorCurrent(versionNumber: 3),
+                    nextVersionNumber: 4,
+                    proposedPayload: const <Object?>[
+                      <String, Object?>{
+                        'role_key': 'r',
+                        'display_name': 'R',
+                        'description': '',
+                        'permissions': <Object?>[],
+                      },
+                    ],
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open')));
+      await tester.pumpAndSettle();
+
+      // Plain-English fallback renders.
+      expect(find.textContaining('replace the current default'), findsOneWidget);
+      // Error chip renders the proxy error code.
+      expect(
+        find.byKey(
+          const Key('admin_default_role_catalog_publish_blast_error_chip'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('default_role_catalog_admin_unavailable'),
+        findsOneWidget,
+      );
+      // Cancel still resolves to null — publish path not blocked by
+      // a blast-radius preview failure.
+      await tester.tap(
+        find.byKey(const Key('admin_default_role_catalog_publish_cancel')),
+      );
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'B2.3 genesis publish skips blast-radius fetch (priorCurrent null)',
+    (tester) async {
+      sizeViewport(tester);
+      // Throw on getBlastRadius — if the dialog accidentally calls it
+      // during the genesis path the test will fail with a stack trace.
+      final gateway = _ThrowingGateway(
+        DefaultRoleCatalogAdminGatewayError(
+          statusCode: 500,
+          errorCode: 'should_not_be_called',
+          message: 'genesis publish must not call getBlastRadius',
+        ),
+        blastRadiusError: StateError('getBlastRadius called on genesis path'),
+      );
+      await tester.pumpWidget(
+        wrap(
+          Builder(
+            builder: (context) => Center(
+              child: FilledButton(
+                key: const Key('open'),
+                onPressed: () async {
+                  await showDefaultRoleCatalogPublishDialog(
+                    context: context,
+                    gateway: gateway,
+                    priorCurrent: null,
+                    nextVersionNumber: 1,
+                    proposedPayload: const <Object?>[
+                      <String, Object?>{
+                        'role_key': 'r',
+                        'display_name': 'R',
+                        'description': '',
+                        'permissions': <Object?>[],
+                      },
+                    ],
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open')));
+      await tester.pumpAndSettle();
+
+      // Genesis-first-publish copy + no error chip.
+      expect(
+        find.textContaining('the first version of the default role catalog'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('admin_default_role_catalog_publish_blast_error_chip'),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
   testWidgets('back from type-confirm returns to awareness stage', (
     tester,
   ) async {
@@ -373,10 +645,16 @@ void main() {
   });
 }
 
+/// Test gateway used by the publish dialog tests. The `publishVersion`
+/// + `listCatalogs` calls throw [error]; B2.3 adds [blastRadiusError]
+/// so the dialog's blast-radius preview can be exercised in the error
+/// path. When [blastRadiusError] is null the fake returns deterministic
+/// zero counts so the dialog renders its plain-English fallback.
 class _ThrowingGateway implements DefaultRoleCatalogAdminGateway {
-  _ThrowingGateway(this.error);
+  _ThrowingGateway(this.error, {this.blastRadiusError});
 
   final Object error;
+  final Object? blastRadiusError;
 
   @override
   Future<DefaultRoleCatalogListing> listCatalogs({int historyLimit = 20}) {
@@ -389,5 +667,22 @@ class _ThrowingGateway implements DefaultRoleCatalogAdminGateway {
     String? notes,
   }) {
     throw error;
+  }
+
+  @override
+  Future<DefaultRoleCatalogBlastRadius> getBlastRadius({
+    required String versionId,
+  }) async {
+    final err = blastRadiusError;
+    if (err != null) throw err;
+    // No error configured — return zero state so the dialog renders
+    // the plain-English fallback.
+    return DefaultRoleCatalogBlastRadius(
+      versionId: versionId,
+      versionNumber: 0,
+      operatorCount: 0,
+      locationCount: 0,
+      userCount: 0,
+    );
   }
 }

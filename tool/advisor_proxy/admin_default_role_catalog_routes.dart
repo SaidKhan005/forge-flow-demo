@@ -1,14 +1,20 @@
-// Lane B B2.1 — admin Default Role catalog routes.
+// Lane B B2.1 + B2.3 — admin Default Role catalog routes.
 //
-// Implements the two F&F-admin routes documented in the slice spec:
+// Implements three F&F-admin routes:
 //
-//   GET  /v1/admin/auth/role-catalogs           {super_admin, ff_support}
-//   POST /v1/admin/auth/role-catalogs/publish   super_admin only
+//   GET  /v1/admin/auth/role-catalogs                {super_admin, ff_support}
+//   POST /v1/admin/auth/role-catalogs/publish        super_admin only
+//   GET  /v1/admin/auth/role-catalogs/blast-radius   {super_admin, ff_support}
 //
 // File lives outside `advisor_proxy.dart` per the bleed-stop ceiling
 // (`tool/advisor_proxy_size_lint.dart`). The monolith continues to own
 // dispatch / auth / claim resolution; this file owns the route's
 // business logic.
+//
+// B2.3 adds the blast-radius read endpoint so the B2.2 publish dialog
+// can render the slice-specced "Affecting N businesses, N locations,
+// N users" copy. Closes the first of two honest gaps disclosed in
+// B2.2's PR body. Read-only; no audit row.
 //
 // Hard rules carried from CLAUDE.md:
 //
@@ -253,6 +259,16 @@ const String kAdminDefaultRoleCatalogsPath = '/v1/admin/auth/role-catalogs';
 const String kAdminDefaultRoleCatalogPublishPath =
     '/v1/admin/auth/role-catalogs/publish';
 
+/// B2.3 — read-only blast-radius endpoint. Returns the {operator,
+/// location, user} counts for a given version_id so the B2.2 publish
+/// dialog can render numeric "Affecting N businesses, N locations,
+/// N users" copy.
+///
+/// Same read gate as the list endpoint (`super_admin` + `ff_support`).
+/// No `Idempotency-Key` (GET); no audit row (read-only).
+const String kAdminDefaultRoleCatalogBlastRadiusPath =
+    '/v1/admin/auth/role-catalogs/blast-radius';
+
 /// Carry-shape for [DefaultRoleCatalogAdminRouter.handle] results.
 typedef DefaultRoleCatalogRouteResult = ({
   int statusCode,
@@ -284,6 +300,9 @@ class DefaultRoleCatalogAdminRouter {
   /// before falling through to other matchers.
   static bool matches(String path, String method) {
     if (method == 'GET' && path == kAdminDefaultRoleCatalogsPath) return true;
+    if (method == 'GET' && path == kAdminDefaultRoleCatalogBlastRadiusPath) {
+      return true;
+    }
     if (method == 'POST' && path == kAdminDefaultRoleCatalogPublishPath) {
       return true;
     }
@@ -291,9 +310,13 @@ class DefaultRoleCatalogAdminRouter {
   }
 
   /// True when [path] + [method] is a read-only route (admits ff_support
-  /// in addition to super_admin).
-  static bool isReadOnly(String path, String method) =>
-      method == 'GET' && path == kAdminDefaultRoleCatalogsPath;
+  /// in addition to super_admin). The blast-radius endpoint (B2.3) is
+  /// read-only.
+  static bool isReadOnly(String path, String method) {
+    if (method != 'GET') return false;
+    return path == kAdminDefaultRoleCatalogsPath ||
+        path == kAdminDefaultRoleCatalogBlastRadiusPath;
+  }
 
   /// Full dispatch entrypoint — owns role gate, idempotency-key
   /// validation, actor resolution, and history-limit parsing so the
@@ -308,6 +331,8 @@ class DefaultRoleCatalogAdminRouter {
   /// [idempotencyKeyHeader] is the trimmed `Idempotency-Key` header
   /// value (null when absent).
   /// [limitQueryParam] is `?limit=N` from the URL (GET only).
+  /// [versionIdQueryParam] is `?version_id=<uuid>` from the URL — only
+  /// consulted on the B2.3 blast-radius route.
   Future<DefaultRoleCatalogRouteResult> dispatch({
     required String method,
     required String path,
@@ -317,6 +342,7 @@ class DefaultRoleCatalogAdminRouter {
     required String? idempotencyKeyHeader,
     required String? limitQueryParam,
     required Map<String, Object?> body,
+    String? versionIdQueryParam,
   }) async {
     if (!matches(path, method)) {
       return (
@@ -364,6 +390,9 @@ class DefaultRoleCatalogAdminRouter {
       }
     }
     if (isRead) {
+      if (path == kAdminDefaultRoleCatalogBlastRadiusPath) {
+        return _blastRadius(versionIdQueryParam: versionIdQueryParam);
+      }
       var historyLimit = 20;
       final raw = limitQueryParam;
       if (raw != null && raw.isNotEmpty) {
@@ -424,6 +453,82 @@ class DefaultRoleCatalogAdminRouter {
         ],
       },
     );
+  }
+
+  /// B2.3 — handle `GET /v1/admin/auth/role-catalogs/blast-radius`.
+  ///
+  /// Validates [versionIdQueryParam] as a non-empty UUID-shaped string
+  /// (RFC 4122 — eight hex / four hex / four hex / four hex / twelve
+  /// hex, case-insensitive). 400 when missing or malformed. 404 when
+  /// the version does not exist (defends against silent zero counts
+  /// for an unknown version_id). 200 with the three counts otherwise.
+  ///
+  /// Errors are returned as typed result payloads — the dispatcher in
+  /// `advisor_proxy.dart` wraps unhandled exceptions in a 503 so
+  /// repository failures do not leak as 500s.
+  Future<DefaultRoleCatalogRouteResult> _blastRadius({
+    required String? versionIdQueryParam,
+  }) async {
+    final raw = versionIdQueryParam?.trim() ?? '';
+    if (raw.isEmpty) {
+      return (
+        statusCode: 400,
+        body: const <String, Object?>{
+          'error': 'missing_version_id',
+          'message':
+              'version_id query parameter is required (uuid identifying '
+              'the catalog version to compute blast radius for)',
+        },
+      );
+    }
+    if (!_isUuid(raw)) {
+      return (
+        statusCode: 400,
+        body: const <String, Object?>{
+          'error': 'invalid_version_id',
+          'message':
+              'version_id must be a UUID (8-4-4-4-12 lowercase hex with '
+              'dashes); the catalog version_id column is uuid-typed',
+        },
+      );
+    }
+
+    // Verify the version exists before computing counts — a missing
+    // row would otherwise silently return zero counts, which a UI
+    // consumer would mis-render as "0 businesses affected" rather
+    // than "unknown version".
+    final version = await repository.getVersion(versionId: raw);
+    if (version == null) {
+      return (
+        statusCode: 404,
+        body: <String, Object?>{
+          'error': 'version_not_found',
+          'message': 'no catalog version exists for version_id=$raw',
+        },
+      );
+    }
+
+    final counts = await repository.getBlastRadiusCounts(versionId: raw);
+    return (
+      statusCode: 200,
+      body: <String, Object?>{
+        'version_id': counts.versionId,
+        'version_number': version.versionNumber,
+        'operator_count': counts.operatorCount,
+        'location_count': counts.locationCount,
+        'user_count': counts.userCount,
+      },
+    );
+  }
+
+  /// Lowercase-hex UUID-shape check. The Postgres `uuid` column would
+  /// itself reject malformed input, but we 400 at the proxy layer so
+  /// a malformed param does not consume a round-trip.
+  static bool _isUuid(String s) {
+    final lower = s.toLowerCase();
+    return RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    ).hasMatch(lower);
   }
 
   Future<DefaultRoleCatalogRouteResult> _publish({

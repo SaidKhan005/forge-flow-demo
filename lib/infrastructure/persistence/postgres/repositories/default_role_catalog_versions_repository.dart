@@ -36,10 +36,16 @@
 //   * getVersion — SELECT by version_id.
 //   * countOperatorsFollowing — read-side helper for the blast-radius
 //     count emitted in the audit event payload at publish time.
+//   * getBlastRadiusCounts — read-side helper for the B2.3 blast-radius
+//     admin endpoint. Returns operator + location + user counts in one
+//     round-trip so the B2.2 publish dialog can render "Affecting N
+//     businesses, N locations, N users" numeric copy.
 //
 // Tested by:
 //   * test/infrastructure/persistence/postgres/default_role_catalog_versions_repository_test.dart
+//   * test/infrastructure/persistence/postgres/repositories/default_role_catalog_versions_repository_blast_radius_test.dart
 //   * test/proxy/b2_1_default_role_catalog_routes_test.dart
+//   * test/proxy/b2_3_default_role_catalog_blast_radius_test.dart
 
 import 'dart:convert';
 
@@ -95,6 +101,49 @@ class DefaultRoleCatalogVersionRow {
         if (supersededAt != null)
           'superseded_at': supersededAt!.toUtc().toIso8601String(),
         if (notes != null) 'notes': notes,
+      };
+}
+
+/// Aggregate blast-radius counts for a default-role-catalog version,
+/// computed across every operator pinned to the version. Surfaced by
+/// the B2.3 `GET /v1/admin/auth/role-catalogs/blast-radius` endpoint so
+/// the publish dialog can render the slice-specced "Affecting N
+/// businesses, N locations, N users" copy.
+///
+/// `operatorCount` mirrors [DefaultRoleCatalogVersionsRepository.countOperatorsFollowing]
+/// — operators with `default_role_catalog_version_id = versionId`.
+/// Operators with a NULL pointer (follow-latest) are NOT counted; they
+/// are the catalog's implicit audience and have no blast radius
+/// against any specific version.
+///
+/// `locationCount` is every location whose operator is pinned to
+/// `versionId`. NULL-pointer operators' locations are NOT counted.
+///
+/// `userCount` is every user row whose operator is pinned to
+/// `versionId`. The `public.users` table has no `is_active` / `deleted_at`
+/// columns at the present schema (verified against migration
+/// `202604250005_advisor_cloud_foundation.sql`), so the count is a
+/// total — soft-delete filtering would require a schema column that
+/// does not yet exist. Documented honestly here so the consumer surface
+/// can present the count as "users on file" rather than "active users".
+class DefaultRoleCatalogBlastRadiusCounts {
+  const DefaultRoleCatalogBlastRadiusCounts({
+    required this.versionId,
+    required this.operatorCount,
+    required this.locationCount,
+    required this.userCount,
+  });
+
+  final String versionId;
+  final int operatorCount;
+  final int locationCount;
+  final int userCount;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'version_id': versionId,
+        'operator_count': operatorCount,
+        'location_count': locationCount,
+        'user_count': userCount,
       };
 }
 
@@ -335,6 +384,83 @@ class DefaultRoleCatalogVersionsRepository {
       },
       reason: reason,
     );
+  }
+
+  /// Returns the three blast-radius counts for [versionId] in a single
+  /// round-trip: operators pinned to the version + locations under
+  /// those operators + users under those operators. Surfaced by the
+  /// B2.3 `GET /v1/admin/auth/role-catalogs/blast-radius` endpoint.
+  ///
+  /// The query uses a single CTE so the three counts share the same
+  /// snapshot of `operators` — a concurrent operator-flip cannot leak
+  /// into a partial result. `runAsSystem` (admin-pool BYPASSRLS) is
+  /// required because the join walks every operator's locations / users
+  /// across the entire deployment.
+  ///
+  /// User count caveat (honest disclosure): the `public.users` table
+  /// has no soft-delete / is-active column at the present schema
+  /// (`202604250005_advisor_cloud_foundation.sql` only defines
+  /// `user_id, operator_id, email, role, created_at, updated_at`), so
+  /// the count is total users-on-file for the pinned operators. If
+  /// future schema work adds `deleted_at` / `is_active`, update this
+  /// method to filter accordingly.
+  ///
+  /// Returns zero counts (versionId echoed verbatim) when no operators
+  /// are pinned — the common case at PR-merge time. The proxy layer is
+  /// responsible for verifying the version exists (via [getVersion])
+  /// before calling this method; otherwise an unknown version_id would
+  /// silently return zero counts.
+  Future<DefaultRoleCatalogBlastRadiusCounts> getBlastRadiusCounts({
+    required String versionId,
+    String reason = 'admin.default_role_catalog.blast_radius_counts',
+  }) {
+    return _tenantWrapper
+        .runAsSystem<DefaultRoleCatalogBlastRadiusCounts>(
+      (exec) async {
+        // Single CTE: identify the pinned operator set once, then
+        // count operators + locations + users that resolve through it.
+        // `coalesce(count, 0)` defends against the no-operators path
+        // returning a NULL aggregate (LEFT JOIN on empty CTE → 0).
+        final rows = await exec.query(
+          'with pinned_operators as ('
+          '  select operator_id from public.operators '
+          '  where default_role_catalog_version_id = @version_id::uuid'
+          ') '
+          'select '
+          '  (select count(*) from pinned_operators) as operator_count, '
+          '  (select count(*) from public.locations l '
+          '     where l.operator_id in (select operator_id from pinned_operators)'
+          '  ) as location_count, '
+          '  (select count(*) from public.users u '
+          '     where u.operator_id in (select operator_id from pinned_operators)'
+          '  ) as user_count',
+          parameters: <String, Object?>{'version_id': versionId},
+        );
+        if (rows.isEmpty) {
+          return DefaultRoleCatalogBlastRadiusCounts(
+            versionId: versionId,
+            operatorCount: 0,
+            locationCount: 0,
+            userCount: 0,
+          );
+        }
+        final row = rows.single;
+        return DefaultRoleCatalogBlastRadiusCounts(
+          versionId: versionId,
+          operatorCount: _coerceCount(row['operator_count']),
+          locationCount: _coerceCount(row['location_count']),
+          userCount: _coerceCount(row['user_count']),
+        );
+      },
+      reason: reason,
+    );
+  }
+
+  static int _coerceCount(Object? raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw) ?? 0;
+    return 0;
   }
 
   // ─── helpers ────────────────────────────────────────────────────
