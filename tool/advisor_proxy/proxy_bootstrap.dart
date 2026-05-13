@@ -57,6 +57,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/usage_caps_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/user_roles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/users_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/vendor_applicability_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/wage_role_rows_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
@@ -93,6 +94,7 @@ import 'package:forge_and_flow/services/integration/integration_adapter_common.d
     as integration;
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
 import 'package:forge_and_flow/services/integration/polling_tier_presets.dart';
+import 'package:forge_and_flow/services/settings/applicability_metadata_schemas.dart';
 
 import '../advisor_corpus/advisor_corpus.dart'
     show
@@ -197,6 +199,7 @@ class ProxyProductionBindings {
     required this.operatorLocationAdminGateway,
     required this.pricingTierAdminGateway,
     required this.dataAccuracyAdminGateway,
+    required this.vendorApplicabilityGateway,
     required this.corpusAdminGateway,
     required this.graphCandidatesGateway,
     required this.integrationAdminGateway,
@@ -282,6 +285,7 @@ class ProxyProductionBindings {
   final OperatorLocationAdminProxyGateway operatorLocationAdminGateway;
   final PricingTierAdminProxyGateway pricingTierAdminGateway;
   final DataAccuracyAdminProxyGateway dataAccuracyAdminGateway;
+  final VendorApplicabilityProxyGateway vendorApplicabilityGateway;
   final CorpusAdminProxyGateway corpusAdminGateway;
   final GraphCandidatesProxyGateway graphCandidatesGateway;
   final IntegrationAdminProxyGateway integrationAdminGateway;
@@ -985,6 +989,10 @@ ProxyProductionBindings buildProxyProductionBindings(
     // version row.
     dataAccuracyAdminGateway: RepositoryDataAccuracyAdminProxyGateway(
       adminWrapper: adminWrapper,
+      auditRepository: adminAudit,
+    ),
+    vendorApplicabilityGateway: RepositoryVendorApplicabilityProxyGateway(
+      repository: VendorApplicabilityRepository(adminWrapper),
       auditRepository: adminAudit,
     ),
     corpusAdminGateway: RepositoryCorpusAdminProxyGateway(
@@ -6851,6 +6859,174 @@ class RepositoryIntegrationAdminProxyGateway
 /// proxy restart costs at most one duplicate audit row; the flag
 /// state itself is naturally idempotent (`UPDATE feature_flags SET
 /// enabled=...` is the same write whether run once or many).
+class RepositoryVendorApplicabilityProxyGateway
+    implements VendorApplicabilityProxyGateway {
+  RepositoryVendorApplicabilityProxyGateway({
+    required VendorApplicabilityRepository repository,
+    required AuthEventsAuditRepository auditRepository,
+  }) : _repository = repository,
+       _auditRepository = auditRepository;
+
+  final VendorApplicabilityRepository _repository;
+  final AuthEventsAuditRepository _auditRepository;
+
+  @override
+  Future<List<Map<String, Object?>>> listAdmin({
+    required String actorUserId,
+    String? operatorId,
+    String? settingKind,
+    String? settingKey,
+    String? vendorSlug,
+    required bool currentOnly,
+    required String adminReason,
+  }) async {
+    return _wrapValidation(() async {
+      final rows = await _repository.listAdmin(
+        operatorId: operatorId,
+        settingKind: settingKind,
+        settingKey: settingKey,
+        vendorSlug: vendorSlug,
+        currentOnly: currentOnly,
+        adminReason: adminReason,
+      );
+      return <Map<String, Object?>>[for (final row in rows) row.toJson()];
+    });
+  }
+
+  @override
+  Future<Map<String, Object?>> upsert({
+    required String actorUserId,
+    String? operatorId,
+    required String settingKind,
+    required String settingKey,
+    required String vendorSlug,
+    required bool enabled,
+    required Map<String, Object?> metadata,
+    DateTime? effectiveFrom,
+    String? reasonNote,
+    required String adminReason,
+  }) {
+    return _wrapValidation(() async {
+      final row = await _repository.upsert(
+        operatorId: operatorId,
+        settingKind: settingKind,
+        settingKey: settingKey,
+        vendorSlug: vendorSlug,
+        enabled: enabled,
+        metadata: metadata,
+        effectiveFrom: effectiveFrom,
+        createdBy: actorUserId,
+        adminReason: adminReason,
+        onCommit: (exec, row) async {
+          await _auditRepository.insertSystemEventOn(
+            exec,
+            actorKind: 'forge_admin',
+            actorUserId: actorUserId,
+            operatorId: row.operatorId,
+            eventType: 'vendor_applicability.upsert',
+            adminReason: adminReason,
+            payload: <String, Object?>{
+              'admin_reason': adminReason,
+              'vendor_applicability_id': row.id,
+              'operator_id': row.operatorId,
+              'setting_kind': row.settingKind,
+              'setting_key': row.settingKey,
+              'vendor_slug': row.vendorSlug,
+              'enabled': row.enabled,
+              'metadata': row.metadata,
+              if (reasonNote != null && reasonNote.isNotEmpty)
+                'reason_note': reasonNote,
+            },
+          );
+        },
+      );
+      return row.toJson();
+    });
+  }
+
+  @override
+  Future<Map<String, Object?>?> end({
+    required String actorUserId,
+    String? operatorId,
+    required String settingKind,
+    required String settingKey,
+    required String vendorSlug,
+    DateTime? effectiveUntil,
+    String? reasonNote,
+    required String adminReason,
+  }) {
+    return _wrapValidation(() async {
+      final row = await _repository.end(
+        operatorId: operatorId,
+        settingKind: settingKind,
+        settingKey: settingKey,
+        vendorSlug: vendorSlug,
+        effectiveUntil: effectiveUntil,
+        adminReason: adminReason,
+        onCommit: (exec, row) async {
+          await _auditRepository.insertSystemEventOn(
+            exec,
+            actorKind: 'forge_admin',
+            actorUserId: actorUserId,
+            operatorId: row.operatorId,
+            eventType: 'vendor_applicability.end',
+            adminReason: adminReason,
+            payload: <String, Object?>{
+              'admin_reason': adminReason,
+              'vendor_applicability_id': row.id,
+              'operator_id': row.operatorId,
+              'setting_kind': row.settingKind,
+              'setting_key': row.settingKey,
+              'vendor_slug': row.vendorSlug,
+              'effective_until': row.effectiveUntil?.toIso8601String(),
+              if (reasonNote != null && reasonNote.isNotEmpty)
+                'reason_note': reasonNote,
+            },
+          );
+        },
+      );
+      return row?.toJson();
+    });
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> listForOperator({
+    required OperatorContext scope,
+    required String settingKind,
+    String? settingKey,
+  }) async {
+    return _wrapValidation(() async {
+      final rows = await _repository.listCurrentForOperator(
+        operatorId: scope.operatorId,
+        locationId: scope.locationId,
+        actorUserId: scope.userId,
+        settingKind: settingKind,
+        settingKey: settingKey,
+        enabledOnly: true,
+      );
+      return <Map<String, Object?>>[for (final row in rows) row.toJson()];
+    });
+  }
+
+  Future<T> _wrapValidation<T>(Future<T> Function() body) async {
+    try {
+      return await body();
+    } on VendorApplicabilityRepositoryInputError catch (error) {
+      throw VendorApplicabilityGatewayValidationError(
+        statusCode: 400,
+        code: 'invalid_${error.field}',
+        message: error.message,
+      );
+    } on ApplicabilityMetadataValidationException catch (error) {
+      throw VendorApplicabilityGatewayValidationError(
+        statusCode: 400,
+        code: error.code,
+        message: error.message,
+      );
+    }
+  }
+}
+
 class RepositoryFeatureFlagsAdminProxyGateway
     implements FeatureFlagsAdminProxyGateway {
   RepositoryFeatureFlagsAdminProxyGateway({

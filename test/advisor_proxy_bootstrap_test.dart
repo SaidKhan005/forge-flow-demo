@@ -221,6 +221,10 @@ void main() {
         bindings.dataAccuracyAdminGateway,
         isA<RepositoryDataAccuracyAdminProxyGateway>(),
       );
+      expect(
+        bindings.vendorApplicabilityGateway,
+        isA<RepositoryVendorApplicabilityProxyGateway>(),
+      );
       // Phase 11A.7 — feature flags admin gateway is bound to the
       // admin pool (cross-operator reads/writes). Construction must
       // not open a database connection.
@@ -452,161 +456,137 @@ void main() {
   // guards against an accidental flip back to `'user'` that would
   // mislabel the admin actor in the global audit chain.
   group('B1.c — admin gateway actorKind peer-bug sweep', () {
-    test(
-      'RepositoryPricingTierAdminProxyGateway records '
-      'actor_kind=forge_admin on listOperatorsWithCaps',
-      () async {
-        final auditRepository = _RecordingSystemAuditRepository();
-        final gateway = RepositoryPricingTierAdminProxyGateway(
-          operatorsRepository: _StubOperatorsRepository(),
-          locationsRepository: _StubLocationsRepository(),
-          usageCapsRepository: _StubUsageCapsRepository(),
-          orgUnitsRepository: _StubOrgUnitsRepository(),
-          auditRepository: auditRepository,
+    test('RepositoryPricingTierAdminProxyGateway records '
+        'actor_kind=forge_admin on listOperatorsWithCaps', () async {
+      final auditRepository = _RecordingSystemAuditRepository();
+      final gateway = RepositoryPricingTierAdminProxyGateway(
+        operatorsRepository: _StubOperatorsRepository(),
+        locationsRepository: _StubLocationsRepository(),
+        usageCapsRepository: _StubUsageCapsRepository(),
+        orgUnitsRepository: _StubOrgUnitsRepository(),
+        auditRepository: auditRepository,
+      );
+
+      await gateway.listOperatorsWithCaps(
+        actorUserId: 'admin-user',
+        adminReason: 'List operators for pricing console',
+      );
+
+      expect(auditRepository.events, hasLength(1));
+      expect(
+        auditRepository.events.single.eventType,
+        equals('admin.pricing.list'),
+      );
+      expect(auditRepository.events.single.actorKind, equals('forge_admin'));
+    });
+
+    test('RepositoryCorpusAdminProxyGateway records '
+        'actor_kind=forge_admin on listVersions', () async {
+      final auditRepository = _RecordingSystemAuditRepository();
+      final gateway = RepositoryCorpusAdminProxyGateway(
+        corpusRepository: _StubCorpusRepository(),
+        auditRepository: auditRepository,
+      );
+
+      await gateway.listVersions(
+        actorUserId: 'admin-user',
+        adminReason: 'List corpus versions for admin console',
+      );
+
+      expect(auditRepository.events, hasLength(1));
+      expect(
+        auditRepository.events.single.eventType,
+        equals('admin.corpus.list'),
+      );
+      expect(auditRepository.events.single.actorKind, equals('forge_admin'));
+    });
+
+    test('RepositoryGraphCandidatesProxyGateway records '
+        'actor_kind=forge_admin on listGraphCandidates', () async {
+      // The graph candidates gateway loads two artifacts off disk:
+      //   1. The graphify candidate bundle (manifest JSON +
+      //      node/edge JSONL) under `<repoRoot>/<candidatesDir>/`.
+      //   2. The corpus manifest YAML at
+      //      `<repoRoot>/docs/Knowledge_graph_docs/corpus_manifest.yaml`.
+      // To exercise the audit path without standing up real
+      // Graphify output, we materialize empty-but-valid versions
+      // of both into a temporary repo root. Empty inputs route to
+      // zero candidates and `_audit('admin.corpus.graph_candidates.list')`
+      // still fires.
+      final tempRoot = await Directory.systemTemp.createTemp(
+        'b1c_graph_audit_',
+      );
+      try {
+        final candidatesDir = Directory(
+          p.join(tempRoot.path, _kGraphifyCandidatesOutputDir),
+        );
+        await candidatesDir.create(recursive: true);
+        await File(
+          p.join(candidatesDir.path, _kGraphifyCandidateManifestFile),
+        ).writeAsString('{}');
+        await File(
+          p.join(candidatesDir.path, _kGraphifyNodeCandidatesFile),
+        ).writeAsString('');
+        await File(
+          p.join(candidatesDir.path, _kGraphifyEdgeCandidatesFile),
+        ).writeAsString('');
+        final corpusManifestFile = File(
+          p.join(tempRoot.path, _kCorpusManifestPath),
+        );
+        await corpusManifestFile.parent.create(recursive: true);
+        await corpusManifestFile.writeAsString(
+          "corpus_root: '.'\ndocuments: []\n",
         );
 
-        await gateway.listOperatorsWithCaps(
+        final auditRepository = _RecordingSystemAuditRepository();
+        final gateway = RepositoryGraphCandidatesProxyGateway(
+          graphRepository: GraphRepository(_dummyTenantWrapper()),
+          auditRepository: auditRepository,
+          repoRoot: tempRoot,
+        );
+
+        await gateway.listGraphCandidates(
           actorUserId: 'admin-user',
-          adminReason: 'List operators for pricing console',
+          adminReason: 'List graph candidates for admin console',
         );
 
         expect(auditRepository.events, hasLength(1));
         expect(
           auditRepository.events.single.eventType,
-          equals('admin.pricing.list'),
+          equals('admin.corpus.graph_candidates.list'),
         );
-        expect(
-          auditRepository.events.single.actorKind,
-          equals('forge_admin'),
-        );
-      },
-    );
+        expect(auditRepository.events.single.actorKind, equals('forge_admin'));
+      } finally {
+        await tempRoot.delete(recursive: true);
+      }
+    });
 
-    test(
-      'RepositoryCorpusAdminProxyGateway records '
-      'actor_kind=forge_admin on listVersions',
-      () async {
-        final auditRepository = _RecordingSystemAuditRepository();
-        final gateway = RepositoryCorpusAdminProxyGateway(
-          corpusRepository: _StubCorpusRepository(),
-          auditRepository: auditRepository,
-        );
+    test('RepositoryIntegrationAdminProxyGateway records '
+        'actor_kind=forge_admin on listBundle', () async {
+      final auditRepository = _RecordingSystemAuditRepository();
+      final gateway = RepositoryIntegrationAdminProxyGateway(
+        providerCredentialsRepository: _StubProviderCredentialsRepository(),
+        kmsProvider: _UnusedKmsProvider(),
+        auditRepository: auditRepository,
+        cloudRunAdminClient: _UnusedCloudRunAdminClient(),
+        // adminWrapper intentionally null — `_readVendorApiReachability`
+        // short-circuits to an empty map when the wrapper is absent,
+        // which keeps the test off the Postgres path while still
+        // driving the gateway through `_audit`.
+      );
 
-        await gateway.listVersions(
-          actorUserId: 'admin-user',
-          adminReason: 'List corpus versions for admin console',
-        );
+      await gateway.listBundle(
+        actorUserId: 'admin-user',
+        adminReason: 'List integrations bundle for admin console',
+      );
 
-        expect(auditRepository.events, hasLength(1));
-        expect(
-          auditRepository.events.single.eventType,
-          equals('admin.corpus.list'),
-        );
-        expect(
-          auditRepository.events.single.actorKind,
-          equals('forge_admin'),
-        );
-      },
-    );
-
-    test(
-      'RepositoryGraphCandidatesProxyGateway records '
-      'actor_kind=forge_admin on listGraphCandidates',
-      () async {
-        // The graph candidates gateway loads two artifacts off disk:
-        //   1. The graphify candidate bundle (manifest JSON +
-        //      node/edge JSONL) under `<repoRoot>/<candidatesDir>/`.
-        //   2. The corpus manifest YAML at
-        //      `<repoRoot>/docs/Knowledge_graph_docs/corpus_manifest.yaml`.
-        // To exercise the audit path without standing up real
-        // Graphify output, we materialize empty-but-valid versions
-        // of both into a temporary repo root. Empty inputs route to
-        // zero candidates and `_audit('admin.corpus.graph_candidates.list')`
-        // still fires.
-        final tempRoot = await Directory.systemTemp.createTemp(
-          'b1c_graph_audit_',
-        );
-        try {
-          final candidatesDir = Directory(
-            p.join(tempRoot.path, _kGraphifyCandidatesOutputDir),
-          );
-          await candidatesDir.create(recursive: true);
-          await File(
-            p.join(candidatesDir.path, _kGraphifyCandidateManifestFile),
-          ).writeAsString('{}');
-          await File(
-            p.join(candidatesDir.path, _kGraphifyNodeCandidatesFile),
-          ).writeAsString('');
-          await File(
-            p.join(candidatesDir.path, _kGraphifyEdgeCandidatesFile),
-          ).writeAsString('');
-          final corpusManifestFile = File(
-            p.join(tempRoot.path, _kCorpusManifestPath),
-          );
-          await corpusManifestFile.parent.create(recursive: true);
-          await corpusManifestFile.writeAsString(
-            "corpus_root: '.'\ndocuments: []\n",
-          );
-
-          final auditRepository = _RecordingSystemAuditRepository();
-          final gateway = RepositoryGraphCandidatesProxyGateway(
-            graphRepository: GraphRepository(_dummyTenantWrapper()),
-            auditRepository: auditRepository,
-            repoRoot: tempRoot,
-          );
-
-          await gateway.listGraphCandidates(
-            actorUserId: 'admin-user',
-            adminReason: 'List graph candidates for admin console',
-          );
-
-          expect(auditRepository.events, hasLength(1));
-          expect(
-            auditRepository.events.single.eventType,
-            equals('admin.corpus.graph_candidates.list'),
-          );
-          expect(
-            auditRepository.events.single.actorKind,
-            equals('forge_admin'),
-          );
-        } finally {
-          await tempRoot.delete(recursive: true);
-        }
-      },
-    );
-
-    test(
-      'RepositoryIntegrationAdminProxyGateway records '
-      'actor_kind=forge_admin on listBundle',
-      () async {
-        final auditRepository = _RecordingSystemAuditRepository();
-        final gateway = RepositoryIntegrationAdminProxyGateway(
-          providerCredentialsRepository: _StubProviderCredentialsRepository(),
-          kmsProvider: _UnusedKmsProvider(),
-          auditRepository: auditRepository,
-          cloudRunAdminClient: _UnusedCloudRunAdminClient(),
-          // adminWrapper intentionally null — `_readVendorApiReachability`
-          // short-circuits to an empty map when the wrapper is absent,
-          // which keeps the test off the Postgres path while still
-          // driving the gateway through `_audit`.
-        );
-
-        await gateway.listBundle(
-          actorUserId: 'admin-user',
-          adminReason: 'List integrations bundle for admin console',
-        );
-
-        expect(auditRepository.events, hasLength(1));
-        expect(
-          auditRepository.events.single.eventType,
-          equals('admin.integrations.list'),
-        );
-        expect(
-          auditRepository.events.single.actorKind,
-          equals('forge_admin'),
-        );
-      },
-    );
+      expect(auditRepository.events, hasLength(1));
+      expect(
+        auditRepository.events.single.eventType,
+        equals('admin.integrations.list'),
+      );
+      expect(auditRepository.events.single.actorKind, equals('forge_admin'));
+    });
   });
 
   group('Cloud Run entrypoint wiring', () {
@@ -963,8 +943,7 @@ class _StubCorpusRepository extends CorpusRepository {
   }
 }
 
-class _StubProviderCredentialsRepository
-    extends ProviderCredentialsRepository {
+class _StubProviderCredentialsRepository extends ProviderCredentialsRepository {
   _StubProviderCredentialsRepository() : super(_dummyTenantWrapper());
 
   @override

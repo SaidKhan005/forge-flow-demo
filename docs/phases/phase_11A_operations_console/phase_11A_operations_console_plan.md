@@ -160,7 +160,8 @@ mobile→web redemption-code handoff that replaces the legacy decision-#5
 JWT-in-URL path (addendum A1), and the Lane B B11.2 RFC 9470 step-up
 challenge ledger that gates account/MFA/role/billing/vendor-applicability
 mutations on a fresh interactive sign-in — all of which move shared
-operations-console support surfaces.
+operations-console support surfaces, plus the Lane B B10.1 vendor
+applicability table that backs super_admin-managed vendor setting defaults.
 Normal timing edits belong in the Operator Web Console. The F&F Operations
 Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin

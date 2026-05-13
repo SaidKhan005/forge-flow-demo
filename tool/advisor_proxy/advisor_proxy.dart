@@ -7291,12 +7291,16 @@ const String adminPollingPricingChangeRequestsPath =
     '/v1/admin/polling-pricing/change-requests';
 const String adminPollingPricingChangeRequestsPrefix =
     '$adminPollingPricingChangeRequestsPath/';
+const String adminVendorApplicabilityPath = '/v1/admin/vendor-applicability';
+const String operatorVendorApplicabilityPath =
+    '/v1/operator/vendor-applicability';
 
 const Set<String> kFfDataAccuracyAdminWriteRoles = <String>{'super_admin'};
 const Set<String> kFfDataAccuracyAdminReadRoles = <String>{
   'super_admin',
   'ff_support',
 };
+const Set<String> kFfVendorApplicabilityAdminRoles = <String>{'super_admin'};
 
 /// Roles that admit a caller to the pricing admin **write** surface
 /// (PATCH / PUT / POST). Super-admin-only by design; pricing
@@ -7645,6 +7649,64 @@ abstract class DataAccuracyAdminProxyGateway {
 // `super_admin` + `ff_support` so support users can browse the
 // corpus ledger; POST stays strictly `super_admin` because uploads,
 // commits, and rollbacks rewrite the advisor source corpus.
+class VendorApplicabilityGatewayValidationError implements Exception {
+  const VendorApplicabilityGatewayValidationError({
+    required this.statusCode,
+    required this.code,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String code;
+  final String message;
+
+  @override
+  String toString() =>
+      'VendorApplicabilityGatewayValidationError($statusCode/$code): $message';
+}
+
+abstract class VendorApplicabilityProxyGateway {
+  Future<List<Map<String, Object?>>> listAdmin({
+    required String actorUserId,
+    String? operatorId,
+    String? settingKind,
+    String? settingKey,
+    String? vendorSlug,
+    required bool currentOnly,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>> upsert({
+    required String actorUserId,
+    String? operatorId,
+    required String settingKind,
+    required String settingKey,
+    required String vendorSlug,
+    required bool enabled,
+    required Map<String, Object?> metadata,
+    DateTime? effectiveFrom,
+    String? reasonNote,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> end({
+    required String actorUserId,
+    String? operatorId,
+    required String settingKind,
+    required String settingKey,
+    required String vendorSlug,
+    DateTime? effectiveUntil,
+    String? reasonNote,
+    required String adminReason,
+  });
+
+  Future<List<Map<String, Object?>>> listForOperator({
+    required OperatorContext scope,
+    required String settingKind,
+    String? settingKey,
+  });
+}
+
 const String adminCorpusVersionsPath = '/v1/admin/corpus/versions';
 const String adminCorpusVersionsPrefix = '$adminCorpusVersionsPath/';
 const String adminCorpusUploadPath = '/v1/admin/corpus/upload';
@@ -8664,6 +8726,7 @@ Future<void> routeRequest(
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
   PricingTierAdminProxyGateway? pricingTierAdminGateway,
   DataAccuracyAdminProxyGateway? dataAccuracyAdminGateway,
+  VendorApplicabilityProxyGateway? vendorApplicabilityGateway,
   CorpusAdminProxyGateway? corpusAdminGateway,
   GraphCandidatesProxyGateway? graphCandidatesGateway,
   IntegrationAdminProxyGateway? integrationAdminGateway,
@@ -8840,6 +8903,9 @@ Future<void> routeRequest(
         );
         final isAdminPricingPath = _isAdminPricingPath(path);
         final isAdminDataAccuracyPath = _isAdminDataAccuracyPath(path);
+        final isAdminVendorApplicabilityPath = _isAdminVendorApplicabilityPath(
+          path,
+        );
         final isAdminCorpusPath = _isAdminCorpusPath(path);
         final isAdminIntegrationsPath = _isAdminIntegrationsPath(path);
         final isAdminFeatureFlagsPath = _isAdminFeatureFlagsPath(path);
@@ -8853,6 +8919,8 @@ Future<void> routeRequest(
             ? kAdminPricingCorsMethods
             : isAdminDataAccuracyPath
             ? kAdminDataAccuracyCorsMethods
+            : isAdminVendorApplicabilityPath
+            ? kAdminVendorApplicabilityCorsMethods
             : isAdminCorpusPath
             ? kAdminCorpusCorsMethods
             : isAdminIntegrationsPath
@@ -10047,8 +10115,7 @@ Future<void> routeRequest(
           if (authHandoffRouter == null) {
             _writeJson(response, 503, <String, Object?>{
               'error': 'auth_handoff_router_not_configured',
-              'message':
-                  'route requires an AuthHandoffRouter to be installed',
+              'message': 'route requires an AuthHandoffRouter to be installed',
             });
             return;
           }
@@ -10060,8 +10127,7 @@ Future<void> routeRequest(
           if (scope == null) return;
           String? handoffIdemKey;
           if (path == authHandoffCodesMintPath) {
-            handoffIdemKey =
-                request.headers.value('Idempotency-Key')?.trim();
+            handoffIdemKey = request.headers.value('Idempotency-Key')?.trim();
             if (handoffIdemKey == null || handoffIdemKey.isEmpty) {
               _writeJson(response, 400, <String, Object?>{
                 'error': 'idempotency_key_missing',
@@ -10111,8 +10177,7 @@ Future<void> routeRequest(
             );
             _writeJson(response, 503, <String, Object?>{
               'error': 'auth_handoff_unavailable',
-              'message':
-                  'handoff code service is unavailable; please retry',
+              'message': 'handoff code service is unavailable; please retry',
             });
           }
           return;
@@ -13882,6 +13947,151 @@ Future<void> routeRequest(
           return;
         }
 
+        if (_isAdminVendorApplicabilityOperation(path, request.method)) {
+          if (vendorApplicabilityGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'vendor_applicability_not_configured',
+              'message':
+                  'route requires a VendorApplicabilityProxyGateway to be installed',
+            });
+            return;
+          }
+
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (actor == null) return;
+          if (!_callerHasAnyRole(actor, kFfVendorApplicabilityAdminRoles)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'admin vendor-applicability requires super_admin role',
+              'required_roles': kFfVendorApplicabilityAdminRoles.toList(),
+            });
+            return;
+          }
+
+          final method = request.method;
+          String? idempotencyKey;
+          if (method != 'GET') {
+            idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+            if (idempotencyKey == null || idempotencyKey.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_missing',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+            if (idempotencyKey.length > 200) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_too_long',
+                'message':
+                    'Idempotency-Key header must be 200 characters or fewer',
+              });
+              return;
+            }
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request, allowEmpty: true);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          String resolvedActorUserId = actor.userId;
+          if (method != 'GET') {
+            if (integrationAdminActorResolver == null) {
+              _writeJson(response, 503, <String, Object?>{
+                'error': 'vendor_applicability_actor_resolver_not_configured',
+                'message':
+                    'route requires an IntegrationAdminActorResolver to be installed',
+              });
+              return;
+            }
+            final firebaseUidLookup = actor.firebaseUid ?? actor.userId;
+            try {
+              final resolved = await integrationAdminActorResolver
+                  .resolveActorUserId(
+                    firebaseUid: firebaseUidLookup,
+                    adminReason:
+                        'admin.vendor_applicability.${request.method}:'
+                        '$firebaseUidLookup:resolve_actor',
+                  );
+              if (resolved == null) {
+                _writeJson(response, 403, <String, Object?>{
+                  'error': 'actor_user_not_resolvable',
+                  'message':
+                      'verified Firebase user has no matching Postgres users row '
+                      '(audit attribution requires a UUID-shaped actor)',
+                });
+                return;
+              }
+              resolvedActorUserId = resolved;
+            } catch (_) {
+              _writeJson(response, 503, <String, Object?>{
+                'error': 'vendor_applicability_actor_resolve_failed',
+                'message': 'actor resolution is unavailable; please retry',
+              });
+              return;
+            }
+          }
+
+          try {
+            await _routeVendorApplicabilityAdmin(
+              request: request,
+              response: response,
+              path: path,
+              gateway: vendorApplicabilityGateway,
+              actorUserId: resolvedActorUserId,
+              body: body,
+              idempotencyKey: idempotencyKey ?? '',
+              idempotencyStore: adminRequestIdempotencyStore,
+            );
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            if (error is _AdminInputError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is VendorApplicabilityGatewayValidationError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is AdminIdempotencyKeyConflict) {
+              _writeJson(response, 409, <String, Object?>{
+                'error': 'idempotency_key_conflict',
+                'message': error.message,
+              });
+              return;
+            }
+            _logProxyUnhandled(
+              surface: 'vendor_applicability_admin',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'vendor_applicability_unavailable',
+              'message':
+                  'vendor applicability operation is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
         if (_isAdminCorpusOperation(path, request.method)) {
           if (corpusAdminGateway == null) {
             _writeJson(response, 503, <String, Object?>{
@@ -14524,6 +14734,74 @@ Future<void> routeRequest(
               'error': 'operator_location_admin_unavailable',
               'message':
                   'operator/location admin operation is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        if (path == operatorVendorApplicabilityPath &&
+            request.method == 'GET') {
+          if (vendorApplicabilityGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'vendor_applicability_not_configured',
+              'message':
+                  'route requires a VendorApplicabilityProxyGateway to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          if (scope.operatorId.isEmpty || scope.locationId.isEmpty) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'operator vendor-applicability read requires tenant scope',
+            });
+            return;
+          }
+          final settingKind = _nonBlankString(
+            request.uri.queryParameters['setting_kind'],
+          );
+          if (settingKind == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_setting_kind',
+              'message': 'setting_kind query parameter is required',
+            });
+            return;
+          }
+          try {
+            final rows = await vendorApplicabilityGateway.listForOperator(
+              scope: scope,
+              settingKind: settingKind,
+              settingKey: _nonBlankString(
+                request.uri.queryParameters['setting_key'],
+              ),
+            );
+            _writeJson(response, 200, <String, Object?>{'rows': rows});
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            if (error is VendorApplicabilityGatewayValidationError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            _logProxyUnhandled(
+              surface: 'vendor_applicability_operator',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'vendor_applicability_unavailable',
+              'message':
+                  'vendor applicability lookup is unavailable; please retry',
             });
           }
           return;
@@ -15405,6 +15683,10 @@ bool _isAdminDataAccuracyPath(String path) {
   return false;
 }
 
+bool _isAdminVendorApplicabilityPath(String path) {
+  return path == adminVendorApplicabilityPath;
+}
+
 bool _isAdminIntegrationsPath(String path) {
   return path == adminIntegrationsListPath ||
       path == adminIntegrationsRotateAnthropicPath ||
@@ -15567,6 +15849,11 @@ bool _isAdminDataAccuracyOperation(String path, String method) {
     return true;
   }
   return false;
+}
+
+bool _isAdminVendorApplicabilityOperation(String path, String method) {
+  return path == adminVendorApplicabilityPath &&
+      (method == 'GET' || method == 'POST' || method == 'PATCH');
 }
 
 Future<void> _routeDataAccuracyAdmin({
@@ -15955,6 +16242,129 @@ Future<void> _routeDataAccuracyAdmin({
           statusCode: 200,
           payload: <String, Object?>{'request': resolved},
         );
+      },
+    );
+    return;
+  }
+
+  _writeNotFound(response, request);
+}
+
+Future<void> _routeVendorApplicabilityAdmin({
+  required HttpRequest request,
+  required HttpResponse response,
+  required String path,
+  required VendorApplicabilityProxyGateway gateway,
+  required String actorUserId,
+  required Map<String, Object?> body,
+  required String idempotencyKey,
+  AdminRequestIdempotencyStore? idempotencyStore,
+}) async {
+  if (path != adminVendorApplicabilityPath) {
+    _writeNotFound(response, request);
+    return;
+  }
+  final method = request.method;
+  final reasonPrefix = 'admin.vendor_applicability.$method:$actorUserId';
+  final params = request.uri.queryParameters;
+
+  if (method == 'GET') {
+    final rows = await gateway.listAdmin(
+      actorUserId: actorUserId,
+      operatorId: _nonBlankString(params['operator_id']),
+      settingKind: _nonBlankString(params['setting_kind']),
+      settingKey: _nonBlankString(params['setting_key']),
+      vendorSlug: _nonBlankString(params['vendor_slug']),
+      currentOnly: _optionalQueryBool(
+        params['current_only'],
+        defaultValue: true,
+      ),
+      adminReason: '$reasonPrefix:list',
+    );
+    _writeJson(response, 200, <String, Object?>{'rows': rows});
+    return;
+  }
+
+  if (method == 'POST') {
+    final settingKind = _requireBodyString(body, 'setting_kind');
+    final settingKey = _requireBodyString(body, 'setting_key');
+    final vendorSlug = _requireBodyString(body, 'vendor_slug');
+    final enabled = _requireBodyBool(body, 'enabled');
+    final metadata = _optionalBodyObject(body, 'metadata');
+    final operatorId = _optionalBodyString(body, 'operator_id');
+    final effectiveFrom = _optionalBodyDateTime(body, 'effective_from');
+    final adminReason = _requireBodyString(body, 'admin_reason');
+    final reasonNote = _optionalBodyString(body, 'reason_note');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.vendor_applicability.upsert',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final row = await gateway.upsert(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          settingKind: settingKind,
+          settingKey: settingKey,
+          vendorSlug: vendorSlug,
+          enabled: enabled,
+          metadata: metadata,
+          effectiveFrom: effectiveFrom,
+          reasonNote: reasonNote,
+          adminReason: adminReason,
+        );
+        return (statusCode: 200, payload: <String, Object?>{'row': row});
+      },
+    );
+    return;
+  }
+
+  if (method == 'PATCH') {
+    final action = _optionalBodyString(body, 'action') ?? 'end';
+    if (action != 'end') {
+      throw const _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_action',
+        message: 'PATCH action must be "end"',
+      );
+    }
+    final settingKind = _requireBodyString(body, 'setting_kind');
+    final settingKey = _requireBodyString(body, 'setting_key');
+    final vendorSlug = _requireBodyString(body, 'vendor_slug');
+    final operatorId = _optionalBodyString(body, 'operator_id');
+    final effectiveUntil = _optionalBodyDateTime(body, 'effective_until');
+    final adminReason = _requireBodyString(body, 'admin_reason');
+    final reasonNote = _optionalBodyString(body, 'reason_note');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.vendor_applicability.end',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final row = await gateway.end(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          settingKind: settingKind,
+          settingKey: settingKey,
+          vendorSlug: vendorSlug,
+          effectiveUntil: effectiveUntil,
+          reasonNote: reasonNote,
+          adminReason: adminReason,
+        );
+        if (row == null) {
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_vendor_applicability',
+              'message': 'current vendor applicability row not found',
+            },
+          );
+        }
+        return (statusCode: 200, payload: <String, Object?>{'row': row});
       },
     );
     return;
@@ -17150,6 +17560,61 @@ String? _optionalBodyString(Map<String, Object?> body, String field) {
   }
   if (raw.trim().isEmpty) return null;
   return raw.trim();
+}
+
+bool _requireBodyBool(Map<String, Object?> body, String field) {
+  final raw = body[field];
+  if (raw is bool) return raw;
+  throw _AdminInputError(
+    statusCode: 400,
+    code: 'missing_$field',
+    message: '$field is required and must be a boolean',
+  );
+}
+
+Map<String, Object?> _optionalBodyObject(
+  Map<String, Object?> body,
+  String field,
+) {
+  if (!body.containsKey(field) || body[field] == null) {
+    return const <String, Object?>{};
+  }
+  final raw = body[field];
+  if (raw is Map) return raw.cast<String, Object?>();
+  throw _AdminInputError(
+    statusCode: 400,
+    code: 'invalid_$field',
+    message: '$field must be a JSON object',
+  );
+}
+
+DateTime? _optionalBodyDateTime(Map<String, Object?> body, String field) {
+  if (!body.containsKey(field) || body[field] == null) return null;
+  final raw = body[field];
+  if (raw is! String || raw.trim().isEmpty) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be an ISO-8601 timestamp string',
+    );
+  }
+  try {
+    return DateTime.parse(raw.trim()).toUtc();
+  } on FormatException {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be an ISO-8601 timestamp string',
+    );
+  }
+}
+
+bool _optionalQueryBool(String? raw, {required bool defaultValue}) {
+  if (raw == null || raw.trim().isEmpty) return defaultValue;
+  final normalized = raw.trim().toLowerCase();
+  if (normalized == 'true' || normalized == '1') return true;
+  if (normalized == 'false' || normalized == '0') return false;
+  return defaultValue;
 }
 
 int? _optionalBodyNonNegativeInt(Map<String, Object?> body, String field) {
@@ -18852,6 +19317,12 @@ const List<String> kAdminDataAccuracyCorsMethods = <String>[
   'GET',
   'POST',
   'PUT',
+  'PATCH',
+  'OPTIONS',
+];
+const List<String> kAdminVendorApplicabilityCorsMethods = <String>[
+  'GET',
+  'POST',
   'PATCH',
   'OPTIONS',
 ];
