@@ -21,6 +21,21 @@
 //   3. If no version has been published yet (genesis state), return
 //      null. Call sites fall back to the existing hard-coded default
 //      catalog in that case so behavior is identical to pre-B2.1.
+//
+// Lane B B2.4 — `listVisibleRoles` projects two extra columns
+// (`catalog_version_id`, `catalog_published_at`) onto seeded role
+// rows so the operator-web Roles surface can render an
+// "Updated by F&F on <date>" annotation. The projection uses the
+// same resolution rule as `resolveDefaultRoleCatalogPayload`:
+//   * pinned (operators.default_role_catalog_version_id non-NULL) →
+//     the pinned version's metadata,
+//   * unpinned → the row where `is_current = true`,
+//   * genesis (no catalog version published yet) → NULL for both
+//     fields (operator-web falls back to "Managed by Forge & Flow").
+// Custom (is_seeded = false) rows always project NULL for both
+// fields. The JOIN to `public.default_role_catalog_versions` is
+// safe under the tenant transaction because the catalog table's
+// SELECT grant admits `service_role` (per B2.1 migration grants).
 
 import 'dart:convert';
 
@@ -71,6 +86,8 @@ class RoleRecord {
     required this.updatedAt,
     this.operatorId,
     this.deletedAt,
+    this.catalogVersionId,
+    this.catalogPublishedAt,
   });
 
   final String roleId;
@@ -86,6 +103,17 @@ class RoleRecord {
   /// custom roles.
   final String? operatorId;
   final DateTime? deletedAt;
+
+  /// Lane B B2.4 — `default_role_catalog_versions.version_id` the
+  /// reading operator is following for this row, or NULL when the
+  /// row isn't catalog-sourced (custom role) or no catalog version
+  /// has been published yet (genesis state).
+  final String? catalogVersionId;
+
+  /// Lane B B2.4 — `default_role_catalog_versions.published_at`
+  /// paired with [catalogVersionId]. Tenant transaction returns the
+  /// driver's UTC `DateTime`.
+  final DateTime? catalogPublishedAt;
 }
 
 class RolesRepository extends OperatorScopedRepository {
@@ -106,15 +134,40 @@ class RolesRepository extends OperatorScopedRepository {
       userId: actorUserId,
     );
     return withTenant<List<RoleRecord>>(ctx, (exec) async {
+      // Lane B B2.4 — LEFT JOIN the catalog-version row the operator
+      // is currently following so seeded rows carry the version's
+      // published_at for the operator-web "Updated by F&F on <date>"
+      // annotation. The catalog table's SELECT grant admits
+      // service_role (per B2.1 migration), so the JOIN runs inside
+      // the standard tenant transaction without elevating. The LEFT
+      // JOIN resolves to NULL when the role is custom
+      // (is_seeded = false) or no catalog version has been published
+      // yet (genesis state) — callers treat both as "no version
+      // metadata".
       final rows = await exec.query(
-        'select role_id::text as role_id, '
-        'operator_id::text as operator_id, '
-        'role_key, display_name, description, '
-        'is_seeded, is_editable, '
-        'created_at, updated_at, deleted_at '
-        'from roles '
-        'where deleted_at is null '
-        'order by case when operator_id is null then 0 else 1 end, role_key',
+        'select r.role_id::text as role_id, '
+        'r.operator_id::text as operator_id, '
+        'r.role_key, r.display_name, r.description, '
+        'r.is_seeded, r.is_editable, '
+        'r.created_at, r.updated_at, r.deleted_at, '
+        'cv.version_id::text as catalog_version_id, '
+        'cv.published_at as catalog_published_at '
+        'from roles r '
+        'left join public.operators o '
+        '  on r.is_seeded = true '
+        '  and o.operator_id = @operator_id::uuid '
+        'left join public.default_role_catalog_versions cv '
+        '  on r.is_seeded = true '
+        '  and ('
+        '    (o.default_role_catalog_version_id is not null '
+        '     and cv.version_id = o.default_role_catalog_version_id) '
+        '    or '
+        '    (o.default_role_catalog_version_id is null '
+        '     and cv.is_current = true)'
+        '  ) '
+        'where r.deleted_at is null '
+        'order by case when r.operator_id is null then 0 else 1 end, r.role_key',
+        parameters: <String, Object?>{'operator_id': operatorId},
       );
       return rows.map(_projectRow).toList(growable: false);
     });
@@ -441,6 +494,11 @@ class RolesRepository extends OperatorScopedRepository {
   }
 
   static RoleRecord _projectRow(Map<String, Object?> row) {
+    // Lane B B2.4 — `catalog_version_id` / `catalog_published_at`
+    // are absent from any callsite still using the pre-B2.4 SELECT
+    // (e.g. visibleRoleById, which doesn't need them). The
+    // `row[...]` lookup returns null when the key is missing, which
+    // is the same shape we project for custom roles / genesis state.
     return RoleRecord(
       roleId: row['role_id'] as String,
       operatorId: row['operator_id'] as String?,
@@ -452,6 +510,8 @@ class RolesRepository extends OperatorScopedRepository {
       createdAt: row['created_at'] as DateTime,
       updatedAt: row['updated_at'] as DateTime,
       deletedAt: row['deleted_at'] as DateTime?,
+      catalogVersionId: row['catalog_version_id'] as String?,
+      catalogPublishedAt: row['catalog_published_at'] as DateTime?,
     );
   }
 }

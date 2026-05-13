@@ -616,6 +616,8 @@ class TeamRoleCatalogEntry {
     required this.isEditable,
     required this.permissions,
     this.operatorId,
+    this.catalogVersionId,
+    this.catalogPublishedAt,
   });
 
   final String roleId;
@@ -626,6 +628,30 @@ class TeamRoleCatalogEntry {
   final bool isEditable;
   final String? operatorId;
   final List<TeamRolePermissionRule> permissions;
+
+  /// Lane B B2.4 — `default_role_catalog_versions.version_id` the
+  /// operator is following at read time (pinned via
+  /// `operators.default_role_catalog_version_id`, or the current
+  /// published version when the pointer is NULL).
+  ///
+  /// Non-null only for `is_seeded = true` rows when an operator has
+  /// resolved to a published catalog version. Null for:
+  ///   * Custom (`is_seeded = false`) roles — catalog metadata
+  ///     does not apply.
+  ///   * Seeded roles in genesis state (no catalog version has been
+  ///     published yet) — the resolver falls back to the hard-coded
+  ///     default catalog and the read carries no version metadata.
+  ///
+  /// Pairs with [catalogPublishedAt]. The operator-web UI uses the
+  /// timestamp to render an `Updated by F&F on <date>` annotation
+  /// and falls back to a version-agnostic "Managed by Forge & Flow"
+  /// copy when either field is null.
+  final String? catalogVersionId;
+
+  /// Lane B B2.4 — `default_role_catalog_versions.published_at` for
+  /// the version captured by [catalogVersionId]. UTC `DateTime`;
+  /// callers `toLocal()` for display.
+  final DateTime? catalogPublishedAt;
 }
 
 class TeamRoleCatalogListCommand {

@@ -395,6 +395,19 @@ class WebTeamRolesGatewayLive implements WebTeamRolesGateway {
         permissions is! List) {
       throw _malformed(response, 'role payload was incomplete');
     }
+    // Lane B B2.4 — `catalog_version_id` + `catalog_published_at`
+    // are additive nullable fields the proxy adds on every seeded
+    // row when the operator is following a published catalog
+    // version. Missing fields (legacy proxy build) and explicit
+    // nulls (custom roles, genesis state) both surface as null
+    // here; the screen renders the "Updated by F&F on <date>"
+    // annotation only when both are non-null and falls back to
+    // "Managed by Forge & Flow" otherwise.
+    final catalogVersionId = _readNonBlankString(json['catalog_version_id']);
+    final catalogPublishedAt = _readCatalogPublishedAt(
+      response,
+      json['catalog_published_at'],
+    );
     return TeamRoleCatalogEntry(
       roleId: roleId,
       roleKey: roleKey,
@@ -403,6 +416,8 @@ class WebTeamRolesGatewayLive implements WebTeamRolesGateway {
       isSeeded: isSeeded,
       isEditable: isEditable,
       operatorId: _readNonBlankString(json['operator_id']),
+      catalogVersionId: catalogVersionId,
+      catalogPublishedAt: catalogPublishedAt,
       permissions: List<TeamRolePermissionRule>.unmodifiable(
         permissions.map((rawPermission) {
           if (rawPermission is! Map) {
@@ -427,6 +442,27 @@ class WebTeamRolesGatewayLive implements WebTeamRolesGateway {
         }),
       ),
     );
+  }
+
+  /// Lane B B2.4 — Parse `catalog_published_at` defensively.
+  ///
+  /// The proxy emits a UTC ISO-8601 string; missing / explicit null
+  /// is the back-compat shape (custom rows, genesis state, legacy
+  /// proxy). A non-null value that isn't a parseable ISO-8601 string
+  /// surfaces as a typed [WebTeamRolesError] so the screen layer can
+  /// fall back to the version-agnostic copy without crashing.
+  DateTime? _readCatalogPublishedAt(WebTeamRolesResponse response, Object? raw) {
+    if (raw == null) return null;
+    if (raw is! String) {
+      throw _malformed(response, 'catalog_published_at was not a string');
+    }
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    final parsed = DateTime.tryParse(trimmed);
+    if (parsed == null) {
+      throw _malformed(response, 'catalog_published_at was not ISO-8601');
+    }
+    return parsed.toUtc();
   }
 
   Map<String, Object?> _permissionUpdateJson(TeamRolePermissionUpdate update) {

@@ -18999,6 +18999,11 @@ String? _pathSuffix(String path, String prefix) {
 }
 
 Map<String, Object?> _teamRoleToJson(TeamRoleCatalogEntry role) {
+  // Lane B B2.4 — `catalog_version_id` + `catalog_published_at` are
+  // additive nullable fields. Operator-web parses them when present
+  // and renders "Updated by F&F on <date>" on seeded rows; mobile +
+  // legacy clients tolerate the extra keys (or the fields are null
+  // for custom rows / genesis-state seeded rows).
   return <String, Object?>{
     'role_id': role.roleId,
     'role_key': role.roleKey,
@@ -19007,6 +19012,8 @@ Map<String, Object?> _teamRoleToJson(TeamRoleCatalogEntry role) {
     'is_seeded': role.isSeeded,
     'is_editable': role.isEditable,
     'operator_id': role.operatorId,
+    'catalog_version_id': role.catalogVersionId,
+    'catalog_published_at': role.catalogPublishedAt?.toUtc().toIso8601String(),
     'permissions': role.permissions
         .map(
           (permission) => <String, Object?>{

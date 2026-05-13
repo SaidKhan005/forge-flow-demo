@@ -688,18 +688,24 @@ class _RoleTile extends StatelessWidget {
                     if (role.isSeeded) ...<Widget>[
                       const SizedBox(height: 4),
                       Text(
-                        // Lane B B2.2 — operator-facing annotation for
-                        // catalog-sourced roles. The catalog version's
-                        // published_at timestamp is NOT surfaced by the
-                        // operator-web role-read endpoint today
-                        // (`web_team_roles_gateway.dart` only carries
-                        // role_id / role_key / display_name / is_seeded
-                        // / is_editable / permissions), so this slice
-                        // ships the badge + an attribution line and
-                        // flags the date gap for a future backend
-                        // slice that surfaces the catalog version on
-                        // each seeded role row.
-                        'Managed by Forge & Flow',
+                        // Lane B B2.2 + B2.4 — operator-facing
+                        // annotation for catalog-sourced roles.
+                        //
+                        // B2.4 closed the date-half gap B2.2 flagged:
+                        // the proxy now projects
+                        // `catalog_published_at` (the
+                        // `default_role_catalog_versions.published_at`
+                        // of the version the operator is following)
+                        // onto every seeded row. When that timestamp
+                        // is non-null we render "Updated by F&F on
+                        // <Mon D, YYYY>" so operators see when the
+                        // last default-catalog refresh shipped. When
+                        // it is null (genesis state — no catalog
+                        // version published yet, or a legacy proxy
+                        // build that doesn't carry the field) we
+                        // fall back to the B2.2 "Managed by Forge &
+                        // Flow" copy so the row never blanks out.
+                        _defaultAnnotationCopy(role.catalogPublishedAt),
                         key: Key(
                           'operator_web_role_default_annotation_${role.roleId}',
                         ),
@@ -954,3 +960,39 @@ class _RolesForbiddenSurface extends StatelessWidget {
     );
   }
 }
+
+/// Lane B B2.4 — Plain-English annotation for the seeded-role row.
+///
+/// When the catalog version's `published_at` is non-null, renders
+/// "Updated by F&F on Mon D, YYYY" using the operator's local time
+/// zone (same `toLocal()` posture the audit-log row uses for its
+/// timestamp formatter). Falls back to the B2.2 "Managed by Forge
+/// & Flow" copy when the field is null (genesis state — no catalog
+/// version published yet — or a legacy proxy build that doesn't
+/// carry the field).
+@visibleForTesting
+String defaultAnnotationCopyForCatalogPublishedAt(DateTime? publishedAt) {
+  return _defaultAnnotationCopy(publishedAt);
+}
+
+String _defaultAnnotationCopy(DateTime? publishedAt) {
+  if (publishedAt == null) return 'Managed by Forge & Flow';
+  final local = publishedAt.toLocal();
+  final month = _kRolesAnnotationMonthNames[local.month - 1];
+  return 'Updated by F&F on $month ${local.day}, ${local.year}';
+}
+
+const List<String> _kRolesAnnotationMonthNames = <String>[
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];

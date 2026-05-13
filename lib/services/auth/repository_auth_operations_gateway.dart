@@ -1614,6 +1614,12 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       isSeeded: role.isSeeded,
       isEditable: role.isEditable,
       operatorId: role.operatorId,
+      // Lane B B2.4 — surface the catalog-version metadata the
+      // repository projected onto each seeded row so the operator-
+      // web Roles surface can render "Updated by F&F on <date>".
+      // Custom rows + genesis-state seeded rows project NULL.
+      catalogVersionId: role.catalogVersionId,
+      catalogPublishedAt: role.catalogPublishedAt,
       permissions: List<TeamRolePermissionRule>.unmodifiable(
         permissionRows.map(
           (row) => TeamRolePermissionRule(
