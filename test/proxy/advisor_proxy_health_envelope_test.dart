@@ -11,13 +11,14 @@ import '../../tool/advisor_proxy/health_producers/producer_registry.dart';
 
 void main() {
   group('proxy_health envelope — registry catalog inventory', () {
-    test('producer catalog covers exactly 61 distinct slots', () {
+    test('producer catalog covers exactly 62 distinct slots', () {
       // 60 catalog entries on master (including the two retention
       // producers 10a.3 added) plus 1 from Phase 10a.4
-      // (event_outbox_bridge_lag_seconds). The number on disk pre-slice
+      // (event_outbox_bridge_lag_seconds) plus 1 from Slice A11.1.b
+      // (`session_record_incomplete_count`). The number on disk pre-slice
       // had drifted past the original 58 pin during 10a.3; this test
       // tracks the live count.
-      expect(proxyHealthRegisteredProducerCount(), equals(61));
+      expect(proxyHealthRegisteredProducerCount(), equals(62));
     });
 
     test('every catalog key maps to a reserved metric placeholder', () {

@@ -4882,6 +4882,28 @@ proxyHealthReservedMetrics = <String, ProxyHealthMetric>{
     owner: 'B42',
     metadata: <String, Object?>{'tier': 3},
   ),
+  // Slice A11.1.b — surface the per-instance SessionRecordIncompleteGauge
+  // into the deep-health envelope. Multi-instance Cloud Run rolls up per-
+  // pod gauge state at the observability sink because each pod emits its
+  // own /health JSON. Authority: docs/_audits/post_codex_wave/
+  // wave_completion_deep_audit_2026_05_13.md finding #2 + R3 §2 stretch
+  // goal (consumer side, A11.1.b).
+  'session_record_incomplete_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description:
+        'Total per-instance increments of '
+        'proxy.session_record.incomplete{route, missing_field} since '
+        'process start. Observability-only: a session-finalizing 2xx '
+        'whose body fails SessionRecord.assertComplete bumps the matching '
+        '(route, missing_field) bucket. Metadata carries the full '
+        '(route -> missing_field -> count) slice so a downstream observability '
+        'sink can roll up across multi-instance Cloud Run pods.',
+    source: 'session_record_incomplete_gauge',
+    owner: 'B42',
+    metadata: <String, Object?>{'tier': 2},
+  ),
 };
 
 const Map<String, ProxyHealthSurface> proxyHealthReservedSurfaces =
@@ -4979,6 +5001,9 @@ const Map<String, ProxyHealthSurface> proxyHealthReservedSurfaces =
           'partition_count_active',
           'pg_cron_jobs_failed_24h',
           'cloud_run_instance_count',
+          // Slice A11.1.b — session-record gauge consumer (per-instance
+          // observability buffer surfaced into /health).
+          'session_record_incomplete_count',
         ],
         owner: 'B42',
       ),
@@ -5158,6 +5183,7 @@ class ProxyHealthRegistryContext {
     required this.now,
     this.budget = const Duration(milliseconds: 250),
     this.inMemoryBreakerStates,
+    this.sessionRecordIncompleteSnapshot,
   });
 
   final ProxyHealthQueryRunnerFn runnerFn;
@@ -5169,6 +5195,22 @@ class ProxyHealthRegistryContext {
   /// producers use this snapshot instead of querying the
   /// `circuit_breaker_state` DB table.
   final Map<String, CircuitState> Function()? inMemoryBreakerStates;
+
+  /// Slice A11.1.b — optional accessor into the per-instance
+  /// [SessionRecordIncompleteGauge] held by `routeRequest`. Mirrors the
+  /// `inMemoryBreakerStates` side-channel pattern: producers reach into
+  /// process-local observability state without that state needing a
+  /// Postgres-backed source. The shape matches
+  /// [SessionRecordIncompleteGauge.snapshot] (route -> missing_field ->
+  /// count); the producer projects it into the deep-health envelope as
+  /// `session_record_incomplete_count`. Per-pod identity is conveyed by
+  /// the envelope-level pod label produced separately by Cloud Run; this
+  /// accessor exposes only the gauge state.
+  /// Authority: docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md
+  /// finding #2 + docs/_execution/lane_a_code_health/03_execution_slices.md
+  /// Slice A11.1 (consumer side, A11.1.b).
+  final Map<String, Map<String, int>> Function()?
+  sessionRecordIncompleteSnapshot;
 }
 
 typedef ProxyHealthRegistryProducer =
@@ -5219,6 +5261,7 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
     this.producerRouteBudget = const Duration(seconds: 3),
     this.producerConcurrency = 4,
     this.inMemoryBreakerStates,
+    this.sessionRecordIncompleteSnapshot,
   }) : assert(producerConcurrency > 0);
 
   final ProxyHealthQueryRunnerFn runnerFn;
@@ -5235,6 +5278,15 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
   final Duration producerRouteBudget;
   final int producerConcurrency;
   final Map<String, CircuitState> Function()? inMemoryBreakerStates;
+
+  /// Slice A11.1.b — optional accessor for the in-process
+  /// [SessionRecordIncompleteGauge] snapshot. When wired, the deep-health
+  /// producer surfaces `session_record_incomplete_count` so multi-instance
+  /// Cloud Run can roll up per-pod gauge state. When null, the producer
+  /// renders `status: 'unknown'` (back-compat with tests + scaffolds that
+  /// don't plumb the gauge through every health-check call site).
+  final Map<String, Map<String, int>> Function()?
+  sessionRecordIncompleteSnapshot;
 
   @override
   Future<ProxyHealthStatus> check() async {
@@ -5302,6 +5354,7 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
       now: asOf,
       budget: producerBudget,
       inMemoryBreakerStates: inMemoryBreakerStates,
+      sessionRecordIncompleteSnapshot: sessionRecordIncompleteSnapshot,
     );
     final results = <MapEntry<String, ProxyHealthMetric>>[];
     var nextIndex = 0;

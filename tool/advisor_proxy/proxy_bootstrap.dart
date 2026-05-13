@@ -854,6 +854,20 @@ ProxyProductionBindings buildProxyProductionBindings(
     orgUnitsRepository: OrgUnitsRepository(tenantWrapper),
   );
 
+  // Slice A11.1.b — single shared session-record gauge instance.
+  // Constructed here (rather than inline below) so the same instance can
+  // be passed BOTH to `_buildRegistryProxyHealthCheckStore` (so /health
+  // surfaces the snapshot under `session_record_incomplete_count`) AND to
+  // the `ProxyProductionBindings.sessionRecordIncompleteGauge` field
+  // (which `main.dart` threads into `routeRequest` so the
+  // POST /v1/auth/session/login handler increments it on every 2xx).
+  // Without this hoist the gauge that gets snapshotted would be a
+  // different instance from the one being incremented — defeating the
+  // whole consumer-side observability path. Authority:
+  // docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md
+  // finding #2.
+  final sessionRecordIncompleteGauge = SessionRecordIncompleteGauge();
+
   return ProxyProductionBindings(
     accountingStore: PostgresProxyAccountingStore(wrapper: tenantWrapper),
     firebaseAdminAuthClient: firebaseAdmin,
@@ -1101,6 +1115,9 @@ ProxyProductionBindings buildProxyProductionBindings(
     healthCheckStore: _buildRegistryProxyHealthCheckStore(
       healthWrapper,
       expectedMigrationFilenames: expectedMigrationFilenames,
+      // Slice A11.1.b — same gauge instance the route handler increments,
+      // exposed to the producer registry through the .snapshot() accessor.
+      sessionRecordIncompleteSnapshot: sessionRecordIncompleteGauge.snapshot,
     ),
     // HARD-G observability — pools exposed for the startup
     // connectivity probe in `main.dart`. The probe opens + commits
@@ -1168,7 +1185,10 @@ ProxyProductionBindings buildProxyProductionBindings(
     // every 2xx from POST /v1/auth/session/login, the deep-health
     // envelope reads `snapshot()` for the
     // `proxy.session_record.incomplete{route, missing_field}` gauge.
-    sessionRecordIncompleteGauge: SessionRecordIncompleteGauge(),
+    // Slice A11.1.b — the same instance is also passed to
+    // `_buildRegistryProxyHealthCheckStore` above so /health surfaces it
+    // under `session_record_incomplete_count`.
+    sessionRecordIncompleteGauge: sessionRecordIncompleteGauge,
   );
 }
 
@@ -1699,6 +1719,11 @@ class _AdvisorProxyUsageCounterStoreAdapter implements ProxyUsageCounterStore {
 RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
   TenantTransactionWrapper adminWrapper, {
   List<String> expectedMigrationFilenames = const <String>[],
+  // Slice A11.1.b — optional accessor for the in-process session-record
+  // gauge snapshot. When wired, the `session_record_incomplete_count`
+  // producer surfaces the per-instance counter map so multi-instance
+  // Cloud Run can roll up per-pod counts at the observability sink.
+  Map<String, Map<String, int>> Function()? sessionRecordIncompleteSnapshot,
 }) {
   const healthStatementTimeout = Duration(milliseconds: 150);
   // A4.2 (R3) per `docs/_audits/code_health/a4_performance_audit.md`:
@@ -1741,6 +1766,10 @@ RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
     outerProducerBudget: const Duration(milliseconds: 450),
     producerRouteBudget: const Duration(seconds: 3),
     producerConcurrency: healthProducerConcurrency,
+    // Slice A11.1.b — same in-process gauge instance the route handler
+    // increments, exposed read-only via `.snapshot()`. Stays null in
+    // unit-test scaffolds that don't construct a gauge.
+    sessionRecordIncompleteSnapshot: sessionRecordIncompleteSnapshot,
   );
 }
 

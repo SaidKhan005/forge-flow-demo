@@ -367,6 +367,94 @@ Future<ProxyHealthMetric> cloudRunInstanceCountProducer(
   });
 }
 
+ProxyHealthMetric _sessionRecordIncompleteCountTemplate() =>
+    const ProxyHealthMetric(
+      status: 'unknown',
+      value: null,
+      unit: 'count',
+      description:
+          'Total per-instance increments of '
+          'proxy.session_record.incomplete{route, missing_field} since '
+          'process start. Observability-only; the route never branches '
+          'on the gauge. Metadata.buckets carries the route -> '
+          'missing_field -> count slice for multi-instance rollup.',
+      source: 'session_record_incomplete_gauge',
+      owner: 'B42',
+      metadata: <String, Object?>{'tier': 2},
+    );
+
+/// Slice A11.1.b — consume the per-instance [SessionRecordIncompleteGauge]
+/// snapshot wired by Slice A11.1. The accessor is optional: when the
+/// production bootstrap plumbs it in, the producer surfaces the live
+/// counter map; otherwise the producer reports `status: 'unknown'` with a
+/// `not_wired` warning so back-compat tests + scaffolds keep passing.
+///
+/// Defensive contract:
+///   - Any accessor throw projects to `status: 'unknown'` + `warning:
+///     'producer_error'` via `runProducer`'s outer catch, so a buggy gauge
+///     can never crash the /health endpoint.
+///   - Labels carry only `route` (a proxy path constant) and
+///     `missing_field` (predicate-defined field name). NO PII, NO tenant
+///     identifiers, matching the gauge's own contract (see
+///     `SessionRecordIncompleteGauge` doc comment in advisor_proxy.dart).
+///
+/// Authority: docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md
+/// finding #2 (gauge data invisible to observability surface) +
+/// docs/_execution/lane_a_code_health/03_execution_slices.md Slice A11.1
+/// (consumer side).
+Future<ProxyHealthMetric> sessionRecordIncompleteCountProducer(
+  ProxyHealthProducerContext context,
+) {
+  return runProducer(context, _sessionRecordIncompleteCountTemplate, () async {
+    final accessor = context.sessionRecordIncompleteSnapshot;
+    if (accessor == null) {
+      return ProxyHealthMetric(
+        status: 'unknown',
+        value: null,
+        unit: 'count',
+        description: _sessionRecordIncompleteCountTemplate().description,
+        source: 'session_record_incomplete_gauge',
+        owner: 'B42',
+        observedAt: context.now,
+        metadata: const <String, Object?>{
+          'tier': 2,
+          'warning': 'not_wired',
+        },
+      );
+    }
+    final snapshot = accessor();
+    var total = 0;
+    final buckets = <Map<String, Object?>>[];
+    for (final routeEntry in snapshot.entries) {
+      for (final fieldEntry in routeEntry.value.entries) {
+        total += fieldEntry.value;
+        buckets.add(<String, Object?>{
+          'route': routeEntry.key,
+          'missing_field': fieldEntry.key,
+          'count': fieldEntry.value,
+        });
+      }
+    }
+    return ProxyHealthMetric(
+      status: 'green',
+      value: total,
+      unit: 'count',
+      description: _sessionRecordIncompleteCountTemplate().description,
+      source: 'session_record_incomplete_gauge',
+      owner: 'B42',
+      observedAt: context.now,
+      metadata: <String, Object?>{
+        'tier': 2,
+        // The route -> missing_field -> count slice for multi-instance
+        // Cloud Run rollup at the observability sink. Empty list when
+        // the gauge has not observed any incomplete records (the steady
+        // state on a healthy proxy).
+        'buckets': buckets,
+      },
+    );
+  });
+}
+
 /// Map of producer key → producer function for this family.
 final Map<String, ProxyHealthProducer> infraProducers =
     <String, ProxyHealthProducer>{
@@ -379,4 +467,6 @@ final Map<String, ProxyHealthProducer> infraProducers =
       'partition_count_active': partitionCountActiveProducer,
       'pg_cron_jobs_failed_24h': pgCronJobsFailed24hProducer,
       'cloud_run_instance_count': cloudRunInstanceCountProducer,
+      // Slice A11.1.b — session-record gauge consumer.
+      'session_record_incomplete_count': sessionRecordIncompleteCountProducer,
     };

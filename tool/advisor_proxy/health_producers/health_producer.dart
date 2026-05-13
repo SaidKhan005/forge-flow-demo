@@ -51,12 +51,24 @@ class ProxyHealthProducerContext {
     required this.now,
     this.budget = const Duration(milliseconds: 250),
     this.inMemoryBreakerStates,
+    this.sessionRecordIncompleteSnapshot,
   });
 
   final ProxyHealthQueryRunner runner;
   final DateTime now;
   final Duration budget;
   final Map<String, CircuitState> Function()? inMemoryBreakerStates;
+
+  /// Slice A11.1.b — optional accessor into the per-instance
+  /// [SessionRecordIncompleteGauge] held by `routeRequest`. Mirrors
+  /// [inMemoryBreakerStates]: when non-null, the session-record producer
+  /// reads the live in-memory snapshot; when null the producer renders
+  /// `status: 'unknown'` with a `not_wired` warning.
+  /// Shape: route -> missing_field -> increment count since process start.
+  /// Per-pod identity is conveyed by envelope-level pod labels; this
+  /// accessor only exposes the gauge counts.
+  final Map<String, Map<String, int>> Function()?
+  sessionRecordIncompleteSnapshot;
 }
 
 /// Function shape every producer implements.
