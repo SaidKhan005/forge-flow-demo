@@ -491,7 +491,7 @@ abstract class OAuthRefreshWorkerVendorEnvNames {
   //
   // Retained for backward compatibility with existing callers
   // (`tool/pressure/p3c_oauth_refresh_storm.dart`,
-  // `test/load/pressure/p3c_oauth_refresh_storm_runner_test.dart`).
+  // `test/pressure/p3c_oauth_refresh_storm_runner_test.dart`).
   // Humanity is no longer wired in `buildProductionRefreshClosures` —
   // it lives on `kVendorsWithoutRefreshClosureReason` because the
   // adapter declares `keyPaste` and v1 has no broker-driven refresh

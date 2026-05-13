@@ -36,7 +36,7 @@
 // --------------------------------------
 // The findings catalog drives Phase 5; the harness is a finding
 // generator, not a gate. It writes a JSONL artifact at
-// `test/load/pressure/p3c_oauth_refresh_storm_findings.jsonl` plus
+// `test/pressure/p3c_oauth_refresh_storm_findings.jsonl` plus
 // a markdown summary so Phase 5 can ingest the catalog in one read.
 //
 // Database connection mode
@@ -73,18 +73,18 @@ import 'dart:io';
 import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dart';
 import 'package:http/http.dart' as http;
 
-import '../../test/load/pressure/_helpers/p3c_findings.dart';
-import '../../test/load/pressure/_helpers/p3c_synthetic_credential_store.dart';
-import '../../test/load/pressure/_helpers/p3c_vendor_authmode_catalog.dart';
+import '../../test/pressure/_helpers/p3c_findings.dart';
+import '../../test/pressure/_helpers/p3c_synthetic_credential_store.dart';
+import '../../test/pressure/_helpers/p3c_vendor_authmode_catalog.dart';
 import '../oauth_refresh_worker/main.dart' as worker;
 
 const String _kPreviewProxyUrl =
     'https://forge-flow-preview-backend-surface-additions-prox-rf7nosnoka-pd.a.run.app';
 
 const String _kFindingsJsonlPath =
-    'test/load/pressure/p3c_oauth_refresh_storm_findings.jsonl';
+    'test/pressure/p3c_oauth_refresh_storm_findings.jsonl';
 const String _kSummaryMdPath =
-    'test/load/pressure/p3c_oauth_refresh_storm_summary.md';
+    'test/pressure/p3c_oauth_refresh_storm_summary.md';
 
 // ─── CLI ────────────────────────────────────────────────────────────
 
@@ -209,7 +209,7 @@ Future<int> main(List<String> rawArgs) async {
 
   // ── Preview-URL guard ────────────────────────────────────────────
   // Mirrors the bounded-run discipline in
-  // `test/load/pressure/README.md`: production URLs are a hard fail.
+  // `test/pressure/README.md`: production URLs are a hard fail.
   if (args.proxyUrl != null) {
     if (args.proxyUrl != _kPreviewProxyUrl) {
       sink.record(P3cFinding(

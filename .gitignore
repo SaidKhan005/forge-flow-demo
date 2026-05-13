@@ -135,6 +135,6 @@ Selling.md
 # summary, the JSONL stays untracked.
 test/integration/pressure/*_findings.jsonl
 test/integration/pressure/*_summary.md
-test/load/pressure/*_findings.jsonl
-test/load/pressure/*_summary.md
-test/load/pressure/*_raw.jsonl
+test/pressure/*_findings.jsonl
+test/pressure/*_summary.md
+test/pressure/*_raw.jsonl

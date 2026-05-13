@@ -45,6 +45,6 @@ Only this README + a `.gitkeep` exist now.
 
 - Not a place for unit tests of pure functions (those stay co-located
   with the source under `test/lib/...`).
-- Not a place for load tests (Phase 3 owns `test/load/pressure/`).
+- Not a place for load tests (Phase 3 owns `test/pressure/`).
 - Not a place for click-path / E2E browser tests (Phase 4 emulator
   E2E is user-driven and lives in operator runbooks, not here).

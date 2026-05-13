@@ -2,7 +2,7 @@
 //
 // Mirrors the Phase 2A finding-sink pattern: every divergence
 // observed during the storm becomes a JSONL line in
-// `test/load/pressure/p3c_oauth_refresh_storm_findings.jsonl` so
+// `test/pressure/p3c_oauth_refresh_storm_findings.jsonl` so
 // Phase 5 can consume the catalog in a single pass. The harness is a
 // FINDING GENERATOR, not a gate — the test only fails when the
 // harness itself cannot proceed.

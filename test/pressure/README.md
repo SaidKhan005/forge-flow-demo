@@ -2,11 +2,14 @@
 
 Sprint: `pressure.preview.v1` Phase 3.
 
-This directory holds the three load-test lanes that pressure-test the
-preview proxy and its dependencies under realistic concurrent vendor
-traffic. The preview environment is runtime-isolated (separate Cloud
-Run revision) but shares the staging Postgres cluster — operator-
-approved with the load lane bounded.
+This directory is the canonical home for pressure / soak harness
+runner tests (consolidated from the former `test/load/pressure/` per
+Lane A slice A10.1, 2026-05-12). It holds the three Phase 3 load-test
+lanes that pressure-test the preview proxy and its dependencies under
+realistic concurrent vendor traffic, plus the Phase 4 sign-in /
+operator-day soak runner tests. The preview environment is runtime-
+isolated (separate Cloud Run revision) but shares the staging Postgres
+cluster — operator-approved with the load lane bounded.
 
 The plan doc lives at
 `docs/_execution/2026-05-08_pressure_preview_v1_plan.md`. Fixtures live
@@ -56,10 +59,17 @@ Because Phase 3 hits staging Postgres:
   a "full" mode (the cap above) so it can be exercised in development
   without burning staging quota.
 
-## Phase 0 (this commit)
+## Phase 3 lane runner tests
 
-Empty placeholder — lane subdirectories will land in Phase 3. Only
-this README + a `.gitkeep` exist now.
+Each lane's runner test lives directly in this directory:
+
+  * `p3a_webhook_flood_runner_test.dart`
+  * `p3b_backfill_flood_runner_test.dart`
+  * `p3c_oauth_refresh_storm_runner_test.dart`
+
+The harness binaries themselves live under `tool/pressure/`. Per-run
+findings JSONL / summary MD / raw JSONL outputs land here too and are
+gitignored (see `.gitignore`).
 
 ## Phase 4 — B2 hot-fix lanes (2026-05-12)
 
@@ -84,6 +94,8 @@ Added in the B1+B2 proxy hot-fix slice
     `SessionRecordCompleteness.assertComplete` predicate used by both
     harnesses AND by the production observability surface (future
     `proxy.session_record.incomplete{route, missing_field}` gauge).
+    Unit-tested in `p4_session_record_predicate_test.dart` (this
+    directory).
 
 Both harnesses honour `SIGINT` for clean shutdown, refuse to run
 against a non-preview / non-staging / non-localhost URL, and exit

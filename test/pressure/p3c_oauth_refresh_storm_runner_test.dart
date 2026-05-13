@@ -24,7 +24,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
-import '../../../tool/oauth_refresh_worker/main.dart' as worker;
+import '../../tool/oauth_refresh_worker/main.dart' as worker;
 import '_helpers/p3c_findings.dart';
 import '_helpers/p3c_synthetic_credential_store.dart';
 import '_helpers/p3c_vendor_authmode_catalog.dart';

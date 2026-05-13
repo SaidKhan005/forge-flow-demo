@@ -1,7 +1,7 @@
 // Phase 3A — webhook flood load harness against the preview proxy.
 //
 // Sprint: `pressure.preview.v1` Phase 3 of 4 stack levels (Phase 3A
-// of three load lanes — see `test/load/pressure/README.md`).
+// of three load lanes — see `test/pressure/README.md`).
 //
 // Purpose
 // -------
@@ -50,13 +50,13 @@
 //
 // Output
 // ------
-//   * `test/load/pressure/p3a_webhook_flood_raw.jsonl` — per-request
+//   * `test/pressure/p3a_webhook_flood_raw.jsonl` — per-request
 //     JSON line (vendor, operator_id, route, status, latency_ms,
 //     idempotency_key, retry_attempt, response_excerpt). Gitignored.
-//   * `test/load/pressure/p3a_webhook_flood_findings.jsonl` —
+//   * `test/pressure/p3a_webhook_flood_findings.jsonl` —
 //     aggregated per-finding entries (one per detected category +
 //     vendor). Gitignored.
-//   * `test/load/pressure/p3a_webhook_flood_summary.md` — markdown
+//   * `test/pressure/p3a_webhook_flood_summary.md` — markdown
 //     summary table (totals, latency p50/p95/p99, status breakdown,
 //     per-finding rows). Gitignored.
 //
@@ -319,7 +319,7 @@ HarnessOptions _parseArgs(List<String> args) {
   int rate = kDefaultRate;
   List<String> vendors = <String>['all'];
   int retryEach = kDefaultRetryEach;
-  String outputDir = 'test/load/pressure';
+  String outputDir = 'test/pressure';
   int p95Budget = kDefaultP95BudgetMs;
   bool warmup = true;
 

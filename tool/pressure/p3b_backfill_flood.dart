@@ -79,9 +79,9 @@
 //     "real DB" mode.
 //
 // Output:
-//   * `test/load/pressure/p3b_backfill_flood_findings.jsonl` —
+//   * `test/pressure/p3b_backfill_flood_findings.jsonl` —
 //     one JSON object per finding.
-//   * `test/load/pressure/p3b_backfill_flood_summary.md` — overview
+//   * `test/pressure/p3b_backfill_flood_summary.md` — overview
 //     with parameters, finding tally, full-scale invocation.
 //
 // CLI:
@@ -219,8 +219,8 @@ Smoke defaults:
   --simulate-restart=$kSmokeRestartCount
 
 Output flags:
-  --findings-out=<path>      default test/load/pressure/p3b_backfill_flood_findings.jsonl
-  --summary-out=<path>       default test/load/pressure/p3b_backfill_flood_summary.md
+  --findings-out=<path>      default test/pressure/p3b_backfill_flood_findings.jsonl
+  --summary-out=<path>       default test/pressure/p3b_backfill_flood_summary.md
   --quiet                    suppress per-event stdout
   --help / -h                print this usage
 
@@ -236,8 +236,8 @@ HarnessConfig parseArgs(List<String> rawArgs) {
   var recordsPerVendor = kSmokeRecordsPerVendor;
   var workerPods = kSmokeWorkerPods;
   var simulateRestart = kSmokeRestartCount;
-  var findingsOut = 'test/load/pressure/p3b_backfill_flood_findings.jsonl';
-  var summaryOut = 'test/load/pressure/p3b_backfill_flood_summary.md';
+  var findingsOut = 'test/pressure/p3b_backfill_flood_findings.jsonl';
+  var summaryOut = 'test/pressure/p3b_backfill_flood_summary.md';
   var quiet = false;
 
   for (final arg in rawArgs) {
