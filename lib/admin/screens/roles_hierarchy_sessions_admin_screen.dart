@@ -22,7 +22,9 @@
 import 'package:flutter/material.dart';
 
 import '../../auth/permission_keys.dart';
+import '../../domain/models/inheritance_tree_node.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/inheritance_tree.dart';
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../services/demo_roles_hierarchy_sessions_admin_gateway.dart';
@@ -1355,25 +1357,13 @@ class _HierarchyTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final byParent = <String?, List<OrgUnitAdminNode>>{};
-    for (final unit in orgUnits) {
-      byParent
-          .putIfAbsent(unit.parentOrgUnitId, () => <OrgUnitAdminNode>[])
-          .add(unit);
-    }
-    for (final list in byParent.values) {
-      list.sort((a, b) => a.name.compareTo(b.name));
-    }
-    final locationsByOrgUnit = <String, List<HierarchyLocationLeaf>>{};
-    for (final loc in locations) {
-      locationsByOrgUnit
-          .putIfAbsent(loc.orgUnitId, () => <HierarchyLocationLeaf>[])
-          .add(loc);
-    }
-    for (final list in locationsByOrgUnit.values) {
-      list.sort((a, b) => a.name.compareTo(b.name));
-    }
-    final roots = byParent[null] ?? const <OrgUnitAdminNode>[];
+    final rootNode = _buildInheritanceRoot();
+    final orgUnitsById = <String, OrgUnitAdminNode>{
+      for (final unit in orgUnits) unit.orgUnitId: unit,
+    };
+    final locationsById = <String, HierarchyLocationLeaf>{
+      for (final location in locations) location.locationId: location,
+    };
     return SingleChildScrollView(
       key: const Key('admin_rhs_hierarchy_tab'),
       child: Column(
@@ -1429,22 +1419,34 @@ class _HierarchyTab extends StatelessWidget {
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 8),
-                if (roots.isEmpty)
+                if (orgUnits.isEmpty)
                   Text(
                     'No org units yet for this operator.',
                     style: AppTextStyles.body13(color: AppColors.textMuted),
                   )
                 else
-                  for (final root in roots)
-                    _OrgUnitNodeRow(
-                      node: root,
-                      byParent: byParent,
-                      locationsByOrgUnit: locationsByOrgUnit,
-                      depth: 0,
-                      editingEnabled: editingEnabled,
-                      onAddChildOrgUnit: onAddChildOrgUnit,
-                      onMoveLocation: onMoveLocation,
-                    ),
+                  InheritanceTree(
+                    rootNode: rootNode,
+                    annotationBuilder: (context, node) {
+                      if (node.scopeKind == InheritanceTreeScopeKind.location) {
+                        final location = locationsById[node.scopeId];
+                        if (location == null) return const SizedBox.shrink();
+                        return _AdminHierarchyLocationAnnotation(
+                          location: location,
+                          editingEnabled: editingEnabled,
+                          onMoveLocation: onMoveLocation,
+                        );
+                      }
+                      final unit = orgUnitsById[node.scopeId];
+                      if (unit == null) return const SizedBox.shrink();
+                      return _AdminHierarchyOrgUnitAnnotation(
+                        node: unit,
+                        editingEnabled: editingEnabled,
+                        onAddChildOrgUnit: onAddChildOrgUnit,
+                      );
+                    },
+                    emptyMessage: 'No org units yet for this operator.',
+                  ),
               ],
             ),
           ),
@@ -1452,129 +1454,175 @@ class _HierarchyTab extends StatelessWidget {
       ),
     );
   }
+
+  InheritanceTreeNode _buildInheritanceRoot() {
+    final byParent = <String?, List<OrgUnitAdminNode>>{};
+    for (final unit in orgUnits) {
+      byParent
+          .putIfAbsent(unit.parentOrgUnitId, () => <OrgUnitAdminNode>[])
+          .add(unit);
+    }
+    for (final list in byParent.values) {
+      list.sort((a, b) => a.name.compareTo(b.name));
+    }
+    final locationsByOrgUnit = <String, List<HierarchyLocationLeaf>>{};
+    for (final location in locations) {
+      locationsByOrgUnit
+          .putIfAbsent(location.orgUnitId, () => <HierarchyLocationLeaf>[])
+          .add(location);
+    }
+    for (final list in locationsByOrgUnit.values) {
+      list.sort((a, b) => a.name.compareTo(b.name));
+    }
+    final roots = byParent[null] ?? const <OrgUnitAdminNode>[];
+    if (roots.length == 1) {
+      return _buildUnitNode(
+        roots.single,
+        depth: 0,
+        byParent: byParent,
+        locationsByOrgUnit: locationsByOrgUnit,
+      );
+    }
+    final childNodes = <InheritanceTreeNode>[
+      for (final root in roots)
+        _buildUnitNode(
+          root,
+          depth: 1,
+          byParent: byParent,
+          locationsByOrgUnit: locationsByOrgUnit,
+        ),
+    ];
+    return InheritanceTreeNode(
+      scopeKind: InheritanceTreeScopeKind.business,
+      scopeId: 'admin_rhs_hierarchy_root',
+      displayName: 'Business',
+      children: childNodes,
+    );
+  }
+
+  InheritanceTreeNode _buildUnitNode(
+    OrgUnitAdminNode unit, {
+    required int depth,
+    required Map<String?, List<OrgUnitAdminNode>> byParent,
+    required Map<String, List<HierarchyLocationLeaf>> locationsByOrgUnit,
+  }) {
+    final childOrgUnits =
+        byParent[unit.orgUnitId] ?? const <OrgUnitAdminNode>[];
+    final childLocations =
+        locationsByOrgUnit[unit.orgUnitId] ?? const <HierarchyLocationLeaf>[];
+    final childNodes = <InheritanceTreeNode>[
+      for (final child in childOrgUnits)
+        _buildUnitNode(
+          child,
+          depth: depth + 1,
+          byParent: byParent,
+          locationsByOrgUnit: locationsByOrgUnit,
+        ),
+      for (final location in childLocations)
+        InheritanceTreeNode(
+          scopeKind: InheritanceTreeScopeKind.location,
+          scopeId: location.locationId,
+          displayName: location.name,
+          parentScopeId: location.orgUnitId,
+          depth: depth + 1,
+          metadata: <String, Object?>{
+            'suspended_at': location.suspendedAt,
+            'deleted_at': location.deletedAt,
+          },
+        ),
+    ]..sort((a, b) => a.displayName.compareTo(b.displayName));
+    return InheritanceTreeNode(
+      scopeKind: unit.parentOrgUnitId == null
+          ? InheritanceTreeScopeKind.business
+          : InheritanceTreeScopeKind.orgUnit,
+      scopeId: unit.orgUnitId,
+      displayName: unit.name,
+      parentScopeId: unit.parentOrgUnitId,
+      depth: depth,
+      children: List<InheritanceTreeNode>.unmodifiable(childNodes),
+      metadata: <String, Object?>{
+        'unit_type': unit.parentOrgUnitId == null ? 'corp' : 'org_unit',
+        'suspended_at': unit.suspendedAt,
+        'deleted_at': unit.deletedAt,
+      },
+    );
+  }
 }
 
-class _OrgUnitNodeRow extends StatelessWidget {
-  const _OrgUnitNodeRow({
+class _AdminHierarchyOrgUnitAnnotation extends StatelessWidget {
+  const _AdminHierarchyOrgUnitAnnotation({
     required this.node,
-    required this.byParent,
-    required this.locationsByOrgUnit,
-    required this.depth,
     required this.editingEnabled,
     required this.onAddChildOrgUnit,
-    required this.onMoveLocation,
   });
 
   final OrgUnitAdminNode node;
-  final Map<String?, List<OrgUnitAdminNode>> byParent;
-  final Map<String, List<HierarchyLocationLeaf>> locationsByOrgUnit;
-  final int depth;
   final bool editingEnabled;
   final ValueChanged<OrgUnitAdminNode> onAddChildOrgUnit;
+
+  @override
+  Widget build(BuildContext context) {
+    final isRoot = node.parentOrgUnitId == null;
+    return Row(
+      key: Key('admin_rhs_org_unit_${node.orgUnitId}'),
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (editingEnabled && !isRoot)
+          Flexible(
+            child: Text(
+              _orgUnitMoveGatedCopy,
+              key: Key('admin_rhs_org_unit_move_gated_${node.orgUnitId}'),
+              textAlign: TextAlign.right,
+              style: AppTextStyles.mono11(color: AppColors.textMuted),
+            ),
+          ),
+        if (editingEnabled) ...<Widget>[
+          if (!isRoot) const SizedBox(width: 8),
+          OutlinedButton.icon(
+            key: Key('admin_rhs_org_unit_add_child_${node.orgUnitId}'),
+            onPressed: () => onAddChildOrgUnit(node),
+            style: AdminButtonStyles.secondary(),
+            icon: const Icon(Icons.add, size: 14),
+            label: const Text('Add child'),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _AdminHierarchyLocationAnnotation extends StatelessWidget {
+  const _AdminHierarchyLocationAnnotation({
+    required this.location,
+    required this.editingEnabled,
+    required this.onMoveLocation,
+  });
+
+  final HierarchyLocationLeaf location;
+  final bool editingEnabled;
   final ValueChanged<HierarchyLocationLeaf> onMoveLocation;
 
   @override
   Widget build(BuildContext context) {
-    final children = byParent[node.orgUnitId] ?? const <OrgUnitAdminNode>[];
-    final ownLocations =
-        locationsByOrgUnit[node.orgUnitId] ?? const <HierarchyLocationLeaf>[];
-    final isRoot = node.parentOrgUnitId == null;
-    return Padding(
-      padding: EdgeInsets.only(left: depth * 16.0, top: 6, bottom: 6),
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: AppColors.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          key: Key('admin_rhs_org_unit_${node.orgUnitId}'),
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Icon(
-                  Icons.account_tree_outlined,
-                  size: 14,
-                  color: AppColors.textMuted,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    node.name,
-                    style: AppTextStyles.body14(
-                      color: AppColors.textPrimary,
-                    ).copyWith(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                if (editingEnabled && !isRoot) ...<Widget>[
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      _orgUnitMoveGatedCopy,
-                      key: Key(
-                        'admin_rhs_org_unit_move_gated_${node.orgUnitId}',
-                      ),
-                      textAlign: TextAlign.right,
-                      style: AppTextStyles.mono11(color: AppColors.textMuted),
-                    ),
-                  ),
-                ],
-                if (editingEnabled) ...<Widget>[
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    key: Key('admin_rhs_org_unit_add_child_${node.orgUnitId}'),
-                    onPressed: () => onAddChildOrgUnit(node),
-                    style: AdminButtonStyles.secondary(),
-                    icon: const Icon(Icons.add, size: 14),
-                    label: const Text('Add child'),
-                  ),
-                ],
-              ],
-            ),
-            for (final loc in ownLocations)
-              Padding(
-                padding: const EdgeInsets.only(left: 18, top: 6),
-                child: Row(
-                  children: <Widget>[
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 14,
-                      color: AppColors.textMuted,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        loc.name,
-                        key: Key('admin_rhs_location_${loc.locationId}'),
-                        style: AppTextStyles.body13(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    if (editingEnabled)
-                      OutlinedButton(
-                        key: Key('admin_rhs_location_move_${loc.locationId}'),
-                        onPressed: () => onMoveLocation(loc),
-                        style: AdminButtonStyles.secondary(),
-                        child: const Text('Move'),
-                      ),
-                  ],
-                ),
-              ),
-            for (final child in children)
-              _OrgUnitNodeRow(
-                node: child,
-                byParent: byParent,
-                locationsByOrgUnit: locationsByOrgUnit,
-                depth: depth + 1,
-                editingEnabled: editingEnabled,
-                onAddChildOrgUnit: onAddChildOrgUnit,
-                onMoveLocation: onMoveLocation,
-              ),
-          ],
-        ),
-      ),
+    return Row(
+      key: Key('admin_rhs_location_${location.locationId}'),
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (location.isSuspended)
+          Text(
+            'Suspended',
+            style: AppTextStyles.mono11(color: AppColors.textMuted),
+          ),
+        if (editingEnabled) ...<Widget>[
+          if (location.isSuspended) const SizedBox(width: 8),
+          OutlinedButton(
+            key: Key('admin_rhs_location_move_${location.locationId}'),
+            onPressed: () => onMoveLocation(location),
+            style: AdminButtonStyles.secondary(),
+            child: const Text('Move'),
+          ),
+        ],
+      ],
     );
   }
 }

@@ -35,10 +35,11 @@
 import 'package:flutter/material.dart';
 
 import '../../auth/permission_keys.dart';
+import '../../domain/models/inheritance_tree_node.dart';
 import '../../services/auth/auth_operations_gateway.dart';
+import '../../widgets/inheritance_tree.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_hierarchy_gateway.dart';
-import '../widgets/org_unit_tree_view.dart';
 import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 
@@ -141,6 +142,7 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
   String? _loadError;
   final Set<String> _busyOrgUnitIds = <String>{};
   final Set<String> _busyLocationIds = <String>{};
+  final Set<String> _legacyCollapsedScopeIds = <String>{};
   int _loadGeneration = 0;
   int _idempotencySeq = 0;
 
@@ -420,15 +422,330 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
             ],
           ),
           const SizedBox(height: 18),
-          OrgUnitTreeView(
+          _OperatorWebHierarchyInheritanceTree(
             orgUnits: _orgUnits,
             locations: _locations,
             canMutate: widget._canMutate,
             busyOrgUnitIds: _busyOrgUnitIds,
             busyLocationIds: _busyLocationIds,
+            collapsedScopeIds: _legacyCollapsedScopeIds,
+            onToggleCollapsed: _toggleLegacyCollapsed,
             onAddChildOrgUnit: _onAddChildOrgUnit,
             onMoveLocation: _onMoveLocation,
           ),
+        ],
+      ),
+    );
+  }
+
+  void _toggleLegacyCollapsed(String scopeId) {
+    setState(() {
+      if (!_legacyCollapsedScopeIds.add(scopeId)) {
+        _legacyCollapsedScopeIds.remove(scopeId);
+      }
+    });
+  }
+}
+
+class _OperatorWebHierarchyInheritanceTree extends StatelessWidget {
+  const _OperatorWebHierarchyInheritanceTree({
+    required this.orgUnits,
+    required this.locations,
+    required this.canMutate,
+    required this.busyOrgUnitIds,
+    required this.busyLocationIds,
+    required this.collapsedScopeIds,
+    required this.onToggleCollapsed,
+    required this.onAddChildOrgUnit,
+    required this.onMoveLocation,
+  });
+
+  final List<TeamOrgUnitEntry> orgUnits;
+  final List<TeamOrgLocationEntry> locations;
+  final bool canMutate;
+  final Set<String> busyOrgUnitIds;
+  final Set<String> busyLocationIds;
+  final Set<String> collapsedScopeIds;
+  final ValueChanged<String> onToggleCollapsed;
+  final ValueChanged<TeamOrgUnitEntry> onAddChildOrgUnit;
+  final ValueChanged<TeamOrgLocationEntry> onMoveLocation;
+
+  @override
+  Widget build(BuildContext context) {
+    if (orgUnits.isEmpty) {
+      return Container(
+        key: const Key('operator_web_org_unit_tree_empty'),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.backgroundSurface,
+          border: Border.all(color: AppColors.borderSubtle, width: 1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          'No hierarchy yet. Setup needs a root unit first.',
+          style: AppTextStyles.body13(color: AppColors.textMuted),
+        ),
+      );
+    }
+
+    final orgUnitsById = <String, TeamOrgUnitEntry>{
+      for (final unit in orgUnits) unit.orgUnitId: unit,
+    };
+    final locationsById = <String, TeamOrgLocationEntry>{
+      for (final location in locations) location.locationId: location,
+    };
+    final rootNode = _buildInheritanceRoot();
+    return KeyedSubtree(
+      key: const Key('operator_web_org_unit_tree'),
+      child: InheritanceTree(
+        key: ValueKey<String>(
+          'operator_web_org_unit_tree_${collapsedScopeIds.join('|')}',
+        ),
+        rootNode: rootNode,
+        initiallyCollapsedScopeIds: collapsedScopeIds,
+        emptyMessage: 'No hierarchy yet. Setup needs a root unit first.',
+        annotationBuilder: (context, node) {
+          if (node.scopeKind == InheritanceTreeScopeKind.location) {
+            final location = locationsById[node.scopeId];
+            if (location == null) return const SizedBox.shrink();
+            return _LocationNodeAnnotation(
+              location: location,
+              canMutate: canMutate,
+              busy: busyLocationIds.contains(location.locationId),
+              onMoveLocation: onMoveLocation,
+            );
+          }
+          final unit = orgUnitsById[node.scopeId];
+          if (unit == null) return const SizedBox.shrink();
+          return _OrgUnitNodeAnnotation(
+            node: node,
+            unit: unit,
+            canMutate: canMutate,
+            busy: busyOrgUnitIds.contains(unit.orgUnitId),
+            collapsed: collapsedScopeIds.contains(unit.orgUnitId),
+            onToggleCollapsed: onToggleCollapsed,
+            onAddChildOrgUnit: onAddChildOrgUnit,
+          );
+        },
+      ),
+    );
+  }
+
+  InheritanceTreeNode _buildInheritanceRoot() {
+    final byParent = <String?, List<TeamOrgUnitEntry>>{};
+    for (final unit in orgUnits) {
+      byParent
+          .putIfAbsent(unit.parentOrgUnitId, () => <TeamOrgUnitEntry>[])
+          .add(unit);
+    }
+    for (final list in byParent.values) {
+      list.sort(
+        (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+      );
+    }
+    final locationsByParent = <String, List<TeamOrgLocationEntry>>{};
+    for (final location in locations) {
+      locationsByParent
+          .putIfAbsent(location.parentOrgUnitId, () => <TeamOrgLocationEntry>[])
+          .add(location);
+    }
+    for (final list in locationsByParent.values) {
+      list.sort(
+        (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+      );
+    }
+    final roots = byParent[null] ?? const <TeamOrgUnitEntry>[];
+    if (roots.length == 1) {
+      return _buildUnitNode(
+        roots.single,
+        depth: 0,
+        byParent: byParent,
+        locationsByParent: locationsByParent,
+      );
+    }
+    final children = <InheritanceTreeNode>[
+      for (final root in roots)
+        _buildUnitNode(
+          root,
+          depth: 1,
+          byParent: byParent,
+          locationsByParent: locationsByParent,
+        ),
+    ];
+    return InheritanceTreeNode(
+      scopeKind: InheritanceTreeScopeKind.business,
+      scopeId: 'operator_web_hierarchy_root',
+      displayName: 'Business',
+      children: children,
+    );
+  }
+
+  InheritanceTreeNode _buildUnitNode(
+    TeamOrgUnitEntry unit, {
+    required int depth,
+    required Map<String?, List<TeamOrgUnitEntry>> byParent,
+    required Map<String, List<TeamOrgLocationEntry>> locationsByParent,
+  }) {
+    final childOrgUnits =
+        byParent[unit.orgUnitId] ?? const <TeamOrgUnitEntry>[];
+    final childLocations =
+        locationsByParent[unit.orgUnitId] ?? const <TeamOrgLocationEntry>[];
+    final childNodes =
+        <InheritanceTreeNode>[
+          for (final child in childOrgUnits)
+            _buildUnitNode(
+              child,
+              depth: depth + 1,
+              byParent: byParent,
+              locationsByParent: locationsByParent,
+            ),
+          for (final location in childLocations)
+            InheritanceTreeNode(
+              scopeKind: InheritanceTreeScopeKind.location,
+              scopeId: location.locationId,
+              displayName: location.label,
+              parentScopeId: location.parentOrgUnitId,
+              depth: depth + 1,
+              metadata: <String, Object?>{
+                'org_unit_path': location.orgUnitPath,
+                'suspended_at': location.suspendedAt,
+                'deleted_at': location.deletedAt,
+              },
+            ),
+        ]..sort(
+          (a, b) => a.displayName.toLowerCase().compareTo(
+            b.displayName.toLowerCase(),
+          ),
+        );
+    return InheritanceTreeNode(
+      scopeKind: unit.parentOrgUnitId == null
+          ? InheritanceTreeScopeKind.business
+          : InheritanceTreeScopeKind.orgUnit,
+      scopeId: unit.orgUnitId,
+      displayName: unit.label,
+      parentScopeId: unit.parentOrgUnitId,
+      depth: depth,
+      children: List<InheritanceTreeNode>.unmodifiable(childNodes),
+      metadata: <String, Object?>{
+        'unit_type': unit.unitType,
+        'path': unit.path,
+        'suspended_at': unit.suspendedAt,
+        'deleted_at': unit.deletedAt,
+      },
+    );
+  }
+}
+
+class _OrgUnitNodeAnnotation extends StatelessWidget {
+  const _OrgUnitNodeAnnotation({
+    required this.node,
+    required this.unit,
+    required this.canMutate,
+    required this.busy,
+    required this.collapsed,
+    required this.onToggleCollapsed,
+    required this.onAddChildOrgUnit,
+  });
+
+  final InheritanceTreeNode node;
+  final TeamOrgUnitEntry unit;
+  final bool canMutate;
+  final bool busy;
+  final bool collapsed;
+  final ValueChanged<String> onToggleCollapsed;
+  final ValueChanged<TeamOrgUnitEntry> onAddChildOrgUnit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: Key('operator_web_org_unit_actions_${unit.orgUnitId}'),
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        IconButton(
+          key: Key('operator_web_org_unit_toggle_${unit.orgUnitId}'),
+          icon: Icon(
+            node.hasChildren
+                ? (collapsed ? Icons.chevron_right : Icons.expand_more)
+                : Icons.remove,
+            size: 18,
+            color: node.hasChildren
+                ? AppColors.sunsetDark
+                : AppColors.borderSubtle,
+          ),
+          tooltip: node.hasChildren
+              ? (collapsed ? 'Expand' : 'Collapse')
+              : 'No children',
+          onPressed: node.hasChildren
+              ? () => onToggleCollapsed(unit.orgUnitId)
+              : null,
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        ),
+        if (canMutate)
+          IconButton(
+            key: Key('operator_web_org_unit_add_child_${unit.orgUnitId}'),
+            tooltip: 'Add child unit',
+            icon: const Icon(Icons.add_circle_outline, size: 18),
+            color: AppColors.sunsetDark,
+            onPressed: busy ? null : () => onAddChildOrgUnit(unit),
+          ),
+      ],
+    );
+  }
+}
+
+class _LocationNodeAnnotation extends StatelessWidget {
+  const _LocationNodeAnnotation({
+    required this.location,
+    required this.canMutate,
+    required this.busy,
+    required this.onMoveLocation,
+  });
+
+  final TeamOrgLocationEntry location;
+  final bool canMutate;
+  final bool busy;
+  final ValueChanged<TeamOrgLocationEntry> onMoveLocation;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key('operator_web_location_card_${location.locationId}'),
+      constraints: const BoxConstraints(maxWidth: 260),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Flexible(
+            child: Text(
+              location.orgUnitPath,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ),
+          if (canMutate) ...<Widget>[
+            const SizedBox(width: 8),
+            TextButton(
+              key: Key(
+                'operator_web_location_card_move_${location.locationId}',
+              ),
+              onPressed: busy ? null : () => onMoveLocation(location),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.sunsetDark,
+              ),
+              child: const Text('Move'),
+            ),
+          ] else if (busy) ...<Widget>[
+            const SizedBox(width: 8),
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.sunsetDark,
+              ),
+            ),
+          ],
         ],
       ),
     );
