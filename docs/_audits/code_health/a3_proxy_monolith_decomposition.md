@@ -1501,8 +1501,8 @@ range from the seam map at
 | Slice | Cluster range | Lines | Sites converted | Status |
 |---|---|---|---|---|
 | **A3.2** | Clusters 2-3 + early cluster 4 | 1341-2735 | 12 (1 explicitly retained at line 2426 — `Platform.environment` swallow) | merged (PR #563) |
-| **A3.3** | Clusters 4-8 (mid + late `routeRequest`) | 3744-5470 | 5 (1 already-documented retention at line 2426 carries forward; 1 out-of-scope site at line 7024 inside `SessionRecordIncompleteGauge`) | open |
-| A3.4 | Clusters 9-12 (admin delegates + predicates + CORS tail) | ~8856-16138 | ~22 (estimated; per current monolith grep) | pending |
+| **A3.3** | Clusters 4-8 (mid + late `routeRequest`) | 3744-5470 | 5 (1 already-documented retention at line 2426 carries forward; 1 out-of-scope site at line 7024 inside `SessionRecordIncompleteGauge`) | merged (PR #572) |
+| **A3.4** | Clusters 9-12 (`routeRequest` mega-function inline handlers + admin route delegates + path matchers + CORS tail) | 8939-16286 (master pre-edit) | **26** (line 2426 retention preserved; line 7107 = `SessionRecordIncompleteGauge.observe()` carried forward A3.3 out-of-scope) | open |
 
 A3.2 conversion idiom: every typed catch carries a 1-3 line comment
 naming the exception class the protected block actually throws and
@@ -1547,3 +1547,111 @@ existing 25 tests in `test/proxy/advisor_proxy_health_envelope_test.dart`
 which exercise the registry runner + both dependency probes, plus
 the 223 tests in `test/advisor_proxy_test.dart` which exercise the
 full proxy surface).
+
+### A3.4 chunk-3 site registry
+
+Chunk 3 (A3.4) converted **26 sites** in clusters 9-12 (master
+pre-edit lines 8939-16286). The independent grep on master at
+`1afb7924` produces exactly 26 `} catch (_)` matches in that line
+range — all typed in this PR. A3.3's worker estimate of ~22 came in
+slightly low because cluster 9 (the `routeRequest` mega-function's
+inline handler bodies, lines 8512-14910) is even denser than the
+seam map suggested: 25 of the 26 sites live there. One site sits in
+cluster 10 (admin corpus route delegate). Clusters 11 + 12
+(predicates + path matchers + CORS / response tail) contain **zero**
+bare-catches — they were stripped during A1 / A2 / A11.1 work.
+
+Two pre-existing retentions carry forward from A3.2 / A3.3 and are
+**NOT** touched by this PR:
+
+- **Line 2426** (cluster 2-3) — `Platform.environment` swallow.
+  `UnsupportedError` is an `Error` subclass not `Exception`;
+  narrowing would re-throw the very failure mode this fallback
+  exists to absorb (web embedders that block direct
+  `Platform.environment` reads).
+- **Line 7107** (cluster 4-8) — inside
+  `SessionRecordIncompleteGauge.observe()`. A11.1 owns the
+  `SessionRecordIncompleteGauge` class surface; A3 stays scoped to
+  the proxy plumbing and leaves gauge internals to the A11 lane.
+
+Site 16286 (`Base64Decoder().convert`) is the only "tight" narrowing
+in this chunk — `on FormatException` — because the standard-library
+decoder genuinely throws only one Exception subtype. The other 25
+sites all wrap gateway / store / probe / resolver callouts whose
+inner throw surface is genuinely diverse (`PgException`,
+`TimeoutException`, `IOException`, `FormatException`, plus typed
+rejections that are already caught in upstream `on …` branches
+above the catch-all), so `on Exception catch (_)` is the right
+narrowing per the A3.2 / A3.3 idiom — `on Object` was deliberately
+never used so `Error`s (StateError, type errors, OOM, assertion
+failures) keep propagating to `runZonedGuarded` per addendum C4.
+
+| Site (file:line, master pre-edit) | Original throw source | Narrowed type | Rationale |
+|---|---|---|---|
+| `tool/advisor_proxy/advisor_proxy.dart:8939` | `healthCheckStore.check()` — wraps the full registry-driven health producer + dependency-probe fan-out | `on Exception catch (_)` | Producer / probe throw surface is genuinely diverse (`PgException` from postgres, `TimeoutException` from the budget helper, `IOException` on a transport-level outage, `FormatException` on a parse, etc.); collapse to the `unhealthy` 503 envelope. `Error`s propagate per C4. |
+| `tool/advisor_proxy/advisor_proxy.dart:9550` | `accountingStore.startRequest(...)` — proxy accounting `usage_log_entries` insert + concurrency check | `on Exception catch (_)` | Surface: `PgException` (write contention, RLS denial), `TimeoutException` (budget helper), `IOException` (network), `StateError`-like closed-pool wraps. Collapse to `accounting_store_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:9634` | `llmProvider.complete(llmRequest)` — LLM provider HTTP call (smoke pipeline) | `on Exception catch (_)` | Surface: `TimeoutException`, `IOException`, `HttpException` (HTTP transport / parse), `FormatException` (response parse), provider-specific Exception subtypes (rate-limit, quota, auth). Collapse to `llm_provider_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:9738` | `accountingStore.commitUsageLog(...)` — completion-side counter write | `on Exception catch (_)` | Same accounting-store surface as the startRequest catch above. Collapse to `accounting_store_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:9765` | `accountingStore.completeRequest(...)` — idempotency-key complete row | `on Exception catch (_)` | Same accounting-store surface. Collapse to `accounting_store_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:9827` | `accountInfoGateway.load(...)` — read-only account info projection | `on Exception catch (_)` | Typed `AccountInfoUnavailable` caught above (→ 404). Catch-all here covers gateway transport/storage Exceptions (`PgException`, `TimeoutException`, `IOException`). Collapse to `account_info_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:9856` | `permissionSnapshotResolver.load(scope)` — permission snapshot read (success path renders `snapshot.toJson()`) | `on Exception catch (_)` | Postgres-backed surface: `PgException`, `TimeoutException`, `IOException`, closed-pool wraps. Collapse to `permission_snapshot_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:10350` | `passwordResetRequestGateway.requestReset(...)` inside a `CachedProxyResponse.run` closure | `on Exception catch (_)` | Typed `PasswordResetRequestThrottled` caught above (→ 429). Catch-all here covers gateway transport/storage + SendGrid HTTP (`PgException`, `TimeoutException`, `IOException`, `HttpException`). Cache the 503 envelope so idempotent retries replay the same response. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:10451` | `passwordResetConfirmGateway.confirm(...)` inside a `CachedProxyResponse.run` closure | `on Exception catch (_)` | Typed `PasswordResetConfirmRejected` (caught above via `error.code/rejections`) and `DependencyTimeoutException` (HARD-G envelope above) already handled. Catch-all here covers remaining transport/storage + crypto-internal Exceptions (`PgException`, `IOException`, `FormatException`). Cache 503 for idempotent replay. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:10621` | `mfaRecoveryRequestGateway.submit(...)` | `on Exception catch (_)` | Typed `MfaRecoveryRequestRejected` caught above. Catch-all covers gateway transport/storage + email pipeline failures (`PgException`, `TimeoutException`, `IOException`, SendGrid `HttpException`). Collapse to `mfa_recovery_request_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:10980` | `servicePrincipalJwtIssuanceGateway.issue(...)` | `on Exception catch (_)` | Typed `ServicePrincipalJwtIssueRejected` caught above. Catch-all covers transport/signer Exceptions (`PgException`, `TimeoutException`, `IOException`, `FormatException`, crypto-backend). Collapse to `service_principal_issuance_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:12501` | `firebaseAdminAuthClient.revokeRefreshTokens(...)` — Firebase Admin REST call | `on Exception catch (_)` | Typed `FirebaseAdminAuthError` caught above. Catch-all covers REST client transport/parse Exceptions (`IOException`, `TimeoutException`, `FormatException`, `HttpException`). Collapse to `refresh_token_revoke_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:12555` | `authOperationsGateway.listActiveSessions(...)` | `on Exception catch (_)` | Typed `AuthOperationRejected` caught above. Catch-all covers gateway Postgres surface (`PgException`, `TimeoutException`, `IOException`, closed-pool wraps). Collapse to `auth_sessions_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:12604` | `permissionSnapshotResolver.load(scope)` — force-logout permission gate (success path reads `snapshot.permissions[PermissionKeys.teamSessionForceLogout]`) | `on Exception catch (_)` | Same permission-snapshot Postgres surface. Collapse to `permission_snapshot_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:12647` | `authOperationsGateway.listTeamActiveSessions(...)` | `on Exception catch (_)` | Typed `AuthOperationRejected` caught above. Catch-all covers gateway Postgres surface. Collapse to `team_sessions_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:12697` | `permissionSnapshotResolver.load(scope)` — integrations-read permission gate (success path reads `snapshot.permissions.entries.any(...)`) | `on Exception catch (_)` | Same permission-snapshot Postgres surface. Collapse to `permission_snapshot_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:12736` | `operatorLocationIntegrationsProjection(...)` — integrations + provider-credentials read | `on Exception catch (_)` | Postgres surface (`PgException`, `TimeoutException`, `IOException`, closed-pool wraps). Collapse to `integrations_projection_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:12802` | `permissionSnapshotResolver.load(scope)` — CSV export permission gate (`ProxyPermissionSnapshot exportSnapshot`) | `on Exception catch (_)` | Same permission-snapshot Postgres surface. Collapse to `permission_snapshot_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:12912` | Streaming CSV export loop — `authOperationsGateway.listAuthEventsForActor`, `response.write`, `response.flush` inside the paged-export `while (true)` body | `on Exception catch (_)` | Mid-stream failure. Surface: gateway (`PgException`, `TimeoutException`, `IOException`) + `response.flush` (`HttpException`, `SocketException` on client disconnect) + row-render (`FormatException` on malformed event payload). Best-effort `response.close()` so the operator's browser stops waiting — CSV truncates but headers + column row already shipped. `Error`s propagate (a real defect must not silently truncate the export). |
+| `tool/advisor_proxy/advisor_proxy.dart:12992` | `authOperationsGateway.listAuthEventsForActor(...)` — audit log read (paged JSON) | `on Exception catch (_)` | Typed `AuthOperationRejected` caught above. Catch-all covers gateway Postgres surface. Collapse to `auth_audit_log_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:13360` | `authSessionLedgerWriter.recordRefresh(...)` — refresh-token write | `on Exception catch (_)` | Postgres write surface (`PgException`, `TimeoutException`, `IOException`, closed-pool wraps). Collapse to `auth_session_ledger_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:13430` | `authSessionLedgerWriter.revokeSession(...)` — single-session revoke write (may also call Firebase admin) | `on Exception catch (_)` | Postgres write + optional Firebase admin call (`PgException`, `TimeoutException`, `IOException`, `FirebaseAdminAuthError`). Collapse to `auth_session_ledger_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:13488` | `authSessionLedgerWriter.revokeAllSessionsForUser(...)` — bulk-revoke transaction | `on Exception catch (_)` | Multi-row Postgres transaction (`PgException` on contention/RLS, `TimeoutException`, `IOException`, closed-pool wraps). Collapse to `auth_session_ledger_unavailable` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:13588` | `integrationAdminActorResolver.resolveActorUserId(...)` — integrations admin actor lookup | `on Exception catch (_)` | Postgres lookup surface (`PgException`, `TimeoutException`, `IOException`, closed-pool wraps). Collapse to `integration_admin_actor_resolve_failed` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:14212` | `integrationAdminActorResolver.resolveActorUserId(...)` — feature-flags admin actor lookup variant | `on Exception catch (_)` | Same resolver Postgres surface as 13588. Collapse to `feature_flags_actor_resolve_failed` 503. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:16221` | `const Base64Decoder().convert(base64)` — admin corpus upload body decode | `on FormatException` | Standard-library decoder throws ONLY `FormatException` on malformed base64 — narrowest possible typing. Re-throw as `_AdminInputError` (400 `invalid_content_base64`). `Error`s propagate per C4 so an unexpected runtime defect in the decoder doesn't get masked as "invalid base64". |
+
+A3.4 line count: 18,987 → 19,065 (+78; bleed-stop ceiling 19,071,
+headroom 6). Comment density was deliberately compacted (1-2 line
+rationales per site instead of A3.3's 3-5 line style) to stay
+inside the ratchet — full provenance lives in this audit-doc
+registry table above. Test backfill skipped per A3.2 Option A
+operator approval (pure refactor; behavior preservation verified
+by the existing 223 tests in `test/advisor_proxy_test.dart` and 25
+tests in `test/proxy/advisor_proxy_health_envelope_test.dart`).
+
+**Sweep complete.** A3.2 + A3.3 + A3.4 = 12 + 5 + 26 = **43 sites
+typed**; 2 retained (line 2426 = `Platform.environment` /
+`UnsupportedError`; line 7107 = `SessionRecordIncompleteGauge`
+internals owned by A11.1). Original A3.2 estimate was 45 total —
+actual is 43 typed + 2 retained = 45. The bare-catch debt for
+`tool/advisor_proxy/advisor_proxy.dart` is now closed under the
+addendum C4 ("no silent failures") invariant. Pure refactor —
+`Exception`-subtype behavior preserved across the 248-test proxy
+suite; `Error` propagation is the intended C4 improvement. Future
+extraction work (the 25-step plan in Section 4 above) will move
+these typed catches into the per-route modules under
+`tool/advisor_proxy/routes/` without changing exception
+semantics.
+
+**Post-merge carry-forward (single site, not in A3.4's scope):**
+B10.1 (PR #576, merged into origin/master AFTER A3.4's worker was
+briefed) introduces one **new** bare `catch (_)` at master line
+14109 inside the vendor-applicability admin route's
+`integrationAdminActorResolver.resolveActorUserId` block — identical
+shape to the four sister sites A3.4 typed at 13588 (integrations
+admin), 14212 (feature flags admin), and the two earlier
+admin-route variants. A3.4 deliberately leaves this site untouched
+to honor slice discipline: the worker brief explicitly scopes
+"clusters 9-12 of the seam map snapshot" (taken pre-B10.1) and
+warns against silently expanding scope when rebases introduce new
+material. The B10.1 follow-up (or a separate A3.5 micro-slice) is
+the right home for this one-line fix — narrow to `on Exception
+catch (_)` with the same Postgres / closed-pool rationale used at
+13588 / 14212. This carry-forward does NOT change the "sweep
+complete" status for the original 45-site debt the A3 lane signed
+up for.
