@@ -155,9 +155,22 @@ void main() {
           "'admin_cors_origins_extra'",
         ),
       );
-      // Global scope only — operator/location-scoped rows do not
-      // bleed into the platform allow-list.
-      expect(source, contains('and operator_id is null'));
+      // Global scope only — the F&F-platform row is keyed to the
+      // system-wide sentinel UUID returned by
+      // `public.feature_flag_system_wide_operator_id()` (see commit
+      // 0dde9314 / migration
+      // db/migrations/202605072000_feature_flags_sentinel_operator.sql,
+      // grounded in phase_9_scalability_decisions_2026-04-27.md item 4 —
+      // every RLS predicate must fold into the tenant-leading partial
+      // unique index `feature_flags_operator_scope_idx`). The
+      // location_id-is-null predicate continues to guarantee no
+      // operator/location-scoped row bleeds into the platform allow-list.
+      expect(
+        source,
+        contains(
+          'and operator_id = public.feature_flag_system_wide_operator_id()',
+        ),
+      );
       expect(source, contains('and location_id is null'));
     });
   });
