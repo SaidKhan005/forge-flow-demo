@@ -308,9 +308,7 @@ time multiplier rather than a runtime bug.
 
 - `lib/admin/admin_routes.dart` — 2,204 lines (audit cited ~1,906;
   +298 net since 2026-05-06).
-- `tool/advisor_proxy/advisor_proxy.dart` — 16,949 lines (audit cited
-  14,500; +2,449 net since 2026-05-06). Debt is reaccumulating faster
-  than CODE_HEALTH lanes can clear it.
+- `tool/advisor_proxy/advisor_proxy.dart` — 18,871 lines (per A3.1 measurement 2026-05-13; audit cited 14,500; +4,371 net since 2026-05-06; bleed-stop ceiling 19,071 with 200-line headroom now in force via `tool/advisor_proxy_size_lint.dart`). Debt is reaccumulating faster than CODE_HEALTH lanes can clear it, but the A3.1 ratchet now prevents further routine growth.
 
 Each warrants its own phase doc when the proxy split is sequenced.
 
@@ -523,6 +521,8 @@ Action: pick one of:
 HP #2 strict reading: option 2 is preferred; option 1 acknowledges the
 existing UX intent.
 
+**Resolution:** Option 1 chosen. `lib/screens/settings_screen.dart:31,374,383` carve-out is now documented as Carve-out #3 in `docs/contracts/demo_mode_contract.md` and in CLAUDE.md "Demo Mode" section (operator sign-off 2026-05-08). The two demo-only management sections (Data reset + Demo date) stay gated on `_kDemoMode` because they have no production analogue — rendering disabled UI in prod was assessed as higher risk than the documented carve-out.
+
 ### P2 — `audit_logs_repository.dart:368` style bare catches in advisor proxy ✅ PARTIAL ([#420](https://github.com/SaidKhan005/forge-flow-demo/pull/420) — 3 of 4 files closed; advisor_proxy 16 sites still open)
 
 11 bare catches converted via PR #420 across `auth_session_notifier.dart`,
@@ -533,7 +533,7 @@ Moved to `docs/phases/proxy_split/proxy_split_plan.md` "Pre-Split
 Cleanup" (2026-05-08) — the monolith is too risky for a one-shot
 agent and the split phase is the natural home.
 
-### P3 — `docs/_execution/` retirement window opens 2026-05-12
+### P3 — `docs/_execution/` retirement window opened 2026-05-12 ✅ FIRST SWEEP COMPLETE
 
 **`docs/_execution/` retirement window opens 2026-05-12.** The bulk of
 the 2026-05-03/-04/-05/-06 closeouts cross the 7-day-since-phase-close
@@ -542,6 +542,8 @@ candidates: ~25-30 files including the Phase 8 / 8R / 8.S / 10a / 11A
 foundation / 11W proofs. Action: review each file, confirm the
 underlying phase is closed, retire to `docs/archive/_execution/` or
 `docs/archive/phases/` as appropriate.
+
+**Resolution (2026-05-13):** First-pass sweep landed via PR #539 → `d1c2e167` (41 archive files deleted: 3 in `archive/internal/`, 38 in `archive/_execution/`, all closed-PR proofs / one-off snapshots / "CLOSED" dispatch plans, zero-reference verified per orchestrator sub-agent's per-file grep). Git history preserves all deleted content. Remaining `docs/_execution/` candidates (any still-active sprint plans that have since closed) get swept opportunistically as their phase docs retire.
 
 ### P3 — `lib/admin/admin_routes.dart` placeholder route flags
 
