@@ -1,10 +1,39 @@
 name: CI
 
+# Cost discipline: GitHub Actions spending limit reached on 2026-05-12
+# and the operator decided not to raise it. The cap blocks ALL runners
+# (Linux included) until the free-tier minutes reset on 2026-06-01.
+# Auto-triggering this workflow on every push/PR produces only red Xs
+# in the meantime, so we gate it to manual dispatch until then.
+#
+# What's covered locally while CI is gated:
+#   - Pre-push hook (`scripts/install_git_hooks.ps1`) runs the cheap
+#     dart lints below (the `repo-lints` job).
+#
+# What's NOT covered locally — dispatch manually before merging
+# high-risk slices:
+#   - `flutter analyze --fatal-infos` (`analyze-and-test` job)
+#   - `flutter test` (full unit suite)
+#   - `flutter test --tags=postgres` (`postgres-tests` job —
+#     integration tests against a real Postgres 16)
+#
+# Trigger from the Actions tab (`CI` → `Run workflow`) before merging
+# anything that:
+#   - changes db/migrations/**
+#   - touches tool/advisor_proxy/**
+#   - touches lib/services/ or lib/auth/
+#   - changes the RLS policy posture
+#
+# **TODO 2026-06-01**: revert this gating block to restore auto-triggers
+# once the free-tier minutes have reset. The pre-2026-05-13 form was:
+#
+#   on:
+#     push:
+#       branches: [master]
+#     pull_request:
+#       branches: [master]
 on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
+  workflow_dispatch:
 
 # HARD-E — third-party actions pinned to commit SHA. Floating @v<n>
 # refs are forbidden by `tool/actions_pinning_lint.dart` (see the
