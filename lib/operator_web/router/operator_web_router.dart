@@ -60,7 +60,6 @@ import '../screens/mfa_enrollment_screen.dart';
 import '../screens/password_setup_screen.dart';
 import '../screens/permission_explainer_screen.dart';
 import '../screens/roles_screen.dart';
-import '../screens/security_screen.dart';
 import '../screens/sessions_screen.dart';
 import '../screens/settings_notifications_screen.dart';
 import '../screens/schedule_screen.dart';
@@ -87,7 +86,6 @@ const String kOperatorWebNavRoles = 'roles';
 const String kOperatorWebNavLocations = 'locations';
 const String kOperatorWebNavSessions = 'sessions';
 const String kOperatorWebNavAuditLog = 'audit_log';
-const String kOperatorWebNavSecurity = 'security';
 const String kOperatorWebNavVendorConnections = 'vendor_connections';
 const String kOperatorWebNavDataAccuracy = 'data_accuracy';
 const String kOperatorWebNavNotifications = 'notifications';
@@ -107,6 +105,67 @@ const String kOperatorWebRolesEditPath = '/roles/edit';
 /// Default nav surface the shell lands on after onboarding completes.
 const String kOperatorWebDefaultNavId = kOperatorWebNavAccount;
 
+const Set<String> _kLegacySecurityPaths = <String>{
+  '/security',
+  '/sign-in-security',
+  '/operator-web/security',
+  '/operator-web/sign-in-security',
+};
+
+class _OperatorWebInitialRoute {
+  const _OperatorWebInitialRoute({
+    required this.navId,
+    required this.scrollMyAccountSecurityOnFirstBuild,
+  });
+
+  final String navId;
+  final bool scrollMyAccountSecurityOnFirstBuild;
+
+  static _OperatorWebInitialRoute resolve({
+    required String initialNavId,
+    required Uri initialUri,
+  }) {
+    final normalizedPath = _normalizePath(initialUri.path);
+    final fragment = initialUri.fragment.toLowerCase();
+    if (_kLegacySecurityPaths.contains(normalizedPath) ||
+        initialNavId == 'security' ||
+        initialNavId == 'sign-in-security') {
+      return const _OperatorWebInitialRoute(
+        navId: kOperatorWebNavMyAccount,
+        scrollMyAccountSecurityOnFirstBuild: true,
+      );
+    }
+    if ((normalizedPath == '/my-account' ||
+            normalizedPath == '/operator-web/my-account') &&
+        fragment == 'security') {
+      return const _OperatorWebInitialRoute(
+        navId: kOperatorWebNavMyAccount,
+        scrollMyAccountSecurityOnFirstBuild: true,
+      );
+    }
+    return _OperatorWebInitialRoute(
+      navId: initialNavId,
+      scrollMyAccountSecurityOnFirstBuild: false,
+    );
+  }
+
+  static String _normalizePath(String rawPath) {
+    final path = rawPath.trim().toLowerCase();
+    if (path.isEmpty) return '/';
+    return path.endsWith('/') && path.length > 1
+        ? path.substring(0, path.length - 1)
+        : path;
+  }
+}
+
+Uri _safeBaseUri() {
+  try {
+    return Uri.base;
+  } catch (_) {
+    return Uri(path: '/');
+  }
+}
+
 /// Top-level router widget for the operator-web console. Drop in
 /// under a `MaterialApp` with the brand theme.
 class OperatorWebRouter extends StatefulWidget {
@@ -115,6 +174,7 @@ class OperatorWebRouter extends StatefulWidget {
     required this.source,
     this.initialMagicLinkToken,
     this.initialNavId = kOperatorWebDefaultNavId,
+    this.initialUri,
   });
 
   /// Auth source the router watches.
@@ -131,6 +191,9 @@ class OperatorWebRouter extends StatefulWidget {
   /// vendor-connections placeholder.
   final String initialNavId;
 
+  /// Optional browser URI test seam. Production reads [Uri.base].
+  final Uri? initialUri;
+
   @override
   State<OperatorWebRouter> createState() => _OperatorWebRouterState();
 }
@@ -140,6 +203,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   late StreamSubscription<OperatorWebAuthState> _subscription;
   late String _selectedNavId;
   bool _busy = false;
+  bool _scrollMyAccountSecurityOnFirstBuild = false;
 
   /// Sub-route name within the Roles surface. `null` means the list
   /// view (`/roles`); other values mirror the parity-contract paths
@@ -172,7 +236,13 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   void initState() {
     super.initState();
     _state = widget.source.current;
-    _selectedNavId = widget.initialNavId;
+    final initialRoute = _OperatorWebInitialRoute.resolve(
+      initialNavId: widget.initialNavId,
+      initialUri: widget.initialUri ?? _safeBaseUri(),
+    );
+    _selectedNavId = initialRoute.navId;
+    _scrollMyAccountSecurityOnFirstBuild =
+        initialRoute.scrollMyAccountSecurityOnFirstBuild;
     _subscription = widget.source.stream.listen((next) {
       if (!mounted) return;
       setState(() => _state = next);
@@ -230,6 +300,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     }
     setState(() {
       _selectedNavId = id;
+      _scrollMyAccountSecurityOnFirstBuild = false;
       // Switching to a different top-level nav exits any roles
       // sub-route.
       if (id != kOperatorWebNavRoles) {
@@ -724,12 +795,6 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         group: 'Access',
       ),
       OperatorWebNavItem(
-        id: kOperatorWebNavSecurity,
-        title: 'Sign-in security',
-        icon: Icons.lock_outlined,
-        group: 'Access',
-      ),
-      OperatorWebNavItem(
         id: kOperatorWebNavSessions,
         title: 'Active sessions',
         icon: Icons.devices_outlined,
@@ -769,7 +834,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     final Widget body;
     switch (_selectedNavId) {
       case kOperatorWebNavMyAccount:
-        body = MyAccountScreen(session: session, actions: _accountActions);
+        body = MyAccountScreen(
+          session: session,
+          actions: _accountActions,
+          securityGateway: _securityGateway,
+          scrollToSecurityOnFirstBuild: _scrollMyAccountSecurityOnFirstBuild,
+        );
         break;
       case kOperatorWebNavBusinessSetup:
         if (locationScope == null) {
@@ -788,8 +858,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             locationId: locationScope.id,
             locationName: locationScope.label,
             gateway: _webBusinessTimingGateway,
-            existingProfile:
-                _resolvedExistingTimingProfile(locationScope.id),
+            existingProfile: _resolvedExistingTimingProfile(locationScope.id),
             onClose: () => setState(() => _editingBusinessTiming = false),
           );
         } else {
@@ -830,9 +899,6 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         break;
       case kOperatorWebNavAuditLog:
         body = AuditLogScreen(session: session, gateway: _teamAuditLogGateway);
-        break;
-      case kOperatorWebNavSecurity:
-        body = SecurityScreen(session: session, gateway: _securityGateway);
         break;
       case kOperatorWebNavVendorConnections:
         body = locationScope == null
@@ -877,9 +943,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       case kOperatorWebNavWageAuthority:
         body = locationScope == null
             ? _RequiresLocationScopeSurface(
-                key: const Key(
-                  'operator_web_wage_authority_requires_location',
-                ),
+                key: const Key('operator_web_wage_authority_requires_location'),
                 icon: Icons.payments_outlined,
                 title: 'Choose a location',
                 body:
@@ -891,7 +955,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 session: session,
                 locationId: locationScope.id,
                 locationName: locationScope.label,
-                gateway: _wageAuthorityGateway ??
+                gateway:
+                    _wageAuthorityGateway ??
                     (_routerOwnedDemoWageAuthorityGateway ??=
                         OperatorWebDemoWageAuthorityGateway()),
               );
@@ -918,15 +983,16 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 session: session,
                 locationId: locationScope.id,
                 locationName: locationScope.label,
-                gateway: _scheduleGateway ??
+                gateway:
+                    _scheduleGateway ??
                     (_routerOwnedDemoScheduleGateway ??=
                         OperatorWebDemoScheduleGateway(
-                      seed: demoScheduleSnapshotFor(
-                        operatorId: session.operatorId,
-                        locationId: locationScope.id,
-                        restaurantId: locationScope.id,
-                      ),
-                    )),
+                          seed: demoScheduleSnapshotFor(
+                            operatorId: session.operatorId,
+                            locationId: locationScope.id,
+                            restaurantId: locationScope.id,
+                          ),
+                        )),
               );
         break;
       default:
@@ -1138,7 +1204,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   }
 
   DemoWebNotificationPreferencesGateway?
-      _routerOwnedNotificationPreferencesGateway;
+  _routerOwnedNotificationPreferencesGateway;
 
   /// Phase 8 W5.A.2 - Wage authority screen gateway. Live wiring (the
   /// Firebase source plus the proxy) implements the provider mixin;
@@ -1154,8 +1220,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     return null;
   }
 
-  OperatorWebDemoWageAuthorityGateway?
-      _routerOwnedDemoWageAuthorityGateway;
+  OperatorWebDemoWageAuthorityGateway? _routerOwnedDemoWageAuthorityGateway;
 
   /// Phase 8 W5.B - Schedule screen gateway. Live wiring (Firebase
   /// source + proxy) implements the provider mixin; demo / fixture

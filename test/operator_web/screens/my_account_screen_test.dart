@@ -35,9 +35,18 @@ void main() {
     WidgetTester tester,
     OperatorWebSession session, {
     OperatorWebAccountActions? actions,
+    WebSecurityGateway? securityGateway,
+    DateTime Function()? now,
   }) async {
     await tester.pumpWidget(
-      wrap(MyAccountScreen(session: session, actions: actions)),
+      wrap(
+        MyAccountScreen(
+          session: session,
+          actions: actions,
+          securityGateway: securityGateway,
+          now: now,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
   }
@@ -489,6 +498,64 @@ void main() {
         expect(find.text('Password updated'), findsOneWidget);
       },
     );
+
+    testWidgets('Recent sign-in activity filters locally by window', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1024, 1100));
+      final session = sessionWithRole('operator_owner');
+      final gateway = _FakeSecurityGateway(() => DateTime.utc(2026, 5, 6, 12));
+
+      await pumpAccount(
+        tester,
+        session,
+        securityGateway: gateway,
+        now: () => DateTime.utc(2026, 5, 6, 12),
+      );
+
+      expect(
+        find.byKey(const Key('operator_web_security_login_history_section')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_security_login_history_row_history-recent'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_security_login_history_row_history-april'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(
+          const Key('operator_web_security_login_history_filter_last_7'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('operator_web_security_login_history_row_history-recent'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_security_login_history_row_history-april'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_security_login_history_row_history-march'),
+        ),
+        findsNothing,
+      );
+    });
   });
 
   group('MyAccountScreen Active Sessions section', () {
@@ -746,6 +813,36 @@ class _FakeSecurityGateway implements WebSecurityGateway {
   final DateTime Function() _now;
   final List<WebSecurityMfaFactor> _factors = <WebSecurityMfaFactor>[];
   final List<WebSecurityMfaRemoval> _removals = <WebSecurityMfaRemoval>[];
+  final List<WebSecurityLoginHistoryEntry> _history =
+      <WebSecurityLoginHistoryEntry>[
+        WebSecurityLoginHistoryEntry(
+          eventId: 'history-recent',
+          eventType: 'auth.signed_in',
+          friendlyLabel: 'Signed in',
+          occurredAt: DateTime.utc(2026, 5, 5, 11),
+          deviceLabel: 'Chrome on Mac',
+          geoCity: 'Portland',
+          geoCountry: 'US',
+        ),
+        WebSecurityLoginHistoryEntry(
+          eventId: 'history-april',
+          eventType: 'auth.password_changed',
+          friendlyLabel: 'Password changed',
+          occurredAt: DateTime.utc(2026, 4, 10, 9),
+          deviceLabel: 'Safari',
+          geoCity: 'Seattle',
+          geoCountry: 'US',
+        ),
+        WebSecurityLoginHistoryEntry(
+          eventId: 'history-march',
+          eventType: 'auth.session.revoked',
+          friendlyLabel: 'Session signed out',
+          occurredAt: DateTime.utc(2026, 3, 22, 17),
+          deviceLabel: 'iPad app',
+          geoCity: 'Boston',
+          geoCountry: 'US',
+        ),
+      ];
 
   void completeDueRemovals() {
     final now = _now().toUtc();
@@ -820,8 +917,10 @@ class _FakeSecurityGateway implements WebSecurityGateway {
   }
 
   @override
-  Future<WebSecurityLoginHistoryListed> listLoginHistory() {
-    throw UnimplementedError();
+  Future<WebSecurityLoginHistoryListed> listLoginHistory() async {
+    return WebSecurityLoginHistoryListed(
+      entries: List<WebSecurityLoginHistoryEntry>.unmodifiable(_history),
+    );
   }
 
   @override

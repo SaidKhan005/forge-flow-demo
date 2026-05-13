@@ -58,14 +58,27 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/operator_web_url_launcher.dart';
 import '../services/web_account_gateway.dart';
+import '../services/web_security_gateway.dart';
 
 /// V1 My account screen. The router renders this at
 /// `kOperatorWebNavMyAccount` once onboarding completes.
 class MyAccountScreen extends StatefulWidget {
-  const MyAccountScreen({super.key, required this.session, this.actions});
+  const MyAccountScreen({
+    super.key,
+    required this.session,
+    this.actions,
+    this.securityGateway,
+    this.scrollToSecurityOnFirstBuild = false,
+    this.now,
+  });
 
   final OperatorWebSession session;
   final OperatorWebAccountActions? actions;
+  final WebSecurityGateway? securityGateway;
+  final bool scrollToSecurityOnFirstBuild;
+
+  /// Test seam for the time-relative login-history filter.
+  final DateTime Function()? now;
 
   @override
   State<MyAccountScreen> createState() => _MyAccountScreenState();
@@ -86,6 +99,14 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
   bool _activeSessionsLoading = false;
   String? _activeSessionsError;
   bool _signingOutOtherSessions = false;
+  List<WebSecurityLoginHistoryEntry> _loginHistory =
+      const <WebSecurityLoginHistoryEntry>[];
+  bool _loginHistoryLoading = false;
+  String? _loginHistoryError;
+  int _loginHistoryGeneration = 0;
+  _SecurityHistoryWindow _historyWindow = _SecurityHistoryWindow.last90Days;
+  bool _didScrollToSecurity = false;
+  final GlobalKey _securityScrollAnchorKey = GlobalKey();
 
   // Layout breakpoint for the Profile section's 2-column wrap. Sized
   // so that:
@@ -105,7 +126,10 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     _mfaController.addListener(_onMfaControllerChanged);
     _mfaController.start();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _loadActiveSessions();
+      if (!mounted) return;
+      _scrollToSecurityIfRequested();
+      _loadActiveSessions();
+      _loadLoginHistory();
     });
   }
 
@@ -123,11 +147,21 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
       _mfaController.addListener(_onMfaControllerChanged);
       _mfaController.start();
       _loadActiveSessions();
+      _loadLoginHistory();
     } else {
       _mfaController.update(
         sessionMfaEnrolled: widget.session.mfaEnrolled,
         actions: widget.actions,
       );
+    }
+    if (oldWidget.securityGateway != widget.securityGateway) {
+      _loadLoginHistory();
+    }
+    if (!oldWidget.scrollToSecurityOnFirstBuild &&
+        widget.scrollToSecurityOnFirstBuild) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollToSecurityIfRequested();
+      });
     }
   }
 
@@ -292,6 +326,21 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
         !mfaState.busy;
   }
 
+  DateTime _now() => (widget.now?.call() ?? DateTime.now()).toUtc();
+
+  void _scrollToSecurityIfRequested() {
+    if (_didScrollToSecurity || !widget.scrollToSecurityOnFirstBuild) return;
+    final context = _securityScrollAnchorKey.currentContext;
+    if (context == null) return;
+    _didScrollToSecurity = true;
+    Scrollable.ensureVisible(
+      context,
+      alignment: 0,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
   Future<void> _handleChangePassword() async {
     if (!_canWriteAccount) return;
     final actions = widget.actions;
@@ -354,6 +403,54 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
         _activeSessionsError = 'Could not load active sessions: $error';
       });
     }
+  }
+
+  Future<void> _loadLoginHistory() async {
+    final gateway = widget.securityGateway;
+    if (gateway == null) {
+      if (!mounted) return;
+      setState(() {
+        _loginHistory = const <WebSecurityLoginHistoryEntry>[];
+        _loginHistoryLoading = false;
+        _loginHistoryError = null;
+      });
+      return;
+    }
+    final generation = ++_loginHistoryGeneration;
+    setState(() {
+      _loginHistoryLoading = true;
+      _loginHistoryError = null;
+    });
+    try {
+      final listed = await gateway.listLoginHistory();
+      if (!mounted || generation != _loginHistoryGeneration) return;
+      setState(() {
+        _loginHistory = listed.entries;
+        _loginHistoryLoading = false;
+      });
+    } catch (error) {
+      if (!mounted || generation != _loginHistoryGeneration) return;
+      setState(() {
+        _loginHistoryLoading = false;
+        _loginHistoryError = _friendlyLoginHistoryError(error);
+      });
+    }
+  }
+
+  String _friendlyLoginHistoryError(Object error) {
+    if (error is WebSecurityError) {
+      return 'Could not load recent sign-in activity (${error.code}). '
+          'Refresh this section or try again in a moment.';
+    }
+    return 'Could not load recent sign-in activity. Refresh this section or '
+        'try again in a moment.';
+  }
+
+  List<WebSecurityLoginHistoryEntry> _filteredLoginHistory() {
+    final cutoff = _now().subtract(_historyWindow.duration);
+    return _loginHistory
+        .where((entry) => !entry.occurredAt.toUtc().isBefore(cutoff))
+        .toList(growable: false);
   }
 
   Future<void> _handleSignOutOtherSessions() async {
@@ -482,9 +579,17 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
               ),
               const SizedBox(height: 14),
               _SecuritySection(
+                scrollAnchorKey: _securityScrollAnchorKey,
                 canWrite: _canWriteAccount,
                 readOnlyTooltip: _readOnlyTooltipPassword,
                 toastMessage: _passwordToast,
+                loginHistoryEntries: _filteredLoginHistory(),
+                loginHistoryLoading: _loginHistoryLoading,
+                loginHistoryError: _loginHistoryError,
+                historyWindow: _historyWindow,
+                onHistoryWindowChanged: (next) =>
+                    setState(() => _historyWindow = next),
+                onRetryLoginHistory: _loadLoginHistory,
                 onChangePassword: _handleChangePassword,
                 onAuditLog: _handleOpenAuditLog,
               ),
@@ -821,16 +926,30 @@ class _MfaSection extends StatelessWidget {
 
 class _SecuritySection extends StatelessWidget {
   const _SecuritySection({
+    required this.scrollAnchorKey,
     required this.canWrite,
     required this.readOnlyTooltip,
     required this.toastMessage,
+    required this.loginHistoryEntries,
+    required this.loginHistoryLoading,
+    required this.loginHistoryError,
+    required this.historyWindow,
+    required this.onHistoryWindowChanged,
+    required this.onRetryLoginHistory,
     required this.onChangePassword,
     required this.onAuditLog,
   });
 
+  final Key scrollAnchorKey;
   final bool canWrite;
   final String readOnlyTooltip;
   final String? toastMessage;
+  final List<WebSecurityLoginHistoryEntry> loginHistoryEntries;
+  final bool loginHistoryLoading;
+  final String? loginHistoryError;
+  final _SecurityHistoryWindow historyWindow;
+  final ValueChanged<_SecurityHistoryWindow> onHistoryWindowChanged;
+  final VoidCallback onRetryLoginHistory;
   final VoidCallback onChangePassword;
   final VoidCallback onAuditLog;
 
@@ -848,6 +967,7 @@ class _SecuritySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          SizedBox(key: scrollAnchorKey, height: 0),
           _ActionRow(
             actionKey: const Key('account_section_password_change'),
             header: 'Change password',
@@ -888,8 +1008,240 @@ class _SecuritySection extends StatelessWidget {
               ),
             ),
           ],
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: AppColors.borderSubtle),
+          const SizedBox(height: 14),
+          _LoginHistorySection(
+            entries: loginHistoryEntries,
+            loading: loginHistoryLoading,
+            errorMessage: loginHistoryError,
+            window: historyWindow,
+            onWindowChanged: onHistoryWindowChanged,
+            onRetry: onRetryLoginHistory,
+          ),
         ],
       ),
+    );
+  }
+}
+
+enum _SecurityHistoryWindow { last7Days, last30Days, last90Days }
+
+extension _SecurityHistoryWindowLabel on _SecurityHistoryWindow {
+  Duration get duration {
+    switch (this) {
+      case _SecurityHistoryWindow.last7Days:
+        return const Duration(days: 7);
+      case _SecurityHistoryWindow.last30Days:
+        return const Duration(days: 30);
+      case _SecurityHistoryWindow.last90Days:
+        return const Duration(days: 90);
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case _SecurityHistoryWindow.last7Days:
+        return 'Last 7 days';
+      case _SecurityHistoryWindow.last30Days:
+        return 'Last 30 days';
+      case _SecurityHistoryWindow.last90Days:
+        return 'Last 90 days';
+    }
+  }
+
+  String get filterKey {
+    switch (this) {
+      case _SecurityHistoryWindow.last7Days:
+        return 'last_7';
+      case _SecurityHistoryWindow.last30Days:
+        return 'last_30';
+      case _SecurityHistoryWindow.last90Days:
+        return 'last_90';
+    }
+  }
+}
+
+class _LoginHistorySection extends StatelessWidget {
+  const _LoginHistorySection({
+    required this.entries,
+    required this.loading,
+    required this.errorMessage,
+    required this.window,
+    required this.onWindowChanged,
+    required this.onRetry,
+  });
+
+  final List<WebSecurityLoginHistoryEntry> entries;
+  final bool loading;
+  final String? errorMessage;
+  final _SecurityHistoryWindow window;
+  final ValueChanged<_SecurityHistoryWindow> onWindowChanged;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      key: const Key('operator_web_security_login_history_section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Recent sign-in activity',
+          style: AppTextStyles.mono14(
+            color: AppColors.textPrimary,
+            weight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Sign-ins, password changes, and authenticator events from your '
+          'account, capped at the last 90 days. If you see an event you do '
+          'not recognise, change your password and review your authenticators.',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final w in _SecurityHistoryWindow.values)
+              _WindowChip(
+                keyName:
+                    'operator_web_security_login_history_filter_${w.filterKey}',
+                label: w.label,
+                selected: w == window,
+                onTap: () => onWindowChanged(w),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (loading)
+          const _AccountInlineState(
+            stateKey: Key('operator_web_security_login_history_loading'),
+            icon: Icons.sync,
+            message: 'Loading recent sign-in activity...',
+          )
+        else if (errorMessage != null)
+          _AccountInlineError(
+            containerKey: const Key(
+              'operator_web_security_login_history_error',
+            ),
+            retryKey: const Key('operator_web_security_login_history_retry'),
+            message: errorMessage!,
+            onRetry: onRetry,
+          )
+        else if (entries.isEmpty)
+          const _AccountInlineState(
+            stateKey: Key('operator_web_security_login_history_empty'),
+            icon: Icons.history,
+            message: 'No sign-in activity in this window.',
+          )
+        else
+          for (var i = 0; i < entries.length; i++) ...[
+            _LoginHistoryRow(entry: entries[i]),
+            if (i != entries.length - 1) const SizedBox(height: 10),
+          ],
+      ],
+    );
+  }
+}
+
+class _LoginHistoryRow extends StatelessWidget {
+  const _LoginHistoryRow({required this.entry});
+
+  final WebSecurityLoginHistoryEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final geo = _geoHint(entry);
+    return Container(
+      key: Key('operator_web_security_login_history_row_${entry.eventId}'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.history, size: 18, color: AppColors.sunsetDark),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  entry.friendlyLabel,
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _metaLine(entry, geo),
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _metaLine(WebSecurityLoginHistoryEntry entry, String? geo) {
+    final parts = <String>[
+      _formatUtcDateTime(entry.occurredAt),
+      if (entry.deviceLabel != null && entry.deviceLabel!.isNotEmpty)
+        entry.deviceLabel!,
+      if (geo != null) geo,
+    ];
+    return parts.join(' / ');
+  }
+
+  static String? _geoHint(WebSecurityLoginHistoryEntry entry) {
+    final parts = <String>[];
+    if (entry.geoCity != null && entry.geoCity!.isNotEmpty) {
+      parts.add(entry.geoCity!);
+    }
+    if (entry.geoCountry != null && entry.geoCountry!.isNotEmpty) {
+      parts.add(entry.geoCountry!);
+    }
+    return parts.isEmpty ? null : parts.join(', ');
+  }
+}
+
+class _WindowChip extends StatelessWidget {
+  const _WindowChip({
+    required this.keyName,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String keyName;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(
+      key: Key(keyName),
+      label: Text(label),
+      selected: selected,
+      labelStyle: AppTextStyles.mono11(
+        color: selected ? AppColors.sunsetDark : AppColors.textSecondary,
+      ),
+      selectedColor: AppColors.sunset.withValues(alpha: 0.15),
+      backgroundColor: AppColors.backgroundSurface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(4),
+        side: BorderSide(
+          color: selected ? AppColors.sunsetDark : AppColors.borderSubtle,
+          width: 1,
+        ),
+      ),
+      onSelected: (_) => onTap(),
     );
   }
 }
@@ -1129,15 +1481,22 @@ class _AccountInlineState extends StatelessWidget {
 }
 
 class _AccountInlineError extends StatelessWidget {
-  const _AccountInlineError({required this.message, required this.onRetry});
+  const _AccountInlineError({
+    this.containerKey = const Key('account_active_sessions_error'),
+    this.retryKey = const Key('account_active_sessions_retry'),
+    required this.message,
+    required this.onRetry,
+  });
 
+  final Key containerKey;
+  final Key retryKey;
   final String message;
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      key: const Key('account_active_sessions_error'),
+      key: containerKey,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppColors.negative.withValues(alpha: 0.08),
@@ -1158,7 +1517,7 @@ class _AccountInlineError extends StatelessWidget {
             ),
           ),
           TextButton(
-            key: const Key('account_active_sessions_retry'),
+            key: retryKey,
             onPressed: onRetry,
             child: const Text('Retry'),
           ),
@@ -1169,6 +1528,14 @@ class _AccountInlineError extends StatelessWidget {
 }
 
 // ─── Shared chrome ──────────────────────────────────────────────────
+
+String _formatUtcDateTime(DateTime value) {
+  final utc = value.toUtc();
+  return '${utc.year}-${_twoDigits(utc.month)}-${_twoDigits(utc.day)} '
+      '${_twoDigits(utc.hour)}:${_twoDigits(utc.minute)} UTC';
+}
+
+String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge({super.key, required this.label, required this.color});
