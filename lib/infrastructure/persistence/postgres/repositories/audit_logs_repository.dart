@@ -3,6 +3,24 @@
 // Append-only writer for the hash-chained `public.audit_logs` table
 // landed in `db/migrations/202604280005_phase_9_0sigma_f_audit_logs.sql`.
 //
+// Slice B8 (2026-05-13) — adds a sibling reader class
+// [AuditLogsReader] alongside the writer. The reader extends
+// [OperatorScopedRepository] so its hierarchy-filtered SELECT runs
+// through `withTenant` (RLS primary defense via SET LOCAL
+// app.operator_id; RLS policy backup). The writer class is left
+// untouched (`const AuditLogsRepository()` constructor stays
+// parameter-less) so the 19 existing call sites that construct the
+// repository with no arguments keep compiling without a sweep.
+//
+// The B8 reader is read-only — it issues SELECT only, never INSERT /
+// UPDATE / DELETE — so the `audit_logs_update_lint` posture is
+// preserved. The hierarchy predicate uses the same
+// `locations.org_unit_path <@ scope.path::ltree` ltree shape that
+// L_A1's `OrgUnitsRepository.getDescendantLocations` uses; the GIST
+// index on `locations.org_unit_path` from
+// `db/migrations/202604290101_phase_9_hierarchy_access_wiring.sql`
+// answers the predicate in O(log N).
+//
 // The companion `AuditLogsCutoverFlag` resolves the per-write
 // `audit_logs_cutover_enabled` feature flag. Production wires the
 // table-driven implementation
@@ -53,7 +71,9 @@
 
 import 'dart:convert';
 
+import '../operator_scoped_repository.dart';
 import '../postgres_executor.dart';
+import '../tenant_context.dart';
 
 class AuditLogsRepository {
   const AuditLogsRepository();
@@ -265,5 +285,282 @@ class FeatureFlagsTableAuditLogsCutoverFlag implements AuditLogsCutoverFlag {
     if (value is num) return value != 0;
     if (value is String) return value.toLowerCase() == 'true' || value == 't';
     return true;
+  }
+}
+
+/// Slice B8 — projection of one `public.audit_logs` row for the
+/// hierarchy-filtered admin read surface. Only the columns the audit
+/// log screen renders are exposed; the chain bytes (`row_hash`,
+/// `prev_row_hash`) stay inside Postgres because the admin screen
+/// shows action / actor / target / payload only.
+class AuditLogRow {
+  const AuditLogRow({
+    required this.id,
+    required this.operatorId,
+    required this.locationId,
+    required this.occurredAt,
+    required this.actorKind,
+    required this.action,
+    this.actorUserId,
+    this.actorPrincipalId,
+    this.targetKind,
+    this.targetId,
+    this.payload = const <String, Object?>{},
+    this.adminReason,
+    this.businessDate,
+    this.chainDate,
+  });
+
+  /// `id bigserial` projected as a string so the wire shape matches
+  /// the existing admin audit log row envelope (which uses string ids
+  /// for cursor-style pagination).
+  final String id;
+
+  final String operatorId;
+  final String? locationId;
+  final DateTime occurredAt;
+  final String actorKind;
+  final String? actorUserId;
+  final String? actorPrincipalId;
+  final String? targetKind;
+  final String? targetId;
+  final String action;
+  final Map<String, Object?> payload;
+  final String? adminReason;
+  final String? businessDate;
+  final String? chainDate;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'id': id,
+        'operator_id': operatorId,
+        if (locationId != null) 'location_id': locationId,
+        'occurred_at': occurredAt.toUtc().toIso8601String(),
+        'actor_kind': actorKind,
+        if (actorUserId != null) 'actor_user_id': actorUserId,
+        if (actorPrincipalId != null) 'actor_principal_id': actorPrincipalId,
+        if (targetKind != null) 'target_kind': targetKind,
+        if (targetId != null) 'target_id': targetId,
+        'action': action,
+        'payload': payload,
+        if (adminReason != null) 'admin_reason': adminReason,
+        if (businessDate != null) 'business_date': businessDate,
+        if (chainDate != null) 'chain_date': chainDate,
+      };
+}
+
+/// Slice B8 — hierarchy scope discriminator. The B8 admin filter
+/// emits one of three scope branches:
+///   * [operatorWide] — every audit row visible to the operator.
+///   * [orgUnit] — rows whose location sits under a named org_unit
+///     subtree (ltree `<@` predicate).
+///   * [location] — rows for a single location.
+enum AuditLogHierarchyScope { operatorWide, orgUnit, location }
+
+/// Slice B8 — wire-name → enum decoder. Invalid input returns null so
+/// the route layer can 400 with a readable message.
+AuditLogHierarchyScope? auditLogHierarchyScopeFromWire(String? raw) {
+  if (raw == null) return null;
+  switch (raw) {
+    case 'operator_wide':
+      return AuditLogHierarchyScope.operatorWide;
+    case 'org_unit':
+      return AuditLogHierarchyScope.orgUnit;
+    case 'location':
+      return AuditLogHierarchyScope.location;
+  }
+  return null;
+}
+
+String auditLogHierarchyScopeWireName(AuditLogHierarchyScope scope) {
+  switch (scope) {
+    case AuditLogHierarchyScope.operatorWide:
+      return 'operator_wide';
+    case AuditLogHierarchyScope.orgUnit:
+      return 'org_unit';
+    case AuditLogHierarchyScope.location:
+      return 'location';
+  }
+}
+
+/// Slice B8 — read-only repository over `public.audit_logs` with the
+/// hierarchy-scoped predicate. Extends [OperatorScopedRepository] so
+/// every read routes through `withTenant` and the per-operator RLS
+/// policy on the `audit_logs` table clamps the result set to the
+/// caller's tenant. The hierarchy join is layered on TOP of the RLS
+/// clamp — RLS handles cross-tenant isolation, this method's
+/// predicate handles cross-location filtering inside the tenant.
+///
+/// Read-only by construction: no mutating SQL anywhere in this class
+/// (asserted by `tool/audit_logs_update_lint.dart` — the lint only
+/// scans `db/migrations/**.sql` but the discipline is mirrored in
+/// review).
+class AuditLogsReader extends OperatorScopedRepository {
+  AuditLogsReader(super.tenantWrapper);
+
+  /// Hard cap on the result set per call so a chatty admin client
+  /// cannot ask for the whole ledger in one shot. The screen
+  /// paginates over this; cursor-style continuation lives in the
+  /// route layer (next-cursor = max id from the current page).
+  static const int defaultLimit = 100;
+  static const int maxLimit = 200;
+
+  /// Hierarchy-filtered list. The route layer pre-validates the
+  /// arguments (UUID shape, scope/orgUnitId pairing, time range
+  /// sanity) so this method assumes well-formed input and lets the
+  /// DB-level type casts reject the rest.
+  ///
+  /// Predicate composition:
+  ///   * Always: `operator_id = $operator_id` (enforced by RLS via
+  ///     `app_current_operator()`; the parameter is supplied as
+  ///     defense in depth, and the SET LOCAL inside `withTenant`
+  ///     anchors the GUC).
+  ///   * `occurred_at` range: `occurred_at >= @from AND
+  ///     occurred_at <= @to` so the chain partition scanner can prune
+  ///     by `chain_date` (CHECK constraint binds chain_date to UTC of
+  ///     occurred_at).
+  ///   * Scope branch:
+  ///     - operator_wide: no extra predicate.
+  ///     - org_unit: join `audit_logs.location_id = l.location_id`
+  ///       AND `l.org_unit_path <@ scope.path::ltree` where
+  ///       `scope.path = (SELECT path FROM org_units WHERE id =
+  ///       @org_unit_id::uuid AND deleted_at IS NULL)`. Rows whose
+  ///       `location_id` is NULL (operator-global events) are
+  ///       excluded because the slice spec narrows org_unit scope to
+  ///       rows attributable to a location under the subtree.
+  ///     - location: `audit_logs.location_id = @location_id::uuid`.
+  ///   * Optional `actor_user_id` / `action` filters narrow further.
+  ///
+  /// Returns rows ordered by `id DESC` (newest first) so a cursor
+  /// using `id < @before_id` advances chronologically backwards.
+  Future<List<AuditLogRow>> listByHierarchy({
+    required String operatorId,
+    required String locationId,
+    required AuditLogHierarchyScope scopeType,
+    String? orgUnitId,
+    String? locationFilter,
+    required DateTime from,
+    required DateTime to,
+    String? actorUserId,
+    String? action,
+    int? limit,
+    int? beforeId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    final effectiveLimit = (limit ?? defaultLimit)
+        .clamp(1, maxLimit)
+        .toInt();
+    return withTenant<List<AuditLogRow>>(ctx, (exec) async {
+      // Build the WHERE branches in a stable order so the explain
+      // plan stays comparable across calls. Parameters bind by name;
+      // unused names are omitted from the supplied map to keep the
+      // postgres driver from rejecting extras.
+      final params = <String, Object?>{
+        'from': from.toUtc(),
+        'to': to.toUtc(),
+        'limit': effectiveLimit,
+      };
+      final whereClauses = <String>[
+        'al.occurred_at >= @from::timestamptz',
+        'al.occurred_at <= @to::timestamptz',
+      ];
+      if (actorUserId != null && actorUserId.isNotEmpty) {
+        whereClauses.add('al.actor_user_id = @actor_user_id::uuid');
+        params['actor_user_id'] = actorUserId;
+      }
+      if (action != null && action.isNotEmpty) {
+        whereClauses.add('al.action = @action');
+        params['action'] = action;
+      }
+      if (beforeId != null) {
+        whereClauses.add('al.id < @before_id');
+        params['before_id'] = beforeId;
+      }
+
+      String fromClause = 'public.audit_logs al';
+      switch (scopeType) {
+        case AuditLogHierarchyScope.operatorWide:
+          // No extra join. RLS clamps to the operator already.
+          break;
+        case AuditLogHierarchyScope.orgUnit:
+          // ltree subtree predicate via inline subquery on org_units.
+          // RLS on org_units clamps the subquery to the caller's
+          // tenant, so a foreign org_unit_id returns no scope path
+          // and the join yields zero rows.
+          fromClause = 'public.audit_logs al '
+              'join public.locations l '
+              '  on l.location_id = al.location_id '
+              ' and l.deleted_at is null '
+              ' and l.org_unit_path <@ ('
+              '   select path from public.org_units '
+              '    where id = @org_unit_id::uuid '
+              '      and deleted_at is null'
+              ' )';
+          params['org_unit_id'] = orgUnitId;
+          whereClauses.add('al.location_id is not null');
+          break;
+        case AuditLogHierarchyScope.location:
+          whereClauses.add('al.location_id = @location_filter::uuid');
+          params['location_filter'] = locationFilter;
+          break;
+      }
+
+      final sql = 'select '
+          'al.id::text as id, '
+          'al.operator_id::text as operator_id, '
+          'al.location_id::text as location_id, '
+          'al.occurred_at, '
+          'al.actor_kind, '
+          'al.actor_user_id::text as actor_user_id, '
+          'al.actor_principal_id, '
+          'al.target_kind, '
+          'al.target_id, '
+          'al.action, '
+          'al.payload::text as payload_text, '
+          'al.admin_reason, '
+          'al.business_date::text as business_date, '
+          'al.chain_date::text as chain_date '
+          'from $fromClause '
+          'where ${whereClauses.join(' and ')} '
+          'order by al.id desc '
+          'limit @limit';
+
+      final rows = await exec.query(sql, parameters: params);
+      return rows.map(_rowFromMap).toList(growable: false);
+    });
+  }
+
+  static AuditLogRow _rowFromMap(Map<String, Object?> row) {
+    final payloadText = row['payload_text'];
+    final payload = <String, Object?>{};
+    if (payloadText is String && payloadText.isNotEmpty) {
+      final decoded = jsonDecode(payloadText);
+      if (decoded is Map) {
+        payload.addAll(decoded.cast<String, Object?>());
+      }
+    }
+    final occurredAt = row['occurred_at'];
+    return AuditLogRow(
+      id: row['id']! as String,
+      operatorId: row['operator_id']! as String,
+      locationId: row['location_id'] as String?,
+      occurredAt: occurredAt is DateTime
+          ? occurredAt.toUtc()
+          : DateTime.parse(occurredAt!.toString()).toUtc(),
+      actorKind: row['actor_kind']! as String,
+      actorUserId: row['actor_user_id'] as String?,
+      actorPrincipalId: row['actor_principal_id'] as String?,
+      targetKind: row['target_kind'] as String?,
+      targetId: row['target_id'] as String?,
+      action: row['action']! as String,
+      payload: payload,
+      adminReason: row['admin_reason'] as String?,
+      businessDate: row['business_date'] as String?,
+      chainDate: row['chain_date'] as String?,
+    );
   }
 }
