@@ -232,6 +232,7 @@ class ProxyProductionBindings {
     required this.passwordResetEmailShortCounter,
     required this.passwordResetIpCounter,
     required this.permissionVersionChecker,
+    required this.sessionRecordIncompleteGauge,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -448,6 +449,17 @@ class ProxyProductionBindings {
   /// 401 so the client re-authenticates and gets a fresh token that
   /// reflects the updated permissions.
   final PermissionVersionChecker permissionVersionChecker;
+
+  /// Slice A11.1 — production session-record completeness gauge.
+  /// In-process counter that observes 2xx responses from session-
+  /// finalizing routes (today: POST /v1/auth/session/login) and
+  /// increments `proxy.session_record.incomplete{route, missing_field}`
+  /// when the response body fails
+  /// [SessionRecordCompleteness.assertComplete]. Volatile across proxy
+  /// restarts; the in-memory shape mirrors the HARD-B counters above.
+  /// Authority: docs/_execution/lane_a_code_health/03_execution_slices.md
+  /// "Slice A11.1 — Production Session-Record Gauge" + R3 §2 stretch.
+  final SessionRecordIncompleteGauge sessionRecordIncompleteGauge;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -1151,6 +1163,12 @@ ProxyProductionBindings buildProxyProductionBindings(
     notificationPreferencesRouter: notificationPreferencesRouter,
     wageRoleRowsRouter: wageRoleRowsRouter,
     authHandoffRouter: authHandoffRouter,
+    // Slice A11.1 — production session-record gauge. Single shared
+    // instance per proxy process; the route handler increments it on
+    // every 2xx from POST /v1/auth/session/login, the deep-health
+    // envelope reads `snapshot()` for the
+    // `proxy.session_record.incomplete{route, missing_field}` gauge.
+    sessionRecordIncompleteGauge: SessionRecordIncompleteGauge(),
   );
 }
 

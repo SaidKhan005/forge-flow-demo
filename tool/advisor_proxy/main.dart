@@ -1672,6 +1672,16 @@ Future<void> _runProxy(List<String> args) async {
             // router. Without this binding the POST/DELETE routes
             // return 503 wage_role_rows_router_not_configured.
             wageRoleRowsRouter: productionBindings.wageRoleRowsRouter,
+            // Slice A11.1 — production session-record completeness
+            // gauge. Increments
+            // proxy.session_record.incomplete{route, missing_field} on
+            // every 2xx from POST /v1/auth/session/login that fails
+            // SessionRecordCompleteness.assertComplete. Observability-
+            // only: never alters the response. Authority: docs/_execution/
+            // lane_a_code_health/03_execution_slices.md Slice A11.1 +
+            // R3 §2 stretch goal.
+            sessionRecordIncompleteGauge:
+                productionBindings.sessionRecordIncompleteGauge,
           );
         } catch (error, stack) {
           log(
