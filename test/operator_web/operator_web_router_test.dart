@@ -200,11 +200,8 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.descendant(
-            of: find.byKey(const Key('operator_web_nav_item_security')),
-            matching: find.byIcon(Icons.lock_outlined),
-          ),
-          findsOneWidget,
+          find.byKey(const Key('operator_web_nav_item_security')),
+          findsNothing,
         );
         final navOrder = [
           'account',
@@ -213,7 +210,6 @@ void main() {
           'my_account',
           'members',
           'roles',
-          'security',
           'sessions',
           'audit_log',
           'vendor_connections',
@@ -242,6 +238,124 @@ void main() {
         );
       },
     );
+
+    testWidgets('/security deep link opens My account security section', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final source = DemoOperatorWebAuthSource.completed();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialUri: Uri.parse('https://app.forgeflow.app/security'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_account_screen')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('account_section_security')), findsOneWidget);
+      expect(
+        find.byKey(const Key('operator_web_security_login_history_section')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_nav_item_security')),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
+      '/sign-in-security deep link opens My account security section',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = DemoOperatorWebAuthSource.completed();
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialUri: Uri.parse(
+                'https://app.forgeflow.app/sign-in-security?mode=continue',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('operator_web_account_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('account_section_security')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_security_login_history_section')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('prior /operator-web/sign-in-security alias opens My account', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final source = DemoOperatorWebAuthSource.completed();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialUri: Uri.parse(
+              'https://app.forgeflow.app/operator-web/sign-in-security',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_account_screen')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('account_section_security')), findsOneWidget);
+    });
+
+    testWidgets('/my-account#security opens My account security section', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final source = DemoOperatorWebAuthSource.completed();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialUri: Uri.parse(
+              'https://app.forgeflow.app/my-account#security',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_account_screen')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('account_section_security')), findsOneWidget);
+    });
 
     testWidgets('side nav switches body to vendor-connections screen', (
       tester,
