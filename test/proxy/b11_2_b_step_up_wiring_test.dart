@@ -73,7 +73,7 @@ void main() {
       ];
 
       for (final probe in probes) {
-        final gateway = _RecordingStepUpGateway();
+        final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
         final router = StepUpChallengeRouter(gateway: gateway);
         final request = _FakeHttpRequest(
           method: probe.method,
@@ -129,7 +129,7 @@ void main() {
 
     test('valid presented Step-Up-Challenge-Id HEADER admits the request',
         () async {
-      final gateway = _RecordingStepUpGateway();
+      final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
       // Pre-seed the gateway with a challenge for opA/userA/revoke.
       gateway.seedChallenge(
         challengeId: 'CHAL_VALID',
@@ -177,7 +177,7 @@ void main() {
     });
 
     test('consumed challenge replayed returns 410', () async {
-      final gateway = _RecordingStepUpGateway();
+      final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
       gateway.seedChallenge(
         challengeId: 'CHAL_ALREADY_USED',
         operatorId: _opA,
@@ -217,7 +217,7 @@ void main() {
 
     test('cross-operator challenge replay returns 401 (oracle-safe)',
         () async {
-      final gateway = _RecordingStepUpGateway();
+      final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
       // Challenge issued for operator B; replay attempt from operator A.
       gateway.seedChallenge(
         challengeId: 'CHAL_CROSS_OP',
@@ -256,7 +256,7 @@ void main() {
     });
 
     test('wrong-route challenge replay returns 401 (oracle-safe)', () async {
-      final gateway = _RecordingStepUpGateway();
+      final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
       gateway.seedChallenge(
         challengeId: 'CHAL_FOR_PASSWORD',
         operatorId: _opA,
@@ -292,7 +292,7 @@ void main() {
     });
 
     test('service-principal caller skips the gate (V1)', () async {
-      final gateway = _RecordingStepUpGateway();
+      final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
       final router = StepUpChallengeRouter(gateway: gateway);
       final request = _FakeHttpRequest(
         method: 'POST',
@@ -321,7 +321,7 @@ void main() {
 
     test('unflagged route is unaffected (gate.isSensitive returns false)',
         () async {
-      final router = StepUpChallengeRouter(gateway: _RecordingStepUpGateway());
+      final router = StepUpChallengeRouter(gateway: _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10)));
       // The dispatcher would not call runStepUpGate at all because
       // isSensitive returns false; here we assert isSensitive directly.
       expect(
@@ -343,7 +343,7 @@ void main() {
       'addendum A1 — Step-Up-Challenge-Id passed as URL query parameter is '
       'IGNORED; the gate emits a fresh challenge',
       () async {
-        final gateway = _RecordingStepUpGateway();
+        final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
         gateway.seedChallenge(
           challengeId: 'CHAL_TOKEN_IN_URL',
           operatorId: _opA,
@@ -444,6 +444,10 @@ class _StubAuthGuard implements ProxyRequestGuard {
 /// `Map<String, _StoredChallenge>` so tests can assert emit/consume
 /// behavior without binding Postgres.
 class _RecordingStepUpGateway implements StepUpChallengesGateway {
+  _RecordingStepUpGateway({DateTime Function() now = DateTime.now})
+      : _now = now;
+
+  final DateTime Function() _now;
   final Map<String, _StoredChallenge> _store = <String, _StoredChallenge>{};
   final List<_StoredChallenge> emittedChallenges = <_StoredChallenge>[];
   final List<String> consumedIds = <String>[];
@@ -493,7 +497,7 @@ class _RecordingStepUpGateway implements StepUpChallengesGateway {
       routePath: routePath,
       requiredAcr: requiredAcr,
       requiredFreshnessSeconds: requiredFreshnessSeconds,
-      expiresAt: DateTime.now().toUtc().add(challengeTtl),
+      expiresAt: _now().toUtc().add(challengeTtl),
     );
     _store[challengeId] = row;
     emittedChallenges.add(row);
@@ -514,8 +518,8 @@ class _RecordingStepUpGateway implements StepUpChallengesGateway {
     if (row.userId != callerUserId) return null;
     if (row.routePath != callerRoutePath) return null;
     if (row.consumedAt != null) return null;
-    if (row.expiresAt.isBefore(DateTime.now().toUtc())) return null;
-    row.consumedAt = DateTime.now().toUtc();
+    if (row.expiresAt.isBefore(_now().toUtc())) return null;
+    row.consumedAt = _now().toUtc();
     consumedIds.add(challengeId);
     return StepUpChallengeConsumed(
       challengeId: row.challengeId,
