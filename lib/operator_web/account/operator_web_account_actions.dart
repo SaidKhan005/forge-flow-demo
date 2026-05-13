@@ -125,6 +125,20 @@ extension OperatorWebAccountMfaActions on OperatorWebAccountActions {
     }
   }
 
+  Future<WebSecurityRecoveryCodesViewedResult>
+  markAccountMfaRecoveryCodesViewed({required String factorId}) async {
+    final gateway = _requireAccountSecurityGateway();
+    try {
+      return await gateway.markRecoveryCodesViewed(
+        factorId: factorId,
+        idempotencyKey: _accountMfaIdempotencyKey('recovery_codes_viewed'),
+      );
+    } on WebSecurityError catch (error) {
+      _dispatchMfaSecurityRedirectIfNeeded(error);
+      rethrow;
+    }
+  }
+
   Future<WebSecurityCancelRemovalResult> cancelAccountMfaRemoval({
     required String requestId,
   }) async {

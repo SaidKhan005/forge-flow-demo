@@ -229,25 +229,33 @@ void main() {
       );
     });
 
-    testWidgets(
-      'session.mfaEnrolled=true initial state shows Manage methods CTA',
-      (tester) async {
-        await sizeViewport(tester, const Size(1024, 768));
-        final session = sessionWithRole('operator_owner', mfaEnrolled: true);
+    testWidgets('renders the adaptive R1 MFA labels', (tester) async {
+      await sizeViewport(tester, const Size(1024, 900));
 
-        await pumpAccount(tester, session);
+      await pumpAccount(tester, sessionWithRole('operator_owner'));
+      expect(find.text('Enable two-factor sign-in'), findsOneWidget);
 
-        expect(find.text('MFA: Enrolled'), findsOneWidget);
-        expect(
-          find.byKey(const Key('account_section_mfa_manage')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('account_section_mfa_enroll')),
-          findsNothing,
-        );
-      },
-    );
+      final session = sessionWithRole('operator_owner', mfaEnrolled: true);
+      await pumpAccount(tester, session, actions: _FakeMfaAccountActions());
+      expect(find.text('View recovery codes'), findsOneWidget);
+
+      await pumpAccount(
+        tester,
+        session,
+        actions: _FakeMfaAccountActions(recoveryCodesViewed: true),
+      );
+      expect(find.text('Add another method'), findsOneWidget);
+
+      await pumpAccount(
+        tester,
+        session,
+        actions: _FakeMfaAccountActions(
+          recoveryCodesViewed: true,
+          factorCount: 2,
+        ),
+      );
+      expect(find.text('Manage two-factor sign-in'), findsOneWidget);
+    });
 
     testWidgets('Enroll -> confirm 123456 -> badge flips to Enrolled', (
       tester,
@@ -273,10 +281,7 @@ void main() {
 
       expect(find.byKey(const Key('mfa_enroll_dialog')), findsNothing);
       expect(find.text('MFA: Enrolled'), findsOneWidget);
-      expect(
-        find.byKey(const Key('account_section_mfa_manage')),
-        findsOneWidget,
-      );
+      expect(find.text('View recovery codes'), findsOneWidget);
     });
 
     testWidgets('Wrong code surfaces remediation copy without flipping badge', (
@@ -313,15 +318,18 @@ void main() {
     ) async {
       await sizeViewport(tester, const Size(1024, 900));
       final session = sessionWithRole('operator_owner', mfaEnrolled: true);
-      final actions = _FakeMfaAccountActions(now: () => DateTime.now().toUtc());
+      final actions = _FakeMfaAccountActions(
+        now: () => DateTime.now().toUtc(),
+        recoveryCodesViewed: true,
+      );
 
       await pumpAccount(tester, session, actions: actions);
 
       await tester.ensureVisible(
-        find.byKey(const Key('account_section_mfa_manage')),
+        find.byKey(const Key('account_section_mfa_add_method')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('account_section_mfa_manage')));
+      await tester.tap(find.byKey(const Key('account_section_mfa_add_method')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('account_section_mfa_turn_off')));
       await tester.pumpAndSettle();
@@ -344,42 +352,42 @@ void main() {
 
       expect(find.text('MFA: Enrolled'), findsOneWidget);
       expect(
-        find.byKey(const Key('account_section_mfa_manage')),
+        find.byKey(const Key('account_section_mfa_add_method')),
         findsOneWidget,
       );
       expect(actions.stepUpLabels, contains('cancelling 2FA removal'));
     });
 
-    testWidgets(
-      'Manage methods disables removal without server-backed factor state',
-      (tester) async {
-        await sizeViewport(tester, const Size(1024, 900));
-        final session = sessionWithRole('operator_owner', mfaEnrolled: true);
-        final actions = _FakeAccountActions();
+    testWidgets('View recovery codes is available without write access', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1024, 900));
+      final session = sessionWithRole('location_manager', mfaEnrolled: true);
+      final actions = _FakeMfaAccountActions();
 
-        await pumpAccount(tester, session, actions: actions);
+      await pumpAccount(tester, session, actions: actions);
 
-        await tester.ensureVisible(
-          find.byKey(const Key('account_section_mfa_manage')),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('account_section_mfa_manage')));
-        await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('account_section_mfa_view_recovery_codes')),
+      );
+      await tester.pumpAndSettle();
+      final viewCodes = tester.widget<OutlinedButton>(
+        find.byKey(const Key('account_section_mfa_view_recovery_codes')),
+      );
+      expect(viewCodes.onPressed, isNotNull);
 
-        final turnOff = tester.widget<OutlinedButton>(
-          find.byKey(const Key('account_section_mfa_turn_off')),
-        );
-        expect(turnOff.onPressed, isNull);
-        expect(
-          find.textContaining('confirms your authenticator with the server'),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('account_section_mfa_request_removal_dialog')),
-          findsNothing,
-        );
-      },
-    );
+      await tester.tap(
+        find.byKey(const Key('account_section_mfa_view_recovery_codes')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('mfa_backup_codes_dialog')), findsOneWidget);
+      expect(actions.securityGateway.recoveryCodesViewedCalls, equals(1));
+
+      await tester.tap(find.byKey(const Key('mfa_backup_codes_dialog_close')));
+      await tester.pumpAndSettle();
+      expect(find.text('Add another method'), findsOneWidget);
+    });
 
     testWidgets('Removable turns off after step-up when server drops factor', (
       tester,
@@ -387,15 +395,18 @@ void main() {
       await sizeViewport(tester, const Size(1024, 900));
       var now = DateTime.utc(2026, 5, 6, 12);
       final session = sessionWithRole('operator_owner', mfaEnrolled: true);
-      final actions = _FakeMfaAccountActions(now: () => now);
+      final actions = _FakeMfaAccountActions(
+        now: () => now,
+        recoveryCodesViewed: true,
+      );
 
       await pumpAccount(tester, session, actions: actions);
 
       await tester.ensureVisible(
-        find.byKey(const Key('account_section_mfa_manage')),
+        find.byKey(const Key('account_section_mfa_add_method')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('account_section_mfa_manage')));
+      await tester.tap(find.byKey(const Key('account_section_mfa_add_method')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('account_section_mfa_turn_off')));
       await tester.pumpAndSettle();
@@ -782,8 +793,15 @@ class _FakeMfaAccountActions extends _FakeAccountActions
     implements
         OperatorWebSecurityGatewayProvider,
         OperatorWebAccountMfaFreshnessGate {
-  _FakeMfaAccountActions({required DateTime Function() now})
-    : securityGateway = _FakeSecurityGateway(now);
+  _FakeMfaAccountActions({
+    DateTime Function()? now,
+    bool recoveryCodesViewed = false,
+    int factorCount = 1,
+  }) : securityGateway = _FakeSecurityGateway(
+         now ?? (() => DateTime.utc(2026, 5, 6, 12)),
+         recoveryCodesViewed: recoveryCodesViewed,
+         factorCount: factorCount,
+       );
 
   @override
   final _FakeSecurityGateway securityGateway;
@@ -799,20 +817,28 @@ class _FakeMfaAccountActions extends _FakeAccountActions
 }
 
 class _FakeSecurityGateway implements WebSecurityGateway {
-  _FakeSecurityGateway(DateTime Function() now) : _now = now {
-    _factors.add(
-      WebSecurityMfaFactor(
-        factorId: 'totp-db-factor',
-        factorType: 'totp',
-        enrolledAt: now().subtract(const Duration(days: 7)),
-        issuerLabel: 'Forge & Flow',
-      ),
-    );
+  _FakeSecurityGateway(
+    DateTime Function() now, {
+    bool recoveryCodesViewed = false,
+    int factorCount = 1,
+  }) : _now = now {
+    for (var index = 0; index < factorCount; index += 1) {
+      _factors.add(
+        WebSecurityMfaFactor(
+          factorId: 'totp-db-factor-${index + 1}',
+          factorType: 'totp',
+          enrolledAt: now().subtract(Duration(days: 7 - index)),
+          recoveryCodesViewedAt: recoveryCodesViewed ? now() : null,
+          issuerLabel: 'Forge & Flow',
+        ),
+      );
+    }
   }
 
   final DateTime Function() _now;
   final List<WebSecurityMfaFactor> _factors = <WebSecurityMfaFactor>[];
   final List<WebSecurityMfaRemoval> _removals = <WebSecurityMfaRemoval>[];
+  int recoveryCodesViewedCalls = 0;
   final List<WebSecurityLoginHistoryEntry> _history =
       <WebSecurityLoginHistoryEntry>[
         WebSecurityLoginHistoryEntry(
@@ -879,6 +905,34 @@ class _FakeSecurityGateway implements WebSecurityGateway {
       requestId: removal.requestId,
       executeAfter: executeAfter,
     );
+  }
+
+  @override
+  Future<WebSecurityRecoveryCodesViewedResult> markRecoveryCodesViewed({
+    required String factorId,
+    required String idempotencyKey,
+  }) async {
+    recoveryCodesViewedCalls += 1;
+    final index = _factors.indexWhere((factor) => factor.factorId == factorId);
+    if (index == -1) {
+      throw const WebSecurityError(
+        code: 'mfa_factor_not_found',
+        message: 'Authenticator was already removed or does not exist.',
+        statusCode: 404,
+      );
+    }
+    final factor = _factors[index];
+    final viewedAt = factor.recoveryCodesViewedAt ?? _now().toUtc();
+    _factors[index] = WebSecurityMfaFactor(
+      factorId: factor.factorId,
+      factorType: factor.factorType,
+      enrolledAt: factor.enrolledAt,
+      lastUsedAt: factor.lastUsedAt,
+      recoveryCodesViewedAt: viewedAt,
+      issuerLabel: factor.issuerLabel,
+      canRevoke: factor.canRevoke,
+    );
+    return WebSecurityRecoveryCodesViewedResult(viewedAt: viewedAt);
   }
 
   @override

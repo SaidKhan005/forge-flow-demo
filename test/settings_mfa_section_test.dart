@@ -427,6 +427,13 @@ class _SlowListGateway implements MfaOperationsGateway {
   }
 
   @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
     MfaCancelFactorRemovalCommand command,
   ) {
@@ -479,6 +486,13 @@ class _FlakyListGateway implements MfaOperationsGateway {
   }
 
   @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
     MfaCancelFactorRemovalCommand command,
   ) {
@@ -519,6 +533,13 @@ class _RecordingMfaGateway implements MfaOperationsGateway {
   @override
   Future<MfaRevokeFactorCompleted> revokeFactor(
     MfaRevokeFactorCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
   ) {
     throw UnimplementedError();
   }
@@ -577,6 +598,13 @@ class _FreshnessRequiredGateway implements MfaOperationsGateway {
       code: 'mfa_freshness_required',
       message: 'Sign in again before removing MFA.',
     );
+  }
+
+  @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
+  ) {
+    throw UnimplementedError();
   }
 
   @override
@@ -646,6 +674,13 @@ class _PendingRemovalGateway implements MfaOperationsGateway {
       requestId: 'removal-request-1',
       executeAfter: DateTime.utc(2026, 5, 1),
     );
+  }
+
+  @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
+  ) {
+    throw UnimplementedError();
   }
 
   @override

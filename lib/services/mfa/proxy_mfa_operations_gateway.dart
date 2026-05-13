@@ -27,6 +27,8 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
   static const String totpConfirmPath = '/v1/auth/mfa/totp/confirm';
   static const String factorsListPath = '/v1/auth/mfa/factors/list';
   static const String factorsRevokePath = '/v1/auth/mfa/factors/revoke';
+  static const String recoveryCodesViewedPath =
+      '/v1/auth/mfa/recovery-codes/viewed';
   static const String factorsRemovalCancelPath =
       '/v1/auth/mfa/factors/removal/cancel';
 
@@ -131,6 +133,24 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
   }
 
   @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
+  ) async {
+    final response = await _post(recoveryCodesViewedPath, <String, Object?>{
+      'factor_id': command.factorId,
+    }, idempotencyKey: command.idempotencyKey);
+    _expectStatus(response, 200);
+    final viewedAt = _readDateTime(response.body['recovery_codes_viewed_at']);
+    if (viewedAt == null) {
+      throw const MfaOperationRejected(
+        code: 'malformed_response',
+        message: 'MFA recovery codes viewed response was incomplete.',
+      );
+    }
+    return MfaMarkRecoveryCodesViewedCompleted(viewedAt: viewedAt);
+  }
+
+  @override
   Future<MfaRevokeUserFactorsCompleted> revokeUserFactors(
     MfaRevokeUserFactorsCommand command,
   ) async {
@@ -163,8 +183,9 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
 
   Future<ProxyAuthOperationsResponse> _post(
     String relativePath,
-    Map<String, Object?> body,
-  ) async {
+    Map<String, Object?> body, {
+    String? idempotencyKey,
+  }) async {
     final token = await _idTokenProvider();
     if (token == null || token.trim().isEmpty) {
       throw const MfaOperationRejected(
@@ -178,6 +199,7 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
         url: _proxyBaseUri.resolve(relativePath),
         headers: <String, String>{
           HttpHeaders.authorizationHeader: 'Bearer ${token.trim()}',
+          if (idempotencyKey != null) 'Idempotency-Key': idempotencyKey,
         },
         body: body,
       );
@@ -250,6 +272,7 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
       factorType: factorType,
       enrolledAt: enrolledAt,
       lastUsedAt: _readDateTime(json['last_used_at']),
+      recoveryCodesViewedAt: _readDateTime(json['recovery_codes_viewed_at']),
       issuerLabel: issuerLabel,
       canRevoke: json['can_revoke'] is bool ? json['can_revoke'] as bool : true,
     );

@@ -58,6 +58,7 @@ class WebSecurityMfaFactor {
     required this.enrolledAt,
     required this.issuerLabel,
     this.lastUsedAt,
+    this.recoveryCodesViewedAt,
     this.canRevoke = true,
   });
 
@@ -69,6 +70,7 @@ class WebSecurityMfaFactor {
   final String factorType;
   final DateTime enrolledAt;
   final DateTime? lastUsedAt;
+  final DateTime? recoveryCodesViewedAt;
   final String issuerLabel;
   final bool canRevoke;
 }
@@ -136,6 +138,12 @@ class WebSecurityCancelRemovalResult {
   const WebSecurityCancelRemovalResult({required this.cancelled});
 
   final bool cancelled;
+}
+
+class WebSecurityRecoveryCodesViewedResult {
+  const WebSecurityRecoveryCodesViewedResult({required this.viewedAt});
+
+  final DateTime viewedAt;
 }
 
 class WebSecurityPasswordChangeResult {
@@ -232,6 +240,14 @@ abstract class WebSecurityGateway {
     required String idempotencyKey,
   });
 
+  /// Marks recovery codes viewed for an enrolled factor. The proxy writes
+  /// `mfa_factors.recovery_codes_viewed_at` idempotently and audits the first
+  /// transition.
+  Future<WebSecurityRecoveryCodesViewedResult> markRecoveryCodesViewed({
+    required String factorId,
+    required String idempotencyKey,
+  });
+
   /// Queues an MFA recovery request via
   /// `POST /v1/auth/mfa/recovery/request`. The proxy accepts the
   /// request without an authenticated bearer token (recovery is for
@@ -263,10 +279,7 @@ abstract class WebSecurityGateway {
 /// the unit test can assert on status + body without re-implementing
 /// the parser.
 class WebSecurityResponse {
-  const WebSecurityResponse({
-    required this.statusCode,
-    required this.body,
-  });
+  const WebSecurityResponse({required this.statusCode, required this.body});
 
   final int statusCode;
   final Map<String, Object?> body;
@@ -306,6 +319,8 @@ class WebSecurityPaths {
   static const String mfaTotpBegin = '/v1/auth/mfa/totp/begin';
   static const String mfaTotpConfirm = '/v1/auth/mfa/totp/confirm';
   static const String mfaRevoke = '/v1/auth/mfa/factors/revoke';
+  static const String mfaRecoveryCodesViewed =
+      '/v1/auth/mfa/recovery-codes/viewed';
   static const String mfaCancelRemoval = '/v1/auth/mfa/factors/removal/cancel';
   static const String mfaRecoveryRequest = '/v1/auth/mfa/recovery/request';
   static const String passwordChange = '/v1/auth/password/change';
@@ -426,10 +441,10 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
     http.Client? httpClient,
     Duration timeout = const Duration(seconds: 30),
     DateTime Function()? now,
-  })  : _idTokenProvider = idTokenProvider,
-        _httpClient = httpClient ?? http.Client(),
-        _timeout = timeout,
-        _now = now ?? DateTime.now;
+  }) : _idTokenProvider = idTokenProvider,
+       _httpClient = httpClient ?? http.Client(),
+       _timeout = timeout,
+       _now = now ?? DateTime.now;
 
   final Uri proxyBaseUri;
   final Future<String?> Function() _idTokenProvider;
@@ -457,15 +472,15 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
       method: 'POST',
       path: WebSecurityPaths.mfaTotpBegin,
       idempotencyKey: idempotencyKey,
-      body: <String, Object?>{
-        'user_email': userEmail,
-      },
+      body: <String, Object?>{'user_email': userEmail},
     );
     _expectStatus(response, 200);
     final factorId = _readNonBlankString(response.body['factor_id']);
-    final otpAuthUrl = _readNonBlankString(response.body['otp_auth_url']) ??
+    final otpAuthUrl =
+        _readNonBlankString(response.body['otp_auth_url']) ??
         _readNonBlankString(response.body['otpauth_url']);
-    final secret = _readNonBlankString(response.body['secret_base32']) ??
+    final secret =
+        _readNonBlankString(response.body['secret_base32']) ??
         _readNonBlankString(response.body['shared_secret']);
     if (factorId == null || otpAuthUrl == null || secret == null) {
       throw _malformed(response, 'TOTP enrollment response was incomplete');
@@ -531,9 +546,11 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
         : const <String, Object?>{};
     if (streamed.statusCode != 202 && streamed.statusCode != 200) {
       throw WebSecurityError(
-        code: _readNonBlankString(responseBody['error']) ??
+        code:
+            _readNonBlankString(responseBody['error']) ??
             'mfa_recovery_request_failed',
-        message: _readNonBlankString(responseBody['message']) ??
+        message:
+            _readNonBlankString(responseBody['message']) ??
             'proxy returned status ${streamed.statusCode}',
         statusCode: streamed.statusCode,
       );
@@ -566,12 +583,18 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
       throw _malformed(response, 'TOTP confirm response was incomplete');
     }
     final enrolledAtRaw = _readNonBlankString(response.body['enrolled_at']);
+    final recoveryCodesViewedAtRaw = _readNonBlankString(
+      response.body['recovery_codes_viewed_at'],
+    );
     return WebSecurityMfaFactor(
       factorId: confirmedFactorId,
       factorType: _readNonBlankString(response.body['factor_type']) ?? 'totp',
       enrolledAt: enrolledAtRaw == null
           ? _now().toUtc()
           : DateTime.parse(enrolledAtRaw).toUtc(),
+      recoveryCodesViewedAt: recoveryCodesViewedAtRaw == null
+          ? null
+          : DateTime.parse(recoveryCodesViewedAtRaw).toUtc(),
       issuerLabel:
           _readNonBlankString(response.body['issuer_label']) ?? 'Forge & Flow',
     );
@@ -597,6 +620,32 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
       executeAfter: executeAfterRaw == null
           ? null
           : DateTime.parse(executeAfterRaw).toUtc(),
+    );
+  }
+
+  @override
+  Future<WebSecurityRecoveryCodesViewedResult> markRecoveryCodesViewed({
+    required String factorId,
+    required String idempotencyKey,
+  }) async {
+    final response = await _send(
+      method: 'POST',
+      path: WebSecurityPaths.mfaRecoveryCodesViewed,
+      idempotencyKey: idempotencyKey,
+      body: <String, Object?>{'factor_id': factorId},
+    );
+    _expectStatus(response, 200);
+    final viewedAtRaw = _readNonBlankString(
+      response.body['recovery_codes_viewed_at'],
+    );
+    if (viewedAtRaw == null) {
+      throw _malformed(
+        response,
+        'MFA recovery codes viewed response was incomplete',
+      );
+    }
+    return WebSecurityRecoveryCodesViewedResult(
+      viewedAt: DateTime.parse(viewedAtRaw).toUtc(),
     );
   }
 
@@ -642,12 +691,14 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
   @override
   Future<WebSecurityLoginHistoryListed> listLoginHistory() async {
     final since = _now().toUtc().subtract(kWebSecurityLoginHistoryWindow);
-    final url = proxyBaseUri.resolve(WebSecurityPaths.auditLog).replace(
-      queryParameters: <String, String>{
-        'from': since.toIso8601String(),
-        'limit': '200',
-      },
-    );
+    final url = proxyBaseUri
+        .resolve(WebSecurityPaths.auditLog)
+        .replace(
+          queryParameters: <String, String>{
+            'from': since.toIso8601String(),
+            'limit': '200',
+          },
+        );
     final response = await _sendUrl(method: 'GET', url: url);
     _expectStatus(response, 200);
     return _parseLoginHistory(response, since: since);
@@ -687,6 +738,9 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
       throw _malformed(response, 'MFA factor payload was incomplete');
     }
     final lastUsedAtRaw = _readNonBlankString(json['last_used_at']);
+    final recoveryCodesViewedAtRaw = _readNonBlankString(
+      json['recovery_codes_viewed_at'],
+    );
     final canRevoke = json['can_revoke'];
     return WebSecurityMfaFactor(
       factorId: factorId,
@@ -695,6 +749,9 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
       lastUsedAt: lastUsedAtRaw == null
           ? null
           : DateTime.parse(lastUsedAtRaw).toUtc(),
+      recoveryCodesViewedAt: recoveryCodesViewedAtRaw == null
+          ? null
+          : DateTime.parse(recoveryCodesViewedAtRaw).toUtc(),
       issuerLabel: _readNonBlankString(json['issuer_label']) ?? 'Forge & Flow',
       canRevoke: canRevoke is bool ? canRevoke : true,
     );
@@ -747,7 +804,7 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
       if (!isSecurityLoginHistoryEvent(eventType)) continue;
       final occurredAtRaw =
           _readNonBlankString(json['occurred_at']) ??
-              _readNonBlankString(json['created_at']);
+          _readNonBlankString(json['created_at']);
       if (occurredAtRaw == null) continue;
       final occurredAt = DateTime.parse(occurredAtRaw).toUtc();
       if (occurredAt.isBefore(since)) continue;
@@ -845,22 +902,21 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
 
   void _expectStatus(WebSecurityResponse response, int expected) {
     if (response.statusCode == expected) return;
-    final code = _readNonBlankString(response.body['error']) ??
+    final code =
+        _readNonBlankString(response.body['error']) ??
         _readNonBlankString(response.body['code']) ??
         'security_failed';
     throw WebSecurityError(
       code: code,
-      message: _readNonBlankString(response.body['message']) ??
+      message:
+          _readNonBlankString(response.body['message']) ??
           'proxy returned status ${response.statusCode}',
       statusCode: response.statusCode,
       rejections: _rejections(response.body['rejections']),
     );
   }
 
-  WebSecurityError _malformed(
-    WebSecurityResponse response,
-    String message,
-  ) {
+  WebSecurityError _malformed(WebSecurityResponse response, String message) {
     return WebSecurityError(
       code: 'malformed_response',
       message: message,

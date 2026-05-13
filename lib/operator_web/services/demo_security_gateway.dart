@@ -21,7 +21,7 @@ import 'web_security_gateway.dart';
 /// declared in [demo_team_fixtures.dart].
 class DemoWebSecurityGateway implements WebSecurityGateway {
   DemoWebSecurityGateway({DateTime? now})
-      : _now = now ?? DateTime.utc(2026, 5, 6, 12) {
+    : _now = now ?? DateTime.utc(2026, 5, 6, 12) {
     for (final fixture in kDemoTeamMfaFactorsFixture) {
       _factors[fixture.factorId] = WebSecurityMfaFactor(
         factorId: fixture.factorId,
@@ -123,13 +123,13 @@ class DemoWebSecurityGateway implements WebSecurityGateway {
     if (email.trim().isEmpty) {
       throw const WebSecurityError(
         code: 'missing_email',
-        message: 'Type the email address you sign in with so we can route '
+        message:
+            'Type the email address you sign in with so we can route '
             'the recovery link to you.',
         statusCode: 400,
       );
     }
-    final requestId =
-        'demo-security-recovery-${_recoveryRequestsCount += 1}';
+    final requestId = 'demo-security-recovery-${_recoveryRequestsCount += 1}';
     final result = WebSecurityRecoveryRequestResult(
       queued: true,
       requestId: requestId,
@@ -217,8 +217,7 @@ class DemoWebSecurityGateway implements WebSecurityGateway {
         ],
       );
     }
-    final requestId =
-        'demo-security-removal-${_removals.length + 1}';
+    final requestId = 'demo-security-removal-${_removals.length + 1}';
     final executeAfter = _now.add(const Duration(hours: 24));
     final removal = WebSecurityMfaRemoval(
       requestId: requestId,
@@ -232,6 +231,36 @@ class DemoWebSecurityGateway implements WebSecurityGateway {
       requestId: requestId,
       executeAfter: executeAfter,
     );
+    _idempotency[idempotencyKey] = result;
+    return result;
+  }
+
+  @override
+  Future<WebSecurityRecoveryCodesViewedResult> markRecoveryCodesViewed({
+    required String factorId,
+    required String idempotencyKey,
+  }) async {
+    final cached = _idempotency[idempotencyKey];
+    if (cached is WebSecurityRecoveryCodesViewedResult) return cached;
+    final factor = _factors[factorId];
+    if (factor == null) {
+      throw const WebSecurityError(
+        code: 'mfa_factor_not_found',
+        message: 'Authenticator was already removed or does not exist.',
+        statusCode: 404,
+      );
+    }
+    final viewedAt = _now;
+    _factors[factorId] = WebSecurityMfaFactor(
+      factorId: factor.factorId,
+      factorType: factor.factorType,
+      enrolledAt: factor.enrolledAt,
+      lastUsedAt: factor.lastUsedAt,
+      recoveryCodesViewedAt: viewedAt,
+      issuerLabel: factor.issuerLabel,
+      canRevoke: factor.canRevoke,
+    );
+    final result = WebSecurityRecoveryCodesViewedResult(viewedAt: viewedAt);
     _idempotency[idempotencyKey] = result;
     return result;
   }
@@ -313,14 +342,15 @@ class DemoWebSecurityGateway implements WebSecurityGateway {
   @override
   Future<WebSecurityLoginHistoryListed> listLoginHistory() async {
     final since = _now.subtract(kWebSecurityLoginHistoryWindow);
-    final entries = _loginHistory
-        .where(
-          (entry) =>
-              isSecurityLoginHistoryEvent(entry.eventType) &&
-              !entry.occurredAt.isBefore(since),
-        )
-        .toList(growable: false)
-      ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
+    final entries =
+        _loginHistory
+            .where(
+              (entry) =>
+                  isSecurityLoginHistoryEvent(entry.eventType) &&
+                  !entry.occurredAt.isBefore(since),
+            )
+            .toList(growable: false)
+          ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
     return WebSecurityLoginHistoryListed(
       entries: List<WebSecurityLoginHistoryEntry>.unmodifiable(entries),
     );

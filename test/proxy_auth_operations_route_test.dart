@@ -1611,6 +1611,68 @@ void main() {
       },
     );
 
+    test(
+      'POST MFA recovery-codes viewed replays same key and updates fresh key',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingMfaOperationsGateway();
+          final harness = await _RouteHarness.start(
+            mfaOperationsGateway: gateway,
+          );
+          try {
+            final missingKey = await harness.postJson(
+              authMfaRecoveryCodesViewedPath,
+              const <String, Object?>{'factor_id': 'totp-db-factor'},
+            );
+            expect(missingKey.statusCode, equals(400));
+            expect(missingKey.json['error'], equals('missing_idempotency_key'));
+
+            final response = await harness.postJson(
+              authMfaRecoveryCodesViewedPath,
+              const <String, Object?>{'factor_id': 'totp-db-factor'},
+              idempotencyKey: 'idem-view-codes',
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(
+              response.json['recovery_codes_viewed_at'],
+              equals('2026-05-06T12:00:00.000Z'),
+            );
+            final replay = await harness.postJson(
+              authMfaRecoveryCodesViewedPath,
+              const <String, Object?>{'factor_id': 'totp-db-factor'},
+              idempotencyKey: 'idem-view-codes',
+            );
+            expect(replay.statusCode, equals(200));
+            expect(
+              replay.json['recovery_codes_viewed_at'],
+              equals(response.json['recovery_codes_viewed_at']),
+            );
+            final fresh = await harness.postJson(
+              authMfaRecoveryCodesViewedPath,
+              const <String, Object?>{'factor_id': 'totp-db-factor'},
+              idempotencyKey: 'idem-view-codes-2',
+            );
+            expect(fresh.statusCode, equals(200));
+            expect(
+              fresh.json['recovery_codes_viewed_at'],
+              equals('2026-05-06T12:01:00.000Z'),
+            );
+            expect(
+              gateway.recoveryCodeViews.map((command) => command.factorId),
+              everyElement(equals('totp-db-factor')),
+            );
+            expect(
+              gateway.recoveryCodeViews.map((command) => command.idempotencyKey),
+              equals(<String>['idem-view-codes', 'idem-view-codes-2']),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
     test('POST MFA recovery request accepts contact-admin request', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingMfaRecoveryRequestGateway();
@@ -2550,6 +2612,7 @@ class _RecordingMfaOperationsGateway implements MfaOperationsGateway {
   final begins = <MfaTotpBeginCommand>[];
   final lists = <MfaListFactorsCommand>[];
   final revokes = <MfaRevokeFactorCommand>[];
+  final recoveryCodeViews = <MfaMarkRecoveryCodesViewedCommand>[];
   final cancels = <MfaCancelFactorRemovalCommand>[];
 
   @override
@@ -2578,6 +2641,23 @@ class _RecordingMfaOperationsGateway implements MfaOperationsGateway {
   ) async {
     revokes.add(command);
     return revokeResult;
+  }
+
+  @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
+  ) async {
+    recoveryCodeViews.add(command);
+    final viewedAt = DateTime.utc(
+      2026,
+      5,
+      6,
+      12,
+      recoveryCodeViews.length - 1,
+    );
+    return MfaMarkRecoveryCodesViewedCompleted(
+      viewedAt: viewedAt,
+    );
   }
 
   @override

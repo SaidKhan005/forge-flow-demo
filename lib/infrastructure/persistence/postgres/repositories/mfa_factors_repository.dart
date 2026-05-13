@@ -14,6 +14,7 @@
 //   enrolled_at timestamptz default now()
 //   last_used_at timestamptz null
 //   revoked_at timestamptz null
+//   recovery_codes_viewed_at timestamptz null (C-7a)
 //   created_at / updated_at timestamptz default now()
 //
 // Older compatibility recovery-code rows may exist, but launch enrollment only
@@ -37,6 +38,7 @@ class MfaFactorRecord {
     required this.enrolledAt,
     this.lastUsedAt,
     this.revokedAt,
+    this.recoveryCodesViewedAt,
   });
 
   final String factorId;
@@ -46,6 +48,7 @@ class MfaFactorRecord {
   final DateTime enrolledAt;
   final DateTime? lastUsedAt;
   final DateTime? revokedAt;
+  final DateTime? recoveryCodesViewedAt;
 
   bool get isActive => revokedAt == null;
 }
@@ -54,6 +57,16 @@ class MfaEnrollmentPersistenceResult {
   const MfaEnrollmentPersistenceResult({required this.totpFactorId});
 
   final String totpFactorId;
+}
+
+class MfaRecoveryCodesViewedResult {
+  const MfaRecoveryCodesViewedResult({
+    required this.viewedAt,
+    required this.changed,
+  });
+
+  final DateTime viewedAt;
+  final bool changed;
 }
 
 class MfaFactorsRepository extends OperatorScopedRepository {
@@ -288,6 +301,47 @@ class MfaFactorsRepository extends OperatorScopedRepository {
     });
   }
 
+  /// Marks the user's active TOTP factor with the latest recovery-code view.
+  /// Route-level idempotency replays same-key retries before this repository
+  /// runs, so every call here represents a fresh accepted user action.
+  Future<MfaRecoveryCodesViewedResult?> markRecoveryCodesViewed({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String factorId,
+    required DateTime viewedAt,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<MfaRecoveryCodesViewedResult?>(ctx, (exec) async {
+      final updated = await exec.query(
+        'update mfa_factors '
+        'set recovery_codes_viewed_at = @viewed_at::timestamptz, '
+        'updated_at = now() '
+        'where factor_id = @factor_id::uuid '
+        'and user_id = @user_id::uuid '
+        "and factor_type = 'totp' "
+        'and revoked_at is null '
+        'returning recovery_codes_viewed_at',
+        parameters: <String, Object?>{
+          'factor_id': factorId,
+          'user_id': userId,
+          'viewed_at': viewedAt.toUtc(),
+        },
+      );
+      if (updated.isNotEmpty) {
+        return MfaRecoveryCodesViewedResult(
+          viewedAt: updated.single['recovery_codes_viewed_at'] as DateTime,
+          changed: true,
+        );
+      }
+      return null;
+    });
+  }
+
   /// Lists the user's active TOTP factors for Settings -> Account -> MFA.
   /// Recovery-code rows are intentionally excluded; the UI only shows
   /// authenticator apps the user can recognize and manage.
@@ -307,7 +361,7 @@ class MfaFactorsRepository extends OperatorScopedRepository {
         'user_id::text as user_id, '
         'factor_type, '
         'factor_metadata::text as factor_metadata, '
-        'enrolled_at, last_used_at, revoked_at '
+        'enrolled_at, last_used_at, revoked_at, recovery_codes_viewed_at '
         'from mfa_factors '
         'where user_id = @user_id::uuid '
         "and factor_type = 'totp' "
@@ -338,7 +392,7 @@ class MfaFactorsRepository extends OperatorScopedRepository {
         'user_id::text as user_id, '
         'factor_type, '
         'factor_metadata::text as factor_metadata, '
-        'enrolled_at, last_used_at, revoked_at '
+        'enrolled_at, last_used_at, revoked_at, recovery_codes_viewed_at '
         'from mfa_factors '
         'where user_id = @user_id::uuid '
         "and factor_type = 'recovery_code' "
@@ -389,6 +443,7 @@ class MfaFactorsRepository extends OperatorScopedRepository {
       enrolledAt: row['enrolled_at'] as DateTime,
       lastUsedAt: row['last_used_at'] as DateTime?,
       revokedAt: row['revoked_at'] as DateTime?,
+      recoveryCodesViewedAt: row['recovery_codes_viewed_at'] as DateTime?,
     );
   }
 }
