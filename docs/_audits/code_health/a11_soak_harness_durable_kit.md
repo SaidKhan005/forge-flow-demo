@@ -9,7 +9,7 @@ made by this audit.
 Authority context: this audit complements (does not duplicate) Step 3
 Lane A lens-audit running in parallel. The B1+B2 hot-fix slice already
 landed as PR #476 (commits `c3f1ce0d` + `fc1a3f80` + follow-up
-`e26e53af`, audited in `docs/_audits/post_codex_wave/pr_476_b1_b2_audit.md`).
+`e26e53af`, audited in `docs/archive/_audits/post_codex_wave_2026-05-13/pr_476_b1_b2_audit.md`).
 That slice shipped the R3 §3 quick-wins (`runZonedGuarded`,
 `PostgresPoolGaugeSnapshot`, `pubsub_subscriber.ring_buffer_keys`,
 `SessionRecordCompleteness.assertComplete`, two `p4_*` harnesses). What
@@ -302,7 +302,7 @@ means. Three call sites are allowed:
 
 The predicate MUST NOT have a fourth call site without an explicit
 contract update. The PR #476 audit at
-`docs/_audits/post_codex_wave/pr_476_b1_b2_audit.md:18-22` calls this
+`docs/archive/_audits/post_codex_wave_2026-05-13/pr_476_b1_b2_audit.md:18-22` calls this
 out as "three-mirror discipline (proxy / soak predicate / client)" —
 keeping the contract single-sourced is the whole point.
 

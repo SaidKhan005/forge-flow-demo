@@ -108,7 +108,7 @@ The B2.1 dispatcher does neither. Two consecutive `POST /v1/admin/auth/role-cata
 
 **Why this matters:** the publish operation is high-blast-radius (every operator that follows "current" rolls forward to the new version). A retry storm during a flaky deploy could create a stream of duplicate versions that are then visible in the catalog history.
 
-**Cross-reference:** `docs/_audits/post_codex_wave/pr_584_b2_1_default_role_catalog_audit.md:96` asserts "Idempotency on publish ✓ — `Idempotency-Key` required + max 200 chars + **replay via `proxy_requests` UNIQUE**". The "replay via proxy_requests" claim is unverified by the code at HEAD — the route validates header presence but does not implement the replay.
+**Cross-reference:** `docs/archive/_audits/post_codex_wave_2026-05-13/pr_584_b2_1_default_role_catalog_audit.md:96` asserts "Idempotency on publish ✓ — `Idempotency-Key` required + max 200 chars + **replay via `proxy_requests` UNIQUE**". The "replay via proxy_requests" claim is unverified by the code at HEAD — the route validates header presence but does not implement the replay.
 
 **Severity:** medium. Operationally bounded because (a) the publish dispatcher requires `super_admin` / `ff_support` role (very few callers), and (b) the catalog publish is rare (once per material role-template change, hand-driven from an admin UI). But the contract gap is real.
 
@@ -181,7 +181,7 @@ Ordered by leverage (highest first):
 
 2. **Ratchet the ceiling DOWN, not up, by default.** After the next 2-3 sibling-file decompositions land, the orchestrator should drop the ceiling in the same bundle commit. The current 88-LoC headroom is barely enough for one routine slice; the next time a slice needs +90, the wrong pattern (raise + commit) will repeat. A deliberate "phase 7.57.bleed-stop" slice should: (a) extract the four helper clusters above, (b) move B2.1 / B11.2.b / C-4 / B10.1 dispatcher blocks into their sibling files, (c) ratchet the ceiling to whatever the new line count is + 50.
 
-3. **Fix the B2.1 idempotency gap.** Either wrap the publish dispatcher in `_defaultAuthIdempotencyCache.runOrReplay(...)` or thread `adminRequestIdempotencyStore` through `DefaultRoleCatalogAdminRouter.dispatch`. Update `docs/_audits/post_codex_wave/pr_584_b2_1_default_role_catalog_audit.md:96` to reflect actual code state. Pattern: copy from `advisor_proxy.dart:11509` (where `authOpsCache.runOrReplay(...)` wraps an admin write).
+3. **Fix the B2.1 idempotency gap.** Either wrap the publish dispatcher in `_defaultAuthIdempotencyCache.runOrReplay(...)` or thread `adminRequestIdempotencyStore` through `DefaultRoleCatalogAdminRouter.dispatch`. Update `docs/archive/_audits/post_codex_wave_2026-05-13/pr_584_b2_1_default_role_catalog_audit.md:96` to reflect actual code state. Pattern: copy from `advisor_proxy.dart:11509` (where `authOpsCache.runOrReplay(...)` wraps an admin write).
 
 4. **Promote `CloverAppCredentials` + `SquareAppCredentials` out of `tool/advisor_proxy/advisor_proxy.dart`.** The pre-existing worker → proxy import surface is narrow but still violates the stated boundary. Move both classes to `lib/services/integration/vendor_credentials.dart` (or similar) so both binaries import from a neutral location. Estimated cost: ~50 LoC. Side benefit: ratchets the ceiling DOWN by 50.
 
@@ -196,6 +196,6 @@ Ordered by leverage (highest first):
 - **CLAUDE.md "Service-Layer Split":** raw `package:postgres` imports are confined to `lib/infrastructure/persistence/postgres/`. — finding W-6 (clean).
 - **`tool/postgres_import_lint.dart` (specifically lines 20-26):** "`tool/` is NOT exempt. The Cloud Run workers under `tool/` … talk to Postgres through the `PostgresExecutor` seam by design".
 - **CI dark posture:** `feedback_ci_dark_until_2026_06_01.md` (memory) — `ci.yml` gated to `workflow_dispatch` only; advisor_proxy_size_lint had no CI enforcement during the wave, which is the proximate enabler of the ceiling drift in W-1.
-- **B2.1 audit doc:** `docs/_audits/post_codex_wave/pr_584_b2_1_default_role_catalog_audit.md:96` (contains the "replay via proxy_requests UNIQUE" assertion contradicted by code state).
+- **B2.1 audit doc:** `docs/archive/_audits/post_codex_wave_2026-05-13/pr_584_b2_1_default_role_catalog_audit.md:96` (contains the "replay via proxy_requests UNIQUE" assertion contradicted by code state).
 - **Per-slice baseline:** master `6ab8f73c` (post-A11.1 PR #522 merge; A3.1 captured `advisor_proxy.dart` at 18,871 lines on this commit).
 - **Master tip evaluated:** `63ec00d6` (most recent merge on `master`; brief mentions `63b67753`; both belong to the same wave).

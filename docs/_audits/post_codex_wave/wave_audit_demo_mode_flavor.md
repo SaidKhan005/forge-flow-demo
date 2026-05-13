@@ -284,7 +284,7 @@ discipline is being enforced.
 2. **Carve-out #4 was specced as part of the slice that delivered it.** PR
    #592's ledger row 81 explicitly says "needs 4th HP #2 reader-side carve-out".
    The auditor's pre-merge review at
-   `docs/_audits/post_codex_wave/pr_592_c_4_demo_live_master_switch_audit.md`
+   `docs/archive/_audits/post_codex_wave_2026-05-13/pr_592_c_4_demo_live_master_switch_audit.md`
    verified the CLAUDE.md + contract updates landed in the same diff. No
    surprise doctrine drift.
 
@@ -333,6 +333,6 @@ discipline is being enforced.
 - `tool/release_build_demo_flag_lint.dart` + `test/services/auth/demo_auth_release_guard_test.dart`
   (release-build guardrails)
 - `test/integration/demo_mode_writer_side_test.dart` (HP #2 trip-wire)
-- `docs/_audits/post_codex_wave/pr_592_c_4_demo_live_master_switch_audit.md`
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_592_c_4_demo_live_master_switch_audit.md`
   (Carve-out #4 expansion audit)
 - `~/.claude/projects/.../memory/project_barrio_paused.md` (Barrio pause anchor, 2026-05-03)

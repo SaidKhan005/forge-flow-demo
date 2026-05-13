@@ -119,7 +119,7 @@ Admin screens have no codified file-size ceiling. The top three (4894 / 2795 / 2
 ### F-OW-1 (P1) — Operator-web file-size ceiling breach on my_account_screen.dart
 
 **Surface:** `lib/operator_web/screens/my_account_screen.dart` — **2,051 LoC**.
-**Authority:** PR #624 audit note (`docs/_audits/post_codex_wave/pr_624_b8_audit_log_hierarchy_filter_audit.md:21`) — "*Operator-web `audit_log_screen.dart` is 1,416 LoC and would balloon past the 1,665 LoC operator-web ceiling if the hierarchy filter were inlined; worker shipped admin-side only.*" The ceiling is anchored in PR #624 but not yet codified in `CLAUDE.md` or `docs/contracts/`.
+**Authority:** PR #624 audit note (`docs/archive/_audits/post_codex_wave_2026-05-13/pr_624_b8_audit_log_hierarchy_filter_audit.md:21`) — "*Operator-web `audit_log_screen.dart` is 1,416 LoC and would balloon past the 1,665 LoC operator-web ceiling if the hierarchy filter were inlined; worker shipped admin-side only.*" The ceiling is anchored in PR #624 but not yet codified in `CLAUDE.md` or `docs/contracts/`.
 **Evidence:**
 
 - The file consolidates four sections (Profile / Security / MFA / Active Sessions) plus three nested dialogs (`_MfaEnrollDialog`, `_BackupCodesDialog`, `_ChangePasswordDialog`).
@@ -299,12 +299,12 @@ The 2-console framing (operator-web own-operator-only, admin cross-operator) rel
 
 **In-repo wave anchors:**
 
-- `docs/_audits/post_codex_wave/pr_624_b8_audit_log_hierarchy_filter_audit.md:21` — operator-web 1,665 LoC ceiling anchor
-- `docs/_audits/post_codex_wave/pr_580_c_9_mobile_inbox_catalog_audit.md` — C-9 mobile read-only confirmation
-- `docs/_audits/post_codex_wave/pr_556_c10_admin_parity_copy_audit.md` — C-10 "Admin only" / "Read-only view" framing
-- `docs/_audits/post_codex_wave/pr_579_c_3_sign_in_security_to_my_account_audit.md` — C-3 fold-in deletion
-- `docs/_audits/post_codex_wave/pr_568_b9_3_adaptive_2fa_card_audit.md` — B9.3 adaptive labels
-- `docs/_audits/post_codex_wave/pr_481_retroactive_audit.md` — operator_location admin HP #11 retroactive fix
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_624_b8_audit_log_hierarchy_filter_audit.md:21` — operator-web 1,665 LoC ceiling anchor
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_580_c_9_mobile_inbox_catalog_audit.md` — C-9 mobile read-only confirmation
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_556_c10_admin_parity_copy_audit.md` — C-10 "Admin only" / "Read-only view" framing
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_579_c_3_sign_in_security_to_my_account_audit.md` — C-3 fold-in deletion
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_568_b9_3_adaptive_2fa_card_audit.md` — B9.3 adaptive labels
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_481_retroactive_audit.md` — operator_location admin HP #11 retroactive fix
 - `docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md` — orchestrator's prior 21-slice retrospective (overlapping P1/P2 already tracked: B9.2 clock skew, B11.1 idempotency, C-8 fallback)
 
 **Code anchors for the findings:**

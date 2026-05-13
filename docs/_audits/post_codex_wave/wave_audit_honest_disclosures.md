@@ -104,7 +104,7 @@ The one pre-existing test failure that's still on master and lacks a follow-up i
 | `orchestrator_bundle_33_b10_1_fallout.md` | (closes B10.1 fallout) | (orchestrator-owned bundle) | **closed** |
 | `final_housekeeping_sweep_2026_05_13.md` | (stages repo for Claude lane restart) | (orchestrator-owned bundle) | **closed** |
 | `followups_doc_drift_cleanup_2026_05_13.md` | (3 mechanical doc-drift fixes to POST_HARDENING_FOLLOWUPS) | (orchestrator-owned bundle) | **closed** |
-| `c_1_ecdsa_pubkey_gap_investigation.md` | Read-only investigation; verdict: c-1b-not-required | `docs/_audits/post_codex_wave/c_1_ecdsa_pubkey_gap_investigation.md:130-139` (verdict + recommendation) + ledger row 83 unchanged | **tracked (operator-decision)** |
+| `c_1_ecdsa_pubkey_gap_investigation.md` | Read-only investigation; verdict: c-1b-not-required | `docs/archive/_audits/post_codex_wave_2026-05-13/c_1_ecdsa_pubkey_gap_investigation.md:130-139` (verdict + recommendation) + ledger row 83 unchanged | **tracked (operator-decision)** |
 | `pr_476_b1_b2_audit.md`, `pr_481/482/484/488/490/495_audit.md`, `pr_b_pr_a_rollup_audit.md`, `pr_473_b3_retroactive_audit.md` | Pre-wave retroactive audits — closed via Phase 5b orchestrator-fix and re-audit | All resolved per audit doc verdict lines | **tracked + closed** |
 | `test_proxy_5_failures_investigation.md` | (companion to PRs #588, #604, #610, #625 — fixes for stale-snapshot tests) | (housekeeping investigation) | **tracked** |
 | `pr_588`, `pr_604`, `pr_610`, `pr_625_*_audit.md` | (test snapshot / time-bomb fixes — no further disclosures) | (test housekeeping) | **closed** |
@@ -239,9 +239,9 @@ The wave doctrine treats "verified on clean master pre-PR" disclosures as honest
 - `docs/POST_HARDENING_FOLLOWUPS.md` (631 lines) — secondary tracking surface
 - `docs/KNOWN_FAILING_TESTS.md` (1 open row at master tip) — pre-existing test failure quarantine
 - `docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md` — sibling deep audit (5 P1 + 4 P2 + 2 P3 — all tracked correctly)
-- `docs/_audits/post_codex_wave/c_1_ecdsa_pubkey_gap_investigation.md` — operator-decision artifact pattern
+- `docs/archive/_audits/post_codex_wave_2026-05-13/c_1_ecdsa_pubkey_gap_investigation.md` — operator-decision artifact pattern
 - `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md` — operator-pick matrix pattern
-- `docs/_audits/post_codex_wave/orchestrator_bundle_33_b10_1_fallout.md` — orchestrator-bundle housekeeping pattern
+- `docs/archive/_audits/post_codex_wave_2026-05-13/orchestrator_bundle_33_b10_1_fallout.md` — orchestrator-bundle housekeeping pattern
 - `CLAUDE.md` "Hard Promises" #7 (server-side keys) + #10 (operator-facing UX before phase close) + addendum C4 (no silent failures)
 - `~/.claude/projects/.../memory/feedback_followups_doc_hygiene.md` — ledger-first discipline ("ledger first, followups doc second; if an audit finding has a clear next-slice home, fold into the ledger row's scope")
 - `~/.claude/projects/.../memory/feedback_audit_plan_status_flips.md` — audit doc status flip discipline (deep audit finding #1 → RESOLVED 2026-05-13 by B1.c banner pattern)

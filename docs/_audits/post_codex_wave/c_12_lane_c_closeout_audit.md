@@ -272,7 +272,7 @@ Lane C slice family complete. Lane B hierarchy finalization complete. Lane A har
 - `docs/_execution/lane_c_parity/01_product_rule_and_ia.md` — ownership map (used in checklist item 4)
 - `docs/_execution/lane_c_parity/02_plumbing_audit_matrix.md` — plumbing audit matrix (used in checklist item 1)
 - `docs/_audits/post_codex_wave/wave_audit_*.md` — 9 dimensional audit outputs
-- `docs/_audits/post_codex_wave/pr_*_audit.md` — 70 PR audit docs
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_*_audit.md` — 70 PR audit docs
 - `docs/POST_HARDENING_FOLLOWUPS.md` — migration queue + follow-up tracking
 - `docs/contracts/demo_mode_contract.md` — HP #2 contract (D-1 fix applied)
 - `docs/contracts/hardening_rls_and_repository_pattern_contract.md` — Updated date refreshed

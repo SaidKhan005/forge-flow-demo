@@ -92,7 +92,7 @@ Before approving merge of `claude/b1-b2-proxy-soak-fix` against master:
 
 ## Follow-up: client parser alignment
 
-Audit `docs/_audits/post_codex_wave/pr_476_b1_b2_audit.md` (verdict `material-gaps-send-back`) caught one merge-blocking gap: the B1 proxy contract change accepts scope-less `ff_support` / `super_admin` JWTs and returns 200 with empty-string `operator_id` / `location_id`, but the **client-side response parser** still treated empty scope as `malformed_response` and the notifier mapped that to `AuthLoginFailure(code: 'ledger_unavailable')` — the exact original Bug 1 symptom. Without the client half, the proxy fix didn't deliver the operator-facing fix end-to-end.
+Audit `docs/archive/_audits/post_codex_wave_2026-05-13/pr_476_b1_b2_audit.md` (verdict `material-gaps-send-back`) caught one merge-blocking gap: the B1 proxy contract change accepts scope-less `ff_support` / `super_admin` JWTs and returns 200 with empty-string `operator_id` / `location_id`, but the **client-side response parser** still treated empty scope as `malformed_response` and the notifier mapped that to `AuthLoginFailure(code: 'ledger_unavailable')` — the exact original Bug 1 symptom. Without the client half, the proxy fix didn't deliver the operator-facing fix end-to-end.
 
 **Two sites fixed in `lib/services/auth/proxy_auth_session_ledger_writer.dart`:**
 

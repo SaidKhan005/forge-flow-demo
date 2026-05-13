@@ -110,7 +110,7 @@ The `tier_key` enum value remains `standard` (database, audit logs,
 API contracts unchanged); only the operator-facing display label is
 "Regular". Aligned with `memory/project_ux_writing_standard.md`
 plain-English standard; ratified via PR #482 operator decision
-2026-05-12 (see `docs/_audits/post_codex_wave/pr_482_audit.md`
+2026-05-12 (see `docs/archive/_audits/post_codex_wave_2026-05-13/pr_482_audit.md`
 Finding #1 resolution).
 the picker. To change tier, the card surfaces a "Request tier change"
 button that opens a support ticket / billing-upgrade flow.
