@@ -178,6 +178,15 @@ abstract class WebAuditLogHierarchyGateway {
   );
 }
 
+/// Mixin signalling that an operator-web auth source exposes a live
+/// hierarchy-filtered audit log gateway. Mirrors B6's
+/// `OperatorWebBenchmarksGatewayProvider` shape so the router can
+/// resolve the live binding when available and fall back to a demo /
+/// in-memory implementation otherwise.
+abstract class OperatorWebAuditLogHierarchyGatewayProvider {
+  WebAuditLogHierarchyGateway get auditLogHierarchyGateway;
+}
+
 /// HTTP-backed binding. Posts the filter query parameters to the
 /// operator-web hierarchy route. The operator-web Firebase token is
 /// supplied via the [tokenProvider] closure (mirrors the rest of
