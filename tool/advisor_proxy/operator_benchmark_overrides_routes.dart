@@ -1,5 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/benchmark_overrides_repository.dart';
 import 'package:forge_and_flow/services/baseline/benchmark_override_resolver.dart';
+import 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart';
 
 import 'operator_routes.dart';
 
@@ -276,19 +281,96 @@ Future<BenchmarkOverrideCandidate?> _findPreviousOverride({
   return null;
 }
 
+/// Verified caller context the router hands to itself after the auth +
+/// role + permission gate succeed. Mirrors the
+/// `AuditLogHierarchyActor` shape so reviewers see the same idiom
+/// across admin sibling routes.
+///
+/// The shape is intentionally tiny — only the fields the router needs
+/// to pass into [OperatorBenchmarkOverridesRouter.handle]. Production
+/// builds bridge `OperatorContext.{userId,operatorId,locationId,roles,
+/// actorKind}` into this shape; tests pass an [InMemoryActor] (or
+/// equivalent) directly.
+class OperatorBenchmarkOverridesActor {
+  const OperatorBenchmarkOverridesActor({
+    required this.userId,
+    required this.operatorId,
+    required this.locationId,
+    required this.roles,
+    required this.actorKind,
+  });
+
+  final String userId;
+  final String operatorId;
+  final String locationId;
+  final Set<String> roles;
+  final String actorKind;
+}
+
+/// Resolves an [OperatorBenchmarkOverridesActor] from an inbound
+/// `HttpRequest`. Production binds this to a closure over the proxy's
+/// existing `ProxyRequestGuard.requireOperatorContext`; tests pass an
+/// in-memory implementation that returns a pinned actor (or null = 401).
+typedef OperatorBenchmarkOverridesAuthResolver
+    = Future<OperatorBenchmarkOverridesActor?> Function(HttpRequest request);
+
+/// Outcome of the permission gate. Production binds this to a closure
+/// over the proxy's existing `ProxyPermissionSnapshotResolver`, which
+/// checks for `PermissionKeys.forgeflowBaselineOverride`. Tests pass an
+/// in-memory implementation that returns the desired effect.
+enum OperatorBenchmarkOverridesPermissionEffect {
+  allow,
+  deny,
+  unavailable,
+  notConfigured,
+}
+
+/// Loads the operator's effective permission for
+/// `forgeflow.baseline.override`. Returns an
+/// [OperatorBenchmarkOverridesPermissionEffect] so the router can write
+/// a 403 / 503 envelope without coupling to the proxy's
+/// `ProxyPermissionSnapshot` shape directly. Production bridges this
+/// onto `ProxyPermissionSnapshotResolver.load(...)`. The keyed-on
+/// permission is `forgeflow.baseline.override` (see B6 contract).
+typedef OperatorBenchmarkOverridesPermissionGate
+    = Future<OperatorBenchmarkOverridesPermissionEffect> Function(
+  OperatorBenchmarkOverridesActor actor,
+);
+
+/// Logger hook fired whenever the router catches an unhandled error in
+/// the write path. Production binds this to the proxy's structured
+/// `log` channel (matches the `proxy.unhandled_error` surface used by
+/// the inline dispatch before B6 decompose). Null in tests that only
+/// assert HTTP shape.
+typedef OperatorBenchmarkOverridesUnhandledErrorLogger = void Function({
+  required String method,
+  required String path,
+  required Object error,
+  required StackTrace stackTrace,
+});
+
 class OperatorBenchmarkOverridesRouter {
   OperatorBenchmarkOverridesRouter({
     required this.gateway,
     required this.auditSink,
     OperatorWriteIdempotencyCache? idempotencyCache,
     DateTime Function()? now,
+    OperatorBenchmarkOverridesAuthResolver? authResolver,
+    OperatorBenchmarkOverridesPermissionGate? permissionGate,
+    OperatorBenchmarkOverridesUnhandledErrorLogger? unhandledErrorLogger,
   }) : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
-       _now = now ?? DateTime.now;
+       _now = now ?? DateTime.now,
+       _authResolver = authResolver,
+       _permissionGate = permissionGate,
+       _unhandledErrorLogger = unhandledErrorLogger;
 
   final OperatorBenchmarkOverridesGateway gateway;
   final OperatorWriteAuditSink auditSink;
   final OperatorWriteIdempotencyCache _idempotencyCache;
   final DateTime Function() _now;
+  final OperatorBenchmarkOverridesAuthResolver? _authResolver;
+  final OperatorBenchmarkOverridesPermissionGate? _permissionGate;
+  final OperatorBenchmarkOverridesUnhandledErrorLogger? _unhandledErrorLogger;
 
   static bool matches(String path, String method) {
     if (path == operatorBenchmarkOverridesPath) {
@@ -301,6 +383,194 @@ class OperatorBenchmarkOverridesRouter {
 
   static bool isReadOnly(String path, String method) =>
       path == operatorBenchmarkOverridesPath && method == 'GET';
+
+  /// Pre-check dispatch invoked by `main.dart` ahead of `routeRequest`.
+  ///
+  /// Returns `true` when the request matched the operator benchmark
+  /// override routes and was fully handled — the caller (main.dart
+  /// marked region) must skip the rest of the dispatcher in that case.
+  /// Returns `false` for unrelated paths so `routeRequest` continues.
+  ///
+  /// Reproduces verbatim the auth + role + permission + Idempotency-Key
+  /// + body-parse + handle + error-envelope dispatch that previously
+  /// lived inline in `advisor_proxy.dart` (B6 +149 LoC block). The
+  /// sibling-file pattern preserves the
+  /// `tool/advisor_proxy_size_lint.dart` bleed-stop ceiling
+  /// (`advisor_proxy.dart` UNTOUCHED). Mirrors C-1 SendGrid + B8
+  /// audit-log-hierarchy precedents.
+  Future<bool> tryHandle(HttpRequest request) async {
+    final path = request.uri.path;
+    final method = request.method;
+    if (!matches(path, method)) return false;
+
+    final response = request.response;
+
+    if (_authResolver == null) {
+      _writeJson(response, 503, <String, Object?>{
+        'error': 'operator_benchmark_overrides_not_configured',
+        'message':
+            'route requires an OperatorBenchmarkOverridesAuthResolver to be installed',
+      });
+      return true;
+    }
+    OperatorBenchmarkOverridesActor? actor;
+    try {
+      actor = await _authResolver(request);
+    } catch (_) {
+      _writeJson(response, 401, <String, Object?>{
+        'error': 'unauthorized',
+        'message': 'verified bearer token required',
+      });
+      return true;
+    }
+    if (actor == null) {
+      _writeJson(response, 401, <String, Object?>{
+        'error': 'unauthorized',
+        'message': 'verified bearer token required',
+      });
+      return true;
+    }
+    if (actor.operatorId.isEmpty || actor.locationId.isEmpty) {
+      _writeJson(response, 403, <String, Object?>{
+        'error': 'permission_denied',
+        'message': 'benchmark overrides require tenant scope',
+      });
+      return true;
+    }
+    if (!actor.roles.any(kOperatorWriteRoles.contains)) {
+      _writeJson(response, 403, <String, Object?>{
+        'error': 'forbidden',
+        'message': 'operator owner or operator admin role is required',
+        'required_roles': kOperatorWriteRoles.toList(),
+      });
+      return true;
+    }
+    if (_permissionGate == null) {
+      _writeJson(response, 503, <String, Object?>{
+        'error': 'permission_snapshot_not_configured',
+        'message':
+            'route requires an OperatorBenchmarkOverridesPermissionGate to be installed',
+      });
+      return true;
+    }
+    final OperatorBenchmarkOverridesPermissionEffect permissionEffect;
+    try {
+      permissionEffect = await _permissionGate(actor);
+    } catch (_) {
+      _writeJson(response, 503, <String, Object?>{
+        'error': 'permission_snapshot_unavailable',
+        'message': 'permissions are unavailable; please retry',
+      });
+      return true;
+    }
+    switch (permissionEffect) {
+      case OperatorBenchmarkOverridesPermissionEffect.unavailable:
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'permission_snapshot_unavailable',
+          'message': 'permissions are unavailable; please retry',
+        });
+        return true;
+      case OperatorBenchmarkOverridesPermissionEffect.notConfigured:
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'permission_snapshot_not_configured',
+          'message':
+              'route requires an OperatorBenchmarkOverridesPermissionGate to be installed',
+        });
+        return true;
+      case OperatorBenchmarkOverridesPermissionEffect.deny:
+        _writeJson(response, 403, <String, Object?>{
+          'error': 'forbidden',
+          'message':
+              'forgeflow.baseline.override permission is required to manage benchmark overrides',
+          'permission_key': 'forgeflow.baseline.override',
+        });
+        return true;
+      case OperatorBenchmarkOverridesPermissionEffect.allow:
+        break;
+    }
+
+    final readOnly = isReadOnly(path, method);
+    String idempotencyKey;
+    Map<String, Object?> requestBody;
+    if (readOnly) {
+      idempotencyKey = '';
+      requestBody = const <String, Object?>{};
+    } else {
+      final headerKey = request.headers.value('Idempotency-Key')?.trim();
+      if (headerKey == null || headerKey.isEmpty) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'idempotency_key_missing',
+          'message': 'Idempotency-Key header is required',
+        });
+        return true;
+      }
+      if (headerKey.length > 200) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'idempotency_key_too_long',
+          'message':
+              'Idempotency-Key header must be 200 characters or fewer',
+        });
+        return true;
+      }
+      final bodyResult = await readOperatorJsonBody(request);
+      if (bodyResult.errorStatus != null) {
+        _writeJson(
+          response,
+          bodyResult.errorStatus!,
+          bodyResult.errorBody!,
+        );
+        return true;
+      }
+      idempotencyKey = headerKey;
+      requestBody = bodyResult.body!;
+    }
+    try {
+      final result = await handle(
+        method: method,
+        path: path,
+        operatorId: actor.operatorId,
+        locationId: actor.locationId,
+        actorUserId: actor.userId,
+        actorKind: actor.actorKind,
+        idempotencyKey: idempotencyKey,
+        body: requestBody,
+      );
+      _writeJson(response, result.statusCode, result.body);
+    } catch (error, stackTrace) {
+      if (error is DependencyTimeoutException) {
+        // Mirror the proxy's `_writeDependencyTimeoutEnvelope` exactly
+        // (status 503, surface + operation in the JSON body). The
+        // pre-decompose inline block used `_maybeWriteDependencyTimeout`
+        // which wraps the same envelope.
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'dependency_timeout',
+          'surface': error.surface,
+          'operation': error.operation,
+          'message': 'Upstream dependency timed out; please retry',
+        });
+        return true;
+      }
+      if (error is BenchmarkOverridesInputError) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'benchmark_override_invalid',
+          'message': error.message,
+          'field': error.field,
+        });
+        return true;
+      }
+      _unhandledErrorLogger?.call(
+        method: method,
+        path: path,
+        error: error,
+        stackTrace: stackTrace,
+      );
+      _writeJson(response, 503, <String, Object?>{
+        'error': 'operator_benchmark_overrides_unavailable',
+        'message': 'benchmark overrides are unavailable; please retry',
+      });
+    }
+    return true;
+  }
 
   Future<({int statusCode, Map<String, Object?> body})> handle({
     required String method,
@@ -663,4 +933,18 @@ class OperatorBenchmarkOverridesRouter {
     if (value is! String || value.trim().isEmpty) return null;
     return DateTime.tryParse(value.trim())?.toUtc();
   }
+}
+
+void _writeJson(
+  HttpResponse response,
+  int statusCode,
+  Map<String, Object?> body,
+) {
+  response.statusCode = statusCode;
+  response.headers.contentType = ContentType.json;
+  response.write(jsonEncode(body));
+  // Sibling-file routers close their own response because main.dart
+  // short-circuits `routeRequest` when `tryHandle` returns true.
+  // Mirrors the audit_log_hierarchy_routes.dart pattern (B8).
+  response.close();
 }
