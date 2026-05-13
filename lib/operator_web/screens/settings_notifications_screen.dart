@@ -93,6 +93,14 @@ const Map<String, _NotifEventState> _kEventState = <String, _NotifEventState>{
   'notif.shift.stale': _NotifEventState.comingSoon,
   'notif.star.override': _NotifEventState.comingSoon,
   'notif.plan.updated': _NotifEventState.comingSoon,
+  // C-2-C wire — MFA factor removal email + inbox emit. The fanout
+  // worker does not drive this event (single-recipient); the MFA
+  // removal worker dispatches a direct email + audit row. Marked
+  // `backendOnly` (label: "Always on") because the email goes to
+  // the affected user regardless of preference toggles — a security
+  // notification should not be opt-out-able from the operator-web
+  // preferences screen.
+  'notif.mfa.factor_changed': _NotifEventState.backendOnly,
 };
 
 /// Resolves the readiness state for a catalog entry. Defaults to
