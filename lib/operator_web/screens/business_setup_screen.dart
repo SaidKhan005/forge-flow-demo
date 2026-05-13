@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/business_timing_gateway.dart';
@@ -9,6 +10,9 @@ const Set<String> kOperatorWebBusinessTimingEditRoles = <String>{
   'operator_owner',
   'operator_admin',
 };
+
+const String kOperatorWebBusinessTimingEditPermission =
+    PermissionKeys.businessTimingConfigure;
 
 class BusinessSetupScreen extends StatefulWidget {
   const BusinessSetupScreen({
@@ -34,7 +38,7 @@ class BusinessSetupScreen extends StatefulWidget {
 
   bool get _canEditTiming =>
       session.roles.any(kOperatorWebBusinessTimingEditRoles.contains) ||
-      session.permissions.contains('business_timing.configure');
+      session.permissions.contains(kOperatorWebBusinessTimingEditPermission);
 
   @override
   State<BusinessSetupScreen> createState() => _BusinessSetupScreenState();

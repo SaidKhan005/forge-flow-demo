@@ -143,6 +143,8 @@ const Set<String> _permissionCategoryPrefixes = <String>{
   'product',
   'forgeflow',
   'barrio',
+  'account',
+  'business_timing',
   'billing',
   'integration',
   'integrations',

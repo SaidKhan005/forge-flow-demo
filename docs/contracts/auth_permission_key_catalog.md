@@ -43,7 +43,8 @@ The catalog carries 84 keys across 7 categories in the core catalog
 `admin.users.reset_mfa_factors` added in 11A.14). The 14 `team.*` keys
 added across 9.0a, the MFA hardening slice, and 11W.5 live in their own
 section below; the Phase 8.0 single `integrations.configure` key adds a
-9th category. The running total across all 9 categories is 99 keys.
+9th category. B5.b adds `account.*` and `business_timing.*` settings
+categories. The running total across all 11 categories is 103 keys.
 
 ### `product.*` (2)
 
@@ -209,6 +210,37 @@ Baseline grants seeded by 9.0a:
 - `operator_supervisor` and `operator_staff` get nothing in
   `team.*`.
 
+### `account.*` (1)
+
+Operator business-account settings. `account.configure` gates writes to
+the Operator Web Account screen for business identity, region, business
+week, rollover-hour, and logo settings. Grant intent is senior
+operator ownership: `operator_owner` and `operator_admin` (when seeded)
+can configure the account; manager-tier and below remain read-only.
+`super_admin` is granted explicitly so the seeded super-admin role keeps
+the "every catalog key" invariant. No MFA is required at the catalog
+level; route-level freshness can be added later without changing the
+grantable key.
+
+| Key | Description | MFA |
+|---|---|---|
+| `account.configure` | Configure operator business account identity, locale, currency, business-week, rollover-hour, and logo settings. | — |
+
+### `business_timing.*` (1)
+
+Operator business-timing settings. `business_timing.configure` gates
+writes to the Operator Web Business setup and Business timing editor
+screens. Grant intent mirrors the current operator write route and
+screen posture: `operator_owner` and `operator_admin` (when seeded) own
+timing configuration; manager-tier and below do not receive the default
+grant. `super_admin` is granted explicitly for catalog completeness.
+No MFA is required at the catalog level; closed-day timing authority
+and write validation stay in the business-timing route/service layer.
+
+| Key | Description | MFA |
+|---|---|---|
+| `business_timing.configure` | Configure effective-dated business timing profiles, rollover-hour, week-start, and service periods. | — |
+
 ### `billing.*` (5)
 
 Operator billing actions. All money-moving keys require MFA.
@@ -311,42 +343,26 @@ Deny wins. Default deny. The `users.roles_version` column is the cache
 invalidation key; bumping it on any role change drops the entry from
 the JWT custom-claim cache and the in-process permission cache.
 
-## Pending additions (flagged by Wave 5 W5-PKEYS)
+## B5.b catalog reconciliation
 
 Surfaced by the 2026-05-06 CODE_HEALTH audit; flagged again by Wave 5
 W5-PKEYS ([#362](https://github.com/SaidKhan005/forge-flow-demo/pull/362))
 during the operator-web permission-key sweep. Historical context:
 `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`.
 
-Three operator-web screens hand-type permission strings in **two new
-namespaces** that are NOT yet in this catalog:
+The B5.b follow-up resolves the two operator-web settings namespaces
+that were previously flagged as pending additions:
 
-- `lib/screens/account_screen.dart` — uses `account.configure`.
-- `lib/screens/business_setup_screen.dart` — uses
-  `business_timing.configure`.
-- `lib/screens/business_timing_editor_screen.dart` — uses
-  `business_timing.configure`.
+- `lib/operator_web/screens/account_screen.dart` gates on
+  `PermissionKeys.accountConfigure`.
+- `lib/operator_web/screens/business_setup_screen.dart` gates on
+  `PermissionKeys.businessTimingConfigure`.
+- `lib/operator_web/screens/business_timing_editor_screen.dart` gates on
+  `PermissionKeys.businessTimingConfigure`.
 
-The catalog is frozen and mirrors `lib/auth/permission_keys.dart` plus
-the seed migration (see "Keep in sync" above). Adding these constants
-requires the three coordinated edits documented at the top of this
-file:
-
-1. Catalog doc here — add rows to a new `account.*` category and
-   extend the seeded grants for the right baseline roles, plus a row
-   for `business_timing.configure` either in a new namespace or under
-   the appropriate existing category.
-2. `lib/auth/permission_keys.dart` — add the constants and include them
-   in `PermissionKeys.all` (and `requiresMfa` if applicable).
-3. An additive migration in `db/migrations/` that seeds the new keys
-   and any default role grants.
-4. The screen swaps that replace the hand-typed string literals with
-   the new constants.
-
-Track as a small lane when the team that owns the relevant
-operator-web settings work is ready to coordinate the tri-mirror
-change. Until then the screens carry hand-typed strings against
-namespaces this catalog does not list.
+The catalog rows above, `lib/auth/permission_keys.dart`, and the
+additive B5.b seed migration are the coordinated mirrors for these two
+keys. No B2/B10 admin keys were added.
 
 ## Out of catalog scope
 

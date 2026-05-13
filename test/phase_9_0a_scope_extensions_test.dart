@@ -18,8 +18,8 @@
 //   * The audit-fix migration grants the post-9.0 team.* keys to
 //     super_admin so "super_admin has every key" stays true.
 //   * `lib/auth/permission_keys.dart` exposes 14 team.* constants
-//     and PermissionKeys.all has grown to 99 (81 baseline + 14
-//     team.* + 3 later admin keys + 1 integrations.* key).
+//     and PermissionKeys.all has grown to 103 after later additive
+//     catalog slices.
 //   * No timestamp without time zone is used (CLAUDE.md storage rule).
 
 import 'dart:io';
@@ -218,8 +218,8 @@ void main() {
       }
     });
 
-    test('PermissionKeys.all has 99 entries (81 baseline + 14 team.* + '
-        '3 later admin keys + 1 integrations.* key)', () {
+    test('PermissionKeys.all has 103 entries after additive catalog slices',
+        () {
       // The 9.0a slice landed at 93 keys; the 9.0Σ.h2 slice
       // (2026-04-28) added admin.audit_privacy.read for the
       // advisor-conversation audit-privacy gate. B41 then added
@@ -232,10 +232,13 @@ void main() {
       // reset escalation, bringing the catalog to 98. The 11W.5
       // catalog reconciliation slice added team.audit_log.export to
       // back the Operator Web Audit Log CSV export gate, bringing
-      // the catalog to 99. This test tracks the running total so a
+      // the catalog to 99. Later hierarchy lifecycle additions brought
+      // the catalog to 101. B5.b added account.configure and
+      // business_timing.configure, bringing the catalog to 103. This
+      // test tracks the running total so a
       // future catalog addition that forgets to grow the count is
       // caught here.
-      expect(PermissionKeys.all.length, equals(99));
+      expect(PermissionKeys.all.length, equals(103));
     });
 
     test('team.* keys are NOT in requiresMfa (locked decision: no MFA gate '
