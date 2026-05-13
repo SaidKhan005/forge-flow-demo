@@ -94,6 +94,10 @@ import 'wage_role_rows_routes.dart';
 import 'proxy_idempotency_cache.dart';
 import 'realtime_route.dart'
     show handleRealtimeUpgrade, RealtimeReplayFetcher, realtimeSubscribePath;
+// Slice A11.1 — proxy-side import path for the SessionRecord
+// completeness predicate. The re-export keeps the proxy hot path from
+// reaching into `tool/pressure/` directly.
+import 'session_record_predicate.dart';
 import 'star_target_routes.dart';
 import 'vendor_lifecycle_recently_available_routes.dart';
 import 'weekly_plan_routes.dart';
@@ -6938,6 +6942,110 @@ class RollingWindowAttemptCounter {
   }
 }
 
+/// Slice A11.1 — production session-record completeness gauge.
+///
+/// In-process counter that observes 2xx responses from session-finalizing
+/// proxy routes (today: `POST /v1/auth/session/login`) and increments
+/// `proxy.session_record.incomplete{route, missing_field}` whenever the
+/// response body fails [SessionRecordCompleteness.assertComplete].
+///
+/// Authority: addendum B2 / R3 §2 stretch goal — "promote the predicate
+/// to a production gauge" (per
+/// `docs/_execution/lane_a_code_health/01_product_rule_and_ia.md` and
+/// `docs/_execution/lane_a_code_health/03_execution_slices.md` Slice
+/// A11.1).
+///
+/// Discipline:
+///   - **Observability-only.** [observe] never throws and never alters
+///     the response. The 2xx ships either way; the gauge surfaces the
+///     bug for the ops console + soak harnesses.
+///   - **No tenant identifiers.** Labels carry only `route` (proxy path
+///     constant) and `missing_field` (predicate-defined field name). The
+///     gauge is global-cardinality across operators, mirroring the rest
+///     of `health_producers/infra_producers.dart`.
+///   - **No PII.** No email, IP, user_id, operator_id, location_id, or
+///     session_id ever enters the counter map. Predicate output names
+///     fields, not values.
+class SessionRecordIncompleteGauge {
+  SessionRecordIncompleteGauge();
+
+  /// route -> {missing_field -> count}. Insertion-ordered so a snapshot
+  /// reads stably for tests + the deep-health envelope.
+  final Map<String, Map<String, int>> _counts = <String, Map<String, int>>{};
+
+  /// Run the predicate against [body] and increment the per-(route,
+  /// missing_field) counter for every field the predicate flagged. Pass
+  /// the JWT roles set the route resolved so the predicate can pick the
+  /// tenant-scoped vs global-admin shape (see
+  /// [SessionRecordCompleteness.assertComplete]).
+  ///
+  /// Returns the [SessionRecordAssertion] for callers that want to log
+  /// the result alongside their existing diagnostic line; the assertion
+  /// is informational — the route MUST NOT branch on it (the 2xx already
+  /// shipped). Returns a `complete: true` assertion on any predicate
+  /// throw so a malformed body or unexpected predicate failure cannot
+  /// crash the response path.
+  SessionRecordAssertion observe({
+    required String route,
+    required Map<String, Object?> body,
+    required Set<String> roles,
+  }) {
+    SessionRecordAssertion assertion;
+    try {
+      assertion = SessionRecordCompleteness.assertComplete(body, roles: roles);
+    } catch (_) {
+      // Defensive: a predicate throw must never alter the 2xx. Treat as
+      // "complete" for observability purposes; the soak harness covers
+      // the structural correctness of the predicate itself.
+      return const SessionRecordAssertion(
+        complete: true,
+        missingFields: <String>[],
+        unexpectedFields: <String>[],
+      );
+    }
+    if (assertion.complete) return assertion;
+    final routeBucket = _counts.putIfAbsent(route, () => <String, int>{});
+    for (final field in assertion.missingFields) {
+      routeBucket[field] = (routeBucket[field] ?? 0) + 1;
+    }
+    for (final field in assertion.unexpectedFields) {
+      // Unexpected (global-admin contract violation: scope was non-empty
+      // when it should have been empty) is a separate failure mode but
+      // shares the same gauge — the label encodes the kind via prefix.
+      final key = 'unexpected_$field';
+      routeBucket[key] = (routeBucket[key] ?? 0) + 1;
+    }
+    return assertion;
+  }
+
+  /// Snapshot the per-route, per-missing-field counts for the deep-health
+  /// envelope or the soak harness assertion. The returned map is a deep
+  /// copy so the caller cannot mutate the gauge state.
+  Map<String, Map<String, int>> snapshot() {
+    return <String, Map<String, int>>{
+      for (final entry in _counts.entries)
+        entry.key: Map<String, int>.from(entry.value),
+    };
+  }
+
+  /// Total increment count across every route + missing_field. Used by
+  /// the deep-health producer for a single coarse gauge value.
+  int totalIncrements() {
+    var total = 0;
+    for (final routeBucket in _counts.values) {
+      for (final count in routeBucket.values) {
+        total += count;
+      }
+    }
+    return total;
+  }
+
+  /// Test-only / startup hook for resetting state between scenarios.
+  void reset() {
+    _counts.clear();
+  }
+}
+
 /// Centralised hashing helpers shared between [InMemoryAuthLockoutEnforcer]
 /// and the route handler so audit payloads carry the same hex digest
 /// the lockout query keyed against.
@@ -8466,6 +8574,16 @@ Future<void> routeRequest(
   // from [passwordResetThrottleCounter] applies).
   RollingWindowAttemptCounter? passwordResetEmailShortCounter,
   RollingWindowAttemptCounter? passwordResetIpCounter,
+  // Slice A11.1 — production session-record gauge. In-process counter
+  // that observes 2xx responses from session-finalizing routes (today:
+  // POST /v1/auth/session/login) and increments
+  // proxy.session_record.incomplete{route, missing_field} when the
+  // response body fails SessionRecordCompleteness.assertComplete.
+  // Optional for back-compat; when null the route ships the 2xx without
+  // the observability hop (legacy "no gauge" mode).
+  // Authority: docs/_execution/lane_a_code_health/03_execution_slices.md
+  // "Slice A11.1 — Production Session-Record Gauge" + R3 §2.
+  SessionRecordIncompleteGauge? sessionRecordIncompleteGauge,
   // HARD-H — admin idempotency cache for cross-tenant POST routes
   // (today: feature flags toggle). Optional: when null, the route
   // runs without route-level dedup and the gateway-side cache
@@ -13052,14 +13170,27 @@ Future<void> routeRequest(
             }
           }
 
-          _writeJson(response, 200, <String, Object?>{
+          // Slice A11.1 — build the body once so the production
+          // session-record gauge can run the predicate against the
+          // exact bytes we ship. The gauge is observability-only: a
+          // missing-field finding NEVER blocks the 2xx (the response is
+          // already committed by the time the harness reads the gauge).
+          // Authority: docs/_execution/lane_a_code_health/03_execution_slices.md
+          // Slice A11.1 + R3 §2 stretch goal.
+          final loginResponseBody = <String, Object?>{
             'session_id': sessionId,
             // Echo the resolved scope so the client can sanity-check it
             // matches the local AuthSession before persisting the envelope.
             'user_id': scope.userId,
             'operator_id': scope.operatorId,
             'location_id': scope.locationId,
-          });
+          };
+          sessionRecordIncompleteGauge?.observe(
+            route: authSessionLoginPath,
+            body: loginResponseBody,
+            roles: scope.roles.toSet(),
+          );
+          _writeJson(response, 200, loginResponseBody);
           return;
         }
 
