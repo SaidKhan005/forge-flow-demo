@@ -3741,10 +3741,13 @@ class ProxyRuntimeGauges {
         if (snapshot != null) {
           result['postgres_pool'] = snapshot.toJson();
         }
-      } catch (_) {
-        // Collectors must not destabilize /health. Failure here is
-        // logged as a one-line warning; the envelope just omits the
-        // section.
+      } on Exception catch (_) {
+        // Collectors must not destabilize /health. Pool collectors can
+        // surface a variety of Exception subtypes (postgres PgException,
+        // StateError-like wrapped failures from a closed pool, etc.);
+        // collapse them all into a uniform `error` field. Narrowed to
+        // `Exception` so genuine `Error`s (assertion failures, OOM, type
+        // errors) keep propagating instead of being silently masked.
         result['postgres_pool'] = <String, Object?>{
           'error': 'pool_gauge_collector_failed',
         };
@@ -3759,7 +3762,12 @@ class ProxyRuntimeGauges {
             'ring_buffer_keys': value,
           };
         }
-      } catch (_) {
+      } on Exception catch (_) {
+        // Pubsub subscriber collectors are arbitrary closures wired by
+        // the production entrypoint; any Exception subtype they raise
+        // (StateError-like wraps from a closed subscriber, etc.) lands
+        // here. Narrowed to `Exception` so genuine `Error`s continue to
+        // propagate instead of being silently masked.
         result['pubsub_subscriber'] = <String, Object?>{
           'error': 'ring_buffer_gauge_collector_failed',
         };
@@ -5336,7 +5344,15 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
         budget: outerProducerBudget,
       );
       return MapEntry(key, metric);
-    } catch (_) {
+    } on Exception catch (_) {
+      // Producers are arbitrary `ProxyHealthRegistryProducer` closures
+      // wired by the registry; the budget helper raises `TimeoutException`
+      // and any producer-side `Exception` subtype propagates through
+      // (postgres PgException, network IOException, parse FormatException,
+      // etc.). Collapse them all into the `unknown` placeholder metric so
+      // one bad producer cannot wedge the registry pass. Narrowed to
+      // `Exception` so genuine `Error`s (assertion failures, OOM, type
+      // errors) keep propagating instead of being silently masked.
       return MapEntry(
         key,
         _unknownProducerMetric(
@@ -5414,7 +5430,14 @@ Future<ProxyHealthDependencyProbe> defaultProxyHealthDependencyProbe(
         budget: budget,
       );
       return rows.isNotEmpty;
-    } catch (_) {
+    } on Exception catch (_) {
+      // Dependency liveness must project to `false` (not crash) for
+      // every flake mode: `TimeoutException` from the budget helper,
+      // `PgException` from the postgres driver, `IOException` from the
+      // network layer, etc. Collapse them all into a missing-liveness
+      // signal. Narrowed to `Exception` so genuine `Error`s (assertion
+      // failures, OOM, type errors) keep propagating instead of being
+      // silently masked behind a green deep-health envelope.
       return false;
     }
   }
@@ -5467,7 +5490,14 @@ Future<ProxyHealthDependencyProbe> strictProxyHealthDependencyProbe(
     try {
       await awaitHealthOperationWithBudget(runnerFn(sql), budget: budget);
       return true;
-    } catch (_) {
+    } on Exception catch (_) {
+      // HARD-A dependency liveness mirrors the default probe: project
+      // every Exception subtype (`TimeoutException` from the budget
+      // helper, `PgException` from the cypher/vector round-trips, etc.)
+      // to `false` so a flaky extension can never crash the deep-health
+      // route. Narrowed to `Exception` so genuine `Error`s (assertion
+      // failures, OOM, type errors) keep propagating instead of being
+      // silently masked behind a green health envelope.
       return false;
     }
   }

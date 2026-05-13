@@ -1500,9 +1500,9 @@ range from the seam map at
 
 | Slice | Cluster range | Lines | Sites converted | Status |
 |---|---|---|---|---|
-| **A3.2** | Clusters 2-3 + early cluster 4 | 1341-2735 | 12 (1 explicitly retained at line 2426 — `Platform.environment` swallow) | open |
-| A3.3 | Clusters 4-8 (mid + late `routeRequest`) | ~3670-14910 | ~16 (estimated) | pending |
-| A3.4 | Clusters 9-12 (admin delegates + predicates + CORS tail) | ~14911-18871 | ~16 (estimated) | pending |
+| **A3.2** | Clusters 2-3 + early cluster 4 | 1341-2735 | 12 (1 explicitly retained at line 2426 — `Platform.environment` swallow) | merged (PR #563) |
+| **A3.3** | Clusters 4-8 (mid + late `routeRequest`) | 3744-5470 | 5 (1 already-documented retention at line 2426 carries forward; 1 out-of-scope site at line 7024 inside `SessionRecordIncompleteGauge`) | open |
+| A3.4 | Clusters 9-12 (admin delegates + predicates + CORS tail) | ~8856-16138 | ~22 (estimated; per current monolith grep) | pending |
 
 A3.2 conversion idiom: every typed catch carries a 1-3 line comment
 naming the exception class the protected block actually throws and
@@ -1512,3 +1512,38 @@ throws (e.g. cryptography backends) — `on Object` was never used so
 genuine `Error`s (assertion failures, OOM, type errors) keep
 propagating. A3.2 line count: 18,871 → 18,899 (+28; bleed-stop
 ceiling 19,071, headroom 172).
+
+### A3.3 chunk-2 site registry
+
+Chunk 2 (A3.3) converted **5 of the estimated 16 sites**. The actual
+count came in materially lower because clusters 4-8 turned out to be
+sparse on `catch (_)` patterns — most of the dense bare-catch surface
+sits in clusters 9-12 (admin delegates + predicates + the
+`routeRequest` mega-function's inline handler bodies), which A3.4
+will sweep. Two sites in clusters 4-8 were intentionally NOT touched:
+
+- **Line 2426** — already documented by A3.2 as the
+  `Platform.environment` retention (`UnsupportedError` is an `Error`
+  subclass, not `Exception`; narrowing would re-throw the very
+  failure mode this fallback exists to absorb).
+- **Line 7024** — inside `SessionRecordIncompleteGauge.observe()`
+  (class lines 6997-7075). Block 2 of the slice brief explicitly
+  scopes this class's internals OUT — A11.1 owns the gauge surface
+  and the A11.1.b consumer-wiring work is in flight in another
+  worktree.
+
+| Site (file:line) | Original throw source | Narrowed type | Rationale |
+|---|---|---|---|
+| `tool/advisor_proxy/advisor_proxy.dart:3744` | `pgCollector()` closure (arbitrary Postgres pool internals invoked from the runtime gauge snapshot) | `on Exception catch (_)` | Pool collectors can surface `PgException` from the postgres driver, `StateError`-like wraps from a closed pool, or custom subscriber failures. Multiple disjoint concrete throws → collapse to `Exception`. Genuine `Error`s keep propagating so a real bug in the gauge class doesn't get masked behind the `error: pool_gauge_collector_failed` placeholder. |
+| `tool/advisor_proxy/advisor_proxy.dart:3762` | `ringCollector()` closure (arbitrary pubsub subscriber internals invoked from the runtime gauge snapshot) | `on Exception catch (_)` | Same shape as 3744. Subscriber closures can raise any `Exception` subtype (closed-subscriber `StateError`-like wraps, ring-buffer overflow signals, etc.); collapse to `Exception` and surface the `ring_buffer_gauge_collector_failed` placeholder. `Error`s propagate. |
+| `tool/advisor_proxy/advisor_proxy.dart:5339` | `awaitHealthOperationWithBudget(producer(context), …)` inside `_runOne` of the producer registry runner | `on Exception catch (_)` | Producers are arbitrary `ProxyHealthRegistryProducer` closures; the budget helper raises `TimeoutException` and any producer-side `Exception` subtype propagates (`PgException`, `IOException`, parse `FormatException`, etc.). Collapse them all into the `unknown` placeholder metric. `Error`s propagate so a real defect in a producer doesn't get masked behind `registry_outer_failure`. |
+| `tool/advisor_proxy/advisor_proxy.dart:5417` | `awaitHealthOperationWithBudget(runnerFn(sql), …)` inside `defaultProxyHealthDependencyProbe`'s inner `probe` | `on Exception catch (_)` | Same shape as 5339. Dependency liveness must project to `false` for `TimeoutException`, `PgException`, network `IOException`, etc. — every flake mode. `Error`s propagate so a real defect (assertion failure, type error) doesn't get masked behind a green deep-health envelope. |
+| `tool/advisor_proxy/advisor_proxy.dart:5470` | `awaitHealthOperationWithBudget(runnerFn(sql), …)` inside `strictProxyHealthDependencyProbe`'s inner `probe` | `on Exception catch (_)` | Same shape as 5417 — the HARD-A probe mirrors the default probe's exception surface (the only difference is that the SQL round-trips through cypher / pgvector). Same narrowing applies for the same reason. |
+
+A3.3 line count: 18,904 → 18,934 (+30; bleed-stop ceiling 19,071,
+headroom 137). Test backfill skipped per A3.2 Option A operator
+approval (pure refactor; behavior preservation verified by the
+existing 25 tests in `test/proxy/advisor_proxy_health_envelope_test.dart`
+which exercise the registry runner + both dependency probes, plus
+the 223 tests in `test/advisor_proxy_test.dart` which exercise the
+full proxy surface).
