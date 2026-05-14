@@ -37,6 +37,7 @@ import 'package:flutter/services.dart';
 import '../../domain/models/wage_role_row_record.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_wage_authority_gateway.dart';
+import '../widgets/hierarchy_scope_notice.dart';
 import '../../theme/app_theme.dart';
 
 /// Roles admitted to write wage rows. Mirrors `kOperatorWriteRoles` in
@@ -310,6 +311,40 @@ class _WageAuthorityScreenState extends State<WageAuthorityScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           _Header(locationName: widget.locationName),
+          const SizedBox(height: 14),
+          // HP #11 (`CLAUDE.md`): every settings / pricing / accuracy
+          // surface declares its selected scope, inherited source, and
+          // effective value. Wage authority writes the operator-scoped
+          // `wage_role_rows` fact table; rows are keyed by
+          // (operator_id, location_id, restaurant_id, role_name) per
+          // db/migrations/202605080200_phase_8_wage_role_rows_server_
+          // truth.sql, so the scope is Location with no higher-level
+          // inheritance yet.
+          //
+          // When the wage table grows hierarchy-aware columns (e.g.
+          // `scope_kind` + `inherited_from_scope_id`) each row will
+          // carry its own inheritance badge inside the bucket section
+          // — the same pattern Business setup's `_EffectiveFieldRow`
+          // already follows. Until then the surface renders the scope
+          // triple at the top of the screen and each bucket row stays
+          // value-only.
+          // TODO(wave-3+ hierarchy wages): replace the screen-level
+          // notice with per-row inheritance badges once `wage_role_
+          // rows` carries hierarchy columns.
+          HierarchyScopeNotice(
+            keyName: 'wage_authority_hierarchy_scope',
+            selectedScope: HierarchyScopeLevel.location,
+            scopeName: widget.locationName,
+            inheritedFromLabel: null,
+            effectiveValueSummary:
+                "These wage rows apply only to ${widget.locationName}. "
+                "Other locations carry their own wage rows.",
+            backendOnlyExplainer:
+                "Region- and brand-level wage floors (e.g. a corporate "
+                "minimum that every location inherits unless overridden) "
+                "are coming in a later wave. For now every wage row is "
+                "set at the Location scope.",
+          ),
           if (_loadError != null) ...<Widget>[
             const SizedBox(height: 12),
             _ErrorBanner(message: _loadError!),

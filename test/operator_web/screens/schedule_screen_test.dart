@@ -279,6 +279,60 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('schedule_screen_error')), findsOneWidget);
     });
+
+    testWidgets(
+      'renders HP #11 hierarchy scope notice (selected scope, inherited '
+      'from, effective value) on every state',
+      (tester) async {
+        await sizeViewport(tester);
+        final session = sessionWith();
+        // Loaded state with a snapshot.
+        final loadedGateway =
+            OperatorWebDemoScheduleGateway(seed: makeSnapshot());
+        await tester.pumpWidget(
+          wrap(
+            ScheduleScreen(
+              session: session,
+              locationId: session.primaryLocationId,
+              locationName: session.primaryLocationName,
+              gateway: loadedGateway,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('schedule_screen_hierarchy_scope')),
+          findsOneWidget,
+        );
+        // The triple is present.
+        expect(
+          find.byKey(const Key('schedule_screen_hierarchy_scope_selected_row')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('schedule_screen_hierarchy_scope_inherited_row')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('schedule_screen_hierarchy_scope_effective_row')),
+          findsOneWidget,
+        );
+        // Backend-only carve-out explainer renders for forward-looking
+        // inheritance coverage.
+        expect(
+          find.byKey(
+            const Key('schedule_screen_hierarchy_scope_backend_only'),
+          ),
+          findsOneWidget,
+        );
+        // Plain-English copy (no engineering jargon).
+        expect(
+          find.textContaining('Set here. Does not inherit'),
+          findsOneWidget,
+        );
+        expect(find.text('Location'), findsOneWidget);
+      },
+    );
   });
 }
 
