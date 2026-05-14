@@ -21,6 +21,7 @@ class AccountInfo {
     this.lastActiveAt,
     this.lastLoginAt,
     this.passwordUpdatedAt,
+    this.logoUrl,
   });
 
   final String displayName;
@@ -32,6 +33,12 @@ class AccountInfo {
   final DateTime? lastActiveAt;
   final DateTime? lastLoginAt;
   final DateTime? passwordUpdatedAt;
+
+  /// Wave 2 W-5-mobile-FU — operator's uploaded brand-mark URL,
+  /// projected from `public.operators.logo_url`. Null when the
+  /// operator has not uploaded one; consumers render the F&F splash
+  /// fallback.
+  final String? logoUrl;
 
   bool get hasAnyDisplayValue {
     return displayName.trim().isNotEmpty ||
@@ -54,6 +61,7 @@ class AccountInfo {
     'last_active_at': lastActiveAt?.toUtc().toIso8601String(),
     'last_login_at': lastLoginAt?.toUtc().toIso8601String(),
     'password_updated_at': passwordUpdatedAt?.toUtc().toIso8601String(),
+    'logo_url': logoUrl,
   };
 
   static AccountInfo fromJson(Map<String, Object?> json) {
@@ -89,6 +97,7 @@ class AccountInfo {
       lastActiveAt: _readDateTime(json['last_active_at']),
       lastLoginAt: _readDateTime(json['last_login_at']),
       passwordUpdatedAt: _readDateTime(json['password_updated_at']),
+      logoUrl: _readString(json['logo_url']),
     );
   }
 

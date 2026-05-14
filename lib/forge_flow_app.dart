@@ -50,6 +50,7 @@ import 'services/realtime/realtime_event.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/sync/sync_proxy_client.dart';
 import 'widgets/demo_mode_banner.dart';
+import 'widgets/operator_brand_mark.dart';
 import 'widgets/peer_edit_toast.dart';
 import 'screens/schedule_builder.dart';
 import 'screens/settings_screen.dart';
@@ -1405,7 +1406,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     onTap: () => Scaffold.of(context).openDrawer(),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
+                // Wave 2 W-5-mobile-FU — operator's uploaded logo
+                // shown next to the menu button. Falls back to the
+                // F&F splash icon when the operator has not uploaded
+                // one. Closes the mobile half of W-5 (PR #686) that
+                // was deferred because plumbing logo_url through the
+                // mobile AuthSession touches every test that pins a
+                // session shape (mitigated here by adding logoUrl as
+                // an optional, nullable field).
+                OperatorBrandMarkLeading(logoUrl: session?.logoUrl),
+                const SizedBox(width: 10),
                 const SyncStateBadge(),
                 const Spacer(),
                 ValueListenableBuilder<int>(

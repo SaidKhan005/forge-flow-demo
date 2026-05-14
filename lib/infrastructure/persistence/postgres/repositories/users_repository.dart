@@ -115,6 +115,7 @@ class SelfProfileRepositoryRow {
     this.lastActiveAt,
     this.lastLoginAt,
     this.passwordUpdatedAt,
+    this.logoUrl,
   });
 
   final String displayName;
@@ -126,6 +127,12 @@ class SelfProfileRepositoryRow {
   final DateTime? lastActiveAt;
   final DateTime? lastLoginAt;
   final DateTime? passwordUpdatedAt;
+
+  /// Wave 2 W-5-mobile-FU — operator's uploaded brand-mark URL,
+  /// joined from `public.operators.logo_url`. Null when the operator
+  /// has not uploaded one. Mirrors the operator-web Account screen's
+  /// logo surface and feeds the mobile shell brand-mark.
+  final String? logoUrl;
 }
 
 class MfaRecoveryAdminRecipientRow {
@@ -461,8 +468,17 @@ class UsersRepository extends OperatorScopedRepository {
         ') as mfa_enabled, '
         'u.last_active_at, '
         'u.last_login_at, '
-        'u.password_set_at as password_updated_at '
+        'u.password_set_at as password_updated_at, '
+        // Wave 2 W-5-mobile-FU — project operators.logo_url so the
+        // mobile shell's brand-mark + the operator-web Account screen
+        // both read from the same row. operators is the operator-scope
+        // identity table (one row per `operator_id`); the join is
+        // operator-scoped via u.operator_id so RLS-ready isolation
+        // (HP #4) carries through.
+        'op.logo_url '
         'from users u '
+        'left join public.operators op '
+        '  on op.operator_id = u.operator_id '
         'left join locations l '
         '  on l.location_id = @location_id::uuid '
         '  and l.operator_id = @operator_id::uuid '
@@ -482,7 +498,8 @@ class UsersRepository extends OperatorScopedRepository {
         "and u.status != 'deleted' "
         'group by u.user_id, u.display_name, u.first_name, u.last_name, '
         'u.email, u.status, l.name, primary_l.name, pr.display_name, '
-        'u.last_active_at, u.last_login_at, u.password_set_at '
+        'u.last_active_at, u.last_login_at, u.password_set_at, '
+        'op.logo_url '
         'limit 1',
         parameters: <String, Object?>{
           'operator_id': operatorId,
@@ -1575,6 +1592,7 @@ class UsersRepository extends OperatorScopedRepository {
     final lastActiveAt = row['last_active_at'];
     final lastLoginAt = row['last_login_at'];
     final passwordUpdatedAt = row['password_updated_at'];
+    final rawLogoUrl = row['logo_url'];
     return SelfProfileRepositoryRow(
       displayName: displayName,
       email: email,
@@ -1586,6 +1604,9 @@ class UsersRepository extends OperatorScopedRepository {
       lastLoginAt: lastLoginAt is DateTime ? lastLoginAt : null,
       passwordUpdatedAt: passwordUpdatedAt is DateTime
           ? passwordUpdatedAt
+          : null,
+      logoUrl: rawLogoUrl is String && rawLogoUrl.trim().isNotEmpty
+          ? rawLogoUrl.trim()
           : null,
     );
   }

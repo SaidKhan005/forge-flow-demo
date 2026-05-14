@@ -34,6 +34,7 @@ class RepositoryAccountInfoGateway implements AccountInfoGateway {
       lastActiveAt: row.lastActiveAt,
       lastLoginAt: row.lastLoginAt,
       passwordUpdatedAt: row.passwordUpdatedAt,
+      logoUrl: row.logoUrl,
     );
   }
 
