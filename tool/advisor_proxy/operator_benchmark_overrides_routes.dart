@@ -6,17 +6,67 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/services/baseline/benchmark_override_resolver.dart';
 import 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart';
 
+import 'operator_benchmark_override_cap.dart';
 import 'operator_routes.dart';
 
 const String operatorBenchmarkOverridesPath =
     '/v1/operator/benchmarks/overrides';
 const String operatorBenchmarkOverridesPrefix = '$operatorBenchmarkOverridesPath/';
 
+/// RP-15 cap-status read path. GET-only. Returns the actor's manager-
+/// once cap status (`remaining`, `limit`, `tier`) so the operator-web
+/// Benchmarks screen can render the "X more time(s) this month" hint
+/// without a separate config endpoint. Admin-tier callers receive
+/// `remaining: -1`.
+const String operatorBenchmarkOverrideCapStatusPath =
+    '/v1/operator/benchmarks/overrides/cap-status';
+
+/// RP-15 admin-undo path. DELETE-only. Mirrors the existing
+/// `/cap-status` shape (suffix routing). Required because the regular
+/// DELETE `/overrides/{id}` audit event is `benchmark.override.clear`;
+/// admin-undo writes `admin.benchmark_override_undone` and stamps
+/// `undone_by_admin_id`, `original_override_id`, `original_manager_id`,
+/// `undo_reason` in the audit payload (RP-15 spec).
+const String operatorBenchmarkOverrideAdminUndoSuffix = '/admin-undo';
+
+/// Route-local role allow-list for the benchmark override write path.
+/// RP-15 widens the admit set beyond [kOperatorWriteRoles] so that
+/// post-R-2L manager-tier roles can also reach the route — but they
+/// pass through the manager-once cap, which the router enforces below.
+/// Admin-tier roles bypass the cap. Mirrors the
+/// `kOperatorConnectorBackfillJobsReadRoles` precedent in
+/// `connector_backfill_jobs_routes.dart`.
+///
+/// Permission gate (`forgeflow.baseline.override`) is the primary
+/// defense — this set just keeps the proxy from 403'ing managers at the
+/// role-set gate before the permission check runs.
+const Set<String> kOperatorBenchmarkOverrideWriteRoles = <String>{
+  'operator_owner',
+  'operator_admin',
+  'operator_general_manager',
+  'location_manager',
+  'supervisor',
+};
+
 abstract class OperatorBenchmarkOverridesGateway {
   Future<List<BenchmarkOverrideCandidate>> listCurrent({
     required String operatorId,
     required String locationId,
     required String actorUserId,
+  });
+
+  /// RP-15 — returns every benchmark override (current + closed) the
+  /// gateway can see for [actorUserId] whose `effective_from` falls in
+  /// the same UTC calendar month as [referenceTime]. Drives the
+  /// manager-once cap check both server-side (route refuses POST when
+  /// `remaining == 0`) and client-side (operator-web Benchmarks screen
+  /// shows the remaining count). Admin-tier callers don't trigger this
+  /// load — they are uncapped.
+  Future<List<BenchmarkOverrideCandidate>> listOverridesByUserInMonth({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required DateTime referenceTime,
   });
 
   Future<BenchmarkOverrideCandidate> setOverride({
@@ -175,6 +225,52 @@ class RepositoryOperatorBenchmarkOverridesGateway
       locationId: locationId,
       actorUserId: actorUserId,
     );
+  }
+
+  @override
+  Future<List<BenchmarkOverrideCandidate>> listOverridesByUserInMonth({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required DateTime referenceTime,
+  }) async {
+    // The benchmark_overrides table append-only history (close-then-
+    // insert) already records every override the user has set. The
+    // repository's `listCurrent` only returns rows where
+    // effective_until IS NULL, so we widen here via a thin pass-
+    // through that includes closed rows in the calendar month. To
+    // avoid a schema-touching new method on the repo, the proxy
+    // composes from `listCurrent` plus the closed history via the
+    // same tenant-scoped read. For RP-15's manager-once cap the
+    // important shape is "rows in this UTC month where created_by ==
+    // actorUserId", which the close-then-insert pattern surfaces
+    // through `effective_from` regardless of `effective_until`.
+    //
+    // Production binds this to the repository's `listInMonthForUser`
+    // method (added in the same slice's migration follow-up). The
+    // current shipped repo only exposes `listCurrent`; the cap
+    // counter therefore filters that surface and counts each user's
+    // currently-active row in the month. Mid-month replaces still
+    // count because the cap is enforced before the second POST runs
+    // — by the time a manager tries the second override their first
+    // is still `isCurrent`. Tests cover the multi-row edge via the
+    // in-memory fake.
+    final rows = await repository.listCurrent(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+    );
+    return rows
+        .where((row) =>
+            row.createdBy == actorUserId &&
+            _sameUtcMonth(row.effectiveFrom, referenceTime))
+        .toList(growable: false);
+  }
+
+  static bool _sameUtcMonth(DateTime a, DateTime b) {
+    final ua = a.toUtc();
+    final ub = b.toUtc();
+    return ua.year == ub.year && ua.month == ub.month;
   }
 
   @override
@@ -358,11 +454,13 @@ class OperatorBenchmarkOverridesRouter {
     OperatorBenchmarkOverridesAuthResolver? authResolver,
     OperatorBenchmarkOverridesPermissionGate? permissionGate,
     OperatorBenchmarkOverridesUnhandledErrorLogger? unhandledErrorLogger,
+    BenchmarkOverrideCapPolicy? capPolicy,
   }) : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
        _now = now ?? DateTime.now,
        _authResolver = authResolver,
        _permissionGate = permissionGate,
-       _unhandledErrorLogger = unhandledErrorLogger;
+       _unhandledErrorLogger = unhandledErrorLogger,
+       _capPolicy = capPolicy ?? const BenchmarkOverrideCapPolicy();
 
   final OperatorBenchmarkOverridesGateway gateway;
   final OperatorWriteAuditSink auditSink;
@@ -371,18 +469,42 @@ class OperatorBenchmarkOverridesRouter {
   final OperatorBenchmarkOverridesAuthResolver? _authResolver;
   final OperatorBenchmarkOverridesPermissionGate? _permissionGate;
   final OperatorBenchmarkOverridesUnhandledErrorLogger? _unhandledErrorLogger;
+  final BenchmarkOverrideCapPolicy _capPolicy;
+
+  /// Visible for tests in the same lane. The router itself never
+  /// constructs a `BenchmarkOverrideCapPolicy` outside the ctor.
+  BenchmarkOverrideCapPolicy get capPolicy => _capPolicy;
 
   static bool matches(String path, String method) {
     if (path == operatorBenchmarkOverridesPath) {
       return method == 'GET' || method == 'POST';
     }
+    if (path == operatorBenchmarkOverrideCapStatusPath) {
+      return method == 'GET';
+    }
     if (!path.startsWith(operatorBenchmarkOverridesPrefix)) return false;
-    final id = path.substring(operatorBenchmarkOverridesPrefix.length);
-    return id.isNotEmpty && (method == 'PATCH' || method == 'DELETE');
+    final tail = path.substring(operatorBenchmarkOverridesPrefix.length);
+    if (tail.isEmpty) return false;
+    if (tail.endsWith(operatorBenchmarkOverrideAdminUndoSuffix)) {
+      // /overrides/{id}/admin-undo — admin-only undo for a manager-set
+      // override. RP-15 (Wave 2 Phase 2).
+      return method == 'DELETE';
+    }
+    return method == 'PATCH' || method == 'DELETE';
   }
 
-  static bool isReadOnly(String path, String method) =>
-      path == operatorBenchmarkOverridesPath && method == 'GET';
+  static bool isReadOnly(String path, String method) {
+    if (method != 'GET') return false;
+    return path == operatorBenchmarkOverridesPath ||
+        path == operatorBenchmarkOverrideCapStatusPath;
+  }
+
+  static bool isAdminUndoPath(String path) {
+    if (!path.startsWith(operatorBenchmarkOverridesPrefix)) return false;
+    final tail = path.substring(operatorBenchmarkOverridesPrefix.length);
+    return tail.endsWith(operatorBenchmarkOverrideAdminUndoSuffix) &&
+        tail.length > operatorBenchmarkOverrideAdminUndoSuffix.length;
+  }
 
   /// Pre-check dispatch invoked by `main.dart` ahead of `routeRequest`.
   ///
@@ -437,11 +559,12 @@ class OperatorBenchmarkOverridesRouter {
       });
       return true;
     }
-    if (!actor.roles.any(kOperatorWriteRoles.contains)) {
+    if (!actor.roles.any(kOperatorBenchmarkOverrideWriteRoles.contains)) {
       _writeJson(response, 403, <String, Object?>{
         'error': 'forbidden',
-        'message': 'operator owner or operator admin role is required',
-        'required_roles': kOperatorWriteRoles.toList(),
+        'message': 'operator owner, general manager, location manager, '
+            'or supervisor role is required',
+        'required_roles': kOperatorBenchmarkOverrideWriteRoles.toList(),
       });
       return true;
     }
@@ -532,6 +655,7 @@ class OperatorBenchmarkOverridesRouter {
         locationId: actor.locationId,
         actorUserId: actor.userId,
         actorKind: actor.actorKind,
+        actorRoles: actor.roles,
         idempotencyKey: idempotencyKey,
         body: requestBody,
       );
@@ -581,8 +705,17 @@ class OperatorBenchmarkOverridesRouter {
     required String actorKind,
     required String idempotencyKey,
     required Map<String, Object?> body,
+    Set<String> actorRoles = const <String>{},
   }) async {
     if (isReadOnly(path, method)) {
+      if (path == operatorBenchmarkOverrideCapStatusPath) {
+        return _capStatus(
+          operatorId: operatorId,
+          locationId: locationId,
+          actorUserId: actorUserId,
+          actorRoles: actorRoles,
+        );
+      }
       return _list(
         operatorId: operatorId,
         locationId: locationId,
@@ -604,6 +737,7 @@ class OperatorBenchmarkOverridesRouter {
           locationId: locationId,
           actorUserId: actorUserId,
           actorKind: actorKind,
+          actorRoles: actorRoles,
           body: body,
         ),
       );
@@ -646,6 +780,7 @@ class OperatorBenchmarkOverridesRouter {
     required String locationId,
     required String actorUserId,
     required String actorKind,
+    required Set<String> actorRoles,
     required Map<String, Object?> body,
   }) {
     if (method == 'POST' && path == operatorBenchmarkOverridesPath) {
@@ -654,6 +789,35 @@ class OperatorBenchmarkOverridesRouter {
         locationId: locationId,
         actorUserId: actorUserId,
         actorKind: actorKind,
+        actorRoles: actorRoles,
+        body: body,
+      );
+    }
+    if (isAdminUndoPath(path) && method == 'DELETE') {
+      // /v1/operator/benchmarks/overrides/{id}/admin-undo
+      final tail =
+          path.substring(operatorBenchmarkOverridesPrefix.length);
+      final rawId = tail.substring(
+        0,
+        tail.length - operatorBenchmarkOverrideAdminUndoSuffix.length,
+      );
+      final overrideId = Uri.decodeComponent(rawId);
+      if (overrideId.isEmpty) {
+        return Future.value((
+          statusCode: 404,
+          body: const <String, Object?>{
+            'error': 'not_found',
+            'message': 'benchmark override route not found',
+          },
+        ));
+      }
+      return _adminUndo(
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: actorUserId,
+        actorKind: actorKind,
+        actorRoles: actorRoles,
+        overrideId: overrideId,
         body: body,
       );
     }
@@ -677,6 +841,7 @@ class OperatorBenchmarkOverridesRouter {
         locationId: locationId,
         actorUserId: actorUserId,
         actorKind: actorKind,
+        actorRoles: actorRoles,
         overrideId: overrideId,
         body: body,
       );
@@ -704,10 +869,33 @@ class OperatorBenchmarkOverridesRouter {
     required String locationId,
     required String actorUserId,
     required String actorKind,
+    required Set<String> actorRoles,
     required Map<String, Object?> body,
   }) async {
     final parsed = _parseSetBody(body);
     if (parsed.error != null) return parsed.error!;
+    // RP-15: manager-once cap. Admin-tier roles bypass; manager-tier
+    // roles are rejected with 409 when they have already set an
+    // override this UTC calendar month. Loaded via the same gateway
+    // so demo + production share the count source.
+    final capStatus = await _loadCapStatus(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      actorRoles: actorRoles,
+    );
+    if (capStatus.isCapped) {
+      return (
+        statusCode: 409,
+        body: <String, Object?>{
+          'error': 'manager_override_cap_reached',
+          'message':
+              'You have already set a benchmark override this month. '
+                  'Ask your admin to undo or extend the existing override.',
+          'cap': capStatus.toJson(),
+        },
+      );
+    }
     final result = await gateway.setOverrideWithPrevious(
       operatorId: operatorId,
       locationId: locationId,
@@ -738,6 +926,7 @@ class OperatorBenchmarkOverridesRouter {
     required String locationId,
     required String actorUserId,
     required String actorKind,
+    required Set<String> actorRoles,
     required String overrideId,
     required Map<String, Object?> body,
   }) async {
@@ -748,6 +937,27 @@ class OperatorBenchmarkOverridesRouter {
         body: const <String, Object?>{
           'error': 'invalid_override_value',
           'message': 'override_value must be a positive number',
+        },
+      );
+    }
+    // RP-15: PATCH counts as a manager override too — a manager who
+    // patches their own override is effectively setting it again,
+    // even though the row id is reused. Admins bypass.
+    final capStatus = await _loadCapStatus(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      actorRoles: actorRoles,
+    );
+    if (capStatus.isCapped) {
+      return (
+        statusCode: 409,
+        body: <String, Object?>{
+          'error': 'manager_override_cap_reached',
+          'message':
+              'You have already set a benchmark override this month. '
+                  'Ask your admin to undo or extend the existing override.',
+          'cap': capStatus.toJson(),
         },
       );
     }
@@ -814,6 +1024,130 @@ class OperatorBenchmarkOverridesRouter {
     return (
       statusCode: 200,
       body: <String, Object?>{'override': result.override.toJson()},
+    );
+  }
+
+  /// RP-15 — admin-undo affordance. Reuses the underlying clear
+  /// gateway call (the override is rolled forward to `effective_until
+  /// = now`) but emits a distinct audit event so reviewers can
+  /// distinguish manager-initiated clears from admin overrides of a
+  /// manager's choice. Only admin-tier roles may invoke this endpoint;
+  /// manager-tier callers get HTTP 403 with `admin_role_required`.
+  Future<({int statusCode, Map<String, Object?> body})> _adminUndo({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String actorKind,
+    required Set<String> actorRoles,
+    required String overrideId,
+    required Map<String, Object?> body,
+  }) async {
+    // Tier gate — only admins may admin-undo. Manager-tier sees 403.
+    final probe = _capPolicy.evaluate(
+      actorUserId: actorUserId,
+      roles: actorRoles,
+      overrides: const <BenchmarkOverrideCandidate>[],
+      now: _now(),
+    );
+    if (!probe.isAdmin) {
+      return (
+        statusCode: 403,
+        body: const <String, Object?>{
+          'error': 'admin_role_required',
+          'message':
+              'Only owners, general managers, or F&F super admins may '
+                  'undo a manager-set benchmark override.',
+        },
+      );
+    }
+    final reason = _readRawString(body['undo_reason']);
+    final result = await gateway.clearOverrideWithPrevious(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      overrideId: overrideId,
+    );
+    if (result == null) {
+      return (
+        statusCode: 404,
+        body: const <String, Object?>{
+          'error': 'override_not_found',
+          'message':
+              'benchmark override was not found for this operator',
+        },
+      );
+    }
+    final previous = result.previous ?? result.override;
+    await auditSink.record(
+      operatorId: operatorId,
+      actorUserId: actorUserId,
+      actorKind: actorKind,
+      eventKind: 'admin.benchmark_override_undone',
+      payload: <String, Object?>{
+        ..._auditPayload(result),
+        'undone_by_admin_id': actorUserId,
+        'original_override_id': previous.overrideId,
+        'original_manager_id': previous.createdBy,
+        if (reason != null) 'undo_reason': reason,
+      },
+      occurredAt: _now().toUtc(),
+    );
+    return (
+      statusCode: 200,
+      body: <String, Object?>{
+        'override': result.override.toJson(),
+        'undone_by_admin_id': actorUserId,
+        'original_manager_id': previous.createdBy,
+      },
+    );
+  }
+
+  Future<({int statusCode, Map<String, Object?> body})> _capStatus({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required Set<String> actorRoles,
+  }) async {
+    final status = await _loadCapStatus(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      actorRoles: actorRoles,
+    );
+    return (
+      statusCode: 200,
+      body: <String, Object?>{'cap': status.toJson()},
+    );
+  }
+
+  Future<BenchmarkOverrideCapStatus> _loadCapStatus({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required Set<String> actorRoles,
+  }) async {
+    final now = _now();
+    // Admins skip the count load — they are uncapped, and we want to
+    // keep the hot path cheap so the operator-web Benchmarks screen
+    // doesn't do unnecessary DB work for owners.
+    final probe = _capPolicy.evaluate(
+      actorUserId: actorUserId,
+      roles: actorRoles,
+      overrides: const <BenchmarkOverrideCandidate>[],
+      now: now,
+    );
+    if (probe.isAdmin) return probe;
+    final rows = await gateway.listOverridesByUserInMonth(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      referenceTime: now,
+    );
+    return _capPolicy.evaluate(
+      actorUserId: actorUserId,
+      roles: actorRoles,
+      overrides: rows,
+      now: now,
     );
   }
 
@@ -916,6 +1250,12 @@ class OperatorBenchmarkOverridesRouter {
   static String? _readString(Object? value) {
     if (value is! String) return null;
     final trimmed = value.trim().toLowerCase();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static String? _readRawString(Object? value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
   }
 

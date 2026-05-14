@@ -97,6 +97,176 @@ void main() {
       );
     });
 
+    testWidgets('renders manager cap hint when remaining is 1', (tester) async {
+      await sizeViewport(tester);
+      final benchmarks = _FakeBenchmarksGateway(
+        capStatus: const OperatorWebBenchmarkOverrideCapStatus(
+          tier: OperatorWebBenchmarkOverrideCapTier.manager,
+          limit: 1,
+          used: 0,
+          remaining: 1,
+        ),
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          BenchmarksScreen(
+            session: session,
+            selectedScope: selectedLocation,
+            hierarchyGateway: _FakeHierarchyGateway(),
+            benchmarksGateway: benchmarks,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_benchmarks_cap_hint')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('You can override this benchmark 1 more time this month.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('disables save + value field when manager cap reached',
+        (tester) async {
+      await sizeViewport(tester);
+      final benchmarks = _FakeBenchmarksGateway(
+        capStatus: const OperatorWebBenchmarkOverrideCapStatus(
+          tier: OperatorWebBenchmarkOverrideCapTier.manager,
+          limit: 1,
+          used: 1,
+          remaining: 0,
+        ),
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          BenchmarksScreen(
+            session: session,
+            selectedScope: selectedLocation,
+            hierarchyGateway: _FakeHierarchyGateway(),
+            benchmarksGateway: benchmarks,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Cap hint copy is the at-cap variant.
+      expect(
+        find.textContaining('already used your override this month'),
+        findsOneWidget,
+      );
+      // The Save button is disabled at cap.
+      final save = tester.widget<FilledButton>(
+        find.byKey(const Key('operator_web_benchmarks_save')),
+      );
+      expect(save.onPressed, isNull);
+      // The override input is disabled at cap.
+      final field = tester.widget<TextField>(
+        find.byKey(const Key('operator_web_benchmarks_value_field')),
+      );
+      expect(field.enabled, isFalse);
+    });
+
+    testWidgets('admin-undo button renders + confirm dialog deletes override',
+        (tester) async {
+      await sizeViewport(tester);
+      final benchmarks = _FakeBenchmarksGateway(
+        capStatus: const OperatorWebBenchmarkOverrideCapStatus(
+          tier: OperatorWebBenchmarkOverrideCapTier.admin,
+          limit: -1,
+          used: 0,
+          remaining: -1,
+        ),
+      )..rows.add(
+          _candidate(
+            overrideId: 'loc-direct',
+            scopeType: BenchmarkOverrideScopeType.location,
+            locationId: 'loc-a',
+            value: 12,
+            sourceLabel: 'Location',
+            createdBy: 'manager-077',
+          ),
+        );
+
+      await tester.pumpWidget(
+        wrap(
+          BenchmarksScreen(
+            session: session,
+            selectedScope: selectedLocation,
+            hierarchyGateway: _FakeHierarchyGateway(),
+            benchmarksGateway: benchmarks,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Admin-undo affordance renders because the row was set by
+      // someone other than the signed-in admin.
+      expect(
+        find.byKey(const Key('operator_web_benchmarks_admin_undo')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_benchmarks_admin_undo')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('operator_web_benchmarks_admin_undo_dialog')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_benchmarks_admin_undo_confirm')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(benchmarks.adminUndoCalls, 1);
+      expect(benchmarks.lastUndoOverrideId, 'loc-direct');
+    });
+
+    testWidgets('admin-undo hidden for overrides the admin set themselves',
+        (tester) async {
+      await sizeViewport(tester);
+      final benchmarks = _FakeBenchmarksGateway(
+        capStatus: const OperatorWebBenchmarkOverrideCapStatus(
+          tier: OperatorWebBenchmarkOverrideCapTier.admin,
+          limit: -1,
+          used: 0,
+          remaining: -1,
+        ),
+      )..rows.add(
+          _candidate(
+            overrideId: 'loc-direct',
+            scopeType: BenchmarkOverrideScopeType.location,
+            locationId: 'loc-a',
+            value: 12,
+            sourceLabel: 'Location',
+            createdBy: 'user-a',
+          ),
+        );
+
+      await tester.pumpWidget(
+        wrap(
+          BenchmarksScreen(
+            session: session,
+            selectedScope: selectedLocation,
+            hierarchyGateway: _FakeHierarchyGateway(),
+            benchmarksGateway: benchmarks,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_benchmarks_admin_undo')),
+        findsNothing,
+      );
+    });
+
     testWidgets('saving a location override updates the selected scope',
         (tester) async {
       await sizeViewport(tester);
@@ -190,10 +360,23 @@ class _FakeHierarchyGateway implements WebTeamHierarchyGateway {
 }
 
 class _FakeBenchmarksGateway implements OperatorWebBenchmarksGateway {
+  _FakeBenchmarksGateway({
+    this.capStatus = const OperatorWebBenchmarkOverrideCapStatus(
+      tier: OperatorWebBenchmarkOverrideCapTier.admin,
+      limit: -1,
+      used: 0,
+      remaining: -1,
+    ),
+  });
+
   final List<BenchmarkOverrideCandidate> rows = <BenchmarkOverrideCandidate>[];
   int setCalls = 0;
+  int adminUndoCalls = 0;
   BenchmarkOverrideScopeType? lastScopeType;
   String? lastTargetLocationId;
+  OperatorWebBenchmarkOverrideCapStatus capStatus;
+  String? lastUndoOverrideId;
+  String? lastUndoReason;
 
   @override
   Future<List<BenchmarkOverrideCandidate>> listOverrides({
@@ -202,6 +385,15 @@ class _FakeBenchmarksGateway implements OperatorWebBenchmarksGateway {
     required String actorUserId,
   }) async {
     return rows.toList(growable: false);
+  }
+
+  @override
+  Future<OperatorWebBenchmarkOverrideCapStatus> getCapStatus({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+  }) async {
+    return capStatus;
   }
 
   @override
@@ -247,6 +439,21 @@ class _FakeBenchmarksGateway implements OperatorWebBenchmarksGateway {
     rows.removeWhere((row) => row.overrideId == overrideId);
     return null;
   }
+
+  @override
+  Future<BenchmarkOverrideCandidate?> adminUndoOverride({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String overrideId,
+    String? undoReason,
+  }) async {
+    adminUndoCalls += 1;
+    lastUndoOverrideId = overrideId;
+    lastUndoReason = undoReason;
+    rows.removeWhere((row) => row.overrideId == overrideId);
+    return null;
+  }
 }
 
 BenchmarkOverrideCandidate _candidate({
@@ -256,6 +463,7 @@ BenchmarkOverrideCandidate _candidate({
   String? locationId,
   required double value,
   String sourceLabel = 'Org unit',
+  String createdBy = 'user-a',
 }) {
   return BenchmarkOverrideCandidate(
     overrideId: overrideId,
@@ -267,7 +475,7 @@ BenchmarkOverrideCandidate _candidate({
     value: value,
     effectiveFrom: DateTime.utc(2026, 5, 13, 12),
     effectiveUntil: null,
-    createdBy: 'user-a',
+    createdBy: createdBy,
     sourceLabel: sourceLabel,
   );
 }

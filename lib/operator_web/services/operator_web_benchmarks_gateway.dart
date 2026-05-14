@@ -6,8 +6,77 @@ const String kOperatorWebBenchmarkOverridesPath =
 const String kOperatorWebBenchmarkOverridesPrefix =
     '$kOperatorWebBenchmarkOverridesPath/';
 
+/// RP-15 — cap-status read path mirrors the proxy contract
+/// (`tool/advisor_proxy/operator_benchmark_overrides_routes.dart`).
+const String kOperatorWebBenchmarkOverrideCapStatusPath =
+    '/v1/operator/benchmarks/overrides/cap-status';
+
+/// RP-15 — admin-undo suffix mirrors the proxy contract. Appended to
+/// `/v1/operator/benchmarks/overrides/{id}` to invoke admin-undo with
+/// a distinct audit event.
+const String kOperatorWebBenchmarkOverrideAdminUndoSuffix = '/admin-undo';
+
+/// Manager-once cap tier reported back to the operator-web Benchmarks
+/// screen. Mirrors the proxy enum (admin = unlimited, manager = capped,
+/// none = blocked by upstream role gate).
+enum OperatorWebBenchmarkOverrideCapTier {
+  admin,
+  manager,
+  none;
+
+  static OperatorWebBenchmarkOverrideCapTier parse(String raw) {
+    return switch (raw) {
+      'admin' => OperatorWebBenchmarkOverrideCapTier.admin,
+      'manager' => OperatorWebBenchmarkOverrideCapTier.manager,
+      _ => OperatorWebBenchmarkOverrideCapTier.none,
+    };
+  }
+}
+
+/// Cap-status snapshot for the operator-web Benchmarks screen.
+class OperatorWebBenchmarkOverrideCapStatus {
+  const OperatorWebBenchmarkOverrideCapStatus({
+    required this.tier,
+    required this.limit,
+    required this.used,
+    required this.remaining,
+  });
+
+  final OperatorWebBenchmarkOverrideCapTier tier;
+  final int limit;
+  final int used;
+  final int remaining;
+
+  bool get isAdmin =>
+      tier == OperatorWebBenchmarkOverrideCapTier.admin;
+  bool get isCapped =>
+      tier == OperatorWebBenchmarkOverrideCapTier.manager && remaining <= 0;
+
+  static OperatorWebBenchmarkOverrideCapStatus fromJson(
+    Map<String, Object?> json,
+  ) {
+    return OperatorWebBenchmarkOverrideCapStatus(
+      tier: OperatorWebBenchmarkOverrideCapTier.parse(
+        (json['tier'] as String?) ?? 'none',
+      ),
+      limit: (json['limit'] as num?)?.toInt() ?? 0,
+      used: (json['used'] as num?)?.toInt() ?? 0,
+      remaining: (json['remaining'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 abstract class OperatorWebBenchmarksGateway {
   Future<List<BenchmarkOverrideCandidate>> listOverrides({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+  });
+
+  /// RP-15 — returns the actor's manager-once cap status so the
+  /// Benchmarks screen can render "you can override this benchmark N
+  /// more times this month" before the operator taps Save.
+  Future<OperatorWebBenchmarkOverrideCapStatus> getCapStatus({
     required String operatorId,
     required String locationId,
     required String actorUserId,
@@ -29,6 +98,18 @@ abstract class OperatorWebBenchmarksGateway {
     required String locationId,
     required String actorUserId,
     required String overrideId,
+  });
+
+  /// RP-15 — admin-undo of a manager-set override. Writes the
+  /// `admin.benchmark_override_undone` audit event with the original
+  /// manager + override ids. Manager-tier callers get 403 from the
+  /// proxy.
+  Future<BenchmarkOverrideCandidate?> adminUndoOverride({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String overrideId,
+    String? undoReason,
   });
 }
 
@@ -120,6 +201,60 @@ class OperatorWebHttpBenchmarksGateway implements OperatorWebBenchmarksGateway {
     return _candidateFromJson(Map<String, Object?>.from(raw));
   }
 
+  @override
+  Future<OperatorWebBenchmarkOverrideCapStatus> getCapStatus({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+  }) async {
+    final token = await _requireToken();
+    final response = await _client.getJson(
+      kOperatorWebBenchmarkOverrideCapStatusPath,
+      idToken: token,
+    );
+    final raw = response.body['cap'];
+    if (raw is! Map<Object?, Object?>) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_benchmark_cap_status',
+        message: 'The proxy returned a malformed cap-status payload.',
+      );
+    }
+    return OperatorWebBenchmarkOverrideCapStatus.fromJson(
+      Map<String, Object?>.from(raw),
+    );
+  }
+
+  @override
+  Future<BenchmarkOverrideCandidate?> adminUndoOverride({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String overrideId,
+    String? undoReason,
+  }) async {
+    final token = await _requireToken();
+    final path =
+        '$kOperatorWebBenchmarkOverridesPrefix${Uri.encodeComponent(overrideId)}'
+        '$kOperatorWebBenchmarkOverrideAdminUndoSuffix';
+    final response = await _client.deleteJson(
+      path,
+      idToken: token,
+      body: <String, Object?>{
+        if (undoReason != null && undoReason.trim().isNotEmpty)
+          'undo_reason': undoReason.trim(),
+      },
+    );
+    final raw = response.body['override'];
+    if (raw == null) return null;
+    if (raw is! Map<Object?, Object?>) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_benchmark_override',
+        message: 'The proxy returned a malformed benchmark override.',
+      );
+    }
+    return _candidateFromJson(Map<String, Object?>.from(raw));
+  }
+
   Future<String> _requireToken() async {
     final token = await _idTokenProvider();
     if (token == null || token.trim().isEmpty) {
@@ -147,7 +282,38 @@ class OperatorWebHttpBenchmarksGateway implements OperatorWebBenchmarksGateway {
 }
 
 class DemoOperatorWebBenchmarksGateway implements OperatorWebBenchmarksGateway {
+  DemoOperatorWebBenchmarksGateway({
+    this.actorRoles = const <String>{'operator_owner'},
+    DateTime Function()? now,
+  }) : _now = now ?? (() => DateTime.now().toUtc());
+
+  /// Demo-mode roles for the signed-in operator. The demo session is
+  /// owner-by-default; tests override this to exercise manager-tier
+  /// cap behavior without touching the proxy. Honors HP #2: same code
+  /// path applies the cap policy in demo and prod.
+  final Set<String> actorRoles;
+
+  /// Manager-tier role keys; mirrors the proxy
+  /// `BenchmarkOverrideCapPolicy.managerTierRoles`. Duplicated here
+  /// rather than imported so the demo gateway stays in the
+  /// `lib/operator_web/services/` Layer-9 boundary (Layer-12 proxy
+  /// helpers are intentionally not visible to operator-web Dart).
+  static const Set<String> _managerTierRoles = <String>{
+    'location_manager',
+    'supervisor',
+  };
+  static const Set<String> _adminTierRoles = <String>{
+    'operator_owner',
+    'operator_admin',
+    'operator_general_manager',
+    'super_admin',
+  };
+  static const int _managerMonthlyLimit = 1;
+
+  final DateTime Function() _now;
   final List<BenchmarkOverrideCandidate> _rows =
+      <BenchmarkOverrideCandidate>[];
+  final List<BenchmarkOverrideCandidate> _history =
       <BenchmarkOverrideCandidate>[];
   int _sequence = 1;
 
@@ -161,6 +327,31 @@ class DemoOperatorWebBenchmarksGateway implements OperatorWebBenchmarksGateway {
   }
 
   @override
+  Future<OperatorWebBenchmarkOverrideCapStatus> getCapStatus({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+  }) async {
+    final tier = _tier(actorRoles);
+    if (tier == OperatorWebBenchmarkOverrideCapTier.admin) {
+      return const OperatorWebBenchmarkOverrideCapStatus(
+        tier: OperatorWebBenchmarkOverrideCapTier.admin,
+        limit: -1,
+        used: 0,
+        remaining: -1,
+      );
+    }
+    final used = _countUserOverridesThisMonth(actorUserId);
+    final remaining = _managerMonthlyLimit - used;
+    return OperatorWebBenchmarkOverrideCapStatus(
+      tier: tier,
+      limit: _managerMonthlyLimit,
+      used: used,
+      remaining: remaining < 0 ? 0 : remaining,
+    );
+  }
+
+  @override
   Future<BenchmarkOverrideCandidate> setOverride({
     required String operatorId,
     required String locationId,
@@ -171,7 +362,23 @@ class DemoOperatorWebBenchmarksGateway implements OperatorWebBenchmarksGateway {
     required String metricKey,
     required double overrideValue,
   }) async {
-    final now = DateTime.now().toUtc();
+    // HP #2: demo gateway honors the manager-once cap so a demo
+    // manager user sees the same 409 the proxy returns in prod.
+    final tier = _tier(actorRoles);
+    if (tier == OperatorWebBenchmarkOverrideCapTier.manager) {
+      final used = _countUserOverridesThisMonth(actorUserId);
+      if (used >= _managerMonthlyLimit) {
+        throw const OperatorWebProxyException(
+          statusCode: 409,
+          code: 'manager_override_cap_reached',
+          message:
+              'You have already set a benchmark override this month. '
+                  'Ask your admin to undo or extend the existing override.',
+        );
+      }
+    }
+
+    final now = _now().toUtc();
     for (var i = 0; i < _rows.length; i += 1) {
       final row = _rows[i];
       final sameScope = row.metricKey == metricKey &&
@@ -180,7 +387,7 @@ class DemoOperatorWebBenchmarksGateway implements OperatorWebBenchmarksGateway {
           row.locationId == targetLocationId &&
           row.isCurrent;
       if (sameScope) {
-        _rows[i] = BenchmarkOverrideCandidate(
+        final closed = BenchmarkOverrideCandidate(
           overrideId: row.overrideId,
           operatorId: row.operatorId,
           scopeType: row.scopeType,
@@ -193,6 +400,8 @@ class DemoOperatorWebBenchmarksGateway implements OperatorWebBenchmarksGateway {
           createdBy: row.createdBy,
           sourceLabel: row.sourceLabel,
         );
+        _rows[i] = closed;
+        _history.add(closed);
       }
     }
     final row = BenchmarkOverrideCandidate(
@@ -219,7 +428,31 @@ class DemoOperatorWebBenchmarksGateway implements OperatorWebBenchmarksGateway {
     required String actorUserId,
     required String overrideId,
   }) async {
-    final now = DateTime.now().toUtc();
+    return _close(overrideId);
+  }
+
+  @override
+  Future<BenchmarkOverrideCandidate?> adminUndoOverride({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String overrideId,
+    String? undoReason,
+  }) async {
+    if (_tier(actorRoles) != OperatorWebBenchmarkOverrideCapTier.admin) {
+      throw const OperatorWebProxyException(
+        statusCode: 403,
+        code: 'admin_role_required',
+        message:
+            'Only owners, general managers, or F&F super admins may '
+                'undo a manager-set benchmark override.',
+      );
+    }
+    return _close(overrideId);
+  }
+
+  BenchmarkOverrideCandidate? _close(String overrideId) {
+    final now = _now().toUtc();
     for (var i = 0; i < _rows.length; i += 1) {
       final row = _rows[i];
       if (row.overrideId == overrideId && row.isCurrent) {
@@ -237,10 +470,34 @@ class DemoOperatorWebBenchmarksGateway implements OperatorWebBenchmarksGateway {
           sourceLabel: row.sourceLabel,
         );
         _rows[i] = closed;
+        _history.add(closed);
         return closed;
       }
     }
     return null;
+  }
+
+  int _countUserOverridesThisMonth(String actorUserId) {
+    final ref = _now().toUtc();
+    var count = 0;
+    for (final row in <BenchmarkOverrideCandidate>[..._rows, ..._history]) {
+      if (row.createdBy != actorUserId) continue;
+      final ef = row.effectiveFrom.toUtc();
+      if (ef.year == ref.year && ef.month == ref.month) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  static OperatorWebBenchmarkOverrideCapTier _tier(Set<String> roles) {
+    if (roles.any(_adminTierRoles.contains)) {
+      return OperatorWebBenchmarkOverrideCapTier.admin;
+    }
+    if (roles.any(_managerTierRoles.contains)) {
+      return OperatorWebBenchmarkOverrideCapTier.manager;
+    }
+    return OperatorWebBenchmarkOverrideCapTier.none;
   }
 
   static String _sourceLabel(BenchmarkOverrideScopeType type) {
