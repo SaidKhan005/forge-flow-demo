@@ -10,6 +10,12 @@
 //     field is actually changing
 //   * idempotency replay (re-submitting the same key replays the
 //     original patched user)
+//   * role + hierarchy scope dropdowns are read-only (operator
+//     decision 2026-05-14): they render the current role and scope
+//     but tapping does not open the menu. Save must only light up on
+//     email or display-name edits. W-1-FU will unlock the dropdowns
+//     and wire them through the existing
+//     `createRoleGrant`/`revokeRoleGrant` gateway path.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -323,6 +329,106 @@ void main() {
           find.byKey(const Key('edit_member_dialog_error_text')),
           findsOneWidget,
         );
+      },
+    );
+
+    testWidgets(
+      'role dropdown renders the current role but is un-clickable',
+      (tester) async {
+        await sizeViewport(tester);
+        final gateway = DemoWebTeamUsersGateway();
+        final user = await seedUser(gateway);
+        await openDialog(tester, gateway: gateway, user: user);
+
+        // The dropdown is visible.
+        final roleFinder =
+            find.byKey(const Key('edit_member_dialog_role_field'));
+        expect(roleFinder, findsOneWidget);
+
+        // Its `onChanged` is null, so tapping must NOT open the
+        // dropdown menu. We verify by counting role display names
+        // before and after the tap — Flutter's DropdownButtonFormField
+        // shows the selected item once when closed and adds a second
+        // copy in the menu overlay when open. With onChanged: null no
+        // menu opens, so the count stays at 1.
+        final currentRole = kDemoTeamRolesFixture
+            .firstWhere((r) => r.roleId == user.roleId)
+            .displayName;
+        expect(find.text(currentRole), findsOneWidget);
+        await tester.tap(roleFinder, warnIfMissed: false);
+        await tester.pumpAndSettle();
+        expect(find.text(currentRole), findsOneWidget);
+
+        // The dropdown's DropdownButton child reports `onChanged ==
+        // null`, which is how Flutter renders the disabled style.
+        final dropdown = tester.widget<DropdownButtonFormField<String>>(
+          roleFinder,
+        );
+        expect(dropdown.onChanged, isNull);
+      },
+    );
+
+    testWidgets(
+      'hierarchy scope dropdown renders the current scope but is un-clickable',
+      (tester) async {
+        await sizeViewport(tester);
+        final gateway = DemoWebTeamUsersGateway();
+        final user = await seedUser(gateway);
+        await openDialog(tester, gateway: gateway, user: user);
+
+        final scopeFinder =
+            find.byKey(const Key('edit_member_dialog_scope_field'));
+        expect(scopeFinder, findsOneWidget);
+
+        // Tapping must not open the menu. We assert no menu items
+        // beyond the closed-state selected label appear.
+        await tester.tap(scopeFinder, warnIfMissed: false);
+        await tester.pumpAndSettle();
+
+        final dropdown =
+            tester.widget<DropdownButtonFormField<dynamic>>(scopeFinder);
+        expect(dropdown.onChanged, isNull);
+
+        // The plain-English helper line renders below the dropdown.
+        expect(
+          find.byKey(const Key('edit_member_dialog_role_scope_lock_note')),
+          findsOneWidget,
+        );
+        expect(
+          find.text('To change role or hierarchy scope, use the Roles page.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'save stays gated when nothing but reason is filled',
+      (tester) async {
+        // Companion to the existing "rejects save without any change"
+        // test — with role + scope locked, the save button must remain
+        // gated by email or display-name edits. The operator cannot
+        // accidentally trigger a role/scope rotation by filling reason.
+        await sizeViewport(tester);
+        final gateway = DemoWebTeamUsersGateway();
+        final user = await seedUser(gateway);
+        await openDialog(tester, gateway: gateway, user: user);
+
+        await tester.enterText(
+          find.byKey(const Key('edit_member_dialog_reason_field')),
+          'wanted to bump role but cant',
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('edit_member_dialog_submit')));
+        await tester.pumpAndSettle();
+
+        // The dialog still shows the nothing-to-save copy — no
+        // gateway call fires because email + display name are
+        // unchanged.
+        expect(
+          find.text(EditMemberDialogCopy.nothingToSave),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('edit_member_dialog')), findsOneWidget);
       },
     );
   });
