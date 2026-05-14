@@ -169,7 +169,7 @@ void main() {
     await tester.pumpWidget(gateWith(source));
     await tester.pumpAndSettle();
 
-    expect(find.text('Two-factor verification'), findsOneWidget);
+    expect(find.text('Two-factor authentication'), findsOneWidget);
     expect(find.text('admin.mfa@forgeflow.test'), findsOneWidget);
     expect(find.byKey(const Key('mfa_code_field')), findsOneWidget);
     expect(find.byKey(const Key('mfa_submit_button')), findsOneWidget);
