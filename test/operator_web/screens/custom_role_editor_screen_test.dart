@@ -25,6 +25,7 @@ import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/custom_role_validator.dart';
 import 'package:forge_and_flow/services/auth/role_warning_dismissal_store.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
+import 'package:forge_and_flow/widgets/role_permission_picker.dart';
 
 void main() {
   Widget wrapBare(Widget child) => MaterialApp(
@@ -366,6 +367,329 @@ void main() {
         expect(
           find.byKey(const Key('operator_web_custom_role_editor_warnings')),
           findsNothing,
+        );
+      },
+    );
+  });
+
+  // ============================================================
+  // Wave 2 S-3 (RP-14 + Q3) - product / category permission picker.
+  //
+  // Pins the new product → category permission picker contract:
+  //   * The picker groups permissions by `productLabel` →
+  //     `categoryLabel`.
+  //   * Ticking a key with `implies[]` auto-checks the transitive
+  //     closure; the implied child renders disabled with a tooltip
+  //     naming the parent.
+  //   * Search/filter narrows the visible list by humanLabel.
+  //   * Location-scoped roles hide `org_wide` keys and surface a
+  //     "What's hidden?" expander.
+  // ============================================================
+
+  OperatorWebSession ownerSession() => OperatorWebSession(
+    uid: 'session-operator-owner-picker',
+    email: 'sam.owner@demobistro.test',
+    displayName: 'Sam Patel',
+    operatorId: kDemoOperatorIdFixture,
+    businessName: kDemoOperatorBusinessNameFixture,
+    primaryLocationId: 'demo-loc-downtown',
+    primaryLocationName: 'Downtown',
+    roles: const <String>['operator_owner'],
+    permissions: const <String>{},
+  );
+
+  group('RP-14: product → category grouping + search', () {
+    testWidgets(
+      'renders product sections + category sections + a search box',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 4000));
+        await tester.pumpWidget(
+          wrapBare(
+            CustomRoleEditorScreen(
+              session: ownerSession(),
+              gateway: DemoWebTeamRolesGateway(),
+              roleScope: RoleScope.business,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_permissions'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_product_forgeflow'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_product_team'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key(
+              'operator_web_custom_role_editor_category_'
+              'forgeflow_Forge & Flow surfaces',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_search'),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('search filters rows by humanLabel substring', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 4000));
+      await tester.pumpWidget(
+        wrapBare(
+          CustomRoleEditorScreen(
+            session: ownerSession(),
+            gateway: DemoWebTeamRolesGateway(),
+            roleScope: RoleScope.business,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key(
+            'operator_web_custom_role_editor_perm_forgeflow.benchmark.view',
+          ),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('operator_web_custom_role_editor_search')),
+        'benchmark',
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key(
+            'operator_web_custom_role_editor_perm_forgeflow.benchmark.view',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key(
+            'operator_web_custom_role_editor_perm_forgeflow.shift.view',
+          ),
+        ),
+        findsNothing,
+      );
+    });
+  });
+
+  group('RP-14: implies auto-select + uncheck-guard', () {
+    testWidgets(
+      'picking forgeflow.shift.edit auto-checks forgeflow.shift.view',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 4000));
+        await tester.pumpWidget(
+          wrapBare(
+            CustomRoleEditorScreen(
+              session: ownerSession(),
+              gateway: DemoWebTeamRolesGateway(),
+              roleScope: RoleScope.business,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final editRow = find.byKey(
+          const Key(
+            'operator_web_custom_role_editor_perm_forgeflow.shift.edit',
+          ),
+        );
+        await tester.ensureVisible(editRow);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(of: editRow, matching: find.byType(Checkbox)),
+        );
+        await tester.pumpAndSettle();
+
+        final viewRow = find.byKey(
+          const Key(
+            'operator_web_custom_role_editor_perm_forgeflow.shift.view',
+          ),
+        );
+        final viewCheckbox = tester.widget<Checkbox>(
+          find.descendant(of: viewRow, matching: find.byType(Checkbox)),
+        );
+        expect(viewCheckbox.value, isTrue);
+        expect(
+          viewCheckbox.onChanged,
+          isNull,
+          reason: 'Required (implied) keys cannot be unchecked directly.',
+        );
+        expect(
+          find.byKey(
+            const Key(
+              'operator_web_custom_role_editor_perm_'
+              'forgeflow.shift.view_required_chip',
+            ),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('unchecking the parent drops the implied child', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 4000));
+      await tester.pumpWidget(
+        wrapBare(
+          CustomRoleEditorScreen(
+            session: ownerSession(),
+            gateway: DemoWebTeamRolesGateway(),
+            roleScope: RoleScope.business,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final editRow = find.byKey(
+        const Key(
+          'operator_web_custom_role_editor_perm_forgeflow.shift.edit',
+        ),
+      );
+      await tester.ensureVisible(editRow);
+      await tester.tap(
+        find.descendant(of: editRow, matching: find.byType(Checkbox)),
+      );
+      await tester.pumpAndSettle();
+
+      // Unticking edit also drops the auto-added view.
+      await tester.tap(
+        find.descendant(of: editRow, matching: find.byType(Checkbox)),
+      );
+      await tester.pumpAndSettle();
+      final viewRow = find.byKey(
+        const Key(
+          'operator_web_custom_role_editor_perm_forgeflow.shift.view',
+        ),
+      );
+      final viewCheckbox = tester.widget<Checkbox>(
+        find.descendant(of: viewRow, matching: find.byType(Checkbox)),
+      );
+      expect(viewCheckbox.value, isFalse);
+      expect(viewCheckbox.onChanged, isNotNull);
+    });
+
+    test(
+      'rolePermissionPickerRequiredBy names the explicit ancestor',
+      () {
+        final pullers = rolePermissionPickerRequiredBy(
+          'forgeflow.shift.view',
+          <String>{'forgeflow.shift.edit'},
+        );
+        expect(pullers, contains('forgeflow.shift.edit'));
+      },
+    );
+  });
+
+  group('RP-14 + Q3: location-scoped picker filters org_wide keys', () {
+    testWidgets(
+      'location-scoped role hides org_wide keys + renders scope notice',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 4000));
+        await tester.pumpWidget(
+          wrapBare(
+            CustomRoleEditorScreen(
+              session: ownerSession(),
+              gateway: DemoWebTeamRolesGateway(),
+              roleScope: RoleScope.location,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_scope_notice'),
+          ),
+          findsOneWidget,
+        );
+        // billing.invoice.view is `org_wide` per the catalog metadata
+        // → it must not render as a pickable row.
+        expect(
+          find.byKey(
+            const Key(
+              'operator_web_custom_role_editor_perm_billing.invoice.view',
+            ),
+          ),
+          findsNothing,
+        );
+
+        // Tapping "What's hidden?" expands the dropped keys list.
+        await tester.tap(
+          find.byKey(
+            const Key(
+              'operator_web_custom_role_editor_scope_notice_toggle',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(
+            const Key(
+              'operator_web_custom_role_editor_scope_hidden_'
+              'billing.invoice.view',
+            ),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'business-scoped role exposes org_wide keys (no scope notice)',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 4000));
+        await tester.pumpWidget(
+          wrapBare(
+            CustomRoleEditorScreen(
+              session: ownerSession(),
+              gateway: DemoWebTeamRolesGateway(),
+              roleScope: RoleScope.business,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_scope_notice'),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.byKey(
+            const Key(
+              'operator_web_custom_role_editor_perm_billing.invoice.view',
+            ),
+          ),
+          findsOneWidget,
         );
       },
     );

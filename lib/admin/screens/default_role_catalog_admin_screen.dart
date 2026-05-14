@@ -45,7 +45,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../auth/permission_key_metadata.dart';
+import '../../services/auth/custom_role_validator.dart' show RoleScope;
 import '../../theme/app_theme.dart';
+import '../../widgets/role_permission_picker.dart';
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../services/default_role_catalog_admin_gateway.dart';
@@ -650,12 +653,67 @@ class _RoleEditorRow extends StatelessWidget {
   final void Function(int index)? onRemove;
   final void Function(int index, String field, Object? value)? onUpdate;
 
+  /// Wave 2 S-3 (RP-14) — Extract the role's current allow keys from
+  /// the persisted JSON shape (`permissions: [{permission_key, effect}]`).
+  /// The picker treats every persisted allow key as explicit on load
+  /// so the operator can drop any of them.
+  Set<String> _allowKeysFromPermissions(List<Object?> permissions) {
+    final out = <String>{};
+    for (final entry in permissions) {
+      if (entry is Map) {
+        final key = entry['permission_key'];
+        final effect = entry['effect'];
+        if (key is String && effect == 'allow') {
+          out.add(key);
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Wave 2 S-3 (RP-14) — When the operator ticks / unticks a key in
+  /// the picker we rewrite the role's `permissions` JSON array. The
+  /// expansion is the transitive `implies[]` closure of the explicit
+  /// set; deny rules + any unknown extra metadata are NOT touched.
+  void _onTogglePermission(String key, bool selected) {
+    final permissions = (role['permissions'] as List?) ?? const <Object?>[];
+    final explicit = _allowKeysFromPermissions(permissions);
+    if (selected) {
+      explicit.add(key);
+    } else {
+      explicit.remove(key);
+    }
+    final expanded =
+        PermissionKeyMetadataCatalog.expandImplies(explicit).toList()
+          ..sort();
+    // Preserve any non-allow rules (deny, future shapes) from the
+    // existing list so the editor stays additive.
+    final preserved = <Object?>[];
+    for (final entry in permissions) {
+      if (entry is Map &&
+          entry['permission_key'] is String &&
+          entry['effect'] == 'allow') {
+        continue; // rewritten below
+      }
+      preserved.add(entry);
+    }
+    final next = <Object?>[
+      ...preserved,
+      for (final k in expanded)
+        <String, Object?>{'permission_key': k, 'effect': 'allow'},
+    ];
+    onUpdate?.call(index, 'permissions', next);
+  }
+
   @override
   Widget build(BuildContext context) {
     final roleKey = (role['role_key'] as String?) ?? '';
     final displayName = (role['display_name'] as String?) ?? '';
     final description = (role['description'] as String?) ?? '';
     final permissions = (role['permissions'] as List?) ?? const <Object?>[];
+    final explicitAllow = _allowKeysFromPermissions(permissions);
+    final displayedAllow =
+        PermissionKeyMetadataCatalog.expandImplies(explicitAllow);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
@@ -723,16 +781,20 @@ class _RoleEditorRow extends StatelessWidget {
             hint: 'What this role can do, in plain English.',
             maxLines: 2,
           ),
-          const SizedBox(height: 6),
-          Text(
-            permissions.isEmpty
-                ? 'No permissions defined yet. Permission editing within '
-                    'a role definition is read-only on this slice; edit the '
-                    'starter catalog at the JSON level via engineering '
-                    'support until B2.3.'
-                : '${permissions.length} permission rule(s) carried over '
-                    'from the prior version.',
-            style: AppTextStyles.mono10(color: AppColors.textMuted),
+          const SizedBox(height: 10),
+          RolePermissionPickerCard(
+            key: Key(
+              'admin_default_role_catalog_draft_permissions_$index',
+            ),
+            selected: displayedAllow,
+            explicit: explicitAllow,
+            // Default-catalog roles are business-scoped (org-wide
+            // permissions are coherent) so the scope-conflict filter
+            // does not engage here.
+            roleScope: RoleScope.business,
+            readOnly: !canEdit,
+            onToggle: _onTogglePermission,
+            keyPrefix: 'admin_default_role_catalog_draft_picker_$index',
           ),
         ],
       ),

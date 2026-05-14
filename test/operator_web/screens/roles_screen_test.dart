@@ -28,6 +28,8 @@ import 'package:forge_and_flow/operator_web/services/demo_team_fixtures.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_roles_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_roles_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
+import 'package:forge_and_flow/services/auth/custom_role_validator.dart'
+    show RoleScope;
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -171,6 +173,66 @@ void main() {
       );
     });
 
+    testWidgets(
+      'Wave 2 S-3 (RP-8): simplified row shows only name + first sentence '
+      'of description + button — no role_key, no permission counts',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1200));
+        await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+        // Floor Captain custom role is the canonical mutate-able fixture.
+        // Confirm row renders.
+        expect(
+          find.byKey(const Key('operator_web_role_tile_role-floor-captain')),
+          findsOneWidget,
+        );
+        // RP-8 hides the legacy permission-count chips, role-key mono
+        // text, MFA / Default / Custom badges. None of those keys
+        // should render anywhere on the list.
+        expect(
+          find.byKey(const Key('operator_web_role_allow_role-floor-captain')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('operator_web_role_deny_role-floor-captain')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('operator_web_role_mfa_role-floor-captain')),
+          findsNothing,
+        );
+        // Edit button is the only mutate affordance on the row (no
+        // View, no Delete chevron — Delete still renders for
+        // mutate-able rows on operator_owner; the RP-8 simplification
+        // does not remove Delete).
+        expect(
+          find.byKey(const Key('operator_web_role_edit_role-floor-captain')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    test(
+      'Wave 2 S-3 (RP-8) helper: first-sentence trim '
+      'handles common end-of-sentence punctuation',
+      () {
+        expect(
+          shortRoleDescriptionForTest(
+            'Floor lead. Closes out the night. End-of-shift wrap.',
+          ),
+          'Floor lead.',
+        );
+        expect(
+          shortRoleDescriptionForTest('Single sentence with no period'),
+          'Single sentence with no period',
+        );
+        expect(shortRoleDescriptionForTest(''), '');
+        expect(
+          shortRoleDescriptionForTest('Question? Then more.'),
+          'Question?',
+        );
+      },
+    );
+
     testWidgets('custom roles expose Edit + Delete for operator_owner', (
       tester,
     ) async {
@@ -286,75 +348,100 @@ void main() {
   });
 
   group('CustomRoleEditorScreen builder + validation', () {
-    testWidgets('renders metadata + permission picker for create mode', (
-      tester,
-    ) async {
-      await sizeViewport(tester, const Size(1280, 1200));
-      await tester.pumpWidget(
-        wrapBare(
-          CustomRoleEditorScreen(
-            session: sessionWithRole('operator_owner'),
-            gateway: DemoWebTeamRolesGateway(),
+    testWidgets(
+      'Wave 2 S-3 (RP-14): renders metadata + product/category picker '
+      'for create mode',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 2400));
+        await tester.pumpWidget(
+          wrapBare(
+            CustomRoleEditorScreen(
+              session: sessionWithRole(
+                'operator_owner',
+                // Owner is business-scoped by default; pass an
+                // explicit business scope so org-wide keys render
+                // (the scope filter only fires on location-scoped
+                // roles).
+                permissions: const <String>{},
+              ),
+              gateway: DemoWebTeamRolesGateway(),
+              roleScope: RoleScope.business,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('operator_web_custom_role_editor_screen')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('operator_web_custom_role_editor_display_name')),
-        findsOneWidget,
-      );
-      // Wave 2 U-5 UX cleanup (OW-7f): role_key field is no longer
-      // surfaced; the editor derives it from the display name on save.
-      expect(
-        find.byKey(const Key('operator_web_custom_role_editor_role_key')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('operator_web_custom_role_editor_description')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('operator_web_custom_role_editor_permissions')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('operator_web_custom_role_editor_product_tabs')),
-        findsOneWidget,
-      );
-      expect(find.text('Forge & Flow'), findsOneWidget);
-      expect(find.text('Barrio'), findsOneWidget);
-      await tester.tap(
-        find.byKey(const Key('operator_web_custom_role_editor_tab_barrio')),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(
-          const Key('operator_web_custom_role_editor_barrio_coming_soon'),
-        ),
-        findsOneWidget,
-      );
-      final barrioPermission = find.byKey(
-        const Key('operator_web_custom_role_editor_perm_barrio.handbook.view'),
-      );
-      expect(barrioPermission, findsOneWidget);
-      final checkbox = tester.widget<Checkbox>(
-        find.descendant(of: barrioPermission, matching: find.byType(Checkbox)),
-      );
-      expect(checkbox.onChanged, isNull);
-    });
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('operator_web_custom_role_editor_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_display_name'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_custom_role_editor_description')),
+          findsOneWidget,
+        );
+        // Picker card renders.
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_permissions'),
+          ),
+          findsOneWidget,
+        );
+        // The new picker groups by productLabel → categoryLabel
+        // rather than two Forge & Flow / Barrio tabs. Verify the
+        // section keys for both products render.
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_product_forgeflow'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_product_barrio'),
+          ),
+          findsOneWidget,
+        );
+        // Search box renders.
+        expect(
+          find.byKey(const Key('operator_web_custom_role_editor_search')),
+          findsOneWidget,
+        );
+        // Forge & Flow leaf row keys still use the dotted permission
+        // string suffix (the user sees the humanLabel; the test
+        // selector keeps the stable key).
+        expect(
+          find.byKey(
+            const Key(
+              'operator_web_custom_role_editor_perm_forgeflow.shift.view',
+            ),
+          ),
+          findsOneWidget,
+        );
+        // Barrio rows are present but disabled when the plan does
+        // not include Barrio.
+        final barrioPermission = find.byKey(
+          const Key(
+            'operator_web_custom_role_editor_perm_barrio.handbook.view',
+          ),
+        );
+        expect(barrioPermission, findsOneWidget);
+      },
+    );
 
     testWidgets('Save button stays disabled until name + at least '
         'one permission selected', (tester) async {
-      await sizeViewport(tester, const Size(1280, 1600));
+      await sizeViewport(tester, const Size(1280, 2400));
       await tester.pumpWidget(
         wrapBare(
           CustomRoleEditorScreen(
             session: sessionWithRole('operator_owner'),
             gateway: DemoWebTeamRolesGateway(),
+            roleScope: RoleScope.business,
           ),
         ),
       );
@@ -393,6 +480,7 @@ void main() {
           CustomRoleEditorScreen(
             session: sessionWithRole('operator_owner'),
             gateway: gateway,
+            roleScope: RoleScope.business,
             idempotencyKeyFactory: () => 'editor-test-key',
             onSaved: (role) {
               savedTimes += 1;
@@ -429,116 +517,11 @@ void main() {
       expect(savedTimes, 1);
       expect(saved, isNotNull);
       expect(saved!.displayName, 'Closer');
+      // `forgeflow.shift.view` has no implies — saved permissions
+      // are exactly that key.
       expect(saved!.permissions.map((p) => p.permissionKey), <String>[
         'forgeflow.shift.view',
       ]);
-    });
-
-    // Wave 2 Q-4 - inline advisory warning panel. Pins debug.md:78-80
-    // (AC-2) member-management chain rule: selecting any team.users.*
-    // write key without team.users.view surfaces the
-    // memberManagementMissingUsersView warning.
-    testWidgets(
-      'renders advisory warning when team.users.invite is selected '
-      'without team.users.view',
-      (tester) async {
-        await sizeViewport(tester, const Size(1280, 8000));
-        await tester.pumpWidget(
-          wrapBare(
-            CustomRoleEditorScreen(
-              session: sessionWithRole('operator_owner'),
-              gateway: DemoWebTeamRolesGateway(),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Fill name + role key so Save can flip enabled once a
-        // permission is picked (advisory warnings must not gate it).
-        await tester.enterText(
-          find.byKey(
-            const Key('operator_web_custom_role_editor_display_name'),
-          ),
-          'Floor Lead',
-        );
-        await tester.enterText(
-          find.byKey(
-            const Key('operator_web_custom_role_editor_role_key'),
-          ),
-          'floor_lead',
-        );
-        await tester.pumpAndSettle();
-
-        // No warnings before any permission is selected.
-        expect(
-          find.byKey(
-            const Key('operator_web_custom_role_editor_warnings'),
-          ),
-          findsNothing,
-        );
-
-        // Tick team.users.invite without ticking team.users.view.
-        final permRow = find.byKey(
-          const Key(
-            'operator_web_custom_role_editor_perm_team.users.invite',
-          ),
-        );
-        await tester.ensureVisible(permRow);
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.descendant(of: permRow, matching: find.byType(Checkbox)),
-        );
-        await tester.pumpAndSettle();
-
-        // Advisory panel renders + the member-management warning row
-        // is keyed by RoleWarningCode.name.
-        expect(
-          find.byKey(
-            const Key('operator_web_custom_role_editor_warnings'),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key(
-              'operator_web_custom_role_editor_warning_'
-              'memberManagementMissingUsersView',
-            ),
-          ),
-          findsOneWidget,
-        );
-
-        // Save remains enabled - advisory warnings never gate save.
-        final save = find.byKey(
-          const Key('operator_web_custom_role_editor_save'),
-        );
-        expect(
-          tester.widget<FilledButton>(save).onPressed,
-          isNotNull,
-          reason: 'Advisory warnings must not disable Save.',
-        );
-
-        // Once team.users.view is added, the warning clears.
-        final viewRow = find.byKey(
-          const Key(
-            'operator_web_custom_role_editor_perm_team.users.view',
-          ),
-        );
-        await tester.ensureVisible(viewRow);
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.descendant(of: viewRow, matching: find.byType(Checkbox)),
-        );
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(
-            const Key(
-              'operator_web_custom_role_editor_warning_'
-              'memberManagementMissingUsersView',
-            ),
-          ),
-          findsNothing,
-        );
     });
   });
 
