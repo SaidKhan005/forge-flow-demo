@@ -52,7 +52,52 @@ gcloud run deploy <service-name> \
 
 ## Optional Variables
 
-### (Future env vars go here as phases land)
+### AZURE_BLOB_HEAP_SNAPSHOTS_CONTAINER
+
+**Type:** String
+**Default:** unset (uploader runs inert; soak harness keeps running, no
+upload attempted)
+**Location:** `tool/pressure/p4_heap_snapshot_uploader.dart`
+(`SoakHeapSnapshotEnvNames`)
+
+Container name in the F&F Azure Blob Storage account that receives heap
+snapshots captured during soak runs. **Must be a different container
+from the audit-anchor immutable container** (`AZURE_BLOB_AUDIT_CONTAINER`)
+— soak artifacts are developer-debug evidence with no immutability
+policy, not compliance evidence.
+
+Suggested name: `forge-flow-soak-artifacts`.
+
+### AZURE_BLOB_HEAP_SNAPSHOTS_ENDPOINT
+
+**Type:** String (URL)
+**Default:** unset
+**Location:** Same as above.
+
+Storage account endpoint, e.g.
+`https://forgeflowstaging1.blob.core.windows.net`. May reuse the same
+storage account as the audit-anchor path; the container name is what
+isolates the artifact stream.
+
+### AZURE_AD_TENANT_ID / AZURE_AD_CLIENT_ID
+
+**Type:** String (UUIDs)
+**Default:** unset
+**Location:** Shared with the audit-anchor path
+(`tool/audit_anchor/azure_blob_client.dart`).
+
+Workload Identity Federation credentials. The soak heap-snapshot
+uploader reuses the same federated identity the audit-anchor system
+uses; no separate Azure AD app registration is required.
+
+**Configuration check:** the uploader's `isConfigured` returns `true`
+only when ALL FOUR of `AZURE_BLOB_HEAP_SNAPSHOTS_CONTAINER`,
+`AZURE_BLOB_HEAP_SNAPSHOTS_ENDPOINT`, `AZURE_AD_TENANT_ID`,
+`AZURE_AD_CLIENT_ID` are non-empty. When any are unset, the uploader
+logs ONE structured `soak.heap_snapshot.skipped` line at start and
+stays inert for the rest of the run.
+
+### (Other future env vars go here as phases land)
 
 ## Verification Checklist
 

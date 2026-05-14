@@ -1,20 +1,19 @@
-// Pressure preview v1 — Slice A11.2 (R3 §3 quick-win) — heap-snapshot
-// uploader for long-running soak harnesses.
+// Wave 2 Lane Q slice Q-1 (2026-05-13) — heap-snapshot uploader for
+// long-running soak harnesses, swapped from GCS → Azure Blob per the
+// `POST_HARDENING_FOLLOWUPS` "Soak Heap-Snapshot Uploader" entry.
 //
-// Sprint authority: `docs/_execution/lane_a_code_health/03_execution_slices.md`
-// "Slice A11.2 - Soak Harness Durable Extensions". R3 §3 calls out
-// threshold-triggered heap-snapshot capture as the next step beyond
-// the FD-watcher gauge: when the soak harness or the proxy crosses a
-// memory-growth ceiling we want a `.heapsnapshot` shipped to durable
-// storage so a developer can post-mortem the leak in DevTools.
+// Origin: A11.2 (PR #537) introduced `HeapSnapshotUploadTarget` plus
+// `GcsHeapSnapshotUploadTarget`. The operator decision recorded in
+// `docs/POST_HARDENING_FOLLOWUPS.md` "Soak Heap-Snapshot Uploader"
+// section is that F&F will not run two cloud-storage backends — the
+// audit-anchor system already targets Azure Blob (see
+// `tool/audit_anchor/azure_blob_client.dart`), so the soak uploader
+// mirrors that pattern. The GCS implementation is removed; the
+// storage-agnostic interface stays as the load-bearing seam.
 //
 // Architecture
 // ------------
-// The uploader is split into three injectable seams so the harness can
-// be exercised in tests without burning real cloud quota AND so the
-// implementation can be retargeted from GCS to Azure Blob (which is
-// what F&F actually uses for `tool/audit_anchor/` immutable storage)
-// without rewriting the polling / triggering logic:
+// Same three injectable seams as the GCS predecessor:
 //
 //   * [HeapSnapshotCapturer] — wraps `dart:developer`'s
 //     `NativeRuntime.writeHeapSnapshotToFile`. Production: the default
@@ -22,41 +21,46 @@
 //     synthetic bytes.
 //   * [HeapSnapshotUploadTarget] — receives the snapshot bytes + a
 //     content-type hint and returns the durable object key on success.
-//     Production: [GcsHeapSnapshotUploadTarget] (resumable PUT against
-//     `https://storage.googleapis.com/<bucket>/<key>` with a bearer
-//     token). Tests: a stub that records calls. The contract is
-//     deliberately storage-agnostic so a future slice can swap in an
-//     Azure Blob target matching the audit-anchor pattern in
-//     `tool/audit_anchor/azure_blob_client.dart`.
-//   * [HeapSnapshotUploader] — the orchestrator: polls the
-//     trigger-condition, captures via the [HeapSnapshotCapturer], and
-//     uploads via the [HeapSnapshotUploadTarget]. Owns the metric
-//     emission shape that mirrors `FdWatcher`'s structured JSON line.
+//     Production: [AzureBlobHeapSnapshotUploadTarget] (Azure Blob
+//     BlockBlob PUT, authenticated via Workload Identity Federation
+//     mirroring the audit-anchor pattern). Tests: a stub that records
+//     calls.
+//   * [HeapSnapshotUploader] — the orchestrator: polls the trigger
+//     condition, captures via the [HeapSnapshotCapturer], and uploads
+//     via the [HeapSnapshotUploadTarget]. Owns the metric emission
+//     shape that mirrors `FdWatcher`'s structured JSON line.
 //
 // Cross-platform behaviour
 // ------------------------
 // Heap-snapshot capture works on Dart VM on every platform Flutter
-// supports for the harness (Linux, Windows, macOS). GCS upload also
-// works on every platform. NO platform-specific carve-out is needed.
+// supports for the harness (Linux, Windows, macOS). Azure Blob upload
+// also works on every platform. No platform-specific carve-out.
 //
 // Env-var conventions
 // -------------------
-// The default GCS upload target reads:
-//   * `GCS_BUCKET_HEAP_SNAPSHOTS` — destination bucket. When unset,
-//     the uploader logs a one-time "skipped — no bucket configured"
-//     line and switches to a no-op trigger. NEVER throws.
-//   * `GCS_BEARER_TOKEN` — short-lived bearer token. When unset, same
-//     fallback (no-op + log; no throw). Production wires this from a
-//     workload-identity-federation-derived token similar to the Azure
-//     pattern in `tool/audit_anchor/azure_blob_client.dart`.
+// The default Azure Blob upload target reads:
+//   * `AZURE_BLOB_HEAP_SNAPSHOTS_CONTAINER` — destination container.
+//     When unset, the uploader logs a one-time "skipped — no container
+//     configured" line and switches to a no-op trigger. NEVER throws.
+//   * `AZURE_BLOB_HEAP_SNAPSHOTS_ENDPOINT` — storage account endpoint
+//     (e.g. `https://forgeflowstaging1.blob.core.windows.net`). When
+//     unset, same fallback (no-op + log; no throw). Production wires
+//     this from the operator's `forge_flow.secrets.ps1`.
+//   * `AZURE_AD_TENANT_ID` — Azure AD tenant hosting the federated app
+//     registration (shared with the audit-anchor path).
+//   * `AZURE_AD_CLIENT_ID` — Azure AD app-registration client id.
 //
-// CRITICAL: when either env var is unset, the uploader MUST stay
-// alive (so the harness keeps running) and MUST NOT throw.
+// All four must be set for `isConfigured == true`. When any are unset,
+// the uploader MUST stay alive (so the harness keeps running) and
+// MUST NOT throw. Soak artifacts use a separate container from the
+// audit-anchor immutable container so they do not collide with
+// compliance evidence.
 //
 // Output line shape (mirrors FdWatcher)
 // -------------------------------------
 //   { "ts": "<iso>", "metric": "soak.heap_snapshot.uploaded",
-//     "object_key": "<key>", "size_bytes": <int> }
+//     "object_key": "<key>", "blob_uri": "<full uri>",
+//     "size_bytes": <int>, "pod_id": "<pod>", "run_id": "<run>" }
 //   { "ts": "<iso>", "metric": "soak.heap_snapshot.skipped",
 //     "reason": "<reason>" }
 //   { "ts": "<iso>", "metric": "soak.heap_snapshot.error",
@@ -66,6 +70,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
+
+import '../audit_anchor/azure_blob_client.dart';
 
 /// Captures a Dart heap snapshot to a local file. Production wiring is
 /// [DartDeveloperHeapSnapshotCapturer] which delegates to
@@ -98,15 +104,25 @@ class HeapSnapshotUploadResult {
   const HeapSnapshotUploadResult({
     required this.objectKey,
     required this.sizeBytes,
+    this.blobUri,
   });
 
+  /// The object key the target chose (relative path within the
+  /// container, e.g. `heap-snapshots/<run_id>/<pod_id>/<iso>.heapsnapshot`).
   final String objectKey;
+
+  /// The total bytes uploaded.
   final int sizeBytes;
+
+  /// Optional full URI (storage endpoint + container + object key).
+  /// Production wiring returns this so the final soak report can link
+  /// straight to the blob. Test stubs may omit it.
+  final String? blobUri;
 }
 
 /// Receives the raw snapshot bytes and a content-type hint and pushes
 /// them to durable storage. Production wiring is
-/// [GcsHeapSnapshotUploadTarget]; tests inject a stub.
+/// [AzureBlobHeapSnapshotUploadTarget]; tests inject a stub.
 abstract class HeapSnapshotUploadTarget {
   /// Whether the target is configured to accept uploads. When `false`,
   /// [HeapSnapshotUploader] logs a "skipped" line and never invokes
@@ -119,50 +135,172 @@ abstract class HeapSnapshotUploadTarget {
 
   /// Upload [bytes] to the target. The target chooses the object key.
   /// Throws on failure; the caller catches and logs.
+  ///
+  /// [podId] and [runId] are optional naming hints — production wires
+  /// them into the object key so multi-pod runs can be told apart.
   Future<HeapSnapshotUploadResult> upload({
     required List<int> bytes,
     required String contentType,
     required DateTime timestamp,
+    String? podId,
+    String? runId,
   });
 }
 
-/// Default GCS upload target. Pushes a snapshot to
-/// `https://storage.googleapis.com/<bucket>/heap-snapshots/<iso>.heapsnapshot`
-/// using a simple bearer-token PUT. Single-object uploads only — large
-/// snapshots that need resumable uploads should compose a different
-/// target.
+/// Env-var names the production Azure Blob upload target reads. Names
+/// only; values never logged. Mirrors `AuditAnchorEnvNames`.
+class SoakHeapSnapshotEnvNames {
+  const SoakHeapSnapshotEnvNames._();
+
+  /// Destination container for soak artifacts. MUST be different from
+  /// the audit-anchor immutable container; soak snapshots are
+  /// developer-debug artifacts, not compliance evidence.
+  static const String azureBlobContainer =
+      'AZURE_BLOB_HEAP_SNAPSHOTS_CONTAINER';
+
+  /// Storage account endpoint, e.g.
+  /// `https://forgeflowstaging1.blob.core.windows.net`.
+  static const String azureBlobEndpoint =
+      'AZURE_BLOB_HEAP_SNAPSHOTS_ENDPOINT';
+
+  /// Azure AD tenant ID hosting the federated app registration.
+  /// Shared with the audit-anchor path.
+  static const String azureAdTenantId = 'AZURE_AD_TENANT_ID';
+
+  /// Azure AD app-registration client id for the federated identity.
+  /// Shared with the audit-anchor path.
+  static const String azureAdClientId = 'AZURE_AD_CLIENT_ID';
+
+  static const List<String> required = <String>[
+    azureBlobContainer,
+    azureBlobEndpoint,
+    azureAdTenantId,
+    azureAdClientId,
+  ];
+}
+
+/// Default Azure Blob upload target. Pushes a snapshot to
+/// `<endpoint>/<container>/heap-snapshots/<run_id>/<pod_id>/<iso>.heapsnapshot`
+/// as a BlockBlob via the same Workload Identity Federation flow the
+/// audit-anchor system uses (`tool/audit_anchor/azure_blob_client.dart`).
+/// Soak artifacts use a separate container (not immutable), so the
+/// `If-None-Match: *` guard the audit-anchor writer uses is dropped —
+/// re-running a soak with the same `run_id` overwrites is fine.
 ///
-/// Env vars consumed:
-///   * `GCS_BUCKET_HEAP_SNAPSHOTS` — required.
-///   * `GCS_BEARER_TOKEN` — required.
-class GcsHeapSnapshotUploadTarget implements HeapSnapshotUploadTarget {
-  GcsHeapSnapshotUploadTarget({
+/// Env vars consumed: see [SoakHeapSnapshotEnvNames].
+class AzureBlobHeapSnapshotUploadTarget implements HeapSnapshotUploadTarget {
+  AzureBlobHeapSnapshotUploadTarget({
     Map<String, String>? env,
-    HttpClient? httpClient,
+    AzureBlobHttpRequester? requester,
+    AzureAccessTokenProvider? tokenProvider,
+    DateTime Function()? clock,
+    String apiVersion = '2021-12-02',
   })  : _env = env ?? Platform.environment,
-        _httpClient = httpClient ?? HttpClient();
+        _requester = requester ?? DartIoAzureBlobHttpRequester(),
+        _tokenProviderOverride = tokenProvider,
+        _clock = clock ?? DateTime.now,
+        _apiVersion = apiVersion;
 
   final Map<String, String> _env;
-  final HttpClient _httpClient;
+  final AzureBlobHttpRequester _requester;
+  final AzureAccessTokenProvider? _tokenProviderOverride;
+  final DateTime Function() _clock;
+  final String _apiVersion;
 
-  String? get _bucket => _env['GCS_BUCKET_HEAP_SNAPSHOTS']?.trim().isEmpty == true
-      ? null
-      : _env['GCS_BUCKET_HEAP_SNAPSHOTS']?.trim();
+  AzureAccessTokenProvider? _cachedDefaultProvider;
 
-  String? get _bearerToken => _env['GCS_BEARER_TOKEN']?.trim().isEmpty == true
-      ? null
-      : _env['GCS_BEARER_TOKEN']?.trim();
+  String? _readNonEmpty(String name) {
+    final raw = _env[name]?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    return raw;
+  }
+
+  String? get _container => _readNonEmpty(
+        SoakHeapSnapshotEnvNames.azureBlobContainer,
+      );
+
+  String? get _endpoint => _readNonEmpty(
+        SoakHeapSnapshotEnvNames.azureBlobEndpoint,
+      );
+
+  String? get _tenantId => _readNonEmpty(
+        SoakHeapSnapshotEnvNames.azureAdTenantId,
+      );
+
+  String? get _clientId => _readNonEmpty(
+        SoakHeapSnapshotEnvNames.azureAdClientId,
+      );
+
+  AzureAccessTokenProvider _resolveTokenProvider() {
+    final override = _tokenProviderOverride;
+    if (override != null) return override;
+    final tenant = _tenantId;
+    final client = _clientId;
+    if (tenant == null || client == null) {
+      throw StateError(
+        'AzureBlobHeapSnapshotUploadTarget: token provider requested '
+        'while AZURE_AD_TENANT_ID / AZURE_AD_CLIENT_ID are unset',
+      );
+    }
+    return _cachedDefaultProvider ??= WorkloadIdentityFederationTokenProvider(
+      tenantId: tenant,
+      clientId: client,
+      requester: _requester,
+    );
+  }
 
   @override
-  bool get isConfigured => _bucket != null && _bearerToken != null;
+  bool get isConfigured {
+    if (_tokenProviderOverride != null) {
+      // Tests can wire a fake token provider while leaving the AD env
+      // vars unset — they still need container + endpoint.
+      return _container != null && _endpoint != null;
+    }
+    return _container != null &&
+        _endpoint != null &&
+        _tenantId != null &&
+        _clientId != null;
+  }
 
   @override
   String get unconfiguredReason {
-    if (_bucket == null && _bearerToken == null) {
-      return 'GCS_BUCKET_HEAP_SNAPSHOTS and GCS_BEARER_TOKEN both unset';
+    final missing = <String>[];
+    if (_container == null) {
+      missing.add(SoakHeapSnapshotEnvNames.azureBlobContainer);
     }
-    if (_bucket == null) return 'GCS_BUCKET_HEAP_SNAPSHOTS unset';
-    return 'GCS_BEARER_TOKEN unset';
+    if (_endpoint == null) {
+      missing.add(SoakHeapSnapshotEnvNames.azureBlobEndpoint);
+    }
+    if (_tokenProviderOverride == null) {
+      if (_tenantId == null) {
+        missing.add(SoakHeapSnapshotEnvNames.azureAdTenantId);
+      }
+      if (_clientId == null) {
+        missing.add(SoakHeapSnapshotEnvNames.azureAdClientId);
+      }
+    }
+    if (missing.isEmpty) {
+      // Defensive: should not be reached when isConfigured == false.
+      return 'AzureBlobHeapSnapshotUploadTarget unconfigured (no env names captured)';
+    }
+    return '${missing.join(', ')} unset';
+  }
+
+  Uri _blobUri({
+    required String endpoint,
+    required String container,
+    required String blobName,
+  }) {
+    final base = endpoint.endsWith('/')
+        ? endpoint.substring(0, endpoint.length - 1)
+        : endpoint;
+    final encodedBlob = blobName
+        .split('/')
+        .map(Uri.encodeComponent)
+        .join('/');
+    return Uri.parse(
+      '$base/${Uri.encodeComponent(container)}/$encodedBlob',
+    );
   }
 
   @override
@@ -170,47 +308,72 @@ class GcsHeapSnapshotUploadTarget implements HeapSnapshotUploadTarget {
     required List<int> bytes,
     required String contentType,
     required DateTime timestamp,
+    String? podId,
+    String? runId,
   }) async {
-    final bucket = _bucket;
-    final token = _bearerToken;
-    if (bucket == null || token == null) {
+    final container = _container;
+    final endpoint = _endpoint;
+    if (container == null || endpoint == null) {
       throw StateError(
-        'GcsHeapSnapshotUploadTarget.upload called while unconfigured: '
-        '$unconfiguredReason',
+        'AzureBlobHeapSnapshotUploadTarget.upload called while '
+        'unconfigured: $unconfiguredReason',
       );
     }
+    final tokenProvider = _resolveTokenProvider();
+    final token = await tokenProvider.getStorageAccessToken();
+
     final isoStamp = timestamp
         .toUtc()
         .toIso8601String()
         .replaceAll(RegExp(r'[^\w]'), '_');
-    final objectKey = 'heap-snapshots/$isoStamp.heapsnapshot';
-    final uri = Uri.parse(
-      'https://storage.googleapis.com/$bucket/$objectKey',
+    final safeRun = (runId ?? 'unknown_run').replaceAll(
+      RegExp(r'[^A-Za-z0-9._\-]'),
+      '_',
     );
-    final request = await _httpClient.putUrl(uri);
-    request.headers.set('authorization', 'Bearer $token');
-    request.headers.set('content-type', contentType);
-    request.contentLength = bytes.length;
-    request.add(bytes);
-    final response = await request.close();
-    // Drain so the connection can be reused / closed cleanly.
-    final responseBody = <int>[];
-    await for (final chunk in response) {
-      responseBody.addAll(chunk);
-      if (responseBody.length > 4096) break;
-    }
+    final safePod = (podId ?? 'unknown_pod').replaceAll(
+      RegExp(r'[^A-Za-z0-9._\-]'),
+      '_',
+    );
+    final objectKey =
+        'heap-snapshots/$safeRun/$safePod/heap-$isoStamp.heapsnapshot';
+    final uri = _blobUri(
+      endpoint: endpoint,
+      container: container,
+      blobName: objectKey,
+    );
+    final headers = <String, String>{
+      'Authorization': 'Bearer $token',
+      'x-ms-version': _apiVersion,
+      'x-ms-date': HttpDate.format(_clock().toUtc()),
+      'x-ms-blob-type': 'BlockBlob',
+      'Content-Type': contentType,
+    };
+    final response = await _requester.send(
+      method: 'PUT',
+      uri: uri,
+      headers: headers,
+      body: bytes,
+    );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException(
-        'GCS upload to $uri returned ${response.statusCode}: '
-        '${utf8.decode(responseBody, allowMalformed: true)}',
+        'Azure Blob PUT to $uri returned ${response.statusCode}: '
+        '${_truncateExcerpt(utf8.decode(response.bodyBytes, allowMalformed: true))}',
         uri: uri,
       );
     }
     return HeapSnapshotUploadResult(
       objectKey: objectKey,
       sizeBytes: bytes.length,
+      blobUri: uri.toString(),
     );
   }
+}
+
+String _truncateExcerpt(String text) {
+  const limit = 240;
+  final stripped = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (stripped.length <= limit) return stripped;
+  return '${stripped.substring(0, limit)}…';
 }
 
 /// Threshold-triggered heap-snapshot uploader. Polls a trigger
@@ -224,13 +387,17 @@ class HeapSnapshotUploader {
     IOSink? output,
     DateTime Function()? clock,
     Directory? scratchDirectory,
+    String? podId,
+    String? runId,
   })  : _triggerCondition = triggerCondition,
         _uploadTarget = uploadTarget,
         _pollInterval = pollInterval,
         _capturer = capturer ?? const DartDeveloperHeapSnapshotCapturer(),
         _output = output ?? stdout,
         _clock = clock ?? (() => DateTime.now().toUtc()),
-        _scratchDirectory = scratchDirectory ?? Directory.systemTemp;
+        _scratchDirectory = scratchDirectory ?? Directory.systemTemp,
+        _podId = podId,
+        _runId = runId;
 
   final bool Function() _triggerCondition;
   final HeapSnapshotUploadTarget _uploadTarget;
@@ -239,12 +406,15 @@ class HeapSnapshotUploader {
   final IOSink _output;
   final DateTime Function() _clock;
   final Directory _scratchDirectory;
+  final String? _podId;
+  final String? _runId;
 
   Timer? _timer;
   bool _stopped = false;
   bool _loggedUnconfigured = false;
   bool _busy = false;
   int _uploadCount = 0;
+  final List<HeapSnapshotUploadResult> _uploads = <HeapSnapshotUploadResult>[];
 
   /// Whether the uploader is actively polling.
   bool get isPolling => _timer?.isActive == true;
@@ -252,8 +422,13 @@ class HeapSnapshotUploader {
   /// How many successful uploads the uploader has made since [start].
   int get uploadCount => _uploadCount;
 
+  /// All successful upload results since [start] — used by the soak
+  /// orchestrator to surface URLs in the final report.
+  List<HeapSnapshotUploadResult> get uploads =>
+      List<HeapSnapshotUploadResult>.unmodifiable(_uploads);
+
   /// Schedule the periodic trigger poll. When the upload target is not
-  /// configured, the watcher logs ONE "skipped — no bucket configured"
+  /// configured, the watcher logs ONE "skipped — no container configured"
   /// line and stays inert for the rest of the run (it does NOT poll the
   /// trigger condition because there's no destination anyway).
   void start() {
@@ -351,6 +526,8 @@ class HeapSnapshotUploader {
         bytes: bytes,
         contentType: 'application/octet-stream',
         timestamp: timestamp,
+        podId: _podId,
+        runId: _runId,
       );
     } catch (e) {
       _emit(<String, Object?>{
@@ -364,11 +541,15 @@ class HeapSnapshotUploader {
     }
 
     _uploadCount += 1;
+    _uploads.add(result);
     _emit(<String, Object?>{
       'ts': _clock().toIso8601String(),
       'metric': 'soak.heap_snapshot.uploaded',
       'object_key': result.objectKey,
+      if (result.blobUri != null) 'blob_uri': result.blobUri,
       'size_bytes': result.sizeBytes,
+      if (_podId != null) 'pod_id': _podId,
+      if (_runId != null) 'run_id': _runId,
     });
     _bestEffortDelete(capturedPath);
   }
