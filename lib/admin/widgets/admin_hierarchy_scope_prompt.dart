@@ -1,9 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../../operator_web/widgets/hierarchy_map_picker.dart';
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 
+/// Admin scope-prompt — Wave 2 H-3 hierarchy-map variant.
+///
+/// Renders a hierarchy-map tree (Business → Org units → Locations)
+/// derived from the flat [scopes] list the screen passes in. Each scope
+/// becomes a [HierarchyMapNode] keyed by its
+/// `AdminHierarchyScopeIntent.cacheKey`. The tree groups locations
+/// under their `orgUnitId` parent (or directly under the business
+/// scope when the location has no orgUnit). Inheritance + effective
+/// chips render alongside the selected scope so the operator keeps
+/// the HP #11 signal (scope / inherited / effective).
 class AdminHierarchyScopePrompt extends StatelessWidget {
   const AdminHierarchyScopePrompt({
     super.key,
@@ -22,6 +33,10 @@ class AdminHierarchyScopePrompt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selected = selectedScope;
+    // `selected` is forwarded to `_AdminScopeHierarchyMap` so the
+    // matching tree row renders highlighted; chip / breadcrumb data
+    // travels with each `HierarchyMapNode`.
     return Container(
       key: const Key('admin_hierarchy_scope_prompt'),
       constraints: const BoxConstraints(maxWidth: 720),
@@ -56,30 +71,20 @@ class AdminHierarchyScopePrompt extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             'Business settings inherit down through org units to locations. '
-            'Lower configured scopes override higher scopes.',
+            'Lower configured scopes override higher scopes. The picker '
+            'mirrors your hierarchy so you can pick by structure, not by '
+            'an alphabetical list.',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 14),
-          Flexible(
-            child: SingleChildScrollView(
-              child: scopes.isEmpty
-                  ? const _EmptyScopeState()
-                  : Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (final scope in scopes)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _ScopeOption(
-                              scope: scope,
-                              selected: scope == selectedScope,
-                              onTap: () => onScopeSelected(scope),
-                            ),
-                          ),
-                      ],
-                    ),
+          if (scopes.isEmpty)
+            const _EmptyScopeState()
+          else
+            _AdminScopeHierarchyMap(
+              scopes: scopes,
+              selectedScope: selected,
+              onScopeSelected: onScopeSelected,
             ),
-          ),
           if (onCancel != null) ...[
             const SizedBox(height: 8),
             Align(
@@ -97,6 +102,148 @@ class AdminHierarchyScopePrompt extends StatelessWidget {
     );
   }
 }
+
+/// Card-shaped tree wrapping [HierarchyMapPicker] for the admin
+/// scope-prompt surface. Renders the tree inline (no popover) — the
+/// admin prompt IS the popover analog at the screen level, so the
+/// shared widget mounts in always-open mode by passing a fixed shell
+/// around the inner tree.
+class _AdminScopeHierarchyMap extends StatefulWidget {
+  const _AdminScopeHierarchyMap({
+    required this.scopes,
+    required this.selectedScope,
+    required this.onScopeSelected,
+  });
+
+  final List<AdminHierarchyScopeIntent> scopes;
+  final AdminHierarchyScopeIntent? selectedScope;
+  final ValueChanged<AdminHierarchyScopeIntent> onScopeSelected;
+
+  @override
+  State<_AdminScopeHierarchyMap> createState() =>
+      _AdminScopeHierarchyMapState();
+}
+
+class _AdminScopeHierarchyMapState extends State<_AdminScopeHierarchyMap> {
+  @override
+  Widget build(BuildContext context) {
+    final scopesByKey = <String, AdminHierarchyScopeIntent>{};
+    for (final scope in widget.scopes) {
+      scopesByKey[scope.cacheKey] = scope;
+    }
+    final nodes = <HierarchyMapNode>[];
+    String? businessKey;
+    for (final scope in widget.scopes) {
+      if (scope.isBusinessScope) {
+        businessKey = scope.cacheKey;
+        break;
+      }
+    }
+    for (final scope in widget.scopes) {
+      String? parentId;
+      HierarchyMapNodeKind kind;
+      switch (scope.scopeType) {
+        case AdminHierarchyScopeType.business:
+          parentId = null;
+          kind = HierarchyMapNodeKind.business;
+          break;
+        case AdminHierarchyScopeType.orgUnit:
+          parentId = businessKey;
+          kind = HierarchyMapNodeKind.orgUnit;
+          break;
+        case AdminHierarchyScopeType.location:
+          // Locations point at their orgUnit parent when known; fall
+          // back to the business root so the tree is always connected.
+          parentId = _findOrgUnitParentKey(
+                widget.scopes,
+                scope.operatorId,
+                scope.orgUnitId,
+              ) ??
+              businessKey;
+          kind = HierarchyMapNodeKind.location;
+          break;
+      }
+      nodes.add(
+        HierarchyMapNode(
+          id: scope.cacheKey,
+          label: scope.displayLabel,
+          helper: scope.scopeType.label,
+          kind: kind,
+          parentId: parentId,
+          inheritanceBreadcrumb: _breadcrumbForScope(scope),
+          statusChips: <String>[
+            scope.inheritanceLabel,
+            if (scope.effectiveValueLabel != null)
+              'Effective: ${scope.effectiveValueLabel}',
+            if (scope.allowedActionsLabel != null)
+              scope.allowedActionsLabel!,
+          ],
+        ),
+      );
+    }
+    return Container(
+      key: const Key('admin_hierarchy_scope_prompt_map_container'),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep.withValues(alpha: 0.32),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      // The admin scope-prompt IS the screen-level scope chooser
+      // (rendered as a card, not a popover trigger). Use the inline
+      // tree body so the tree is always visible — operators see every
+      // available branch without an extra click — while sharing the
+      // same hierarchy-map widget shape as the operator-web popover.
+      child: HierarchyMapTreeBody(
+        keyPrefix: 'admin_hierarchy_scope_map',
+        nodes: nodes,
+        selectedId: widget.selectedScope?.cacheKey,
+        // Every kind selects in admin (business / orgUnit / location).
+        allowNonLocationSelection: true,
+        // Preserve the legacy per-row test key
+        // `admin_hierarchy_scope_option_<cacheKey>` so existing tests
+        // that tap the row directly keep working after the H-3 refactor.
+        nodeKeyResolver: (nodeId) =>
+            Key('admin_hierarchy_scope_option_$nodeId'),
+        onNodeTap: (node) {
+          final scope = scopesByKey[node.id];
+          if (scope == null) return;
+          widget.onScopeSelected(scope);
+        },
+      ),
+    );
+  }
+
+  static String? _findOrgUnitParentKey(
+    List<AdminHierarchyScopeIntent> scopes,
+    String operatorId,
+    String? orgUnitId,
+  ) {
+    if (orgUnitId == null || orgUnitId.isEmpty) return null;
+    for (final candidate in scopes) {
+      if (candidate.isOrgUnitScope &&
+          candidate.operatorId == operatorId &&
+          candidate.orgUnitId == orgUnitId) {
+        return candidate.cacheKey;
+      }
+    }
+    return null;
+  }
+
+  static String? _breadcrumbForScope(AdminHierarchyScopeIntent scope) {
+    switch (scope.scopeType) {
+      case AdminHierarchyScopeType.business:
+        return 'Business-wide. Every org unit and location inherits '
+            'these defaults unless they set their own.';
+      case AdminHierarchyScopeType.orgUnit:
+        return 'Inherits business defaults. Locations under this group '
+            'inherit values you set here.';
+      case AdminHierarchyScopeType.location:
+        return null;
+    }
+  }
+}
+
 
 class AdminHierarchyScopeBanner extends StatelessWidget {
   const AdminHierarchyScopeBanner({
@@ -236,94 +383,6 @@ class AdminHierarchyScopeStatusChip extends StatelessWidget {
   }
 }
 
-class _ScopeOption extends StatelessWidget {
-  const _ScopeOption({
-    required this.scope,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final AdminHierarchyScopeIntent scope;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final borderColor = selected
-        ? AppColors.sunset.withValues(alpha: 0.62)
-        : AppColors.borderSubtle;
-    return Material(
-      color: selected
-          ? AppColors.sunset.withValues(alpha: 0.08)
-          : AppColors.backgroundDeep.withValues(alpha: 0.56),
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        key: Key('admin_hierarchy_scope_option_${scope.cacheKey}'),
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            border: Border.all(color: borderColor, width: 1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(_iconFor(scope.scopeType), size: 18, color: borderColor),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      scope.scopeType.label,
-                      style: AppTextStyles.uiLabel(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      scope.displayLabel,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.body14(color: AppColors.textPrimary),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        AdminHierarchyScopeStatusChip(
-                          label: scope.inheritanceLabel,
-                        ),
-                        if (scope.effectiveValueLabel != null)
-                          AdminHierarchyScopeStatusChip(
-                            label: 'Effective: ${scope.effectiveValueLabel}',
-                          ),
-                        if (scope.allowedActionsLabel != null)
-                          AdminHierarchyScopeStatusChip(
-                            label: scope.allowedActionsLabel!,
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (selected)
-                const Icon(
-                  Icons.check_circle,
-                  size: 18,
-                  color: AppColors.sunsetDark,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _EmptyScopeState extends StatelessWidget {
   const _EmptyScopeState();
 
@@ -341,17 +400,6 @@ class _EmptyScopeState extends StatelessWidget {
         style: AppTextStyles.body13(color: AppColors.textSecondary),
       ),
     );
-  }
-}
-
-IconData _iconFor(AdminHierarchyScopeType type) {
-  switch (type) {
-    case AdminHierarchyScopeType.business:
-      return Icons.business_outlined;
-    case AdminHierarchyScopeType.orgUnit:
-      return Icons.account_tree_outlined;
-    case AdminHierarchyScopeType.location:
-      return Icons.storefront_outlined;
   }
 }
 

@@ -5,11 +5,24 @@ import 'package:forge_and_flow/admin/widgets/admin_hierarchy_scope_prompt.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
+  // Wave 2 H-3: prompt is desktop-first. Default 800x600 viewport
+  // truncates the hierarchy-map tree and pushes location rows below
+  // the visible cut, so taps miss. Pump 1024x900 to keep every row
+  // hit-testable in tests.
+  Future<void> sizeViewport(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1024, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+  }
+
   Widget wrap(Widget child) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: AppTheme.themeData,
-      home: Scaffold(body: Center(child: child)),
+      home: Scaffold(body: SingleChildScrollView(child: Center(child: child))),
     );
   }
 
@@ -45,6 +58,7 @@ void main() {
   testWidgets('renders required scope labels and effective states', (
     tester,
   ) async {
+    await sizeViewport(tester);
     AdminHierarchyScopeIntent? selected;
 
     await tester.pumpWidget(
@@ -78,6 +92,13 @@ void main() {
     expect(find.text('Can edit'), findsWidgets);
     expect(find.text('Read only'), findsOneWidget);
 
+    // Wave 2 H-3: the prompt renders the hierarchy-map tree inside a
+    // scrollable popover body, so the location row may sit below the
+    // visible cut on the default test viewport. Scroll the row into
+    // view before tapping so the hit-test lands on the InkWell.
+    await tester.ensureVisible(
+      find.byKey(Key('admin_hierarchy_scope_option_${locationScope.cacheKey}')),
+    );
     await tester.tap(
       find.byKey(Key('admin_hierarchy_scope_option_${locationScope.cacheKey}')),
     );
@@ -89,6 +110,7 @@ void main() {
   testWidgets('banner exposes selected scope and change action', (
     tester,
   ) async {
+    await sizeViewport(tester);
     var changed = false;
     var cleared = false;
 
