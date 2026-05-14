@@ -27,6 +27,11 @@
 //   * POST   /v1/auth/team/users/{user_id}/reset-mfa
 //   * PATCH  /v1/auth/team/users/{user_id}    (Wave 2 W-1 — email +
 //                                              display name patch)
+//   * POST   /v1/auth/team/role-grants         (Wave 2 W-1-FU — role +
+//                                              hierarchy scope rotation
+//                                              from the Edit member
+//                                              dialog)
+//   * DELETE /v1/auth/team/role-grants/{user_role_id}  (Wave 2 W-1-FU)
 //
 // Idempotency posture: every write carries an `Idempotency-Key`
 // header; the screen layer mints one key per user action and threads
@@ -99,6 +104,33 @@ abstract class WebTeamUsersGateway {
     TeamUserProfilePatchCommand command, {
     required String idempotencyKey,
   });
+
+  /// Wave 2 W-1-FU — role + hierarchy scope rotation from the Edit
+  /// member dialog. POSTs through the proxy `POST
+  /// /v1/auth/team/role-grants` route, which delegates to the existing
+  /// `createRoleGrant` orchestration in
+  /// [RepositoryAuthOperationsGateway] (writes the new `user_roles` row,
+  /// refreshes Firebase custom claims, and emits the
+  /// `auth.role_grant_created` audit row).
+  ///
+  /// The proxy gates this call on `team.roles.assign`.
+  Future<TeamRoleGrantCreated> createRoleGrant(
+    TeamRoleGrantCreateCommand command, {
+    required String idempotencyKey,
+  });
+
+  /// Wave 2 W-1-FU — companion revoke for role + hierarchy scope
+  /// rotation. DELETEs through the proxy `DELETE
+  /// /v1/auth/team/role-grants/{user_role_id}` route, which delegates
+  /// to the existing `revokeRoleGrant` orchestration (marks the old
+  /// `user_roles` row revoked, refreshes Firebase custom claims, and
+  /// emits the `auth.role_grant_revoked` audit row).
+  ///
+  /// The proxy gates this call on `team.roles.revoke`.
+  Future<TeamRoleGrantRevoked> revokeRoleGrant(
+    TeamRoleGrantRevokeCommand command, {
+    required String idempotencyKey,
+  });
 }
 
 /// Live wire shape returned by the proxy. Mirrors the response
@@ -138,11 +170,22 @@ class WebTeamUsersPaths {
   static const String users = '/v1/auth/team/users';
   static const String userPrefix = '/v1/auth/team/users/';
 
+  /// Wave 2 W-1-FU — role-grant create/revoke routes used by the Edit
+  /// member dialog when the operator changes role or hierarchy scope.
+  /// The proxy canonicalizes `/v1/auth/team/role-grants` to
+  /// `/v1/admin/auth/role-grants` (see `_canonicalAuthOperationPath` in
+  /// `tool/advisor_proxy/advisor_proxy.dart`).
+  static const String roleGrants = '/v1/auth/team/role-grants';
+  static const String roleGrantPrefix = '/v1/auth/team/role-grants/';
+
   static String userAction(String userId, String action) =>
       '$userPrefix${Uri.encodeComponent(userId)}/$action';
 
   static String invite(String inviteId) =>
       '$invitePrefix${Uri.encodeComponent(inviteId)}';
+
+  static String roleGrant(String userRoleId) =>
+      '$roleGrantPrefix${Uri.encodeComponent(userRoleId)}';
 }
 
 /// Live `package:http` implementation. Reads the Firebase ID token
@@ -344,6 +387,69 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
       throw _malformed(response, 'edit member response was incomplete');
     }
     return TeamUserProfilePatched(user: _userFromJson(response, rawUser));
+  }
+
+  @override
+  Future<TeamRoleGrantCreated> createRoleGrant(
+    TeamRoleGrantCreateCommand command, {
+    required String idempotencyKey,
+  }) async {
+    // W-1-FU — role + hierarchy scope rotation. POST
+    // /v1/auth/team/role-grants. The proxy canonicalizes to
+    // `/v1/admin/auth/role-grants`, gates on `team.roles.assign`, and
+    // delegates to `createRoleGrant` on the repository gateway.
+    final response = await _send(
+      method: 'POST',
+      path: WebTeamUsersPaths.roleGrants,
+      idempotencyKey: idempotencyKey,
+      body: <String, Object?>{
+        'user_id': command.targetUserId,
+        'role_id': command.roleId,
+        'scope_type': command.scopeType,
+        if (command.targetLocationId != null)
+          'location_id': command.targetLocationId,
+        if (command.targetOrgUnitId != null)
+          'org_unit_id': command.targetOrgUnitId,
+        if (command.reason != null && command.reason!.trim().isNotEmpty)
+          'reason': command.reason!.trim(),
+      },
+    );
+    _expectStatus(response, 201);
+    final userRoleId = _readNonBlankString(response.body['user_role_id']);
+    if (userRoleId == null) {
+      throw _malformed(response, 'role grant create response was incomplete');
+    }
+    return TeamRoleGrantCreated(userRoleId: userRoleId);
+  }
+
+  @override
+  Future<TeamRoleGrantRevoked> revokeRoleGrant(
+    TeamRoleGrantRevokeCommand command, {
+    required String idempotencyKey,
+  }) async {
+    // W-1-FU — companion revoke. DELETE
+    // /v1/auth/team/role-grants/{user_role_id}. The proxy canonicalizes
+    // to `/v1/admin/auth/role-grants/{id}`, gates on
+    // `team.roles.revoke`, and delegates to `revokeRoleGrant` on the
+    // repository gateway. `user_id` travels in the request body so the
+    // proxy can pair the grant with its owning user when refreshing
+    // Firebase claims.
+    final response = await _send(
+      method: 'DELETE',
+      path: WebTeamUsersPaths.roleGrant(command.userRoleId),
+      idempotencyKey: idempotencyKey,
+      body: <String, Object?>{
+        'user_id': command.targetUserId,
+        if (command.reason != null && command.reason!.trim().isNotEmpty)
+          'reason': command.reason!.trim(),
+      },
+    );
+    _expectStatus(response, 200);
+    final revoked = response.body['revoked'];
+    if (revoked is! bool) {
+      throw _malformed(response, 'role grant revoke response was incomplete');
+    }
+    return TeamRoleGrantRevoked(revoked: revoked);
   }
 
   Future<TeamUserStatusUpdated> _userStatusAction(

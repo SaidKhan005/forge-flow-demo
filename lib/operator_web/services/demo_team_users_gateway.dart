@@ -27,8 +27,38 @@ import 'web_team_users_gateway.dart';
 /// declared in [demo_team_fixtures.dart].
 class DemoWebTeamUsersGateway implements WebTeamUsersGateway {
   DemoWebTeamUsersGateway() {
+    // Wave 2 W-1-FU — seed each user with the matching grant snapshots
+    // from [kDemoTeamRoleGrantsFixture] so the Edit member dialog can
+    // read `user.grants.first.userRoleId` when rotating role + scope.
+    // Without this projection the demo walkthrough would always see an
+    // empty grants list and the revoke half of the rotation would
+    // silently no-op.
+    final grantsByUserId = <String, List<TeamGrantSnapshot>>{};
+    for (final grant in kDemoTeamRoleGrantsFixture) {
+      final roleLabel = _resolveRoleLabel(grant.roleId);
+      grantsByUserId
+          .putIfAbsent(grant.userId, () => <TeamGrantSnapshot>[])
+          .add(teamGrantSnapshotFromFixture(grant, roleLabel: roleLabel));
+    }
     for (final fixture in kDemoTeamUsersFixture) {
-      _users[fixture.userId] = teamUserEntryFromFixture(fixture);
+      final base = teamUserEntryFromFixture(fixture);
+      final grants = grantsByUserId[fixture.userId] ?? const <TeamGrantSnapshot>[];
+      _users[fixture.userId] = TeamUserListEntry(
+        userId: base.userId,
+        email: base.email,
+        displayName: base.displayName,
+        roleId: base.roleId,
+        roleLabel: base.roleLabel,
+        status: base.status,
+        locationId: base.locationId,
+        locationLabel: base.locationLabel,
+        mfaEnrolled: base.mfaEnrolled,
+        mfaRemovalPending: base.mfaRemovalPending,
+        mfaRemovalRequestId: base.mfaRemovalRequestId,
+        userRoleId: grants.isEmpty ? base.userRoleId : grants.first.userRoleId,
+        lastActiveAt: base.lastActiveAt,
+        grants: List<TeamGrantSnapshot>.unmodifiable(grants),
+      );
     }
     for (final fixture in kDemoTeamInvitesFixture) {
       _invites[fixture.inviteId] = teamInviteEntryFromFixture(fixture);
@@ -48,6 +78,18 @@ class DemoWebTeamUsersGateway implements WebTeamUsersGateway {
   /// Counter for synthesising stable demo invite ids when the
   /// walkthrough creates more than one invite in a session.
   int _nextInviteSeq = 100;
+
+  /// Counter for synthesising stable demo role-grant ids so the W-1-FU
+  /// walkthrough can rotate role + scope multiple times in a session
+  /// and still pin a new `user_role_id` to each grant.
+  int _nextGrantSeq = 500;
+
+  static String _resolveRoleLabel(String roleId) {
+    for (final role in kDemoTeamRolesFixture) {
+      if (role.roleId == roleId) return role.displayName;
+    }
+    return roleId;
+  }
 
   @override
   Future<TeamUsersListed> listUsers(TeamUserListCommand command) async {
@@ -229,6 +271,114 @@ class DemoWebTeamUsersGateway implements WebTeamUsersGateway {
     return result;
   }
 
+  @override
+  Future<TeamRoleGrantCreated> createRoleGrant(
+    TeamRoleGrantCreateCommand command, {
+    required String idempotencyKey,
+  }) async {
+    // Wave 2 W-1-FU — role + hierarchy scope rotation. Mirrors the live
+    // proxy `POST /v1/auth/team/role-grants` write so the demo
+    // walkthrough flips role + scope end-to-end. Mutates the in-memory
+    // user's grants list + projected role/location fields so the
+    // Members screen re-renders with the new role label on next refresh.
+    final cached = _idempotency[idempotencyKey];
+    if (cached is _CachedGrantCreate) return cached.created;
+    final existing = _users[command.targetUserId];
+    if (existing == null) {
+      throw const WebTeamUsersError(
+        code: 'user_not_found',
+        message: 'team user was not found for this operator',
+        statusCode: 404,
+      );
+    }
+    final userRoleId = 'demo-grant-seq-${_nextGrantSeq++}';
+    final roleLabel = _resolveRoleLabel(command.roleId);
+    final snapshot = TeamGrantSnapshot(
+      userRoleId: userRoleId,
+      roleId: command.roleId,
+      roleLabel: roleLabel,
+      scopeType: command.scopeType,
+      orgUnitId: command.targetOrgUnitId,
+      locationId: command.targetLocationId,
+      effectiveLocationIds: command.targetLocationId == null
+          ? const <String>[]
+          : <String>[command.targetLocationId!],
+    );
+    final nextGrants = <TeamGrantSnapshot>[
+      ...existing.grants,
+      snapshot,
+    ];
+    _users[command.targetUserId] = TeamUserListEntry(
+      userId: existing.userId,
+      email: existing.email,
+      displayName: existing.displayName,
+      // Surface the freshly granted role on the row so the post-save
+      // re-render of the Members screen shows the new role label
+      // without waiting for the revoke half to flush the old row.
+      roleId: command.roleId,
+      roleLabel: roleLabel,
+      status: existing.status,
+      // Update the projected location label so the row matches the new
+      // hierarchy scope when the walkthrough rotates to a different
+      // location.
+      locationId: command.targetLocationId ?? existing.locationId,
+      locationLabel: command.targetLocationId == null
+          ? existing.locationLabel
+          : _locationLabel(command.targetLocationId!) ?? existing.locationLabel,
+      mfaEnrolled: existing.mfaEnrolled,
+      mfaRemovalPending: existing.mfaRemovalPending,
+      mfaRemovalRequestId: existing.mfaRemovalRequestId,
+      userRoleId: userRoleId,
+      lastActiveAt: existing.lastActiveAt,
+      grants: List<TeamGrantSnapshot>.unmodifiable(nextGrants),
+    );
+    final result = TeamRoleGrantCreated(userRoleId: userRoleId);
+    _idempotency[idempotencyKey] = _CachedGrantCreate(result);
+    return result;
+  }
+
+  @override
+  Future<TeamRoleGrantRevoked> revokeRoleGrant(
+    TeamRoleGrantRevokeCommand command, {
+    required String idempotencyKey,
+  }) async {
+    // Wave 2 W-1-FU — revoke half of the role + hierarchy scope
+    // rotation. Drops the grant from the in-memory user's grants list
+    // so the dialog's idempotency cache lines up with the live proxy
+    // `DELETE /v1/auth/team/role-grants/{user_role_id}` write.
+    final cached = _idempotency[idempotencyKey];
+    if (cached is _CachedGrantRevoke) return cached.revoked;
+    final existing = _users[command.targetUserId];
+    if (existing == null) {
+      const result = TeamRoleGrantRevoked(revoked: false);
+      _idempotency[idempotencyKey] = const _CachedGrantRevoke(result);
+      return result;
+    }
+    final filtered = existing.grants
+        .where((g) => g.userRoleId != command.userRoleId)
+        .toList(growable: false);
+    final wasRemoved = filtered.length != existing.grants.length;
+    _users[command.targetUserId] = TeamUserListEntry(
+      userId: existing.userId,
+      email: existing.email,
+      displayName: existing.displayName,
+      roleId: existing.roleId,
+      roleLabel: existing.roleLabel,
+      status: existing.status,
+      locationId: existing.locationId,
+      locationLabel: existing.locationLabel,
+      mfaEnrolled: existing.mfaEnrolled,
+      mfaRemovalPending: existing.mfaRemovalPending,
+      mfaRemovalRequestId: existing.mfaRemovalRequestId,
+      userRoleId: filtered.isEmpty ? null : filtered.first.userRoleId,
+      lastActiveAt: existing.lastActiveAt,
+      grants: List<TeamGrantSnapshot>.unmodifiable(filtered),
+    );
+    final result = TeamRoleGrantRevoked(revoked: wasRemoved);
+    _idempotency[idempotencyKey] = _CachedGrantRevoke(result);
+    return result;
+  }
+
   Future<TeamUserStatusUpdated> _updateStatus(
     TeamUserStatusCommand command,
     String nextStatus,
@@ -310,4 +460,14 @@ class _CachedMfaReset extends _CachedMutation {
 class _CachedProfilePatched extends _CachedMutation {
   const _CachedProfilePatched(this.patched);
   final TeamUserProfilePatched patched;
+}
+
+class _CachedGrantCreate extends _CachedMutation {
+  const _CachedGrantCreate(this.created);
+  final TeamRoleGrantCreated created;
+}
+
+class _CachedGrantRevoke extends _CachedMutation {
+  const _CachedGrantRevoke(this.revoked);
+  final TeamRoleGrantRevoked revoked;
 }
