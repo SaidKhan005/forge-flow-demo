@@ -52,9 +52,20 @@ class AggregatorProvenanceContext {
   ///     to `forecast`; aggregator filled covers from
   ///     `DemandForecastContext.resolvedWeeklyForecastCovers` allocated
   ///     to this daypart.
-  ///   * `operator_manual_entry_per_daypart` — operator typed a value
-  ///     into `data_accuracy_settings.covers_manual_entries` for this
-  ///     `(business_date, daypart)`.
+  ///   * `operator_manual_entry_per_daypart` — operator picked
+  ///     `CoversSource.manual` in Data Accuracy AND typed a value into
+  ///     `data_accuracy_settings.covers_manual_entries` for this
+  ///     `(business_date, daypart)`. This is the operator-elected
+  ///     manual path; manual takes precedence over POS regardless of
+  ///     POS capability.
+  ///   * `operator_manual_entry_fallback_pos_not_exposed` — Wave 2
+  ///     MO-2-FU (Option A, fallback-only). The active POS does NOT
+  ///     expose a covers field on its canonical sales rows (Square,
+  ///     Clover, or an unknown vendor F&F cannot classify), AND the
+  ///     operator typed a value into `covers_manual_entries` for this
+  ///     `(business_date, daypart)`. Stage 3.5 of `_resolveCovers`;
+  ///     ignored when POS DOES expose covers (Toast, Aloha, Lightspeed
+  ///     K-Series, Oracle MICROS Simphony, Revel) — vendor wins.
   ///   * `vendor_<id>_seated_plus_operator_walk_in_count` — Pattern A
   ///     reservation+walk-in resolution (Libro / OpenTable / SevenRooms
   ///     seated party_size summed with operator-supplied walk-in
