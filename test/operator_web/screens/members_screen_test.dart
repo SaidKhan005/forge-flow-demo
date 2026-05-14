@@ -842,7 +842,8 @@ void main() {
 
       expect(
         find.text(
-          'Two-factor removal started. It will be removed in 24 hours.',
+          'Two-factor sign-in removal started. It will be removed in 24 '
+          'hours.',
         ),
         findsOneWidget,
       );

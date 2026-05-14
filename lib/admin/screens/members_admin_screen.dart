@@ -467,7 +467,9 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   }
 
   Future<void> _onResetMfa(MemberAdminRow row) async {
-    final reason = await _promptAdminReason('Reset MFA for ${row.displayName}');
+    final reason = await _promptAdminReason(
+      'Reset two-factor sign-in for ${row.displayName}',
+    );
     if (reason == null) return;
     await _runAndRefresh(
       () => widget.gateway.resetMfa(
@@ -479,7 +481,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         adminReason: reason,
       ),
       successHint:
-          "${row.displayName}'s MFA factors will be removed in 24 hours unless cancelled.",
+          "${row.displayName}'s two-factor sign-in will be removed in 24 "
+          'hours unless cancelled.',
     );
   }
 
@@ -1357,14 +1360,14 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                   initialValue: widget.mfaEnrolledFilter,
                   isExpanded: true,
                   decoration: const InputDecoration(
-                    labelText: 'MFA enrolled',
+                    labelText: 'Two-factor sign-in',
                     isDense: true,
                     border: OutlineInputBorder(),
                   ),
                   items: const <DropdownMenuItem<bool?>>[
                     DropdownMenuItem<bool?>(
                       value: null,
-                      child: Text('All MFA states'),
+                      child: Text('All two-factor sign-in states'),
                     ),
                     DropdownMenuItem<bool?>(
                       value: true,

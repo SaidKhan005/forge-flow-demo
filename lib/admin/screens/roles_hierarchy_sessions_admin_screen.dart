@@ -1178,9 +1178,9 @@ String _permissionActionLabel(String action) {
     case 'reset_password':
       return 'Reset password for';
     case 'reset_mfa':
-      return 'Reset MFA for';
+      return 'Reset two-factor sign-in for';
     case 'reset_mfa_factors':
-      return 'Reset MFA factors for';
+      return 'Reset two-factor sign-in factors for';
     case 'edit_seeded':
       return 'Edit seeded';
     case 'export':

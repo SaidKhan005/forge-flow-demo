@@ -233,15 +233,15 @@ class WebAuditLogActionLabels {
       case 'auth.password_reset_confirmed':
         return 'Password reset completed';
       case WebAuditLogActions.authMfaEnrolled:
-        return 'MFA enrolled (authenticator)';
+        return 'Two-factor sign-in enabled';
       case 'auth.mfa_totp_enroll_failed':
-        return 'MFA enrollment failed';
+        return 'Two-factor sign-in setup failed';
       case 'auth.user.mfa_factor_removed':
       case WebAuditLogActions.authMfaFactorRemoved:
-        return 'MFA factor removed';
+        return 'Two-factor sign-in disabled';
       case 'auth.user.mfa_recovery_requested':
       case 'auth.mfa_recovery_requested':
-        return 'MFA recovery requested';
+        return 'Two-factor sign-in recovery requested';
       case 'auth.role_grant_created':
         return 'Role grant added';
       case 'auth.role_grant_revoked':

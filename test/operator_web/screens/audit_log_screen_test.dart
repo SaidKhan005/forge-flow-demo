@@ -245,22 +245,23 @@ void main() {
       expect(find.text('team.users.invite'), findsNothing);
     });
 
-    test('auth.* action labels match mobile AuthEventLabels mappings '
-        '(parity contract: rendered consistently with mobile)', () {
-      // Mirrors the mobile audit log section. If a mobile mapping
-      // changes, this test catches the divergence so labels stay in
-      // lock-step.
-      const mobileMappings = <String, String>{
+    test('auth.* action labels match the operator-web canonical mapping '
+        '(parity contract: rendered consistently across web surfaces)', () {
+      // Snapshot of the operator-web canonical labels for auth.* audit
+      // log actions. MO-5b normalized the two-factor surface to the V1
+      // canonical phrase "Two-factor sign-in"; the operator-web mapping
+      // is the V1 source of truth for these strings.
+      const canonicalMappings = <String, String>{
         'auth.user.signed_in': 'Sign-in',
         'auth.signed_in': 'Sign-in',
         'auth.user.password_changed': 'Password changed',
         'auth.password_changed': 'Password changed',
         'auth.password_reset_requested': 'Password reset requested',
         'auth.password_reset_confirmed': 'Password reset completed',
-        'auth.mfa_totp_enrolled': 'MFA enrolled (authenticator)',
-        'auth.mfa_totp_enroll_failed': 'MFA enrollment failed',
-        'auth.user.mfa_factor_removed': 'MFA factor removed',
-        'auth.mfa_factor_removed': 'MFA factor removed',
+        'auth.mfa_totp_enrolled': 'Two-factor sign-in enabled',
+        'auth.mfa_totp_enroll_failed': 'Two-factor sign-in setup failed',
+        'auth.user.mfa_factor_removed': 'Two-factor sign-in disabled',
+        'auth.mfa_factor_removed': 'Two-factor sign-in disabled',
         'auth.role_grant_created': 'Role grant added',
         'auth.role_grant_revoked': 'Role grant revoked',
         'auth.session_revoked': 'Session revoked',
@@ -273,13 +274,13 @@ void main() {
         'auth.user_reactivated': 'User reactivated',
         'auth.user_soft_deleted': 'User soft-deleted',
       };
-      for (final entry in mobileMappings.entries) {
+      for (final entry in canonicalMappings.entries) {
         expect(
           WebAuditLogActionLabels.labelFor(entry.key),
           entry.value,
           reason:
-              'auth.* label parity broken for ${entry.key}: web returned '
-              '"${WebAuditLogActionLabels.labelFor(entry.key)}", mobile '
+              'auth.* canonical label drift for ${entry.key}: web returned '
+              '"${WebAuditLogActionLabels.labelFor(entry.key)}", canonical '
               'expects "${entry.value}".',
         );
       }

@@ -474,7 +474,8 @@ class _MembersScreenState extends State<MembersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Two-factor removal started. It will be removed in 24 hours.',
+            'Two-factor sign-in removal started. It will be removed in 24 '
+            'hours.',
           ),
         ),
       );
@@ -1108,7 +1109,7 @@ class _MembersTableHeader extends StatelessWidget {
           Expanded(
             flex: 2,
             child: Text(
-              'Two-factor',
+              'Two-factor sign-in',
               style: AppTextStyles.mono10(color: AppColors.textMuted),
             ),
           ),

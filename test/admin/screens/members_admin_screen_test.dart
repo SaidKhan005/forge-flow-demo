@@ -96,7 +96,7 @@ void main() {
       expect(find.text('All statuses'), findsOneWidget);
       expect(find.text('All roles'), findsOneWidget);
       expect(find.text('All locations'), findsOneWidget);
-      expect(find.text('All MFA states'), findsOneWidget);
+      expect(find.text('All two-factor sign-in states'), findsOneWidget);
       expect(find.text('Visible members'), findsNothing);
 
       // Demo Diner has 4 seeded members.

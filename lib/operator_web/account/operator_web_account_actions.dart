@@ -133,7 +133,9 @@ extension OperatorWebAccountMfaActions on OperatorWebAccountActions {
     required String factorId,
   }) async {
     final gateway = _requireAccountSecurityGateway();
-    await requireFreshMfaForAccountSecurity(actionLabel: 'removing 2FA');
+    await requireFreshMfaForAccountSecurity(
+      actionLabel: 'removing two-factor sign-in',
+    );
     try {
       return await gateway.revokeFactor(
         factorId: factorId,
@@ -164,7 +166,7 @@ extension OperatorWebAccountMfaActions on OperatorWebAccountActions {
   }) async {
     final gateway = _requireAccountSecurityGateway();
     await requireFreshMfaForAccountSecurity(
-      actionLabel: 'cancelling 2FA removal',
+      actionLabel: 'cancelling two-factor sign-in removal',
     );
     try {
       return await gateway.cancelFactorRemoval(

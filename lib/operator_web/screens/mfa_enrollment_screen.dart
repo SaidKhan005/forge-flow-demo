@@ -148,10 +148,10 @@ class _MfaEnrollmentScreenState extends State<MfaEnrollmentScreen> {
       stepLabel: 'Step 3 of 4 — Two-factor sign-in',
       title: 'Turn on two-factor sign-in',
       subtitle:
-          'Two-factor sign-in (also called MFA) means a second one-time code '
-          'is required at every sign-in. If someone learns your password '
-          'they still cannot sign in without your phone or authenticator '
-          'app. Forge & Flow requires it for all operator users.',
+          'Two-factor sign-in means a second one-time code is required at '
+          'every sign-in. If someone learns your password they still '
+          'cannot sign in without your phone or authenticator app. Forge '
+          '& Flow requires it for all operator users.',
       errorMessage: _localError ?? widget.errorMessage,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

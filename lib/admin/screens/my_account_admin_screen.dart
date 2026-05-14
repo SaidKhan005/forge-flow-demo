@@ -484,17 +484,18 @@ class _AdminSecurityCard extends StatelessWidget {
     final lastFresh = session.lastFreshAuthAt;
     final mfaLabel = lastFresh == null ? 'Unknown' : 'On';
     final mfaHelper = lastFresh == null
-        ? 'We could not confirm 2FA from this session. Sign in again from '
-              'the admin sign-in page to refresh.'
-        : 'Your last 2FA check happened ${_formatRelative(lastFresh, now)}.';
+        ? 'We could not confirm two-factor sign-in from this session. Sign '
+              'in again from the admin sign-in page to refresh.'
+        : 'Your last two-factor sign-in check happened '
+              '${_formatRelative(lastFresh, now)}.';
     return _AdminAccountCard(
       cardKey: const Key('admin_my_account_security_card'),
       icon: Icons.shield_outlined,
       title: 'Security',
       headerExplainer:
-          '2FA is required for every Forge & Flow admin. Changes to your '
-          '2FA factors happen from the admin sign-in page during your next '
-          'sign-in.',
+          'Two-factor sign-in is required for every Forge & Flow admin. '
+          'Changes to your two-factor sign-in factors happen from the '
+          'admin sign-in page during your next sign-in.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -519,9 +520,9 @@ class _AdminSecurityCard extends StatelessWidget {
             key: const Key('admin_my_account_security_readonly_note'),
             icon: Icons.info_outline,
             message:
-                'Changes to 2FA factors and password happen the next time '
-                'you sign in to the admin console. Use the sign-in page '
-                'to update them.',
+                'Changes to two-factor sign-in factors and password happen '
+                'the next time you sign in to the admin console. Use the '
+                'sign-in page to update them.',
           ),
         ],
       ),

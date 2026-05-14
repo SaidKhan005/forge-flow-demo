@@ -218,7 +218,7 @@ void main() {
 
       await pumpAccount(tester, session);
 
-      expect(find.text('MFA: Not enrolled'), findsOneWidget);
+      expect(find.text('Two-factor sign-in: Off'), findsOneWidget);
       expect(
         find.byKey(const Key('account_section_mfa_enroll')),
         findsOneWidget,
@@ -280,7 +280,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('mfa_enroll_dialog')), findsNothing);
-      expect(find.text('MFA: Enrolled'), findsOneWidget);
+      expect(find.text('Two-factor sign-in: Enabled'), findsOneWidget);
       expect(find.text('View recovery codes'), findsOneWidget);
     });
 
@@ -310,7 +310,7 @@ void main() {
       expect(find.textContaining('did not match'), findsOneWidget);
       await tester.tap(find.byKey(const Key('mfa_enroll_dialog_cancel')));
       await tester.pumpAndSettle();
-      expect(find.text('MFA: Not enrolled'), findsOneWidget);
+      expect(find.text('Two-factor sign-in: Off'), findsOneWidget);
     });
 
     testWidgets('Manage methods can request and cancel 24-hour removal', (
@@ -338,24 +338,27 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('MFA: Removal requested'), findsOneWidget);
+      expect(find.text('Two-factor sign-in: Removal pending'), findsOneWidget);
       expect(
         find.byKey(const Key('account_section_mfa_cancel_removal')),
         findsOneWidget,
       );
-      expect(actions.stepUpLabels, contains('removing 2FA'));
+      expect(actions.stepUpLabels, contains('removing two-factor sign-in'));
 
       await tester.tap(
         find.byKey(const Key('account_section_mfa_cancel_removal')),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('MFA: Enrolled'), findsOneWidget);
+      expect(find.text('Two-factor sign-in: Enabled'), findsOneWidget);
       expect(
         find.byKey(const Key('account_section_mfa_add_method')),
         findsOneWidget,
       );
-      expect(actions.stepUpLabels, contains('cancelling 2FA removal'));
+      expect(
+        actions.stepUpLabels,
+        contains('cancelling two-factor sign-in removal'),
+      );
     });
 
     testWidgets('View recovery codes is available without write access', (
@@ -419,7 +422,7 @@ void main() {
       await tester.pump(const Duration(minutes: 1));
       await tester.pumpAndSettle();
 
-      expect(find.text('MFA: Ready to turn off'), findsOneWidget);
+      expect(find.text('Two-factor sign-in: Ready to turn off'), findsOneWidget);
       expect(
         find.byKey(const Key('account_section_mfa_turn_off_final')),
         findsOneWidget,
@@ -431,8 +434,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('MFA: Not enrolled'), findsOneWidget);
-      expect(actions.stepUpLabels, contains('turning off 2FA'));
+      expect(find.text('Two-factor sign-in: Off'), findsOneWidget);
+      expect(
+        actions.stepUpLabels,
+        contains('turning off two-factor sign-in'),
+      );
     });
   });
 

@@ -316,17 +316,18 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
       context: context,
       builder: (_) => AlertDialog(
         key: const Key('account_section_mfa_request_removal_dialog'),
-        title: const Text('Turn off 2FA?'),
+        title: const Text('Turn off two-factor sign-in?'),
         content: const Text(
-          'We wait 24 hours before turning off 2FA so that if someone got '
-          'into your account, you have time to stop them. You may be asked '
-          'to sign in again before the request is accepted.',
+          'We wait 24 hours before turning off two-factor sign-in so that '
+          'if someone got into your account, you have time to stop them. '
+          'You may be asked to sign in again before the request is '
+          'accepted.',
         ),
         actions: [
           TextButton(
             key: const Key('account_section_mfa_request_removal_cancel'),
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Keep 2FA on'),
+            child: const Text('Keep two-factor sign-in on'),
           ),
           FilledButton(
             key: const Key('account_section_mfa_request_removal_confirm'),
@@ -987,9 +988,9 @@ class _MfaSection extends StatelessWidget {
       icon: Icons.shield_outlined,
       title: 'Two-factor sign-in',
       headerExplainer:
-          'Two-factor sign-in (MFA) means a one-time code is required at '
-          'every sign-in, in addition to your password. We strongly '
-          'recommend keeping it on for every operator user.',
+          'Two-factor sign-in means a one-time code is required at every '
+          'sign-in, in addition to your password. We strongly recommend '
+          'keeping it on for every operator user.',
       statusBadge: badge,
       auditLinkKey: const Key('account_section_mfa_audit_log_link'),
       onAuditLog: onAuditLog,
@@ -1765,7 +1766,7 @@ class _MfaManageDialog extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Manage 2FA',
+                'Manage two-factor sign-in',
                 style: AppTextStyles.display20(color: AppColors.textPrimary),
               ),
               const SizedBox(height: 8),
@@ -1800,7 +1801,7 @@ class _MfaManageDialog extends StatelessWidget {
                       ).pop(_MfaManageChoice.requestRemoval)
                     : null,
                 icon: const Icon(Icons.shield_outlined, size: 16),
-                label: const Text('Turn off 2FA'),
+                label: const Text('Turn off two-factor sign-in'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.negative,
                   disabledForegroundColor: AppColors.textMuted,
