@@ -274,6 +274,10 @@ class _RecordingFirebaseAdminAuthClient implements FirebaseAdminAuthClient {
   }) async => throw UnimplementedError();
 
   @override
+  Future<void> deleteUser({required String uid}) async =>
+      throw UnimplementedError();
+
+  @override
   Future<void> updateUser({
     required String uid,
     String? email,

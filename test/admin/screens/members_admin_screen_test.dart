@@ -855,6 +855,133 @@ void main() {
       expect(event.payload['scope_type'], equals('operator_wide'));
     });
 
+    testWidgets(
+      'Wave 2 W-2 — Cancel pending invite drives gateway.cancelInvite '
+      'with an admin reason and emits invite.cancel audit',
+      (tester) async {
+        wideViewport(tester);
+        final gateway = InMemoryMembersAdminGateway(
+          membersByOperator: kDemoMembersByOperator(),
+          invitesByOperator: kDemoInvitesByOperator(),
+        );
+        await tester.pumpWidget(
+          wrap(
+            MembersAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+              pickedOperator: demoPick(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Demo seed has one pending invite for `newhire@demo-diner.test`.
+        expect(
+          find.byKey(
+            const Key('admin_members_invite_row_demo-invite-diner-1'),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(
+          find.byKey(
+            const Key('admin_members_invite_cancel_demo-invite-diner-1'),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Plain-English confirmation step + admin-reason gate fan
+        // out the call only after the operator confirms intent and
+        // writes a reason.
+        expect(find.text('Cancel invite'), findsWidgets);
+        await tester.tap(
+          find.byKey(const Key('admin_members_cancel_invite_confirm_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('admin_members_reason_field')),
+          'wrong email, resending',
+        );
+        await tester.tap(find.byKey(const Key('admin_members_reason_submit')));
+        await tester.pumpAndSettle();
+
+        // Row vanished from the pending list and the audit event
+        // carries the proxy-pinned event name `invite.cancel` with
+        // the previous email + reason payload.
+        expect(
+          find.byKey(
+            const Key('admin_members_invite_row_demo-invite-diner-1'),
+          ),
+          findsNothing,
+        );
+        final invites = await gateway.listInvites(
+          operatorId: kDemoDinerOperatorId,
+        );
+        expect(invites, isEmpty);
+        final cancelEvents = gateway.capturedAuditEvents
+            .where((e) => e.action == 'invite.cancel')
+            .toList();
+        expect(cancelEvents, hasLength(1));
+        expect(cancelEvents.single.targetKind, equals('team_invite'));
+        expect(
+          cancelEvents.single.targetId,
+          equals('demo-invite-diner-1'),
+        );
+        expect(
+          cancelEvents.single.payload['previous_email'],
+          equals('newhire@demo-diner.test'),
+        );
+        expect(
+          cancelEvents.single.payload['reason'],
+          equals('wrong email, resending'),
+        );
+        expect(cancelEvents.single.adminReason, isNotEmpty);
+        expect(cancelEvents.single.actorKind, equals('forge_admin'));
+      },
+    );
+
+    testWidgets(
+      'Wave 2 W-2 — Cancel pending invite is idempotent: replaying the '
+      'same idempotency key does not double-audit',
+      (tester) async {
+        // Direct gateway-level idempotency assertion — avoids
+        // depending on the screen's idempotency-key factory under
+        // pumpAndSettle re-entry, which is hard to script cleanly in
+        // widget tests.
+        final gateway = InMemoryMembersAdminGateway(
+          membersByOperator: kDemoMembersByOperator(),
+          invitesByOperator: kDemoInvitesByOperator(),
+        );
+        final first = await gateway.cancelInvite(
+          operatorId: kDemoDinerOperatorId,
+          inviteId: 'demo-invite-diner-1',
+          idempotencyKey: 'idemp-cancel-1',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'wrong email, resending',
+          reason: 'wrong email, resending',
+        );
+        final second = await gateway.cancelInvite(
+          operatorId: kDemoDinerOperatorId,
+          inviteId: 'demo-invite-diner-1',
+          idempotencyKey: 'idemp-cancel-1',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'wrong email, resending',
+          reason: 'wrong email, resending',
+        );
+
+        expect(first, isTrue);
+        expect(second, isTrue);
+        // Single audit row even after the retry; matches the proxy
+        // `proxy_requests` UNIQUE constraint replay shape.
+        final cancelEvents = gateway.capturedAuditEvents
+            .where((e) => e.action == 'invite.cancel')
+            .toList();
+        expect(cancelEvents, hasLength(1));
+      },
+    );
+
     testWidgets('duplicate invite can show the existing team row', (
       tester,
     ) async {

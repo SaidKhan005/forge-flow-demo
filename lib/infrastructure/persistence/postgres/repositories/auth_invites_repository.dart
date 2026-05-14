@@ -219,6 +219,51 @@ class AuthInvitesRepository extends OperatorScopedRepository {
     });
   }
 
+  /// Wave 2 W-2 — Cancel pending invite end-to-end.
+  ///
+  /// Returns the `email` for a pending (`accepted_at` and `revoked_at`
+  /// both null) invite so the gateway can resolve the matching shadow
+  /// `users` row (`createInvite` provisions one with the same email +
+  /// `status = 'invited'`) and call Firebase Identity Platform
+  /// `accounts:delete` on the shadow account. Returns null when the
+  /// invite is already revoked, accepted, or does not exist —
+  /// keeping the caller idempotent on the wire.
+  ///
+  /// Code-health L3 (C5): the WHERE includes `operator_id = $N` so a
+  /// caller passing an `inviteId` from operator A while believing it
+  /// lives in operator B reads no rows instead of leaking the email
+  /// of an invite in a different tenant.
+  Future<String?> pendingInviteEmail({
+    required String operatorId,
+    required String locationId,
+    required String inviteId,
+    required String actorUserId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<String?>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select email from auth_invites '
+        'where invite_id = @invite_id::uuid '
+        'and operator_id = @operator_id::uuid '
+        'and accepted_at is null '
+        'and revoked_at is null '
+        'limit 1',
+        parameters: <String, Object?>{
+          'invite_id': inviteId,
+          'operator_id': operatorId,
+        },
+      );
+      if (rows.isEmpty) return null;
+      final email = rows.single['email'];
+      if (email is! String || email.isEmpty) return null;
+      return email;
+    });
+  }
+
   static AuthInvitePendingRow _projectPendingInviteRow(
     Map<String, Object?> row,
   ) {

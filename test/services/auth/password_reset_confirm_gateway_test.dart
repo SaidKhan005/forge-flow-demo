@@ -191,6 +191,10 @@ class _ResetCodeErrorFirebaseAdminAuthClient
   }) async => throw UnimplementedError();
 
   @override
+  Future<void> deleteUser({required String uid}) async =>
+      throw UnimplementedError();
+
+  @override
   Future<void> updateUser({
     required String uid,
     String? email,
@@ -263,6 +267,10 @@ class _SuccessfulResetFirebaseAdminAuthClient
     required String uid,
     required bool disabled,
   }) async => throw UnimplementedError();
+
+  @override
+  Future<void> deleteUser({required String uid}) async =>
+      throw UnimplementedError();
 
   @override
   Future<void> updateUser({

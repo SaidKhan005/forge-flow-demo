@@ -174,6 +174,26 @@ class UserAuthLookupRow {
   final String? firebaseUid;
 }
 
+/// Wave 2 W-2 — Cancel pending invite end-to-end. Narrow read
+/// projection over the pending shadow `users` row that
+/// `insertInvitedUser` created when an invite was sent. Used by
+/// `RepositoryAuthOperationsGateway.revokeInvite` to resolve the
+/// Firebase UID + Postgres user_id for the invite about to be
+/// cancelled, so the gateway can call `firebaseAdmin.deleteUser` on
+/// the shadow account and soft-delete the local row before flipping
+/// `auth_invites.revoked_at`.
+class InvitedShadowUserRow {
+  const InvitedShadowUserRow({
+    required this.userId,
+    required this.email,
+    this.firebaseUid,
+  });
+
+  final String userId;
+  final String? firebaseUid;
+  final String email;
+}
+
 /// W-1 (Wave 2 Lane W — Members edit-user write path). Narrow read
 /// projection that powers the "before" snapshot in the audit payload
 /// for `auth.user_profile_updated`. Carries the `firebase_uid` so the
@@ -509,6 +529,53 @@ class UsersRepository extends OperatorScopedRepository {
           'primary_role_id': primaryRoleId,
           'primary_location_id': primaryLocationId,
         },
+      );
+    }, reason: adminReason);
+  }
+
+  /// Wave 2 W-2 — Cancel pending invite end-to-end.
+  ///
+  /// Looks up the still-pending shadow `users` row that
+  /// `insertInvitedUser` created when an invite was sent. Filters on
+  /// `(operator_id, lower(email), status = 'invited')` so the lookup
+  /// stays tenant-bounded AND ignores rows that already accepted /
+  /// were soft-deleted. Returns null when no matching shadow row
+  /// exists — keeping `revokeInvite` idempotent on the wire so a
+  /// retried DELETE on an already-cancelled invite collapses to a
+  /// no-op.
+  Future<InvitedShadowUserRow?> findInvitedShadowUserByEmail({
+    required String operatorId,
+    required String email,
+    required String adminReason,
+  }) {
+    return withSystem<InvitedShadowUserRow?>((exec) async {
+      final rows = await exec.query(
+        'select user_id::text as user_id, '
+        'firebase_uid::text as firebase_uid, '
+        'email '
+        'from users '
+        'where operator_id = @operator_id::uuid '
+        'and lower(email) = lower(@email) '
+        "and status = 'invited' "
+        'and deleted_at is null '
+        'limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'email': email,
+        },
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final userId = row['user_id'];
+      final firebaseUid = row['firebase_uid'];
+      final emailValue = row['email'];
+      if (userId is! String || userId.isEmpty) return null;
+      return InvitedShadowUserRow(
+        userId: userId,
+        firebaseUid: firebaseUid is String && firebaseUid.isNotEmpty
+            ? firebaseUid
+            : null,
+        email: emailValue is String && emailValue.isNotEmpty ? emailValue : '',
       );
     }, reason: adminReason);
   }

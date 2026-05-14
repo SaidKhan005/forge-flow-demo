@@ -107,6 +107,9 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   List<OrgUnitAdminNode> _orgUnits = const <OrgUnitAdminNode>[];
   List<HierarchyLocationLeaf> _hierarchyLocations =
       const <HierarchyLocationLeaf>[];
+  // Wave 2 W-2 — Cancel pending invite. Per-invite busy set so a
+  // retried Cancel during an in-flight DELETE does not double-dispatch.
+  final Set<String> _busyInviteIds = <String>{};
   Timer? _searchDebounce;
   int _refreshGeneration = 0;
 
@@ -743,6 +746,70 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     );
   }
 
+  Future<void> _onCancelInvite(MemberInviteRow invite) async {
+    // Wave 2 W-2 — Cancel pending invite end-to-end.
+    //
+    // Confirm-then-reason flow mirrors the existing destructive
+    // admin actions (suspend / soft-delete): the operator confirms
+    // the destructive intent first, then writes a short audit
+    // reason. The proxy DELETE call fans out to Firebase Identity
+    // Platform + Postgres `auth_invites.revoked_at` + shadow user
+    // soft-delete + audit row under the operator-bound
+    // `team.users.invite` permission gate.
+    if (!widget.editingEnabled) return;
+    if (_busyInviteIds.contains(invite.inviteId)) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('admin_members_cancel_invite_confirm'),
+        backgroundColor: AppColors.backgroundSurface,
+        title: Text(
+          'Cancel invite',
+          style: AdminButtonStyles.dialogTitleStyle,
+        ),
+        content: Text(
+          'Cancel the pending invite for ${invite.email}? Their link will '
+          'stop working. You can send a new invite later if they still '
+          'need access.',
+          style: AppTextStyles.body13(color: AppColors.textPrimary),
+        ),
+        actions: <Widget>[
+          TextButton(
+            key: const Key('admin_members_cancel_invite_keep'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep invite'),
+          ),
+          FilledButton(
+            key: const Key('admin_members_cancel_invite_confirm_button'),
+            style: AdminButtonStyles.primary,
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Cancel invite'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final reason = await _promptAdminReason('Cancel invite for ${invite.email}');
+    if (reason == null) return;
+    setState(() => _busyInviteIds.add(invite.inviteId));
+    try {
+      await _runAndRefresh(
+        () => widget.gateway.cancelInvite(
+          operatorId: widget.pickedOperator.operatorId,
+          inviteId: invite.inviteId,
+          idempotencyKey: _nextIdempotencyKey('member-invite-cancel'),
+          actorUserId: widget.actorUserId,
+          actorIsForgeAdmin: widget.editingEnabled,
+          adminReason: reason,
+          reason: reason,
+        ),
+        successHint: 'Invite for ${invite.email} cancelled.',
+      );
+    } finally {
+      if (mounted) setState(() => _busyInviteIds.remove(invite.inviteId));
+    }
+  }
+
   void _showEmailUsage(AdminEmailConflictUsage usage) {
     setState(() {
       _statusFilter = null;
@@ -974,7 +1041,12 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
             onOverrideRoleGrant: _onOverrideRoleGrant,
           ),
           const SizedBox(height: 16),
-          _InvitesPanel(invites: _invites),
+          _InvitesPanel(
+            invites: _invites,
+            editingEnabled: widget.editingEnabled,
+            busyInviteIds: _busyInviteIds,
+            onCancel: _onCancelInvite,
+          ),
           if (widget.rolesGateway != null) ...<Widget>[
             const SizedBox(height: 16),
             RolePolicyAdminPanel(
@@ -1685,9 +1757,18 @@ class _MetaPill extends StatelessWidget {
 }
 
 class _InvitesPanel extends StatelessWidget {
-  const _InvitesPanel({required this.invites});
+  const _InvitesPanel({
+    required this.invites,
+    required this.editingEnabled,
+    required this.busyInviteIds,
+    required this.onCancel,
+  });
 
   final List<MemberInviteRow> invites;
+  // Wave 2 W-2 — Cancel pending invite end-to-end.
+  final bool editingEnabled;
+  final Set<String> busyInviteIds;
+  final Future<void> Function(MemberInviteRow invite) onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -1721,6 +1802,7 @@ class _InvitesPanel extends StatelessWidget {
           else
             for (final invite in invites)
               Padding(
+                key: Key('admin_members_invite_row_${invite.inviteId}'),
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(
                   children: <Widget>[
@@ -1748,6 +1830,35 @@ class _InvitesPanel extends StatelessWidget {
                       '${_inviteScopeLabel(invite)}',
                       style: AppTextStyles.mono11(color: AppColors.textMuted),
                     ),
+                    if (editingEnabled) ...<Widget>[
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: 110,
+                        child: busyInviteIds.contains(invite.inviteId)
+                            ? const Align(
+                                alignment: Alignment.centerRight,
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.sunsetDark,
+                                  ),
+                                ),
+                              )
+                            : Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton(
+                                  key: Key(
+                                    'admin_members_invite_cancel_'
+                                    '${invite.inviteId}',
+                                  ),
+                                  onPressed: () => onCancel(invite),
+                                  child: const Text('Cancel invite'),
+                                ),
+                              ),
+                      ),
+                    ],
                   ],
                 ),
               ),

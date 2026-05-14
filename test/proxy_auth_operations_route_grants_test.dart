@@ -429,6 +429,96 @@ void main() {
     );
 
     test(
+      'Wave 2 W-2 — DELETE /v1/admin/auth/invites/{id} happy path forwards '
+      'the trimmed `reason` field onto TeamInviteRevokeCommand.reason and '
+      'returns the gateway revoked bool',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
+          );
+          try {
+            final response = await harness.deleteJson(
+              '$adminAuthInvitePrefix${Uri.encodeComponent('invite-9')}',
+              const <String, Object?>{'reason': '  wrong email, resending  '},
+              idempotencyKey: 'idemp-cancel-1',
+            );
+            expect(response.statusCode, equals(200));
+            expect(response.json['revoked'], isTrue);
+            expect(gateway.inviteRevokes, hasLength(1));
+            final command = gateway.inviteRevokes.single;
+            expect(command.inviteId, equals('invite-9'));
+            // Proxy trims operator-supplied reason before handing to
+            // the gateway so audit never stores whitespace padding.
+            expect(command.reason, equals('wrong email, resending'));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'Wave 2 W-2 — DELETE /v1/admin/auth/invites/{id} accepts a body '
+      'without a `reason` field and lands a null reason on the command',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
+          );
+          try {
+            final response = await harness.deleteJson(
+              '$adminAuthInvitePrefix${Uri.encodeComponent('invite-noreason')}',
+              const <String, Object?>{},
+              idempotencyKey: 'idemp-cancel-noreason',
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.inviteRevokes, hasLength(1));
+            expect(gateway.inviteRevokes.single.reason, isNull);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'Wave 2 W-2 — DELETE /v1/admin/auth/invites/{id} idempotent replay '
+      '(same Idempotency-Key) invokes the gateway exactly once',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _IdempotencyRecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: _RecordingAdminGuard(),
+          );
+          try {
+            final first = await harness.deleteJson(
+              '$adminAuthInvitePrefix${Uri.encodeComponent('invite-replay')}',
+              const <String, Object?>{'reason': 'cleanup'},
+              idempotencyKey: 'idemp-cancel-replay',
+            );
+            final second = await harness.deleteJson(
+              '$adminAuthInvitePrefix${Uri.encodeComponent('invite-replay')}',
+              const <String, Object?>{'reason': 'cleanup'},
+              idempotencyKey: 'idemp-cancel-replay',
+            );
+            expect(first.statusCode, equals(200));
+            expect(second.statusCode, equals(200));
+            // Gateway invoked exactly once across the two retries.
+            expect(gateway.inviteRevokes, hasLength(1));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
       'POST /v1/admin/auth/role-grants rejects missing Idempotency-Key',
       () async {
         await _withRealHttp(() async {
