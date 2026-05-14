@@ -45,6 +45,7 @@ class _BenchmarksScreenState extends State<BenchmarksScreen> {
   InheritanceTreeNode? _tree;
   List<BenchmarkOverrideCandidate> _overrides =
       const <BenchmarkOverrideCandidate>[];
+  OperatorWebBenchmarkOverrideCapStatus? _capStatus;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -96,6 +97,11 @@ class _BenchmarksScreenState extends State<BenchmarksScreen> {
         locationId: widget.session.primaryLocationId,
         actorUserId: widget.session.uid,
       );
+      final capStatus = await _benchmarksGateway.getCapStatus(
+        operatorId: widget.session.operatorId,
+        locationId: widget.session.primaryLocationId,
+        actorUserId: widget.session.uid,
+      );
       if (!mounted) return;
       final tree = _treeFromHierarchy(
         hierarchy,
@@ -106,6 +112,7 @@ class _BenchmarksScreenState extends State<BenchmarksScreen> {
         _tree = tree;
         _selectedNode ??= _nodeForScope(tree, widget.selectedScope) ?? tree;
         _overrides = overrides;
+        _capStatus = capStatus;
         _loading = false;
       });
       _syncControllerToSelected();
@@ -145,6 +152,14 @@ class _BenchmarksScreenState extends State<BenchmarksScreen> {
         metricKey: _selectedMetric,
         overrideValue: value,
       );
+      // Refresh the cap status so the hint moves from "1 more" to "0
+      // more" without a full reload. The new override is from this
+      // user this month, so the manager budget drops by one.
+      final refreshedCap = await _benchmarksGateway.getCapStatus(
+        operatorId: widget.session.operatorId,
+        locationId: widget.session.primaryLocationId,
+        actorUserId: widget.session.uid,
+      );
       if (!mounted) return;
       setState(() {
         _overrides = <BenchmarkOverrideCandidate>[
@@ -157,15 +172,97 @@ class _BenchmarksScreenState extends State<BenchmarksScreen> {
           ),
           row,
         ];
+        _capStatus = refreshedCap;
         _saving = false;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = 'Could not save benchmark override: $error';
+        _error = _capRejection(error) ?? 'Could not save benchmark override: $error';
         _saving = false;
       });
     }
+  }
+
+  /// Translates the proxy's `manager_override_cap_reached` envelope
+  /// into operator-facing copy that reads as training (per
+  /// `memory/project_ux_writing_standard.md`). Returns null for other
+  /// errors so the generic fallback wins.
+  String? _capRejection(Object error) {
+    final text = error.toString();
+    if (text.contains('manager_override_cap_reached')) {
+      return 'You have already set a benchmark override this month. '
+          'Ask your admin to undo or extend the existing override.';
+    }
+    return null;
+  }
+
+  /// Admin-undo affordance — renders only for admin-tier users on
+  /// overrides created by a different (typically manager-tier) user.
+  /// Pops a confirm dialog so the admin acknowledges the disruption
+  /// before the audit row `admin.benchmark_override_undone` is written.
+  Future<void> _adminUndo(BenchmarkOverrideCandidate direct) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          key: const Key('operator_web_benchmarks_admin_undo_dialog'),
+          title: const Text('Remove this override?'),
+          content: Text(
+            'Remove the override that ${direct.createdBy} set on '
+            '${_formatDate(direct.effectiveFrom)}? The team will fall back '
+            'to the next benchmark in the hierarchy.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              key: const Key('operator_web_benchmarks_admin_undo_cancel'),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Keep override'),
+            ),
+            FilledButton(
+              key: const Key('operator_web_benchmarks_admin_undo_confirm'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Remove override'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await _benchmarksGateway.adminUndoOverride(
+        operatorId: widget.session.operatorId,
+        locationId: widget.session.primaryLocationId,
+        actorUserId: widget.session.uid,
+        overrideId: direct.overrideId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _overrides = _overrides
+            .where((row) => row.overrideId != direct.overrideId)
+            .toList(growable: false);
+        _saving = false;
+      });
+      _syncControllerToSelected();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not undo benchmark override: $error';
+        _saving = false;
+      });
+    }
+  }
+
+  static String _formatDate(DateTime date) {
+    final d = date.toLocal();
+    final mm = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+    return '${d.year}-$mm-$dd';
   }
 
   Future<void> _clear() async {
@@ -302,8 +399,11 @@ class _BenchmarksScreenState extends State<BenchmarksScreen> {
                 direct: direct,
                 controller: _valueController,
                 saving: _saving,
+                capStatus: _capStatus,
+                actorUserId: widget.session.uid,
                 onSave: _save,
                 onClear: direct == null ? null : _clear,
+                onAdminUndo: direct == null ? null : () => _adminUndo(direct),
               );
               if (wide) {
                 return Row(
@@ -501,8 +601,11 @@ class _EditorPane extends StatelessWidget {
     required this.direct,
     required this.controller,
     required this.saving,
+    required this.capStatus,
+    required this.actorUserId,
     required this.onSave,
     required this.onClear,
+    required this.onAdminUndo,
   });
 
   final InheritanceTreeNode selected;
@@ -510,11 +613,30 @@ class _EditorPane extends StatelessWidget {
   final BenchmarkOverrideCandidate? direct;
   final TextEditingController controller;
   final bool saving;
+  final OperatorWebBenchmarkOverrideCapStatus? capStatus;
+  final String actorUserId;
   final VoidCallback onSave;
   final VoidCallback? onClear;
+  final VoidCallback? onAdminUndo;
+
+  bool get _isCapped => capStatus?.isCapped ?? false;
+
+  /// Admin-undo is only visible when (a) the actor is admin-tier and
+  /// (b) the override at this scope was set by a different user. Owners
+  /// editing their own overrides go through the regular Clear button —
+  /// the admin-undo audit event is for cross-user intervention.
+  bool get _showAdminUndo {
+    final cap = capStatus;
+    if (cap == null || !cap.isAdmin) return false;
+    final row = direct;
+    if (row == null) return false;
+    return row.createdBy != actorUserId;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final cap = capStatus;
+    final saveDisabled = saving || _isCapped;
     return Container(
       key: const Key('operator_web_benchmarks_editor'),
       padding: const EdgeInsets.all(16),
@@ -543,10 +665,21 @@ class _EditorPane extends StatelessWidget {
             key: const Key('operator_web_benchmarks_inherited_source'),
             style: AppTextStyles.body12(color: AppColors.textMuted),
           ),
+          if (cap != null && _capHintFor(cap) != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _capHintFor(cap)!,
+              key: const Key('operator_web_benchmarks_cap_hint'),
+              style: AppTextStyles.body12(
+                color: _isCapped ? AppColors.negative : AppColors.textMuted,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           TextField(
             key: const Key('operator_web_benchmarks_value_field'),
             controller: controller,
+            enabled: !_isCapped,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(labelText: 'Override value'),
           ),
@@ -556,7 +689,7 @@ class _EditorPane extends StatelessWidget {
               Expanded(
                 child: FilledButton.icon(
                   key: const Key('operator_web_benchmarks_save'),
-                  onPressed: saving ? null : onSave,
+                  onPressed: saveDisabled ? null : onSave,
                   icon: saving
                       ? const SizedBox(
                           width: 14,
@@ -583,9 +716,37 @@ class _EditorPane extends StatelessWidget {
               style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
           ],
+          if (_showAdminUndo) ...[
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              key: const Key('operator_web_benchmarks_admin_undo'),
+              onPressed: saving ? null : onAdminUndo,
+              icon: const Icon(Icons.undo_outlined, size: 16),
+              label: Text(
+                'Undo override set by ${direct!.createdBy}',
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// Returns the operator-facing cap hint for the given status, or
+  /// null if no hint should render (admins see no hint — they're
+  /// uncapped). UX writing standard: reads as training, no jargon.
+  static String? _capHintFor(OperatorWebBenchmarkOverrideCapStatus cap) {
+    if (cap.isAdmin) return null;
+    if (cap.tier == OperatorWebBenchmarkOverrideCapTier.none) return null;
+    if (cap.remaining <= 0) {
+      return 'You have already used your override this month. '
+          'Ask your admin to undo or extend the existing override.';
+    }
+    if (cap.remaining == 1) {
+      return 'You can override this benchmark 1 more time this month.';
+    }
+    return 'You can override this benchmark ${cap.remaining} more times '
+        'this month.';
   }
 }
 

@@ -225,6 +225,269 @@ void main() {
     });
   });
 
+  group('RP-15 manager-once cap', () {
+    test('manager-tier user is blocked on second POST in same month',
+        () async {
+      final gateway = _FakeGateway();
+      final audit = _RecordingAuditSink();
+      final router = OperatorBenchmarkOverridesRouter(
+        gateway: gateway,
+        auditSink: audit,
+        now: () => DateTime.utc(2026, 5, 13, 17),
+      );
+
+      final firstBody = <String, Object?>{
+        'scope_type': 'location',
+        'location_id': locationId,
+        'metric_key': 'target_cplh',
+        'override_value': 12.5,
+      };
+      final first = await router.handle(
+        method: 'POST',
+        path: operatorBenchmarkOverridesPath,
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: actorUserId,
+        actorKind: 'operator_user',
+        actorRoles: const <String>{'location_manager'},
+        idempotencyKey: 'mgr-first',
+        body: firstBody,
+      );
+      expect(first.statusCode, 201);
+
+      // The fake gateway's setOverride seeds a row with createdBy =
+      // the test actor and effective_from = the router's fixed now,
+      // so the second attempt's cap evaluator now sees one row in
+      // the same month — capped.
+      final second = await router.handle(
+        method: 'POST',
+        path: operatorBenchmarkOverridesPath,
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: actorUserId,
+        actorKind: 'operator_user',
+        actorRoles: const <String>{'location_manager'},
+        idempotencyKey: 'mgr-second',
+        body: <String, Object?>{
+          'scope_type': 'location',
+          'location_id': locationId,
+          'metric_key': 'target_splh',
+          'override_value': 4.2,
+        },
+      );
+
+      expect(second.statusCode, 409);
+      expect(second.body['error'], 'manager_override_cap_reached');
+      final cap = second.body['cap'] as Map<String, Object?>;
+      expect(cap['tier'], 'manager');
+      expect(cap['remaining'], 0);
+      expect(gateway.setCalls, 1);
+    });
+
+    test('admin-tier user is uncapped — third POST still passes', () async {
+      final gateway = _FakeGateway();
+      final audit = _RecordingAuditSink();
+      final router = OperatorBenchmarkOverridesRouter(
+        gateway: gateway,
+        auditSink: audit,
+        now: () => DateTime.utc(2026, 5, 13, 17),
+      );
+
+      for (var i = 0; i < 3; i += 1) {
+        final result = await router.handle(
+          method: 'POST',
+          path: operatorBenchmarkOverridesPath,
+          operatorId: operatorId,
+          locationId: locationId,
+          actorUserId: actorUserId,
+          actorKind: 'operator_user',
+          actorRoles: const <String>{'operator_owner'},
+          idempotencyKey: 'admin-$i',
+          body: <String, Object?>{
+            'scope_type': 'operator_wide',
+            'metric_key': 'target_cplh',
+            'override_value': 10.0 + i,
+          },
+        );
+        expect(result.statusCode, 201);
+      }
+      expect(gateway.setCalls, 3);
+    });
+
+    test('cap resets across calendar months', () async {
+      final gateway = _FakeGateway();
+      // Seed a manager-set row from April.
+      gateway.history.add(
+        BenchmarkOverrideCandidate(
+          overrideId: 'apr-row',
+          operatorId: operatorId,
+          scopeType: BenchmarkOverrideScopeType.location,
+          orgUnitId: null,
+          locationId: locationId,
+          metricKey: 'target_cplh',
+          value: 11,
+          effectiveFrom: DateTime.utc(2026, 4, 30, 17),
+          effectiveUntil: DateTime.utc(2026, 5, 1, 6),
+          createdBy: actorUserId,
+        ),
+      );
+      final router = OperatorBenchmarkOverridesRouter(
+        gateway: gateway,
+        auditSink: _RecordingAuditSink(),
+        now: () => DateTime.utc(2026, 5, 13, 17),
+      );
+
+      // April's row sits outside May; manager should still have the
+      // full budget.
+      final result = await router.handle(
+        method: 'POST',
+        path: operatorBenchmarkOverridesPath,
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: actorUserId,
+        actorKind: 'operator_user',
+        actorRoles: const <String>{'location_manager'},
+        idempotencyKey: 'new-month',
+        body: <String, Object?>{
+          'scope_type': 'location',
+          'location_id': locationId,
+          'metric_key': 'target_cplh',
+          'override_value': 12.0,
+        },
+      );
+
+      expect(result.statusCode, 201);
+      expect(gateway.setCalls, 1);
+    });
+
+    test('cap-status GET reports remaining for managers', () async {
+      final gateway = _FakeGateway();
+      gateway.rows.add(
+        BenchmarkOverrideCandidate(
+          overrideId: 'may-row',
+          operatorId: operatorId,
+          scopeType: BenchmarkOverrideScopeType.location,
+          orgUnitId: null,
+          locationId: locationId,
+          metricKey: 'target_cplh',
+          value: 12,
+          effectiveFrom: DateTime.utc(2026, 5, 5, 17),
+          effectiveUntil: null,
+          createdBy: actorUserId,
+        ),
+      );
+      final router = OperatorBenchmarkOverridesRouter(
+        gateway: gateway,
+        auditSink: _RecordingAuditSink(),
+        now: () => DateTime.utc(2026, 5, 13, 17),
+      );
+
+      final result = await router.handle(
+        method: 'GET',
+        path: operatorBenchmarkOverrideCapStatusPath,
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: actorUserId,
+        actorKind: 'operator_user',
+        actorRoles: const <String>{'location_manager'},
+        idempotencyKey: '',
+        body: const <String, Object?>{},
+      );
+
+      expect(result.statusCode, 200);
+      final cap = result.body['cap'] as Map<String, Object?>;
+      expect(cap['tier'], 'manager');
+      expect(cap['used'], 1);
+      expect(cap['remaining'], 0);
+    });
+
+    test('admin-undo writes admin.benchmark_override_undone audit row',
+        () async {
+      final gateway = _FakeGateway();
+      const managerOriginalId = '55555555-5555-4555-8555-555555555555';
+      gateway.rows.add(
+        BenchmarkOverrideCandidate(
+          overrideId: managerOriginalId,
+          operatorId: operatorId,
+          scopeType: BenchmarkOverrideScopeType.location,
+          orgUnitId: null,
+          locationId: locationId,
+          metricKey: 'target_cplh',
+          value: 12,
+          effectiveFrom: DateTime.utc(2026, 5, 5, 17),
+          effectiveUntil: null,
+          createdBy: 'manager-007',
+        ),
+      );
+      final audit = _RecordingAuditSink();
+      final router = OperatorBenchmarkOverridesRouter(
+        gateway: gateway,
+        auditSink: audit,
+        now: () => DateTime.utc(2026, 5, 13, 18),
+      );
+
+      final result = await router.handle(
+        method: 'DELETE',
+        path:
+            '$operatorBenchmarkOverridesPrefix$managerOriginalId'
+            '$operatorBenchmarkOverrideAdminUndoSuffix',
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: 'admin-001',
+        actorKind: 'operator_user',
+        actorRoles: const <String>{'operator_owner'},
+        idempotencyKey: 'undo-1',
+        body: const <String, Object?>{
+          'undo_reason': 'Replaced with new benchmark for May rollout.',
+        },
+      );
+
+      expect(result.statusCode, 200);
+      expect(gateway.clearCalls, 1);
+      expect(audit.events, hasLength(1));
+      expect(
+        audit.events.single['eventKind'],
+        'admin.benchmark_override_undone',
+      );
+      final payload = audit.events.single['payload'] as Map<String, Object?>;
+      expect(payload['undone_by_admin_id'], 'admin-001');
+      expect(payload['original_override_id'], managerOriginalId);
+      expect(payload['original_manager_id'], 'manager-007');
+      expect(
+        payload['undo_reason'],
+        'Replaced with new benchmark for May rollout.',
+      );
+    });
+
+    test('admin-undo refuses manager-tier callers', () async {
+      final gateway = _FakeGateway();
+      gateway.rows.add(_row());
+      final router = OperatorBenchmarkOverridesRouter(
+        gateway: gateway,
+        auditSink: _RecordingAuditSink(),
+      );
+
+      final result = await router.handle(
+        method: 'DELETE',
+        path:
+            '$operatorBenchmarkOverridesPrefix'
+            '55555555-5555-4555-8555-555555555555'
+            '$operatorBenchmarkOverrideAdminUndoSuffix',
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: actorUserId,
+        actorKind: 'operator_user',
+        actorRoles: const <String>{'location_manager'},
+        idempotencyKey: 'no-undo',
+        body: const <String, Object?>{},
+      );
+
+      expect(result.statusCode, 403);
+      expect(result.body['error'], 'admin_role_required');
+      expect(gateway.clearCalls, 0);
+    });
+  });
+
   group('HTTP permission gate', () {
     test('POST requires forgeflow.baseline.override permission', () async {
       await _withRealHttp(() async {
@@ -257,7 +520,10 @@ void main() {
 
 class _FakeGateway implements OperatorBenchmarkOverridesGateway {
   final List<BenchmarkOverrideCandidate> rows = <BenchmarkOverrideCandidate>[];
+  final List<BenchmarkOverrideCandidate> history =
+      <BenchmarkOverrideCandidate>[];
   int listCalls = 0;
+  int monthCalls = 0;
   int setCalls = 0;
   int patchCalls = 0;
   int clearCalls = 0;
@@ -270,6 +536,23 @@ class _FakeGateway implements OperatorBenchmarkOverridesGateway {
   }) async {
     listCalls += 1;
     return rows.toList(growable: false);
+  }
+
+  @override
+  Future<List<BenchmarkOverrideCandidate>> listOverridesByUserInMonth({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required DateTime referenceTime,
+  }) async {
+    monthCalls += 1;
+    final ref = referenceTime.toUtc();
+    final corpus = <BenchmarkOverrideCandidate>[...rows, ...history];
+    return corpus.where((row) {
+      if (row.createdBy != actorUserId) return false;
+      final ef = row.effectiveFrom.toUtc();
+      return ef.year == ref.year && ef.month == ref.month;
+    }).toList(growable: false);
   }
 
   @override
