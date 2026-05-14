@@ -84,6 +84,7 @@ import 'proxy_bootstrap.dart';
 import 'realtime_bridge.dart';
 import 'realtime_route.dart' show RealtimeReplayResult;
 import 'realtime_tripwire_gateway.dart';
+import 'worker_heartbeats.dart';
 import 'worker_startup_wiring.dart';
 
 Future<void> main(List<String> args) async {
@@ -856,6 +857,18 @@ Future<void> _runProxy(List<String> args) async {
   // poller. The handle returned by `wireProductionWorkers` is
   // captured in the SIGTERM closure below so a Cloud Run shutdown
   // drains every consumer before exit.
+  //
+  // B-2B — single process-wide [WorkerHeartbeatRegistry] threaded
+  // through the worker wiring so every tick records its start /
+  // success / failure. The proxy mounts a [WorkerHeartbeatRouter] as
+  // a pre-check in the request loop below so `GET /v1/health/workers`
+  // returns a JSON snapshot without touching the monolithic
+  // dispatcher in `advisor_proxy.dart` (the file is at its bleed-stop
+  // ceiling). When workers are deferred via
+  // `kProxyDeferStartupDatabaseEnvVar` the registry stays empty and
+  // the route returns an empty channels list (with `any_stale=false`)
+  // so the deferred-mode startup path keeps the surface introspectable.
+  final workerHeartbeatRegistry = WorkerHeartbeatRegistry();
   WorkerStartupHandle? workerHandle;
   if (deferStartupDatabase) {
     log(
@@ -1139,6 +1152,7 @@ Future<void> _runProxy(List<String> args) async {
       rollupTickHandler: buildProductionRollupTickHandler(
         worker: rollupsWorker,
       ),
+      heartbeatRegistry: workerHeartbeatRegistry,
       consumerLogger: _logPgCronNotifyConsumerEvent,
       onTickError: (channel, error, stack) {
         log(
@@ -1229,6 +1243,18 @@ Future<void> _runProxy(List<String> args) async {
   }
   final pepperRouter = PepperRouter(store: pepperStore, authGuard: authGuard);
   // endregion
+
+  // B-2B — worker heartbeat observability router. Mounted as a
+  // pre-check below so `GET /v1/health/workers` short-circuits the
+  // monolithic dispatcher. Returns 200 with a JSON snapshot of every
+  // wired worker channel (last tick, success/failure counts,
+  // in-flight latch, staleness flag) or 503 when any channel has
+  // missed its staleness floor. Mirrors the `pepperRouter` shape so
+  // `advisor_proxy.dart` stays UNTOUCHED, preserving the bleed-stop
+  // ceiling (see `tool/advisor_proxy_size_lint.dart`).
+  final workerHeartbeatRouter = WorkerHeartbeatRouter(
+    registry: workerHeartbeatRegistry,
+  );
 
   // Lane B B8 — hierarchy-scoped audit log filter router. Mounted as
   // a pre-check below so `routeRequest` never sees the
@@ -1689,6 +1715,16 @@ Future<void> _runProxy(List<String> args) async {
     unawaited(
       (() async {
         try {
+          // region: b_2b_worker_heartbeats_route
+          // B-2B — `GET /v1/health/workers` short-circuits the
+          // monolithic dispatcher. Returns a JSON snapshot of every
+          // wired worker channel so a Cloud Run liveness probe (or
+          // an operator grep) can spot a wedged consumer before the
+          // proxy crashes from sustained load.
+          if (await workerHeartbeatRouter.tryHandle(request)) {
+            return;
+          }
+          // endregion
           // region: M2_pepper_runtime_routes
           // fix(M2.pepper-runtime): pepper retrieval endpoints.
           // GET /v1/auth/peppers/active and GET /v1/auth/peppers/:id

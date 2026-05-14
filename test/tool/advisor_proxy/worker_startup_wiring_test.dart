@@ -22,6 +22,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transa
 import 'package:forge_and_flow/services/realtime/outbox_tripwire_evaluator.dart';
 import 'package:forge_and_flow/services/rollups/rollup_models.dart';
 
+import '../../../tool/advisor_proxy/worker_heartbeats.dart';
 import '../../../tool/advisor_proxy/worker_startup_wiring.dart';
 
 void main() {
@@ -251,6 +252,168 @@ void main() {
       expect(concurrentCalls, 1);
 
       firstReleases.complete();
+      await handle.stopAll();
+    });
+
+    test('B-2B — heartbeat registry records tick fan-out across every '
+        'wired worker channel', () async {
+      final fakes = <_FakeConsumer>[];
+      _FakeConsumer factory({
+        required String connectionString,
+        required List<String> channels,
+        PgCronNotifyConsumerLogger? logger,
+      }) {
+        final fake = _FakeConsumer(channels: channels);
+        fakes.add(fake);
+        return fake;
+      }
+
+      final tenantWrapper = _stubTenantWrapper();
+      final heartbeats = WorkerHeartbeatRegistry();
+      final auditCompleter = Completer<void>();
+      final rollupCompleter = Completer<void>();
+      final emailCompleter = Completer<void>();
+      final mobileCompleter = Completer<void>();
+
+      final handle = wireProductionWorkers(
+        postgresUrl: 'postgres://stub',
+        adminWrapper: tenantWrapper,
+        tenantWrapper: tenantWrapper,
+        tripwireFetcher: () async => OutboxTripwireStatus.green,
+        auditAnchorHandler: () async {
+          if (!auditCompleter.isCompleted) auditCompleter.complete();
+        },
+        emailTickHandler: () async {
+          if (!emailCompleter.isCompleted) emailCompleter.complete();
+        },
+        mobilePushHandler: () async {
+          if (!mobileCompleter.isCompleted) mobileCompleter.complete();
+        },
+        rollupTickHandler: (RollupGrain grain) async {
+          if (grain == RollupGrain.values.last &&
+              !rollupCompleter.isCompleted) {
+            rollupCompleter.complete();
+          }
+        },
+        heartbeatRegistry: heartbeats,
+        consumerFactory: factory,
+      );
+
+      // Every cron channel + the tripwire poller channel are registered
+      // up-front so the snapshot lists them before any tick fires.
+      final preTickSnapshot = heartbeats.snapshot();
+      final preTickChannels =
+          preTickSnapshot.map((s) => s.channel).toSet();
+      expect(
+        preTickChannels,
+        containsAll(<String>{
+          kAuditAnchorTickChannel,
+          kRollupsTickChannel,
+          kEmailOutboxTickChannel,
+          kMobilePushOutboxChannel,
+          kHeartbeatChannelTripwirePoller,
+        }),
+      );
+      // Cron-driven workers have zero ticks pre-fire. The tripwire
+      // poller starts polling synchronously inside
+      // `wireProductionWorkers` (the poller has its own internal timer
+      // wired by `tripwirePoller.start()`), so its tickCount may
+      // already be >= 0 by the time we snapshot.
+      for (final s in preTickSnapshot) {
+        if (s.channel == kHeartbeatChannelTripwirePoller) continue;
+        expect(s.tickCount, 0, reason: '${s.channel} pre-tick count');
+      }
+
+      // Fire a tick on every worker channel.
+      for (final fake in fakes) {
+        fake.publish('{}');
+      }
+
+      await Future.wait<void>(<Future<void>>[
+        auditCompleter.future.timeout(const Duration(seconds: 2)),
+        rollupCompleter.future.timeout(const Duration(seconds: 2)),
+        emailCompleter.future.timeout(const Duration(seconds: 2)),
+        mobileCompleter.future.timeout(const Duration(seconds: 2)),
+      ]);
+      // Microtask drain so the success recordings settle.
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+
+      final postTickByChannel = <String, WorkerHeartbeatSnapshot>{
+        for (final s in heartbeats.snapshot()) s.channel: s,
+      };
+      for (final channel in <String>{
+        kAuditAnchorTickChannel,
+        kRollupsTickChannel,
+        kEmailOutboxTickChannel,
+        kMobilePushOutboxChannel,
+      }) {
+        final s = postTickByChannel[channel]!;
+        expect(s.tickCount, greaterThanOrEqualTo(1),
+            reason: '$channel did not record a tick');
+        expect(s.successCount, greaterThanOrEqualTo(1),
+            reason: '$channel did not record a success');
+        expect(s.failureCount, 0, reason: '$channel recorded a failure');
+        expect(s.inFlight, isFalse,
+            reason: '$channel left in-flight latch set');
+      }
+
+      await handle.stopAll();
+    });
+
+    test('B-2B — heartbeat registry records tick failures with error '
+        'type', () async {
+      final fakes = <_FakeConsumer>[];
+      _FakeConsumer factory({
+        required String connectionString,
+        required List<String> channels,
+        PgCronNotifyConsumerLogger? logger,
+      }) {
+        final fake = _FakeConsumer(channels: channels);
+        fakes.add(fake);
+        return fake;
+      }
+
+      final tenantWrapper = _stubTenantWrapper();
+      final heartbeats = WorkerHeartbeatRegistry();
+      final emailCompleter = Completer<void>();
+
+      final handle = wireProductionWorkers(
+        postgresUrl: 'postgres://stub',
+        adminWrapper: tenantWrapper,
+        tenantWrapper: tenantWrapper,
+        tripwireFetcher: () async => OutboxTripwireStatus.green,
+        auditAnchorHandler: () async {},
+        emailTickHandler: () async {
+          if (!emailCompleter.isCompleted) emailCompleter.complete();
+          throw const FormatException('email outbox handler boom');
+        },
+        mobilePushHandler: () async {},
+        rollupTickHandler: (RollupGrain grain) async {},
+        heartbeatRegistry: heartbeats,
+        onTickError: (channel, error, stack) {
+          // Swallow — the registry capture is what we are asserting.
+        },
+        consumerFactory: factory,
+      );
+
+      final emailFake = fakes
+          .firstWhere((c) => c.channels.contains(kEmailOutboxTickChannel));
+      emailFake.publish('{}');
+
+      await emailCompleter.future.timeout(const Duration(seconds: 2));
+      // Microtask drain so the failure recording settles.
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+
+      final snapshots = heartbeats.snapshot();
+      final emailSnap =
+          snapshots.firstWhere((s) => s.channel == kEmailOutboxTickChannel);
+      expect(emailSnap.tickCount, 1);
+      expect(emailSnap.failureCount, 1);
+      expect(emailSnap.successCount, 0);
+      expect(emailSnap.lastFailureType, 'FormatException');
+      expect(emailSnap.inFlight, isFalse,
+          reason: 'failure path must reset the in-flight latch');
+
       await handle.stopAll();
     });
   });
