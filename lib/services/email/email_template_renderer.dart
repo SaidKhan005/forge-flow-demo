@@ -89,36 +89,43 @@ class EmailTemplateIds {
   /// `tool/advisor_proxy/admin_email_routes.dart` (the
   /// `POST /v1/admin/integrations/email/test` route renders this
   /// template with sample data and sends it directly through
-  /// `EmailProvider.send`, bypassing `email_outbox`). The real
-  /// production invite path uses the Firebase Identity Platform
-  /// password-reset action-link template (see
-  /// `lib/services/auth/repository_auth_operations_gateway.dart:463`'s
-  /// `firebaseAdmin.sendPasswordResetEmail` call) per addendum B4
-  /// resolution path 1 ("keep Firebase as the production invite
-  /// email"). A2.2 deleted the companion `operator_admin_invite.md`
-  /// template + its id entry but PRESERVED this template because the
-  /// admin test route is its live consumer. C-2 confirms the
-  /// preservation: deleting this template would break the SendGrid
-  /// connectivity test surface with no replacement. Source:
-  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`.
+  /// `EmailProvider.send`, bypassing `email_outbox`).
+  ///
+  /// BC-1 invite-path resolution (Q-3 scaffold audit lane,
+  /// 2026-05-13): the production invite path is Firebase Identity
+  /// Platform's password-reset action-link template. See
+  /// `lib/services/auth/repository_auth_operations_gateway.dart`
+  /// `firebaseAdmin.sendPasswordResetEmail` call at the
+  /// invite-completion site, the bootstrap path at the
+  /// admin-initiated reset path, and the orientation comment in
+  /// `lib/services/auth/user_invite_service.dart` for the full
+  /// auth_invites bookkeeping <-> Firebase email split. The repo-owned
+  /// `operator_admin_invite.md` template was deleted in A2.2
+  /// (PR #540); this template is PRESERVED because the admin test
+  /// route is its live consumer and deleting it would break the
+  /// SendGrid connectivity test surface with no replacement.
+  /// Sources:
+  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+  /// Draft A, addendum B4 path 1, and the Q-3 PR body.
   static const String operatorInviteFirstAdmin =
       'operator_invite_first_admin';
 
-  /// V1 status: TEMPLATE ONLY. Wire deferred per C-2 operator
-  /// decision: no clear server-side "MFA factor changed" emission
-  /// site exists today. MFA enrollment (`lib/services/mfa/mfa_enrollment_service.dart`)
-  /// is a client-side seam — the server only sees `mfa_factors`
-  /// rows after Firebase confirms TOTP enrollment, with no per-event
-  /// "factor changed" hook surface. MFA removal (`lib/services/mfa/mfa_removal_worker.dart`)
-  /// already emits to the `event_outbox` topic
-  /// `auth.user.mfa_factor_removed` and the in-app inbox via
-  /// `AppNotificationService.emitMfaAuthenticatorRemoved` — wiring
-  /// email here means deciding whether email duplicates the existing
-  /// inbox emit (UX-driven) and adding a recipient-resolution path
-  /// (the worker holds `userId` but not the user's email). C-2 ships
-  /// no wire; operator decision pending. Source:
+  /// V1 status: WIRED (C-2-C). Operator picked WIRE in the C-2
+  /// matrix; the MFA removal worker emits the email when a 24-hour
+  /// revocation completes. Trigger site:
+  /// `lib/services/mfa/mfa_removal_worker.dart`'s completion path
+  /// inside `MfaFactorRemovalRequestsRepository.withTenant` (after
+  /// `markCompletedInTransaction` returns > 0). Dispatcher:
+  /// `lib/services/mfa/mfa_factor_changed_notice_dispatcher.dart` —
+  /// single-recipient (the user whose factor changed), not operator-
+  /// wide; enqueues to `email_outbox` on the same executor as the
+  /// completion transaction. MFA enrollment (`lib/services/mfa/mfa_enrollment_service.dart`)
+  /// remains client-side; no enrollment-side email is wired (per
+  /// operator pick: removal only). Catalog entry:
+  /// `notif.mfa.factor_changed` in
+  /// `lib/domain/models/notification_event_catalog.dart`. Source:
   /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
-  /// Draft C.
+  /// Draft C, operator pick 2026-05-13.
   static const String mfaFactorChangedNotice = 'mfa_factor_changed_notice';
 
   /// V1 status: WIRED (C-2-D). Operator picked WIRE in the C-2
@@ -144,30 +151,24 @@ class EmailTemplateIds {
   /// Draft D, operator pick 2026-05-13.
   static const String vendorSyncErrorAlert = 'vendor_sync_error_alert';
 
-  /// V1 status: TEMPLATE ONLY. Phase 8 lean cut 2 explicitly deferred
-  /// the OAuth-refresh-cron emitter that would enqueue an
-  /// `email_outbox` row when a vendor connection auto-disables on
-  /// 3 consecutive refresh failures (see
-  /// `lib/services/integration/oauth_refresh_cron.dart:36-44` and
-  /// the lean-cut block in
-  /// `docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
-  /// 8.0 deliverables — "Email alert wiring to `9.8.email` deferred").
-  /// C-2 reviewed reversal: the auto-disable trigger site IS clean
-  /// (`tool/oauth_refresh_worker/main.dart:1196` + `:1226` both call
-  /// `gateway.autoDisableConnection`, well-bounded for a single
-  /// fanout-hook insertion). BUT: the worker is a Cloud Run binary
-  /// with no current `NotificationEventFanout` dependency wired in
-  /// its `WorkerRuntime` bootstrap. Wiring email here requires either
-  /// (a) constructing a full fanout instance + recipient-resolution
-  /// path in the worker (substantial new dependency wiring), or
-  /// (b) a direct-enqueue path through `EmailOutboxEnqueueRepository`
-  /// + an `OperatorAdminEmailLookup` seam (parallel to
-  /// `VendorLifecycleNotificationDispatcher`'s pattern). C-2 ships
-  /// no wire; operator decision pending on (a) vs (b) and on
-  /// whether the V1 lean-cut decision should be reversed now (vs
-  /// post-launch when alert volume justifies it). Source:
+  /// V1 status: WIRED (C-2-F via Path b — direct outbox enqueue).
+  /// Operator picked WIRE on 2026-05-13; worker pre-recommended the
+  /// narrower Path b (~400 LoC outbox enqueue mirror of
+  /// `VendorLifecycleNotificationDispatcher`) over Path a (~600 LoC
+  /// full `NotificationEventFanout` bootstrap inside the Cloud Run
+  /// worker). Trigger sites:
+  /// `tool/oauth_refresh_worker/main.dart:1196` + `:1226` (both call
+  /// `gateway.autoDisableConnection` after the 3-strike cap trips).
+  /// Dispatcher:
+  /// `tool/oauth_refresh_worker/vendor_connection_auto_disabled_dispatcher.dart`
+  /// — resolves the operator admin recipient via
+  /// `public.operators.owner_email` (auto-disable is a system notice
+  /// to the operator's primary admin, not a per-user opt-in), stamps
+  /// `(operator_id, credential_id, cap_tripped_at)` idempotency key,
+  /// inserts on the same executor as the cap-trip transaction.
+  /// Source:
   /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
-  /// Draft F.
+  /// Draft F, operator pick 2026-05-13.
   static const String vendorConnectionAutoDisabled =
       'vendor_connection_auto_disabled';
 
